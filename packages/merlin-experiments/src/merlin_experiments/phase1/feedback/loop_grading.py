@@ -867,8 +867,7 @@ def fast_grade(
         target=te.target, runs_root=fruns, runtime_config=readback_kwargs(inputs.context),
         additional_identity=scalability.identity, verify_additional=scalability.verify) if scalability is not None else None
 
-    def completed(row):
-        progress.completed(row)
+    def process_completed(row):
         if scale_feedback is not None:
             scale_feedback.completed(row)
         # Automatic checks retain the same public products as explicit selfchecks.
@@ -893,6 +892,12 @@ def fast_grade(
                 and (physical_roster() or background_guard.reason() is None)):
             completed_promotion(row)
 
+    def completed(row):
+        # Publish the native durable row immediately. Remaining consumers reopen
+        # the same evidence on a request-owned worker, without blocking refill.
+        progress.completed(row)
+        completion_processing.submit(row)
+
     selected_roots, test_scope = JTS.select(public_root, submission=cand, curriculum=curriculum,
                                           additional_cases=scalability_cases)
     if joint_control.selected() is not None:
@@ -906,8 +911,13 @@ def fast_grade(
     rolling = (joint_curriculum.admission(curriculum, timeout=timeout,
         remaining_s=joint_control.remaining(drain=True), history=history)
         if curriculum is not None else nullcontext(timeout))
+    from .completion_processing import CompletionProcessing
+
     try:
-        with rolling as case_timeout, compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(history):
+        with (rolling as case_timeout,
+              compiler_execution(inputs, candidate=cand, run_dir=run_dir),
+              timing_history(history),
+              CompletionProcessing(process_completed) as completion_processing):
             _fast_score = {} if not selected_roots else (
                 _CG.grade(
                     str(cand),

@@ -188,6 +188,7 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
         bound_context = source_context.for_program(captures[name]) if source_context is not None else None
         control_context = (source_context.control_admission_context(captures[name], target=target)
                            if source_context is not None else None)
+        index_context = source_context.index_admission_context(captures[name]) if source_context is not None else None
         for entry in application["signatures"]:
             row = entry["observed_signature"]
             control = control_context is not None and row.get("mlir_operation") in {
@@ -201,7 +202,9 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
                     capability_contract=evidence.contract,
                     host_capabilities=getattr(evidence, "host_capabilities", None),
                     source_operations=tuple(operations[ordinal] for ordinal in row["ordinals"]),
-                    source_context=control_context if control else bound_context,
+                    source_context=(control_context if control else index_context
+                                    if index_context is not None and row.get("frontend_op") == "aten.index.Tensor"
+                                    else bound_context),
                 )
             )
     if source_context is not None:

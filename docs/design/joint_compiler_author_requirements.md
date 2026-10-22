@@ -45,8 +45,40 @@ the changed scheduling/fusion boundary, and a medium or large performance case.
 Do not sweep all small capsules on each iteration. Reuse native exact-identity
 results; never infer unaffected correctness from a self-declared family hint.
 Broaden checks at candidate milestones and require complete correctness coverage
-before final promotion. gSIM needs a specific missing mechanism or calibration
-question after cheap correctness; being on the roster does not require execution.
+before final promotion. Every original capsule retains its declared gSIM
+correctness obligation (intentional refusals retain their refusal gate).
+Extra calibration gSIM needs a specific missing mechanism or timing question
+after cheap correctness; calibration permission alone does not request a run.
+
+## Compiler boundary checklist
+
+Before broad testing, run one tiny applicable case through emission, actual target
+consumption, linking, Spike and complete numerical comparison. Tool readiness is
+not execution success. Use the selected schemas and ABI as the authority:
+
+- Every declared command must exist and accept the input stage assigned to it.
+  Downstream emission consumes transformed target IR, including its attributes;
+  it must not expect the original interface or discard pass results.
+- Emit a raw schema-valid command-buffer document, with its required ABI version.
+  Do not wrap it in an extra JSON envelope. Respect the declared output-file and
+  stdout channels; write diagnostics to stderr, never into the target artifact.
+- Derive entry symbols, argument layout and any completion helper from the
+  selected ABI. Resolve every called helper and preserve actual completion before
+  output readback. A link or stack-report failure is not a numerical mismatch.
+- Bind every named output to the correct pointer, shape, dtype, stride and lifetime.
+  Preserve multiple live-outs and state updates; never assume the first pointer
+  is the only output. Compare every externally visible output.
+- Whole-program L0/L1 non-applicability is valid only when the native harness
+  establishes it and Spike checks the whole program against its source reference.
+  A skipped tier is never a self-declared pass. Preserve expected negative cases.
+
+Fix shared manifest/entrypoint/ABI failures before repeating affected requests.
+Use affected numerical boundary cases after a fix; do not change the public
+contracts or bypass a check. In particular, exercise applicable tails, aligned and
+unaligned activation/readout, quantization rounding and saturation, convolution
+stride/padding, and connected regions with multiple outputs or retained state.
+
+## Performance and generalization
 
 Read compiler_diagnostics.feedback_brief first. It combines scoped command/CPU
 counts, requested movement bytes, useful/padded work and available compiler

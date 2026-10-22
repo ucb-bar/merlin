@@ -22,6 +22,7 @@ from merlin.frontends.linalg_patterns import InvalidLinalgPattern
 from merlin.llvmlower.target_data_layout import selected_index_bits
 
 _ISSUED = WeakKeyDictionary()
+_CAPTURES = WeakKeyDictionary()
 
 
 class ConnectedSourceContext:
@@ -60,6 +61,22 @@ class ConnectedSourceContext:
         raw, cut, _ = self._reopen(program)
         return {"source_sha256": sha256(raw).hexdigest(),
                 "projected_sha256": sha256(cut).hexdigest()}
+
+    def bind_index_capture(self, program, capture, **pins):
+        """Bind direct capture inputs; every admission independently reopens and reproves them."""
+        from .connected_index_context import prove
+        prove(self, program, capture, **pins)
+        _CAPTURES[self] = (Path(capture), copy.deepcopy(pins))
+
+    def index_admission_context(self, program):
+        from .connected_index_context import prove
+        self._reopen(program)
+        if self not in _CAPTURES:
+            return None
+        capture, pins = _CAPTURES[self]
+        record = prove(self, program, capture, **pins)
+        return {'selected_index_observation': self.for_program(program)['selected_index_observation'],
+                'verified_connected_index_source': record}
 
     def control_admission_context(self, program, *, target):
         """Reprove scalar support on the entire exact projection; no saved proof input."""

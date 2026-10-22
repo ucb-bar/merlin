@@ -162,6 +162,44 @@ class CapsuleMetadata:
         self.module_location_plan = None
         from .guarded_inventory import GuardedInventory
         self.inventory = GuardedInventory()
+        self._derived = {}
+        self._derived_lock = threading.RLock()
+
+    def derived(self, key, roots, compute):
+        """Reuse root-bounded classification only under unchanged exact tree facts.
+
+        Missing roots are checked on every call. Indirect/unsupported trees keep
+        the original reader. This does not retain mount decisions or a complete
+        sandbox policy; mutable registry and alias decisions stay independent.
+        """
+        roots = tuple(dict.fromkeys(Path(root) for root in roots))
+
+        def observe():
+            facts = []
+            for root in roots:
+                if not root.exists() and not root.is_symlink():
+                    facts.append(None)
+                    continue
+                tree = self.inventory.tree(root)
+                if tree is None:
+                    return None
+                facts.append(tree)
+            return tuple(facts)
+
+        with self._derived_lock:
+            before = observe()
+            cached = self._derived.get(key)
+            if (before is not None and cached is not None and cached[0] == roots
+                    and all(a is b for a, b in zip(before, cached[1], strict=True))):
+                return list(cached[2])
+            result = compute()
+            after = observe() if before is not None else None
+            if (after is not None and all(a is b for a, b in zip(before, after, strict=True))
+                    and len(self._derived) < 64):
+                self._derived[key] = roots, after, tuple(result)
+            else:
+                self._derived.pop(key, None)
+            return result
 
     def load(self, directory: Path) -> object:
         """The parsed ``directory/capsule.yaml`` (``{}`` when absent), exactly as the classifier reads it."""
@@ -202,6 +240,18 @@ def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
     glob) — plus every example expected-output. Generic: no hard-coded ``isa/layers/model_slices`` list and
     no per-capsule literal. This is the parity-preserving replacement for the old hand-rolled
     ``answer_files()``."""
+    if capsules is not None:
+        root = repo_root()
+        roots = ([te.capsule_corpus.parent, te.capsule_corpus] if te.capsule_corpus else [])
+        roots += [root / rel.rstrip('/') for rel in te.corpus_siblings()]
+        roots += [*contract_resource_roots(root, 'capsules'),
+                  *contract_resource_roots(root, 'examples'), root / 'merlin/tests']
+        return capsules.derived(('golden', tuple(roots)), roots,
+                                lambda: _golden_files(te, capsules=capsules))
+    return _golden_files(te)
+
+
+def _golden_files(te, *, capsules=None):
     files: list[Path] = []
     root = repo_root()
     # A sealed release can live outside the packaged contract tree.  Its sibling
@@ -252,6 +302,16 @@ def weight_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
     :func:`golden_files` does, so broad contract grants cannot leak another target's model weights.
     Both the safetensors blob and an optional manifest are covered by suffix, with no per-model list.
     """
+    if capsules is not None:
+        roots = list(contract_resource_roots(repo_root(), 'capsules'))
+        if te.capsule_corpus is not None:
+            roots.append(te.capsule_corpus.parent)
+        return capsules.derived(('weight', tuple(roots)), roots,
+                                lambda: _weight_files(te, capsules=capsules))
+    return _weight_files(te)
+
+
+def _weight_files(te, *, capsules=None):
     files: list[Path] = []
     roots = list(contract_resource_roots(repo_root(), "capsules"))
     if te.capsule_corpus is not None:

@@ -112,7 +112,8 @@ def publish_stop_notice(run_dir):
               "reason": request["reason"], "stop_request_sha256": digest,
               "instruction": "Finish the current bounded action, save all compiler and generic pass edits, "
                   "and return a checkpoint summary now. Preserve your work; do not restart the compiler. "
-                  "The native host will continue this saved compiler with the reviewed inputs and original campaign clock.",
+                  "The native host will preserve this checkpoint and close the current run; "
+                  "the operator controls any subsequent launch.",
               "changes_grading": False, "private_reference_information": False}
     from .feedback.visible_model_gate import publish
     publish(workspace / "qa" / "verdict.json", {"operator_epoch_notice": notice})

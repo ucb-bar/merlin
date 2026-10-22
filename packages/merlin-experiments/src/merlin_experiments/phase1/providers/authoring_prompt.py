@@ -5,6 +5,47 @@ def authoring_prompt() -> str:
     """Required startup discovery precedes authoring; a submitted manifest then enables grading."""
     from .. import joint_control
 
+    if joint_control.selected() is not None:
+        return (
+            "Build one general compiler in submission/ from the empty backend. TASK.md is the "
+            "authoritative launch contract; read it, applicable workspace instructions and the concise "
+            "qa/round_brief.md if present. Complete the selected mandatory discovery calls once before "
+            "editing or delegating edits. Batch them in one direct attributable script outside submission/, "
+            "retain outputs under discovery/, and check qa/workflow_conformance.json. Repeat only failed "
+            "calls or calls whose inputs changed. Do not read whole libraries or historical logs for orientation.\n\n"
+            "Write a valid manifest and executable entrypoints promptly. First run one tiny applicable "
+            "capsule through emission, linking, Spike and all-output comparison. Fix the first shared "
+            "contract failure before fanning out affected cases; successful tool startup alone is not "
+            "successful target execution. Follow the boundary checklist in TASK.md.\n\n"
+            "All selected 250 capsules remain required: 153 original, 20 calibration, 77 scalability. "
+            "Prioritize original numerical correctness and reviewed calibration prerequisites while "
+            "developing scalable, performant implementations from the start. Required original gSIM "
+            "checks follow matching Spike evidence automatically; extra calibration runs require the "
+            "declared question/budget. Expected refusals remain refusals. Large cases use Spike, not gSIM. "
+            + joint_control.selfcheck_routing_guidance() + "\n\n"
+            "Use independent helpers for frontend/graph transforms, scheduling/codegen, and numerical "
+            "or performance diagnosis when useful. Give each bounded file ownership, integrate completed "
+            "work frequently into the same compiler, and retain reusable passes and semantic/shape/resource "
+            "heuristics. Use or adapt the supplied pass library, scheduling abstractions and host codegen "
+            "where useful; consume their actual results. Explore aggressively: fusion, preparation reuse, "
+            "tiling, resident buffers, compact loops, pipelining, overlap and command/configuration overhead. "
+            "The capability-based optimization menu is non-exhaustive guidance, not a prescribed solution.\n\n"
+            "Keep authoring while immutable snapshots execute. Submit affected named cases with "
+            "`python3 agent_selfcheck.py --submission submission --capsules A,B --wait-budget 5`; "
+            "use `--attach ID` for results and `--list` for requests. Concurrent requests share resources; "
+            "do not duplicate automatic work or repeat whole-corpus sweeps. Check scalability members with "
+            "`--suite scalability --sim spike`. Keep alternative sources small under variants/, merge "
+            "winners into submission/, and record changes, hypotheses and evidence in iteration notes.\n\n"
+            "Read feedback_brief and source/model identities first. Distinguish numerical failures, "
+            "pending required gSIM, model UNKNOWN, provisional estimates and qualified timing. Use "
+            "roofline/resource/whole-SoC feedback to attack the largest supported performance gaps, "
+            "including host work and synchronization. Prefer the selected tuned model where qualified; "
+            "never silently replace it with untuned timing. Continue independent work while calibration "
+            "is pending. Do not alter evaluator coefficients, contracts, goldens or private boundaries. "
+            "Do not hardcode capsule identities or reference answers. Report only demonstrated results. "
+            "Begin now."
+        )
+
     routing = (
         joint_control.selfcheck_routing_guidance()
         if joint_control.selected()

@@ -1296,6 +1296,21 @@ def _frozen_answer_surfaces(
     repo: Path,
     capsules: CapsuleMetadata | None = None,
 ) -> list[AnswerSurface]:
+    if capsules is not None:
+        # Only the frozen tree contributes filesystem classifications here;
+        # live surfaces and descriptor roots are explicit parts of the key.
+        # Dynamic live-answer discovery still runs independently before this.
+        manifest, grants = _snapshot_grants(ws, bundle, repo)
+        key = ('frozen_answers', repo, te.capsule_corpus, tuple(te.corpus_siblings()),
+               tuple(contract_resource_roots(repo, 'capsules')),
+               tuple(contract_resource_roots(repo, 'examples')), tuple(live),
+               tuple(grants), manifest['content_sha256'])
+        return capsules.derived(key, (bundle_snapshot_root(ws),),
+                                lambda: _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules))
+    return _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules)
+
+
+def _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules):
     """Classify answer bytes in pinned public grants, independent of mutable live sources.
 
     The snapshot marker fixes grant destinations and sources. Walking only its

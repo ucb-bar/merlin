@@ -12,6 +12,7 @@ from pathlib import Path
 from merlin.common import mlir_query as mq
 from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.llvmlower.target_data_layout import selected_index_bits
+from merlin.xdsl_dialects._common import text
 from merlin_experiments.phase1.feedback import private_index_source as index
 from merlin_experiments.phase1.feedback import private_literal_arange as arange
 
@@ -24,6 +25,60 @@ def _read(path, expected):
     if sha256(raw).hexdigest() != expected:
         raise ValueError("connected index context source pin differs")
     return raw
+
+
+
+def _root_body(op):
+    """Canonical typed body with explicit external SSA; provenance is checked separately."""
+    from xdsl.ir import Block, Operation
+    from merlin.xdsl_dialects._common import text
+    inside = set(op.walk())
+    blocks = {block for nested in inside for region in nested.regions for block in region.blocks}
+    external = []
+    for nested in op.walk():
+        for value in nested.operands:
+            if ((isinstance(value.owner, Operation) and value.owner in inside)
+                    or isinstance(value.owner, Block) and value.owner in blocks):
+                continue
+            if value not in external:
+                external.append(value)
+    boundary = Block(arg_types=[value.type for value in external])
+    clone = op.clone(value_mapper=dict(zip(external, boundary.args, strict=True)))
+    for nested in clone.walk():
+        nested.attributes = {k:v for k,v in nested.attributes.items() if not k.startswith('prov.')}
+    boundary.add_op(clone)
+    return ([str(value.type) for value in external], text(clone, generic=True))
+
+
+def _capture_join(model, trace, roots):
+    """Require selected cut roots to retain the exact captured typed bodies and trace owners."""
+    normalized, _ = normalize_capture_mlir(model.decode())
+    parsed = tuple(mq.walk(mq.parse(normalized)))
+    mlir = trace.get('mlir') or {}
+    entries, joins = mlir.get('operations'), mlir.get('source_correspondence')
+    if not isinstance(entries, list) or len(entries) != len(parsed) or not isinstance(joins, list):
+        raise ValueError('connected index capture operation roster differs')
+    result = []
+    for node_id, projected in roots.items():
+        selected = [r for r in joins if isinstance(r, dict) and r.get('node_id') == node_id]
+        owned = {i for i, op in enumerate(parsed) if index._ids(op) == (node_id,)}
+        if (len(selected) != 1 or selected[0].get('status') != 'lowered'
+                or type(selected[0].get('mlir_ordinals')) is not list
+                or any(type(i) is not int for i in selected[0]['mlir_ordinals'])
+                or set(selected[0]['mlir_ordinals']) != owned
+                or len(selected[0]['mlir_ordinals']) != len(owned)
+                or any(r.get('node_id') != node_id and owned.intersection(r.get('mlir_ordinals') or [])
+                       for r in joins if isinstance(r, dict))):
+            raise ValueError('connected index capture source correspondence differs')
+        captured = [(i, parsed[i]) for i in sorted(owned) if parsed[i].name in {'linalg.generic','linalg.reduce'}]
+        if len(captured) != len(projected):
+            raise ValueError('connected index captured compute roster differs')
+        for (old_i, old), (new_i, new) in zip(captured, projected, strict=True):
+            if old.name != new.name or _root_body(old) != _root_body(new):
+                raise ValueError('connected index typed capture body differs')
+            result.append({'source_node_id':node_id, 'capture_ordinal':old_i, 'projected_ordinal':new_i,
+                           'typed_body_sha256':sha256(json.dumps(_root_body(new),sort_keys=True).encode()).hexdigest()})
+    return result
 
 
 def prove(context, program: Path, capture: Path, *, capture_model_sha256: str,
@@ -81,6 +136,7 @@ def prove(context, program: Path, capture: Path, *, capture_model_sha256: str,
         literal = sha256(json.dumps([start, end, step, extent], separators=(',', ':')).encode()).hexdigest()
         ranges[id(op)], literals[id(op)] = (start, end, step, extent), literal
         range_rows.append({'ordinal':ordinal, 'source_node_id':ids[0], 'range':[start,end,step,extent], 'literal_sha256':literal})
+    joins = _capture_join(model, trace, roots)
     records = []
     for node_id, owned_roots in roots.items():
         owned = {i for i, op in enumerate(parsed) if index._ids(op) == (node_id,)}
@@ -103,5 +159,7 @@ def prove(context, program: Path, capture: Path, *, capture_model_sha256: str,
             'normalized_projected_sha256': normalization['output_sha256'],
             'capture_model_sha256':capture_model_sha256,'frontend_trace_sha256':frontend_trace_sha256,
             'capture_receipt_sha256':capture_receipt_sha256, 'selected_index_observation':selected,
-            'ranges':range_rows,'records':records,
+            'ranges':range_rows,'records':records, 'capture_root_joins':joins,
+            'parsed_module_sha256':sha256(text(module, generic=True).encode()).hexdigest(),
+            'n_source_operations':len(parsed),
             'scope':'closed cut index forms and literal graph metadata only; full capture/preparation equivalence, host placement and linked numerics remain unproved'}

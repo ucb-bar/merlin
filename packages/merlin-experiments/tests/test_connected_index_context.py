@@ -65,3 +65,45 @@ def test_cut_mutation_cannot_reuse_context(tmp_path):
     cut.write_text(cut.read_text().replace('g:prepared:root:index', 'g:prepared:root:other'))
     with pytest.raises(ValueError, match='bytes changed'):
         prove(context, cut, capture, **pins)
+
+
+def test_capture_typed_root_join_and_connected_host_source_screen(tmp_path):
+    from copy import deepcopy
+    from merlin.frontends import connected_index_source_body as body
+    from merlin.targetgen.application_inventory import operation_structure
+    context, cut, capture, pins = _fixture(tmp_path)
+    context.bind_index_capture(cut, capture, **pins)
+    ctx = context.index_admission_context(cut)
+    record = ctx['verified_connected_index_source']
+    parsed = tuple(mq.walk(mq.parse(cut.read_text())))
+    ordinal = record['records'][0]['compute_ordinals'][0]
+    op = parsed[ordinal]
+    structure = operation_structure(op)
+    row = dict(frontend_op='aten.index.Tensor',mlir_operation=op.name,count=1,ordinals=[ordinal],
+               ordered_operand_types=structure['ordered_operand_types'],ordered_result_types=structure['ordered_result_types'])
+    signature = dict(family='elementwise_map', rank=2,
+        ordered_operand_dtypes=[x['dtype'] for x in structure['ordered_operand_types']],
+        ordered_result_dtypes=[x['dtype'] for x in structure['ordered_result_types']])
+    decl = dict(id='fixture',source_body=dict(schema=body.SCHEMA,operation='literal_indexed_extract'))
+    assert body.screen(decl,row,signature,(op,),ctx)['status'] == 'admitted'
+    for field, value in [('capture_root_joins', []),('parsed_module_sha256','0'*64)]:
+        wrong = deepcopy(ctx)
+        wrong['verified_connected_index_source'][field] = value
+        assert body.screen(decl,row,signature,(op,),wrong)['status'] == 'unsupported'
+    (capture/'frontend-trace.json').write_text((capture/'frontend-trace.json').read_text()+'\n')
+    with pytest.raises(ValueError,match='pin differs'):
+        context.index_admission_context(cut)
+
+
+def test_prepared_projection_cannot_borrow_a_different_captured_root(tmp_path):
+    context, cut, capture, pins = _fixture(tmp_path)
+    source = tmp_path/'changed-prepared.mlir'
+    source.write_text((capture/'model.mlir').read_text().replace('arith.index_cast','arith.index_castui'))
+    module = mq.parse(source.read_text())
+    function = next(o for o in module.walk() if isinstance(o, FuncOp))
+    stop = len(tuple(function.body.block.ops))-2
+    cut.write_text(text(extract_window(module,0,stop).module))
+    context = ConnectedSourceContext(source,cut,source_sha256=sha256(source.read_bytes()).hexdigest(),
+        projected_sha256=sha256(cut.read_bytes()).hexdigest(),start=0,stop=stop,selected_index_observation=_selected())
+    with pytest.raises(ValueError):
+        context.bind_index_capture(cut,capture,**pins)

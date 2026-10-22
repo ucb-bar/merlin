@@ -84,3 +84,5 @@ f32 schemas retain their meanings. It grants no framework numerical equivalence.
 - `linalg_quantization_seams.py` proves exact scalar reciprocal and projected FP32 roundeven/clamp/int8-cast source bodies. Native numerical and selected rounding obligations remain separate.
 
 - `connected_region.py` extracts an exact single-block source window with literal/init closure, nested captures and every live output. `verify_window` reconstructs from pinned original bytes before returning operation pairs. Re-run source/trace/index proofs on the projection; do not copy ordinal-bound host admissions. Runtime inputs remain explicit, and no numerical or target qualification follows.
+
+- `bounded_control_source_body.py` admits only exact scalar count/index/guard roles from a caller-reproved whole-source interval context. `connected_index_source_body.py` preserves the closed prepared-index recognizers while requiring a separately reconstructed projection and exact captured typed-root join. Neither supplies linked host qualification, compiled bounds, or numerical credit.

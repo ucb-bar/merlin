@@ -17,6 +17,7 @@ from merlin.frontends.linalg_quantization_seams import (
 )
 
 from merlin.common.digest import is_sha256
+from merlin.frontends.connected_index_source_body import SCHEMA as CONNECTED_INDEX_SCHEMA, screen as screen_connected_index
 from merlin.frontends.bounded_control_source_body import (
     SCHEMA as BOUNDED_CONTROL_SCHEMA, ROLES as BOUNDED_CONTROL_ROLES,
     validate as validate_bounded_control, screen as screen_bounded_control,
@@ -200,8 +201,8 @@ def validate_host_capabilities(
                     or results != (["i64", "i64"] if body["operation"] == "i64_min_first_index" else ["i64"])
                 ):
                     raise ValueError("integer-reduction source_body needs one exact frontend selector and typed ABI")
-            elif isinstance(body, dict) and body.get("schema") == PREPARED_INDEX_SOURCE_BODY_SCHEMA:
-                validate_prepared_index_source_body(body)
+            elif isinstance(body, dict) and body.get("schema") in {PREPARED_INDEX_SOURCE_BODY_SCHEMA, CONNECTED_INDEX_SCHEMA}:
+                validate_prepared_index_source_body(dict(body, schema=PREPARED_INDEX_SOURCE_BODY_SCHEMA))
                 operands = row["signature"].get("ordered_operand_dtypes")
                 results = row["signature"].get("ordered_result_dtypes")
                 expected = INDEX_ROLES[body["operation"]]
@@ -437,6 +438,9 @@ def _screen_source_body(
 ) -> dict:
     """Match every supplied parsed occurrence; never treat an omitted source as evidence."""
     from dataclasses import asdict
+
+    if declaration["source_body"]["schema"] == CONNECTED_INDEX_SCHEMA:
+        return screen_connected_index(declaration, row, signature, source_operations, source_context)
 
     if declaration["source_body"]["schema"] == BOUNDED_CONTROL_SCHEMA:
         return screen_bounded_control(declaration, row, signature, source_operations, source_context)

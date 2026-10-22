@@ -492,6 +492,7 @@ class _Executor:
         self._snapshot_refresh_attempts = 0
         self._snapshot_resource_retry_after = 0.0
         self._snapshot_anchor = None
+        self._policy_lock = threading.RLock()
 
     def _snapshot_identity(self):
         owner = self.owner
@@ -776,9 +777,17 @@ class _Executor:
 
     def _policy(self, workspace, package):
         from merlin_experiments.phase2 import campaign as PC
+        from merlin.common.cpu_pool import current_thread_owns_cpu_lease
 
-        with setup_timing.stage("package_policy"):
-            policy = PC.package_sandbox_policy(self.target, workspace, package, inputs=self.inputs, scope=self.policy_scope)
+        inventory = self.policy_scope.capsules.inventory
+        # Cold classification is single-flight per original request. Waiters
+        # acquire no compute lease; prepared calls retain their current masks.
+        # A legacy caller already holding a slot cannot wait on this lock.
+        admission = contextlib.nullcontext() if current_thread_owns_cpu_lease() else self._policy_lock
+        with setup_timing.stage("package_policy"), admission, _verification_compute():
+            inventory.adopt_snapshot(self.snapshot_entry_for_call())
+            with inventory.temporary_root(workspace):
+                policy = PC.package_sandbox_policy(self.target, workspace, package, inputs=self.inputs, scope=self.policy_scope)
         return policy
 
     def _invoke(self, policy, package, argv, *, timeout, evidence=None, inputs=(), outputs=(), dependencies=()):
@@ -903,7 +912,8 @@ class _Executor:
             # CPU. Release this loan before its separate broker/command lifetime.
             with _verification_compute():
                 copy_plain_file(input_mlir, incoming)
-                policy = self._policy(workspace, pkg.directory)
+            policy = self._policy(workspace, pkg.directory)
+            with _verification_compute():
                 policy = replace(policy, argv=(*policy.argv, "--ro-bind", str(incoming), str(incoming)))
                 protocol = {} if artifact_profile is None else {"artifact_profile": artifact_profile}
                 argv = P._resolve_argv(pkg, name, incoming, outgoing, **protocol)
@@ -980,6 +990,34 @@ def active_original_execution():
 
 
 @contextlib.contextmanager
+def _request_snapshot_admission(service, candidate):
+    """All joint evaluator routes share two exact immutable compiler identities."""
+    from .. import joint_control
+    from . import snapshot_admission
+
+    if joint_control.selected() is None:
+        yield
+        return
+    raw = os.environ.get('MERLIN_COMPUTE_CPU_SLOTS')
+    if not raw:
+        raise ValueError('joint snapshot admission requires the original shared compute root')
+    root = Path(raw) / 'immutable-snapshots'
+    key = snapshot_admission.identity(service, candidate)
+    from merlin.targetgen.capsule_scheduling import background_admission_selected
+    # Explicit final frozen checks are allowed after editing stops. Ordinary
+    # background queue work observes the same trusted stop as command admission.
+    stop = joint_control.stop_reason if background_admission_selected() else None
+    with snapshot_admission.admitted(root, key, stop_reason=stop):
+        if snapshot_admission.identity(service, candidate) != key:
+            raise ValueError('compiler snapshot changed while awaiting request admission')
+        try:
+            yield
+        finally:
+            if snapshot_admission.identity(service, candidate) != key:
+                raise ValueError('compiler snapshot changed during its admitted request')
+
+
+@contextlib.contextmanager
 def original_compiler_execution(service, *, target_experiment, candidate, work_root, sandbox_inputs=None):
     """Batch only setup for an exact owner, never the grading lifetime."""
     from merlin.common.bundle_snapshot import verified_snapshot_scope
@@ -989,7 +1027,7 @@ def original_compiler_execution(service, *, target_experiment, candidate, work_r
         return
     if type(service) is not CommonTransformService or P.active_package_executor() is not None:
         raise ValueError("original profile execution requires its exact owner and no foreign executor")
-    with contextlib.ExitStack() as execution:
+    with _request_snapshot_admission(service, candidate), contextlib.ExitStack() as execution:
         with verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo):
             execution.enter_context(
                 _original_execution_lifetime(

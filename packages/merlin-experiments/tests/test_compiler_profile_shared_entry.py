@@ -162,7 +162,8 @@ def test_payload_change_during_command_refuses_before_publication_and_closes(exe
     assert calls and not output.exists()
     assert executor._snapshot_entry is None and entry.guard.fd is None
     assert P.active_package_executor() is None and B._ACTIVE_VERIFICATION.get() is None
-    assert list(work.iterdir()) == []
+    # Native operator timing survives failure; candidate call/scope roots do not.
+    assert {path.name for path in work.iterdir()} <= {"setup-timing"}
 
 
 def test_setup_failure_closes_guard_before_executor_publication(execution, monkeypatch):

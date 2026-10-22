@@ -26,11 +26,11 @@ def policy(path):
         raise ValueError("joint campaign policy must have version 1")
     for key, default, low, high in (("duration_s", 43200, 3600, 43200),
                                    ("final_model_s", 10800, 1, 14400),
-                                   ("drain_s", 1800, 1, 1800)):
+                                   ("drain_s", 1800, 1, 3600)):
         value.setdefault(key, default)
         if type(value[key]) is not int or not low <= value[key] <= high:
             raise ValueError(f"invalid joint campaign {key}")
-    if not value["drain_s"] < value["final_model_s"] < value["duration_s"]:
+    if not value["drain_s"] <= value["final_model_s"] < value["duration_s"]:
         raise ValueError("joint campaign windows must be nested")
     gsim = value.setdefault("gsim", {})
     for key, default in (("max_jobs", 2), ("per_job_s", 1200), ("worker_budget_s", 14400)):
@@ -353,8 +353,8 @@ def prompt_block():
         "permitted development IDs with {\"capsules\":[\"case_id\"]}; do not combine this with families. "
         "This is a priority hint, not a limit on queued cases or public IDs available to named selfchecks. "
         "Automatic grading refills the unresolved queue on an immutable snapshot within a bounded "
-        "admission window; only actual starts count for fairness. Started work drains before the next "
-        "automatic snapshot, while you and explicit selfchecks may continue. "
+        "admission window; only actual starts count for fairness. At most two immutable compiler "
+        "snapshots execute concurrently; all work shares the dynamic CPU budget while authoring continues. "
         "Use exact cases for relevant tails, intermediate resource regimes, connected cuts and failures. "
         "Unknown impact uses original correctness prerequisites and actual-admission fairness. Run full required coverage at explicit milestones and final validation, "
         "not after every edit. Read feedback_brief first; unselected cases remain pending. "
@@ -388,7 +388,20 @@ def prompt_block():
         "This final hardware stage is separate from development prevalidation; no capsule, source "
         "shape or model may disappear from its roster. Bind actual boot images, all-output checks, "
         "measured cycle scopes and comparable software baselines. A wrapper exit is not a pass. "
-        "This campaign reports its own evidence and does not issue a legacy all-corpus RTL certificate.\n"
+        "This campaign reports its own evidence and does not issue a legacy all-corpus RTL certificate.\n\n"
+        "### Boundary checklist before broad testing\n\n"
+        "Run one tiny applicable case through actual emission, target consumption, linking, Spike and "
+        "complete output comparison. A ready tool is not a passing compiler. Resolve shared contract "
+        "failures before repeating affected requests. Downstream emission consumes transformed target "
+        "IR and its attributes, not an assumed original interface. Emit raw schema-valid command-buffer "
+        "JSON with the required abi_version; do not add a transport envelope. Respect output-file versus "
+        "stdout channels and send diagnostics to stderr. Derive entry/completion symbols and argument "
+        "layouts from the selected ABI, resolve every called helper, and complete device writes before "
+        "readback. Bind all named output pointers, strides and lifetimes, including multiple outputs "
+        "and state updates. Whole-program L0/L1 non-applicability requires native justification and "
+        "complete Spike output checks; expected refusals are separate from numerical passes. "
+        "After changes check relevant tails, rounding/saturation, activation/readout, stride/padding "
+        "and connected multi-output boundaries. No public contract or required gate may be weakened.\n"
     )
 
 

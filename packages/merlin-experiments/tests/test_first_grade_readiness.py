@@ -184,6 +184,10 @@ def test_missing_tool_readiness_retries_before_normal_interval(tmp_path, monkeyp
 def test_obsolete_buildable_first_grade_immediately_hands_off_to_current_grade(tmp_path, monkeypatch):
     waits, calls = [], []
     event = _synchronous_background(monkeypatch, waits, stop_on_wait=lambda _: False)
+    # This legacy-cadence test replaces Event.wait with an instantaneous fake.
+    # Stability timing has its own clock-controlled tests; do not busy-spin a
+    # real 30-second debounce with that fake event.
+    monkeypatch.setattr(L, "wait_for_stable_source", lambda source, stop: source())
 
     def grade(*args, **kwargs):
         calls.append((args[2], kwargs["scratch_key"]))

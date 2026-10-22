@@ -3,6 +3,7 @@ import importlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -98,6 +99,111 @@ def test_ancestor_view_observes_external_hardlink_and_root_replacement(tmp_path,
     child.mkdir()
     (child / 'replacement').write_text('new')
     assert {p.name for _, p, _, _ in guarded(inventory, child).members} == {'replacement'}
+
+
+def test_derived_classification_singleflight_mutations_and_missing_roots(tmp_path, inventory):
+    metadata = A.CapsuleMetadata()
+    metadata.inventory.close()
+    metadata.inventory = inventory
+    root = tmp_path / 'capsules'
+    root.mkdir()
+    (root / 'golden.npy').write_text('private')
+    guarded(inventory, root)
+    missing = tmp_path / 'later'
+    calls = []
+
+    def compute():
+        calls.append(True)
+        return [p for source in (root, missing) if source.exists() for p in source.iterdir()]
+
+    def read(_):
+        return metadata.derived('goldens', (root, missing), compute)
+
+    with ThreadPoolExecutor(max_workers=4) as workers:
+        assert all(rows == [root / 'golden.npy'] for rows in workers.map(read, range(12)))
+    assert len(calls) == 1
+    missing.mkdir()
+    (missing / 'new.npy').write_text('new private')
+    assert missing / 'new.npy' in read(0)
+    assert len(calls) == 2
+    (root / 'golden.npy').unlink()
+    assert read(0) == [missing / 'new.npy']
+    assert len(calls) == 3
+
+
+def test_derived_classification_unsupported_trees_remain_fresh(tmp_path, inventory):
+    metadata = A.CapsuleMetadata()
+    metadata.inventory.close()
+    metadata.inventory = inventory
+    root = tmp_path / 'capsules'
+    root.mkdir()
+    (root / 'alias').symlink_to(tmp_path / 'missing')
+    calls = []
+    for _ in range(2):
+        assert metadata.derived('x', (root,), lambda: calls.append(1) or []) == []
+    assert calls == [1, 1] and not metadata._derived
+
+
+def test_golden_cache_matches_fresh_after_declared_member_change(tmp_path, inventory, monkeypatch):
+    root = tmp_path / 'repo'
+    case = root / 'capsules' / 'case'
+    case.mkdir(parents=True)
+    declaration = case / 'capsule.yaml'
+    declaration.write_text('{}')
+    (case / 'golden.npy').write_text('golden')
+    monkeypatch.setattr(A, 'repo_root', lambda: root)
+    monkeypatch.setattr(A, 'contract_resource_roots', lambda r, name: (r / name,))
+    target = SimpleNamespace(capsule_corpus=case, corpus_siblings=lambda: ())
+    metadata = A.CapsuleMetadata()
+    metadata.inventory.close()
+    metadata.inventory = inventory
+    assert A.golden_files(target, capsules=metadata) == A.golden_files(target)
+    (case / 'expected_instruction_coverage.yaml').write_text('private: true')
+    assert A.golden_files(target, capsules=metadata) == A.golden_files(target)
+    assert case / 'expected_instruction_coverage.yaml' in A.golden_files(target, capsules=metadata)
+    declaration.write_text('reference_closure: broken')
+    with pytest.raises(ValueError, match='closure'):
+        A.golden_files(target, capsules=metadata)
+
+
+def test_temporary_roots_do_not_retain_watches_or_skip_alias_scan(tmp_path, inventory):
+    scratch = tmp_path / 'call'
+    scratch.mkdir()
+    private = tmp_path / 'private'
+    private.write_text('secret')
+    os.link(private, scratch / 'alias')
+    with inventory.temporary_root(scratch):
+        assert inventory.tree_nofollow(scratch) is None
+        argv = ['--ro-bind', str(scratch), str(scratch)]
+        records = [('private', private, private)]
+        assert H._host_hardlink_surfaces(argv, records, set(), inventory=inventory) == H._host_hardlink_surfaces(argv, records, set())
+    assert not inventory._entries
+
+
+def test_adopted_snapshot_guard_is_borrowed_not_duplicated(tmp_path, monkeypatch):
+    from merlin.targetgen.sandbox import bwrap
+    monkeypatch.setenv('MERLIN_SNAPSHOT_LEASE_CACHE', '1')
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+    source = repo / 'source'
+    source.write_text('original')
+    ws = tmp_path / 'workspace'
+    ws.mkdir()
+    bundle = {'allowed': [{'path': str(source), 'mode': 'ro'}], 'host_inputs': [], 'denied': []}
+    bwrap.materialize_bundle_inputs(ws, bundle, repo=repo)
+    entry = B.shared_entry_verification(ws, bundle, repo=repo)
+    if entry is None:
+        pytest.skip('kernel guard unavailable')
+    inventory = GuardedInventory()
+    try:
+        assert inventory.adopt_snapshot(entry)
+        assert inventory.tree(entry.root) is not None
+        assert inventory._entries[entry.root][0]._snapshot_owner is entry
+        inventory.close()
+        assert entry.guard.unchanged()  # Closing this reader cannot revoke other readers.
+    finally:
+        inventory.close()
+        entry.close()
 
 
 def test_singleflight_and_external_hardlink_mutation(tmp_path, inventory, monkeypatch):

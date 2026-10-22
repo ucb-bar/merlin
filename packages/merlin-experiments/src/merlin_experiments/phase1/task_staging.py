@@ -401,7 +401,8 @@ measured results.
             "offload census, and public capsule L3 gSIM qualification. Whole-model Spike chain validation runs\n"
             "on the frozen compiler after the experiment, outside its authoring clock;",
             "offload census, and separately tracked physical obligations. Development defaults to Spike;\n"
-            "only selected small gSIM witnesses are admitted. Full-model Spike prevalidation is gated\n"
+            "all original required gSIM correctness checks remain required, with separate selective\n"
+            "calibration witnesses. Full-model Spike prevalidation is gated\n"
             "to the selected final model window inside the authoring clock;",
         ).replace(
             "Without `--sim` it runs every tier each capsule declares mandatory (Spike, L3 gSIM, provided host)\n"
@@ -412,7 +413,8 @@ measured results.
             "(`--sim required` also selects Spike in this joint campaign)",
         ).replace(
             "public capsules (including L3 gSIM), exact model-kernel replays, and the offload census.",
-            "public development capsules on Spike, admitted gSIM witnesses, exact model-kernel replays,\n"
+            "public development capsules on Spike, required original gSIM correctness, separately admitted\n"
+            "  calibration witnesses, exact model-kernel replays,\n"
             "  and the offload census. Unrun declared physical tiers remain pending.",
         )
     body += task_runtime_scope_block(

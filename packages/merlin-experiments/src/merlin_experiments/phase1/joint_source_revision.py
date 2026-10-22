@@ -39,17 +39,24 @@ def normalized(initial, current):
     """Verify explicit added reviews, then restore initial hashes for policy comparison."""
     before = initial.get('source_binding_revisions', [])
     after = current.get('source_binding_revisions', [])
-    if (not isinstance(before, list) or not isinstance(after, list) or len(after) > 16
+    # Every revision remains independently reopened and restricted. Allow a
+    # bounded second batch of reviews after the original sixteen corrections.
+    if (not isinstance(before, list) or not isinstance(after, list) or len(after) > 32
             or after[:len(before)] != before):
         raise ValueError('source revision ancestry changed')
     value = copy.deepcopy(current)
     members = copy.deepcopy(initial['members'])
     for revision in after[len(before):]:
         if (set(revision) != {'schema', 'review_id', 'evidence'}
-                or revision['schema'] not in {'merlin.source_screen_revision.v1', 'merlin.source_member_append_revision.v1', 'merlin.single_use_resident_revision.v1', 'merlin.captured_host_lane_revision.v1', 'merlin.direct_ir_identity_revision.v1'}
+                or revision['schema'] not in {'merlin.source_screen_revision.v1', 'merlin.source_member_append_revision.v1', 'merlin.single_use_resident_revision.v1', 'merlin.captured_host_lane_revision.v1', 'merlin.direct_ir_identity_revision.v1', 'merlin.captured_constant_closure_revision.v1'}
                 or not isinstance(revision['review_id'], str) or not revision['review_id'].strip()):
             raise ValueError('source revision needs an explicit bounded operator review')
         evidence = PERF._read(revision['evidence'])
+        if revision['schema'] == 'merlin.captured_constant_closure_revision.v1':
+            from .joint_constant_closure_revision import verify
+            name, digest = verify(evidence, members=members)
+            members[name]['capsule_sha256'] = digest
+            continue
         if revision['schema'] == 'merlin.direct_ir_identity_revision.v1':
             from .joint_source_identity_revision import verify
             name, digest = verify(evidence, members=members)

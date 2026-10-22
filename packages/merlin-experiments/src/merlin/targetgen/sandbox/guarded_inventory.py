@@ -8,6 +8,8 @@ concurrent discovery within the owner, never across requests or processes.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import contextmanager
+import contextvars
 import os
 from pathlib import Path
 import stat
@@ -67,6 +69,57 @@ class GuardedInventory:
         self.max_roots, self.max_members = max_roots, max_members
         self._members = 0
         self._closed = False
+        self._scratch = contextvars.ContextVar('policy_inventory_scratch', default=())
+
+    @contextmanager
+    def temporary_root(self, root):
+        """Small per-command writable trees are inspected afresh, never watched."""
+        token = self._scratch.set((*self._scratch.get(), Path(root)))
+        try:
+            yield
+        finally:
+            self._scratch.reset(token)
+
+    def adopt_snapshot(self, entry):
+        """Borrow a live original snapshot's watches without owning their lifetime."""
+        from merlin.common import bundle_snapshot as B
+
+        if type(entry) is not B.SharedEntry:
+            return False
+        with self._lock:
+            if self._closed or self._pid != os.getpid():
+                return False
+            root = entry.root
+            if not entry.reusable(root, entry.repo, entry.policy_bytes):
+                return False
+            current = self._entries.get(root)
+            if current is not None and getattr(current[0], '_snapshot_owner', None) is entry:
+                return current[0].unchanged()
+            members = tuple(entry.guard.scanned)
+            descendants = [key for key in self._entries if self._root(key).is_relative_to(root)]
+            replaced = sum(len(self._entries[key][1].members) for key in descendants)
+            if len(members) + self._members - replaced > self.max_members:
+                return False
+            linked = []
+            for _, path, kind, _ in members:
+                if kind == 'file':
+                    info = path.stat(follow_symlinks=False)
+                    if not stat.S_ISREG(info.st_mode):
+                        return False
+                    if info.st_nlink > 1:
+                        linked.append((path, (info.st_dev, info.st_ino)))
+            if not entry.reusable(root, entry.repo, entry.policy_bytes):
+                return False
+            view = B._GuardView(entry.guard)
+            view._snapshot_owner = entry
+            for key in descendants:
+                guard, facts = self._entries.pop(key)
+                guard.close()
+                self._members -= len(facts.members)
+                self._drop_views(key)
+            self._entries[root] = view, TreeFacts(members, frozenset(x[1] for x in linked), tuple(linked))
+            self._members += len(members)
+            return True
 
     def close(self):
         with self._lock:
@@ -144,6 +197,8 @@ class GuardedInventory:
         if not read_lease_digest.enabled():
             return None
         root = Path(root)
+        if any(root.is_relative_to(scratch) for scratch in self._scratch.get()):
+            return None
         with self._lock:
             if self._closed or self._pid != os.getpid():
                 return None
