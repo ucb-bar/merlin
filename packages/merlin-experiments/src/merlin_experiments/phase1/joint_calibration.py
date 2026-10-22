@@ -161,10 +161,7 @@ def _observe(case, *, runtime, context, directory):
         "reopened_original_native_products", "reopened_original_retained_functional_layer_products"
     }:
         raise ValueError("candidate product provenance could not be reopened")
-    images = [p for p in F.members(root, max_files=4096) if p.name == PACKAGE_ELF_NAME and p.is_file()]
-    if len(images) != 1:
-        raise ValueError("calibration requires exactly one original compiled ELF")
-    elf = images[0]
+    elf = PERF.original_executable(root)
     policy = PC.package_sandbox_policy(load_target_experiment(context.descriptor), root, compiler)
     value = OBS.observe(elf, runtime=runtime, policy=policy, directory=directory,
                         input_sha256=F.digest(elf), remaining_s=min(120, joint_control.remaining(drain=True)),

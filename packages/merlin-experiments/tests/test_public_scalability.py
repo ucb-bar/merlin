@@ -94,6 +94,38 @@ def observations(names=("case0", "case1")):
     }
 
 
+def test_emission_error_survives_scalability_projection_without_private_receipt():
+    row = {
+        "capsule": "connected",
+        "status": "fail",
+        "tiers": {"L1": {"status": "fail"}},
+        "failure": {"detail": "whole-model proof unavailable"},
+        "candidate_emission_failure": {
+            "detail": "no host lane declared for dtype 'fp32'; target declares ['int8_w8a8']",
+            "private_receipt": {"golden": [1234567]},
+        },
+        "private_reference": [7654321],
+    }
+    observed = F._observed_result(row)
+    result = F.public_result({"observed": {"connected": observed}, "score": {}})
+    assert result["cases"][0]["failure_category"] == "CANDIDATE_EMISSION_FAILED"
+    assert "no host lane declared" in result["cases"][0]["failure_detail"]
+    assert result["cases"][0]["status"] == "fail"
+    assert result["cases"][0]["tiers"] == {"L1": "fail"}
+    assert "private" not in json.dumps(result)
+    assert "1234567" not in json.dumps(result)
+    assert "7654321" not in json.dumps(result)
+    assert row["failure"]["detail"] == "whole-model proof unavailable"
+
+
+def test_scalability_projection_preserves_pass_and_bounds_compiler_error():
+    row = {"capsule": "case", "status": "pass", "failure": None,
+           "candidate_emission_failure": "stale diagnostic"}
+    assert F._observed_result(row)["failure"] is None
+    row.update(status="fail", candidate_emission_failure="x" * 10000)
+    assert len(F._observed_result(row)["failure"]["detail"]) <= 2000
+
+
 def test_explicit_host_control_is_source_bound_and_not_accelerator_credit(tmp_path):
     path = selection(tmp_path, count=1)
     directory = path.parent / "layers/case0"

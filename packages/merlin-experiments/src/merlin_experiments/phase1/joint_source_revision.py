@@ -46,10 +46,15 @@ def normalized(initial, current):
     members = copy.deepcopy(initial['members'])
     for revision in after[len(before):]:
         if (set(revision) != {'schema', 'review_id', 'evidence'}
-                or revision['schema'] not in {'merlin.source_screen_revision.v1', 'merlin.source_member_append_revision.v1'}
+                or revision['schema'] not in {'merlin.source_screen_revision.v1', 'merlin.source_member_append_revision.v1', 'merlin.single_use_resident_revision.v1'}
                 or not isinstance(revision['review_id'], str) or not revision['review_id'].strip()):
             raise ValueError('source revision needs an explicit bounded operator review')
         evidence = PERF._read(revision['evidence'])
+        if revision['schema'] == 'merlin.single_use_resident_revision.v1':
+            from .joint_resident_revision import verify
+            name, digest = verify(evidence, facts_pin=current['facts'], members=members)
+            members[name]['capsule_sha256'] = digest
+            continue
         if revision['schema'] == 'merlin.source_member_append_revision.v1':
             from .joint_source_append import verified_members
             additions = verified_members(evidence)

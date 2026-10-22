@@ -65,7 +65,9 @@ def attach(row, root, *, report, observation, result, compiler):
     if runtime is not None:
         diagnostics['runtime'] = {key: runtime[key] for key in
                                   ('selected_window', 'feature_counts_complete', 'pressure', 'wholechain', 'unavailable')}
+    from .joint_outcome_brief import project as outcome_brief
     diagnostics['feedback_brief'] = {
+        'outcomes': outcome_brief(result, performance),
         'correctness': diagnostics['correctness'],
         'timing_status': performance.get('status', 'UNKNOWN'),
         'timing_mode': performance.get('timing_mode'),

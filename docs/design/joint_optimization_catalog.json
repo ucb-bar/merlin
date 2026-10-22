@@ -1,0 +1,1260 @@
+{
+  "schema": "merlin.capability_optimization_catalog.v1",
+  "source_revision": "971f6efb79c64fe03747b8ee766b1e1c4b2498fc",
+  "scope": "Author-safe repository-source capability map. Existing symbols are implementation evidence, not selected target qualification or achieved performance.",
+  "target_traits": [
+    "CPU-issued tightly coupled accelerator",
+    "scalar host lane",
+    "systolic contractions",
+    "INT8 storage and INT32 accumulation",
+    "explicit DMA",
+    "scratchpad and accumulator",
+    "finite command queues",
+    "noncoherent cached host where selected execution contract declares it"
+  ],
+  "claim_policy": [
+    "No chip-name taxonomy or private kernel information",
+    "Apply only when all source numeric, effect, ownership and target capability obligations hold",
+    "Do not run every pass indiscriminately; select pass order and inspect emitted realization",
+    "No product-support claims for precision/vector/asynchronous starter sets; no external software facts used"
+  ],
+  "mechanisms": [
+    {
+      "id": "capacity_tiles",
+      "facet": "storage",
+      "required_traits": [
+        "systolic",
+        "explicit_local_storage"
+      ],
+      "mechanism": "Choose tile geometry from operand and accumulator capacities",
+      "compiler": {
+        "module": "merlin.compile.capacity",
+        "symbol": "capacity_fit",
+        "path": "src/merlin/compile/capacity.py",
+        "line": 213,
+        "sha256": "520362f32f8b1fbd41a52655561c5167e343444aad4254df0e1b2b2b707c56bc",
+        "public_in_v6": false,
+        "source_summary": "Operand and accumulator capacity of a target's matrix unit, and the tile that fits it.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "Declared formats, physical capacities and primitive shape",
+      "remaining_adapter_or_feedback": "Target geometry and allocation obligations must be supplied; fit is not performance selection",
+      "evidence_to_request": "Chosen tile, capacities, actual allocated bytes and edge work",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "resident_rhs",
+      "facet": "storage",
+      "required_traits": [
+        "scratchpad",
+        "immutable_weights"
+      ],
+      "mechanism": "Retain reusable RHS across output tiles",
+      "compiler": {
+        "module": "merlin.compile.scheduling.dense_rhs_residency",
+        "symbol": "plan_dense_rhs_residency",
+        "path": "src/merlin/compile/scheduling/dense_rhs_residency.py",
+        "line": 30,
+        "sha256": "20dc1007f8eb3b5998fed9e4d136806769d1f5c5160a35f3644abf6cdfdc4518",
+        "public_in_v6": true,
+        "source_summary": "Capacity planning for a private dense product with a complete resident RHS.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Disjoint LHS staging and complete RHS capacity",
+      "remaining_adapter_or_feedback": "Plan alone grants no overlap or synchronization",
+      "evidence_to_request": "Loads eliminated versus decoded emitted loads",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "sibling_input_reuse",
+      "facet": "storage",
+      "required_traits": [
+        "scratchpad",
+        "graph_fanout"
+      ],
+      "mechanism": "Share an input stripe across sibling contractions",
+      "compiler": {
+        "module": "merlin.compile.scheduling.shared_input_schedule",
+        "symbol": "schedule_shared_input",
+        "path": "src/merlin/compile/scheduling/shared_input_schedule.py",
+        "line": 78,
+        "sha256": "ac5a73f5e4ae2de427d26f38d2ed70ae355ee39c8777698ab443baec9a37c9db",
+        "public_in_v6": true,
+        "source_summary": "Retain one full-reduction input stripe across independent sibling outputs.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Exact SSA identity, independent outputs and zero/accumulation semantics",
+      "remaining_adapter_or_feedback": "Needs target primitive and storage bindings",
+      "evidence_to_request": "Source identities, load bytes and live ranges",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "temporary_reuse",
+      "facet": "storage",
+      "required_traits": [
+        "explicit_local_storage"
+      ],
+      "mechanism": "Reuse disjoint temporary lifetimes",
+      "compiler": {
+        "module": "merlin.compile.scheduling.temporary_storage",
+        "symbol": "allocate_temporary_storage",
+        "path": "src/merlin/compile/scheduling/temporary_storage.py",
+        "line": 640,
+        "sha256": "6041a26d852d8468192648355b05f508ac0a7b5aea6ead36401d8e72f9ba628c",
+        "public_in_v6": true,
+        "source_summary": "Relocate private temporaries using actual effects and the existing allocator.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Decoded effects, byte banks and real completion events",
+      "remaining_adapter_or_feedback": "Finite straight-line scope; loop lifetimes require separate proof",
+      "evidence_to_request": "Peak live bytes, placements and emitted object offsets",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "device_spills",
+      "facet": "storage",
+      "required_traits": [
+        "finite_register_files"
+      ],
+      "mechanism": "Insert exact spills and reloads when local capacity is exceeded",
+      "compiler": {
+        "module": "merlin.compile.scheduling.device_spills",
+        "symbol": "allocate_with_spills",
+        "path": "src/merlin/compile/scheduling/device_spills.py",
+        "line": 160,
+        "sha256": "668bdc114224b68db6e26128238501954d37bda756d9806cb9d819a063a5103d",
+        "public_in_v6": true,
+        "source_summary": "Bounded exact device spills through the ordinary temporary allocation entry.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Explicit selected register classes, spill semantics and refreshed liveness",
+      "remaining_adapter_or_feedback": "Spill pricing and target transport adapter required",
+      "evidence_to_request": "Spill bytes, inserted transfers and preserved numerics",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "host_stack_arena",
+      "facet": "host_memory",
+      "required_traits": [
+        "scalar_host",
+        "static_temporaries"
+      ],
+      "mechanism": "Move oversized static stack temporaries to a module arena",
+      "compiler": {
+        "module": "merlin.llvmlower.stack_arena",
+        "symbol": "bind_stack_arena",
+        "path": "src/merlin/llvmlower/stack_arena.py",
+        "line": 205,
+        "sha256": "712dd0d775b7d160deba7918bef7cb10752c8670ac692543612c093dd97b26d9",
+        "public_in_v6": true,
+        "source_summary": "Move a whole-model entrypoint's STATIC STACK temporaries into one module-level arena.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Static allocations and entrypoint stack limit",
+      "remaining_adapter_or_feedback": "Arena capacity is not runtime peak or cross-layer reuse",
+      "evidence_to_request": "Pre/post LLVM hashes and frame/arena bytes",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "preparation_cse",
+      "facet": "packing",
+      "required_traits": [
+        "immutable_tensor_views"
+      ],
+      "mechanism": "Deduplicate equal preparation views and exact casts",
+      "compiler": {
+        "module": "merlin.llvmlower.tensor_provenance_cse",
+        "symbol": "deduplicate_tensor_preparation",
+        "path": "src/merlin/llvmlower/tensor_provenance_cse.py",
+        "line": 123,
+        "sha256": "8b822e7dd969559abae90f6da17498ce06eabddb7b56729bad0460d49a53c731",
+        "public_in_v6": false,
+        "source_summary": "Share exact immutable tensor views and exact integer-to-float casts.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "Pure immutable source provenance and exact cast law",
+      "remaining_adapter_or_feedback": "Does not permit float reassociation or mutable storage reuse",
+      "evidence_to_request": "Preparation count and byte count before/after",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "persistent_prepack",
+      "facet": "packing",
+      "required_traits": [
+        "immutable_weights",
+        "repeat_invocations"
+      ],
+      "mechanism": "Prepare fixed weights once across calls",
+      "compiler": {
+        "module": "merlin.llvmlower.weight_prepack_runtime",
+        "symbol": "fixed_arguments",
+        "path": "src/merlin/llvmlower/weight_prepack_runtime.py",
+        "line": 29,
+        "sha256": "9690b9ebd1496e9be2ef9cfad2c1c3edb3e303595d5be12746184f99ccdf8cc7",
+        "public_in_v6": false,
+        "source_summary": "Read-only stored arguments under the existing generated inference caller.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "Original session proves weights do not change",
+      "remaining_adapter_or_feedback": "Manifest weight role alone insufficient; invalidation adapter required",
+      "evidence_to_request": "Preparation lifetime, setup cost and amortization horizon",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "borrowed_preparation",
+      "facet": "packing",
+      "required_traits": [
+        "explicit_buffer_ownership"
+      ],
+      "mechanism": "Reuse prepared storage through checked borrow leases",
+      "compiler": {
+        "module": "merlin.llvmlower.prepared_operand_schedule",
+        "symbol": "install_prepared_borrows",
+        "path": "src/merlin/llvmlower/prepared_operand_schedule.py",
+        "line": 147,
+        "sha256": "0244b649ca1313184dcc3629a339022c53cbc4e3fcbc94035ed9e92f02e5d83b",
+        "public_in_v6": true,
+        "source_summary": "Explicit preparation and compiler-issued borrow leases in a private call tree.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Physical producer/consumer validation and source plan captured first",
+      "remaining_adapter_or_feedback": "Target layout and lifetime witness required",
+      "evidence_to_request": "Borrow scope, producer identity and overwritten-byte checks",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "direct_padding_gather",
+      "facet": "packing",
+      "required_traits": [
+        "convolution",
+        "scalar_host"
+      ],
+      "mechanism": "Pack windows directly from logically padded inputs",
+      "compiler": {
+        "module": "merlin.llvmlower.im2col_padding",
+        "symbol": "rewrite_padding_gathers",
+        "path": "src/merlin/llvmlower/im2col_padding.py",
+        "line": 170,
+        "sha256": "809ffd7af46bf1814f0e2cccc56b30e8433a90daf2475b036a50665519fbf772",
+        "public_in_v6": false,
+        "source_summary": "Pack exact static windows directly from a logically zero-padded image.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "Exact static gather and zero-fill semantics",
+      "remaining_adapter_or_feedback": "Need physical buffer correspondence and measured host cost",
+      "evidence_to_request": "Removed intermediate bytes and packing instructions",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "dma_coalescing",
+      "facet": "movement",
+      "required_traits": [
+        "explicit_DMA"
+      ],
+      "mechanism": "Merge adjacent private copies",
+      "compiler": {
+        "module": "merlin.compile.scheduling.copy_coalescing",
+        "symbol": "coalesce_private_copies",
+        "path": "src/merlin/compile/scheduling/copy_coalescing.py",
+        "line": 31,
+        "sha256": "ac05864b93ff8c2397788bbffa5511dd7863ff1885a743c8f3fab2e0a615209d",
+        "public_in_v6": true,
+        "source_summary": "Bounded adjacent synchronous copy proposals under an original merge law.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Original merge law, fault behavior and request bounds",
+      "remaining_adapter_or_feedback": "No transfer legality inferred from adjacency alone",
+      "evidence_to_request": "Requested versus actual transfer count and bytes",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "strided_tile_loads",
+      "facet": "movement",
+      "required_traits": [
+        "explicit_DMA",
+        "strided_local_rows"
+      ],
+      "mechanism": "Coalesce contiguous columns into strided local tiles",
+      "compiler": {
+        "module": "merlin.compile.scheduling.tile_load_coalescing",
+        "symbol": "TileLoadCoalescing",
+        "path": "src/merlin/compile/scheduling/tile_load_coalescing.py",
+        "line": 7,
+        "sha256": "b2efcb53205d8e0e653a8f2953c82e385e2933265efad48f0a000fa684b3f280",
+        "public_in_v6": true,
+        "source_summary": "Coalesce contiguous matrix columns into explicitly strided local tile rows.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Declared local stride and load geometry",
+      "remaining_adapter_or_feedback": "Target encoding/capability binding required",
+      "evidence_to_request": "Decoded extents, stride and local overlap checks",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "copy_prefetch",
+      "facet": "overlap",
+      "required_traits": [
+        "explicit_DMA",
+        "independent_buffers"
+      ],
+      "mechanism": "Prefetch private copies before their consuming work",
+      "compiler": {
+        "module": "merlin.compile.scheduling.temporary_storage",
+        "symbol": "prefetch_private_copies",
+        "path": "src/merlin/compile/scheduling/temporary_storage.py",
+        "line": 323,
+        "sha256": "6041a26d852d8468192648355b05f508ac0a7b5aea6ead36401d8e72f9ba628c",
+        "public_in_v6": true,
+        "source_summary": "Relocate private temporaries using actual effects and the existing allocator.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Completion, alias and movement permissions supplied",
+      "remaining_adapter_or_feedback": "Unknown DMA dependency must remain blocked",
+      "evidence_to_request": "Issue/completion ordering and time-window evidence",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "copy_pipeline",
+      "facet": "overlap",
+      "required_traits": [
+        "explicit_DMA",
+        "multiple_outstanding"
+      ],
+      "mechanism": "Overlap transfer stages using existing private buffer slots",
+      "compiler": {
+        "module": "merlin.compile.scheduling.copy_pipeline",
+        "symbol": "pipeline_private_copies",
+        "path": "src/merlin/compile/scheduling/copy_pipeline.py",
+        "line": 343,
+        "sha256": "6861ab7b4d90aad73f67c16dc22eefd16f8b697175c9f67db74bf31f76521dc2",
+        "public_in_v6": true,
+        "source_summary": "Pipeline qualified input copies into existing private buffer slots.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Qualified concurrent-copy admission and dependency tokens",
+      "remaining_adapter_or_feedback": "Does not establish compute/load overlap without its own adapter",
+      "evidence_to_request": "Slot ownership, fences, queue occupancy and completed-call timing",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "double_buffer_ownership",
+      "facet": "overlap",
+      "required_traits": [
+        "scratchpad",
+        "async_issue"
+      ],
+      "mechanism": "Express load/descriptor/consume/readout lifetimes explicitly",
+      "compiler": {
+        "module": "merlin.compile.scheduling.staged_dense",
+        "symbol": "rewrite_staged_dense",
+        "path": "src/merlin/compile/scheduling/staged_dense.py",
+        "line": 177,
+        "sha256": "8da96f0fca86456fc9b6e6818e5dde19f2098fac3db481a4fc50601e46e79724",
+        "public_in_v6": true,
+        "source_summary": "Finite staged contraction proposals under independently checked effects.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Independently decoded effects bind descriptor issue separately from completion",
+      "remaining_adapter_or_feedback": "Target must realize legal alternating storage and stage ordering",
+      "evidence_to_request": "Planned versus emitted stages, live intervals and dependency waits",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "rhs_load_elimination",
+      "facet": "movement",
+      "required_traits": [
+        "resident_operands"
+      ],
+      "mechanism": "Eliminate redundant resident RHS reloads",
+      "compiler": {
+        "module": "merlin.compile.scheduling.staged_dense",
+        "symbol": "eliminate_redundant_rhs_loads",
+        "path": "src/merlin/compile/scheduling/staged_dense.py",
+        "line": 150,
+        "sha256": "8da96f0fca86456fc9b6e6818e5dde19f2098fac3db481a4fc50601e46e79724",
+        "public_in_v6": true,
+        "source_summary": "Finite staged contraction proposals under independently checked effects.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Resident identity preserved through compute and clobbers",
+      "remaining_adapter_or_feedback": "Invalidation and physical address proof required",
+      "evidence_to_request": "Retained RHS epochs and emitted load counts",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "tile_traversal",
+      "facet": "scheduling",
+      "required_traits": [
+        "systolic",
+        "tiling"
+      ],
+      "mechanism": "Choose output-tile traversal to expose reuse",
+      "compiler": {
+        "module": "merlin.compile.scheduling.staged_dense",
+        "symbol": "order_output_tiles_n_before_m",
+        "path": "src/merlin/compile/scheduling/staged_dense.py",
+        "line": 226,
+        "sha256": "8da96f0fca86456fc9b6e6818e5dde19f2098fac3db481a4fc50601e46e79724",
+        "public_in_v6": true,
+        "source_summary": "Finite staged contraction proposals under independently checked effects.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Same exact output semantics with legal storage effects",
+      "remaining_adapter_or_feedback": "No universal traversal winner; shape/cost policy must choose",
+      "evidence_to_request": "Per-shape packing, traffic and whole-call cost",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "block_order",
+      "facet": "scheduling",
+      "required_traits": [
+        "systolic",
+        "local_memory"
+      ],
+      "mechanism": "Schedule tile load/preload/compute/store order",
+      "compiler": {
+        "module": "merlin.compile.scheduling.block_schedule",
+        "symbol": "schedule_contraction",
+        "path": "src/merlin/compile/scheduling/block_schedule.py",
+        "line": 580,
+        "sha256": "69b05df24007d8b9023c1e986e0c5a93cf8485ddce97d64e58c5e79ba659dd62",
+        "public_in_v6": true,
+        "source_summary": "Order the block moves and computes of a contraction over a target's on-chip stores.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Declared geometry, capacity and contraction shape",
+      "remaining_adapter_or_feedback": "Schedule must lower through target adapter and completion validation",
+      "evidence_to_request": "Schedule IR, physical mapping and decoded sequence",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "convolution_tiles",
+      "facet": "scheduling",
+      "required_traits": [
+        "convolution",
+        "local_memory"
+      ],
+      "mechanism": "Tile convolution without a full materialized image matrix",
+      "compiler": {
+        "module": "merlin.compile.scheduling.block_schedule",
+        "symbol": "schedule_tiled_convolution",
+        "path": "src/merlin/compile/scheduling/block_schedule.py",
+        "line": 826,
+        "sha256": "69b05df24007d8b9023c1e986e0c5a93cf8485ddce97d64e58c5e79ba659dd62",
+        "public_in_v6": true,
+        "source_summary": "Order the block moves and computes of a contraction over a target's on-chip stores.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Exact windows, dilation, padding and primitive geometry",
+      "remaining_adapter_or_feedback": "Host packing/accelerator gather tradeoff needs complete-cost feedback",
+      "evidence_to_request": "Window reuse, buffer sizes and packing cost",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "configuration_cse",
+      "facet": "issue",
+      "required_traits": [
+        "CPU_issued",
+        "persistent_configuration"
+      ],
+      "mechanism": "Remove redundant setup instructions",
+      "compiler": {
+        "module": "merlin.compile.scheduling.configuration",
+        "symbol": "eliminate_redundant_configuration",
+        "path": "src/merlin/compile/scheduling/configuration.py",
+        "line": 130,
+        "sha256": "3dd17bdbc6a08de8ccf2913e4687ca352d5a118017e41dd9e1b1a9edeb8527b8",
+        "public_in_v6": true,
+        "source_summary": "Remove redundant setup using independently decoded persistent state effects.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Independent decoding of persistent state, clobbers and ordering",
+      "remaining_adapter_or_feedback": "Candidate assertions alone cannot establish state equivalence",
+      "evidence_to_request": "Config counts, state checks and issue cost",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "dead_private_writes",
+      "facet": "issue",
+      "required_traits": [
+        "explicit_local_storage"
+      ],
+      "mechanism": "Delete unobserved private writes",
+      "compiler": {
+        "module": "merlin.compile.scheduling.dead_writes",
+        "symbol": "eliminate_dead_writes",
+        "path": "src/merlin/compile/scheduling/dead_writes.py",
+        "line": 29,
+        "sha256": "2c638a8f1ec39d4c21bb8441f6dec7cb8c24836183530cf5be64196120330a2b",
+        "public_in_v6": true,
+        "source_summary": "Bounded dead private-payload proposals; original delete permission required.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Original delete permission and exact private effects",
+      "remaining_adapter_or_feedback": "Observable stores, MMIO and fault semantics excluded without proof",
+      "evidence_to_request": "Removed writes and original observable outputs",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "barrier_cleanup",
+      "facet": "synchronization",
+      "required_traits": [
+        "queues",
+        "dependency_tokens"
+      ],
+      "mechanism": "Propose redundant barrier/config cleanup",
+      "compiler": {
+        "module": "merlin.compile.scheduling.effect_cleanup",
+        "symbol": "cleanup_indices",
+        "path": "src/merlin/compile/scheduling/effect_cleanup.py",
+        "line": 40,
+        "sha256": "a75942967c4de104f2cb6f3ac1a46ec4733b873e8068e4a6f6ed4ee4edb9ecad",
+        "public_in_v6": true,
+        "source_summary": "Bounded straight-line configuration/barrier proposals; no execution authority.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Complete target effects and original effect law",
+      "remaining_adapter_or_feedback": "Proposal is not execution authority; queue completion proof required",
+      "evidence_to_request": "Fence counts and retained dependency paths",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "command_loops",
+      "facet": "issue",
+      "required_traits": [
+        "CPU_issued",
+        "affine_tile_nests"
+      ],
+      "mechanism": "Compact static command streams into counted host loops",
+      "compiler": {
+        "module": "merlin.compile.scheduling.command_compaction",
+        "symbol": "compact_command_stream",
+        "path": "src/merlin/compile/scheduling/command_compaction.py",
+        "line": 190,
+        "sha256": "6c7c528f6c44db3dc9ba8654ca04295ab5ff304b1570937ddd0000bf610817c4",
+        "public_in_v6": true,
+        "source_summary": "Compress finite affine primitive-call streams into checked ordinary host loops.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Every dynamic call and operand remains equal and ordered",
+      "remaining_adapter_or_feedback": "Code-size reduction not a dynamic command-count reduction",
+      "evidence_to_request": "IR/text size, loop bounds, emitted command equivalence",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "encoded_reroll",
+      "facet": "issue",
+      "required_traits": [
+        "CPU_issued",
+        "repeated_encoded_stream"
+      ],
+      "mechanism": "Recover periodic counted command nests",
+      "compiler": {
+        "module": "merlin.sched.reroll",
+        "symbol": "find_nests",
+        "path": "src/merlin/sched/reroll.py",
+        "line": 488,
+        "sha256": "313cab8f8fee0e317d829b21e5321ca16ab3965a3370a2a81efa747717ad2611",
+        "public_in_v6": true,
+        "source_summary": "Reroll periodic runs of encoded accelerator commands into counted loops.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Closed repeated operand progression",
+      "remaining_adapter_or_feedback": "Loop-aware dynamic trace adapter needed for unresolved induction",
+      "evidence_to_request": "Static bytes versus actual dynamic instructions",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "scalar_loop_outline",
+      "facet": "host_compute",
+      "required_traits": [
+        "scalar_host",
+        "large_functions"
+      ],
+      "mechanism": "Outline large generated scalar LLVM loops",
+      "compiler": {
+        "module": "merlin.llvmlower.llvm_loop_outline",
+        "symbol": "outline_loops",
+        "path": "src/merlin/llvmlower/llvm_loop_outline.py",
+        "line": 65,
+        "sha256": "289e72a93687c2c97113a46fc194349947d851cfeed315248e0af93b3e3f9b33",
+        "public_in_v6": false,
+        "source_summary": "Explicit LLVM loop extraction for large scalar host functions.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "LLVM preserves accesses and operation order",
+      "remaining_adapter_or_feedback": "May change compile latency and call overhead; must measure",
+      "evidence_to_request": "Compile latency, code size and runtime cost",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "owned_scalar_host",
+      "facet": "host_compute",
+      "required_traits": [
+        "scalar_host",
+        "mixed_graph"
+      ],
+      "mechanism": "Lower scalar tensor regions using Merlin-owned host code",
+      "compiler": {
+        "module": "merlin.llvmlower.host_tensor_codegen",
+        "symbol": "HostLinalg",
+        "path": "src/merlin/llvmlower/host_tensor_codegen.py",
+        "line": 179,
+        "sha256": "92155177a02a0ca1ed778f201bd1c4de8d0a4744d736aae20e82c7e42585e0a9",
+        "public_in_v6": true,
+        "source_summary": "Compiler-generated CPU lane for a `linalg-on-tensors` region.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Supported original source operations and selected host profile",
+      "remaining_adapter_or_feedback": "Unsupported host signatures require narrow reviewed closure",
+      "evidence_to_request": "Host operation coverage and host/accelerator seam costs",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "descriptor_transport",
+      "facet": "host_interface",
+      "required_traits": [
+        "CPU_issued",
+        "ranked_tensors"
+      ],
+      "mechanism": "Construct exact ranked-descriptor ABI transport",
+      "compiler": {
+        "module": "merlin.llvmlower.host_descriptor_call",
+        "symbol": "HostDescriptorTransport",
+        "path": "src/merlin/llvmlower/host_descriptor_call.py",
+        "line": 38,
+        "sha256": "1e4e10d4ffae02ae3a222124bbbdc785a5788eb056baa1a15191ddded5e76a2f",
+        "public_in_v6": false,
+        "source_summary": "Ordinary host calls through actual observed ranked-descriptor storage.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "Observed descriptor layouts and original buffer ownership",
+      "remaining_adapter_or_feedback": "No copy/ownership inference from descriptor construction",
+      "evidence_to_request": "Descriptor overhead, copies and pointer/lifetime checks",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "epilogue_fusion",
+      "facet": "fusion",
+      "required_traits": [
+        "INT32_accumulation",
+        "pointwise_epilogue"
+      ],
+      "mechanism": "Fuse per-output epilogue into producing reduction loop",
+      "compiler": {
+        "module": "merlin.llvmlower.epilogue_fusion",
+        "symbol": "fusion_stage",
+        "path": "src/merlin/llvmlower/epilogue_fusion.py",
+        "line": 101,
+        "sha256": "3fcf52b8f0081332b9f4a81411852fbe2bb58a0dd4a2c5006ed63b637f2496f1",
+        "public_in_v6": false,
+        "source_summary": "Fuse a per-output epilogue into the loop nest of the reduction that produced it.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "Exact ordered arithmetic and output mapping",
+      "remaining_adapter_or_feedback": "Device fusion still needs selected numeric/effect capability",
+      "evidence_to_request": "Intermediate bytes, launches and exact output comparison",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "connected_multioutput",
+      "facet": "fusion",
+      "required_traits": [
+        "graph_fanout",
+        "multiple_live_outputs"
+      ],
+      "mechanism": "Compile connected pointwise composition with two live outputs",
+      "compiler": {
+        "module": "merlin.compile.scheduling.multioutput_fusion",
+        "symbol": "compile_source_multioutput",
+        "path": "src/merlin/compile/scheduling/multioutput_fusion.py",
+        "line": 250,
+        "sha256": "0a1d429e3478c68eeaa23958f7c6c500c41a83534ef72ab646161b365a0ee0bb",
+        "public_in_v6": true,
+        "source_summary": "Original-qualified connected pointwise composition with two live outputs.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Original-qualified source law and existing instruction allocator",
+      "remaining_adapter_or_feedback": "Not general arbitrary graph fusion; target capability must support operations",
+      "evidence_to_request": "Source coverage, emitted regions and boundary tensors",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "physical_composition",
+      "facet": "fusion",
+      "required_traits": [
+        "adjacent_elementwise"
+      ],
+      "mechanism": "Select an independently qualified physical composition",
+      "compiler": {
+        "module": "merlin.compile.scheduling.fusion",
+        "symbol": "plan_fusion",
+        "path": "src/merlin/compile/scheduling/fusion.py",
+        "line": 278,
+        "sha256": "144298845e4fff2134dc3506466c210fb60ed8aba03208e73a49f53392b3e9e3",
+        "public_in_v6": true,
+        "source_summary": "Consume one qualified physical composition and verify its actual arithmetic.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Adjacent synchronous elements with exact arithmetic capability",
+      "remaining_adapter_or_feedback": "No capability inferred from matching names or approximate numerics",
+      "evidence_to_request": "Original versus fused arithmetic and decoded instruction image",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "requant_proof",
+      "facet": "numeric_formats",
+      "required_traits": [
+        "INT8_storage",
+        "INT32_accumulation"
+      ],
+      "mechanism": "Synthesize/prove exact scale and output saturation",
+      "compiler": {
+        "module": "merlin.llvmlower.requantization",
+        "symbol": "synthesize_store_scale",
+        "path": "src/merlin/llvmlower/requantization.py",
+        "line": 140,
+        "sha256": "f580ff26c26fb4004b16b10496f4b0c6dae0f805d72586a7f459ec19639fa1c9",
+        "public_in_v6": true,
+        "source_summary": "Prove ordered binary32 requantization and signed-i8 output transitions.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Complete stated accumulator domain and ordered binary32 semantics",
+      "remaining_adapter_or_feedback": "Sample agreement is not full-domain proof; target rounding must match",
+      "evidence_to_request": "Scale proof, overflow bounds and exact boundary values",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "ordered_reductions",
+      "facet": "numeric_formats",
+      "required_traits": [
+        "scalar_host",
+        "reductions"
+      ],
+      "mechanism": "Preserve seed and floating reduction order",
+      "compiler": {
+        "module": "merlin.llvmlower.scalar_ordered_reduction",
+        "symbol": "edit_pipeline",
+        "path": "src/merlin/llvmlower/scalar_ordered_reduction.py",
+        "line": 19,
+        "sha256": "d696b2b3063b42149894760a93080fa2adf12a373732485724359c29d6422242",
+        "public_in_v6": false,
+        "source_summary": "Scalar SSA for closed one-input tensor reductions in their original order.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "Closed supported reduction and original operation order",
+      "remaining_adapter_or_feedback": "Parallel reassociation requires separate numeric permission",
+      "evidence_to_request": "Reduction order, accumulator width and exceptional behavior",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "row_normalization",
+      "facet": "numeric_formats",
+      "required_traits": [
+        "row_reductions",
+        "local_memory"
+      ],
+      "mechanism": "Schedule chunked complete-domain softmax/normalization",
+      "compiler": {
+        "module": "merlin.compile.scheduling.row_softmax",
+        "symbol": "compile_row_softmax",
+        "path": "src/merlin/compile/scheduling/row_softmax.py",
+        "line": 750,
+        "sha256": "57d53dbad821ed37c0000f585043dcf1310b91bb6153f46f8fc5c5155f347bf9",
+        "public_in_v6": true,
+        "source_summary": "Complete-domain row normalization in the existing counted schedule IR.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Explicit exp law, accumulation tree, mask and resources",
+      "remaining_adapter_or_feedback": "Target arithmetic adapter and final complete-domain checks required",
+      "evidence_to_request": "Row working set, passes over data and numeric error contract",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "sync_legality",
+      "facet": "legality",
+      "required_traits": [
+        "queues",
+        "async_issue"
+      ],
+      "mechanism": "Check synchronization against machine-specific semantics",
+      "compiler": {
+        "module": "merlin.sched.check.sync",
+        "symbol": "check_sync",
+        "path": "src/merlin/sched/check/sync.py",
+        "line": 100,
+        "sha256": "3ecbbd5c1a4b443fbc4d4918bb870ef9bea0f5962089f9b2c06acc2d47550442",
+        "public_in_v6": true,
+        "source_summary": "Whether a kernel's synchronisation is sound ON A GIVEN MACHINE -- which is a different question per\narchetype, and that is the whole point of this file.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Declared machine event and visibility rules",
+      "remaining_adapter_or_feedback": "Noncoherent host cache maintenance cannot be invented by a fence checker",
+      "evidence_to_request": "Happens-before paths, outstanding work and visibility boundary",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "placement_legality",
+      "facet": "legality",
+      "required_traits": [
+        "scratchpad",
+        "accumulator"
+      ],
+      "mechanism": "Check live local operands against placement/clobber hazards",
+      "compiler": {
+        "module": "merlin.sched.check.placement",
+        "symbol": "check_placement",
+        "path": "src/merlin/sched/check/placement.py",
+        "line": 62,
+        "sha256": "b04f30495866a72d2a7389e3849f14e85d64feb2ce3587977e67583e8be93fee",
+        "public_in_v6": true,
+        "source_summary": "Whether a kernel's on-chip placement is sound on a given machine.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Explicit storage geometry and access effects",
+      "remaining_adapter_or_feedback": "Bank conflicts and throughput need separate performance model",
+      "evidence_to_request": "Address ranges, live operands and refused overlaps",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "schedule_tokens",
+      "facet": "legality",
+      "required_traits": [
+        "async_issue",
+        "buffer_ownership"
+      ],
+      "mechanism": "Represent stages, dependencies and bounded counted loops",
+      "compiler": {
+        "module": "merlin.sched.ir.kernel",
+        "symbol": "check_structure",
+        "path": "src/merlin/sched/ir/kernel.py",
+        "line": 286,
+        "sha256": "513697a4a32a8e7302f86de194a2e3af1f374bbc3a1b939f779ea3e273b41e4e",
+        "public_in_v6": true,
+        "source_summary": "The kernel IR ``mk``: a loop nest over ONE target's instructions.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Kernel/Call/Loop/Stage typed structure and token ownership",
+      "remaining_adapter_or_feedback": "Structural legality alone does not prove target semantics",
+      "evidence_to_request": "IR plus selected pass order and actual lowering receipt",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "checked_pipeline",
+      "facet": "compiler_control",
+      "required_traits": [
+        "editable_compiler",
+        "selected_target_adapter"
+      ],
+      "mechanism": "Choose pass order through final independently decoded bytes",
+      "compiler": {
+        "module": "merlin.compile.scheduling.schedule_pipeline",
+        "symbol": "compile_schedule",
+        "path": "src/merlin/compile/scheduling/schedule_pipeline.py",
+        "line": 322,
+        "sha256": "3bbb7a5be0ef5e5485e298ea8f3e75ae3897923f9fd16e6f33b82642937126a5",
+        "public_in_v6": true,
+        "source_summary": "Execute checked schedule passes through final independently decoded bytes.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Qualified encoding/decoding, explicit budgets and transformations",
+      "remaining_adapter_or_feedback": "Applicable passes must execute; a registration list is not realization",
+      "evidence_to_request": "Transformed IR consumption and per-pass validation receipts",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "cost_kind",
+      "facet": "feedback",
+      "required_traits": [
+        "whole_system_objective"
+      ],
+      "mechanism": "Distinguish exact/estimated/lower-bound schedule costs",
+      "compiler": {
+        "module": "merlin.sched.cost",
+        "symbol": "price",
+        "path": "src/merlin/sched/cost.py",
+        "line": 78,
+        "sha256": "4406ac91c396126b276a8079ea164103f8dc10a3df93798429d33a3617100718",
+        "public_in_v6": true,
+        "source_summary": "What a schedule costs on a machine -- and, more often, why that cannot be answered exactly.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Machine service model and complete scope",
+      "remaining_adapter_or_feedback": "Queue waits, noncoherent cache traffic and host costs may be unknown",
+      "evidence_to_request": "Scope/model hashes, uncertainty and non-additive resources",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "compiler_observation",
+      "facet": "feedback",
+      "required_traits": [
+        "source_graph",
+        "emitted_artifacts"
+      ],
+      "mechanism": "Expose packing/lifetimes/fusion planned-versus-emitted evidence",
+      "compiler": {
+        "module": "merlin.compile.compiler_observations",
+        "symbol": "write_receipt",
+        "path": "src/merlin/compile/compiler_observations.py",
+        "line": 240,
+        "sha256": "19fb8bdddf4903653fafb4fc35d9ff8cb4e92e2fa294929bebe4772e12e54923",
+        "public_in_v6": true,
+        "source_summary": "Bounded compiler diagnostics from original SSA and actual compiler products.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Pinned source and actual compiler products",
+      "remaining_adapter_or_feedback": "Runtime waits and savings absent until independently observed",
+      "evidence_to_request": "Bounded diagnostics with artifact references; UNKNOWN stays UNKNOWN",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "pipeline_phases",
+      "facet": "overlap",
+      "required_traits": [
+        "async_issue",
+        "rotating_buffers"
+      ],
+      "mechanism": "Separate prologue, steady state and drain while rotating buffer ownership",
+      "compiler": {
+        "module": "merlin.compile.scheduling.staged_dense",
+        "symbol": "StagedDenseProblem",
+        "path": "src/merlin/compile/scheduling/staged_dense.py",
+        "line": 76,
+        "sha256": "8da96f0fca86456fc9b6e6818e5dde19f2098fac3db481a4fc50601e46e79724",
+        "public_in_v6": true,
+        "source_summary": "Finite staged contraction proposals under independently checked effects.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Explicit finite stage lifetimes and independent completion events",
+      "remaining_adapter_or_feedback": "Existing staged representation is a foundation; generic modulo scheduler and emitted phase/rotation verifier remain an explicit implementation obligation",
+      "evidence_to_request": "Stage count, slot identity, prologue/drain costs and decoded final completion",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "operand_vs_accumulator_lifetimes",
+      "facet": "storage",
+      "required_traits": [
+        "scratchpad",
+        "accumulator"
+      ],
+      "mechanism": "Keep operand staging lifetime separate from partial-sum lifetime",
+      "compiler": {
+        "module": "merlin.compile.scheduling.staged_dense",
+        "symbol": "ComputeConsume",
+        "path": "src/merlin/compile/scheduling/staged_dense.py",
+        "line": 114,
+        "sha256": "8da96f0fca86456fc9b6e6818e5dde19f2098fac3db481a4fc50601e46e79724",
+        "public_in_v6": true,
+        "source_summary": "Finite staged contraction proposals under independently checked effects.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Decoded operand reads and accumulator updates have distinct completion points",
+      "remaining_adapter_or_feedback": "Target adapter must not release staging or accumulator storage on descriptor issue alone",
+      "evidence_to_request": "Independent operand and partial-sum live intervals",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "partial_sum_initialization",
+      "facet": "numeric_formats",
+      "required_traits": [
+        "INT32_accumulation",
+        "split_reduction"
+      ],
+      "mechanism": "Initialize partial sums once and preserve accumulate-versus-overwrite semantics",
+      "compiler": {
+        "module": "merlin.compile.scheduling.staged_dense",
+        "symbol": "AccumulatorZero",
+        "path": "src/merlin/compile/scheduling/staged_dense.py",
+        "line": 97,
+        "sha256": "8da96f0fca86456fc9b6e6818e5dde19f2098fac3db481a4fc50601e46e79724",
+        "public_in_v6": true,
+        "source_summary": "Finite staged contraction proposals under independently checked effects.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Exact original bias/zero seed and update order across reduction tiles",
+      "remaining_adapter_or_feedback": "Initialization permission must be decoded; zero input data is not proof of an initialized accumulator",
+      "evidence_to_request": "Initialization count, accumulation epochs, bias identity and tail checks",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "independent_sibling_epilogues",
+      "facet": "fusion",
+      "required_traits": [
+        "shared_input",
+        "multiple_live_outputs"
+      ],
+      "mechanism": "Retain independent output scale, activation, bias and readout state for each sibling",
+      "compiler": {
+        "module": "merlin.compile.scheduling.shared_input_groups",
+        "symbol": "find_shared_input_groups",
+        "path": "src/merlin/compile/scheduling/shared_input_groups.py",
+        "line": 41,
+        "sha256": "d490758f13ed71095ee97bd5f4ee2e67c77f05dd8c47c77cf7ff80cb17258df1",
+        "public_in_v6": true,
+        "source_summary": "Recognize closed sibling contractions of one immutable typed tensor value.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Source preserves each result and its own epilogue semantics",
+      "remaining_adapter_or_feedback": "Grouping is only a source proposal; independent epilogue-state and clobber adapter still required",
+      "evidence_to_request": "Per-result epilogue provenance and decoded state before each readout",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "host_address_arithmetic",
+      "facet": "issue",
+      "required_traits": [
+        "CPU_issued",
+        "integer_addressing"
+      ],
+      "mechanism": "Reduce repeated integer address work while preserving exact bounds and pointers",
+      "compiler": {
+        "module": "merlin.sched.ir.expr",
+        "symbol": "evaluate",
+        "path": "src/merlin/sched/ir/expr.py",
+        "line": 125,
+        "sha256": "45e311e72c194a679349334e2baa16078c623a39b83ac50c3759116ad5225e76",
+        "public_in_v6": true,
+        "source_summary": "Integer index expressions of the kernel IR.",
+        "access": "selected_public_library"
+      },
+      "applicability": "Closed integer index expressions and valid storage bounds",
+      "remaining_adapter_or_feedback": "Expression representation exists; general emitted-host strength-reduction/hoisting policy and instruction-cost feedback not established by this API",
+      "evidence_to_request": "Host integer instructions, pointer materialization and command-submission window",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "cold_warm_state_policy",
+      "facet": "packing",
+      "required_traits": [
+        "repeat_invocations",
+        "persistent_state"
+      ],
+      "mechanism": "Separate one-time setup, cold invocation and warm steady-state cost",
+      "compiler": {
+        "module": "merlin.llvmlower.weight_prepack_runtime",
+        "symbol": "fixed_arguments",
+        "path": "src/merlin/llvmlower/weight_prepack_runtime.py",
+        "line": 29,
+        "sha256": "9690b9ebd1496e9be2ef9cfad2c1c3edb3e303595d5be12746184f99ccdf8cc7",
+        "public_in_v6": false,
+        "source_summary": "Read-only stored arguments under the existing generated inference caller.",
+        "access": "requires_reviewed_library_extension"
+      },
+      "applicability": "Immutable stored arguments plus explicit persistent state invalidation",
+      "remaining_adapter_or_feedback": "Existing fixed-argument support is not a complete cold/warm benchmark or cache-state contract",
+      "evidence_to_request": "Setup cost, first-call cost, repeated-call distribution, persistent bytes and invalidation events",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    }
+  ],
+  "missing_capabilities": [
+    {
+      "id": "host_cache_visibility",
+      "traits": [
+        "noncoherent_cached_host",
+        "explicit_DMA"
+      ],
+      "mechanism": "Make CPU clean/invalidate/flush and DMA visibility part of owned execution ABI",
+      "existing_hooks": [
+        "sync_legality",
+        "descriptor_transport"
+      ],
+      "missing": "Selected target cache-maintenance protocol and physical visibility witness; ordinary architectural fence alone does not establish noncoherent-cache correctness"
+    },
+    {
+      "id": "queue_pressure_feedback",
+      "traits": [
+        "CPU_issued",
+        "finite_queues"
+      ],
+      "mechanism": "Choose legal issue distance and overlap using queue occupancy/backpressure",
+      "existing_hooks": [
+        "double_buffer_ownership",
+        "sync_legality",
+        "cost_kind"
+      ],
+      "missing": "Independently validated occupancy/stall attribution; static counts do not measure queue waits"
+    },
+    {
+      "id": "shape_policy_selection",
+      "traits": [
+        "multiple_shapes",
+        "editable_compiler"
+      ],
+      "mechanism": "Select tile/reuse/packing/pass variants using shape classes and complete cost",
+      "existing_hooks": [
+        "capacity_tiles",
+        "tile_traversal",
+        "checked_pipeline"
+      ],
+      "missing": "General policy trained/validated across connected source-derived cases; no kernel-specific magic constants or retrospective private reference tuning"
+    }
+  ],
+  "starter_sets": [
+    {
+      "id": "mixed_precision_fp4_fp6_fp8",
+      "status": "design_starter_not_target_support",
+      "traits": [
+        "packed_subbyte_float",
+        "separate_accumulator_format",
+        "scaling_metadata"
+      ],
+      "mechanisms": [
+        "Define exact exponent/mantissa/bias/subnormal/NaN/rounding encodings before instruction selection",
+        "Choose tensor/channel/block scaling under explicit error bounds",
+        "Track scale ownership and metadata traffic with payload tiling",
+        "Pack/unpack non-byte-aligned FP4/FP6 without padding or endianness ambiguity",
+        "Select accumulation/widening and reduction order independently of storage format",
+        "Fuse casts only when exact or permitted by the source error contract"
+      ],
+      "reusable_catalog_ids": [
+        "capacity_tiles",
+        "temporary_reuse",
+        "persistent_prepack",
+        "requant_proof",
+        "schedule_tokens",
+        "compiler_observation"
+      ],
+      "gaps": [
+        "Integer requantization is not an FP4/6/8 numerical implementation",
+        "Need format-specific arithmetic/packing dialect adapters and exceptional-value reference contracts",
+        "Need metadata-aware bandwidth and conversion cost feedback"
+      ]
+    },
+    {
+      "id": "vector_processing_unit",
+      "status": "design_starter_not_target_support",
+      "traits": [
+        "vector_lanes",
+        "predicate_masks",
+        "vector_register_files"
+      ],
+      "mechanisms": [
+        "Vectorize supported scalar regions under exact alias and numeric contracts",
+        "Tile by vector length and handle tails with proven masks",
+        "Choose gather/scatter versus contiguous layout conversion",
+        "Balance register pressure, unrolling and explicit spills",
+        "Preserve reduction order or bind permitted reassociation",
+        "Schedule vector/scalar transfers and avoid lane extraction churn"
+      ],
+      "reusable_catalog_ids": [
+        "temporary_reuse",
+        "device_spills",
+        "preparation_cse",
+        "ordered_reductions",
+        "schedule_tokens",
+        "cost_kind"
+      ],
+      "gaps": [
+        "Need concrete scalable/fixed-vector dialect, target ABI and mask semantics",
+        "Existing generic scheduling does not establish VPU instruction or throughput support",
+        "Need lane utilization and vector-register spill observations"
+      ]
+    },
+    {
+      "id": "asynchronous_runtime",
+      "status": "design_starter_not_ROCm_product_claim",
+      "traits": [
+        "host_submitted_queues",
+        "async_transfers",
+        "device_events",
+        "device_allocations"
+      ],
+      "mechanisms": [
+        "Bind buffers to explicit queue/event dependencies",
+        "Overlap copies and kernels only under memory-visibility guarantees",
+        "Amortize host launch overhead through legal batching or captured graphs",
+        "Manage reusable allocations and cross-kernel lifetimes",
+        "Choose stream/queue placement without assuming independent hardware resources",
+        "Separate launch latency, enqueue duration and completed execution timing"
+      ],
+      "reusable_catalog_ids": [
+        "copy_pipeline",
+        "temporary_reuse",
+        "sibling_input_reuse",
+        "sync_legality",
+        "descriptor_transport",
+        "compiler_observation"
+      ],
+      "gaps": [
+        "Need concrete runtime calls, context ownership and error/teardown adapter",
+        "Need pinned/pageable host-memory policy and transfer-cost measurement",
+        "No claim of existing ROCm binding or vendor-specific graph API support"
+      ]
+    }
+  ],
+  "validation": {
+    "kind": "static repository symbol lookup only",
+    "mechanism_count": 45,
+    "target_runs": 0,
+    "tests_run": 0,
+    "source_files_sha256_pinned": true
+  },
+  "extension_policy": {
+    "exhaustive": false,
+    "proposal_fields": [
+      "id",
+      "required_traits",
+      "hypothesis",
+      "legality_premises",
+      "compiler_entrypoints",
+      "changed_passes",
+      "evidence",
+      "counterexamples",
+      "remaining_unknowns"
+    ],
+    "admission": "New mechanisms are welcome. Discoveries do not grant inaccessible source or evaluator access. Validate correctness and compare performance in one model epoch."
+  },
+  "capability_selection": {
+    "authority": "software/target specification constrained by selected RTL facts and execution contract",
+    "namespaces": [
+      "host",
+      "submission",
+      "compute",
+      "numeric",
+      "memory",
+      "scheduling",
+      "runtime",
+      "workload",
+      "compiler"
+    ],
+    "truth_values": [
+      "supported",
+      "unsupported",
+      "unknown"
+    ],
+    "rule": "Offer a mechanism only when all required traits are supported. Unsupported hides it. Unknown yields a discovery request, not active optimization guidance. Workload and compiler prerequisites come from actual IR and available APIs, not architecture tags.",
+    "runtime_rule": "ROCm is an optional software runtime, not a hardware capability or implied consequence of DMA. It is not selected for this bare-metal Gemmini campaign.",
+    "composition": "Intersect capability requirements, then workload prerequisites and current library access. Do not union entire architecture category menus.",
+    "example_only": {
+      "host": {
+        "scalar": "supported",
+        "in_order": "supported"
+      },
+      "submission": {
+        "cpu_issued": "supported",
+        "instruction_issued": "supported"
+      },
+      "compute": {
+        "systolic": "supported"
+      },
+      "numeric": {
+        "integer_quantization": "supported",
+        "int8_storage": "supported",
+        "int32_accumulation": "supported"
+      },
+      "runtime": {
+        "rocm": "unsupported",
+        "bare_metal": "supported"
+      }
+    },
+    "parameter_facts": [
+      "queue depths",
+      "scratchpad and accumulator capacities",
+      "transfer alignment and granularity",
+      "supported numerical formats and rounding",
+      "cache coherence and visibility protocol",
+      "completion and dependency semantics",
+      "engine overlap constraints"
+    ]
+  }
+}

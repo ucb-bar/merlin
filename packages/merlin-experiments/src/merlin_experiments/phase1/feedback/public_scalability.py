@@ -98,6 +98,18 @@ def complete(score, observed, *, names):
     return True
 
 
+def _observed_result(row):
+    """Keep bounded compiler errors ahead of consequential proof failures."""
+    from .selfcheck_results import _public_candidate_emission_failure
+
+    observed = {key: row.get(key) for key in ("capsule", "status", "tiers", "failure", "performance")}
+    if row.get("status") != "pass":
+        failure = _public_candidate_emission_failure(row)
+        if failure is not None:
+            observed["failure"] = failure
+    return observed
+
+
 def _grade(
     submission,
     *,
@@ -166,7 +178,7 @@ def _grade(
             remaining_s=performance_budget,
         )
         performance_budget = max(0.0, performance_budget - (time.monotonic() - performance_started))
-        observed[name] = {key: row.get(key) for key in ("capsule", "status", "tiers", "failure", "performance")}
+        observed[name] = _observed_result(row)
 
     from contextlib import redirect_stderr, redirect_stdout
 

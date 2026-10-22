@@ -248,6 +248,15 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
         row["performance"]["calibration_registration"] = "unavailable"
 
 
+
+def original_executable(root):
+    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    root = F.canonical(Path(root))
+    elf = F.canonical(root / PACKAGE_ELF_NAME)
+    if not elf.is_file():
+        raise ValueError("original native producer executable is unavailable")
+    return elf
+
 def _observe(root, *, context, compiler, runtime, remaining_s):
     from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -256,12 +265,10 @@ def _observe(root, *, context, compiler, runtime, remaining_s):
     from ...phase2 import campaign as PC
 
     root = F.canonical(Path(root))
-    # Bound discovery; do not accept a convenient executable basename from an
-    # unrelated build. OBS independently reopens its completed native producer.
-    images = [p for p in F.members(root, max_files=4096) if p.name == PACKAGE_ELF_NAME and p.is_file()]
-    if len(images) != 1:
-        raise ValueError("no unique original capsule executable")
-    elf = images[0]
+    # The native producer owns this exact slot. Retained execution snapshots
+    # legitimately contain the same basename and are never alternative producers.
+    # OBS still reopens the direct ELF's original recipe and invocation custody.
+    elf = original_executable(root)
     compiler = Path(compiler)
     candidate = hash_tree(compiler)["sha256"]
     elf_before = F.pin(elf, max_bytes=64 << 20)

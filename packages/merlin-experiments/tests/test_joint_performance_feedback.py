@@ -198,3 +198,15 @@ def test_capture_metadata_requires_reopened_exact_policy_source(tmp_path):
     assert J.selected_capsule(selection,staged)==source
     origin.write_text(yaml.safe_dump(dict(source,capture_tool={"status":"changed"})))
     with pytest.raises(ValueError):J.selected_capsule(selection,staged)
+
+
+def test_original_elf_slot_ignores_retained_execution_copy(tmp_path):
+    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    direct=tmp_path/PACKAGE_ELF_NAME;direct.write_bytes(b'producer')
+    retained=tmp_path/'executed'/'spike'/'digest'/PACKAGE_ELF_NAME
+    retained.parent.mkdir(parents=True);retained.write_bytes(b'producer')
+    assert J.original_executable(tmp_path)==direct
+    direct.unlink()
+    with pytest.raises(ValueError):J.original_executable(tmp_path)
+    direct.symlink_to(retained)
+    with pytest.raises(ValueError):J.original_executable(tmp_path)
