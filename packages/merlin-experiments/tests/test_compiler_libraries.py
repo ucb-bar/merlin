@@ -157,3 +157,43 @@ def test_real_box_v2_startup_uses_admitted_union_without_host_aliases(tmp_path, 
     assert value["report"]["schema"] == "merlin.selected_compiler_source_startup.v2"
     assert value["report"]["contract_sha256"] == selection.contract.sha256
     assert str(selection.root / "private-answer.txt") not in boxed.argv
+
+
+def test_mount_operation_reopens_boundaries_without_redundant_formatting_checks(tmp_path, monkeypatch):
+    selection, candidate = selected(tmp_path)
+    original_record = CompilerLibrarySelection.record
+    calls = []
+
+    def count(owner):
+        calls.append(owner)
+        return original_record(owner)
+
+    monkeypatch.setattr(CompilerLibrarySelection, 'record', count)
+    with scoped_compiler_library(selection):
+        calls.clear()
+        result = L.apply(policy(candidate))
+        assert calls == [selection, selection, selection]
+        assert f'/perf-compiler-library/{selection.contract.sha256}/python' in result.env_prefix
+        calls.clear()
+        assert L.apply(result) == result
+        assert calls == [selection, selection, selection]
+
+
+def test_mount_operation_rejects_mutation_between_original_boundaries(tmp_path, monkeypatch):
+    from merlin.targetgen.compiler_library import CompilerLibraryError
+
+    selection, candidate = selected(tmp_path)
+    source = selection.root / 'merlin/portable.py'
+    original = source.read_bytes()
+
+    def mutate(_owner):
+        source.write_text('def lower(value):\n return 999\n')
+        return {}
+
+    with scoped_compiler_library(selection):
+        monkeypatch.setattr(L, '_original_sources', mutate)
+        try:
+            with pytest.raises(CompilerLibraryError, match='bytes changed'):
+                L.apply(policy(candidate))
+        finally:
+            source.write_bytes(original)

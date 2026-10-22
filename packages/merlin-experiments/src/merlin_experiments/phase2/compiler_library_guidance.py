@@ -83,6 +83,9 @@ def selected_inventory():
     from .compiler_libraries import guest_root
 
     before = selection.record()
+    # guest_root revalidates the entire selected library. Resolve once within
+    # this invocation, keeping the original before/after custody checks below.
+    root = guest_root(selection)
     members = {row.module: row for row in selection.contract.members}
     modules, declarations = [], []
     for module in sorted(selection.contract.public_modules):
@@ -91,7 +94,7 @@ def selected_inventory():
         modules.append(
             {
                 "module": module,
-                "source": str(guest_root(selection) / member.path),
+                "source": str(root / member.path),
                 "source_sha256": member.sha256,
             }
         )

@@ -293,7 +293,7 @@ def dispatch_boundary_report(mesh_execution: dict | None) -> dict:
     }
 
 
-def oracle_source_scope(capsule, command_buffer, lowered_mlir):
+def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
     """Bind unpublished scratch to the original capsule source before any oracle call."""
     from contextlib import nullcontext
     from pathlib import Path
@@ -307,4 +307,11 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir):
     if not source_name or not capsule.get("__dir__"):
         raise ValueError("whole-program scratch requires the original capsule source")
     source_path = Path(capsule["__dir__"]) / source_name
-    return source_mutable_scope(source_path.read_bytes(), command_buffer, lowered_mlir=lowered_mlir)
+    lowered_abi = None
+    if target is not None:
+        from .target_experiment import load_capability_manifest
+        from merlin.targetgen.contract.harness_abi import lowered_plan_abi
+        contract = load_capability_manifest(target).contract
+        lowered_abi = lowered_plan_abi(contract, target=target)
+    return source_mutable_scope(source_path.read_bytes(), command_buffer, lowered_mlir=lowered_mlir,
+                                lowered_abi=lowered_abi)

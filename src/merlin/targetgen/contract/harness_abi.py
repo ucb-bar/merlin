@@ -120,6 +120,24 @@ def from_contract(contract: dict[str, Any], *, target: str) -> HarnessAbi:
     )
 
 
+def lowered_plan_abi(contract: dict[str, Any], *, target: str) -> dict:
+    """Public structural entry/completion description from the selected caller contract."""
+    abi = from_contract(contract, target=target)
+    instruction = (contract.get("logical_harness") or {}).get("completion_asm")
+    if instruction is None:
+        # This is structural admission, not a proof of accelerator completion.
+        # A declared RISC-V toolchain permits its architectural memory fence;
+        # never infer an accelerator-specific completion instruction or symbol.
+        runner = contract.get("runner") or {}
+        selected = runner.get(runner.get("backend"), {})
+        flags = (selected.get("toolchain") or {}).get("cflags", ())
+        if any(isinstance(flag, str) and flag.startswith(("-march=rv32", "-march=rv64"))
+               for flag in flags):
+            instruction = "fence"
+    return {"entry_symbol": abi.entry_symbol, "completion_symbol": abi.fence_symbol,
+            "completion_asm": instruction}
+
+
 def for_target(target: str) -> HarnessAbi:
     """Resolve a target's harness ABI through the registry (the contract is the single source)."""
     from ..target_registry import resolve

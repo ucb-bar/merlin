@@ -124,3 +124,77 @@ def test_tuned_model_is_selected_and_drift_never_falls_back():
                                         feature_counts={"cpu.load": 25}))
     assert not within_coverage(chosen, dict(scope_sha256="scope", domain=dict(memory_regime_sha256="memory"),
                                             feature_counts={"cpu.load": 60}))
+
+
+def test_native_ceiling_overlay_resolves_only_exact_pinned_source():
+    source = dict(name="neutral", required_oracle_tiers=["L0", "L1", "L2", "L3"],
+                  numeric_policy={"compare": "exact_int"}, interface_mlir="program.mlir")
+    selection = {"members": {"neutral": {"capsule_sha256": J.capsule_identity(source)}}}
+    staged = dict(source, oracle_tier_ceiling="L3", __dir__="/native/private/public/neutral")
+    assert J.selected_capsule(selection, staged) == source
+    assert staged["oracle_tier_ceiling"] == "L3"  # no mutation of execution contract
+    for changed in (dict(staged, interface_mlir="other.mlir"),
+                    dict(staged, required_oracle_tiers=["L2"]),
+                    dict(staged, numeric_policy={"compare": "approximate"}),
+                    dict(staged, oracle_tier_ceiling="unknown")):
+        with pytest.raises(ValueError, match="different capsule bytes"):
+            J.selected_capsule(selection, changed)
+    declared = dict(source, oracle_tier_ceiling="L2")
+    selected = {"members": {"neutral": {"capsule_sha256": J.capsule_identity(declared)}}}
+    with pytest.raises(ValueError):
+        J.selected_capsule(selected, dict(declared, oracle_tier_ceiling="L3"))
+
+
+def test_staged_source_routes_to_tuned_epoch_without_waiving_missing_rtl(monkeypatch):
+    source = dict(name="neutral", required_oracle_tiers=["L2", "L3"])
+    identity = J.capsule_identity(source)
+    staged = dict(source, oracle_tier_ceiling="L3")
+    report, observation = observed()
+    tuned = dict(epoch=1, mode="tuned", runtime={"path": "tuned"},
+                 calibration_evidence={"path": "evidence"}, coverage={})
+    choice = ({"sha256": "a"*64}, {"members": {"neutral": {"capsule_sha256": identity}},
+              "facts": {}, "runtime": {"path": "untuned"}})
+    from merlin_experiments.phase1.feedback import joint_timing_selection as S
+    def choose(selection, key):
+        return tuned if key == identity else dict(epoch=0, mode="untuned")
+    monkeypatch.setattr(S, "choose", choose)
+    monkeypatch.setattr(S, "within_coverage", lambda *_: True)
+    monkeypatch.setattr(J, "selected", lambda: choice)
+    monkeypatch.setattr(J, "structural_feedback", lambda *_a, **_k: {"structural_compute_floor_cycles":30})
+    monkeypatch.setattr(J, "_read", lambda *_: {})
+    def runtime(pin, **kwargs):
+        assert pin == tuned["runtime"]
+        return SimpleNamespace(review_id="explicit review")
+    monkeypatch.setattr(J, "_runtime", runtime)
+    monkeypatch.setattr(J, "_observe", lambda *_a, **_k: (report, observation))
+    from merlin_experiments.phase1 import joint_calibration_service as C
+    recorded=[]
+    monkeypatch.setattr(C, "register", lambda *_a, **k: recorded.append(k["capsule"]))
+    result=dict(numeric={"status":"pass"},tiers={"L2":{"status":"pass","engine":"spike"},
+                "L3":{"status":"unavailable"}},trace_check={"status":"unavailable_fields"})
+    row={}
+    J.attach(row,"unused",result=result,context=SimpleNamespace(target="neutral"),
+             compiler="unused",capsule=staged,remaining_s=120)
+    assert row["performance"]["status"] == "PROVISIONAL"
+    assert row["performance"]["timing_mode"] == "tuned"
+    assert row["performance"]["capsule_sha256"] == identity
+    assert row["performance"]["staged_capsule_sha256"] == J.capsule_identity(staged)
+    assert recorded == [source]
+    assert result["tiers"]["L3"]["status"] == "unavailable"
+    assert not row["performance"]["promotion_authority"]
+
+
+def test_capture_metadata_requires_reopened_exact_policy_source(tmp_path):
+    import yaml
+    source = dict(name="neutral", required_oracle_tiers=["L2", "L3"],
+                  capture_tool={"status":"not_available", "reason":"source metadata"})
+    selection = {"members":{"neutral":{"capsule_sha256":J.capsule_identity(source)}}}
+    public=tmp_path/"public"/"neutral";public.mkdir(parents=True)
+    staged={k:v for k,v in source.items() if k!="capture_tool"}
+    staged.update(oracle_tier_ceiling="L3",__dir__=str(public))
+    with pytest.raises(ValueError):J.selected_capsule(selection,staged)
+    origin=tmp_path/"policy"/"0"/"neutral"/"capsule.yaml"
+    origin.parent.mkdir(parents=True);origin.write_text(yaml.safe_dump(source))
+    assert J.selected_capsule(selection,staged)==source
+    origin.write_text(yaml.safe_dump(dict(source,capture_tool={"status":"changed"})))
+    with pytest.raises(ValueError):J.selected_capsule(selection,staged)

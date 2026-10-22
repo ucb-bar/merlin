@@ -44,8 +44,8 @@ def performance_pin(selection=None):
 
 def request_stop(run_dir, *, reason):
     """Stop at the next native Codex turn boundary, then join owned jobs/freeze."""
-    if not isinstance(reason, str) or not reason.strip():
-        raise ValueError("epoch stop needs an operator reason")
+    if not isinstance(reason, str) or not reason.strip() or len(reason) > 4096:
+        raise ValueError("epoch stop needs a bounded operator reason")
     path = Path(run_dir) / "joint_epoch_stop.json"
     state = json.loads(_read(path.with_name("joint_campaign.json"))[0])
     if state.get("started_at_epoch") is None:
@@ -53,7 +53,35 @@ def request_stop(run_dir, *, reason):
     with path.open("x") as stream:
         json.dump({"schema": "merlin.joint_epoch_stop.v1", "reason": reason}, stream)
     path.chmod(0o600)
+    publish_stop_notice(run_dir)
     return path
+
+
+def publish_stop_notice(run_dir):
+    """Project a trusted stop request into existing QA without changing a grade."""
+    root = Path(run_dir)
+    raw, digest = _read(root / "joint_epoch_stop.json")
+    request = json.loads(raw)
+    if (request.get("schema") != "merlin.joint_epoch_stop.v1"
+            or not isinstance(request.get("reason"), str) or not request["reason"].strip()
+            or len(request["reason"]) > 4096):
+        raise ValueError("invalid bounded operator epoch notice")
+    environment = yaml.safe_load(_read(root / "environment.yaml")[0])
+    workspace = environment.get("workspace_path")
+    if workspace is None:
+        return None  # Historical/fixture owners may have no staged author workspace.
+    workspace = Path(workspace)
+    if not workspace.is_absolute() or workspace != workspace.resolve() or not workspace.is_dir():
+        raise ValueError("operator notice needs its original staged author workspace")
+    notice = {"schema": "merlin.operator_epoch_notice.v1", "action": "checkpoint_and_return",
+              "reason": request["reason"], "stop_request_sha256": digest,
+              "instruction": "Finish the current bounded action, save all compiler and generic pass edits, "
+                  "and return a checkpoint summary now. Preserve your work; do not restart the compiler. "
+                  "The native host will continue this saved compiler with the reviewed inputs and original campaign clock.",
+              "changes_grading": False, "private_reference_information": False}
+    from .feedback.visible_model_gate import publish
+    publish(workspace / "qa" / "verdict.json", {"operator_epoch_notice": notice})
+    return notice
 
 
 def stop_reason(run_dir):

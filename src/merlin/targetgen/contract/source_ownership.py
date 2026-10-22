@@ -130,11 +130,11 @@ def _source_owned_mutables(command_buffer: Mapping, inventory: Mapping) -> tuple
     return tuple(sorted(mutable))
 
 
-def source_owned_mutables(source: bytes | str, command_buffer: Mapping, *, lowered_mlir=None) -> tuple[str, ...]:
+def source_owned_mutables(source: bytes | str, command_buffer: Mapping, *, lowered_mlir=None, lowered_abi=None) -> tuple[str, ...]:
     """Derive scratch only from the caller's original source and a completely matching plan."""
     from merlin.targetgen.oot_starterkit.plan import source_operation_inventory, validate_mixed_program_plan
 
-    validation = validate_mixed_program_plan(source, command_buffer, lowered_mlir)
+    validation = validate_mixed_program_plan(source, command_buffer, lowered_mlir, lowered_abi=lowered_abi)
     if not validation.get("ok"):
         raise SourceOwnershipError(f"candidate source/entry plan is incomplete: {validation.get('findings', [])[:2]}")
     return _source_owned_mutables(command_buffer, source_operation_inventory(source))
@@ -152,9 +152,9 @@ def _binding(command_buffer):
 
 
 @contextmanager
-def source_mutable_scope(source, command_buffer, *, lowered_mlir=None):
+def source_mutable_scope(source, command_buffer, *, lowered_mlir=None, lowered_abi=None):
     """Trusted caller's live scope; candidate metadata cannot reconstruct this grant."""
-    mutables = source_owned_mutables(source, command_buffer, lowered_mlir=lowered_mlir)
+    mutables = source_owned_mutables(source, command_buffer, lowered_mlir=lowered_mlir, lowered_abi=lowered_abi)
     binding = _binding(command_buffer)
     token = _ACTIVE.set((binding, mutables))
     try:

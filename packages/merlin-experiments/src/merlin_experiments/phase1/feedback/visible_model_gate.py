@@ -51,14 +51,18 @@ def publish(path: Path, update: dict) -> dict:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
             previous = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-            if "model_gate" in update:
+            advisory_only = set(update) == {"operator_epoch_notice"}
+            if advisory_only or "model_gate" in update:
                 result = {**previous, **update}
             else:
                 result = dict(update)
                 if "model_gate" in previous:
                     result["model_gate"] = previous["model_gate"]
                 result["capsule_all_pass"] = update.get("all_pass")
-            result = _combine(result)
+            if "operator_epoch_notice" in previous and "operator_epoch_notice" not in update:
+                result["operator_epoch_notice"] = previous["operator_epoch_notice"]
+            if not advisory_only:
+                result = _combine(result)
             temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
             temporary.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
             os.replace(temporary, path)

@@ -301,3 +301,9 @@ members. Reopen the original graph projection and exact admitted source, derive 
 from the native interface, and retain every original member. The source revision carries
 no calibration witness, runtime price, policy or qualification authority. Unknown additions
 and changed existing geometries remain errors under the original calibration profile.
+
+`joint_handoff.py` skips new post-turn jobs only after an explicit operator epoch stop
+and the native author/background owner join. Commit and verify the returned source through
+original OOT custody; retain prior evidence with its original source in a pinned archive.
+The returned checkpoint is ungraded, all development obligations remain pending, and the
+ordinary immutable freeze still verifies inputs. This is not final certification or grade reuse.

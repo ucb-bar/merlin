@@ -728,16 +728,21 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             )
             break
 
-        verdict = GR.post_turn_grade(
-            _driver_grade_receipt[0],
-            ws,
-            run_dir,
-            rnd,
-            a.no_oracle,
-            a.qa_timeout,
-            inputs=grading_inputs,
-            grade_callback=_grade,
-        )
+        from . import joint_epochs
+        if joint and joint_epochs.stop_reason(run_dir) is not None:
+            from .joint_handoff import checkpoint
+            verdict = checkpoint(ws, run_dir, rnd)
+        else:
+            verdict = GR.post_turn_grade(
+                _driver_grade_receipt[0],
+                ws,
+                run_dir,
+                rnd,
+                a.no_oracle,
+                a.qa_timeout,
+                inputs=grading_inputs,
+                grade_callback=_grade,
+            )
         if context.target == "gemmini" and a.experiment == "full":  # target-ok: Gemmini scope
             from . import oot_history as _OH
 

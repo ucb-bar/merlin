@@ -4,6 +4,8 @@ import json
 import sys
 from dataclasses import dataclass
 
+import pytest
+
 from merlin_experiments.phase2 import compiler_libraries as L
 from merlin_experiments.phase2 import compiler_library_guidance as G
 
@@ -70,6 +72,54 @@ def test_inventory_limits_previews_and_records_omitted_declarations(tmp_path, mo
     (module,) = inventory["public_modules"]
     assert len(module["declarations"]) == 2 and module["declaration_count"] == 5
     assert module["omitted_declarations"] == 3
+
+
+def test_inventory_resolves_guest_root_once_per_call_but_revalidates_each_call(tmp_path, monkeypatch):
+    owner = selection(tmp_path)
+    extra = owner.root / "merlin/second.py"
+    extra.write_text("def second(value): return value\n")
+    contract = freeze_compiler_library(
+        owner.root, review_id="two-public-leaves",
+        public_modules=(*owner.contract.public_modules, "merlin.second"),
+        sources=tuple((m.path, m.module) for m in owner.contract.members)
+                + (("merlin/second.py", "merlin.second"),),
+    )
+    owner = CompilerLibrarySelection(contract, owner.root)
+    calls, original = [], L.guest_root
+
+    def counted(selected):
+        calls.append(selected.contract.sha256)
+        return original(selected)
+
+    monkeypatch.setattr(L, "guest_root", counted)
+    with scoped_compiler_library(owner):
+        first = G.selected_inventory()
+        assert len(calls) == 1 and len(first["public_modules"]) == 2
+        second = G.selected_inventory()
+        assert second == first and len(calls) == 2
+    assert all(row["source"].endswith(row["module"].replace(".", "/") + ".py")
+               for row in first["public_modules"])
+    assert "merlin.portable" not in sys.modules and "merlin.second" not in sys.modules
+
+
+def test_inventory_still_refuses_source_mutation_during_derivation(tmp_path, monkeypatch):
+    from merlin.targetgen.compiler_library import CompilerLibraryError
+
+    owner = selection(tmp_path)
+    path = owner.root / "merlin/portable.py"
+    original_bytes, original = path.read_bytes(), G._declarations
+
+    def mutate(body, prefix=""):
+        path.write_bytes(original_bytes + b"\n# changed during inventory\n")
+        return original(body, prefix)
+
+    monkeypatch.setattr(G, "_declarations", mutate)
+    with scoped_compiler_library(owner):
+        try:
+            with pytest.raises(CompilerLibraryError, match="bytes changed"):
+                G.selected_inventory()
+        finally:
+            path.write_bytes(original_bytes)  # restore before the owner's independent exit check
 
 
 def test_bounded_inventory_keeps_later_module_entrypoints_discoverable(tmp_path, monkeypatch):

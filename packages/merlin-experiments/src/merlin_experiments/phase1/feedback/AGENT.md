@@ -480,3 +480,11 @@ model capability path/hash at every backend-dependent check. Enter only that
 original observed-contract scope, including final/returned partition verification;
 never depend on a prior compile registering a backend, substitute a provider, or
 reuse a previous verification verdict. Restore the caller scope on refusal.
+
+`joint_performance.selected_capsule` resolves only a pinned source declaration or
+its exact native execution-ceiling/capture-metadata projection. Capture metadata
+requires reopening the unchanged sibling private policy source and exact full
+selected hash. Required tiers, numerics and all remaining fields stay immutable;
+source resolution grants no numerical, structural, RTL or timing qualification.
+Keep staged and source identities distinct and use source identity for epoch
+coverage and calibration registration. Public failure stages contain no paths.

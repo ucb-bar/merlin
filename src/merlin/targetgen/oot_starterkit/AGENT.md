@@ -27,3 +27,10 @@ LLVM function `memory_effects` annotations retain their exact standard attribute
 kind and payload through parsing, verification and printing. The stock compiler
 owns payload legality; this parser neither infers body effects nor relaxes
 pointer storage correspondence or the original operation checks.
+
+Mixed-program lowered validation accepts an explicit selected caller ABI. Its entry
+retains every source/task and CFG check. The only additional defined function allowed
+is the declared no-argument completion shim containing exactly the contract's completion
+assembly and a return, with a side effect/memory clobber and no source/task ownership.
+Without that explicit ABI, retain the historical single-function rule. This public check
+never proves numerical execution, offload placement or timing.

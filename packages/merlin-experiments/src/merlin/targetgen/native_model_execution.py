@@ -505,8 +505,11 @@ def audit_candidate_source_placement(
             # Lowered task tags are structural, not arithmetic equivalence.
             from merlin.targetgen.oot_starterkit.plan import validate_mixed_program_plan
 
+            from merlin.targetgen.contract.harness_abi import lowered_plan_abi
+
             source_plan_validation = validate_mixed_program_plan(
-                source, cb, _read_pinned_payload(emission, "lowered_mlir").decode("utf-8")
+                source, cb, _read_pinned_payload(emission, "lowered_mlir").decode("utf-8"),
+                lowered_abi=lowered_plan_abi(yaml.safe_load(selected_contract.read_text()), target=target),
             )
             if not source_plan_validation.get("ok"):
                 problems.extend(f"candidate typed source plan: {issue}" for issue in source_plan_validation["findings"])

@@ -135,3 +135,30 @@ def test_model_service_drains_then_prepares_pinned_transition(epoch, tmp_path, m
     timing.write_text('{"tampered": true}')
     with pytest.raises(ValueError, match="content differs"):
         E.request_model_epoch(prior, **kwargs)
+
+
+def test_stop_notice_preserves_grade_and_survives_background_update(epoch, tmp_path):
+    from merlin_experiments.phase1.feedback.visible_model_gate import publish
+
+    _options, prior = epoch
+    workspace = tmp_path / 'author'
+    (workspace / 'qa').mkdir(parents=True)
+    path = workspace / 'qa/verdict.json'
+    grade = {'all_pass': False, 'n_capsules': 13, 'n_passed': 0,
+             'graded_source_sha256': 'source', 'package_failure': {'detail': 'original error'},
+             'graded_at': 'original-time'}
+    path.write_text(json.dumps(grade))
+    env_path = prior / 'environment.yaml'
+    environment = yaml.safe_load(env_path.read_text())
+    environment['workspace_path'] = str(workspace)
+    env_path.write_text(yaml.safe_dump(environment))
+    request = E.request_stop(prior, reason='Repair library routing; keep valid generic edits.')
+    current = json.loads(path.read_text())
+    notice = current.pop('operator_epoch_notice')
+    assert current == grade
+    assert notice['action'] == 'checkpoint_and_return'
+    assert notice['stop_request_sha256'] == hashlib.sha256(request.read_bytes()).hexdigest()
+    later = publish(path, {**grade, 'n_passed': 1})
+    assert later['operator_epoch_notice'] == notice
+    assert later['n_passed'] == 1
+    assert later['graded_source_sha256'] == 'source'

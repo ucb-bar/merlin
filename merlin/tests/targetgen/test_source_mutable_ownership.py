@@ -246,3 +246,34 @@ else: raise AssertionError('actual source ownership accepted a foreign plan')
         timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_capsule_scope_uses_selected_completion_abi_not_candidate_metadata(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from merlin.targetgen import target_experiment
+    from merlin.targetgen.capsule_lane_evidence import oracle_source_scope
+
+    (tmp_path / 'source.mlir').write_text(SOURCE)
+    capsule = {'__dir__': str(tmp_path), 'linalg_mlir': 'source.mlir'}
+    cb = _buffer()
+    cb['params']['completion_asm'] = 'candidate-selected instruction'
+    contract = {'harness_abi': {'entry_symbol': 'entry', 'fence_symbol': 'finish'},
+                'logical_harness': {'completion_asm': 'selected fence'}}
+    monkeypatch.setattr(target_experiment, 'load_capability_manifest', lambda target: SimpleNamespace(contract=contract))
+    lowered = '''builtin.module {
+      llvm.func @entry(%x: !llvm.ptr, %tmp: !llvm.ptr, %out: !llvm.ptr) {
+        %a = llvm.load %x {merlin.global_task = 0 : i64, merlin.source_op_index = 0 : i64} : !llvm.ptr -> i32
+        %b = llvm.load %tmp {merlin.global_task = 1 : i64, merlin.source_op_index = 1 : i64} : !llvm.ptr -> i32
+        llvm.return
+      }
+      llvm.func @finish() {
+        "llvm.inline_asm"() <{asm_string = "selected fence", constraints = "~{memory}", has_side_effects}> : () -> ()
+        llvm.return
+      }
+    }'''
+    with oracle_source_scope(capsule, cb, lowered, target='fixture'):
+        assert active_source_owned_mutables(cb) == ('tmp',)
+    assert active_source_owned_mutables(cb) == ()
+    with pytest.raises(SourceOwnershipError, match='declared fence-only ABI'):
+        with oracle_source_scope(capsule, cb, lowered.replace('selected fence', 'candidate-selected instruction'), target='fixture'):
+            pytest.fail('candidate changed completion semantics')

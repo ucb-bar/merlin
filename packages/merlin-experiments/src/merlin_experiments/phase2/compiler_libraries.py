@@ -249,7 +249,12 @@ def environment_prefix(prefix):
     selection = active_compiler_library()
     if selection is None:
         return prefix
-    suffix = "export PYTHONPATH=" + shlex.quote(str(guest_root(selection))) + ":$PYTHONPATH; "
+    return _environment_prefix(prefix, guest_root(selection))
+
+
+def _environment_prefix(prefix, root):
+    """Pure formatting of a root already verified by the enclosing operation."""
+    suffix = "export PYTHONPATH=" + shlex.quote(str(root)) + ":$PYTHONPATH; "
     return prefix if prefix.endswith(suffix) else prefix + suffix
 
 
@@ -267,7 +272,9 @@ def apply(policy):
     package = getattr(policy, "package", None)
     if package is not None and (selection.root.is_relative_to(package) or Path(package).is_relative_to(selection.root)):
         raise StageGateError("additional compiler library cannot be candidate-owned")
-    root = guest_root(selection)
+    # This bounded metadata operation already verified the full selection.
+    # Derive formatting from that record; reopen all bytes at the exit below.
+    root = Path("/perf-compiler-library") / record["contract_sha256"] / "python"
     sources = _original_sources(active_compiler_imports())
     sources.update({member.path: selection.root / member.path for member in selection.contract.members})
     from merlin.targetgen.compiler_library_fork import candidate_sources
@@ -300,5 +307,5 @@ def apply(policy):
         raise StageGateError("additional compiler library mount selection is ambiguous")
     if selection.record() != record:
         raise StageGateError("additional compiler library changed while deriving package mounts")
-    return replace(policy, argv=tuple(prefix), env_prefix=environment_prefix(policy.env_prefix or ""),
+    return replace(policy, argv=tuple(prefix), env_prefix=_environment_prefix(policy.env_prefix or "", root),
                    **({"compiler_fork_sha256": fork_sha256} if hasattr(policy, "compiler_fork_sha256") else {}))

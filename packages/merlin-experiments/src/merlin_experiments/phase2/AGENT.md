@@ -1094,3 +1094,9 @@ certified development evaluator to the actual qualified runtime executor and
 fresh baseline/cohort/descriptor. Certificate, facts, derived CIRCT and engine
 artifact pins must remain in original runtime source membership. Preserve the
 original exact workload envelope and refused timing scopes.
+
+Compiler library mount construction derives guest paths and environment text from its
+already-verified entry record. Keep original owner admission and fresh exit validation;
+do not re-open the complete library merely to format the same pinned path. The operation
+must still reject any byte change during mount construction and preserve exact mount/fork
+identities. No retained cache or verification scope may span candidate execution.

@@ -104,7 +104,7 @@ def _const_value(op) -> int | None:
         return None
 
 
-def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None) -> _Val:
+def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None, _bindings=None) -> _Val:
     """Resolve an SSA value to a ``_Val`` by walking its defining op STRUCTURALLY: a block/function
     argument (``argbase``), an ``llvm.mlir.constant`` (``const``), a transparent ``llvm.ptrtoint`` (pass
     through to the pointer it converts), or an ``llvm.add`` of base+constant (``argbase`` with an offset)
@@ -120,6 +120,8 @@ def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None) -> _Val:
 
     if _depth > 64:
         return _Val("unknown")
+    if _bindings is not None and val in _bindings:
+        return _Val("const", value=_bindings[val])
     if isinstance(val, BlockArgument):
         parent = val.owner.parent_op()
         if parent is not None and parent.name == "llvm.func" and val.owner is parent.body.blocks.first:
@@ -130,10 +132,19 @@ def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None) -> _Val:
     if name == "llvm.mlir.constant":
         iv = _const_value(op)
         return _Val("const", value=iv) if iv is not None else _Val("unknown")
+    if name in {"llvm.add", "llvm.sub", "llvm.mul", "llvm.and", "llvm.or", "llvm.xor",
+                "llvm.shl", "llvm.lshr", "llvm.ashr", "llvm.trunc", "llvm.sext", "llvm.zext"}:
+        from .static_operands import fold_integer
+
+        folded = fold_integer(val, _bindings or {})
+        if folded is not None:
+            return _Val("const", value=folded)
+        if op.properties.get("overflowFlags") is not None:
+            return _Val("unknown")
     if name == "llvm.ptrtoint" and len(op.operands) >= 1:
         if _word_bits is not None and op.results[0].type != IntegerType(_word_bits):
             return _Val("unknown")
-        return _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits)
+        return _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
     if name == "llvm.mlir.addressof":
         reference = op.properties.get("global_name")
         if reference is None or reference.nested_references.data:
@@ -162,7 +173,7 @@ def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None) -> _Val:
         if indices[0] == GEP_USE_SSA_VAL:
             if len(op.operands) != 2:
                 return _Val("unknown")
-            index = _resolve(op.operands[1], _depth + 1, _word_bits=_word_bits)
+            index = _resolve(op.operands[1], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
             if index.kind != "const":
                 return _Val("unknown")
             offset = index.value
@@ -170,13 +181,13 @@ def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None) -> _Val:
             if len(op.operands) != 1:
                 return _Val("unknown")
             offset = indices[0]
-        base = _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits)
+        base = _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
         if base.kind in {"argbase", "global"}:
             return _Val(base.kind, arg_index=base.arg_index, symbol=base.symbol, offset=(base.offset or 0) + offset)
         return _Val("unknown")
     if name == "llvm.add" and len(op.operands) == 2:
-        a = _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits)
-        b = _resolve(op.operands[1], _depth + 1, _word_bits=_word_bits)
+        a = _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
+        b = _resolve(op.operands[1], _depth + 1, _word_bits=_word_bits, _bindings=_bindings)
         base = a if a.kind in {"argbase", "global"} else (b if b.kind in {"argbase", "global"} else None)
         const = a if a.kind == "const" else (b if b.kind == "const" else None)
         if base is not None and const is not None:
@@ -277,6 +288,9 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
     word_bits = getattr(semantics, "word_bits", getattr(semantics, "_width", None))
     if type(word_bits) is not int:
         word_bits = None  # Historical external providers retain their original unselected behavior.
+    from .static_operands import counted_loop_observations
+
+    loop_observation, bindings = counted_loop_observations(module)
     idx = 0
     for op in module.walk():
         if getattr(op, "name", "") != "llvm.inline_asm":
@@ -289,8 +303,8 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
             if parsed is not None:
                 funct, _rd_is_x0 = parsed
                 ops = list(op.operands)  # SSA source operands, in order (rs1, rs2) — spelling-agnostic
-                rs1 = _resolve(ops[0], _word_bits=word_bits) if len(ops) >= 1 else None
-                rs2 = _resolve(ops[1], _word_bits=word_bits) if len(ops) >= 2 else None
+                rs1 = _resolve(ops[0], _word_bits=word_bits, _bindings=bindings.get(op.parent_block())) if len(ops) >= 1 else None
+                rs2 = _resolve(ops[1], _word_bits=word_bits, _bindings=bindings.get(op.parent_block())) if len(ops) >= 2 else None
                 klass, dec = semantics.decode_instruction(funct, _operand(rs1), _operand(rs2), isa)
                 trace.instructions.append(
                     {
@@ -311,7 +325,9 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
             # an inline-asm we do not recognize (not .insn, not fence): fail-closed.
             trace.instructions.append({"index": idx, "class": "UNKNOWN", "funct": None, "raw": template, "decoded": {}})
         idx += 1
-    return trace.to_dict()
+    result = trace.to_dict()
+    result["summary"]["counted_loops"] = loop_observation
+    return result
 
 
 # --- tolerant text-scan fallback --------------------------------------------------------------

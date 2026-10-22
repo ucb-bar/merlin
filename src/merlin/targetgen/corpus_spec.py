@@ -1218,7 +1218,10 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
         "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
         "expected": {
             "instruction_classes": binding.classes_for(op="matmul", output_dtype=adt),
-            "modes": {"resident_reuse": True},
+            "modes": {"resident_reuse": sum(
+                (mm.get("M", mm.get("M_tiles", 1) * D) + D - 1) // D
+                for mm in entry["matmuls"]
+            ) > 1},
         },
         "required_oracle_tiers": list(binding.tiers),
         "vcs": "optional",

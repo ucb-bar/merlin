@@ -118,7 +118,7 @@ def freeze_round(*, selection_pin, cases, parameters, output, question, stage="b
                             minimum_train_improvement=0.02, max_condition=1000),
                  scope="local native-price calibration; broader model qualification remains separate")
     from .feedback.joint_timing_selection import choose
-    choices = [choose(selection, PERF.capsule_identity(_capsule(c["capsule"]))) for c in cases]
+    choices = [choose(selection, PERF.capsule_identity(PERF.selected_capsule(selection, _capsule(c["capsule"])))) for c in cases]
     if len({document_sha256(c["runtime"]) for c in choices}) != 1:
         raise ValueError("calibration round mixes current evaluator epochs")
     value["runtime"] = choices[0]["runtime"]
@@ -391,7 +391,7 @@ def run_round(plan_pin, *, context, backend, output):
     if verdict["admitted"]:
         selected_reports=list(reports[best].values());features=set.intersection(*(set(r["feature_counts"]) for r in selected_reports))
         coverage=dict(scope_sha256=base_model["domain"]["scope_sha256"],memory_regime_sha256=base_model["domain"]["memory_regime_sha256"],
-                      capsule_sha256=sorted({PERF.capsule_identity(_capsule(c["capsule"])) for c in cases}),
+                      capsule_sha256=sorted({PERF.capsule_identity(PERF.selected_capsule(selection, _capsule(c["capsule"]))) for c in cases}),
                       feature_ranges={k:[min(r["feature_counts"][k] for r in selected_reports),max(r["feature_counts"][k] for r in selected_reports)] for k in sorted(features)})
         new=copy.deepcopy(selection);epochs=new.setdefault("timing_epochs",[])
         epochs.append(dict(epoch=1+max((e["epoch"] for e in epochs),default=0),mode="tuned",qualification="limited_calibrated_provisional",runtime=runtime_pins[best],calibration_evidence=evidence,coverage=coverage))

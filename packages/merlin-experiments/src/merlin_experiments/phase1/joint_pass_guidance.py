@@ -4,6 +4,34 @@
 def prompt():
     return """
 
+## Performance-driven compiler exploration
+
+Strong performance across the admitted shape families is the objective once
+correctness and legal execution are established. Pass counts, dialect coverage,
+buffer counts and instruction counts are not the score. Keep a working baseline
+and compare a few hypothesis-driven variants on relevant small checks and a
+representative large Spike case under one timing epoch. Integrate wins as reusable
+passes or shape/resource-derived heuristics; do not branch on capsule/model names.
+A library edit inside the grant needs no operator transition. Spend effort on the
+current dominant cost rather than implementing every available transformation.
+
+For CPU-issued, tightly coupled accelerators, consider this mechanism menu only
+when selected facts and observations support the premise:
+
+| Suspected cost | Compiler/schedule options | Evidence needed |
+| --- | --- | --- |
+| CPU issue/configuration overhead | `configuration` elimination, `configuration_loops` hoisting, `command_compaction`, compact `Kernel` loops | Actual emitted commands/host work and complete-call cycles; keep unknown state clobbers. |
+| Serialized transfers/compute | `copy_pipeline`, `compile_schedule` pass order, legal queue interleaving and buffer lifetimes | Dependencies, slot capacity, completion and same-epoch timing. Two buffers with per-operation fences do not demonstrate overlap. |
+| Repeated operand traffic or spills | `compact_dense` blocking/traversal, `temporary_storage`, `device_spills` | Actual placement, live ranges, requested traffic, padding and a large case in the relevant capacity regime. |
+| Boundary/packing overhead | `panel_transfers`, shared host codegen, `fusion`, `shared_input_schedule` | Numerical/layout/alias premises, complete live-outs, one-time versus per-call costs and whole-chain timing. |
+
+This menu supplies hypotheses and API locations, not selected schedules or winning
+parameters. Discover choices from typed IR, hardware facts and your own evaluations.
+Preserve an independent serial/unfused alternative where useful. Report numerical
+status, structural evidence and withheld RTL coverage separately; withheld gSIM is
+not an instruction to simulate the whole corpus. Unknown timing is not zero or a
+performance win: save the reproducer and continue independently measurable work.
+
 ## Scheduling integration and shared-pass development
 
 Use the exported scheduling IR in the production compiler: `merlin.sched.ir.kernel`

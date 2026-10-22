@@ -85,7 +85,7 @@ def step(*, profile_pin, state_path, context, output):
     from .feedback.joint_timing_selection import choose
     by_runtime = {}
     for row in rows:
-        chosen = choose(current, PERF.capsule_identity(C._capsule(row['capsule'])))
+        chosen = choose(current, PERF.capsule_identity(PERF.selected_capsule(current, C._capsule(row['capsule']))))
         by_runtime.setdefault(document_sha256(chosen['runtime']), []).append(row)
     alternatives = [C.select_variant_cases(group) for group in by_runtime.values()]
     selection = next((v for v in alternatives if v['status'] == 'selected'),

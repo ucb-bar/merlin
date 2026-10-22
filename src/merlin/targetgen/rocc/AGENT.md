@@ -21,7 +21,10 @@ The RoCC coprocessor interface: decoding a trace of it, and emitting one.
 `arg_index`, and `offset`; closed read-only module globals additionally carry their
 original `symbol` with kind `global`, without inventing a runtime address. Constant
 byte GEPs retain argument/global offsets. Dynamic indices, unproved aggregate layouts,
-mutable/external globals and non-entry CFG arguments remain unknown.
+mutable/external globals and varying non-entry CFG arguments remain unknown.
+The static operand observer may bind a proved singleton-loop induction only
+inside its body; headers/exits retain unknown values. Compact loop bounds are
+diagnostics, not a dynamic trace, resident-use proof or hazard qualification.
 Accelerator ABI roles come from the selected contract;
 field offsets and widths come from its original RTL facts. Missing capabilities refuse; there is no
 fallback to another target's decoder. The provider must declare or derive its ISA facts.

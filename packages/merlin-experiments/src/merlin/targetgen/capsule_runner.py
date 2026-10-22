@@ -5655,7 +5655,7 @@ def run_capsule(
                 with _prepared_tier_reuse(name, tier, mand, target=eff_target, generated=paths.generated,
                         shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers,
                         simulation_context=_simulation_context):
-                    with oracle_source_scope(capsule, oracle_cb, llvm_text):
+                    with oracle_source_scope(capsule, oracle_cb, llvm_text, target=eff_target):
                         res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _CarriedPreparedTier as carried:
                 tiers[tier] = carried.result

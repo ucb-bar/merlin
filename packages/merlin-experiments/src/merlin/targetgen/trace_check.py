@@ -409,15 +409,20 @@ def check(
     _before("CONFIG_LD", _MVIN, "MVIN")
     _before("CONFIG_ST", {"MVOUT"}, "MVOUT")
 
-    # preload/compute pairing: every COMPUTE must be immediately preceded by a PRELOAD
+    # Synchronization does not replace the staged operands. Other intervening
+    # commands still refuse; this does not establish queue or data hazards.
     n_pre = classes.count("PRELOAD")
     n_cmp = sum(classes.count(c) for c in _COMPUTE)
     if n_cmp and n_pre != n_cmp:
         violations.append(f"PRELOAD count ({n_pre}) != COMPUTE count ({n_cmp})")
+    previous_command = None
     for i, c in enumerate(classes):
-        if c in _COMPUTE and (i == 0 or classes[i - 1] != "PRELOAD"):
-            violations.append(f"COMPUTE at #{i} is not immediately preceded by PRELOAD")
+        if c == "FENCE":
+            continue
+        if c in _COMPUTE and previous_command != "PRELOAD":
+            violations.append(f"COMPUTE at #{i} is not preceded by PRELOAD (ignoring only FENCE)")
             break
+        previous_command = c
 
     # 4. mode checks
     modes = expected.get("modes", {}) or {}

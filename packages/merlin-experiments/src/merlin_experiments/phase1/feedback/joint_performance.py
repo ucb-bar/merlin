@@ -27,6 +27,59 @@ def capsule_identity(capsule):
     return document_sha256({k: v for k, v in (capsule or {}).items() if k != "__dir__"})
 
 
+
+def selected_capsule(selection, capsule):
+    """Resolve only the native execution-ceiling overlay to a pinned source.
+
+    Required tiers, numerics, source files and every other declaration field
+    remain part of the exact source identity. This grants no tier credit.
+    """
+    value = {k: v for k, v in (capsule or {}).items() if k != "__dir__"}
+    member = selection.get("members", {}).get(value.get("name"))
+    if not member or capsule_identity(value) == member.get("capsule_sha256"):
+        return value
+    if value.get("oracle_tier_ceiling") in {"L0", "L1", "L2", "L3", "L4"}:
+        source = {k: v for k, v in value.items() if k != "oracle_tier_ceiling"}
+        if capsule_identity(source) == member.get("capsule_sha256"):
+            return source
+        # Native public materialization also removes owner-only capture metadata.
+        # Reopen the unchanged private policy source, and prove the entire
+        # materialization projection before using its exact selected identity.
+        for original in _policy_sources(capsule):
+            if capsule_identity(original) != member.get("capsule_sha256"):
+                continue
+            projected = {k: v for k, v in original.items() if k != "capture_tool"}
+            projected["oracle_tier_ceiling"] = value["oracle_tier_ceiling"]
+            if projected == value:
+                return original
+    raise ValueError("joint roofline geometry belongs to different capsule bytes")
+
+
+def _policy_sources(capsule):
+    """Bounded lookup in the native owner's sibling policy snapshot only."""
+    import yaml
+    directory = capsule.get("__dir__")
+    name = capsule.get("name")
+    if not directory or not isinstance(name, str) or Path(name).name != name:
+        return
+    path = Path(directory)
+    if path.name != name or path.parent.name != "public":
+        return
+    policy = path.parent.parent / "policy"
+    if not policy.is_dir():
+        return
+    policy = F.canonical(policy)
+    for group in F.children(policy, limit=16):
+        source = policy / group / name / "capsule.yaml"
+        if not source.is_file():
+            continue
+        before = F.pin(source, max_bytes=1 << 20)
+        document = yaml.safe_load(source.read_text())
+        if F.pin(source, max_bytes=1 << 20) != before:
+            raise ValueError("native policy source changed during timing resolution")
+        if isinstance(document, dict):
+            yield document
+
 def _read(pin):
     path = Path(pin["path"])
     before = F.pin(path, max_bytes=16 << 20)
@@ -95,6 +148,7 @@ def _runtime(pin, *, facts_pin=None):
 
 def structural_feedback(selection, capsule, *, target):
     """Reopen source-specific geometry and derive arithmetic capacity from facts."""
+    capsule = selected_capsule(selection, capsule)
     facts = _read(selection["facts"])
     machine = R.machine_bounds(target, facts=facts)
     member = selection.get("members", {}).get(capsule.get("name"), {})
@@ -126,9 +180,16 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     observation = {}
     structural = None
     model_review = None
+    source_capsule = None
+    unavailable_stage = None
+    stage = "source_binding"
     reason = "timing runtime not selected"
     try:
-        structural = structural_feedback(selection, capsule or {}, target=context.target)
+        source_capsule = selected_capsule(selection, capsule)
+        epoch = choose(selection, capsule_identity(source_capsule))
+        stage = "structural_roofline"
+        structural = structural_feedback(selection, source_capsule, target=context.target)
+        stage = "numerical_screen"
         numeric = result.get("numeric") or {}
         tier = (result.get("tiers") or {}).get("L2") or {}
         passed = numeric.get("status") == "pass" and tier.get("status") == "pass"
@@ -141,26 +202,33 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
         elif epoch.get("runtime"):
             if epoch["mode"] == "tuned":
                 _read(epoch["calibration_evidence"])
+            stage = "runtime_freeze"
             runtime = _runtime(epoch["runtime"], facts_pin=selection["facts"])
             model_review = runtime.review_id
+            stage = "same_elf_observation"
             report, observation = _observe(
                 root, context=context, compiler=compiler, runtime=runtime,
                 remaining_s=min(remaining_s, selection.get("per_request_seconds", 30)),
             )
             reason = observation.get("reason", "native timing is provisional pending independent qualification")
+            stage = "coverage_check"
             if report is not None and not within_coverage(epoch, report):
                 report = None
                 reason = "selected tuned model outside observed coverage; no untuned fallback"
+        stage = "selection_recheck"
         if selected() != choice:
             raise ValueError("joint selection changed during observation")
     except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
         report = None
         # Details and paths are operator-only. Do not expose reference filenames.
         reason = "joint performance unavailable: " + type(error).__name__
+        unavailable_stage = stage
     row["performance"] = project(
         report, observation, structural, selection_sha256=pin["sha256"], reason=reason,
     )
-    row["performance"]["capsule_sha256"] = capsule_identity(capsule)
+    row["performance"]["capsule_sha256"] = capsule_identity(source_capsule if source_capsule is not None else capsule)
+    row["performance"]["staged_capsule_sha256"] = capsule_identity(capsule)
+    row["performance"]["unavailability_stage"] = unavailable_stage
     row["performance"]["timing_mode"] = epoch["mode"]
     row["performance"]["timing_epoch"] = epoch["epoch"]
     row["performance"]["model_review"] = model_review
@@ -173,7 +241,8 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
                                        "promotion_authority": False}
     try:
         from ..joint_calibration_service import register
-        register(row, root, result=result, compiler=compiler, capsule=capsule)
+        if source_capsule is not None:
+            register(row, root, result=result, compiler=compiler, capsule=source_capsule)
     except (OSError, ValueError, KeyError, TypeError, RuntimeError):
         # Registration cannot change the original numerical/performance verdict.
         row["performance"]["calibration_registration"] = "unavailable"

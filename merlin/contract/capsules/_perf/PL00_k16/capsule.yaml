@@ -43,7 +43,7 @@ expected:
   - COMPUTE_PRELOADED
   - MVOUT
   modes:
-    resident_reuse: true
+    resident_reuse: false
 required_oracle_tiers:
 - L0
 - L1
