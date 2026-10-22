@@ -37,7 +37,7 @@ def _rows(doc):
 
 def _numeric(row):
     value = row.get('numeric')
-    status = value.get('status') if isinstance(value, dict) else None
+    status = value.get('status') if isinstance(value, dict) else row.get('numeric_status')
     if row.get('numerical_execution_passed') is True or status in ('pass', 'passed'):
         return 'passed'
     if status in ('fail', 'failed', 'mismatch', 'mismatched'):
@@ -64,6 +64,8 @@ class ProgressHealth:
         self._run = None
         self._cache = {}
         self._iterator = None
+        self._archive_iterator = None
+        self._archive_owners = {}
 
     def _read(self, path):
         if self._files >= self.max_files:
@@ -106,7 +108,7 @@ class ProgressHealth:
                'promotion_authority': False, 'alerts': [], 'scope': 'bounded retained record inventory',
                'numeric': {'completed': None, 'passed': None, 'failed': None},
                'records_observed': 0, 'requests': [], 'snapshot_count': 0, 'snapshots': [],
-               'freshness': {}, 'notices': []}
+               'freshness': {}, 'completed_case_records': None, 'snapshot_observations': [], 'notices': []}
         if not isinstance(run, str) or not isinstance(workspace, str):
             out['notices'] = ['current run/workspace unavailable']
             return out
@@ -114,6 +116,10 @@ class ProgressHealth:
             if self._iterator is not None:
                 self._iterator.close()
             self._iterator = None
+            if self._archive_iterator is not None:
+                self._archive_iterator.close()
+            self._archive_iterator = None
+            self._archive_owners.clear()
             self._cache.clear()
             self._run = run
         self._files, self._remaining, self._notices = 0, self.max_bytes, set()
@@ -135,23 +141,75 @@ class ProgressHealth:
             except (StopIteration, OSError):
                 self._iterator.close()
                 self._iterator = None
+        work = Path(run) / '_qa_work'
+        if self._archive_iterator is None:
+            try:
+                self._archive_iterator = os.scandir(work)
+            except OSError:
+                self._notices.add('snapshot archives unavailable')
+        if self._archive_iterator is not None:
+            try:
+                for _ in range(self.max_files):
+                    entry = next(self._archive_iterator)
+                    token = entry.name.removeprefix('fruns_')
+                    if (not entry.name.startswith('fruns_') or not token.isascii()
+                            or not token.isdecimal() or not entry.is_dir(follow_symlinks=False)):
+                        continue
+                    path = Path(entry.path) / 'snapshot_progress.json'
+                    owner_path = work / 'background_snapshot_owners' / (token + '.json')
+                    owner = self._read(owner_path)
+                    doc = self._read(path)
+                    if (isinstance(owner, dict) and owner.get('schema') == 'merlin.background_snapshot_owner.v1'
+                            and owner.get('token') == token and owner.get('runs_dir') == str(path.parent)
+                            and isinstance(doc, dict) and doc.get('schema') == 'merlin.phase1.grade_progress.v1'):
+                        self._archive_owners[path] = (owner_path, owner)
+                    else:
+                        self._archive_owners.pop(path, None)
+            except (StopIteration, OSError):
+                self._archive_iterator.close()
+                self._archive_iterator = None
+        archives = [(p, self._cache[p][1]) for p in self._archive_owners if p in self._cache]
+        # Bound provenance retention together with the document cache.
+        self._archive_owners = {p: v for p, v in self._archive_owners.items() if p in self._cache}
         responses = [(p, v[1]) for p, v in self._cache.items() if p.parent == channel]
-        records = [(qa / 'progress.json', progress), (qa / 'verdict.json', verdict), *responses]
+        records = [(qa / 'progress.json', progress), (qa / 'verdict.json', verdict), *responses, *archives]
         records = [(p, d) for p, d in records if d]
         out['records_observed'] = len(records)
         # Deduplicate the same snapshot/capsule represented by progress and a response.
         executed, failures, failure_details, exceptions, timeouts = {}, {}, {}, [], []
+        completed_pairs = set()
+        by_source = {}
         newest_response = None
         for path, doc in records:
             source = _snapshot(doc)
+            if isinstance(source, str):
+                by_source.setdefault(source, {'completed': set(), 'owners': []})
+            if path in self._archive_owners and isinstance(source, str):
+                owner_path, owner = self._archive_owners[path]
+                by_source[source]['owners'].append({
+                    'owner_id': owner['token'], 'owner_state': owner.get('state'),
+                    'recorded_n_selected': doc.get('n_selected'),
+                    'recorded_n_completed': doc.get('n_completed'),
+                    'snapshot_state': doc.get('state'),
+                    'source_sha256': source if self.operator_private else None,
+                    'owner_admission_source_sha256': owner.get('source') if self.operator_private else None,
+                    'source_authority': 'graded_source_sha256; owner admission source is separate bookkeeping',
+                    'source': str(path) if self.operator_private else None,
+                    'owner_source': str(owner_path) if self.operator_private else None})
             for row in _rows(doc):
                 capsule = row.get('capsule') or row.get('name')
-                if not source or not isinstance(capsule, str):
+                if not isinstance(source, str) or not isinstance(capsule, str):
                     continue
+                if row.get('status') in ('pass', 'passed', 'fail', 'failed', 'declined', 'error'):
+                    completed_pairs.add((source, capsule))
+                    by_source[source]['completed'].add(capsule)
                 numeric = _numeric(row)
                 if numeric:
                     executed[(source, capsule)] = numeric
                 failure = row.get('failure')
+                if not isinstance(failure, dict) and row.get('failure_category'):
+                    failure = {'plane': row.get('failure_plane'), 'category': row['failure_category'],
+                               'stage': row.get('failure_stage'), 'detail': row.get('failure_detail')}
                 if numeric is None and isinstance(failure, dict) and failure.get('category'):
                     signature = (failure.get('plane'), failure.get('category'), failure.get('stage'))
                     detail = failure.get('detail')
@@ -185,6 +243,15 @@ class ProgressHealth:
                 ns = doc.get('graded_at_unix_ns')
                 if isinstance(ns, int) and (newest_response is None or ns > newest_response[0]):
                     newest_response = ns, source
+        out['completed_case_records'] = len(completed_pairs) if records else None
+        out['snapshot_observations'] = [
+            {'source_sha256': source if self.operator_private else None,
+             'completed_case_records': len(group['completed']),
+             'matches_live_progress_source': source == _snapshot(progress),
+             'live_progress_claims_current': progress.get('snapshot_current') if source == _snapshot(progress) else None,
+             'owners': group['owners'],
+             'scope': 'unique capsules within this exact graded source; owner denominators are never summed'}
+            for source, group in by_source.items()]
         passed = sum(value == 'passed' for value in executed.values())
         failed = sum(value == 'failed' for value in executed.values())
         # A native aggregate proves successful execution even if compact rows are absent.

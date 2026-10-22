@@ -22,6 +22,8 @@ MAY import merlin.
 
 from __future__ import annotations
 
+from merlin_experiments.phase1.feedback import setup_timing as _host_timing
+
 import dataclasses
 import datetime as _dt
 import json
@@ -4392,6 +4394,7 @@ def _merge_match_policy(force: dict | None, capsule: dict | None) -> dict | None
     return merged
 
 
+@_host_timing.measured("result_processing")
 def _finalize_capsule_result(
     *,
     name: str,
@@ -4935,15 +4938,16 @@ def run_capsule(
     try:
         compiler_source = _grade_cpu_step(_capture_compiler_source, package_dir, paths.generated)
         # shared front half: build + the 4 contract entrypoints (parse/target/cb/artifact), validated.
-        pkg, cb, llvm_text = run_entrypoints(
-            pkg,
-            package_dir,
-            capsule,
-            paths,
-            contract=contract,
-            timeout=timeout,
-            fourth_output_name=cfg.fourth_output_name,
-        )
+        with _host_timing.stage("emission"):
+            pkg, cb, llvm_text = run_entrypoints(
+                pkg,
+                package_dir,
+                capsule,
+                paths,
+                contract=contract,
+                timeout=timeout,
+                fourth_output_name=cfg.fourth_output_name,
+            )
 
         # ONE DECLARED STIMULUS RANGE, READ BY ALL THREE SIDES. The golden materializes from the
         # capsule (capsule_golden.materialize_capsule_leaves) while the reference interpreter and the
@@ -5656,7 +5660,8 @@ def run_capsule(
                         shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers,
                         simulation_context=_simulation_context):
                     with oracle_source_scope(capsule, oracle_cb, llvm_text, target=eff_target):
-                        res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
+                        with _host_timing.stage("oracle_adapter." + str(tier)):
+                            res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _CarriedPreparedTier as carried:
                 tiers[tier] = carried.result
                 continue
@@ -6674,8 +6679,15 @@ def _run_suite(
 
         # Diagnostic identity only. This worker may execute multiple tiers;
         # selecting/requesting L2 does not make every setup stage an L2 event.
-        with setup_timing.capsule_scope(cap["name"]), _original_capsule_worker_scope():
-            result = _one_native(cap, workers)
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+
+        original = active_original_execution()
+        source = None if original is None else original.source_sha256
+        with setup_timing.capsule_scope(cap["name"], snapshot_id=str(runs_root)):
+            with setup_timing.selected(Path(runs_root) / "host-stage-timing", source,
+                    operation="native_capsule", queue_wait=True), _original_capsule_worker_scope():
+                with setup_timing.stage("capsule_execution"):
+                    result = _one_native(cap, workers)
         gate = cap.get("_driver_model_gate_admission")
         if cap.get("kind") == "model" and isinstance(gate, dict):
             result["model_gate_admission"] = gate

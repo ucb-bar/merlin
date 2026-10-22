@@ -34,6 +34,19 @@ _EMISSION_OBSERVATION = contextvars.ContextVar("original_profile_emission_observ
 _CONCURRENT_EXECUTORS = weakref.WeakSet()
 
 
+@contextlib.contextmanager
+def _verification_compute():
+    """Let ready execution use shared CPUs before background custody work.
+
+    No held lease is preempted and no check is skipped. This context ends before
+    compiler execution, restoring its original author/grade priority.
+    """
+    from merlin.common import cpu_pool
+
+    with cpu_pool.cpu_priority(cpu_pool.VERIFICATION), cpu_pool.shared_compute_pool():
+        yield
+
+
 def finish_snapshot_invocation():
     """Complete the final full custody read before output/receipt publication."""
     close = _INVOCATION_PUBLICATION.get()
@@ -745,9 +758,7 @@ class _Executor:
         write_bytecode=False,
         artifact_profile=None,
     ):
-        from merlin.common import cpu_pool
-
-        with cpu_pool.shared_compute_pool():
+        with _verification_compute():
             self._verify(pkg)
             if write_bytecode:
                 raise ValueError(
@@ -773,7 +784,7 @@ class _Executor:
             outgoing = workspace / "output.json" if output_json is not None else None
             # Schedule source/input/policy preparation before borrowing the command
             # CPU. Release this loan before its separate broker/command lifetime.
-            with cpu_pool.shared_compute_pool():
+            with _verification_compute():
                 copy_plain_file(input_mlir, incoming)
                 policy = self._policy(workspace, pkg.directory)
                 policy = replace(policy, argv=(*policy.argv, "--ro-bind", str(incoming), str(incoming)))
@@ -804,7 +815,7 @@ class _Executor:
                 )
             # Reopen both selections before publishing any staged output. A
             # profile changed during the process cannot authorize its stdout.
-            with cpu_pool.shared_compute_pool():
+            with _verification_compute():
                 self._verify(pkg)
                 P._admit_artifact_protocol(pkg, artifact_profile)
                 if artifact_profile is not None:
@@ -827,7 +838,7 @@ class _Executor:
                     )
                 if outgoing is not None and (outgoing.exists() or outgoing.is_symlink()):
                     copy_plain_file(outgoing, output_json, output=True)
-        with cpu_pool.shared_compute_pool():
+        with _verification_compute():
             self._verify(pkg)
         return result
 

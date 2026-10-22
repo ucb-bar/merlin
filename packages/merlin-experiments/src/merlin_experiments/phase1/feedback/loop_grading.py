@@ -930,6 +930,10 @@ def fast_grade(
                              "detail": _qc._redact_detail(str(failure.get("detail", "")))},
             note="Compiler package rejected before capsule execution; selected obligations remain pending.",
         )
+    if _fast_score.get("package_precheck_refusal"):
+        verdict["package_precheck_refusal"] = {
+            **_fast_score["package_precheck_refusal"], "source_sha256": snapshot_digest,
+        }
     if package_not_ready:
         # Package bootstrap ran; no capsule or oracle did. This is readiness
         # feedback, never a reduced cohort or an empty passing grade.

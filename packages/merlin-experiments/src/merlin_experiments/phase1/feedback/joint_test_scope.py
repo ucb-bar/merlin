@@ -103,6 +103,26 @@ def annotate(verdict, selection):
         selection = dict(selection, pending=sorted(set(selection["pending"]) | set(selection["selected"])),
                          execution_status="blocked_before_capsule_execution")
         verdict.update(all_pass=False, gradeable=False)
+    refusal = verdict.get("package_precheck_refusal") or {}
+    if (failure and not verdict.get("per_capsule")
+            and refusal.get("schema") == "merlin.package_precheck_refusal.v1"
+            and refusal.get("scope") == "selected_suite"
+            and refusal.get("stage") in {"load_package", "integrity_scan"}
+            and refusal.get("candidate_execution_started") is False):
+        # Only the native pre-candidate code path can issue this scope. No case
+        # error/category or arbitrary build process failure expands to siblings.
+        import hashlib
+        diagnostic = {**refusal, "failure": failure}
+        reference = hashlib.sha256(json.dumps(diagnostic, sort_keys=True, allow_nan=False).encode()).hexdigest()
+        verdict["shared_package_diagnostic"] = {**diagnostic, "sha256": reference,
+            "affected_selected": len(selection["selected"]), "reuse_authority": False}
+        verdict["per_capsule"] = [{"capsule": name, "status": "gated", "tiers": {},
+            "execution_status": "not_started", "correctness": "unknown",
+            "shared_package_diagnostic_sha256": reference}
+            for name in selection["selected"]]
+        verdict.update(n_capsules=len(selection["selected"]), n_executed_capsules=0,
+            n_passed=0, mandatory_tiers_complete=False,
+            count_scope="selected_pending_cohort_no_execution")
     verdict["joint_test_selection"] = selection
     verdict["n_required_development"] = selection["required_development"]
     verdict["n_selected_development"] = len(selection["selected"])

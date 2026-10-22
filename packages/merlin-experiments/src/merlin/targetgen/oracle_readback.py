@@ -90,16 +90,29 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
         kwargs["oracle_revalidate"] = revalidate_memory_engine
     from . import executed_program
 
-    res = oot_compile.run_on_oracle(
-        cb, llvm_text, simulator=sim, target=target, workdir=workdir, timeout=timeout, **kwargs
-    )
-    return executed_program.retain(
-        res,
-        sim=sim,
-        workdir=workdir,
-        compiler_artifacts={"command_buffer": cb, "lowered_mlir": llvm_text},
-    )
+    from contextlib import ExitStack
+    from merlin_experiments.phase1.feedback import setup_timing
 
+    # The native callback is after ELF build/admission and before engine execution.
+    # Keep its original observer first: a carried tier must not look simulated.
+    with ExitStack() as stages:
+        stages.enter_context(setup_timing.stage("oracle_compile_link_admit"))
+        def before_timed_execution(elf):
+            if before_execution is not None:
+                before_execution(elf)
+            stages.close()
+            stages.enter_context(setup_timing.stage("oracle_simulation_readback." + str(sim)))
+        kwargs["before_execution"] = before_timed_execution
+        res = oot_compile.run_on_oracle(
+            cb, llvm_text, simulator=sim, target=target, workdir=workdir, timeout=timeout, **kwargs
+        )
+    with setup_timing.stage("oracle_result_retention"):
+        return executed_program.retain(
+            res,
+            sim=sim,
+            workdir=workdir,
+            compiler_artifacts={"command_buffer": cb, "lowered_mlir": llvm_text},
+        )
 
 def run_with_readback(
     cb,

@@ -458,6 +458,12 @@ def run_pipelined(
         return remaining > 0 and ((admission_allow_oversized_first and not admitted)
                                   or admission_costs.get(str(cap["name"]), 0.0) <= remaining)
 
+    def submit(pool, capsule, parallel):
+        from merlin_experiments.phase1.feedback import setup_timing
+
+        with setup_timing.queued():
+            return pool.submit(copy_context().run, run_one, capsule, parallel)
+
     def start(cap):
         if on_start is not None:
             on_start(cap)
@@ -629,7 +635,7 @@ def run_pipelined(
                 if item is None:
                     break
                 start(capsules[item[1]])
-                future = pool.submit(copy_context().run, run_one, capsules[item[1]], 1)
+                future = submit(pool, capsules[item[1]], 1)
                 done, _ = wait([future], timeout=calibration_budget_s)
                 if not done:
                     # A slow head teaches its tier order too late to be worth the idle workers: keep it
@@ -650,7 +656,7 @@ def run_pipelined(
                     break
                 *_, name = item
                 start(capsules[index[name]])
-                running[pool.submit(copy_context().run, run_one, capsules[index[name]], max_workers)] = name
+                running[submit(pool, capsules[index[name]], max_workers)] = name
             if len(results) + len(running) == len(capsules):
                 notify_closed("all selected work admitted or completed")
             if not running:

@@ -45,8 +45,9 @@ AUTHOR = 1  # work the author requested and waits on: self-checks, simulation jo
 GRADE = 2  # in-turn, background and round grade capsules; the default for an unclassified lease
 PREPARATION = 3  # run and input preparation that no requester is blocked on yet
 AUXILIARY = 4  # advisory probes and telemetry
+VERIFICATION = 5  # repeatable background custody/preparation, below useful execution
 PRIORITY_ENV = "MERLIN_CPU_PRIORITY"
-_PRIORITIES = (AUTHOR, GRADE, PREPARATION, AUXILIARY)
+_PRIORITIES = (AUTHOR, GRADE, PREPARATION, AUXILIARY, VERIFICATION)
 _PRIORITY = ContextVar("cpu_lease_priority", default=None)
 # Cross-process waiter queue inside each slot namespace. An entry is a uniquely
 # named file whose owner holds an exclusive flock on it while waiting, so a dead

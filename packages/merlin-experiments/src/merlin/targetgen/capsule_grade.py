@@ -1386,12 +1386,15 @@ def grade(
     from merlin.common.cpu_pool import shared_compute_pool
 
     # K0/K1: load + integrity scan + build (fail-closed, recorded honestly)
+    package_precheck_stage = "load_package"
     try:
         with shared_compute_pool(timeout_s=timeout):
             pkg = load_package(pkg_dir, contract=contract)
             score["integrity_exempt"] = pkg.integrity_exempt
+            package_precheck_stage = "integrity_scan"
             integrity_scan(pkg, **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}))
             score["integrity_status"] = "clean" if not pkg.integrity_exempt else "exempt"
+        package_precheck_stage = None  # Arbitrary build execution is NOT a shared host-check refusal.
         build_package(pkg)
         # A manifest can land before its source entrypoint during authoring.
         # Check once, after a declared build has had the chance to produce it,
@@ -1403,6 +1406,12 @@ def grade(
         score["integrity_status"] = f"FAIL[{cf.plane}]: {cf.detail[:200]}"
         score["functional_pass"] = 0
         score["failure"] = {"plane": cf.plane, "category": str(cf.category), "detail": cf.detail}
+        if package_precheck_stage is not None:
+            score["package_precheck_refusal"] = {
+                "schema": "merlin.package_precheck_refusal.v1", "scope": "selected_suite",
+                "stage": package_precheck_stage, "candidate_execution_started": False,
+                "suppression": "native_pre_fanout_package_gate", "reuse_authority": False,
+            }
         return score
 
     with shared_compute_pool(timeout_s=timeout):

@@ -176,3 +176,40 @@ def test_policy_stage_observation_preserves_decision_and_refusal(tmp_path, monke
         with pytest.raises(RuntimeError, match='remains exposed'):
             H._final_answer_policy([], None, tmp_path, {}, repo=tmp_path)
     assert json.loads(refused.path.read_text())['last_failure']['stage'] == 'package_policy.apply_masks'
+
+
+def test_submission_wait_is_measured_only_when_explicitly_selected(tmp_path):
+    with T.queued():
+        with T.selected(tmp_path, 'source', queue_wait=True) as outer:
+            with T.selected(tmp_path, 'source') as inner:
+                with T.stage('emission'):
+                    pass
+    rows = json.loads(outer.path.read_text())['stages']
+    assert rows[0]['stage'] == 'scheduler_submission_wait' and rows[0]['elapsed_s'] >= 0
+    assert [row['stage'] for row in json.loads(inner.path.read_text())['stages']] == ['emission']
+
+
+def test_native_oracle_boundary_retains_original_observer_and_timeout(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import subprocess
+    from merlin.targetgen import oracle_readback as O, executed_program
+    from merlin.targetgen.contract import compile as C
+
+    observed = []
+    monkeypatch.setattr(O, 'validate_engine_policy', lambda *args, **kwargs: None)
+    monkeypatch.setattr(executed_program, 'retain', lambda result, **kwargs: result)
+    policy = SimpleNamespace(transport='console')
+    def execute(*args, **kwargs):
+        assert json.loads(timeline.path.read_text())['current_stage'] == 'oracle_compile_link_admit'
+        kwargs['before_execution'](tmp_path / 'program.elf')
+        assert json.loads(timeline.path.read_text())['current_stage'] == 'oracle_simulation_readback.test'
+        raise subprocess.TimeoutExpired(['engine'], 7)
+    monkeypatch.setattr(C, 'run_on_oracle', execute)
+    with T.selected(tmp_path, 'source') as timeline:
+        with pytest.raises(subprocess.TimeoutExpired):
+            O._run({}, '', sim='test', target='target', backend=object(), workdir=tmp_path,
+                   timeout=7, policy=policy, before_execution=lambda elf: observed.append(elf))
+    assert observed == [tmp_path / 'program.elf']
+    result = json.loads(timeline.path.read_text())
+    assert result['last_failure']['stage'] == 'oracle_simulation_readback.test'
+    assert result['stages'][0]['status'] == 'returned'

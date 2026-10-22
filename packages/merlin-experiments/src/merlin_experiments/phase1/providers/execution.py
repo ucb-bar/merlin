@@ -15,6 +15,7 @@ from functools import partial
 from pathlib import Path
 
 from merlin.common import arrival_stamp as AS
+from merlin.common.cpu_pool import AUTHOR, with_priority
 from merlin.targetgen import experiment_tokens as ET
 
 from .. import author_subagents
@@ -135,6 +136,9 @@ def billing_mode(model: str, *, config: ProviderConfig) -> str:
         return ET.METERED
 
 
+# Sandbox verification is on the author launch/resume critical path. Change only
+# admission priority: do not reserve a core or hold a lease over the paid turn.
+@with_priority(AUTHOR)
 def sandbox_command(
     inner: str,
     ws: Path,
@@ -226,6 +230,7 @@ def sandbox_command(
     return _BW.compose_command(parts, " bash -c '" + payload.replace("'", "'\\''") + "'", ws)
 
 
+@with_priority(AUTHOR)
 def codex_sandbox_command(inner, ws, bundle, extra_binds=None, *, context, private_run_dir, runtime):
     from merlin.targetgen.sandbox import toolchain as TC
     from merlin.targetgen.target_experiment import load_target_experiment

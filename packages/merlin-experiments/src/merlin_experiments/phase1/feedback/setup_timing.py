@@ -14,6 +14,17 @@ from pathlib import Path
 _ACTIVE = contextvars.ContextVar('compiler_setup_timing', default=None)
 _CAPSULE = contextvars.ContextVar('compiler_setup_capsule', default=(None, None))
 _IDENTITY = contextvars.ContextVar('compiler_host_identity', default={})
+_QUEUED = contextvars.ContextVar('compiler_host_queued', default=None)
+
+
+@contextlib.contextmanager
+def queued():
+    """Stamp actual executor submission; excludes dependency/admission waiting."""
+    token = _QUEUED.set((os.getpid(), time.monotonic(), time.time_ns()))
+    try:
+        yield
+    finally:
+        _QUEUED.reset(token)
 
 
 def _thread_identity():
@@ -98,11 +109,18 @@ class Timeline:
 
 
 @contextlib.contextmanager
-def selected(root, source_sha256, *, operation=None, request_id=None, snapshot_id=None):
+def selected(root, source_sha256, *, operation=None, request_id=None, snapshot_id=None, queue_wait=False):
     timeline = Timeline(root, source_sha256, operation=operation, request_id=request_id,
                         snapshot_id=snapshot_id)
     token = _ACTIVE.set(timeline)
     try:
+        queued_at = _QUEUED.get() if queue_wait else None
+        if queued_at is not None and queued_at[0] == os.getpid():
+            timeline.rows.append(dict(stage='scheduler_submission_wait', stage_id=0,
+                parent_stage_id=None, status='returned', started_ns=queued_at[2],
+                finished_ns=time.time_ns(), elapsed_s=max(0, time.monotonic()-queued_at[1]),
+                **_thread_identity()))
+            timeline.write()
         yield timeline
     finally:
         _ACTIVE.reset(token)
