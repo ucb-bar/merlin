@@ -195,21 +195,40 @@ def test_native_complete_outputs(tmp_path, compiler, kind, shape, nested):
 
 @pytest.mark.slow
 def test_retained_receipts_replay(tmp_path, compiler):
-    receipts = sorted(
-        (artifacts_dir() / "verification/merlin-passes/frontend/qinner/boundaries").glob("*/receipt.json")
+    root = Path(
+        os.environ.get(
+            "MERLIN_QINNER_RECEIPT_ROOT", str(artifacts_dir() / "verification/merlin-passes/frontend/qinner-decoder")
+        )
     )
+    receipts = sorted((root / "boundaries").glob("*/receipt.json"))
     assert len(receipts) >= 6, "Generate positive and unchanged-model Qinner receipts first"
     for index, path in enumerate(receipts):
         result = replay(path, tmp_path / str(index), compiler_python=compiler)
         assert result["fresh"] and result["checked"] and result["matches_recorded"], (path, result)
 
 
-@pytest.mark.parametrize("mutation", ["swap", "missing", "key", "shape", "dtype", "bytes", "duplicate_archive"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "swap",
+        "missing",
+        "key",
+        "shape",
+        "dtype",
+        "bytes",
+        "duplicate_archive",
+        "byte_order",
+        "layout",
+        "byte_swap",
+        "bool_encoding",
+    ],
+)
 def test_lean_runtime_certificate_rejects(tmp_path, compiler, mutation):
     from merlin.verify.lean.qinner import run_binding, runtime_document
 
-    generated = exported(tmp_path, compiler)
-    certificate = runtime_document(generated["plan"], arrays())
+    kind = "i1" if mutation == "bool_encoding" else "f32"
+    generated = exported(tmp_path, compiler, fixture(kind))
+    certificate = runtime_document(generated["plan"], arrays(kind))
     write(tmp_path / "binding.json", certificate)
     assert run_binding(tmp_path / "propagated.json", tmp_path / "target.json", tmp_path / "binding.json")["checked"]
     rows = certificate["delivered"]
@@ -225,6 +244,15 @@ def test_lean_runtime_certificate_rejects(tmp_path, compiler, mutation):
         rows[0]["type"]["element"] = {"kind": "int", "width": 32}
     elif mutation == "bytes":
         rows[0]["hex"] = "ff" * 16
+    elif mutation == "byte_order":
+        certificate["byte_order"] = "big"
+    elif mutation == "layout":
+        certificate["layout"] = "column_major"
+    elif mutation == "bool_encoding":
+        rows[0]["hex"] = "02" + rows[0]["hex"][2:]
+    elif mutation == "byte_swap":
+        raw = bytes.fromhex(rows[0]["hex"])
+        rows[0]["hex"] = b"".join(raw[i : i + 4][::-1] for i in range(0, len(raw), 4)).hex()
     else:
         certificate["archive"].append(copy.deepcopy(certificate["archive"][0]))
     write(tmp_path / "binding.json", certificate)

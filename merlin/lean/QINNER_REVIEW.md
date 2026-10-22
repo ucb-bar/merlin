@@ -1,141 +1,199 @@
-# Quant-inner propagation and lifting review packet
+# Qinner binding and concrete byte decoder review
 
-Status: provisional, pending independent human review. No approval is asserted by a passing test,
-checker acceptance, proof audit, or an `abstracted` receipt. Nothing in SPEC_LOCK is changed.
+Status: provisional, pending independent human review. Checker acceptance, passing tests, receipts
+and a clean proof audit are not human approval or approved full verification. No frozen semantics,
+SPEC_LOCK, production pass, shared Main/CLI, W8A8 or boolean work is changed.
 
-## The claim proposed for review
+## Proposed claim
 
-For an accepted complete boundary, the prepared source interpreted with explicit named runtime
-bindings has exactly the same execution outcome and complete ordered result list as the lifted
-program supplied with the original arguments followed by the checked named tensors. The argument
-count must match the original entry block. The theorem quantifies over the float model, index
-width, unchanged computations, external-call implementations and byte decoder. All functions,
-nested regions, captured SSA uses, function signatures and outputs are checked. Internal calls to
-the signature-changing `@forward` are rejected; declarations keep the same external interpretation.
+An accepted Qinner boundary has exactly equal complete program outcomes under two explicit
+interpretations: the source's tagged empties denote the named archive tensors, while the target
+receives the same tensors as ordered trailing entry arguments. The specialized claim now uses a
+concrete little-endian, row-major byte decoder. Its accepted values are proved correctly typed,
+initialized and bit-exact. The original entry argument count must match. Calls, nested regions,
+captured SSA values, complete outputs and signatures participate in checking.
 
-The source binding interpretation is explicit: a well-formed tagged static `tensor.empty`
-produces the value named by its key. This is the meaning implemented by the host interpreter when
-its qinner dictionary is supplied. It is **not** the frozen poison-producing `tensor.empty`
-meaning, and is not presented as an approved original-source equivalence theorem.
+The strongest specialization is `MerlinVerify.Check.QinnerDecoded.program_equal`. It has no
+arbitrary decoder parameter. It requires the complete transformation checker, the concrete
+runtime-certificate checker, an existing changed `@forward`, and original entry arity. Its source
+binding function is `QinnerRuntime.binding archive QinnerDecoded.interpret`. The target receives
+`args ++ delivered.map QinnerDecoded.interpret`. The theorem quantifies over the float model,
+index width, unchanged operation meanings and common external-call implementation.
 
-The strongest combined theorem is `MerlinVerify.Check.QinnerRuntime.program_equal`. Its premises
-are acceptance of the complete transformation, acceptance of the full runtime byte certificate,
-a changed boundary with a defined `@forward`, and original entry argument arity. Its result is
-exact equality of complete program outcomes under the named-binding interpretation. The byte
-decoder remains an explicit parameter. No assumption about every unchanged model computation's
-successful execution is needed or introduced.
+The binding interpretation is explicit. It gives a tagged empty the named runtime value; the
+frozen ordinary `tensor.empty` interpretation produces poison. The lift claim is not promoted to
+literal original-MLIR source equivalence. Neither typing nor decoder initialization repairs the
+refuted scalar-square numerical law or supplies multiplication-policy approval.
 
-## What propagation changes
+## Actual archive and C representation
 
-`_propagate_quant_inner` only assigns `prov.quant_inner` on `tensor.empty` producers. The checker
-reconstructs consumer operand indices, follows supported view wrappers to their producers, and
-compares the entire expected output. It also compares the complete AST after erasing only that
-one producer attribute. The value-preservation theorem
-`MerlinVerify.Check.QinnerPropagation.check_sound` uses the frozen semantics and covers every
-function, region, output and call, including unsuccessful outcomes.
+The production `qinner.resolve` loads `extra.npz` entries named `qinner::<key>`, applies
+`np.ascontiguousarray`, and checks exact shape and NumPy dtype spelling. Supported archive dtypes
+are bool, int8/int16/int32/int64 and float16/float32/float64. C generation invokes that resolver,
+then appends `np.ascontiguousarray(arr).tobytes()` to its weights blob without an endian conversion.
+Its argument rows carry shape, rank, element byte size and blob offset, with qinner rows after the
+original arguments and before quant-hoist rows. `DT_BYTES["i1"]` is 1; the C storage is a signed
+char. This is byte-per-bool host storage, not packed DenseElements i1 storage.
 
-This attribute is semantics-free **in the frozen tensor-value semantics**, under the existing
-reviewed annotation policy. It is not irrelevant to execution infrastructure: the interpreter
-uses it to choose real arrays, and the outliner prevents cloning tagged empties. Consequently,
-metadata-only change is not by itself proof of correct runtime binding.
+Consequently this qualification requires a little-endian host and native little-endian array
+dtypes. The certificate producer rejects unsupported endian representations rather than
+byte-swapping them into a different representation. Fortran arrays are accepted through the
+production resolver's actual conversion to contiguous C order. The emitted bytes are compared
+against generated C blob slices and the complete rank/shape/element-size rows.
 
-The production walk follows operand zero through any operation for up to eight owners, and its
-return count counts requests, including requests that find no producer. The verification domain
-admits only the declared view wrappers and requires the empty to be found within eight owners.
-Unsupported walks and out-of-range indices are rejected. Repeated consistent requests for the
-same empty are allowed. Conflicting requests and one archive key on distinct empties are refused.
-The latter is deliberately narrower than the production pass's behavior.
+Canonical i1 bytes are exactly 00 and 01. NumPy can carry bool arrays whose raw storage contains
+02, 80 or ff, and the production resolver checks dtype and shape without canonicalizing those
+bytes. The concrete checker rejects them. This is an explicit restriction on the verified input
+domain; production code is untouched and a raw archive counterexample is retained.
 
-The ordinary xDSL custom printer drops producer attributes on `tensor.empty`. Evidence captures
-the in-memory result with the generic printer and independently checks MLIR export and Lean
-round trips. Retained models have no tags, so their historical printed boundaries are unchanged.
-`qinner.lift` re-runs propagation itself.
+The formal decoder can describe a static rank-zero tensor's bytes. That does not make the current
+archive runtime accept a scalar array: `ascontiguousarray` promotes its shape from () to (1,), so
+`resolve` rejects it. The earlier rank-zero counterexample is preserved.
 
-## Argument and byte mapping
+## Concrete decoder contract
 
-The source census is a full module-order traversal, including nested blocks. One trailing entry
-argument is paired with each distinct accepted tagged empty, in that order. Its complete MLIR
-static tensor type, shape, element type and encoding must match. Every use must follow that
-pairing. The checker rejects removed/reordered arguments, changed uses, changed original inputs,
-changed result lists/types and unrelated operations or metadata changes.
+`Rules/QinnerDecoder.lean` supports signless MLIR i1/i8/i16/i32/i64 and f16/f32/f64 tensors with
+static dimensions and no encoding. Signed host integers map to signless bit vectors preserving
+their two's-complement storage. bf16, index, unusual integer widths, encoded/dynamic tensors and
+nontensor payloads are rejected. A matching byte count does not make an unsupported type valid,
+including when the tensor has zero elements.
 
-The runtime certificate contains complete little-endian, row-major byte vectors, declared types
-and keys for both the archive entries and the delivered trailing arguments. Lean checks unique
-keys, full byte equality in ABI order, exact types/shapes and storage lengths, including the
-one-byte host storage convention for i1. A wrong tensor with the same shape and dtype fails.
-`QinnerRuntime.values_equal` proves that any common decoder gives precisely the ordered values
-required by the SSA/whole-program theorem. Hashes bind files in receipts; they do not replace
-full tensor comparison in that checker.
+The decoder requires `byte_order = "little"` and `layout = "row_major"`, an exact byte count of
+`shapeSize(shape) * elementStorageBytes`, and canonical bool bytes. At in-bounds coordinate `i`,
+it reads exactly the element-sized slice beginning at
+`linearIndex(shape, i) * elementStorageBytes`. That slice is interpreted as
+`b[0] + 256*b[1] + 256^2*b[2] + ...`. Integer and float scalars are constructed directly from the
+corresponding bit vector. There is no float evaluation, conversion, rounding or NaN normalization.
 
-The Python qualification runner uses the actual production `plan`, `lift` and `resolve`, checks
-that plan and appended argument records agree, and re-runs the actual pass against the complete
-retained output. Source, in-memory propagation and output exports are round-tripped through
-MLIR and Lean. Replay re-exports, re-executes both passes, re-checks signatures, bodies and full
-runtime certificates, and refuses changed input, dependency or compiler bytes.
+The proofs establish:
 
-## Runtime assumptions requiring explicit review
+- `decode_typed_initialized`: every accepted payload successfully decodes to a tensor with its
+  declared runtime type and nonpoison elements at every in-bounds coordinate.
+- `complete_chunk`: every observed cell has its full slice inside the payload. Success does not
+  rely on missing bytes being padded or reads falling outside the tensor.
+- `exact_bits`: no high bits are truncated, including i1's full canonical host byte. The resulting
+  scalar word is exactly the little-endian value of the corresponding row-major slice.
+- `exact_byte` and `decoded_cells`: extracting any stored byte from that word recovers the original
+  byte. This covers every bit of signed boundaries, negative zero, infinities and both quiet and
+  signaling NaNs, including sign and payload bits.
+- `expectedCheck_sound`: standalone acceptance additionally matches the caller's complete expected
+  type and shape, and establishes typing/initialization for that expected type.
 
-1. A capture-owned `qinner::<key>` names the elided tensor before any intervening view. The archive
-   bytes, dtype and shape must be authentic capture data. The proof cannot establish archive
-   authenticity or fix an incorrect upstream annotation.
-2. The actual runtime must deliver the certified tensor bytes after the original entry arguments,
-   in the checked order. For the C path, `c_runtime.generate` derives qinner arguments from
-   `model.mlir`, resolves them, appends blob rows in order, and places quant-hoist rows afterwards.
-   That implementation was inspected, but its generated C descriptors, allocator, device ABI and
-   eventual deployment are not proved here.
-3. Byte decoding and host storage must match the runtime's MLIR tensor representation, including
-   endianness, element widths and bool storage. The theorem exposes the decoder rather than
-   silently assuming that correspondence. Each delivered value must be typed and initialized
-   when a successful, poison-free execution claim is desired.
-4. External declarations use the same implementation/contracts in both executions. There is no
-   additional assumption that arbitrary unchanged model computations succeed or avoid poison.
+Empty dimensions require zero payload bytes. They yield correctly typed, initialized empty
+tensors; their vacuous element obligations do not weaken type, format or length checks.
 
-## Proved versus measured
+Raw bytes cannot reveal the endianness their producer intended. The decoder rejects an explicit
+big-endian label, the archive intake rejects nonnative/big-endian dtypes, and byte-swapped delivered
+payloads fail archive equality. If someone changes both the bytes and their purported provenance
+while keeping a little-endian label, they have supplied different tensor data; this theorem does
+not authenticate that data or infer the intended original values.
 
-Proved: metadata value preservation under frozen semantics; complete propagation reconstruction;
-SSA substitution through nested regions and calls; complete-program equality under the explicit
-binding interpretation; exact signature/type/order checks; full-byte certificate soundness and
-its connection to program arguments. Proofs use only propext, Classical.choice and Quot.sound.
-The isolated driver imports a positive `QinnerExecution.accepted` theorem and proves successful,
-poison-free execution on an explicit inhabited initialized domain for that example.
+## Connection to binding and complete programs
 
-Measured: actual production-pass fixtures cover f16/f32/f64, i1/i8/i16/i32/i64, several ranks,
-singletons and empty dimensions. Native upstream MLIR comparisons cover all outputs of direct
-and nested/calling fixtures against separately initialized valid references; inputs and raw
-result bits are retained. These observations are evidence about tooling, not a proof that every
-native compiler or deployment implements the Lean model.
+`Check/QinnerDecoded.lean` requires the existing full runtime-binding check and concrete payload
+checks for archive and delivered records. The binding check requires unique keys, exact full
+byte-vector equality, exact types/shapes and ABI order. Digests only bind receipt files; they do
+not substitute for full payload comparison.
 
-Neither retained SmolVLA nor TinyLlama boundary contains quant-inner tags. Their receipts are
-labeled `unchanged`, with zero lifted sites. Positive lifting receipts are separately labeled
-synthetic fixtures. No claim that these models exercise qinner lifting is made.
+`delivered_sound` proves typing and initialization of accepted delivered values.
+`binding_typed_initialized` proves `BindingTyped` and `BindingClean` for all named source bindings,
+so no accepted slot uses the missing-key poison default. These facts concern the added tensors,
+not the successful execution of every unchanged model operation.
 
-## Retained refusals and limitations
+`program_equal` specializes the existing whole-program proof to this concrete interpretation.
+The original SSA proof checks every use and output and composes through nested regions and calls.
+Only `@forward` gains arguments; calls to that affected entry are refused. All unchanged external
+symbols keep the same implementation/contracts. No premise asserts source/target program equality
+or correct results for an inventory of unchanged model computations.
 
-`../counterexamples/` retains conflicting consumer tags, duplicate keys, custom-printer metadata
-loss, and the rank-zero runtime array rejection. `resolve` calls NumPy's contiguous conversion,
-which promotes a scalar array from shape () to (1,), so a rank-zero plan is rejected. Production
-code is unchanged. The local semantic theorem does not turn that runtime refusal into success.
+## Which assumptions this removes
 
-Typing, successful execution and absence of poison remain separate. Program correspondence may
-relate two stuck or UB outcomes, and typed tensors can contain poison. This work does not assert
-whole-capture definedness. The earlier scalar-square numerical counterexamples are preserved;
-the refuted power-to-multiplication law remains refuted and no multiplication policy is approved.
+The previous theorem permitted an arbitrary common decoder. The specialization removes that
+parameter and the need to assume the decoded added values have the declared types or contain no
+poison. Little-endian interpretation, row-major indexing, widths, exact lengths, canonical bool
+storage and exact scalar bits are now implemented and proved in Lean. No numerical axiom or new
+assumption is introduced; audited proofs use only propext, Classical.choice and Quot.sound.
 
-## Reproduce and inspect
+The following obligations remain explicit:
 
-Run `.venv/bin/python build_tools/scripts/verify_qinner.py --compiler-python <model2MLIR-python>`.
-Supply `--stage LABEL <0004_propagation-directory> <0005_lift-directory>` for each retained model.
-The exact original paths are retained in the run summary and the capture stage pointers
-can be recovered from the scalar-square receipts. Use the same compiler interpreter path, not
-its resolved base Python executable.
+1. The archive bytes and `qinner::<key>` annotations must authentically identify the captured
+   tensors before any intervening view. This work does not prove capture/archive authenticity.
+2. The host loader, NumPy representation, generated C, native compiler, descriptors and eventual
+   runtime must implement the stated byte interpretation and deliver the certified ordered bytes.
+   Their agreement is tested concretely, not proved by the Lean decoder. Hardware and deployment
+   correspondence are outside this local claim.
+3. Unchanged external-call implementations/contracts must be common to both executions.
+4. A whole-model success or poison-free-output claim still needs obligations for unchanged
+   computations and original inputs. Initializing added tensors does not prove those obligations.
 
-Run `.venv/bin/python -m pytest -m 'not slow' merlin/tests/ir/test_lean_qinner.py` and then
-`.venv/bin/python -m pytest -m slow merlin/tests/ir/test_lean_qinner.py`. The latter replays every
-retained receipt. `../summary.json`, `../FINDINGS.md`, `../manifest.json` and the per-run proof audit
-record the final qualification. The audit includes printed theorem statements and checks all
-imported proofs for unapproved axioms and prohibited proof constructs.
+## Propagation and lift scope retained
 
-Review should decide whether the named-binding intent and the explicit runtime assumptions are
-the intended paper contract. It should not convert provisional evidence into an unconditional
-original-MLIR, whole-model definedness, or target-runtime claim. The proofs and receipt format
-remain outside shared Main/CLI integration until that integration is coordinated separately.
+`_propagate_quant_inner` changes only `prov.quant_inner` on producer `tensor.empty` operations.
+The complete propagation checker reconstructs consumer indices and supported view chains, checks
+its expected complete output and proves complete value preservation under frozen semantics.
+That metadata is not irrelevant to runtime infrastructure: it selects interpreter bindings and
+prevents the outliner from cloning those empties.
+
+The verification domain admits supported view wrappers and at most eight producer owners. It
+refuses unsupported operand-zero walks, missing producers, out-of-range indices, conflicting tags
+and duplicate keys on distinct empties. Repeated consistent requests for one empty are allowed.
+The production request count includes failed walks; covered-site counts are independently derived.
+The generic printer preserves producer attributes for evidence; ordinary custom-printer loss is
+retained as an earlier counterexample.
+
+## Evidence, replay and preservation
+
+The current qualification is under `out/artifacts/verification/merlin-passes/frontend/qinner-decoder/`.
+`summary.json` identifies the exact run; `FINDINGS.md`, `qualification/`, `manifest.json` and per-run
+proof-audit statements record results and limitations. Receipts stay abstracted and unapproved.
+
+Runtime receipts use `merlin.lean.qinner.v2` and concrete runtime certificates use
+`merlin.qinner.runtime.le.v2`. Replay checks dependency/compiler/input freshness, reruns actual
+propagation/lifting, round-trips complete MLIR exports and checks the concrete runtime payloads.
+Standalone decoder receipts bind full requests/results and archives; replay reloads those archives,
+reruns production `resolve`, reconstructs the exact payload bytes and reruns Lean decoding.
+
+Archive/native observations include all supported types, signed boundaries, signed zero, infinities,
+subnormals, quiet/signaling NaNs with payloads, and empty tensors. They compare every decoded bit
+with native MLIR results and every generated C blob byte with resolved archive data. Tests also
+cover singleton ranks, Fortran-order archives, wrong expected types/shapes, wrong lengths/order,
+unsupported empty tensor types and invalid bool encodings. These are empirical host-correspondence
+checks, not proofs of host or deployment correctness.
+
+SmolVLA and TinyLlama remain unchanged zero-lift boundaries. Positive lifting receipts are separately
+labeled synthetic cases with actual rewrites and real archive bindings. No positive model coverage
+is inferred from unchanged receipts.
+
+The prior Qinner contract is committed as `f15b41efe`. Its original evidence and counterexamples
+remain byte-identical under the earlier `frontend/qinner/` directory. Old receipts remain bound to
+the older checker sources and should be replayed with that version, not treated as current decoder
+receipts. Decoder qualification uses a separate output directory. Prior scalar-square/Overrank
+checkpoints and numerical counterexamples remain preserved.
+
+## Qualification of this version
+
+The Lean audit checks 2,587 imported theorems with zero violations and prints 24 claim statements.
+All 161 relevant fast tests pass. Two independent slow tests replay all 11 program and 16 decoder
+receipts successfully. Sixteen archive/native cases (32 samples) match every output bit. Nine
+positive program boundaries perform 18 lifts; both retained model boundaries remain unchanged.
+
+Source-layout/membership tests, Ruff and documentation freshness pass. The repository structure
+gate retains the unrelated pre-existing `zephyr_model.py` ceiling failure (3,557 versus 3,537
+lines); that file is outside this change. Generated evidence remains local under the directory
+above and is reproduced by the committed qualification script.
+
+## Reproduce
+
+Run `.venv/bin/python build_tools/scripts/verify_qinner_decoder.py --compiler-python <model2MLIR-python>`.
+Add `--stage LABEL <0004-propagation-directory> <0005-lift-directory>` for each retained model.
+Use the environment interpreter path rather than its resolved base executable.
+
+Run `.venv/bin/python -m pytest -m 'not slow' merlin/tests/ir/test_lean_qinner.py
+merlin/tests/ir/test_lean_qinner_decoder.py merlin/tests/ir/test_qinner_binding.py`, then run the two
+Qinner test modules with `-m slow`. The slow tests replay program-binding and decoder receipts.
+An alternative evidence directory is selected with `MERLIN_QINNER_RECEIPT_ROOT`.
+
+The standalone driver supports propagation, lifting, concrete runtime `binding`, payload `decode`
+and MLIR `print` modes. Shared Main/CLI integration remains separate. Independent human review
+should approve the named-binding intent and stated remaining assumptions before any paper claim;
+it must not convert these results into unconditional original-MLIR or whole-model verification.

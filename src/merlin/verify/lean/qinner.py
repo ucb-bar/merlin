@@ -23,6 +23,14 @@ from merlin.verify.lean.export import export_file, round_trip_exported
 MODULE = "MerlinVerify.Driver.Qinner"
 THEOREMS = [
     "MerlinVerify.Check.Qinner.check_sound",
+    "MerlinVerify.Rules.QinnerDecoder.decode_typed_initialized",
+    "MerlinVerify.Rules.QinnerDecoder.exact_bits",
+    "MerlinVerify.Rules.QinnerDecoder.exact_byte",
+    "MerlinVerify.Rules.QinnerDecoder.decoded_cells",
+    "MerlinVerify.Check.QinnerDecoded.expectedCheck_sound",
+    "MerlinVerify.Check.QinnerDecoded.delivered_sound",
+    "MerlinVerify.Check.QinnerDecoded.binding_typed_initialized",
+    "MerlinVerify.Check.QinnerDecoded.program_equal",
     "MerlinVerify.Check.QinnerRuntime.check_sound",
     "MerlinVerify.Check.QinnerRuntime.values_equal",
     "MerlinVerify.Check.QinnerRuntime.program_equal",
@@ -153,6 +161,7 @@ def dependencies():
         repo_root() / name
         for name in (
             "src/merlin/verify/lean/qinner.py",
+            "src/merlin/verify/lean/qinner_decoder.py",
             "src/merlin/verify/lean/export.py",
             "src/merlin/verify/lean/mlir_export.py",
             "src/merlin/llvmlower/qinner.py",
@@ -214,35 +223,18 @@ def check_runtime(plan, extra, actual_arrays=None):
 
 def runtime_document(plan, extra, delivered=None):
     """Complete byte vectors for Lean's ordered ABI checker; preserve row-major little endian."""
-    import numpy as np
-
     from merlin.llvmlower.qinner import QinnerArg, resolve
 
     args = [QinnerArg.from_json(row) for row in plan]
     expected = resolve(extra, args)
     actual_values = expected if delivered is None else delivered
 
-    def blob(arg, value):
-        array = np.ascontiguousarray(value)
-        array = array.astype(array.dtype.newbyteorder("<"), copy=False)
-        if array.dtype.kind == "b":
-            element = {"kind": "int", "width": 1}
-        elif array.dtype.kind == "i":
-            element = {"kind": "int", "width": array.dtype.itemsize * 8}
-        elif array.dtype.kind == "f":
-            element = {"kind": "float", "format": f"f{array.dtype.itemsize * 8}"}
-        else:
-            raise ValueError(f"unsupported runtime dtype {array.dtype}")
-        return {
-            "key": arg.key,
-            "type": {"kind": "tensor", "shape": list(array.shape), "element": element, "encoding": None},
-            "hex": array.tobytes().hex(),
-        }
+    from merlin.verify.lean.qinner_decoder import document, payload
 
-    return {
-        "archive": [blob(arg, arr) for arg, arr in zip(args, expected, strict=True)],
-        "delivered": [blob(arg, arr) for arg, arr in zip(args, actual_values, strict=True)],
-    }
+    return document(
+        [payload(arg.key, arr) for arg, arr in zip(args, expected, strict=True)],
+        [payload(arg.key, arr) for arg, arr in zip(args, actual_values, strict=True)],
+    )
 
 
 def run_binding(source, target, certificate):
@@ -312,7 +304,8 @@ def check_boundary(before, after, destination, *, compiler_python, extra_path=No
     )
     accepted = accepted and report.get("runtime_checker", {"checked": True})["checked"]
     receipt = {
-        "schema": "merlin.lean.qinner.v1",
+        "schema": "merlin.lean.qinner.v2",
+        "concrete_decoder": "little_endian_row_major_canonical_host_i1",
         "verdict": "abstracted" if accepted else "rejected",
         "checked": accepted,
         "approved": False,
