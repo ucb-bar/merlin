@@ -2163,7 +2163,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
     }
 
     # Standard MLIR only.  The provenance attributes describe placement obligations to any backend;
-    # they do not encode a target command or target name.
+    # they do not encode a target command or target name. These node identities
+    # name the generated direct-IR operations, not an observed framework capture.
     lines = [
         'builtin.module attributes {prov.level = "linalg-on-tensors"} {',
         f"  func.func @forward(%{a}: tensor<{M}x{K}x{midt}>, "
@@ -2179,7 +2180,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
         f'iterator_types = ["parallel", "parallel", "reduction"]}} '
         f"ins(%{a}, %{w0} : tensor<{M}x{K}x{midt}>, tensor<{K}x{H}x{midt}>) "
         f"outs(%acc0_init : tensor<{M}x{H}x{madt}>) attrs = "
-        f'{{prov.region_id = "contraction_0", prov.op = "matmul", prov.family = "contraction"}} {{',
+        f'{{prov.region_id = "contraction_0", prov.source_node_ids = ["direct_ir.contraction_0"], '
+        f'prov.op = "matmul", prov.family = "contraction"}} {{',
         f"    ^bb_acc0(%lhs: {midt}, %rhs: {midt}, %acc: {madt}):",
         f"      %lhs_wide = arith.extsi %lhs : {midt} to {madt}",
         f"      %rhs_wide = arith.extsi %rhs : {midt} to {madt}",
@@ -2193,7 +2195,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
         f"    %narrow = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, "
         f'affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]}} '
         f"ins(%acc0 : tensor<{M}x{H}x{madt}>) outs(%narrow_empty : tensor<{M}x{H}x{midt}>) "
-        f'attrs = {{prov.region_id = "requant_0", prov.op = "requant", '
+        f'attrs = {{prov.region_id = "requant_0", prov.source_node_ids = ["direct_ir.requant_0"], '
+        f'prov.op = "requant", '
         f'prov.family = "elementwise_map", prov.placement = "accelerator_epilogue"}} {{',
         f"    ^bb0(%x: {madt}, %unused: {midt}):",
         f"      %clamp_lo = arith.maxsi %x, %lo : {madt}",
@@ -2210,7 +2213,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
             f"    %host = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, "
             f'affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]}} '
             f"ins(%narrow : tensor<{M}x{H}x{midt}>) outs(%host_empty : tensor<{M}x{H}x{midt}>) "
-            f'attrs = {{prov.region_id = "host_island_0", prov.op = "xor_low_bit", '
+            f'attrs = {{prov.region_id = "host_island_0", prov.source_node_ids = ["direct_ir.host_island_0"], '
+            f'prov.op = "xor_low_bit", '
             f'prov.family = "host_scalar", prov.placement = "host_required"}} {{',
             f"    ^bb1(%x: {midt}, %unused: {midt}):",
             f"      %mapped = arith.xori %x, %xor_mask : {midt}",
@@ -2229,7 +2233,8 @@ def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, s
         f'iterator_types = ["parallel", "parallel", "reduction"]}} '
         f"ins({middle}, %{w1} : tensor<{M}x{H}x{midt}>, tensor<{H}x{N}x{midt}>) "
         f"outs(%acc1_init : tensor<{M}x{N}x{madt}>) attrs = "
-        f'{{prov.region_id = "contraction_1", prov.op = "matmul", prov.family = "contraction"}} {{',
+        f'{{prov.region_id = "contraction_1", prov.source_node_ids = ["direct_ir.contraction_1"], '
+        f'prov.op = "matmul", prov.family = "contraction"}} {{',
         f"    ^bb_acc1(%lhs: {midt}, %rhs: {midt}, %acc: {madt}):",
         f"      %lhs_wide = arith.extsi %lhs : {midt} to {madt}",
         f"      %rhs_wide = arith.extsi %rhs : {midt} to {madt}",

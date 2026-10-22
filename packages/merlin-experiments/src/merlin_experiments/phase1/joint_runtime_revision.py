@@ -87,6 +87,9 @@ def validate(initial, current):
         elif kind == 'structural_accounting_correction':
             from .joint_structural_revision import verify
             verify(old, new, evidence, previous=prior, current=revision['runtime'])
+        elif kind == 'pool_relu_service_equivalence':
+            from .joint_service_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'])
         elif kind != 'implementation_correction' or _fixed_model(old) != _fixed_model(new):
             raise ValueError('implementation correction changes prices or model semantics')
         prior = revision['runtime']

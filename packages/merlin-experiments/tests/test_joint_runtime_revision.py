@@ -21,7 +21,7 @@ def test_runtime_revision_retains_prices_and_rejects_unreviewed_change(monkeypat
     with pytest.raises(ValueError,match='prices'):R.validate(old,new)
     newer['target']['prices']['compute']=40
     new['members']=[2]
-    with pytest.raises(ValueError,match='non-model'):R.validate(old,new)
+    with pytest.raises(ValueError,match='non-model|unreviewed member'):R.validate(old,new)
 
 
 def test_scope_extension_cannot_change_old_prices_or_capacity(monkeypatch):

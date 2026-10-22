@@ -36,7 +36,22 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups:
     declaration_path = capsule_dir / "capsule.yaml"
     declaration = yaml.safe_load(declaration_path.read_text(encoding="utf-8"))
     coverage_path = capsule_dir / "expected_instruction_coverage.yaml"
-    coverage = yaml.safe_load(coverage_path.read_text(encoding="utf-8"))
+    # Direct-IR model slices carry their reviewed instruction requirements in
+    # capsule.yaml; unlike captured whole models, their native intake never
+    # writes a duplicate coverage sidecar. Reopen that original declaration,
+    # rather than manufacturing a file or removing any instruction obligation.
+    declaration_coverage = (
+        source_bound_groups is True
+        and isinstance(declaration, dict)
+        and declaration.get("kind") == "model_slice"
+        and not coverage_path.exists()
+        and not coverage_path.is_symlink()
+    )
+    if declaration_coverage:
+        coverage_path = declaration_path
+        coverage = declaration.get("expected")
+    else:
+        coverage = yaml.safe_load(coverage_path.read_text(encoding="utf-8"))
     if not all(isinstance(doc, dict) for doc in (corpus, declaration, coverage)):
         raise NativeModelExecutionError("frozen model instruction policy is malformed")
     instruction = corpus.get("instruction_policy") or {}
@@ -59,7 +74,9 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups:
         or coverage.get("instruction_classes") != expected
     ):
         raise NativeModelExecutionError("frozen instruction coverage or prohibited-role policy is unresolved")
-    if source_bound_groups and (type(source_bound_groups) is not bool or declaration.get("kind") != "model"):
+    if source_bound_groups and (
+        type(source_bound_groups) is not bool or declaration.get("kind") not in {"model", "model_slice"}
+    ):
         raise NativeModelExecutionError("source-bound group instruction policy requires an original model capsule")
     required = declaration.get("required_oracle_tiers")
     if (
@@ -77,6 +94,7 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups:
         "required_tiers": required,
         "expected_instruction_classes": expected,
         "prohibited_instruction_roles": roles,
+        **({"instruction_coverage_origin": "capsule_declaration.expected"} if declaration_coverage else {}),
         **({"public_zero_device_demand": True} if public_zero_device_demand else {}),
         **({"instruction_class_scope": "global reviewed requirements plus independently mandatory source-bound group work"}
            if source_bound_groups else {}),

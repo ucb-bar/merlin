@@ -32,6 +32,36 @@ status, structural evidence and withheld RTL coverage separately; withheld gSIM 
 not an instruction to simulate the whole corpus. Unknown timing is not zero or a
 performance win: save the reproducer and continue independently measurable work.
 
+## Model deployment and numerical boundaries
+
+The selected deployment for ResNet50, TinyLlama and SmolVLA is W8A8:
+signed INT8 weights and activations at accelerator contractions, with the selected
+integer accumulation and output ABI. This does not require every intermediate or
+model output to be INT8. Keep raw i32 outputs when the typed source requires them.
+Preserve captured floating-point normalization, nonlinear functions, scaling and
+control through Merlin host lowering; do not replace accelerator contractions with
+CPU fallback or convert an entire mixed graph to integer arithmetic.
+
+Use the selected public `target_contract.yaml`, typed source and numeric policies
+as the authority. Its scaled i8 readout contract specifies f32 scale, half-even
+rounding and saturation to [-128, 127]. That contract does not make arbitrary host
+casts, raw accumulator stores or other source rounding operations equivalent.
+Track operand/output dtype, scale identity and granularity, zero points, bias and
+activation order, rounding, saturation, accumulation bounds and host/device
+placement at each graph boundary. Fusion, packing and scheduling must preserve
+these properties; never manufacture scales or loosen comparison tolerances.
+
+The existing visible model-check endpoint accepts `resnet50`, `tiny_llama` and
+`smolvla`: `python agent_model_check.py check --model MODEL`. ResNet has `model`;
+TinyLlama has `prefill` and `decode`; SmolVLA has `prefix_encode`, `flow_denoise`
+and `action_decode`, including its declared recurrent state. Early fast checks
+replay selected kernels; they do not establish full-chain numerical correctness.
+Use unchanged independent numerical contracts for capsule, connected and final
+model checks. A format-compatible external signature alone does not establish
+model calibration, boundary semantics or numerical equivalence. Missing evidence
+stays unknown. The compiler must generalize through these source contracts, not
+model-name dispatch.
+
 ## Scheduling integration and shared-pass development
 
 Use the exported scheduling IR in the production compiler: `merlin.sched.ir.kernel`

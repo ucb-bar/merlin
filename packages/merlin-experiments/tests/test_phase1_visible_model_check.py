@@ -20,6 +20,31 @@ def selected_target_contract(monkeypatch):
     monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(contract))
 
 
+def test_epoch_notice_survives_compact_capsule_and_model_publications(tmp_path):
+    path = tmp_path / "verdict.json"
+    grade = {"all_pass": False, "graded_source_sha256": "a" * 64,
+             "n_passed": 0, "n_capsules": 13, "n_pending_development": 167,
+             "per_capsule": [{"capsule": "example", "status": "fail"}],
+             "feedback_brief": {"passed": 0, "first_actionable_failure": "compile failed"}}
+    before = gate.publish(path, grade)
+    notice = {"schema": "merlin.operator_epoch_notice.v1", "action": "checkpoint_and_return",
+              "stop_request_sha256": "b" * 64, "changes_grading": False}
+    advised = gate.publish(path, {"operator_epoch_notice": notice})
+    for key, value in before.items():
+        if key != "feedback_brief":
+            assert advised[key] == value
+    assert advised["feedback_brief"] == {**before["feedback_brief"], "operator_epoch_notice": notice}
+    assert "operator_epoch_notice" not in grade["feedback_brief"]
+    refreshed = gate.publish(path, {**grade, "feedback_brief": {"passed": 0, "pending": 167}})
+    assert refreshed["feedback_brief"]["operator_epoch_notice"] == notice
+    updated = gate.publish(path, {"model_gate": {"source_sha256": "a" * 64, "programs": {}}})
+    assert updated["operator_epoch_notice"] == updated["feedback_brief"]["operator_epoch_notice"] == notice
+    assert updated["per_capsule"] == grade["per_capsule"]
+    assert updated["n_passed"] == 0 and updated["n_pending_development"] == 167
+    assert updated["all_pass"] is False
+    assert json.loads(path.read_text()) == updated
+
+
 def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, monkeypatch):
     ws = tmp_path / "workspace"
     source = ws / "submission"

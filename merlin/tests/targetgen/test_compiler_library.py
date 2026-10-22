@@ -163,3 +163,30 @@ def test_additional_library_scope_reopens_actual_source_and_rejects_mutation(tmp
     assert active_compiler_library() is None
     with pytest.raises(CompilerLibraryError):
         CompilerLibrarySelection(None, None)
+
+
+def test_plan_api_requires_exact_reviewed_leaf_and_rejects_harness_siblings(tmp_path):
+    """The public plan grant uses the existing library authority, not a package exemption."""
+    root = tmp_path / 'plan-api'
+    modules = ('merlin', 'merlin.targetgen', 'merlin.targetgen.oot_starterkit')
+    sources = []
+    for module in modules:
+        relative = module.replace('.', '/') + '/__init__.py'
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('')
+        sources.append((relative, module))
+    relative = 'merlin/targetgen/oot_starterkit/plan.py'
+    # Only import admission is under test; native parser/CFG semantics have their
+    # own existing tests and the real exported closure is separately byte pinned.
+    (root / relative).write_text('def source_operation_inventory(source): return source\n')
+    sources.append((relative, 'merlin.targetgen.oot_starterkit.plan'))
+    contract = freeze_compiler_library(root, review_id='exact-plan-api-test',
+        public_modules=('merlin.targetgen.oot_starterkit.plan',), sources=tuple(sources))
+    source = 'from merlin.targetgen.oot_starterkit.plan import source_operation_inventory'
+    assert _py_imports_merlin(source) is not None
+    assert _py_imports_merlin(source, compiler_library=contract) is None
+    for forbidden in ('merlin.targetgen.capsule_grade', 'merlin.runtime.reference',
+                      'merlin.targetgen.oot_starterkit.plan.reference',
+                      'merlin.targetgen.oot_starterkit.llvm_context'):
+        assert _py_imports_merlin('import ' + forbidden, compiler_library=contract) is not None

@@ -470,6 +470,51 @@ def test_owned_score_withholds_legacy_numeric_tiers_and_cost_when_proof_missing(
     assert view["tiers"] == {} and view["numeric"] == {} and "metrics" not in view
 
 
+def test_direct_model_slice_reads_exact_declared_instruction_policy(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.targetgen import target_experiment
+    from merlin.targetgen.native_model_execution import NativeModelExecutionError, _frozen_model_policy
+
+    descriptor = tmp_path / "descriptor.yaml"
+    descriptor.write_text("target: synthetic\n")
+    corpus = tmp_path / "corpus"
+    (corpus / "isa").mkdir(parents=True)
+    (corpus / "MANIFEST.yaml").write_text(
+        "instruction_policy:\n  status: resolved\n  prohibited_instruction_roles: [forbidden_role]\n"
+    )
+    capsule = tmp_path / "slice"
+    capsule.mkdir()
+    declaration = capsule / "capsule.yaml"
+    declaration.write_text(
+        "kind: model_slice\nexpected:\n  instruction_classes: [DECLARED_WORK]\n"
+        "required_oracle_tiers: [L0, L1, L2]\n"
+    )
+    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path: SimpleNamespace(
+        target="synthetic", capsule_corpus=corpus / "isa"
+    ))
+    policy = _frozen_model_policy(capsule, target="synthetic", source_bound_groups=True)
+    assert policy["instruction_coverage"] == policy["capsule_declaration"]
+    assert policy["instruction_coverage_origin"] == "capsule_declaration.expected"
+    assert policy["expected_instruction_classes"] == ["DECLARED_WORK"]
+    assert policy["prohibited_instruction_roles"] == ["forbidden_role"]
+    assert policy["required_tiers"] == ["L0", "L1", "L2"]
+    assert not (capsule / "expected_instruction_coverage.yaml").exists()
+
+    # A supplied sidecar remains an independent consistency obligation.
+    sidecar = capsule / "expected_instruction_coverage.yaml"
+    sidecar.write_text("instruction_classes: []\n")
+    with pytest.raises(NativeModelExecutionError, match="coverage"):
+        _frozen_model_policy(capsule, target="synthetic", source_bound_groups=True)
+    sidecar.unlink()
+    with pytest.raises(FileNotFoundError):
+        _frozen_model_policy(capsule, target="synthetic")
+    declaration.write_text(declaration.read_text().replace("model_slice", "model"))
+    with pytest.raises(FileNotFoundError):
+        _frozen_model_policy(capsule, target="synthetic", source_bound_groups=True)
+
+
 def test_protected_engine_selection_uses_scoped_facts_without_changing_ambient(tmp_path, monkeypatch):
     import json
     import os

@@ -61,6 +61,15 @@ def publish(path: Path, update: dict) -> dict:
                 result["capsule_all_pass"] = update.get("all_pass")
             if "operator_epoch_notice" in previous and "operator_epoch_notice" not in update:
                 result["operator_epoch_notice"] = previous["operator_epoch_notice"]
+            if "operator_epoch_notice" in result:
+                # Compact readers often consume only this projection. Keep the
+                # original trusted advisory visible across both result writers;
+                # it changes neither grade fields nor their evidence.
+                brief = result.get("feedback_brief")
+                result["feedback_brief"] = {
+                    **(brief if isinstance(brief, dict) else {}),
+                    "operator_epoch_notice": result["operator_epoch_notice"],
+                }
             if not advisory_only:
                 result = _combine(result)
             temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
