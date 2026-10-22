@@ -101,6 +101,35 @@ def lock_rows(path, inventory):
 def classify(argv, selection):
     if not argv:
         return 'unknown', 'argv unavailable'
+    executable = Path(argv[0]).name
+    # A broker schedules work; its name is not evidence of an engine running.
+    module = None
+    if executable.startswith('python') and '-m' in argv:
+        index = argv.index('-m')
+        if index + 1 < len(argv):
+            module = argv[index + 1]
+    services = {
+        'merlin_experiments.phase1.brokers.selfcheck': 'host_selfcheck_broker',
+        'merlin_experiments.phase1.brokers.simjob': 'host_simjob_broker',
+        'merlin_experiments.phase1.brokers.model_check': 'host_model_check_broker',
+        'merlin_experiments.phase1.brokers.model_check_worker': 'host_model_check_worker',
+        'merlin_experiments.phase1.brokers.isa_tools': 'host_isa_tools_broker',
+        'merlin_experiments.phase1.brokers.cca': 'host_cca_broker',
+        'merlin_experiments.phase1.feedback.selfcheck': 'host_selfcheck_worker',
+        'merlin_experiments.phase1.joint_calibration_service': 'calibration_service',
+    }
+    if module in services:
+        return services[module], 'exact Python -m service identity; execution stage unknown'
+    script = next((value for value in argv[1:4] if not value.startswith('-')), '')
+    if (executable.startswith('python') and '-m' not in argv and '-c' not in argv
+            and Path(script).parts[-3:] == ('merlin', 'common', 'read_lease_digest.py')):
+        return 'verification_lease_service', 'exact helper script suffix; custody service, not target execution'
+    if executable in ('codex-code-mode-host', 'code-mode-host'):
+        return 'agent_tool_host', 'exact tool host executable; individual tool action unknown'
+    if executable in ('bwrap', 'bubblewrap'):
+        return 'host_sandbox_wrapper', 'exact sandbox wrapper executable; child action not inferred'
+    if executable in ('sleep', 'bash', 'sh', 'dash'):
+        return 'host_' + executable, 'exact host executable; busy state comes only from CPU deltas'
     env = selection.get('environment', {})
     names = {Path(x).name for x in argv[:4]}
     gsim_executables = (value for key, value in env.items()
@@ -216,6 +245,26 @@ class Sampler:
             self._workspace_key = key
         return self._workspace
 
+    @staticmethod
+    def _timing_entries(root):
+        # Fixed-depth incremental traversal; no recursive corpus/log discovery.
+        def leaves(directory):
+            try:
+                with os.scandir(directory) as entries:
+                    for entry in entries:
+                        yield Path(entry.path) if entry.is_file(follow_symlinks=False) else None
+            except OSError:
+                return
+        yield from leaves(root / 'profile_package_execution/setup-timing')
+        try:
+            with os.scandir(root) as entries:
+                for entry in entries:
+                    yield None  # Charge directory discovery against the same bounded scan.
+                    if entry.name.startswith('fruns_') and entry.is_dir(follow_symlinks=False):
+                        yield from leaves(Path(entry.path) / 'host-stage-timing/setup-timing')
+        except OSError:
+            return
+
     def _timing_records(self, root):
         # Refresh bounded active records and advance a bounded directory iterator.
         # No full-directory sort/stat on every UI refresh.
@@ -228,14 +277,14 @@ class Sampler:
         paths = set(self._timing_active)
         if self._timing_iterator is None:
             try:
-                self._timing_iterator = os.scandir(root)
+                self._timing_iterator = self._timing_entries(root)
             except OSError:
                 return []
         try:
             for _ in range(self.max_timing_records):
                 entry = next(self._timing_iterator)
-                if entry.name.endswith('.json'):
-                    paths.add(Path(entry.path))
+                if entry is not None and entry.name.endswith('.json'):
+                    paths.add(entry)
         except (StopIteration, OSError):
             self._timing_iterator.close()
             self._timing_iterator = None
@@ -338,7 +387,7 @@ class Sampler:
                              'pid': pid, 'tid': tid, 'priority': priority, 'queued_ns': queued,
                              'eligible_cpus': body.get('cpus'), 'basis': 'bounded waiter filename/payload and kernel lock lookup'})
         run_dir = Path(selection['run_dir'])
-        timing = run_dir / '_qa_work/profile_package_execution/setup-timing'
+        timing = run_dir / '_qa_work'
         live_threads = {(t['pid'], t['tid']): t for t in threads}
         associations = {}
         boot_epoch = None
@@ -360,6 +409,8 @@ class Sampler:
                 capsule = d.get('capsule') if self.operator_private else None
                 job = {'kind': 'setup_stage', 'state': 'recorded_running', 'pid': pid, 'tid': tid,
                        'stage': stage.get('stage'), 'capsule': capsule,
+                       'snapshot_id': d.get('snapshot_id') if self.operator_private else None,
+                       'request_id': d.get('request_id') if self.operator_private else None,
                        'tier': d.get('tier'), 'tier_basis': 'recorded request only; not execution evidence',
                        'source_sha256': source if self.operator_private else None,
                        'source_identity_present': source_present,

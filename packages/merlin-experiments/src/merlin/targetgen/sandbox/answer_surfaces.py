@@ -148,9 +148,9 @@ class CapsuleMetadata:
     """``capsule.yaml`` documents parsed once per exact byte content within one execution scope.
 
     Every package policy classifies each capsule of its live and frozen corpora, and parsing that
-    metadata dominates the classification. The corpus walk, the member listing and the bytes read
-    stay fresh on every call, so a capsule that appears, disappears or changes is observed; only the
-    parse of byte-identical metadata is reused. The document is keyed by the SHA-256 of the bytes
+    metadata dominates the classification. Corpus membership may be reused only under the
+    request-owned kernel roster guard; mutations invalidate it and unsupported trees are walked
+    afresh. Metadata bytes are read on every call; only their byte-identical parse is reused. The document is keyed by the SHA-256 of the bytes
     actually read, parsed by the same loader :func:`capsule_answer_members` uses, and only read by it.
     A scope owns one instance; it is never process-global. An original execution may also attach a
     declaration path plan; that plan never retains filesystem membership or answer-surface rows.
@@ -160,6 +160,8 @@ class CapsuleMetadata:
         self._documents: dict[bytes, object] = {}
         self._lock = threading.Lock()
         self.module_location_plan = None
+        from .guarded_inventory import GuardedInventory
+        self.inventory = GuardedInventory()
 
     def load(self, directory: Path) -> object:
         """The parsed ``directory/capsule.yaml`` (``{}`` when absent), exactly as the classifier reads it."""
@@ -174,6 +176,23 @@ class CapsuleMetadata:
         document = capsule_privacy.fast_safe_load(data)
         with self._lock:
             return self._documents.setdefault(key, document)
+
+
+def _tree_members(root, capsules):
+    facts = None if capsules is None else capsules.inventory.tree(root)
+    return None if facts is None else tuple(path for _, path, _, _ in facts.members)
+
+
+def _discovered(root, pattern, capsules):
+    members = _tree_members(root, capsules)
+    if members is None:
+        return root.rglob(pattern)
+    # Callers select only simple filename patterns; no recursive/path glob rules.
+    if pattern.startswith('*'):
+        return (p for p in members if p.name.endswith(pattern[1:]))
+    if pattern.endswith('*'):
+        return (p for p in members if p.name.startswith(pattern[:-1]))
+    return (p for p in members if p.name == pattern)
 
 
 def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = None) -> list[Path]:
@@ -195,8 +214,8 @@ def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
     corpora.extend(contract_resource_roots(root, "capsules"))
     for corpus in corpora:
         if corpus and corpus.is_dir():
-            files += sorted(corpus.rglob("golden.*"))
-            for declaration in sorted(corpus.rglob("capsule.yaml")):
+            files += sorted(_discovered(corpus, "golden.*", capsules))
+            for declaration in sorted(_discovered(corpus, "capsule.yaml", capsules)):
                 files += [
                     declaration.parent / member
                     for member, origin in capsule_answer_members(
@@ -208,12 +227,12 @@ def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
             # Instruction-coverage expectations are used by the grader in the same way as numerical
             # goldens. Exposing them tells the agent the exact command mix it must synthesize, so they
             # are an answer surface even though their filename does not begin with ``golden``.
-            files += sorted(corpus.rglob("expected_instruction_coverage.yaml"))
+            files += sorted(_discovered(corpus, "expected_instruction_coverage.yaml", capsules))
     # Every example expected-output and canonical test answer fixture. The checkout compatibility
     # link is masked too, but a broad bind could reach the fixture at its own path.
     for ex_dir in (*contract_resource_roots(root, "examples"), root / "merlin/tests"):
         if ex_dir.is_dir():
-            files += sorted(ex_dir.rglob("expected_*"))
+            files += sorted(_discovered(ex_dir, "expected_*", capsules))
     # de-dup while preserving order
     seen: set[Path] = set()
     out: list[Path] = []
@@ -224,7 +243,7 @@ def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
     return out
 
 
-def weight_files(te: TargetExperiment) -> list[Path]:
+def weight_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = None) -> list[Path]:
     """Every externalized capsule-weight file the agent must not read.
 
     Whole-model weights remain available to the operator-side grader and are copied into the immutable
@@ -239,6 +258,10 @@ def weight_files(te: TargetExperiment) -> list[Path]:
         roots.append(te.capsule_corpus.parent)
     for caps_root in dict.fromkeys(roots):
         if caps_root.is_dir():
+            members = _tree_members(caps_root, capsules)
+            if members is not None:
+                files.extend(p for p in members if p.name.endswith((".safetensors", ".safetensors.manifest.json")))
+                continue
             # One fresh directory traversal serves both suffixes. os.walk,
             # like Path.rglob, does not descend through child directory symlinks;
             # explicitly selected root symlinks and leaf-file aliases still work.
@@ -602,7 +625,7 @@ def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = 
     for g in golden_files(te, capsules=capsules):
         origin = "example" if any(p in g.parents for p in examples_dirs) else "golden"
         out.append(AnswerSurface(f"{origin}:{shown_path(g)}", g, "file", origin))
-    for weights in weight_files(te):
+    for weights in weight_files(te, capsules=capsules):
         out.append(AnswerSurface(f"weight:{shown_path(weights)}", weights, "file", "weight"))
 
     # Mask EVERY hidden-capsule dir under the capsule tree, not only THIS target's declared one. The bundle
@@ -624,7 +647,7 @@ def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = 
     caps_roots = contract_resource_roots(root, "capsules")
     for caps_root in caps_roots:
         if caps_root.is_dir():
-            hidden_dirs.update(d for d in caps_root.rglob("hidden") if d.is_dir())
+            hidden_dirs.update(d for d in _discovered(caps_root, "hidden", capsules) if d.is_dir())
     for hp in sorted(hidden_dirs):
         if hp.is_dir():
             out.append(AnswerSurface(f"hidden-capsules:{shown_path(hp)}", hp, "dir", "hidden"))

@@ -1,6 +1,7 @@
 """Native snapshot→certificate request→ledger closure, without a simulator."""
 import io
 import json
+import pytest
 from copy import deepcopy
 
 from merlin_experiments.phase1 import joint_control
@@ -70,11 +71,14 @@ def test_closed_receipt_is_required_and_instrument_tampering_still_refuses(tmp_p
     assert list(simjob._admitted_promotions(requests,ws,loop_tier='L2',cert_tier='L3',context=None))==[]
 
 
-def test_native_completed_callback_reopens_receipt_and_enqueues_physical(tmp_path,monkeypatch):
+@pytest.mark.parametrize("pending_l3", [False, True])
+def test_native_completed_callback_reopens_receipt_and_enqueues_physical(tmp_path,monkeypatch,pending_l3):
     from types import SimpleNamespace
     from merlin.targetgen import capsule_common
     from merlin_experiments.phase1.feedback import loop_grading as L
     ws,row=setup(tmp_path,monkeypatch)
+    if pending_l3:
+        row = split_stage(ws, row)
     runs=tmp_path/'runs'
     result=runs/'runs'/'suite'/'A'/'capsule_result.json'
     result.parent.mkdir(parents=True);result.write_text(json.dumps(row))
@@ -85,7 +89,11 @@ def test_native_completed_callback_reopens_receipt_and_enqueues_physical(tmp_pat
     context=SimpleNamespace(descriptor=tmp_path/'descriptor')
     inputs=SimpleNamespace(context=context,public_root=tmp_path/'capsules',contract=None,promotion_root=None)
     callback=L._completed_loop_promoter(ws,ws,runs,'L2','L3',{'A'},inputs=inputs)
-    callback(row)
+    from merlin.targetgen.capsule_scheduling import BoundaryReadiness, run_pipelined
+    results = run_pipelined([{'name': 'A'}], lambda cap, workers: row,
+        max_workers=1, on_complete=callback, boundary_readiness=BoundaryReadiness({'A': 'route'}))
+    assert results[0]['boundary_readiness']['authority'] == 'ordering_only'
+    assert 'boundary_readiness' not in row
     request=json.loads(next((ws/'.qa_channel').glob('simreq*.json')).read_text())
     assert request['sim']=='gsim' and request['tiers']=='L3'
     assert request['submission_snapshot']
@@ -111,3 +119,65 @@ def test_projection_reuses_only_matching_native_execution_and_instrument(tmp_pat
     assert reused['obligations']['A']['reused_execution_identity']=='c'*64
     Q.project(ws,state,source='new',instrument='b'*64)
     assert json.loads((ws/'qa/joint_physical_correctness.json').read_text())['passed']==0
+
+
+def split_stage(ws, row):
+    from merlin.common.tree_hash import hash_tree
+    row = deepcopy(row)
+    reason = ("this capsule declares required oracle tier L3 (elaborated_rtl) "
+              "but this phase supplies no adapter for it; reachable tiers here: ['L2']")
+    row['status'] = 'incomplete'
+    row['tiers']['L3'] = {'status': 'unavailable', 'mandatory': True, 'reason': reason}
+    row['failure'] = {'plane': 'oracle_unavailable', 'category': 'NOT_RUN_IS_NOT_PASS',
+                      'tier': 'L3', 'tier_status': 'unavailable', 'tier_reason': reason}
+    row['trace_check'] = {'status': 'pass', 'trace_requirement_status': 'pass',
+                          'violations': [], 'unavailable_requirements': []}
+    row['numeric'].update(mismatch_count=0, missing_outputs=[],
+                         per_output={'Y': {'status': 'pass', 'n_elements': 8}})
+    row['compiler_source']['candidate_sha256'] = hash_tree(ws / 'submission')['sha256']
+    return row
+
+
+def test_split_l3_prerequisites_queue_but_do_not_grant_completeness(tmp_path, monkeypatch):
+    ws, row = setup(tmp_path, monkeypatch)
+    row = split_stage(ws, row)
+    original = deepcopy(row)
+    assert promote(ws, row) == ['A']
+    request = json.loads(next((ws / '.qa_channel').glob('simreq*.json')).read_text())
+    assert request['sim'] == 'gsim' and request['tiers'] == 'L3'
+    report = json.loads((ws / 'qa/joint_physical_correctness.json').read_text())
+    assert report['passed'] == 0 and report['pending'] == 3 and not report['complete']
+    assert row == original
+    assert Q._passed(row) is None  # Scheduling projection is not curriculum/final pass.
+    assert promote(ws, row) == []
+    native = {'per_capsule': [{'capsule': 'A', 'pass': True, 'tiers': {'L3': 'pass'}}]}
+    assert P.record_cert(ws, native, 'L3', identity=request['identity'],
+                         source_identity_verified=True) == ['A=pass']
+    report = json.loads((ws / 'qa/joint_physical_correctness.json').read_text())
+    assert report['passed'] == 1 and report['pending'] == 2 and not report['complete']
+
+
+def test_split_l3_prerequisites_reject_other_failures_or_unbound_evidence(tmp_path, monkeypatch):
+    ws, row = setup(tmp_path, monkeypatch)
+    row = split_stage(ws, row)
+    bad_rows = []
+    def bad():
+        item = deepcopy(row); bad_rows.append(item); return item
+    bad()['tiers']['L3']['status'] = 'fail'
+    bad()['failure']['tier'] = 'L1'
+    bad()['tiers']['L1']['status'] = 'unavailable'
+    bad()['tiers']['L4'] = {'mandatory': True, 'status': 'unavailable'}
+    bad()['tiers']['L3']['reason'] = 'timed out'
+    bad()['numeric']['per_output'] = {}
+    bad()['numeric']['missing_outputs'] = ['Y']
+    bad()['numeric']['status'] = 'unknown'
+    bad()['numeric']['per_output']['Y']['status'] = 'fail'
+    bad()['trace_check']['status'] = 'fail'
+    bad()['trace_check']['violations'] = ['trace does not open with a FENCE']
+    bad()['trace_check']['trace_requirement_status'] = 'unavailable_fields'
+    bad()['trace_check'] = {}
+    bad()['compiler_source']['status'] = 'source_changed'
+    bad()['compiler_source']['candidate_sha256'] = 'f' * 64
+    for item in bad_rows:
+        assert promote(ws, item) == []
+    assert not list((ws / '.qa_channel').glob('simreq*.json'))

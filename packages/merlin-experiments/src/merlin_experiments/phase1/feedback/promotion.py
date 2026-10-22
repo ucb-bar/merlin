@@ -1149,7 +1149,8 @@ def promote(
     if joint_required is not None:
         if not joint_required or (loop_tier, cert_tier) != ('L2', 'L3') or not closed_loop_rows:
             return []
-        ready = physical.eligible(closed_loop_rows)
+        source_ws = Path(source_ws) if source_ws is not None else Path(ws)
+        ready = physical.eligible(closed_loop_rows, source_root=source_ws / 'submission')
         verdict = dict(verdict, per_capsule=[row for row in verdict.get('per_capsule', ())
                                             if row.get('capsule') in ready])
         cover = joint_required

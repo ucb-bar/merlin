@@ -643,6 +643,7 @@ class _Executor:
             self._concurrent_selection()
         finally:
             self.policy_scope.capsules.module_location_plan = None
+            self.policy_scope.capsules.inventory.close()
             plan.close()
             _CONCURRENT_EXECUTORS.discard(self)
             self._concurrent_binding = None

@@ -802,7 +802,8 @@ def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tm
 
 
 @pytest.mark.parametrize("producer", ["fast_grade", "selfcheck"])
-def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp_path, monkeypatch, producer):
+@pytest.mark.parametrize("readiness", [False, True])
+def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp_path, monkeypatch, producer, readiness):
     import threading
 
     from merlin_experiments.phase1.feedback import promotion, qa
@@ -885,12 +886,17 @@ def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp
             assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1
             release_second.set()
 
-    capsule_scheduling.run_pipelined(
+    results = capsule_scheduling.run_pipelined(
         [{"name": name} for name in ("first", "second", "failed", "hidden", "excluded")],
         run_one,
         max_workers=2,
         on_complete=completed,
+        boundary_readiness=(capsule_scheduling.BoundaryReadiness({"first": "route-a"})
+                            if readiness else None),
     )
+    first = next(row for row in results if row["capsule"] == "first")
+    assert ("boundary_readiness" in first) is readiness
+    assert "boundary_readiness" not in rows["first"]
     # The second frozen result is retained but cannot replenish native work
     # after the author genuinely changes the reachable source.
     assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1

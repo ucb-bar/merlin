@@ -237,6 +237,12 @@ class ProgressHealth:
                     'started_to_completion_wall_s': elapsed(started, completed),
                     'total_wall_s': elapsed(requested, completed),
                     'completed_at_epoch': completed / 1e9 if type(completed) is int else None,
+                    # A final response outranks unfinished incremental progress.
+                    # Returned is not synonymous with any numerical execution.
+                    'status': ('timed_out' if doc.get('timed_out') is True or
+                               doc.get('error') == 'broker: self-check aborted (timed out)' else
+                               'error' if doc.get('error') else 'returned'),
+                    'status_basis': 'final native response; incremental progress is not a verdict',
                     'stage': doc.get('timeout_stage'),
                     'stage_status': 'recorded' if doc.get('timeout_stage') else 'UNKNOWN',
                     'scope': 'producer request timestamps, not CPU or simulator service time'})

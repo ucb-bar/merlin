@@ -44,7 +44,9 @@ def _final_answer_policy(
     from merlin_experiments.phase1.feedback import setup_timing as timing
 
     with timing.stage("package_policy.private_alias_discovery"):
-        private = host_input_surfaces(argv, ws, bundle, repo=repo, _policy_test_live_inputs=_policy_test_live_inputs)
+        private = host_input_surfaces(
+            argv, ws, bundle, repo=repo, _policy_test_live_inputs=_policy_test_live_inputs,
+            inventory=None if capsules is None else capsules.inventory)
     with timing.stage("package_policy.answer_discovery"):
         answers = BW.answer_surfaces(te) if capsules is None else BW.answer_surfaces(te, capsules=capsules)
     with timing.stage("package_policy.frozen_support"):
@@ -62,6 +64,7 @@ def _final_answer_policy(
         result = BW.apply_answer_masks(argv, [*selected_surfaces, *answers, *frozen_support, *frozen_answers, *private])
         if BW.coverage_gap(result, support):
             raise RuntimeError("selected support package remains exposed after final masking")
+
     return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"], tuple(answers)
 
 
@@ -105,13 +108,13 @@ def _host_mount_devices() -> list[tuple[int, Path]]:
         raise RuntimeError("host mount topology cannot be verified for private inputs") from exc
 
 
-def _private_hardlink_inodes(records: list[tuple[str, Path, Path]]) -> set[tuple[int, int]]:
+def _private_hardlink_inodes(records: list[tuple[str, Path, Path]], *, inventory=None) -> set[tuple[int, int]]:
     """Discover current private identities once per exact path in this policy call.
 
     Private roots can include both an enclosing directory and many selected
     children. Do not repeatedly walk that directory for every original/frozen
-    spelling. Keep this inventory local: a subsequent call must observe newly
-    created links. Leaf symlinks retain their referent identity, but directory
+    spelling. A request-owned inventory can reuse filesystem facts only while its
+    file/directory watches remain unchanged; subsequent calls observe newly created links. Leaf symlinks retain their referent identity, but directory
     symlinks are traversed only when explicitly selected as a root.
 
     Members are tracked by their normalized path strings: a selected private
@@ -138,6 +141,13 @@ def _private_hardlink_inodes(records: list[tuple[str, Path, Path]]) -> set[tuple
         if is_regular(info.st_mode) and info.st_nlink > 1:
             inodes.add((info.st_dev, info.st_ino))
         if not is_directory(info.st_mode):
+            continue
+        facts = None if inventory is None else inventory.tree(root)
+        if facts is not None:
+            inodes.update(facts.linked_inodes)
+            members.update(str(path) for _, path, _, _ in facts.members)
+            directories.update(str(path) for _, path, kind, _ in facts.members if kind == 'directory')
+            directories.add(name)
             continue
         pending = [name]
         while pending:
@@ -169,6 +179,7 @@ def _host_hardlink_surfaces(
     approved: set[tuple[Path, Path]],
     *,
     mounts: list[tuple[str, str, str]] | None = None,
+    inventory=None,
 ) -> list[AnswerSurface]:
     """Mask extra runtime names for private inodes, not identical public bytes.
 
@@ -177,7 +188,8 @@ def _host_hardlink_surfaces(
     are exempt; arbitrary runtime aliases do not inherit a public grant.
     """
     try:
-        private_inodes = _private_hardlink_inodes(records)
+        private_inodes = (_private_hardlink_inodes(records) if inventory is None else
+                          _private_hardlink_inodes(records, inventory=inventory))
     except OSError as exc:
         raise RuntimeError("private input hardlink identities cannot be verified") from exc
     if not private_inodes:
@@ -197,6 +209,14 @@ def _host_hardlink_surfaces(
         if matches(info):
             hits.append(Path("."))
         if not stat.S_ISDIR(info.st_mode):
+            return hits
+        facts = None if inventory is None else inventory.tree(root)
+        if facts is not None:
+            # Exact inode membership remains current under file/dir watches.
+            # The guard refuses indirect trees, preserving the original
+            # no-follow traversal through the fallback below.
+            hits.extend(path.relative_to(root) for path, identity in facts.linked_members
+                        if identity in private_inodes)
             return hits
         pending = [root]
         scanned: set[Path] = set()
@@ -249,6 +269,7 @@ def host_input_surfaces(
     repo: Path | None = None,
     grant_repo: Path | None = None,
     _policy_test_live_inputs: bool = False,
+    inventory=None,
 ) -> list[AnswerSurface]:
     """Private surfaces at every destination a composed bind could expose.
 
@@ -305,11 +326,11 @@ def host_input_surfaces(
                     if path_kind(frozen_private) != kind:
                         raise RuntimeError("private validation source is absent from its frozen public parent")
                     records.append((str(path), path, frozen_private))
-    return _private_path_surfaces(argv, records, approved)
+    return _private_path_surfaces(argv, records, approved, inventory=inventory)
 
 
 def _private_path_surfaces(
-    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]]
+    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]], *, inventory=None
 ) -> list[AnswerSurface]:
     """One alias translation for frozen payloads and exact host provenance files."""
     if not records:
@@ -337,7 +358,7 @@ def _private_path_surfaces(
                     if alias_kind == "missing":
                         raise RuntimeError("private input alias cannot be classified for masking")
                     surfaces[alias] = AnswerSurface("host-only input alias", alias, alias_kind, "hidden")
-    for surface in _host_hardlink_surfaces(argv, records, approved, mounts=mounts):
+    for surface in _host_hardlink_surfaces(argv, records, approved, mounts=mounts, inventory=inventory):
         surfaces[surface.path] = surface
     return list(surfaces.values())
 

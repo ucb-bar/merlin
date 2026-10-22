@@ -2,8 +2,8 @@
 
 Every candidate entrypoint call composes a fresh bwrap policy, and classifying the live and frozen
 corpora parses every ``capsule.yaml`` each time. A scope reuses only the parse of byte-identical
-metadata (keyed by the SHA-256 of the bytes read); every walk, member listing, host-input and hardlink
-scan stays per call. These tests hold the reuse to three properties: the result equals a fresh
+metadata (keyed by the SHA-256 of the bytes read); guarded filesystem facts may be shared,
+while live host-input policy and mask derivation stay per call. These tests hold the reuse to three properties: the result equals a fresh
 per-call derivation on actual frozen snapshots (hardlink aliases included), any changed input is
 observed, and a candidate call's argv is byte-identical with and without the scope.
 """
@@ -170,9 +170,9 @@ def test_scoped_masks_equal_fresh_per_call_masks_on_actual_snapshots(owner, pars
         ):
             assert not BW.is_exposed(scoped, frozen_root / relative)
         assert BW.is_exposed(scoped, frozen_root / "isa/member/capsule.yaml")
-    # A fresh call parses every frozen capsule document once per overlapping corpus root; the scope
-    # parses each distinct document (the public twins share one, plus the holdout) once in total.
-    assert fresh_parses > 3
+    # A fresh call parses at least the three frozen capsule documents (possibly again for
+    # overlapping roots); the scope parses the twins' shared bytes and the holdout once total.
+    assert fresh_parses >= 3
     assert scoped_parses == [2, 0, 0]
 
 

@@ -230,10 +230,11 @@ class PackagePolicyScope:
     """What every package entrypoint policy of one execution scope may share.
 
     One grade, self-check request or probe owns one instance for its executor lifetime and passes it
-    to :func:`package_sandbox_policy`. It shares only capsule metadata parsed from byte-identical
-    files (:class:`CapsuleMetadata`, keyed by the SHA-256 of the bytes read). Every walk, member
-    listing, live selection, host-input and hardlink scan is still derived on each call, so the
-    mounts, masks and probes equal a policy derived without a scope.
+    to :func:`package_sandbox_policy`. Capsule metadata parses are keyed by freshly read bytes.
+    Filesystem membership and linked-inode facts may share the existing kernel roster guard;
+    any mutation invalidates reuse and unsupported trees retain fresh traversal. Live selections,
+    mount translations, privacy classifications and grants are derived on every call. No policy
+    result or cross-request authority is cached.
     """
 
     def __init__(self) -> None:

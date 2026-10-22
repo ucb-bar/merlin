@@ -6529,7 +6529,9 @@ def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
     """Order one existing public L2 operator witness for this exact native owner.
 
     This is scoped to the immutable suite invocation. Models/slices use distinct
-    host graph routes and remain unchanged. No error message or case-local
+    host graph routes and remain unchanged. Component model_slice wrappers that
+    reach the ordinary operator ladder share this route; raw connected source
+    slices and Merlin-owned host leaves do not. No error message or case-local
     structural category can prove the whole compiler route invalid.
     """
     if set(oracle_adapters or {}) != {"L2"}:
@@ -6539,6 +6541,7 @@ def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
     from .capsule_scheduling import BoundaryReadiness
     from .expected_refusal import expects_refusal
     from .owned_host_leaf_execution import selected_host_leaf
+    from .owned_host_slice_execution import selected_source_slice
 
     if joint_control.selected() is None:
         return None
@@ -6557,8 +6560,9 @@ def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
                 "requested_tiers": ["L2"]}
     route = hashlib.sha256(json.dumps(identity, sort_keys=True, allow_nan=False).encode()).hexdigest()
     return BoundaryReadiness({str(cap["name"]): route for cap in capsules
-        if cap.get("kind") in {"isa", "layer"} and cap.get("label") in {"public", "dev"}
-        and not expects_refusal(cap) and not selected_host_leaf(cap)})
+        if cap.get("kind") in {"isa", "layer", "model_slice"} and cap.get("label") in {"public", "dev"}
+        and not expects_refusal(cap) and not selected_host_leaf(cap)
+        and not selected_source_slice(cap)})
 
 
 def _run_suite(

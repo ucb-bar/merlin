@@ -599,11 +599,15 @@ def run_pipelined(
         finished(name, blocked_result(capsules[index[name]]))
 
     def finished(name: str, result: dict) -> None:
+        # Completion consumers bind this exact native row to its durable receipt.
+        # Ordering diagnostics belong to the collected scheduling summary only;
+        # adding them to the callback would invalidate that custody comparison.
+        completed_result = result
         if boundary_readiness is not None:
             result = boundary_readiness.completed(name, result)
         results[index[name]] = result
         if on_complete is not None:
-            on_complete(result)
+            on_complete(completed_result)
         for child in children[name]:
             waiting[child] -= 1
             if waiting[child] == 0:

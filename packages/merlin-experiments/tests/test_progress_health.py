@@ -117,3 +117,20 @@ def test_archive_without_matching_owner_is_not_attributed(tmp_path):
     result = sample(tmp_path)
     assert result['completed_case_records'] is None
     assert result['snapshot_observations'] == []
+
+
+def test_final_timeout_response_overrides_unfinished_incremental_progress(tmp_path):
+    channel = tmp_path / 'workspace/.qa_channel'
+    put(channel / 'progress_one.json', {'status': 'running', 'n_expected': 5, 'n_finished': 0})
+    put(channel / 'resp_one.json', {'selfcheck_request_id': 'one',
+        'error': 'broker: self-check aborted (timed out)', 'all_pass': False,
+        'requested_at_unix_ns': 1, 'grade_started_at_unix_ns': 2, 'graded_at_unix_ns': 3})
+    result = sample(tmp_path, True)
+    assert result['requests'][0]['status'] == 'timed_out'
+    assert result['requests'][0]['request_id'] == 'one'
+    assert result['numeric']['completed'] == 0
+    assert result['numeric']['failed'] == 0
+    assert json.loads((channel / 'progress_one.json').read_text())['status'] == 'running'
+    put(channel / 'resp_one.json', {'selfcheck_request_id': 'one', 'all_pass': False,
+                                  'per_capsule': [{'capsule': 'x', 'numeric': {'status': 'skipped'}}]})
+    assert sample(tmp_path, True)['requests'][0]['status'] == 'returned'

@@ -152,7 +152,13 @@ def dram_address_findings(trace: dict, address_model: str) -> list[str]:
         return []
     out: list[str] = []
     for i in trace.get("instructions", []):
-        dram = (i.get("decoded") or {}).get("dram")
+        decoded = i.get("decoded") or {}
+        dram = decoded.get("dram")
+        # This semantic classification comes from the selected operand decoder.
+        # A generated zero-fill source is not a DRAM-buffer address. The target
+        # declaration owns its opcode/predicate; core supplies no literal exception.
+        if decoded.get("dram_source") == "zero_fill":
+            continue
         if isinstance(dram, dict) and dram.get("kind") == "const":
             out.append(
                 f"instruction #{i.get('index')} ({i.get('class')}) uses a BAKED DRAM address "

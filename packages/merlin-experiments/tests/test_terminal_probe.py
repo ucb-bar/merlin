@@ -145,3 +145,54 @@ def test_optional_setup_identity_associates_only_current_named_thread(tmp_path):
     write(stage_path, json.dumps(doc))
     result = Sampler(task, True, proc_root=proc, cgroup_root=cgroup).sample()
     assert next(t for t in result['threads'] if t['tid'] == 100)['action'] == 'native_evaluator'
+
+
+def test_service_roles_do_not_claim_target_execution():
+    from merlin_experiments.tracking.terminal_probe import classify
+    for leaf in ('selfcheck', 'simjob', 'model_check', 'model_check_worker', 'isa_tools', 'cca'):
+        action, basis = classify(['python3.12', '-B', '-m', 'merlin_experiments.phase1.brokers.' + leaf], {})
+        assert action.startswith('host_') and action not in ('L3', 'L2_or_cycle_observer')
+        assert 'stage unknown' in basis
+    assert classify(['python3.12', '-m', 'merlin_experiments.phase1.feedback.selfcheck'], {})[0] == 'host_selfcheck_worker'
+    assert classify(['python3.12', '/repo/src/merlin/common/read_lease_digest.py'], {})[0] == 'verification_lease_service'
+    assert classify(['bwrap', '--', '/bin/spike'], {})[0] == 'host_sandbox_wrapper'
+    assert classify(['/bin/codex-code-mode-host'], {})[0] == 'agent_tool_host'
+    # Passing a module name as data must not select that service's role.
+    assert classify(['python3', 'unrelated.py', 'merlin_experiments.phase1.brokers.simjob'], {})[0] == 'unknown'
+
+
+def test_host_stage_roots_are_bounded_and_redacted(tmp_path):
+    import time
+    task, proc, cgroup, run, pool = fixture(tmp_path)
+    with (proc / 'stat').open('a') as f:
+        f.write('btime 100\n')
+    stage_path = run / '_qa_work/fruns_1/host-stage-timing/setup-timing/one.json'
+    doc = {'schema': 'merlin.compiler_setup_timing.v1', 'pid': 100, 'native_tid': 100,
+           'source_sha256': 'a' * 64, 'capsule': 'SECRET', 'snapshot_id': 'PRIVATE-SNAPSHOT',
+           'request_id': 'PRIVATE-REQUEST', 'stages': [{'stage': 'emission', 'status': 'running',
+           'started_ns': time.time_ns() - 1000000000}]}
+    write(stage_path, json.dumps(doc))
+    sampler = Sampler(task, proc_root=proc, cgroup_root=cgroup, max_timing_records=1)
+    # One root-discovery item then one file, never a recursive unbounded walk.
+    first = sampler.sample()
+    assert not [j for j in first['jobs'] if j['kind'] == 'setup_stage']
+    sample = sampler.sample()
+    job = next(j for j in sample['jobs'] if j['kind'] == 'setup_stage')
+    assert job['stage'] == 'emission' and job['thread_association'] != 'unknown'
+    assert 'PRIVATE' not in json.dumps(sample) and 'SECRET' not in json.dumps(sample)
+    private = Sampler(task, True, proc_root=proc, cgroup_root=cgroup).sample()
+    job = next(j for j in private['jobs'] if j['kind'] == 'setup_stage')
+    assert job['snapshot_id'] == 'PRIVATE-SNAPSHOT' and job['request_id'] == 'PRIVATE-REQUEST'
+    doc['stages'][0]['status'] = 'complete'
+    write(stage_path, json.dumps(doc))
+    assert not [j for j in sampler.sample()['jobs'] if j['kind'] == 'setup_stage']
+
+
+def test_sleeping_thread_does_not_paint_idle_core_as_busy_unknown():
+    from merlin_experiments.tracking.terminal_views import activity, dominant
+    row = {'measured_utilization_pct': 0., 'threads': [
+        {'state': 'S', 'action': 'unknown', 'cpu_time_delta_s': 0.}]}
+    assert dominant(row) == {} and activity(row) == 'idle'
+    row['measured_utilization_pct'] = 30.
+    # Busy core without an observed active owner remains honestly unattributed.
+    assert dominant(row) == {} and activity(row) == 'unknown'

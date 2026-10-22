@@ -10,7 +10,7 @@ from merlin.runtime.backends import base
 from merlin.targetgen import trace_check
 
 
-def _bound(tmp_path, monkeypatch, *, width=1, protocol=False):
+def _bound(tmp_path, monkeypatch, *, width=1, protocol=False, zero_fill=None):
     fixtures = runpy.run_path(str(repo_root() / "merlin/tests/runtime/test_bound_chipyard_rocc_backend.py"))
     contract, facts = fixtures["selection"].__wrapped__(tmp_path)
     classes = {2: "LOAD_CMD", 3: "STORE_CMD", 4: "COMPUTE_AND_FLIP_CMD", 6: "PRELOAD_CMD"}
@@ -34,6 +34,14 @@ def _bound(tmp_path, monkeypatch, *, width=1, protocol=False):
                 {"name": "accumulate", "from": "acc_bit", "equals": 1},
             ]}}},
         }
+    if zero_fill is not None:
+        fields = [{"name": "dram", "operand": "rs1", "as": "operand"}]
+        classes = contract["rocc_operand_protocol"]["roles"]["classes"]
+        classes["MVOUT"] = {"fields": copy.deepcopy(fields)}
+        classes["MVIN"] = {"fields": fields + [
+            {"name": "dram_raw", "operand": "rs1", "as": "raw"},
+            {"name": "dram_source", "all": [{"from": "dram_raw", "equals": zero_fill}],
+             "set": "zero_fill", "clear": "memory"}]}
     backend = fixtures["_bound"]((contract, facts))
     monkeypatch.setattr(base, "get_backend", lambda target: backend)
     return backend
@@ -339,3 +347,27 @@ def test_formal_host_scope_requires_provided_execution_evidence(qualified):
     complete, failures = formal.phase_completion(score)
     assert complete is qualified
     assert ("provided_host_execution_evidence_not_complete" in failures) == (not qualified)
+
+
+@pytest.mark.parametrize("sentinel", [0, 19])
+def test_source_generation_is_selected_semantics_not_literal_address_exception(tmp_path, monkeypatch, sentinel):
+    backend = _bound(tmp_path, monkeypatch, protocol=True, zero_fill=sentinel)
+    for code, value, allowed in ((2, sentinel, True), (2, sentinel + 1, False),
+                                  (3, sentinel, False)):
+        trace = _trace(backend, (code,))
+        trace['instructions'][1]['rs1'] = {'kind': 'const', 'raw': value}
+        result = trace_check.check(trace, {}, target='synthetic', address_model='pointer_args')
+        baked = [v for v in result['violations'] if 'BAKED DRAM' in v]
+        assert not baked if allowed else baked
+    # A pointer or unresolved input cannot acquire the generated-source label.
+    for operand in ({'kind': 'argbase', 'raw': None, 'arg_index': 0, 'offset': 0},
+                    {'kind': 'unknown', 'raw': None}):
+        trace = _trace(backend, (2,)); trace['instructions'][1]['rs1'] = operand
+        view = trace_check._bound_trace_view(trace, 'synthetic')[0]
+        assert view['instructions'][1]['decoded']['dram_source'] is None
+    # Caller-authored annotations cannot replace original raw decoding.
+    forged = _trace(backend, (2,))
+    forged['instructions'][1]['rs1'] = {'kind': 'const', 'raw': sentinel + 1}
+    forged['instructions'][1]['decoded'] = {'dram_source': 'zero_fill'}
+    result = trace_check.check(forged, {}, target='synthetic', address_model='pointer_args')
+    assert result['trace_requirement_status'] == 'invalid_binding'

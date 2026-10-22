@@ -16,10 +16,59 @@ def roster():
     return set((state or {}).get('policy', {}).get('gsim_correctness', {}).get('capsules', ()))
 
 
-def eligible(rows):
+def _split_l3_prerequisites(row, source_sha256):
+    """Recognize a completed cheap stage, not a certificate or complete result."""
+    from merlin.targetgen.trace_check import requirements_complete
+
+    tiers = row.get('tiers') or {}
+    failure = row.get('failure') or {}
+    l3 = tiers.get('L3') or {}
+    source = row.get('compiler_source') or {}
+    numeric = row.get('numeric') or {}
+    outputs = numeric.get('per_output')
+    if not (row.get('status') == 'incomplete'
+            and failure.get('plane') == 'oracle_unavailable'
+            and failure.get('category') == 'NOT_RUN_IS_NOT_PASS'
+            and failure.get('tier') == 'L3' and failure.get('tier_status') == 'unavailable'
+            and l3.get('status') == 'unavailable' and l3.get('mandatory') is True
+            and l3.get('reason') == ("this capsule declares required oracle tier L3 (elaborated_rtl) "
+                "but this phase supplies no adapter for it; reachable tiers here: ['L2']")
+            and failure.get('tier_reason') == l3['reason']
+            and source.get('status') == 'stable' and source_sha256
+            and source.get('candidate_sha256') == source_sha256
+            and requirements_complete(row.get('trace_check'))
+            and not (row.get('trace_check') or {}).get('violations')
+            and not (row.get('trace_check') or {}).get('unavailable_requirements')
+            and isinstance(outputs, dict) and outputs
+            and numeric.get('missing_outputs') == [] and numeric.get('mismatch_count') == 0
+            and all(isinstance(v, dict) and v.get('status') == 'pass'
+                    and type(v.get('n_elements')) is int and v['n_elements'] > 0
+                    for v in outputs.values())):
+        return False
+    # No other unavailable/failed tier may hide behind the expected L3 gap.
+    if any(t != 'L3' and record.get('mandatory') is True
+            and record.get('status') != 'pass' for t, record in tiers.items()):
+        return False
+    # The private projection is used for scheduling only. The original durable
+    # result, failure, curriculum credit and certification state stay unchanged.
+    return _passed(dict(row, failure=None)) == 'spike_correctness'
+
+
+def eligible(rows, *, source_root=None):
     """Only closed native structural/numerical receipts authorize a physical job."""
     required = roster()
-    return {name for name, row in rows.items() if name in required and _passed(row) == 'spike_correctness'}
+    source_sha256 = None
+    if source_root is not None and any(row.get('failure') for name, row in rows.items() if name in required):
+        from merlin.common.tree_hash import hash_tree
+        source_sha256 = hash_tree(Path(source_root))['sha256']
+    ready = set()
+    for name, row in rows.items():
+        trace = row.get('trace_check') or {}
+        if name not in required or trace.get('status') == 'fail' or trace.get('violations'):
+            continue
+        if _passed(row) == 'spike_correctness' or _split_l3_prerequisites(row, source_sha256):
+            ready.add(name)
+    return ready
 
 
 def selected_request(request):
