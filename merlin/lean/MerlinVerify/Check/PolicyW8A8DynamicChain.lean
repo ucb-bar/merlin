@@ -3,6 +3,7 @@ The suffix preserves the same source interpretation, numerical premises and inpu
 Frozen-semantics checks are reusable only when both complete modules are source-free. -/
 import MerlinVerify.Check.PolicyW8A8DynamicQualified
 import MerlinVerify.Check.PolicyW8A8Chain
+import MerlinVerify.Check.DeadModule
 
 namespace MerlinVerify.Check.PolicyW8A8DynamicChain
 
@@ -30,7 +31,7 @@ require checked agreement with the frozen interpretation on both entire modules.
 def stepCheck (ib : Nat) (inputs outputs : List VTy) (fn : String) (before after : Module) : Bool :=
   ParametricModule.check before after ||
     (W8A8SourceFree.moduleCheck before && W8A8SourceFree.moduleCheck after &&
-      PolicyW8A8Chain.stepCheck ib inputs outputs fn before after)
+      (DeadModule.check ib before after || PolicyW8A8Chain.stepCheck ib inputs outputs fn before after))
 
 theorem stepCheck_sound {ib : Nat} {inputs outputs : List VTy} {fn : String} {before after : Module}
     (checked : stepCheck ib inputs outputs fn before after = true) :
@@ -43,7 +44,10 @@ theorem stepCheck_sound {ib : Nat} {inputs outputs : List VTy} {fn : String} {be
     exact RefinesC.refl ResultsRefine.refl _
   · intro ctx permitted args domain
     rw [W8A8SourceFree.denote_eq sourceFree, W8A8SourceFree.denote_eq targetFree]
-    exact PolicyW8A8Chain.stepCheck_sound frozen ctx permitted.1 args (inputDomain domain)
+    rcases frozen with normalized | rewritten
+    · rw [← DeadModule.check_sound normalized ctx permitted.1 fn args]
+      exact RefinesC.refl ResultsRefine.refl _
+    · exact PolicyW8A8Chain.stepCheck_sound rewritten ctx permitted.1 args (inputDomain domain)
 
 def suffixCheck (ib : Nat) (inputs outputs : List VTy) (fn : String) : Module → List Module → Bool
   | _, [] => true
