@@ -48,7 +48,7 @@ def _verification_compute():
 
 
 def finish_snapshot_invocation():
-    """Complete the final full custody read before output/receipt publication."""
+    """Complete the request's custody boundary before output/receipt publication."""
     close = _INVOCATION_PUBLICATION.get()
     if close is not None:
         close()
@@ -105,7 +105,8 @@ def snapshot_scoped_entrypoint(function):
             stack.enter_context(setup_timing.timed_context(
                 "invocation_snapshot",
                 verified_snapshot_scope(
-                    owner.workspace, owner.bundle, repo=owner.repo, entry=selected.snapshot_entry_for_call()
+                    owner.workspace, owner.bundle, repo=owner.repo,
+                    entry=selected.snapshot_entry_for_call(), guarded_exit=True,
                 ),
             ))
             token = _INVOCATION_PUBLICATION.set(stack.close)
@@ -509,7 +510,7 @@ class _Executor:
 
     @contextlib.contextmanager
     def shared_snapshot_entry(self):
-        """Own only a guarded entry digest; each command retains its fresh final read."""
+        """Own full cold custody and watched command-boundary payload checks."""
         from merlin.common.bundle_snapshot import (
             MARKER, bundle_snapshot_root, shared_entry_scope, shared_entry_verification,
         )

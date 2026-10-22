@@ -52,7 +52,7 @@ def _read_boundaries(monkeypatch):
     return boundaries
 
 
-def test_guarded_entry_reuses_only_entry_and_final_reads_stay_fresh(execution, monkeypatch):
+def test_guarded_request_reuses_payload_and_invalidated_exit_reads_fresh(execution, monkeypatch):
     monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
     owner, candidate, work = execution
     command, output, calls = _command(execution, monkeypatch)
@@ -62,7 +62,7 @@ def test_guarded_entry_reuses_only_entry_and_final_reads_stay_fresh(execution, m
         assert type(entry) is B.SharedEntry
         boundaries = _read_boundaries(monkeypatch)
         assert command(executor).returncode == 0
-        assert boundaries == [False, True]  # Guarded entry, mandatory independent final.
+        assert boundaries == [False]  # Entry and publication use the unchanged request guard.
         assert calls[0] is not None and output.exists()
         boundaries.clear()
         _payload(owner).touch()  # Even identical bytes end the guarded entry.
@@ -85,7 +85,7 @@ def test_disabled_cache_keeps_legacy_fresh_reads(execution, monkeypatch):
     assert executor._snapshot_entry is None
 
 
-def test_enclosing_emission_uses_original_entry_but_each_command_finishes_fresh(execution, monkeypatch):
+def test_enclosing_emission_keeps_independent_final_and_commands_use_request(execution, monkeypatch):
     monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
     owner, candidate, work = execution
     command, _, calls = _command(execution, monkeypatch)
@@ -99,7 +99,7 @@ def test_enclosing_emission_uses_original_entry_but_each_command_finishes_fresh(
             for _ in range(3):
                 assert command(executor).returncode == 0
                 assert B._ACTIVE_VERIFICATION.get() is outer
-        assert boundaries == [False, False, True, False, True, False, True, True]
+        assert boundaries == [False, False, False, False, True]
         assert len(set(calls)) == 3 and outer not in calls
     assert B._selected_entry() is None and B._ACTIVE_VERIFICATION.get() is None
 

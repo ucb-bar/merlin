@@ -79,6 +79,89 @@ def test_entry_needs_the_guard_selection(frozen, monkeypatch):
     assert S.shared_entry_verification(ws, bundle, repo=repo) is None
 
 
+def test_request_command_boundaries_share_cold_payload_across_workers(frozen, monkeypatch):
+    ws, bundle, repo, payload = frozen
+    reads = _payload_reads(monkeypatch, payload)
+    entry = _entry(ws, bundle, repo)
+    assert len(reads) == 1
+    try:
+        def command(_):
+            with S.verified_snapshot_scope(ws, bundle, repo=repo, entry=entry, guarded_exit=True) as doc:
+                assert S.verify_bundle_snapshot(ws, bundle, repo=repo) == doc
+            return doc
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(command, range(12)))
+        assert all(result == entry.document for result in results)
+        assert len(reads) == 1  # Full cold admission, no repeated whole-input read.
+        with S.independent_snapshot_reads():
+            S.verify_bundle_snapshot(ws, bundle, repo=repo)
+        assert len(reads) == 2  # Independent artifact consumers retain original checks.
+    finally:
+        entry.close()
+
+
+@pytest.mark.parametrize('change', ['write', 'hardlink_write', 'replace', 'marker', 'policy'])
+def test_request_command_mutation_cannot_publish(frozen, change, tmp_path):
+    ws, bundle, repo, payload = frozen
+    if change == 'hardlink_write':
+        alias = tmp_path / 'alias'
+        os.link(payload, alias)
+    entry = _entry(ws, bundle, repo)
+    try:
+        with pytest.raises(RuntimeError):
+            with S.verified_snapshot_scope(ws, bundle, repo=repo, entry=entry, guarded_exit=True):
+                if change == 'write':
+                    payload.write_bytes(b'changed! bytes')  # Same size, same roster.
+                elif change == 'hardlink_write':
+                    alias.write_bytes(b'changed! bytes')
+                elif change == 'replace':
+                    payload.unlink()
+                    payload.symlink_to(repo / 'source')
+                elif change == 'marker':
+                    marker = S.bundle_snapshot_root(ws) / S.MARKER
+                    marker.chmod(0o600)
+                    marker.write_bytes(marker.read_bytes() + b' ')
+                else:
+                    bundle['denied'].append('changed')
+    finally:
+        entry.close()
+
+
+def test_request_command_restored_bytes_still_require_full_read(frozen, monkeypatch):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    reads = _payload_reads(monkeypatch, payload)
+    try:
+        with S.verified_snapshot_scope(ws, bundle, repo=repo, entry=entry, guarded_exit=True):
+            original = payload.read_bytes()
+            payload.write_bytes(b'changed! bytes')
+            payload.write_bytes(original)
+        assert len(reads) == 1  # The event cannot be erased by restoring bytes.
+        assert entry.guard.fd is None
+        with S.verified_snapshot_scope(ws, bundle, repo=repo, entry=entry, guarded_exit=True):
+            pass
+        assert len(reads) == 3  # Invalidated request cannot silently renew itself.
+    finally:
+        entry.close()
+
+
+def test_guarded_exit_without_explicit_live_request_keeps_full_boundary(frozen, monkeypatch):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    reads = _payload_reads(monkeypatch, payload)
+    try:
+        with S.shared_entry_scope(entry):
+            with S.verified_snapshot_scope(ws, bundle, repo=repo, guarded_exit=True):
+                pass
+        assert len(reads) == 1
+        entry.close()
+        with S.verified_snapshot_scope(ws, bundle, repo=repo, entry=entry, guarded_exit=True):
+            pass
+        assert len(reads) == 3
+    finally:
+        entry.close()
+
+
 def test_implicit_nested_entries_have_distinct_tokens_and_fresh_finals(frozen, monkeypatch):
     ws, bundle, repo, payload = frozen
     entry = _entry(ws, bundle, repo)

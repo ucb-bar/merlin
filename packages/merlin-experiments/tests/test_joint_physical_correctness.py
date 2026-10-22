@@ -181,3 +181,28 @@ def test_split_l3_prerequisites_reject_other_failures_or_unbound_evidence(tmp_pa
     for item in bad_rows:
         assert promote(ws, item) == []
     assert not list((ws / '.qa_channel').glob('simreq*.json'))
+
+
+def test_whole_program_split_l3_requires_exact_nonapplicability_and_all_outputs(tmp_path, monkeypatch):
+    ws, row = setup(tmp_path, monkeypatch)
+    row = split_stage(ws, row)
+    for tier, verb in [('L0', 'reference cannot interpret'), ('L1', 'simulate cannot execute')]:
+        row['tiers'][tier] = {'mandatory': True, 'status': 'skipped', 'not_applicable': True,
+            'reason': f'command-buffer {verb} scalar regions of a whole-program ELF'}
+    row['numeric']['golden_source'] = 'frozen_source_reference'
+    row['numeric']['per_output']['Y1'] = {'status': 'pass', 'n_elements': 4}
+    source = row['compiler_source']['candidate_sha256']
+    assert Q._split_l3_prerequisites(row, source)
+    assert Q._passed(row) is None
+    for defect in ('reason', 'unpaired', 'output', 'missing', 'golden', 'other_tier'):
+        bad = deepcopy(row)
+        if defect == 'reason': bad['tiers']['L0']['reason'] = 'skip for speed'
+        elif defect == 'unpaired': bad['tiers']['L1']['status'] = 'pass'
+        elif defect == 'output': bad['numeric']['per_output']['Y1']['status'] = 'fail'
+        elif defect == 'missing': bad['numeric']['missing_outputs'] = ['Y1']
+        elif defect == 'golden': bad['numeric']['golden_source'] = ''
+        else: bad['tiers']['L4'] = {'mandatory': True, 'status': 'unavailable'}
+        assert not Q._split_l3_prerequisites(bad, source), defect
+    assert promote(ws, row) == ['A']
+    report = json.loads((ws / 'qa/joint_physical_correctness.json').read_text())
+    assert report['passed'] == 0 and report['pending'] == 3

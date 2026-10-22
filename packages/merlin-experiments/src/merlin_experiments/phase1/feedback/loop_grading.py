@@ -858,15 +858,19 @@ def fast_grade(
 
     progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
     from . import joint_curriculum
-    from .rolling_scalability import Selection as ScalabilitySelection
+    from .rolling_scalability import Selection as ScalabilitySelection, PerformanceFeedback
     scalability = ScalabilitySelection(inputs.context) if JTS.focused() else None
     scalability_cases = scalability.cases if scalability is not None else {}
+    scale_feedback = (PerformanceFeedback(scalability, compiler=cand, runs_root=fruns, timeout=timeout)
+                      if scalability_cases else None)
     curriculum = joint_curriculum.native(run_dir, inputs=inputs, compiler_sha256=snapshot_digest,
         target=te.target, runs_root=fruns, runtime_config=readback_kwargs(inputs.context),
         additional_identity=scalability.identity, verify_additional=scalability.verify) if scalability is not None else None
 
     def completed(row):
         progress.completed(row)
+        if scale_feedback is not None:
+            scale_feedback.completed(row)
         # Automatic checks retain the same public products as explicit selfchecks.
         # This passive path launches no timing observer and grants no fit authority.
         try:
@@ -944,6 +948,8 @@ def fast_grade(
         structural_evidence=_fast_score.get("structural_evidence_all_pass"),
         cohort_complete=_qc._original_cohort_complete(_fast_score),
     )
+    if scale_feedback is not None:
+        scale_feedback.project(verdict)
     if _fast_score.get("failure"):
         failure = _fast_score["failure"]
         verdict.update(

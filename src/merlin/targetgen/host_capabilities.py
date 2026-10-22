@@ -17,6 +17,10 @@ from merlin.frontends.linalg_quantization_seams import (
 )
 
 from merlin.common.digest import is_sha256
+from merlin.frontends.bounded_control_source_body import (
+    SCHEMA as BOUNDED_CONTROL_SCHEMA, ROLES as BOUNDED_CONTROL_ROLES,
+    validate as validate_bounded_control, screen as screen_bounded_control,
+)
 from merlin.frontends.linalg_embedding_gather import (
     SCHEMA as EMBEDDING_GATHER_SCHEMA,
 )
@@ -143,7 +147,14 @@ def validate_host_capabilities(
             if set(row) - allowed or not (row.get("ops") or row.get("families") or row.get("family")):
                 raise ValueError(f"host capability {row['id']} has unsupported fields or no selector")
             body = row["source_body"]
-            if isinstance(body, dict) and body.get("schema") == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
+            if isinstance(body, dict) and body.get("schema") == BOUNDED_CONTROL_SCHEMA:
+                validate_bounded_control(body)
+                op, inputs, outputs = BOUNDED_CONTROL_ROLES[body["operation"]]
+                if (row.get("ops") != [op] or "families" in row or "family" in row
+                        or row["signature"] != {"ordered_operand_dtypes": inputs, "ordered_result_dtypes": outputs}
+                        or row.get("numerical_contract", {}).get("status") != "unreviewed"):
+                    raise ValueError("bounded control needs one exact scalar ABI and placement-only declaration")
+            elif isinstance(body, dict) and body.get("schema") == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
                 validate_static_boolean_source_body(body)
             elif isinstance(body, dict) and body.get("schema") == DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA:
                 validate_dynamic_boolean_cast_source_body(body)
@@ -426,6 +437,9 @@ def _screen_source_body(
 ) -> dict:
     """Match every supplied parsed occurrence; never treat an omitted source as evidence."""
     from dataclasses import asdict
+
+    if declaration["source_body"]["schema"] == BOUNDED_CONTROL_SCHEMA:
+        return screen_bounded_control(declaration, row, signature, source_operations, source_context)
 
     from merlin.common import mlir_query as mq
     from merlin.frontends.bucketize_source import (

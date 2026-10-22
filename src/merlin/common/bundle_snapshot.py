@@ -79,7 +79,8 @@ class _RosterGuard:
 
     Every file is watched as well as every directory: writes through an outside
     hard link can resize a file without notifying its parent directory. This
-    never caches payload hashes. Entry/exit payload verification stays fresh;
+    never independently admits a payload hash. A SharedEntry may bind a prior
+    full read to unchanged watches for request-owned command boundaries;
     unsupported watches, any event (including overflow), or mount changes fall
     back to the ordinary complete roster scan. Checks are serialized, so one
     guard may serve several threads: an event consumed by one ends it for all.
@@ -182,9 +183,9 @@ class SharedEntry:
     canonical paths and membership afresh, but takes the payload digest from this
     entry instead of re-reading the snapshot, and only while this entry's kernel
     roster guard has observed nothing at all: any event, overflow or mount change
-    ends reuse for every later scope. Each scope's FINAL payload verification
-    remains fresh. Only the guarded names/types/sizes roster may be shared;
-    it authenticates no payload bytes.
+    ends reuse for every later scope. Scope finals remain fresh by default;
+    explicit original request commands may also use these same unchanged
+    watches at publication. No digest survives an unwatched interval.
     """
 
     def __init__(self, *, root, repo, policy_bytes, marker_bytes, members, document, guard):
@@ -378,7 +379,10 @@ def _issue(*, root, marker_bytes, repo, policy_bytes, members, roster_guard, doc
 
 
 @contextlib.contextmanager
-def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path, entry: SharedEntry | None = None):
+def verified_snapshot_scope(
+    workspace: Path, bundle: dict, *, repo: Path,
+    entry: SharedEntry | None = None, guarded_exit: bool = False,
+):
     """Batch payload reads for one protected operation.
 
     Each boundary verifies mapping, canonical paths and membership. Nested
@@ -392,6 +396,10 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path, entry:
     ``entry`` (or the same-thread :func:`shared_entry_scope`) replaces only the
     entry payload read while its guard proves nothing changed. Final payload
     verification remains independent; a live guard may retain only its roster.
+    An original request may opt into ``guarded_exit`` with its explicitly issued
+    entry. Its unchanged kernel watches then certify the payload at command exit
+    as well as entry. Any event, expired entry, path or mount change restores the
+    full independent read. This does not cache candidate artifacts or policies.
     Each stage leases one shared CPU behind the process admission gate, so callers
     waiting to verify hold no slot.
     """
@@ -400,12 +408,17 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path, entry:
     workspace, repo = Path(workspace), Path(repo)
     previous = _ACTIVE_VERIFICATION.set(None)
     issued = None
+    # Only an explicit request-owned admission can select guarded publication;
+    # an inherited context alone does not grant that lifetime.
+    request_entry = entry if guarded_exit and type(entry) is SharedEntry else None
+    reused_entry = False
     try:
         original_policy = _policy_bytes(bundle)
         root = bundle_snapshot_root(workspace)
         if entry is None:
             entry = _selected_entry()
         if type(entry) is SharedEntry and entry.reusable(root, repo, original_policy):
+            reused_entry = True
             marker_bytes = entry.marker_bytes
             issued = _issue(
                 root=root,
@@ -446,17 +459,27 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path, entry:
         try:
             yield document
         finally:
-            # Disable ALL outer/nested scope reuse before the mandatory final verification.
+            # Never let stale nested payload reuse satisfy a final boundary.
             _ACTIVE_VERIFICATION.set(None)
             if _policy_bytes(bundle) != original_policy or (root / MARKER).read_bytes() != marker_bytes:
                 raise RuntimeError("original snapshot scope policy or marker changed")
-            with _snapshot_read_admission(), shared_compute_pool():
-                read_lease_digest.validate(issued.leases)
-            roster = _FINAL_ROSTER.set(issued)
-            try:
-                final = verify_bundle_snapshot(workspace, bundle, repo=repo)
-            finally:
-                _FINAL_ROSTER.reset(roster)
+            final = None
+            if (reused_entry and request_entry is entry
+                    and workspace.is_absolute() and workspace.resolve() == workspace
+                    and repo.is_absolute() and repo.resolve() == repo and root.resolve() == root
+                    and entry.reusable(root, repo, original_policy)):
+                # The guard was armed before the admitted hash. Watches cover
+                # files (including outside hardlink writes), directories and
+                # mount topology. They are sticky-invalid across all workers.
+                final = json.loads(marker_bytes)
+            if final is None:
+                with _snapshot_read_admission(), shared_compute_pool():
+                    read_lease_digest.validate(issued.leases)
+                roster = _FINAL_ROSTER.set(issued)
+                try:
+                    final = verify_bundle_snapshot(workspace, bundle, repo=repo)
+                finally:
+                    _FINAL_ROSTER.reset(roster)
             if _policy_bytes(bundle) != original_policy or (root / MARKER).read_bytes() != marker_bytes:
                 raise RuntimeError("original snapshot scope policy or marker changed")
             if final != document:

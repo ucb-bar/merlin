@@ -45,8 +45,11 @@ def _split_l3_prerequisites(row, source_sha256):
                     and type(v.get('n_elements')) is int and v['n_elements'] > 0
                     for v in outputs.values())):
         return False
+    # L0/L1 can be genuinely inapplicable to whole-program execution. The
+    # shared native checker below validates their exact paired reasons and
+    # complete numerical output evidence; it does not accept arbitrary skips.
     # No other unavailable/failed tier may hide behind the expected L3 gap.
-    if any(t != 'L3' and record.get('mandatory') is True
+    if any(t not in {'L0', 'L1', 'L3'} and record.get('mandatory') is True
             and record.get('status') != 'pass' for t, record in tiers.items()):
         return False
     # The private projection is used for scheduling only. The original durable

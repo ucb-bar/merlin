@@ -61,6 +61,36 @@ class ConnectedSourceContext:
         return {"source_sha256": sha256(raw).hexdigest(),
                 "projected_sha256": sha256(cut).hexdigest()}
 
+    def control_admission_context(self, program, *, target):
+        """Reprove scalar support on the entire exact projection; no saved proof input."""
+        from merlin.frontends.bounded_control_source_body import PROOF_SCHEMA, ROLES
+        from merlin.xdsl_dialects._common import text
+        from merlin_experiments.phase1.feedback.private_control_support import assertion_row_proven
+
+        _, cut, selected = self._reopen(program)
+        support = self.prove_support(target=target)
+        proof = support["bounded_control"]
+        normalized, normalization = normalize_capture_mlir(cut.decode())
+        module = mq.parse(normalized)
+        parsed = tuple(mq.walk(module))
+        roles = []
+        by_operation = {value[0]: role for role, value in ROLES.items()}
+        for ordinal, operation in enumerate(parsed):
+            if operation.name not in by_operation:
+                continue
+            row = {"mlir_operation": operation.name, "ordinals": [ordinal], "count": 1}
+            if assertion_row_proven(row, proof):
+                roles.append({"ordinal": ordinal, "role": by_operation[operation.name]})
+        self._reopen(program)
+        return {"selected_index_observation": copy.deepcopy(selected),
+                "verified_bounded_control_source": {
+                    "schema": PROOF_SCHEMA, "status": "source_proved_pending_linked_build",
+                    "raw_source_sha256": sha256(cut).hexdigest(),
+                    "normalized_source_sha256": normalization["output_sha256"],
+                    "parsed_module_sha256": sha256(text(module, generic=True).encode()).hexdigest(),
+                    "index_bits": selected_index_bits(selected), "n_source_operations": len(parsed),
+                    "roles": roles}}
+
     def prove_support(self, *, target: str):
         """Reprove exact cut reductions and guards, retaining every refusal."""
         from merlin.targetgen.application_inventory import _application_operation_inventory

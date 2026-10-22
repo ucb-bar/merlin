@@ -164,11 +164,11 @@ def account_program(program: Path, *, name: str, target: str, evidence, source_c
         capability_contract=evidence.contract,
         host_capabilities=getattr(evidence, "host_capabilities", None),
     )
-    _join_source_admissions(accounting, {name: program}, evidence=evidence, source_context=source_context)
+    _join_source_admissions(accounting, {name: program}, evidence=evidence, source_context=source_context, target=target)
     return accounting["applications"][name]["signatures"]
 
 
-def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evidence, source_context=None) -> None:
+def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evidence, source_context=None, target=None) -> None:
     """Re-screen exact inventoried source bodies; serialized signatures are insufficient."""
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
@@ -186,10 +186,14 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
         normalized, _ = normalize_capture_mlir(raw.decode("utf-8"))
         operations = tuple(mq.walk(mq.parse(normalized)))
         bound_context = source_context.for_program(captures[name]) if source_context is not None else None
+        control_context = (source_context.control_admission_context(captures[name], target=target)
+                           if source_context is not None else None)
         for entry in application["signatures"]:
-            if entry["host_admission"]["status"] != "unknown":
-                continue
             row = entry["observed_signature"]
+            control = control_context is not None and row.get("mlir_operation") in {
+                "arith.index_cast", "arith.addi", "arith.cmpi", "cf.assert"}
+            if entry["host_admission"]["status"] != "unknown" and not control:
+                continue
             entry.update(
                 admit_operation_row(
                     row,
@@ -197,7 +201,7 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
                     capability_contract=evidence.contract,
                     host_capabilities=getattr(evidence, "host_capabilities", None),
                     source_operations=tuple(operations[ordinal] for ordinal in row["ordinals"]),
-                    source_context=bound_context,
+                    source_context=control_context if control else bound_context,
                 )
             )
     if source_context is not None:

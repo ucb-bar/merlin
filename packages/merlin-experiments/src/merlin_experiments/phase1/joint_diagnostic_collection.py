@@ -62,19 +62,26 @@ def eligible(entry, *, profile, selection, questions, observation_purpose=UNKNOW
     if (name not in questions or name not in profile['members'] or capsule.get('kind') == 'model'
             or capsule.get('label') not in {'public', 'dev'}):
         return None
+    # Background completion intake intentionally runs no timing observer. A
+    # reviewed validation request may obtain its first estimate below; absence
+    # of prior performance feedback is not a failed numerical execution.
     source = PERF.selected_capsule(selection, capsule)
     member = selection.get('members', {}).get(name)
     if (not member or PERF.capsule_identity(source) != member['capsule_sha256']
             or entry.get('source_group_sha256') != profile['members'][name]['source_group_sha256']
             or (observation_purpose == UNKNOWN_COST and entry.get('estimate_status') != 'UNKNOWN')
             or (observation_purpose == VALIDATION and entry.get('estimate_status') not in
-                {'UNKNOWN', 'PROVISIONAL', 'QUALIFIED', 'REFUTED'})
+                {None, 'UNKNOWN', 'PROVISIONAL', 'QUALIFIED', 'REFUTED'})
             or observation_purpose not in {UNKNOWN_COST, VALIDATION}):
         return None
     result = PERF._read(entry['result'])
     tier = result.get('tiers', {}).get('L2', {})
+    if result.get('failure'):
+        from .feedback.joint_physical_correctness import _split_l3_prerequisites
+        if not _split_l3_prerequisites(result, entry.get('compiler_sha256')):
+            return None
     if (result.get('numeric', {}).get('status') != 'pass' or tier.get('status') != 'pass'
-            or tier.get('engine') != 'spike' or result.get('failure')
+            or tier.get('engine') != 'spike'
             or result.get('trace_check', {}).get('status') != 'pass'
             or not (result.get('compiler_source') or result.get('candidate_native_execution'))):
         return None

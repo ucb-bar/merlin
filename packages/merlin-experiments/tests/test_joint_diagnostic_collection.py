@@ -202,3 +202,57 @@ def test_validation_cannot_bypass_selection_or_original_execution(setup, change)
         result = D.step(request_pin=s.pin, state_path=s.state_path, context=None, output=s.output)
         assert result['status'] == 'waiting_for_matching_validation_product'
     assert not s.calls
+
+
+def split_l3_product(s):
+    reason = ("this capsule declares required oracle tier L3 (elaborated_rtl) "
+              "but this phase supplies no adapter for it; reachable tiers here: ['L2']")
+    s.entry['compiler_sha256'] = 'c' * 64
+    s.grade.update(status='incomplete', compiler_source={'status': 'stable', 'candidate_sha256': 'c' * 64},
+        failure={'plane': 'oracle_unavailable', 'category': 'NOT_RUN_IS_NOT_PASS',
+                 'tier': 'L3', 'tier_status': 'unavailable', 'tier_reason': reason})
+    s.grade['tiers'].update(L0={'status': 'pass', 'mandatory': True},
+        L1={'status': 'pass', 'mandatory': True},
+        L3={'status': 'unavailable', 'mandatory': True, 'reason': reason})
+    s.grade['numeric'].update(mismatch_count=0, missing_outputs=[],
+        per_output={'Y': {'status': 'pass', 'n_elements': 16}})
+    s.grade['trace_check'].update(trace_requirement_status='pass', violations=[], unavailable_requirements=[])
+
+
+def test_split_l3_unavailable_keeps_original_failure_and_only_admits_diagnostic(setup):
+    s = setup
+    validation_request(s)
+    split_l3_product(s)
+    original = json.loads(json.dumps(s.grade))
+    assert D.eligible(s.entry, profile=s.profile, selection=s.selection,
+        questions=s.request['questions'], observation_purpose=D.VALIDATION) is not None
+    assert s.grade == original
+    assert s.grade['tiers']['L3']['status'] == 'unavailable'
+
+
+@pytest.mark.parametrize('change', ['source', 'missing_output', 'trace', 'physical_failure', 'other_tier'])
+def test_split_l3_exception_cannot_hide_any_other_failure(setup, change):
+    s = setup
+    validation_request(s)
+    split_l3_product(s)
+    if change == 'source': s.entry['compiler_sha256'] = 'd' * 64
+    elif change == 'missing_output': s.grade['numeric']['missing_outputs'] = ['Y']
+    elif change == 'trace': s.grade['trace_check']['unavailable_requirements'] = ['unknown']
+    elif change == 'physical_failure': s.grade['failure']['plane'] = 'elaborated_rtl'
+    elif change == 'other_tier': s.grade['tiers']['L1']['status'] = 'fail'
+    assert D.eligible(s.entry, profile=s.profile, selection=s.selection,
+        questions=s.request['questions'], observation_purpose=D.VALIDATION) is None
+
+
+def test_background_numeric_product_without_timing_feedback_can_be_validated(setup):
+    s = setup
+    validation_request(s)
+    s.entry.pop('estimate_status')
+    (s.state_path.parent / 'calibration_registry/one/entry.json').write_text(json.dumps(s.entry))
+    result = D.step(request_pin=s.pin, state_path=s.state_path, context=None, output=s.output)
+    assert result['status'] == 'diagnostic_observed'
+    assert ('observe', False) in s.calls
+    assert len([c for c in s.calls if c[0] == 'measure']) == 1
+    assert result['fit_eligible'] is False
+    assert D.eligible(s.entry, profile=s.profile, selection=s.selection,
+                      questions=s.request['questions']) is None
