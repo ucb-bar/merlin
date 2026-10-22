@@ -1,0 +1,175 @@
+{
+  "status": "pass",
+  "replay_runtime": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime.json",
+    "sha256": "f83f54df6ec6459919b4b718b7b2d11a3a6737d30beb68ca5479e32e29b77bcb"
+  },
+  "selection_runtime": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2.json",
+    "sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9"
+  },
+  "frozen_runtime_sha256": "7099fdf2e0d0469cfdc798ed2ee51f1afcf743ecbc8853116be28ff91708d476",
+  "native_records_identical": true,
+  "only_spec_difference": "removed inherited diagnostic review sidecars; selected execution/scope/source/facts identities identical",
+  "record": {
+    "schema": "merlin.phase2.archive_spike_runtime.v4",
+    "review_id": "INACTIVE PROVISIONAL combined conditional CPU fetch refill and SP row/request admission; inherited denial; no qualification",
+    "functional_argv": [
+      "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+      "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "--extension=gemmini",
+      "-p1",
+      "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+      "-m0x80000000:0x400000000",
+      "--instructions=1000000000"
+    ],
+    "observer": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "disassembler": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+    "model": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+    "source_manifest": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/timing-source-manifest.json",
+    "libraries": [
+      "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/libtiming_provider.so"
+    ],
+    "dependencies": [
+      "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+      "/usr/lib/x86_64-linux-gnu/libc.so.6",
+      "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+      "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+      "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+      "/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+      "/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+      "/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+      "/usr/lib/x86_64-linux-gnu/libm.so.6",
+      "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+      "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+      "retained/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+      "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+      "retained/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0"
+    ],
+    "entry_symbol": "kernel_entry",
+    "completion_symbol": "kernel_complete",
+    "timing_selection": {
+      "boundary": "immediately before kernel entry through explicitly selected completion",
+      "cold_warm": "UNKNOWN",
+      "counter_asm": "csrr %0, mcycle",
+      "counter_semantics": {
+        "clock": "Rocket core cycle CSR on one guest hart in GemminiGsimFireSimAlignedConfig; no wall-clock or FPGA-frequency conversion",
+        "source_pins": [
+          {
+            "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/CSR.scala",
+            "sha256": "10fbf32035cf5eece8c802f16b189afbec824287cddc8b8f1218c1d8209ed61f"
+          }
+        ],
+        "unit": "cycles",
+        "width_bits": 64,
+        "wrap": "modulo"
+      },
+      "excluded": [
+        "input staging",
+        "output publication",
+        "metric formatting",
+        "parent readback"
+      ],
+      "max_delta_cycles": 1000000000000,
+      "schema": "merlin.kernel_call_timing.v1",
+      "selection_sha256": "bd1919e1156df33271f6579921273d51fc655dc0f59a135b5327237fdc3d1180"
+    },
+    "files": [
+      {
+        "path": "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+        "sha256": "5df9c82ca3e921823da8606284a258b491541defbafee4586fb938639e03c6b9"
+      },
+      {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+        "sha256": "241c8d7343edbcf135e086cba981a56d556ebd085a0643d50ad31c2b7031fd38"
+      },
+      {
+        "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+        "sha256": "1c0a65ea4d86a0fdc57e22a49b777f80881b0a3df9b2ac0634dc651b295c0410"
+      },
+      {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+        "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6"
+      },
+      {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/timing-source-manifest.json",
+        "sha256": "eca3d276d44df8979464b41ec0879c5e9af6620f872b30092531ed9153857476"
+      },
+      {
+        "path": "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+        "sha256": "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb"
+      },
+      {
+        "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/libtiming_provider.so",
+        "sha256": "f34cda12a4e8eea631e92df32d7dda35fe5dedecc9a06b7932dc22376f9d78d9"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+        "sha256": "41daf7836f7fce21a40ca63a00c5caf21b05a35a76ccc075d86f1716212cdf01"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+        "sha256": "b2cf6c33b74d2f22543b7a469a75b538911e690f769d0b238843a49465b83793"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+        "sha256": "7cc817ff1841b59516d684f357bc0c3fc2cc52c3fa9b4ffb8ce8bdc215f02915"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+        "sha256": "3eaaa4aefd9c28f3867c96a427c3cbec9191cb61c4c9d0a2cb4a765d66064499"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+        "sha256": "334f871dfe528301a82186d0ba5c07c2a92dcadaacf3dceda792373b0c1c433d"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+        "sha256": "c1404396288e178c8db2f30203cb8150e4d2c14cacee9a2883e0092f45399cc8"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+        "sha256": "24fa78caa9b66c10c90711c51089f45273b643f132031172d54a3e98d711d48e"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+        "sha256": "4683f3623dc47a92e862dc3c8770caff81c9f4c7e116bb672fc439737b06d88a"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+        "sha256": "3dd5511ae94785c9f921429b0f2b2f7aabb461b6f0e6de6dfdbef15f24bdfee6"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+        "sha256": "fbed9505adacada2abb37c6b43be2df6de81e742712c6025694ba48de62c7e78"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+        "sha256": "7d03c9686574bad9ee3590450fc441481b2ee01c97ee13647a72cad0637143c8"
+      },
+      {
+        "path": "retained/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+        "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+      },
+      {
+        "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+        "sha256": "0f56e521cd437dd7415763a0b22c2a5cf05a29027c343724123770b16fb939f9"
+      },
+      {
+        "path": "retained/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+        "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+      },
+      {
+        "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/CSR.scala",
+        "sha256": "10fbf32035cf5eece8c802f16b189afbec824287cddc8b8f1218c1d8209ed61f"
+      }
+    ],
+    "scope": "count-only public kernel-call observation; native event timing unqualified",
+    "observation_resources": {
+      "protocol": "merlin.archive_count_observation.resources.900s.v1",
+      "per_command_wall_seconds": 900,
+      "parent_deadline_preserved": true
+    }
+  }
+}

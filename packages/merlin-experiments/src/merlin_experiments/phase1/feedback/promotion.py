@@ -1195,6 +1195,17 @@ def promote(
     digest, comps, rejected = submission_digests(source_ws)
     d = decomposition(source_ws)
     st = _tier_state(ws)
+    _instrument = cert_instrument(cert_tier, context=context)
+    _loop_instrument = cert_instrument(loop_tier, context=context)
+    # Same program bytes under a different judge are historical evidence, not
+    # a reason to suppress the newly required physical execution. Preserve the
+    # complete old ledger before retiring terminal records; pending jobs keep
+    # their original identity until their own completion is resolved.
+    from .instrument_retirement import retire as retire_instrument
+    retirement = retire_instrument(ws, st, tier=cert_tier, instrument=_instrument)
+    if retirement is not None:
+        print(f"[promote] retained {retirement['retired_records']} historical {cert_tier} "
+              f"record(s) for another instrument: {retirement['path']}", file=log, flush=True)
     if rejected:
         # Loud, not silent: a rejected name owns no bytes, so the component it was meant to be never
         # moves and every certificate keeps riding on the files it failed to claim.
@@ -1260,6 +1271,8 @@ def promote(
         n_pass += status == _PASS
         n_fail += status == _FAIL
         entry = {"status": status, "digest": digest, "components": dict(comps)}
+        if _loop_instrument is not None:
+            entry['instrument'] = _loop_instrument
         if execution_digest is not None:
             entry["execution_digest"] = execution_digest
         if boundary_by_name[name] is not None:
@@ -1361,15 +1374,16 @@ def promote(
 
     promoted = []
     _sim = cert_sim(cert_tier, context=context)
-    _instrument = cert_instrument(cert_tier, context=context)
     from merlin_experiments.phase1.feedback import promotion_admission as admission
 
     try:
         current_source = admission.observe_source(Path(ws)) if want else None
     except (OSError, ValueError):
         current_source = None
-    _loop_instrument = (cert_instrument(loop_tier, context=context)
-                        if current_source is not None and current_source.digest != digest else None)
+    if joint_required is not None and _instrument is None:
+        print('[promote] selected certificate instrument unavailable; physical work deferred',
+              file=log, flush=True)
+        want = []
     if want and _sim is None:
         # Say it once, loudly. Marking a capsule pending for a job that cannot be enqueued is how a
         # capsule strands at `pending` and never resolves.
@@ -1401,6 +1415,9 @@ def promote(
             continue
         execution_digest = execution_by_name.get(w.capsule)
         token = execution_digest[:16] if execution_digest is not None else digest
+        if _instrument is not None:
+            import hashlib
+            token = hashlib.sha256(f'{token}:{_instrument}'.encode()).hexdigest()[:16]
         key = identity_by_name.get(w.capsule) or current_identity(execution_digest, digest)
         if key in _slots_ro(st, w.capsule, cert_tier):
             # These exact bytes already hold a cert-tier record -- outstanding, passed, or failed. Buying

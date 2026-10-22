@@ -1,0 +1,137 @@
+{
+  "hypotheses": [
+    {
+      "candidate": "a2d7faf",
+      "decision": "inactive mixed result; not qualified",
+      "id": "SP-ROW-ARRIVAL-1",
+      "next_boundary": "Current rowproducer advances next-request/controller admission to memory service start, which includes cacheline RAW readiness. That conservative conflation is observable in trace; model needs a distinct accepted-request boundary with explicit credits/ingress assumption, not repricing.",
+      "premise": "selectedSPwritebusy occurs at actual write.fire; identity path has registered queues,16transactions",
+      "result": [
+        {
+          "candidate_estimate": 108,
+          "capsule": "SY_movement_i8_sub_tile",
+          "complete_outputs": true,
+          "output_bytes": 32,
+          "parent_estimate": 108,
+          "physical_cycles": 143,
+          "proof": {
+            "path": "SY_movement_i8_sub_tile/observation.json",
+            "sha256": "44e386b129240a2b7ef67e4624051b37a34e5c437fc8a3cccd72eb4d398c485e"
+          },
+          "qualified": false,
+          "relative_error": -0.2447552447552448
+        },
+        {
+          "candidate_estimate": 851,
+          "capsule": "SY_contraction_i8_aligned",
+          "complete_outputs": true,
+          "output_bytes": 1024,
+          "parent_estimate": 807,
+          "physical_cycles": 564,
+          "proof": {
+            "path": "SY_contraction_i8_aligned/observation.json",
+            "sha256": "62ac276085eae67b36e01306216e0becb6eff27a5ccaf7ddfd901121d0f26a2a"
+          },
+          "qualified": false,
+          "relative_error": 0.5088652482269505
+        },
+        {
+          "candidate_estimate": 11061,
+          "capsule": "SY_conv_k3x3_s1x1_d1x1_pad1x1",
+          "complete_outputs": true,
+          "output_bytes": 1024,
+          "parent_estimate": 11088,
+          "physical_cycles": 10847,
+          "proof": {
+            "path": "SY_conv_k3x3_s1x1_d1x1_pad1x1/observation.json",
+            "sha256": "7d053ec76119e5a740f04a5f370d871f340e80d56b531c8c80740eaec9f33c60"
+          },
+          "qualified": false,
+          "relative_error": 0.019728957315386708
+        }
+      ]
+    },
+    {
+      "decision": "rejected for selected aligned cols16 int8 subset",
+      "evidence": "LoadController row-specificrequest; reader.len=cols; bytesLeft=16; strictgreater usefulbyte selection retains16B on16/32/64ties. Currentgenerator explicitlyTODOs cross-rowmerging. SelectedFIRRTL corroborates bytesLeft and size reduction; widerrows are outsidethissubset.",
+      "id": "SP-CROSS-ROW-COALESCING",
+      "premise": "64B maximum transaction might merge adjacent16Brows"
+    }
+  ],
+  "limits": [
+    "Only modeled critical constraints are available; no physicalper-event attribution.",
+    "Service latency17and cacheline dependenthit start delays remain currentmemoryprices.",
+    "WholetraceL2hitcount40to80 is diagnostic, not scoped attribution.",
+    "No externalmeasurements, pricefit, calibrationpromotion or activeruntimechange."
+  ],
+  "schema": "merlin.public_model_hypotheses.v1",
+  "trace_segments": [
+    {
+      "events": [
+        111,
+        112,
+        114,
+        144,
+        145
+      ],
+      "new_duration": 151,
+      "old_duration": 136,
+      "phase": "firstA",
+      "ready": 2610,
+      "start": 2459
+    },
+    {
+      "events": [
+        152,
+        153,
+        155,
+        185,
+        186
+      ],
+      "new_duration": 89,
+      "old_duration": 68,
+      "phase": "firstB",
+      "ready": 2694,
+      "start": 2605
+    },
+    {
+      "events": [
+        213,
+        214,
+        246,
+        247
+      ],
+      "new_duration": 33,
+      "old_duration": 26,
+      "phase": "secondA",
+      "ready": 2801,
+      "start": 2768
+    },
+    {
+      "events": [
+        256,
+        257,
+        289,
+        290
+      ],
+      "new_duration": 89,
+      "old_duration": 68,
+      "phase": "secondB",
+      "ready": 2875,
+      "start": 2786
+    },
+    {
+      "events": [
+        307,
+        308,
+        324,
+        325
+      ],
+      "new_duration": 174,
+      "old_duration": 174,
+      "phase": "readout",
+      "ready": 3123,
+      "start": 2949
+    }
+  ]
+}

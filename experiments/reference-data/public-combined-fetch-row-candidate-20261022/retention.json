@@ -1,0 +1,192 @@
+{
+  "schema": "operator.curated_candidate_retention.v1",
+  "files": [
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+        "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6"
+      },
+      "retained": "model.json",
+      "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2.json",
+        "sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9"
+      },
+      "retained": "runtime-selection-v2.json",
+      "sha256": "6ff59a4933f8121f83ce67e37b59ca6cc38c14adf3645b6eacc3db3af1231146",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/timing-source-manifest.json",
+        "sha256": "eca3d276d44df8979464b41ec0879c5e9af6620f872b30092531ed9153857476"
+      },
+      "retained": "timing-source-manifest.json",
+      "sha256": "4e4903f713915f256b592da05ce861d0ae725225c21a7533aa44ad7c929b09e6",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/compatibility.json",
+        "sha256": "2a3391911f645fbee3825d31f50c79373b0c2b64b978928be0296ca32c910ea7"
+      },
+      "retained": "compatibility.json",
+      "sha256": "76dff075cdf31ab19aa024c191027d364c9eb1eb64afc21863ce2ad67153174a",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2-equivalence.json",
+        "sha256": "1c65d721399728c994111c7cffb8b5e58ef2d7f680e9b968b4a523e5009ba332"
+      },
+      "retained": "runtime-selection-v2-equivalence.json",
+      "sha256": "4e2accbb4a419ba8bdd477d781ebb7ea0b78dd92f3af41d615647273512e0c90",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/frontend-replay-v1/completion.json",
+        "sha256": "c0094a8b03e18073e779914158f680b5ed874478bd56add619da418318ffcaa1"
+      },
+      "retained": "frontend/completion.json",
+      "sha256": "1769b7b1540e2e8da14f73a8940e7267d4be3962f3bea0a1a3060ae0ed78c5a1",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/frontend-replay-v1/00.json",
+        "sha256": "db6404af86e1f45cb4d81001a38b13f43f7b1a8bff78784273eeade5f0416b26"
+      },
+      "retained": "frontend/00.report.json.gz",
+      "sha256": "431a84afc7cea3fbf1bde53579c3f8e486ba2f8f643dfdd49985d5d5330787a1",
+      "encoding": "gzip_original_bytes"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/frontend-replay-v1/00.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/00.stdout.gz",
+      "sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/frontend-replay-v1/01.json",
+        "sha256": "848948009605031cd8ea0106cd65c551c1f6befcdad709fd20b4462b7c0ea14e"
+      },
+      "retained": "frontend/01.report.json.gz",
+      "sha256": "52085a784f6539f6bfcdfc9ec4085ad370e724efdbb41ac5425252a453446e84",
+      "encoding": "gzip_original_bytes"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/frontend-replay-v1/01.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/01.stdout.gz",
+      "sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/frontend-replay-v1/02.json",
+        "sha256": "fc04be2975f79b238b722a02f8943ee515f9cd85f8c9f23e33dd71b80bcc024e"
+      },
+      "retained": "frontend/02.report.json.gz",
+      "sha256": "b0989301f78e5e4542d2430eec162f5e590d7daac1cb2b6ab413fa3bd70ccca7",
+      "encoding": "gzip_original_bytes"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/frontend-replay-v1/02.stdout",
+        "sha256": "eedbdcc8ada22f0d9bee5df6a0f5d233fcfc0312da4ddf60e7620f6a50766aab"
+      },
+      "retained": "frontend/02.stdout.gz",
+      "sha256": "bf72763a43960af94d85a89795c0a128daf88b159c4a65436f0c3fefe5b0476e",
+      "encoding": "gzip_original_bytes"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/receipt.json",
+        "sha256": "a38a0d12f553cface85d4b07e77dae9397abc8b3d7aa076245c061f08765865b"
+      },
+      "retained": "contraction/receipt.json",
+      "sha256": "862398fbc5c43c270b33f2c9c03099c5654518791190aff37e04399aeef70927",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/report.json",
+        "sha256": "2290285c7de75385424db5710597e1317afb4fc41b6296abb7182b8580385081"
+      },
+      "retained": "contraction/report.json.gz",
+      "sha256": "a476ac53d053634eaa7dec5ec75bd8ce105765ddf2bdae8c962f1a4c63d1b0df",
+      "encoding": "gzip_original_bytes"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/scope.json",
+        "sha256": "05fe8bb812dfed84b808d1b57b1033897520d041e395aa81418586f88b1b6629"
+      },
+      "retained": "contraction/scope.json",
+      "sha256": "042b6f618bede1684ba3bf221d3660c97acb48cc6392145e3afa393d898eec2e",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/counter-review.json",
+        "sha256": "46e5d3dad091a47fae6ea34bd45ff49fbb88fcf04ab7534ef536c7a0f4763d43"
+      },
+      "retained": "contraction/counter-review.json",
+      "sha256": "b9e75080bdc2a35c7932be91d7156394c5023065b3f1e649648d0ac36f7502f1",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/run-0/invocations/c88e5541ff96418aa00d54f292b576e0/invocation.json",
+        "sha256": "34d43cac3125519d6559f7a58ca777fff626a389bf077c53b0924eb368a2ba90"
+      },
+      "retained": "contraction/run-0/invocation.json",
+      "sha256": "51cb549e9cf7950be373eae20ffeb2b86d0fc6169efa0f78bf9f7d022967f820",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/run-1/invocations/96738db6ae134b3fbdb85ffee3769b61/invocation.json",
+        "sha256": "de1e4644a4d1f23b46cf188d36e3724803d5185e7adfa460e1c6b47fd91ae92e"
+      },
+      "retained": "contraction/run-1/invocation.json",
+      "sha256": "5fdfef04a6d69261ac4d50ad541368558e1615ea7a4947b9d780c91e4ea2c30d",
+      "encoding": "portable_json"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/run-0/invocations/c88e5541ff96418aa00d54f292b576e0/stdout.bin",
+        "sha256": "ba0c776fa617c8b5e0f48ebf4e47e06e071a1db9fdfa277b779221bae9d32e98"
+      },
+      "retained": "contraction/run-0/stdout.gz",
+      "sha256": "54b230883dbcb3e32bd34991d6ce966d689283c6e023c3621d320f3feff648de",
+      "encoding": "gzip_original_bytes"
+    },
+    {
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/run-1/invocations/96738db6ae134b3fbdb85ffee3769b61/stdout.bin",
+        "sha256": "ba0c776fa617c8b5e0f48ebf4e47e06e071a1db9fdfa277b779221bae9d32e98"
+      },
+      "retained": "contraction/run-1/stdout.gz",
+      "sha256": "54b230883dbcb3e32bd34991d6ce966d689283c6e023c3621d320f3feff648de",
+      "encoding": "gzip_original_bytes"
+    }
+  ],
+  "excluded": [
+    "ELFs",
+    "input/output arrays",
+    "author compiler sources",
+    "private reference data",
+    "active policy state"
+  ]
+}

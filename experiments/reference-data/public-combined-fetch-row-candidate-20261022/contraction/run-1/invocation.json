@@ -1,0 +1,300 @@
+{
+  "argv": [
+    "retained/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+    "--unshare-pid",
+    "--unshare-net",
+    "--die-with-parent",
+    "--new-session",
+    "--clearenv",
+    "--proc",
+    "/proc",
+    "--dev",
+    "/dev",
+    "--bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/scratch/0",
+    "/tmp",
+    "--bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace",
+    "--chdir",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+    "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+    "--ro-bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+    "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+    "--ro-bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "--ro-bind",
+    "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/libtiming_provider.so",
+    "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/libtiming_provider.so",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libc.so.6",
+    "/usr/lib/x86_64-linux-gnu/libc.so.6",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+    "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+    "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+    "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+    "/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+    "/usr/lib/x86_64-linux-gnu/libicudata.so.70",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+    "/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+    "/usr/lib/x86_64-linux-gnu/libicui18n.so.70",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+    "/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+    "/usr/lib/x86_64-linux-gnu/libicuuc.so.70",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libm.so.6",
+    "/usr/lib/x86_64-linux-gnu/libm.so.6",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+    "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+    "retained/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+    "retained/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+    "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+    "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+    "retained/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+    "--ro-bind",
+    "retained/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+    "retained/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1",
+    "--ro-bind",
+    "/usr/bin/dtc",
+    "/usr/bin/dtc",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libyaml-0.so.2.0.6",
+    "/usr/lib/x86_64-linux-gnu/libyaml-0.so.2.0.6",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/libyaml-0.so.2.0.6",
+    "/usr/lib/x86_64-linux-gnu/libyaml-0.so.2",
+    "--ro-bind",
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "/lib64/ld-linux-x86-64.so.2",
+    "--setenv",
+    "LD_LIBRARY_PATH",
+    "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib:retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2:/usr/lib/x86_64-linux-gnu:retained/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu:retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib:retained/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib:/usr/bin",
+    "--setenv",
+    "PATH",
+    "/usr/bin:/usr/lib/x86_64-linux-gnu",
+    "--bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/scratch/shm",
+    "/dev/shm",
+    "--remount-ro",
+    "/dev",
+    "--remount-ro",
+    "/",
+    "--unshare-user",
+    "--disable-userns",
+    "--assert-userns-disabled",
+    "--ro-bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/program.elf",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/program.elf",
+    "--ro-bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/output-symbols.elf",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/output-symbols.elf",
+    "--ro-bind",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/scope.json",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/scope.json",
+    "--",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "--extlib=retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/libtiming_provider.so",
+    "--extension=gemmini",
+    "-p1",
+    "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+    "-m0x80000000:0x400000000",
+    "--instructions=1000000000",
+    "--timing-model=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+    "--timing-report=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/report.json",
+    "--timing-scope-binding=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/scope.json",
+    "--timing-input-sha256=92f0776294c8b8659b94c9f5b2b5093ea3efab65deeade1488e2c8cc18c98e91",
+    "+symbol-elf=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/output-symbols.elf",
+    "+signature=retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/output-1.signature",
+    "+signature-granularity=1",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/program.elf"
+  ],
+  "cwd": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace",
+  "dependencies": [
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+      "sha256": "41daf7836f7fce21a40ca63a00c5caf21b05a35a76ccc075d86f1716212cdf01"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+      "sha256": "b2cf6c33b74d2f22543b7a469a75b538911e690f769d0b238843a49465b83793"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+      "sha256": "7cc817ff1841b59516d684f357bc0c3fc2cc52c3fa9b4ffb8ce8bdc215f02915"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+      "sha256": "3eaaa4aefd9c28f3867c96a427c3cbec9191cb61c4c9d0a2cb4a765d66064499"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+      "sha256": "334f871dfe528301a82186d0ba5c07c2a92dcadaacf3dceda792373b0c1c433d"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+      "sha256": "c1404396288e178c8db2f30203cb8150e4d2c14cacee9a2883e0092f45399cc8"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+      "sha256": "24fa78caa9b66c10c90711c51089f45273b643f132031172d54a3e98d711d48e"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+      "sha256": "4683f3623dc47a92e862dc3c8770caff81c9f4c7e116bb672fc439737b06d88a"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+      "sha256": "3dd5511ae94785c9f921429b0f2b2f7aabb461b6f0e6de6dfdbef15f24bdfee6"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+      "sha256": "fbed9505adacada2abb37c6b43be2df6de81e742712c6025694ba48de62c7e78"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+      "sha256": "7d03c9686574bad9ee3590450fc441481b2ee01c97ee13647a72cad0637143c8"
+    },
+    {
+      "path": "retained/tasks/el4-joint-integration-20261021/merlin/packages/merlin-experiments/src/merlin_experiments/phase2/retained_memory_observation.py",
+      "sha256": "291605ca15fe1f429b3f41725057d31fa79bf697c578abfde8ac20153516f586"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+      "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/timing-source-manifest.json",
+      "sha256": "eca3d276d44df8979464b41ec0879c5e9af6620f872b30092531ed9153857476"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+      "sha256": "241c8d7343edbcf135e086cba981a56d556ebd085a0643d50ad31c2b7031fd38"
+    },
+    {
+      "path": "retained/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/scratchpad-request-admission-v2/libtiming_provider.so",
+      "sha256": "f34cda12a4e8eea631e92df32d7dda35fe5dedecc9a06b7932dc22376f9d78d9"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+      "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+      "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+      "sha256": "0f56e521cd437dd7415763a0b22c2a5cf05a29027c343724123770b16fb939f9"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+      "sha256": "1c0a65ea4d86a0fdc57e22a49b777f80881b0a3df9b2ac0634dc651b295c0410"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/CSR.scala",
+      "sha256": "10fbf32035cf5eece8c802f16b189afbec824287cddc8b8f1218c1d8209ed61f"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+      "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+      "sha256": "5df9c82ca3e921823da8606284a258b491541defbafee4586fb938639e03c6b9"
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "sha256": "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb"
+    }
+  ],
+  "dependencies_unchanged": true,
+  "environment": {
+    "keys": [],
+    "schema": "merlin.process_environment.v1",
+    "scope": "complete effective mapping; values withheld; transitive dependencies unproved",
+    "sha256": "1aa2160350e4c4491b866875fc6d00c0ead6647dbfb5ff7c239a0e41fb7afeab"
+  },
+  "executable": {
+    "path": "retained/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+    "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+  },
+  "executable_unchanged": true,
+  "finished_ns": 1792676297186995087,
+  "inputs": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/program.elf",
+      "sha256": "92f0776294c8b8659b94c9f5b2b5093ea3efab65deeade1488e2c8cc18c98e91"
+    },
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/scope.json",
+      "sha256": "05fe8bb812dfed84b808d1b57b1033897520d041e395aa81418586f88b1b6629"
+    }
+  ],
+  "inputs_unchanged": true,
+  "kind": "subprocess",
+  "outputs": [
+    {
+      "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/workspace/report.json",
+      "sha256": "2290285c7de75385424db5710597e1317afb4fc41b6296abb7182b8580385081"
+    }
+  ],
+  "returncode": 0,
+  "schema": "merlin.invocation_record.v1",
+  "stage": "archive_screen_count",
+  "started_ns": 1792676297095736959,
+  "status": "completed",
+  "stderr": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/run-1/invocations/96738db6ae134b3fbdb85ffee3769b61/stderr.bin",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/run-1/invocations/96738db6ae134b3fbdb85ffee3769b61/stdout.bin",
+    "sha256": "ba0c776fa617c8b5e0f48ebf4e47e06e071a1db9fdfa277b779221bae9d32e98"
+  }
+}

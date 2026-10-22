@@ -1,0 +1,79 @@
+{
+  "comparisons": [
+    {
+      "candidate_estimate": 108,
+      "capsule": "SY_movement_i8_sub_tile",
+      "complete_outputs": true,
+      "output_bytes": 32,
+      "parent_estimate": 108,
+      "physical_cycles": 143,
+      "proof": {
+        "path": "SY_movement_i8_sub_tile/observation.json",
+        "sha256": "44e386b129240a2b7ef67e4624051b37a34e5c437fc8a3cccd72eb4d398c485e"
+      },
+      "qualified": false,
+      "relative_error": -0.2447552447552448
+    },
+    {
+      "candidate_estimate": 851,
+      "capsule": "SY_contraction_i8_aligned",
+      "complete_outputs": true,
+      "output_bytes": 1024,
+      "parent_estimate": 807,
+      "physical_cycles": 564,
+      "proof": {
+        "path": "SY_contraction_i8_aligned/observation.json",
+        "sha256": "62ac276085eae67b36e01306216e0becb6eff27a5ccaf7ddfd901121d0f26a2a"
+      },
+      "qualified": false,
+      "relative_error": 0.5088652482269505
+    },
+    {
+      "candidate_estimate": 11061,
+      "capsule": "SY_conv_k3x3_s1x1_d1x1_pad1x1",
+      "complete_outputs": true,
+      "output_bytes": 1024,
+      "parent_estimate": 11088,
+      "physical_cycles": 10847,
+      "proof": {
+        "path": "SY_conv_k3x3_s1x1_d1x1_pad1x1/observation.json",
+        "sha256": "7d053ec76119e5a740f04a5f370d871f340e80d56b531c8c80740eaec9f33c60"
+      },
+      "qualified": false,
+      "relative_error": 0.019728957315386708
+    }
+  ],
+  "generator_identity_note": "Current source and selected historical elaboration pinned separately",
+  "generator_source_sha256": "db6d9d61f8794f6d60508c5844a2b287ffab0cd795a662b84b970dd9615e5dc1",
+  "new_physical_runs": 0,
+  "not_packaged": [
+    "ELFs",
+    "input/output/golden values",
+    "candidate compiler source",
+    "private reference labels"
+  ],
+  "observer_only_replays": 4,
+  "parent_evidence": "../public-native-model-comparison-20261022/index.json",
+  "parent_trace": "../public-matmul-event-trace-20261022/index.json",
+  "rtl_premises": "../scratchpad-arrival-foundation-20261022/review.json",
+  "schema": "merlin.public_row_arrival_trial.v1",
+  "selected_firrtl": {
+    "sha256": "b7d9826b1c9f16fd00bc757b4334a7f330a842c6a494e0c28608dc351b305bf0",
+    "slice_lines": [
+      143570,
+      143652
+    ]
+  },
+  "spike_commit": "a2d7faf",
+  "status": "inactive provisional structural trial; no qualification",
+  "timing_semantics_changed": [
+    "aligned identity SP row arrival/credits/bank write acceptance",
+    "per-row memory request granularity"
+  ],
+  "trace": {
+    "path": "matmul-trace/events.jsonl",
+    "sha256": "a848021a7e473834ddf6eeb5961675e83b074ae8d4ab1299f22f0ca2953642f8"
+  },
+  "trace_events": 346,
+  "unchanged_prices": true
+}
