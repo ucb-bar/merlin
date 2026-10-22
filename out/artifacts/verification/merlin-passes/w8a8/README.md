@@ -1251,3 +1251,54 @@ new EL4 selected capture protocol.
 Evidence is recorded in `bounded-inputs-isolation-v1.json`, `bounded-inputs-guard-v2.log`,
 `bounded-inputs-qualified-v1.{xml,log}`, `bounded-inputs-freeze-v1.json`,
 `bounded-inputs-tinyllama-v1.json` and `bounded-inputs-qualification-v1.json`.
+
+## Fact-preserving tensor views in W8A8 source computations
+
+The finite, dynamic and bounded W8A8 checkers now share proved rules for static slices,
+concatenation, collapse/expand reshapes and static tensor casts. These establish the value
+facts required by Merlin's W8A8 recipe on the actual source computations. They do not verify
+LLVM optimization passes. The numerical context/input domains and provisional policy review
+requirements of the existing theorems remain unchanged.
+
+`DefinedReadView` proves that an initialized input's elementwise facts survive a view whose
+every output cell reads an actual in-bounds input cell. Slice geometry and rank reduction are
+checked from the operation. Reshapes check actual reassociation and element counts; casts check
+the actual static shape and element type. This preserves floating classifications, exact
+literal facts and uniform integer intervals without inventing facts from a type or annotation.
+
+`DefinedConcat` additionally proves that the parts cover every output coordinate. A candidate
+common refinement is accepted only after checking implication from **every** input's scalar
+fact. It can choose an input's more general interval or a weakened numerical classification;
+it falls back to empty evidence when no candidate works. A later, unproved floating product
+therefore cannot inherit finiteness from the first input. `W8A8SourceBook` reuses ordinary
+operation proofs only after checking equality with the additive source interpretation for
+the operation and all nested regions.
+
+Qualification passes **410 tests, zero skipped** (847.80 seconds), including **53 new** cases,
+**27** complete Lean/native/independent-recipe comparisons and two new public-receipt checks.
+Cases cover rank reduction, non-unit strides, empty shapes, both index widths, integer bounds
+through reshapes and casts, common concat facts and adversarial geometry/metadata. All **416**
+frozen records remain unchanged after qualification. The **365-source** isolated build audits
+**8761 theorems with zero violations**. Formatting, package docs and artifact layout pass;
+structure retains the unrelated `zephyr_model.py` size-ceiling failure. Concurrent
+BF16/frontend/Main/CLI work remains excluded.
+
+The retained TinyLlama source and captured-policy reference now pass the slice at result
+**1003** and concatenation at **1012**. Their first refusal is **1113**, a gather after **837**
+prefix operations. Its coordinate producers contain integer constants, multiply/add operations
+and reshapes. Reshape bounds preservation is proved; the scalar integer arithmetic still lacks
+the range evidence needed by the gather. No extra input assumptions or model-specific coordinate
+bounds were inserted to bypass that refusal. Full retained-model qualification remains false.
+
+The native test pipeline has a separately recorded limitation: a legal concatenation with an
+empty trailing part reaches bufferization, which emits a `memref.subview` with offset 2 and
+size 0 into a dimension of size 2. MLIR's verifier rejects it with
+`offset 0 is out-of-bounds: 2 >= 2`. The regression checks that exact refusal and compares the
+Lean result to the independent numerical recipe. It records `native_compared: false`; this
+case is excluded from the successful native comparison count. No production Merlin pass or
+vendored LLVM code was changed to avoid the failure. The identical native rejection is also
+reproduced on the original source **without W8A8 applied**. Its three Lean/independent-recipe
+observations and the exact baseline/after-pass failures are retained separately.
+
+Evidence: `views-isolation-v1.json`, `views-guard-v1.log`, `views-freeze-v1.json`,
+`views-qualified-v1.{xml,log}`, `views-tinyllama-v1.json` and `views-qualification-v1.json`.
