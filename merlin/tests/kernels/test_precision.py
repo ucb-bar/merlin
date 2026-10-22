@@ -59,6 +59,94 @@ def test_pass_rewrites_bf16_matmul_to_f32_accumulation():
     assert any(str(g.results[0].type.element_type) == "f32" for g in gens)
 
 
+_SPLAT = (
+    '%z = "arith.constant"() <{{value = {init} : bf16}}> : () -> bf16\n    %s = "tensor.splat"(%z) : (bf16) -> {ty}\n'
+)
+
+
+def _contraction(op: str, a: str, b: str, c: str, maps: str, body: str, init: str = "0.000000e+00") -> str:
+    """One contraction in generic form (explicit maps need it), with a splat destination."""
+    iters = ""
+    if op == "linalg.generic":
+        iters = " iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>,"
+        iters += " #linalg.iterator_type<reduction>],"
+    return (
+        f'"builtin.module"() ({{\n  "func.func"() <{{function_type = ({a}, {b}) -> {c}, sym_name = "forward"}}> ({{\n'
+        f"  ^bb0(%a: {a}, %b: {b}):\n    "
+        + _SPLAT.format(init=init, ty=c)
+        + f'    %r = "{op}"(%a, %b, %s) <{{indexing_maps = {maps},{iters} '
+        f"operandSegmentSizes = array<i32: 2, 1>}}> ({{\n"
+        f"    ^bb0(%x: bf16, %y: bf16, %acc: bf16):\n      {body}\n"
+        f'      "linalg.yield"(%p) : (bf16) -> ()\n    }}) : ({a}, {b}, {c}) -> {c}\n'
+        f'    "func.return"(%r) : ({c}) -> ()\n  }}) : () -> ()\n}}) : () -> ()\n'
+    )
+
+
+_MAPS = "[affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> {b}>, affine_map<(d0, d1, d2) -> (d0, d1)>]"
+_MUL_ADD = (
+    '%m = "arith.mulf"({lhs}, {rhs}) <{{fastmath = #arith.fastmath<none>}}> : (bf16, bf16) -> bf16\n'
+    '      %p = "arith.addf"({acc}, %m) <{{fastmath = #arith.fastmath<none>}}> : (bf16, bf16) -> bf16'
+)
+_T = "tensor<4x4xbf16>"
+
+
+def _rewrite(text):
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.passes_xdsl import lower_bf16_matmul_f32acc
+    from merlin.xdsl_dialects._common import text as to_text
+
+    module = parse_mlir_text(text)
+    count = lower_bf16_matmul_f32acc(module)
+    module.verify()
+    generics = [op for op in module.walk() if op.name == "linalg.generic"]
+    accumulating = [g for g in generics if any(it.data.value == "reduction" for it in g.iterator_types.data)]
+    return count, to_text(module), accumulating
+
+
+def test_pass_keeps_explicit_matmul_maps():
+    """A transposed-B ``linalg.matmul`` must stay A @ B^T: its own maps carry the transpose."""
+    maps = _MAPS.format(b="(d1, d2)")
+    body = _MUL_ADD.format(lhs="%x", rhs="%y", acc="%acc")
+    count, _, (accumulating,) = _rewrite(_contraction("linalg.matmul", _T, _T, _T, maps, body))
+    assert count == 1
+    assert [str(m.data) for m in accumulating.indexing_maps.data] == [
+        "(d0, d1, d2) -> (d0, d2)",
+        "(d0, d1, d2) -> (d1, d2)",
+        "(d0, d1, d2) -> (d0, d1)",
+    ]
+
+
+@pytest.mark.parametrize(
+    "lhs, rhs, acc",
+    [("%x", "%x", "%acc"), ("%x", "%y", "%x"), ("%acc", "%y", "%acc")],
+    ids=["a*a", "a*b+a", "acc*b"],
+)
+def test_pass_leaves_other_mul_add_bodies_unchanged(lhs, rhs, acc):
+    """Only ``acc + a * b`` is a contraction; same op names with other wiring compute something else."""
+    maps = _MAPS.format(b="(d2, d1)")
+    source = _contraction("linalg.generic", _T, _T, _T, maps, _MUL_ADD.format(lhs=lhs, rhs=rhs, acc=acc))
+    count, text, _ = _rewrite(source)
+    assert count == 0
+    assert "arith.extf" not in text and "xf32>" not in text
+
+
+@pytest.mark.parametrize("init, extended", [("1.000000e+00", True), ("-0.000000e+00", True), ("0.000000e+00", False)])
+def test_pass_starts_accumulation_from_the_destination(init, extended):
+    """The f32 accumulator begins at ``extf(destination)``; a ``+0.0`` destination is an f32 ``+0.0`` fill."""
+    maps = _MAPS.format(b="(d2, d1)")
+    body = _MUL_ADD.format(lhs="%x", rhs="%y", acc="%acc")
+    count, _, (accumulating,) = _rewrite(_contraction("linalg.generic", _T, _T, _T, maps, body, init=init))
+    assert count == 1
+    start = accumulating.outputs[0].owner
+    if extended:
+        assert start.name == "linalg.generic"
+        assert [op.name for op in start.body.blocks[0].ops] == ["arith.extf", "linalg.yield"]
+        assert start.inputs[0].owner.name == "tensor.splat"  # the original 16-bit destination
+    else:
+        assert start.name == "linalg.fill"
+        assert start.inputs[0].owner.value.value.data == 0.0
+
+
 def _toolchain():
     from merlin.llvmlower import toolchain
 
