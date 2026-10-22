@@ -78,3 +78,38 @@ def test_compact_aggregate_evidence_is_visible_without_inventing_case_counts():
     lines = summary({'numeric': {'completed': 0, 'passed': 0, 'aggregate_pass_evidence': 3}})
     assert 'aggregate execution passes 3' in lines[0]
     assert 'not additive' in lines[0]
+
+
+def test_capsule_cohorts_stay_below_queue_with_all_twenty_core_rows():
+    sample = {'campaign': {'run_id': 'live'}, 'monotonic': 10,
+              'cores': [{'cpu': cpu, 'measured_utilization_pct': 1} for cpu in range(9, 29)]}
+    history = view.History(); history.add(sample)
+    counts = {'source_sha256': 'a' * 64, 'source_current': True, 'evaluated_at': '2026-10-22T17:00:00Z',
+              'cohorts': [{'cohort': name, 'total': total, 'all': 0, 'L2': 2, 'L3': 1, 'refusal': 0}
+                          for name, total in [('functional', 153), ('calibration', 20), ('scalability', 77)]],
+              'total': {'total': 250, 'all': 0, 'L2': 6, 'L3': 3, 'refusal': 0},
+              'historical_union': {'L2': 40, 'L3': 30}}
+    health = {'numeric': {'completed': 2}, 'requests': [{'source_sha256': 'b' * 64}]}
+    text = view.render(sample, {'capsule_counts': counts, 'progress_health': health}, history,
+                       width=160, height=36, color=False)
+    assert text.index('CURRENT JOBS') < text.index('CAPSULES aaaaaaaaaaaa')
+    for phrase in ('functional 153', 'calibration 20', 'scalability 77', 'total 250',
+                   'all-required 0', 'L2/Spike', 'L3/gSIM', 'history union', 'not current',
+                   'perf round not recorded', 'current unverified', 'N/A (not required)',
+                   'diag 1; required ?'):
+        assert phrase in text
+    for cpu in range(9, 29):
+        assert f' {cpu:>3} │' in text
+    assert len(text.splitlines()) == 36
+    assert all(view.visible_width(line) < 160 for line in text.splitlines())
+
+
+def test_capsule_header_keeps_perf_at_120_columns_and_colors_only_labels():
+    metadata = {'capsule_counts': {'source_sha256': 'a' * 64, 'evaluated_at': '2026-10-22T17:01:02.123+00:00', 'completed_perf_evaluations': 3}}
+    plain = view._capsule_counts(metadata, False)
+    colored = view._capsule_counts(metadata, True)
+    assert 'perf evaluations 3' in view.clip_ansi(plain[0], 119)
+    assert '17:01:02' in plain[0] and '2026-10-22' not in plain[0]
+    assert '\x1b' not in ''.join(plain)
+    for row, code in zip(colored[1:4], (view.COLORS['L2'], view.COLORS['calibration'], view.COLORS['agent'])):
+        assert f'\x1b[{code}m' in row

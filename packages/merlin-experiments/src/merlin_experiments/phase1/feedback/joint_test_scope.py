@@ -47,9 +47,19 @@ def select(root, *, submission, curriculum=None, additional_cases=None):
     required = sorted(r[2] for r in records)
     cohorts = {"core_and_calibration": len(required) - len(additional_cases),
                "public_scalability": len(additional_cases)}
+    # These memberships come from the native verified suite and operator policy,
+    # never from a candidate's impact hints or result labels.
+    original = set(state['policy'].get('correctness_curriculum', {}).get('original_capsules', ()))
+    performance_cohorts = {
+        'primary': sorted(additional_cases),
+        'correctness_regression': sorted(original & set(required)),
+        'calibration_diagnostics': sorted(
+            set(state['policy'].get('gsim', {}).get('witness_capsules', ())) - original),
+    }
     if not focused():
         return [r[3] for r in records], {"scope": "milestone", "required_development": len(records),
-                                        "selected": required, "pending": [], "cohorts": cohorts}
+                                        "selected": required, "pending": [], "cohorts": cohorts,
+                                        "performance_cohorts": performance_cohorts}
     families = {r[0] for r in records}
     reason = "unknown impact: representative semantic-family smoke"
     chosen = None
@@ -95,7 +105,7 @@ def select(root, *, submission, curriculum=None, additional_cases=None):
         chosen = chosen[:16]
     names = sorted(r[2] for r in chosen)
     selection = {"scope": "rolling" if curriculum is not None else "smoke", "reason": reason, "selected": names,
-                                    "cohorts": cohorts,
+                                    "cohorts": cohorts, "performance_cohorts": performance_cohorts,
                                     "required_development": len(required),
                                     "pending": sorted(set(required) - set(names)),
                                     "full_coverage_required": True}
@@ -172,7 +182,8 @@ def annotate(verdict, selection):
                 'qualified_physical_coverage': 'consult existing exact-scope calibration registry',
                 'next_questions': [w for w in witnesses if w['capsule'] in report['next_batch']][:3]})
     from .joint_performance_priority import summarize as performance_priority
-    verdict["feedback_brief"]["performance_priority"] = performance_priority(verdict.get("per_capsule", ()))
+    verdict["feedback_brief"]["performance_priority"] = performance_priority(
+        verdict.get("per_capsule", ()), cohorts=selection.get("performance_cohorts", {}))
     if selection["scope"] == "smoke":
         if verdict.get("all_pass") is True:
             verdict["all_pass"] = None

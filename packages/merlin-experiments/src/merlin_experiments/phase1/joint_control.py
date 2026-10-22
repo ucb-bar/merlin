@@ -65,11 +65,13 @@ def policy(path):
 def validate(options):
     if not getattr(options, "joint_campaign", ""):
         return
-    policy(options.joint_campaign)
+    selected_policy = policy(options.joint_campaign)
+    from .joint_seed import selected as selected_seed
+    seed = selected_seed(options, selected_policy)
     if options.sandbox != "bwrap" or options.continuous or options.schedule != "continuous":
         raise ValueError("joint campaign requires native --schedule continuous and bwrap")
-    if not options.fresh_backend:
-        raise ValueError("joint campaign requires --fresh-backend (resume preserves its own compiler)")
+    if not options.fresh_backend and seed is None:
+        raise ValueError("joint campaign requires --fresh-backend or an operator-reviewed authored checkpoint")
     if options.seal_current or options.qualify_submission:
         raise ValueError("joint campaign cannot use legacy qualification or sealing")
 

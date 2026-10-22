@@ -1239,29 +1239,35 @@ class _CallPathResolution:
     """
 
     def __init__(self):
-        self._resolved: dict[Path, Path] = {}
+        self._resolved: dict[str, str] = {}
 
-    def resolve(self, path: Path) -> Path:
-        path = path.absolute()
-        if path in self._resolved:
-            return self._resolved[path]
-        if path.parent == path:
-            result = path.resolve()
+    def _resolve(self, path: str) -> str:
+        cached = self._resolved.get(path)
+        if cached is not None:
+            return cached
+        parent, name = os.path.split(path)
+        if not name:
+            result = str(Path(path).resolve())
         else:
-            parent = self.resolve(path.parent)
-            if path.name == "..":
-                result = parent.parent
+            resolved_parent = self._resolve(parent)
+            if name == "..":
+                result = os.path.dirname(resolved_parent)
             else:
-                result = parent / path.name
+                result = os.path.join(resolved_parent, name)
                 try:
-                    mode = result.lstat().st_mode
+                    mode = os.lstat(result).st_mode
                 except OSError:
-                    result = path.resolve()
+                    result = str(Path(path).resolve())
                 else:
                     if stat.S_ISLNK(mode):
-                        result = path.resolve()
+                        result = str(Path(path).resolve())
         self._resolved[path] = result
         return result
+
+    def resolve(self, path: Path) -> Path:
+        # Long declarations share ancestors. String keys avoid reconstructing
+        # and hashing Path component tuples at every recursive prefix lookup.
+        return Path(self._resolve(str(path.absolute())))
 
 
 def _resolved_bind_mounts(

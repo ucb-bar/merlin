@@ -1047,6 +1047,7 @@ def _request_snapshot_admission(service, candidate):
 def original_compiler_execution(service, *, target_experiment, candidate, work_root, sandbox_inputs=None):
     """Batch only setup for an exact owner, never the grading lifetime."""
     from merlin.common.bundle_snapshot import verified_snapshot_scope
+    from merlin.targetgen.compiler_library import active_compiler_library, guarded_compiler_library_verification
 
     if service is None:
         yield
@@ -1054,6 +1055,10 @@ def original_compiler_execution(service, *, target_experiment, candidate, work_r
     if type(service) is not CommonTransformService or P.active_package_executor() is not None:
         raise ValueError("original profile execution requires its exact owner and no foreign executor")
     with _request_snapshot_admission(service, candidate), contextlib.ExitStack() as execution:
+        # This issued, watched selection lives through all joined workers and
+        # executor cleanup. Every library access still checks its exact guard;
+        # scope exit independently verifies the reviewed bytes, even on failure.
+        execution.enter_context(guarded_compiler_library_verification(active_compiler_library()))
         with verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo):
             execution.enter_context(
                 _original_execution_lifetime(

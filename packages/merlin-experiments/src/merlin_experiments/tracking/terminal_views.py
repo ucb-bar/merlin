@@ -275,6 +275,40 @@ def _attempts(metadata, color, offset):
     return lines
 
 
+def _capsule_counts(metadata, color=False):
+    counts = metadata.get('capsule_counts') or {}
+    def value(raw):
+        return str(raw) if type(raw) is int and raw >= 0 else '?'
+    source = clean(counts.get('source_sha256'), 12) or 'unknown'
+    perf = counts.get('completed_perf_evaluations')
+    perf = 'perf evaluations ' + value(perf) if type(perf) is int else 'perf round not recorded'
+    stamp = clean(counts.get('evaluated_at'), 40)
+    stamp = stamp.split('T', 1)[1][:8] if 'T' in stamp else 'unknown'
+    lines = [f' CAPSULES {source} | {perf} | evaluated {stamp}; current unverified']
+    indexed = {row.get('cohort'): row for row in counts.get('cohorts', [])}
+    for name in ('functional', 'calibration', 'scalability', 'total'):
+        row = counts.get('total', {}) if name == 'total' else indexed.get(name, {})
+        label = f"{name} {value(row.get('total'))}"
+        physical = value(row.get('L3'))
+        if name == 'scalability':
+            physical = 'N/A (not required)'
+        elif name == 'calibration':
+            physical = (f"diag {physical}; required {value(row.get('L3_selected_required'))} "
+                        f"eligible {value(row.get('L3_eligible_witnesses'))}")
+        code = {'functional': COLORS['L2'], 'calibration': COLORS['calibration'],
+                'scalability': COLORS['agent'], 'total': '1'}[name]
+        line = paint(f" {label:<18}", code, color) + (f" all-required {value(row.get('all')):<4} "
+                f"L2/Spike {value(row.get('L2')):<4} L3/gSIM {physical:<4} "
+                f"refusal {value(row.get('refusal'))}")
+        if name == 'total':
+            historical = counts.get('historical_union') or {}
+            line += f" | history union L2 {value(historical.get('L2'))} L3 {value(historical.get('L3'))} (not current)"
+            if counts.get('partial'):
+                line += ' [bounded/partial]'
+        lines.append(line)
+    return lines
+
+
 def render(sample, metadata, history, *, tab=-1, width=120, height=40, color=True,
            frame=0, paused=False, offset=0, error=None):
     campaign = sample.get('campaign') or {}
@@ -302,7 +336,7 @@ def render(sample, metadata, history, *, tab=-1, width=120, height=40, color=Tru
                            for k in ('agent', 'L2', 'L3', 'build', 'verify', 'calibration', 'unknown', 'idle'))
         lines.append(legend)
     elif tab == 1:
-        body = _jobs(sample, width, color, offset)
+        body = _capsule_counts(metadata, color) + [''] + _jobs(sample, width, color, offset)
     elif tab == 2:
         body = _agents(metadata, color, offset)
     elif tab == 3:
@@ -361,7 +395,10 @@ def overview(sample, metadata, history, *, lines, width, height, color, frame, p
         right += [paint(' ' + status, COLORS['build'], color) + ' ' + title]
     if not attempts:
         right += [' No attempt records available yet.']
-    available = max(4, height - len(lines) - 7)
+    counts = _capsule_counts(metadata, color)
+    # Reserve a queue row and the dense evidence table; retain all CPU rows
+    # whenever the terminal has enough height for both panels and the footer.
+    available = max(1, height - len(lines) - 3 - 2 - len(counts))
     body_rows = min(max(len(left), len(right)), available)
     for index in range(body_rows):
         a = left[index] if index < len(left) else ''
@@ -372,7 +409,7 @@ def overview(sample, metadata, history, *, lines, width, height, color, frame, p
     job_count = len(sample.get('jobs') or [])
     lines.append(paint(f' CURRENT JOBS / QUEUE  ({job_count} records)', '1;38;5;141', color))
     jobs = sorted(sample.get('jobs') or [], key=lambda j: ({'setup_stage': 0, 'cpu_waiter': 1, 'cpu_lease': 2}.get(j.get('kind'), 3), -(j.get('age_s') or 0)))
-    remaining = max(1, height - len(lines) - 3)
+    remaining = max(1, height - len(lines) - 3 - len(counts))
     for job in jobs[:min(remaining, 4)]:
         stage = clean(job.get('stage') or job.get('action') or job.get('state') or 'unknown', 22)
         capsule = clean(job.get('capsule') or job.get('label') or job.get('owner') or 'capsule not attributed', 52)
@@ -382,6 +419,7 @@ def overview(sample, metadata, history, *, lines, width, height, color, frame, p
         lines.append(paint(f' {stage:<23}', COLORS[kind(stage)], color) + capsule + '  ' + wait)
     if not jobs:
         lines.append(' No active job-stage records; collection continues.')
+    lines.extend(counts)
     lines += [''] * max(0, height - 3 - len(lines))
     health_alert = terminal_health.alert(metadata.get('progress_health'))
     note = error or health_alert or 'CPU busy is measured; task-to-core attribution is sampled. Metrics retain their recorded model/scope.'

@@ -22,6 +22,13 @@ and rechecks current import policy and complete membership. It may retain only
 bounded immutable Python syntax facts for identical source bytes, filenames and
 parser implementations. No filesystem, import-admission, qualification, source
 program or execution verdict is cached, and selected SDK bytes remain unchanged.
+`guarded_compiler_library_verification` optionally bounds repeated selection access
+to one host request. It arms file/directory observations before the full initial
+verification, binds exact selection/root/current policy, and permits copied worker
+contexts only while that issued process scope is live and unchanged. Invalidation,
+unavailable guards and foreign processes retain ordinary full verification. An
+independent full verification remains mandatory at exit, including failure. This
+changes no library grants, contract verification or numerical authority.
 
 V6 common-profile grants derive from the exact embedded shared release inventory,
 including explicitly selected source-binding APIs. Profile declaration and frozen

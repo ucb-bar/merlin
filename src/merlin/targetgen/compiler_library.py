@@ -12,6 +12,9 @@ import contextlib
 import contextvars
 import hashlib
 import json
+import os
+import stat
+import weakref
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from functools import lru_cache
@@ -24,6 +27,8 @@ SCHEMA = "merlin.compiler_library.v1"
 _FORBIDDEN_MODULES = ("merlin.runtime.reference", "merlin.runtime.simulator", "merlin_experiments")
 _EXCLUDED_PARTS = frozenset({".git", "out", "docs", "tests", "__pycache__"})
 _ACTIVE_LIBRARY = contextvars.ContextVar("selected_additional_compiler_library", default=None)
+_LIBRARY_VERIFICATION = contextvars.ContextVar("guarded_compiler_library_verification", default=None)
+_ISSUED_LIBRARY_VERIFICATIONS = weakref.WeakSet()
 # Exact, target-neutral re-export API. This does not authorize a package prefix.
 _PUBLIC_REEXPORTS = {"merlin.sched.ir": frozenset({"expr", "kernel", "parse"})}
 
@@ -318,7 +323,10 @@ class CompilerLibrarySelection:
         object.__setattr__(self, "_binding", json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
 
     def record(self):
-        record = selected_library_record(self.contract, self.root)
+        scope = _LIBRARY_VERIFICATION.get()
+        record = scope.record(self) if type(scope) is _LibraryVerification else None
+        if record is None:
+            record = selected_library_record(self.contract, self.root)
         if json.dumps(record, sort_keys=True, separators=(",", ":")).encode() != self._binding:
             raise CompilerLibraryError("additional compiler library selection changed")
         return record
@@ -352,3 +360,117 @@ def active_compiler_library():
             raise CompilerLibraryError("additional compiler imports lost their selected owner")
         selection.record()
     return selection
+
+
+def _library_policy_identity():
+    return (CompilerLibraryContract.verify, _read, _syntax_facts, _parse_syntax_facts,
+            _verify_public_reexports, _forbidden, is_harness_module, module_matches,
+            resolve_name, ast.parse, repr(MODULE_ACCESS), _FORBIDDEN_MODULES,
+            tuple(sorted((key, tuple(sorted(value))) for key, value in _PUBLIC_REEXPORTS.items())))
+
+
+def _library_guard_members(root, contract):
+    # Only reviewed leaves and their directory ancestors affect this contract.
+    # Directory watches still invalidate on additions/removals. No broad library
+    # tree enumeration or unreviewed sibling grants are introduced.
+    paths = set()
+    for member in contract.members:
+        path = root / member.path
+        paths.add(path)
+        paths.update(parent for parent in path.parents if parent != root and parent.is_relative_to(root))
+    rows = []
+    for path in sorted(paths):
+        metadata = path.lstat()
+        if stat.S_ISREG(metadata.st_mode):
+            kind, size = 'file', metadata.st_size
+        elif stat.S_ISDIR(metadata.st_mode):
+            kind, size = 'directory', None
+        else:
+            raise CompilerLibraryError('guarded compiler library has an indirect or special member')
+        rows.append((path.relative_to(root).parts, path, kind, size))
+    return rows
+
+
+class _LibraryVerification:
+    def __init__(self, selection):
+        self.selection = selection
+        self.process = os.getpid()
+        self.binding = selection._binding
+        self.policy = _library_policy_identity()
+        self.guard = None
+        self.live = True
+
+    def record(self, selection):
+        if (self not in _ISSUED_LIBRARY_VERIFICATIONS or not self.live
+                or self.process != os.getpid() or self.selection is not selection):
+            return None
+        root, contract = selection.root, selection.contract
+        # Recheck declaration and namespace identity, not every member's path.
+        # Watched files/directories cover writes, outside hardlinks and changes
+        # to reviewed leaves and their parents; root ancestors are checked afresh.
+        if (type(contract) is not CompilerLibraryContract or not isinstance(root, Path)
+                or not root.is_absolute() or root.resolve() != root
+                or any(path.is_symlink() for path in (root, *root.parents))):
+            raise CompilerLibraryError('guarded compiler library selection changed')
+        record = {'root': str(root), 'contract_sha256': contract.sha256, 'contract': contract.record()}
+        if (selection._binding != self.binding
+                or json.dumps(record, sort_keys=True, separators=(',', ':')).encode() != self.binding
+                or _library_policy_identity() != self.policy):
+            raise CompilerLibraryError('guarded compiler library declaration or verifier changed')
+        if self.guard is not None and self.guard.unchanged():
+            return record
+        return None  # Invalid/unsupported watch retains the ordinary full read.
+
+
+@contextlib.contextmanager
+def guarded_compiler_library_verification(selection):
+    """One trusted request's watched library verification; no global admission cache.
+
+    Arm kernel observations before a full verification. Copied worker contexts
+    may reuse only this live exact selection, with a fresh guard check per call.
+    End the request with independent full verification, including on failure.
+    Unscoped, foreign-process, invalidated and unsupported-watch readers retain
+    ordinary selected_library_record verification. Contract.verify itself is
+    unchanged and always performs its complete checks.
+    """
+    if selection is None:
+        yield
+        return
+    if type(selection) is not CompilerLibrarySelection:
+        raise CompilerLibraryError('guarded compiler library requires an exact host selection')
+    from merlin.common.bundle_snapshot import _RosterGuard
+
+    scope = _LibraryVerification(selection)
+    root, contract = selection.root, selection.contract
+    # Canonical namespace checks precede all guard construction.
+    if not root.is_absolute() or root.resolve() != root or any(path.is_symlink() for path in (root, *root.parents)):
+        raise CompilerLibraryError('compiler library selection requires a canonical unlinked root')
+    scanner = lambda actual: _library_guard_members(actual, contract)
+    token = None
+    try:
+        try:
+            scope.guard = _RosterGuard(root, scanner(root), scanner=scanner)
+        except (OSError, RuntimeError):
+            scope.guard = None
+        initial = selected_library_record(contract, root)
+        if json.dumps(initial, sort_keys=True, separators=(',', ':')).encode() != scope.binding:
+            raise CompilerLibraryError('compiler library changed before guarded request')
+        if scope.guard is not None and not scope.guard.unchanged():
+            scope.guard.close()
+            scope.guard = None
+        _ISSUED_LIBRARY_VERIFICATIONS.add(scope)
+        token = _LIBRARY_VERIFICATION.set(scope)
+        try:
+            yield
+        finally:
+            final = selected_library_record(selection.contract, selection.root)
+            if (json.dumps(final, sort_keys=True, separators=(',', ':')).encode() != scope.binding
+                    or _library_policy_identity() != scope.policy):
+                raise CompilerLibraryError('compiler library changed during guarded request')
+    finally:
+        scope.live = False
+        _ISSUED_LIBRARY_VERIFICATIONS.discard(scope)
+        if token is not None:
+            _LIBRARY_VERIFICATION.reset(token)
+        if scope.guard is not None:
+            scope.guard.close()

@@ -75,6 +75,47 @@ def test_only_exact_original_owner_installs_executor(execution):
         assert P.active_package_executor() is None
 
 
+@pytest.mark.parametrize("fail", [False, True], ids=["normal", "failed-request"])
+def test_request_library_guard_covers_joined_workers_and_final_verification(execution, monkeypatch, fail):
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+    from merlin.targetgen import compiler_library as L
+
+    monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
+    owner, candidate, work = execution
+    library = candidate.parent / "reviewed-library"
+    library.mkdir()
+    (library / "helper.py").write_text("def identity(value):\n    return value\n")
+    contract = L.freeze_compiler_library(
+        library, review_id="request-scope-test", public_modules=("helper",), sources=(("helper.py", "helper"),)
+    )
+    selection = L.CompilerLibrarySelection(contract, library)
+    verify, calls = L.CompilerLibraryContract.verify, []
+
+    def counted(self, root):
+        calls.append(root)
+        return verify(self, root)
+
+    monkeypatch.setattr(L.CompilerLibraryContract, "verify", counted)
+    with L.scoped_compiler_library(selection):
+        expected = pytest.raises(RuntimeError, match="request failed") if fail else nullcontext()
+        with expected:
+            with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+                scope = L._LIBRARY_VERIFICATION.get()
+                assert scope is not None and scope.guard is not None and scope.guard.unchanged()
+                cold = len(calls)
+                with ThreadPoolExecutor(max_workers=2) as workers:
+                    futures = [workers.submit(copy_context().run, L.active_compiler_library) for _ in range(2)]
+                    assert [future.result(timeout=5) for future in futures] == [selection, selection]
+                assert len(calls) == cold  # Actual copied workers use the live request's issued guard.
+                if fail:
+                    raise RuntimeError("request failed")
+        assert len(calls) == cold + 1  # Independent final check also runs on request failure.
+        assert not scope.live and scope.guard.fd is None
+        L.active_compiler_library()
+        assert len(calls) == cold + 2  # The request did not install a lasting verification cache.
+
+
 def test_byte_identical_copy_allowed_changed_revision_and_exemption_refuse(execution):
     owner, candidate, work = execution
     relocated = candidate.parent / "copy"

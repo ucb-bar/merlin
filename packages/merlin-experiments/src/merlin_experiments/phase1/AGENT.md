@@ -330,3 +330,11 @@ and the native author/background owner join. Commit and verify the returned sour
 original OOT custody; retain prior evidence with its original source in a pinned archive.
 The returned checkpoint is ungraded, all development obligations remain pending, and the
 ordinary immutable freeze still verifies inputs. This is not final certification or grade reuse.
+
+`joint_seed` admits only an operator-policy-bound authored checkpoint and exact
+review for a new isolated campaign. It uses native source copying with stable
+source checks, preserving sparse library overrides and separately reviewed
+authored alternatives. New state has no inherited clock, ledgers or verdicts;
+no empty-origin assertion is manufactured. Ordinary seed lineage and empty
+backend checks remain unchanged; existing empty-origin model epochs do not
+implicitly admit this new origin.

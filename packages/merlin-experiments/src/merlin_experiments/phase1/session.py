@@ -698,6 +698,9 @@ def _prepare(
     if getattr(a, "joint_epoch", "") and not _resuming:
         from .joint_epochs import seed as seed_epoch
         _seed_submission_record = seed_epoch(a, ws, run_dir)
+    elif a.joint_campaign and a.seed_submission:
+        from .joint_seed import stage as stage_reviewed_seed
+        _seed_submission_record = stage_reviewed_seed(a, ws, run_dir)
     elif _seed_source:
         _seed_submission_record = RI.seed_submission(
             ws,

@@ -74,7 +74,7 @@ def project(result, performance):
     return value
 
 
-def summarize(rows):
+def _summarize(rows):
     """Order only comparable observations; changed/failed correctness stays first."""
     groups = {}
     correctness, unknown = [], []
@@ -102,3 +102,58 @@ def summarize(rows):
                        'matched model group; provisional order is diagnostic, not certified performance.',
                 missing_workload_coverage='This report covers observed rows only; omitted cases remain pending.',
                 promotion_authority=False, additional_gsim_requested=False)
+
+
+def summarize(rows, *, cohorts=None):
+    """Keep the selected large-workload ranking primary in joint campaigns.
+
+    ``cohorts`` is produced by native scope selection from the verified public
+    suite and operator policy. Per-result labels cannot select a cohort. Generic
+    non-joint callers retain the original single-cohort projection.
+    """
+    if cohorts is None:
+        return _summarize(rows)
+    rows = list(rows)
+    lanes = ('primary', 'correctness_regression', 'calibration_diagnostics')
+    membership = {}
+    valid = isinstance(cohorts, dict) and set(cohorts) == set(lanes)
+    for lane in lanes:
+        names = cohorts.get(lane) if isinstance(cohorts, dict) else None
+        if (not isinstance(names, (list, tuple)) or any(type(name) is not str or not name for name in names)
+                or len(set(names)) != len(names)):
+            valid = False
+            names = ()
+        membership[lane] = set(names)
+    overlap = set()
+    for index, lane in enumerate(lanes):
+        for other in lanes[index + 1:]:
+            overlap.update(membership[lane] & membership[other])
+    # A malformed roster provides no primary rank. Overlapping names retain
+    # their original observations below, explicitly unclassified.
+    selected = {lane: [] for lane in lanes}
+    unclassified = []
+    for row in rows:
+        name = row.get('capsule', row.get('name'))
+        matches = [lane for lane in lanes if name in membership[lane]] if valid else []
+        if len(matches) == 1 and name not in overlap:
+            selected[matches[0]].append(row)
+        else:
+            priority = (row.get('performance') or {}).get('search_priority') or {}
+            unclassified.append(dict(capsule=name, reason='missing, invalid or overlapping trusted cohort',
+                                     observation_priority=dict(priority)))
+    result = _summarize(selected['primary'])
+    # Correctness failures across ALL cohorts remain visible before optimization.
+    result['correctness_first'] = _summarize(rows)['correctness_first']
+    result.update(
+        primary_cohort='selected_public_scalability',
+        cohort_selection_status='valid' if valid and not overlap else 'invalid_or_overlapping',
+        correctness_regression=_summarize(selected['correctness_regression']),
+        calibration_diagnostics=_summarize(selected['calibration_diagnostics']),
+        unclassified=unclassified,
+        observed_members={lane: sorted({row.get('capsule', row.get('name')) for row in selected[lane]})
+                          for lane in lanes},
+        policy='Primary performance ranking contains only the selected public scalability cohort. '
+               'Original capsules retain correctness/regression feedback; calibration cases supply diagnostics. '
+               'Useful small-case improvements remain permitted. All original correctness gates are unchanged.',
+    )
+    return result

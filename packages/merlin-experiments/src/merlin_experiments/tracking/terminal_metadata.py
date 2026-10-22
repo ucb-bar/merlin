@@ -111,6 +111,8 @@ class Metadata:
         self._agents = {}
         self._rollout_meta = {}
         self._documents = {}
+        from .terminal_capsules import Capsules
+        self._capsule_counts = Capsules()
 
     def _read(self, path, *, yaml_document=False):
         path = Path(path)
@@ -246,6 +248,7 @@ class Metadata:
             output["sources"].append(dict(path=str(path), live=True, consumed_offset=tail.offset))
         output["agents"] = list(self._agents.values())
         if workspace:
+            output["capsule_counts"] = self._capsule_counts.sample(run, workspace)
             progress, pin = self._read(workspace / "qa/progress.json")
             if progress and progress.get("schema") == "merlin.phase1.grade_progress.v1":
                 output["coverage"] = {k: progress.get(k) for k in
