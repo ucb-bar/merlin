@@ -1,0 +1,187 @@
+{
+  "schema": "operator.provisional_fetch_response_candidate.v1",
+  "status": "inactive_component_prototype_not_wired_into_observer",
+  "baseline_model_sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869",
+  "trace_sha256": "7f478d5917996b46478a4a739a057af00eefa2e6c83f12b0caef47f29e0720e9",
+  "selected_fir_sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149",
+  "prototype": {
+    "repository": "spike-timing",
+    "commit": "af54c90",
+    "api": "merlin_timing::plan_cache_response",
+    "source": "timing/core/include/merlin_timing/cache_response_timeline.hpp",
+    "legacy_callers_unchanged": true,
+    "checks": "known service, beat backpressure, delayed replay, unknown receiver/replay, invalidation, overflow, generic alternate geometry"
+  },
+  "provisional_parameters": {
+    "beats": {
+      "value": 4,
+      "basis": "selected64B line /16B ICache D beat"
+    },
+    "first_response_cycles": {
+      "value": 6,
+      "basis": "public observed request acceptance to first D; provisional empirical response service, not pure RTL-derived aggregate and not proven L2-hit-only"
+    },
+    "beat_interval_cycles": {
+      "value": 1,
+      "basis": "public observed accepted D spacing, selected data beat path; not a guarantee under backpressure"
+    },
+    "line_visible_after_last_cycles": {
+      "value": 1,
+      "basis": "selected vb_array register update; current sampling convention before next commit"
+    },
+    "lookup_response_cycles": {
+      "value": 2,
+      "basis": "selected s1_valid/s2_valid and s2_hit response path"
+    },
+    "receiver_ready": {
+      "value": "per-beat explicit bounds; zero only under declared no-backpressure assumption"
+    },
+    "replay_request_ready": {
+      "value": null,
+      "basis": "not captured; default unknown; zero only in explicitly conditional component comparison"
+    }
+  },
+  "conditional_example": {
+    "request_accepted": 0,
+    "response_accepted": [
+      6,
+      7,
+      8,
+      9
+    ],
+    "line_visible": 10,
+    "lookup_accepted": 10,
+    "lookup_response": 12,
+    "assumptions": [
+      "no receiver/arbiter backpressure",
+      "no intervening invalidation",
+      "immediate replay when line is visible"
+    ],
+    "not_predicted": [
+      "original miss-detection to Get acceptance",
+      "fetch queue consumption",
+      "decode/issue/retirement",
+      "speculative fetch stream",
+      "whole-scope cycles"
+    ]
+  },
+  "required_runtime_adapter": [
+    {
+      "step": 1,
+      "change": "Keep existing private instruction cache invalidation and cache-slot RAW/WAW/WAR protections. Logical immediate tag allocation already has slot readiness dependencies; it is not itself a proven early-use bug."
+    },
+    {
+      "step": 2,
+      "change": "On an explicitly supported instruction refill classification, generate request, response beat, line-visible and replay/lookup events with separate dependencies. Reuse Engine::submit_detached for asynchronous completion; keep architectural CPU issue dependent on the consumed fetch token."
+    },
+    {
+      "step": 3,
+      "change": "Replace the old scalar miss-path contribution only for that opted path. Do not add a new pipeline price on top of already charged l1/l2 miss service. Keep hits and unsupported lower-level/ROM/coherence paths explicitly separate; unknown is not a free refill."
+    },
+    {
+      "step": 4,
+      "change": "Use exact response-port contention/admission from the shared scheduler where available. This component does not reserve bus or bank resources and cannot assume its complete result proves shared contention was modeled."
+    },
+    {
+      "step": 5,
+      "change": "Publish feature counts and first/last response/line/replay readiness separately. Do not translate 51-cycle scope delta into51/3 or infer retirement delay from final D."
+    }
+  ],
+  "remaining_scope_limits": [
+    "109/112 response sequences match the provisional6/1 service;3 reset-region sequences have5 first/11 last and remain mismatches. No fallback silently substitutes their observed values.",
+    "ICache response completion is not frontend replay/FQ availability. Existing trace lacks ICache req/resp and FQ ready/valid joins.",
+    "L2 directory and SourceD identity not yet joined to ICache local source. Calling these measured6cycles a proven L2-hit latency is premature.",
+    "Retired-PC-only observer cannot reconstruct speculative fetch/flush requests. Demand-only candidate must state that limitation."
+  ],
+  "smallest_validation_path": [
+    {
+      "case": "retained frontend observer112 requests",
+      "role": "development component regression only; parameters came from this trace; require18 scoped requests exact and preserve3 incompatible reset-region responses"
+    },
+    {
+      "case": "retained public queue-capacity24scopes",
+      "plan": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/experiments/reference-data/public-queue-capacity-validation-20261022/prespecified-plan.json",
+        "sha256": "d71aa4db11c18c92232f2c56d090272d3ad303dbc694977e0cac8cb06cce286b"
+      },
+      "comparison": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/experiments/reference-data/public-queue-capacity-validation-20261022/physical-comparison.json",
+        "sha256": "69702701858217bc61bb051c04835537156e86702897e1426523288d31fef3b5"
+      },
+      "role": "after real adapter wiring, new annotated same-ELF predictions against existing physical labels; no new gSIM. Not globally unseen: it already diagnosed prior model failures. Keep original failed criteria; report per-occurrence and queued-vs-fenced contrasts separately."
+    },
+    {
+      "case": "one additional observer signal set only if total residual remains structurally ambiguous",
+      "role": "proposal only, no run authorized",
+      "signals": [
+        "ICache request handshake with PC and s1/s2 valid/hit",
+        "frontend s2_replay and PC",
+        "fetch queue enqueue/dequeue valid/ready and PC",
+        "WB PC for dependent instruction"
+      ],
+      "question": "Does last D\u2192lookup/replay/FQ delay or overlap explain the remaining conditional-model error? No aggregate-cycle-only repeat."
+    }
+  ],
+  "source_facts": [
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/ICache.scala",
+      "sha256": "1dd3bb8a11eed246f400788c4daf894ef4af1ade5c5d7230238f00f3511a6da7",
+      "excerpts": [
+        {
+          "first_line": 361,
+          "last_line": 385,
+          "text": "  val s1_hit = s1_tag_hit.reduce(_||_) || Mux(s1_slaveValid, true.B, addrMaybeInScratchpad(io.s1_paddr))\n  dontTouch(s1_hit)\n  val s2_valid = RegNext(s1_valid && !io.s1_kill, false.B)\n  val s2_hit = RegNext(s1_hit)\n\n  /** status register to indicate a cache flush. */\n  val invalidated = Reg(Bool())\n  val refill_valid = RegInit(false.B)\n  /** register to indicate [[tl_out]] is performing a hint.\n   *  prefetch only happens after refilling\n   * */\n  val send_hint = RegInit(false.B)\n  /** indicate [[tl_out]] is performing a refill. */\n  val refill_fire = tl_out.a.fire && !send_hint\n  /** register to indicate there is a outstanding hint. */\n  val hint_outstanding = RegInit(false.B)\n  /** [[io]] access L1 I$ miss. */\n  val s2_miss = s2_valid && !s2_hit && !io.s2_kill\n  /** forward signal to stage 1, permit stage 1 refill. */\n  val s1_can_request_refill = !(s2_miss || refill_valid)\n  /** real refill signal, stage 2 miss, and was permit to refill in stage 1.\n    * Since a miss will trigger burst.\n    * miss under miss won't trigger another burst.\n    */\n  val s2_request_refill = s2_miss && RegNext(s1_can_request_refill)"
+        },
+        {
+          "first_line": 390,
+          "last_line": 399,
+          "text": "  /** AccessAckData, is refilling I$, it will block request from CPU. */\n  val refill_one_beat = tl_out.d.fire && edge_out.hasData(tl_out.d.bits)\n\n  /** block request from CPU when refill or scratch pad access. */\n  io.req.ready := !(refill_one_beat || s0_slaveValid || s3_slaveValid)\n  s1_valid := s0_valid\n\n  val (_, _, d_done, refill_cnt) = edge_out.count(tl_out.d)\n  /** at last beat of `tl_out.d.fire`, finish refill. */\n  val refill_done = refill_one_beat && d_done"
+        },
+        {
+          "first_line": 426,
+          "last_line": 434,
+          "text": "  val tag_rdata = tag_array.read(s0_vaddr(untagBits-1,blockOffBits), !refill_done && s0_valid)\n  /** register indicates the ongoing GetAckData transaction is corrupted. */\n  val accruedRefillError = Reg(Bool())\n  /** wire indicates the ongoing GetAckData transaction is corrupted. */\n  val refillError = tl_out.d.bits.corrupt || (refill_cnt > 0.U && accruedRefillError)\n  when (refill_done) {\n    // For AccessAckData, denied => corrupt\n    /** data written to [[tag_array]].\n     *  ECC encoded `refillError ## refill_tag`*/"
+        },
+        {
+          "first_line": 448,
+          "last_line": 460,
+          "text": "  val vb_array = RegInit(0.U((nSets*nWays).W))\n  when (refill_one_beat) {\n    accruedRefillError := refillError\n    // clear bit when refill starts so hit-under-miss doesn't fetch bad data\n    vb_array := vb_array.bitSet(Cat(repl_way, refill_idx), refill_done && !invalidated)\n  }\n\n  /** flush cache when invalidate is true. */\n  val invalidate = WireDefault(io.invalidate)\n  when (invalidate) {\n    vb_array := 0.U\n    invalidated := true.B\n  }"
+        },
+        {
+          "first_line": 649,
+          "last_line": 659,
+          "text": "    // if I$ latency is 2, can have ITIM and ECC.\n    case 2 =>\n      // when some sort of memory bit error have occurred\n      // @todo why so aggressive to invalidate all when ecc corrupted.\n      when (s2_valid && s2_disparity) { invalidate := true.B }\n\n      // reply data to CPU at stage 2.\n      io.resp.bits.data := s2_data_decoded.uncorrected\n      io.resp.bits.ae := s2_tl_error\n      io.resp.bits.replay := s2_disparity\n      io.resp.valid := s2_valid && s2_hit"
+        }
+      ]
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/Frontend.scala",
+      "sha256": "d0a10809d2bf87a58ef35a54f7c2d8969af9381d0bf8cae8ebbb93d62d846a9a",
+      "excerpts": [
+        {
+          "first_line": 132,
+          "last_line": 143,
+          "text": "\n  val s2_replay = Wire(Bool())\n  s2_replay := (s2_valid && !fq.io.enq.fire) || RegNext(s2_replay && !s0_valid, true.B)\n  val npc = Mux(s2_replay, s2_pc, predicted_npc)\n\n  s1_pc := io.cpu.npc\n  // consider RVC fetches across blocks to be non-speculative if the first\n  // part was non-speculative\n  val s0_speculative =\n    if (usingCompressed) s1_speculative || s2_valid && !s2_speculative || predicted_taken\n    else true.B\n  s1_speculative := Mux(io.cpu.req.valid, io.cpu.req.bits.speculative, Mux(s2_replay, s2_speculative, s0_speculative))"
+        },
+        {
+          "first_line": 173,
+          "last_line": 189,
+          "text": "  icache.io.req.valid := s0_valid\n  icache.io.req.bits.addr := io.cpu.npc\n  icache.io.invalidate := io.cpu.flush_icache\n  icache.io.s1_paddr := tlb.io.resp.paddr\n  icache.io.s2_vaddr := s2_pc\n  icache.io.s1_kill := s2_redirect || tlb.io.resp.miss || s2_replay\n  val s2_can_speculatively_refill = s2_tlb_resp.cacheable && !io.ptw.customCSRs.asInstanceOf[RocketCustomCSRs].disableSpeculativeICacheRefill\n  icache.io.s2_kill := s2_speculative && !s2_can_speculatively_refill || s2_xcpt\n  icache.io.s2_cacheable := s2_tlb_resp.cacheable\n  icache.io.s2_prefetch := s2_tlb_resp.prefetchable && !io.ptw.customCSRs.asInstanceOf[RocketCustomCSRs].disableICachePrefetch\n\n  fq.io.enq.valid := RegNext(s1_valid) && s2_valid && (icache.io.resp.valid || (s2_kill_speculative_tlb_refill && s2_tlb_resp.miss) || (!s2_tlb_resp.miss && icache.io.s2_kill))\n  fq.io.enq.bits.pc := s2_pc\n  io.cpu.npc := alignPC(Mux(io.cpu.req.valid, io.cpu.req.bits.pc, npc))\n\n  fq.io.enq.bits.data := icache.io.resp.bits.data\n  fq.io.enq.bits.mask := ((1 << fetchWidth)-1).U << s2_pc.extract(log2Ceil(fetchWidth)+log2Ceil(coreInstBytes)-1, log2Ceil(coreInstBytes))"
+        }
+      ]
+    },
+    {
+      "path": "retained/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/RocketCore.scala",
+      "sha256": "2f88a01afa8da2a4dd9706e19a1707aeac4f1edbfc0d3659e8252de76b5ce243",
+      "excerpts": [
+        {
+          "first_line": 1084,
+          "last_line": 1084,
+          "text": "  io.imem.flush_icache := wb_reg_valid && wb_ctrl.fence_i && !io.dmem.s2_nack"
+        }
+      ]
+    }
+  ],
+  "active_model_or_policy_changed": false,
+  "gSIM_executions_for_this_task": 0
+}

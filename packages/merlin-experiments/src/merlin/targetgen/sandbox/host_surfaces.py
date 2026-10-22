@@ -210,11 +210,14 @@ def _host_hardlink_surfaces(
             hits.append(Path("."))
         if not stat.S_ISDIR(info.st_mode):
             return hits
-        facts = None if inventory is None else inventory.tree(root)
+        # Preserve the fallback's device pruning; a disjoint root may contain
+        # relevant nested mounts, which the original traversal handles below.
+        facts = (inventory.tree_nofollow(root)
+                 if inventory is not None and info.st_dev in devices else None)
         if facts is not None:
             # Exact inode membership remains current under file/dir watches.
-            # The guard refuses indirect trees, preserving the original
-            # no-follow traversal through the fallback below.
+            # Symlink referents are skipped exactly as in the fallback; watched
+            # parents invalidate replacements, including new hardlink aliases.
             hits.extend(path.relative_to(root) for path, identity in facts.linked_members
                         if identity in private_inodes)
             return hits

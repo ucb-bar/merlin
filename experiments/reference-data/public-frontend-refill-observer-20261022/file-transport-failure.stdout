@@ -1,0 +1,14 @@
+[UART] UART0 is here (stdin/stdout).
+FRONTEND layout=0 state=0 rep=0 cycles=177 checked=256 guards=32 errors=0
+FRONTEND layout=0 state=1 rep=0 cycles=126 checked=256 guards=32 errors=0
+FRONTEND layout=0 state=0 rep=1 cycles=177 checked=256 guards=32 errors=0
+FRONTEND layout=0 state=1 rep=1 cycles=126 checked=256 guards=32 errors=0
+FRONTEND layout=0 state=0 rep=2 cycles=177 checked=256 guards=32 errors=0
+FRONTEND layout=0 state=1 rep=2 cycles=126 checked=256 guards=32 errors=0
+FRONTEND layout=44 state=0 rep=0 cycles=177 checked=256 guards=32 errors=0
+FRONTEND layout=44 state=1 rep=0 cycles=126 checked=256 guards=32 errors=0
+FRONTEND layout=44 state=0 rep=1 cycles=177 checked=256 guards=32 errors=0
+FRONTEND layout=44 state=1 rep=1 cycles=126 checked=256 guards=32 errors=0
+FRONTEND layout=44 state=0 rep=2 cycles=177 checked=256 guards=32 errors=0
+FRONTEND layout=44 state=1 rep=2 cycles=126 checked=256 guards=32 errors=0
+FRONTEND_TOTAL errors=0 warmup_runs=6

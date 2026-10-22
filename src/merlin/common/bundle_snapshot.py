@@ -85,7 +85,7 @@ class _RosterGuard:
     guard may serve several threads: an event consumed by one ends it for all.
     """
 
-    def __init__(self, root, members):
+    def __init__(self, root, members, *, scanner=None):
         import ctypes
         import sys
 
@@ -117,9 +117,12 @@ class _RosterGuard:
                     self.close()
                     return
             # Close setup races after all parents and individual inodes are watched.
-            if _scanned_roster(_scanned_members(root)) != _scanned_roster(members) or not self.unchanged():
+            # The default remains the strict snapshot reader. A trusted alias
+            # inventory may supply its lexical no-follow reader; this confers no
+            # snapshot/input authority and changes no payload verification.
+            if _scanned_roster((scanner or _scanned_members)(root)) != _scanned_roster(members) or not self.unchanged():
                 self.close()
-        except (AttributeError, OSError):
+        except (AttributeError, OSError, RuntimeError):
             self.close()
 
     def unchanged(self):

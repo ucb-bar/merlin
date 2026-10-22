@@ -14,6 +14,37 @@ import stat
 import threading
 
 
+def _alias_members(root):
+    """Lexical alias inventory: record symlinks, never traverse their referents.
+
+    Parent watches invalidate replacements of skipped symlinks. Regular-file
+    watches still detect aliases created outside the selected tree. This reader
+    is for runtime mounts only; private-input discovery retains its strict reader.
+    """
+    if root.resolve() != root:
+        raise RuntimeError("alias inventory root is indirect")
+    pending = [(root, ())]
+    members = []
+    while pending:
+        directory, prefix = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                parts = (*prefix, entry.name)
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(info.st_mode):
+                    kind, size = "symlink", info.st_size
+                elif stat.S_ISREG(info.st_mode):
+                    kind, size = "file", info.st_size
+                elif stat.S_ISDIR(info.st_mode):
+                    kind, size = "directory", None
+                    pending.append((Path(entry.path), parts))
+                else:
+                    raise RuntimeError("alias inventory contains a special file")
+                members.append((parts, Path(entry.path), kind, size))
+    members.sort(key=lambda member: member[0])
+    return members
+
+
 @dataclass(frozen=True)
 class TreeFacts:
     members: tuple
@@ -45,6 +76,13 @@ class GuardedInventory:
         self.close()
 
     def tree(self, root: Path):
+        return self._tree(root, nofollow=False)
+
+    def tree_nofollow(self, root: Path):
+        """Runtime alias facts; skipped symlinks confer no input authority."""
+        return self._tree(root, nofollow=True)
+
+    def _tree(self, root: Path, *, nofollow):
         from merlin.common import bundle_snapshot as snapshot
         from merlin.common import read_lease_digest
 
@@ -57,30 +95,32 @@ class GuardedInventory:
             # Revalidate canonical spelling on every hit, including parent aliases.
             if not root.is_absolute() or root.resolve() != root or not root.is_dir():
                 return None
-            current = self._entries.get(root)
+            key = (root, "nofollow") if nofollow else root
+            current = self._entries.get(key)
             if current is not None:
                 guard, facts = current
                 if guard.unchanged():
                     return facts
                 guard.close()
                 self._members -= len(facts.members)
-                del self._entries[root]
-            if root in self._unsupported or len(self._entries) >= self.max_roots:
+                del self._entries[key]
+            if key in self._unsupported or len(self._entries) >= self.max_roots:
                 return None
             guard = None
             try:
-                # The existing scanner refuses symlinks/special files. Its caller
-                # retains historical leaf-referent behavior through the fallback.
-                members = snapshot._scanned_members(root)
+                # Strict private discovery and no-follow runtime aliases have
+                # separate cache identities and race-closing rescans.
+                scanner = _alias_members if nofollow else snapshot._scanned_members
+                members = scanner(root)
                 if len(members) + self._members > self.max_members:
                     if len(self._unsupported) < self.max_roots:
-                        self._unsupported.add(root)
+                        self._unsupported.add(key)
                     return None
-                guard = snapshot._RosterGuard(root, members)
+                guard = snapshot._RosterGuard(root, members, scanner=scanner)
                 if not guard.unchanged():
                     guard.close()
                     if len(self._unsupported) < self.max_roots:
-                        self._unsupported.add(root)
+                        self._unsupported.add(key)
                     return None
                 linked = set()
                 linked_members = []
@@ -98,12 +138,12 @@ class GuardedInventory:
                     guard.close()
                     return None
                 facts = TreeFacts(tuple(members), frozenset(linked), tuple(linked_members))
-                self._entries[root] = guard, facts
+                self._entries[key] = guard, facts
                 self._members += len(members)
                 return facts
             except (OSError, RuntimeError):
                 if guard is not None:
                     guard.close()
                 if len(self._unsupported) < self.max_roots:
-                    self._unsupported.add(root)
+                    self._unsupported.add(key)
                 return None

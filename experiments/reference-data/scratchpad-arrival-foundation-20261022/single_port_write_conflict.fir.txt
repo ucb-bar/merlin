@@ -1,0 +1,2 @@
+    node _singleport_busy_with_write_T = and(io.write.valid, io.write.ready) @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 97:20]
+    node singleport_busy_with_write = and(UInt<1>(0h1), _singleport_busy_with_write_T) @[generators/gemmini/src/main/scala/gemmini/Scratchpad.scala 120:52]

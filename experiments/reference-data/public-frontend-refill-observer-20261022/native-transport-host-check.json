@@ -1,0 +1,151 @@
+{
+  "schema": "operator.native_transport_host_fixture.v1",
+  "target_execution": false,
+  "hardware_model_executed": false,
+  "fixture": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/.tmp/refill-observer-stdout-host-check/fixture",
+    "sha256": "9923f2245c7e5e174e5c7dd723c844b3560e00ed62e11e6101bfad65e43647da"
+  },
+  "header": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/refill_observer.hpp",
+    "sha256": "0b42290441ed778e54a3e64afc838993447fa13329620a39e120e03ce9a8084d"
+  },
+  "shared_launch_api": "merlin.runtime._native_launch.run using actual NativeRuntimeView",
+  "console_cap": 67108864,
+  "checks": [
+    {
+      "overflow": false,
+      "stdout_bytes": 8088,
+      "stderr_bytes": 0,
+      "record_count": 9,
+      "footer": {
+        "kind": "footer",
+        "observed_events": 7,
+        "written_events": 7,
+        "dropped": 0,
+        "truncated": false,
+        "simulator_done": true,
+        "exit_code": 0,
+        "record_bytes": 1778
+      },
+      "invocation": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/invocations/e9fbff8b809b4f7bad0c26313f661408/invocation.json",
+      "adoption": {
+        "pid": 260060,
+        "mount_namespace_inode": 4026532762,
+        "mounts": [
+          {
+            "target": "/",
+            "options": [
+              "ro",
+              "nosuid",
+              "nodev",
+              "relatime"
+            ],
+            "device": "259:1",
+            "filesystem": "ext4"
+          },
+          {
+            "target": "/run/merlin/input.elf",
+            "options": [
+              "ro",
+              "nosuid",
+              "nodev",
+              "relatime"
+            ],
+            "device": "259:1",
+            "filesystem": "ext4"
+          },
+          {
+            "target": "/run/work",
+            "options": [
+              "rw",
+              "nosuid",
+              "nodev",
+              "relatime"
+            ],
+            "device": "259:1",
+            "filesystem": "ext4"
+          },
+          {
+            "target": "/tmp",
+            "options": [
+              "rw",
+              "nosuid",
+              "nodev",
+              "relatime"
+            ],
+            "device": "259:1",
+            "filesystem": "ext4"
+          }
+        ]
+      }
+    },
+    {
+      "overflow": true,
+      "stdout_bytes": 20878625,
+      "stderr_bytes": 0,
+      "record_count": 65538,
+      "footer": {
+        "kind": "footer",
+        "observed_events": 65547,
+        "written_events": 65536,
+        "dropped": 11,
+        "truncated": true,
+        "simulator_done": true,
+        "exit_code": 0,
+        "record_bytes": 19692781
+      },
+      "invocation": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/invocations/1aa4e18992ac4568bfc438ec393d43a7/invocation.json",
+      "adoption": {
+        "pid": 260062,
+        "mount_namespace_inode": 4026532765,
+        "mounts": [
+          {
+            "target": "/",
+            "options": [
+              "ro",
+              "nosuid",
+              "nodev",
+              "relatime"
+            ],
+            "device": "259:1",
+            "filesystem": "ext4"
+          },
+          {
+            "target": "/run/merlin/input.elf",
+            "options": [
+              "ro",
+              "nosuid",
+              "nodev",
+              "relatime"
+            ],
+            "device": "259:1",
+            "filesystem": "ext4"
+          },
+          {
+            "target": "/run/work",
+            "options": [
+              "rw",
+              "nosuid",
+              "nodev",
+              "relatime"
+            ],
+            "device": "259:1",
+            "filesystem": "ext4"
+          },
+          {
+            "target": "/tmp",
+            "options": [
+              "rw",
+              "nosuid",
+              "nodev",
+              "relatime"
+            ],
+            "device": "259:1",
+            "filesystem": "ext4"
+          }
+        ]
+      }
+    }
+  ]
+}

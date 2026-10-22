@@ -861,6 +861,17 @@ def _numeric_full_output(capsule, record, console):
     ), metrics
 
 
+def _require_instruction_classes(required, observed):
+    """Report declared structural obligations, never private reference values."""
+    missing = set(required) - set(observed)
+    if missing:
+        raise ValueError(
+            "owned device kernels omit frozen required instruction classes: "
+            f"missing={sorted(missing)!r}; observed={sorted(set(observed))!r}; "
+            f"required={sorted(set(required))!r}"
+        )
+
+
 def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     """Original-source closure and whole-ELF ISA; neither grants numerics."""
     from merlin.common.facts_view import interface as facts_interface
@@ -931,9 +942,7 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
                 count += 1
                 if word >> 25 not in names:
                     raise ValueError("owned model ELF contains an unknown selected custom selector")
-    classes = set(dispatch["observed_classes"])
-    if not set(policy["expected_instruction_classes"]) <= classes:
-        raise ValueError("owned device kernels omit frozen required instruction classes")
+    _require_instruction_classes(policy["expected_instruction_classes"], dispatch["observed_classes"])
     with observed_facts(target, facts_document, path=Path(facts["path"])):
         if policy["prohibited_instruction_roles"]:
             prohibition = scan_elf(elf, target=target, roles=policy["prohibited_instruction_roles"])

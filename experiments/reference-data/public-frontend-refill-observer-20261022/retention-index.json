@@ -1,0 +1,248 @@
+{
+  "schema": "operator.public_reference_retention.v1",
+  "purpose": "Durable public observer source, complete raw trace and numerical/physical evidence, including paid failed file-transport attempt. Not author guidance, fit labels or calibration qualification.",
+  "source_roots_are_portable_locators_not_runtime_dependencies": true,
+  "complete_raw_trace_decompressed_sha256": "7f478d5917996b46478a4a739a057af00eefa2e6c83f12b0caef47f29e0720e9",
+  "raw_trace_compression_lossless": true,
+  "omitted_assets": [
+    "ELFs",
+    "toolchains",
+    "generated RTL C++ object files",
+    "native runtime image",
+    "live reservation/clock state",
+    "full duplicated strict build receipt (hash retained in plan)"
+  ],
+  "members": [
+    {
+      "retained": "main.cpp",
+      "retained_sha256": "4de69a6411368e564166c963a74202888aa84e6df9fe70c28c02c16b021fdb41",
+      "retained_bytes": 3231,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/main.cpp",
+        "sha256": "4de69a6411368e564166c963a74202888aa84e6df9fe70c28c02c16b021fdb41",
+        "bytes": 3231
+      },
+      "transform": "text paths portable; other bytes retained"
+    },
+    {
+      "retained": "refill_observer.hpp",
+      "retained_sha256": "0b42290441ed778e54a3e64afc838993447fa13329620a39e120e03ce9a8084d",
+      "retained_bytes": 13416,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/refill_observer.hpp",
+        "sha256": "0b42290441ed778e54a3e64afc838993447fa13329620a39e120e03ce9a8084d",
+        "bytes": 13416
+      },
+      "transform": "text paths portable; other bytes retained"
+    },
+    {
+      "retained": "schema.json",
+      "retained_sha256": "b873d3c54893db8f8e9f9388c3757335abb7752fc966bc8140400ed7090324a4",
+      "retained_bytes": 7031,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/schema.json",
+        "sha256": "b873d3c54893db8f8e9f9388c3757335abb7752fc966bc8140400ed7090324a4",
+        "bytes": 7031
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "signal-map.json",
+      "retained_sha256": "db9fe1846cf3b6fd67a7d4775a9d6b92f9feab819014659b101fac0657290f11",
+      "retained_bytes": 3121,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/signal-map.json",
+        "sha256": "db9fe1846cf3b6fd67a7d4775a9d6b92f9feab819014659b101fac0657290f11",
+        "bytes": 3121
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "phase-proof.json",
+      "retained_sha256": "eba40e34816d064ad42828976c32dfeafe3302851152588ee565f417a82d96cc",
+      "retained_bytes": 35680,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/phase-proof.json",
+        "sha256": "19772ed37f60d17f4a0c6a482e611bb03706031526f83bdc54926159988d8285",
+        "bytes": 35716
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "plan.json",
+      "retained_sha256": "6d56693b6b1f975cedd793b11c69a50f9161f08052e2904bd52ca3089a67d503",
+      "retained_bytes": 7185,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/plan.json",
+        "sha256": "59d0f776601de3d33786ea0d8d21de97cd60650dc33ddafc84c3cde6fe1fd389",
+        "bytes": 7245
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "build.json",
+      "retained_sha256": "a2b1442ac1de07b43d17ebe53fc6ac74acfbffb8ef9623a54093e3ba449c2833",
+      "retained_bytes": 10157,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/build.json",
+        "sha256": "f87022964bc458b20d9e23648f5ce131cc9c212cb454911ea6c0694eba9ca919",
+        "bytes": 10357
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "main.diff",
+      "retained_sha256": "6892a42becfe0c91185062abda24182d04f9a0ef3e946c0312a3a223d8257c9f",
+      "retained_bytes": 1010,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/main.diff",
+        "sha256": "6892a42becfe0c91185062abda24182d04f9a0ef3e946c0312a3a223d8257c9f",
+        "bytes": 1010
+      },
+      "transform": "text paths portable; other bytes retained"
+    },
+    {
+      "retained": "transport.diff",
+      "retained_sha256": "4200ed34fc00c444bd133b5f92b0f64a8a7f1b25a360df4190b28c829d33aa19",
+      "retained_bytes": 14506,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/transport.diff",
+        "sha256": "4200ed34fc00c444bd133b5f92b0f64a8a7f1b25a360df4190b28c829d33aa19",
+        "bytes": 14506
+      },
+      "transform": "text paths portable; other bytes retained"
+    },
+    {
+      "retained": "host-check.json",
+      "retained_sha256": "a4889e33c1ae4317b78380065488ee90eecf0141d72cba5224e46c0ee7e8e147",
+      "retained_bytes": 748,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/host-check.json",
+        "sha256": "a4889e33c1ae4317b78380065488ee90eecf0141d72cba5224e46c0ee7e8e147",
+        "bytes": 748
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "native-transport-host-check.json",
+      "retained_sha256": "767a5a9a669646e9c859ab3c4dd928207f57561ff3ea425fcd326096d6b6a943",
+      "retained_bytes": 4195,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/native-transport-host-check.json",
+        "sha256": "c76fa5b4c418355a96b6ca4ca948464d8e83422b59d46fbc238e0fba1f2265f3",
+        "bytes": 4211
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "transport-preparation.json",
+      "retained_sha256": "8bf6b65df6f650e25ec56abce15138a74024cebbab5c165fa8a9325c8700fdf8",
+      "retained_bytes": 2398,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/transport-preparation.json",
+        "sha256": "7564a500a41ba933535be7c78bf0158c4d61a07d33844180dcbe109a351b90f5",
+        "bytes": 2434
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "events.jsonl.gz",
+      "retained_sha256": "6e7de8bc57b78c7d302de0fd03c1be6ced38f06ad4d191d8a70d3887613255b4",
+      "retained_bytes": 293228,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/events.jsonl",
+        "sha256": "7f478d5917996b46478a4a739a057af00eefa2e6c83f12b0caef47f29e0720e9",
+        "bytes": 5864238
+      },
+      "transform": "lossless gzip; decompressed bytes equal original"
+    },
+    {
+      "retained": "physical.stdout.gz",
+      "retained_sha256": "1476f61709cb87f1c1b76cf69858d3ccccbc3a7462a85de36ed20057f6d9ffbe",
+      "retained_bytes": 296501,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-stdout-v1/physical.stdout",
+        "sha256": "60a6e73dac2566c56595dad21a69ee77d6aa0625a9d7571a215c2c518b2de445",
+        "bytes": 6345645
+      },
+      "transform": "lossless gzip; decompressed bytes equal original"
+    },
+    {
+      "retained": "file-transport-failure.stdout",
+      "retained_sha256": "3b16012ebdf9a87f409ca298c1801dbd0324ed09a6ab61d0912aafe0419bb65a",
+      "retained_bytes": 969,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-refill-observer-v1/attempt-v2/physical.stdout",
+        "sha256": "3b16012ebdf9a87f409ca298c1801dbd0324ed09a6ab61d0912aafe0419bb65a",
+        "bytes": 969
+      },
+      "transform": "text paths portable; other bytes retained"
+    },
+    {
+      "retained": "stdout-transport.stderr",
+      "retained_sha256": "40196e124fbb8bc8ef380edfec32536868e29e0ab545324bfb6cf079838489d7",
+      "retained_bytes": 101,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/invocations/69a6a3aa3fcf465a99e966a37792a108/stderr.bin",
+        "sha256": "40196e124fbb8bc8ef380edfec32536868e29e0ab545324bfb6cf079838489d7",
+        "bytes": 101
+      },
+      "transform": "text paths portable; other bytes retained"
+    },
+    {
+      "retained": "stdout-transport-invocation.json",
+      "retained_sha256": "f2166918608772f4a5d9a9da5067c8d29cd4dd4177c77fd8e4f3915dec6648d6",
+      "retained_bytes": 4733,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/invocations/69a6a3aa3fcf465a99e966a37792a108/invocation.json",
+        "sha256": "44204714921c4fe5551e14e69a2d65019fd0541b338893e3275f654efb34aac3",
+        "bytes": 4809
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "file-transport-failure.stderr",
+      "retained_sha256": "e8e92bb2539228a42739750a8574572ee22dcc70a43441e4bd0fb8d2482b98ac",
+      "retained_bytes": 129,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/invocations/9b1ea41712dd42dab8aab03d574bc60d/stderr.bin",
+        "sha256": "e8e92bb2539228a42739750a8574572ee22dcc70a43441e4bd0fb8d2482b98ac",
+        "bytes": 129
+      },
+      "transform": "text paths portable; other bytes retained"
+    },
+    {
+      "retained": "file-transport-failure-invocation.json",
+      "retained_sha256": "ba14b88e5acfa1019b2f1c83bff29abe25a561317e21c9eb4e82b6da07f094eb",
+      "retained_bytes": 4863,
+      "original": {
+        "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/frontend-layout-discriminator-v2/invocations/9b1ea41712dd42dab8aab03d574bc60d/invocation.json",
+        "sha256": "9bf537f05550483a0ac9be3712429d48591daf3f167d46451e870a018aa74fdc",
+        "bytes": 4943
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "file-transport-authorization.json",
+      "retained_sha256": "f0c54416e2bf07ab5e23106ebb0d5f1011177ff1f4a0b5f011d04150465c7e90",
+      "retained_bytes": 2297,
+      "original": {
+        "path": "retained/tasks/el4-joint-integration-20261021/.tmp/frontend-refill-analysis-v1/authorization-v2.json",
+        "sha256": "aad707480cb67d2871122b93929a3357cacfb6f23382cf404b673f526234a853",
+        "bytes": 2329
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    },
+    {
+      "retained": "stdout-transport-authorization.json",
+      "retained_sha256": "ed34cdc14f2031de93d2fb815d6d326b67d99c724d72995ccc0eb152acc896d2",
+      "retained_bytes": 2766,
+      "original": {
+        "path": "retained/tasks/el4-joint-integration-20261021/.tmp/frontend-refill-analysis-v1/authorization-stdout-v1.json",
+        "sha256": "9446af95d72846b6f856de1724bfbf2f1be658edbcd88d665cd1f084c1b3fdaa",
+        "bytes": 2802
+      },
+      "transform": "JSON paths portable; semantic values retained"
+    }
+  ]
+}

@@ -1841,6 +1841,47 @@ def credit_executed_required_lanes(report: dict | None, capsule: dict, lane_exec
     return out
 
 
+def _bind_positional_output_name(cb: dict, capsule: dict) -> None:
+    """Rename the sole explicitly positional output, preserving pointer order.
+
+    This is the existing name adapter, not a source/semantic qualification.
+    Multi-output bindings retain their independent protocols; actual command
+    interpretation, trace, ABI and numerical checks still run.
+    """
+    if cb.get("operand_naming") != "positional" and cb.get("interface") != "linalg_positional":
+        return
+    target = ((capsule.get("operation") or {}).get("attributes") or {}).get("out")
+    tensors = cb.get("tensors") or {}
+    outputs = [name for name, spec in tensors.items() if spec.get("role") == "output"]
+    if not target or len(outputs) != 1 or outputs[0] == target:
+        return
+    previous = outputs[0]
+    if target in tensors:
+        raise CertFailure("positional_output_binding", _cat("PROTOCOL_VIOLATION"),
+                          "positional output name collides with another emitted tensor")
+    pointer = cb.get("compiler_pointer_abi")
+    if pointer is not None:
+        arguments = pointer.get("arguments") if isinstance(pointer, dict) else None
+        if (not isinstance(pointer, dict) or pointer.get("version") != 1 or not isinstance(arguments, list)
+                or arguments.count(previous) != 1
+                or any(not isinstance(name, str) or name not in tensors for name in arguments)
+                or len(set(arguments)) != len(arguments)):
+            raise CertFailure("positional_output_binding", _cat("PROTOCOL_VIOLATION"),
+                              "positional output requires a complete consistent compiler pointer declaration")
+    # Preserve tensor iteration order: the logical harness may derive pointer
+    # order from the emitted roster. Reinsert-at-end would change that ABI.
+    cb["tensors"] = {target if name == previous else name: spec for name, spec in tensors.items()}
+    for field in ("outputs", "arg_order"):
+        if field in cb:
+            cb[field] = [target if name == previous else name for name in cb[field]]
+    if pointer is not None:
+        pointer["arguments"] = [target if name == previous else name for name in pointer["arguments"]]
+    for command in cb.get("commands", []):
+        for key, value in (command.get("operands") or {}).items():
+            if value == previous:
+                command["operands"][key] = target
+
+
 def _absent_outputs(nrep: dict) -> list[str]:
     """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
     wrong length — extracted from :func:`capsule_golden.compare`'s ``per_output``. These structural
@@ -5053,18 +5094,7 @@ def run_capsule(
         # golden compare are keyed by the capsule's DECLARED output name (the merlin_iface grammar already
         # names it via the commit op). Rename the sole output leaf to the declared name so preload, kernel,
         # readback, and golden all agree on one name+address. Scoped to linalg_positional cbs (no-op else).
-        if cb.get("operand_naming") == "positional" or cb.get("interface") == "linalg_positional":
-            _outnm = ((capsule.get("operation") or {}).get("attributes") or {}).get("out")
-            _outs = [n for n, s in (cb.get("tensors") or {}).items() if s.get("role") == "output"]
-            if _outnm and len(_outs) == 1 and _outs[0] != _outnm:
-                _old = _outs[0]
-                cb["tensors"][_outnm] = cb["tensors"].pop(_old)
-                cb["outputs"] = [_outnm if o == _old else o for o in cb.get("outputs", [])]
-                cb["arg_order"] = [_outnm if a == _old else a for a in cb.get("arg_order", [])]
-                for _c in cb.get("commands", []):
-                    for _k, _v in (_c.get("operands") or {}).items():
-                        if _v == _old:
-                            _c["operands"][_k] = _outnm
+        _bind_positional_output_name(cb, capsule)
 
         # A program-oracle (self-hosted-ISA) target must run its emitted kernel on the SAME operands the
         # independent golden used. Attach the capsule's canonical leaf-input bytes (golden.yaml raws) to
