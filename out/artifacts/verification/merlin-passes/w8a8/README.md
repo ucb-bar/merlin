@@ -1302,3 +1302,53 @@ observations and the exact baseline/after-pass failures are retained separately.
 
 Evidence: `views-isolation-v1.json`, `views-guard-v1.log`, `views-freeze-v1.json`,
 `views-qualified-v1.{xml,log}`, `views-tinyllama-v1.json` and `views-qualification-v1.json`.
+
+## Integer coordinate producers and splats
+
+`BoundedIntegerProducers` derives nonnegative singleton intervals from the actual signed
+modular bits of integer constants. A negative or wrapped-negative constant cannot supply
+nonnegative coordinate evidence. `BoundedIntegerArithmetic` checks actual integer operand and
+result widths, independently of the context's index width. It reuses the proved singleton
+rules for addition, subtraction, multiplication and bitwise operations, the no-wrap addition
+rule, and a new general nonnegative multiplication bound in `IndexRangeMul`. Unknown or
+possibly wrapping intervals lose their bounds while unflagged integer execution stays proved
+initialized. Overflow flags and unmodelled attributes do not establish those bounds.
+
+`DefinedRefinedSplat` preserves every proved elementwise fact of its initialized scalar in
+the actual output tensor, including integer intervals. This shared rule serves the finite,
+dynamic and bounded W8A8 checkers. Complete generic overwrites retain producer-proved ranges;
+initialized reductions forget the initializer's interval before checking their body invariant.
+A sum need not remain equal to its zero initializer. `IndexRangeEmpty` additionally proves
+that an empty interval describes no scalar value, allowing arithmetic inside a zero-extent
+iteration space to preserve that evidence. Declared empty input intervals remain refused.
+
+Qualification passes **458 tests, zero failures/errors/skips**, in **515.38 seconds** with two
+test workers, including **48 new cases** and **10** complete output comparisons among Lean,
+native MLIR and the ordered independent recipe. The cases include i8/i16/i32/i64 producers,
+both index widths, signed-range endpoints, empty iterations, splat/concat coordinate chains,
+all six supported singleton arithmetic families, modular reduction results, actual out-of-bounds
+and wrapping coordinates, and adversarial attributes, operands, constants and SSA captures.
+The earlier versioned TorchAO, dynamic/finite policy, public receipt, view and index regressions
+also pass. The **370-source** isolated build audits **8888 theorems, zero violations**. All
+**427** frozen source/runtime/reference/checker records remain unchanged after qualification.
+The qualified public checker digest is
+`ac6a573922a0c60193780b6d1e5ddd77bc539de96cb8b195ed895f2178b130d8`.
+
+The retained TinyLlama source and captured-policy reference now pass the gather at result
+**1113**, with **902** prefix operations accepted. Their next refusal is per-tensor quantization
+at result **1256**, whose input is produced by RMS normalization and subsequent floating
+products. Initialization of those preceding floating operations does not establish the
+numerical facts required by the quantizer rule. This is a missing producer proof, not a
+demonstrated Merlin pass bug. No finite-result assumption was silently added. The capture
+remains the older eight-token development input, not the newer EL4 selected capture.
+
+Input domains, numerical context premises, frozen files and statement pins are unchanged;
+no production pass or foreign BF16/overrank/scalar-square/Main/CLI work was edited. Formatting,
+artifact layout and the other structure checks pass. The unrelated `zephyr_model.py` size
+ceiling remains **3557 > 3537** lines. Full-pass, policy-review and primitive-model-law flags
+remain false. Bounded-domain downstream/public receipt integration, numerical producer proofs,
+selected capture binding and independent recipe/domain review remain unfinished.
+
+Evidence: `integer-coordinates-isolation-v1.json`, `integer-coordinates-guard-v1.log`,
+`integer-coordinates-freeze-v1.json`, `integer-coordinates-qualified-v1.{xml,log}`,
+`integer-coordinates-tinyllama-v1.json` and `integer-coordinates-qualification-v1.json`.
