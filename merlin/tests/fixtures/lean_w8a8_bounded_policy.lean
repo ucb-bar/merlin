@@ -46,24 +46,27 @@ def decodeContracts (value : Json) : Except String (List (String × List (Option
     let intervals ← (← (← entry.getObjVal? "intervals").getArr?).toList.mapM decodeInterval
     return (fn, intervals)
 
-def failure (ib : Nat) (Γ : Definedness.Refined.FEnv BoundedFloatFacts.Info) : List Op → Json
+def failure (ib : Nat) (known : List PolicyW8A8BoundedCalled.Contract)
+    (Γ : Definedness.Refined.FEnv BoundedFloatFacts.Info) : List Op → Json
   | [] => Json.null
   | op :: rest =>
     if op.isTerminator then Json.null else
     match op.operands.mapM (fun id => Γ.lookup id) with
     | none => Json.mkObj [("operation", toJson op.name), ("reason", toJson "missing_binding")]
-    | some inputs => match (PolicyW8A8BoundedDefined.book ib).rule Γ op inputs with
+    | some inputs => match (PolicyW8A8BoundedCalled.book ib known).rule Γ op inputs with
       | none => Json.mkObj [("operation", toJson op.name), ("reason", toJson "missing_proof"),
           ("results", toJson (op.results.map (·.id)))]
-      | some outputs => failure ib ((op.results.map (·.id)).zip outputs ++ Γ) rest
+      | some outputs => failure ib known ((op.results.map (·.id)).zip outputs ++ Γ) rest
 
 def functionReport (ib : Nat) (intervals : PolicyW8A8BoundedQualified.InputIntervals) (program : MerlinVerify.Module) (fn : String) : Json :=
   match TypedModule.signature? ib program fn, program.func? fn with
   | some (inputs, outputs), some function =>
-    let initialized := PolicyW8A8BoundedDefined.check ib program fn inputs outputs (intervals fn)
+    let initialized := PolicyW8A8BoundedCalled.check ib intervals program fn inputs outputs
     let old := PolicyW8A8DynamicQualified.initializedCheck ib program fn inputs outputs
-    let failed := match PolicyW8A8BoundedDefined.inputFacts inputs (intervals fn), function.body with
-      | some facts, .mk [.mk args ops] => failure ib ((args.map (·.id)).zip facts) ops
+    let failed := if initialized then Json.null else
+      let known := PolicyW8A8BoundedCalled.stage ib intervals program program.funcs.length
+      match PolicyW8A8BoundedDefined.inputFacts inputs (intervals fn), function.body with
+      | some facts, .mk [.mk args ops] => failure ib known ((args.map (·.id)).zip facts) ops
       | _, _ => Json.null
     Json.mkObj [("initialized", toJson initialized), ("unbounded_initialized", toJson old), ("first_refusal", failed)]
   | _, _ => Json.null
