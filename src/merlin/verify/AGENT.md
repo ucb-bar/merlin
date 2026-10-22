@@ -160,3 +160,11 @@ writers prevent stale registration. Completed sources may feed later ordinary
 consumers only with a fresh source check and actual object observation, bypassing
 legacy byte caches. Bound pending/completed text, alias and writer records; never copy tensor
 data or grant an author new source permissions through this bookkeeping.
+
+Observed source/object transports inspect only their live emission issuer before
+entering the existing fresh custody operation. That inspection is not admission:
+the operation must verify the original owner before any candidate/native work.
+Source publication remains after independent operation-exit verification and its
+own fresh locked publication check. Pure retention inside that same locked check
+must not repeat the entire payload scan. Never issue aliases before final custody
+or reuse this bookkeeping path across commands, threads, or unlocked work.

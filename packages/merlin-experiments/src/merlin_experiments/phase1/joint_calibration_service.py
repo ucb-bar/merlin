@@ -94,6 +94,21 @@ def step(*, profile_pin, state_path, context, output):
     initial = PERF._read(profile['performance_selection'])
     from .joint_runtime_revision import validate
     validate(initial, current)
+    from .joint_calibration_readiness import panel
+    readiness = panel(profile, current, rows,
+        witnesses=selected['policy']['gsim']['witness_capsules'])
+    temporary = output/'panel-readiness.next.json'
+    temporary.write_text(json.dumps(readiness, indent=2)+'\n')
+    temporary.replace(output/'panel-readiness.json')
+    allowed = set(readiness['admissible_registry_ids'])
+    rows = [row for row in rows if row['id'] in allowed]
+    active = [row for row in readiness['members']
+              if row['status'] not in {'not_in_current_source_selection', 'outside_physical_witness_roster'}]
+    if active and all(row['status'] == 'blocked_structural_model' for row in active):
+        return dict(status='blocked_structural_model_admission',
+            reason='Repair selected model structure before collecting price-fit variants; no gSIM scheduled.',
+            panel_readiness=str(output/'panel-readiness.json'),
+            denial_reasons=sorted({row['reason'] for row in active}), registered_variants=len(rows))
     from .feedback.joint_timing_selection import choose
     by_runtime = {}
     for row in rows:
@@ -103,7 +118,7 @@ def step(*, profile_pin, state_path, context, output):
     selection = next((v for v in alternatives if v['status'] == 'selected'),
                      C.select_variant_cases([]))
     if selection['status']!='selected':
-        return dict(selection,registered_variants=len(rows),reason='need two passing compiler variants in each of four independent reviewed small source groups')
+        return dict(selection,registered_variants=len(rows),panel_readiness=str(output/'panel-readiness.json'),reason='need two passing compiler variants in each of four independent reviewed small source groups')
     key=document_sha256(selection['cases']);round_root=output/('round-'+key)
     round_root.mkdir(exist_ok=True)
     plan_path=round_root/'plan-input.json'

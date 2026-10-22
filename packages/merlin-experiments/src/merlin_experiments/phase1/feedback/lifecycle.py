@@ -502,6 +502,30 @@ def grade_key(round_index: int, tick: int) -> str:
     return f"r{round_index:04d}_t{tick:06d}"
 
 
+def wait_for_stable_source(source_identity, stop, *, quiet_s=30, max_wait_s=120):
+    """Debounce superseded advisory work without holding a CPU lease.
+
+    This is scheduling only: the grade still captures/verifies its own source.
+    Continuous edits cannot postpone feedback beyond max_wait_s; explicit
+    self-checks and final grades never pass through this helper.
+    """
+    started = time.monotonic()
+    previous = source_identity()
+    stable_since = time.monotonic()
+    while not stop.is_set():
+        now = time.monotonic()
+        if now - started >= max_wait_s:
+            return previous
+        if previous is not None and now - stable_since >= quiet_s:
+            return previous
+        if stop.wait(min(5, max_wait_s - (now - started))):
+            break
+        current = source_identity()
+        if current != previous or current is None:
+            previous, stable_since = current, time.monotonic()
+    return None
+
+
 def start_background(
     ws: Path,
     run_dir: Path,
@@ -607,12 +631,18 @@ def start_background(
         previous_key = None
         interval = max(30, int(cadence.grade_interval))
         # A buildable first snapshot still finishes under its original custody.
-        # If edits superseded it, preserve that evidence and grade the current
-        # source immediately rather than adding another whole interval.
+        # If edits superseded it, preserve that evidence and briefly wait for a
+        # stable source rather than immediately starting another obsolete grade.
         delay, completed_source = (0 if first_snapshot_obsolete else interval), None
+        debounce = first_snapshot_obsolete
         while not stop.wait(delay):
             delay = interval
-            before = source_identity() if source_identity is not None else None
+            if debounce and source_identity is not None:
+                print("[in-turn grade] source superseded; waiting up to 120s for 30s quiet", flush=True)
+                before = wait_for_stable_source(source_identity, stop)
+                debounce = False
+            else:
+                before = source_identity() if source_identity is not None else None
             if stop.is_set():
                 return  # Handoff may have arrived while source metadata was being verified.
             if source_identity is not None and (before is None or before == completed_source):
@@ -645,7 +675,7 @@ def start_background(
                 if before == after and v.get("snapshot_current") is True and not v.get("package_failure"):
                     completed_source = before
                 elif after is not None and after != before:
-                    delay = 0  # Finish the old snapshot, then immediately grade the new compiler.
+                    delay, debounce = 0, True
             previous_key = scratch_key
             print(
                 f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} all_pass={v.get('all_pass')}",

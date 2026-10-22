@@ -143,14 +143,30 @@ def start_watcher(selection,profile,output,directory):
     return child
 
 
+def refresh_model_priority(selection, state, output, questions_pin=None):
+    """Advisory report failure cannot stop native authoring or grant calibration."""
+    from .joint_calibration_priority import refresh
+    from .joint_calibration_admission import ENV
+    try:
+        denial = selection['environment'].get(ENV)
+        refresh(state=state,run_dir=selection['run_dir'],output=Path(output)/'model_priority.json',
+                denial_pin=json.loads(denial) if denial else None,questions_pin=questions_pin)
+    except (ValueError,OSError,RuntimeError,KeyError,TypeError) as error:
+        write(Path(output)/'model_priority.json',dict(status='blocked_coverage_review',
+            reason=str(error),dispatch_authorized=False,fit_authorized=False))
+
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('selection','selection-sha256','native-owner','output','calibration-output'):
         p.add_argument('--'+name,required=True)
     p.add_argument('--max-epochs',type=int,default=16)
+    p.add_argument('--coverage-questions',help='Optional operator JSON {path,sha256}; advisory only')
     p.add_argument('--once',action='store_true',help='inspect adoption only; never launch a watcher or continuation')
     a=p.parse_args(argv)
     if not 1<=a.max_epochs<=32:p.error('max epochs must be1..32')
+    questions_pin=json.loads(a.coverage_questions) if a.coverage_questions else None
+    if questions_pin:verify_pin(questions_pin)
     initial_pin={'path':str(Path(a.selection).resolve()),'sha256':a.selection_sha256};verify_pin(initial_pin)
     initial=read(initial_pin['path']);validate_source(initial)
     owner=read(a.native_owner)
@@ -167,7 +183,7 @@ def main(argv=None):
             raise ValueError('continuation owner already claimed; inspect its retained state rather than retrying blindly')
         identity=process_identity(owner)
         adoption={'initial_selection':initial_pin,'initial_owner':pin(a.native_owner),
-                  'native_process':identity,'script':pin(__file__),'calibration_output':str(calibration)}
+                  'native_process':identity,'script':pin(__file__),'calibration_output':str(calibration),'coverage_questions':questions_pin}
         if a.once:
             print(json.dumps({'status':'adoption_checked_no_launch',**adoption}));return 0
         if identity is None:raise ValueError('initial native process already exited; no fresh launch permitted')
@@ -182,6 +198,7 @@ def main(argv=None):
             state=read(state_path) if state_path.exists() else None
             request=state_path.with_name('joint_model_epoch_request.json')
             if state and state.get('started_at_epoch') is not None:
+                refresh_model_priority(current,state,output,questions_pin)
                 deadline=state['started_at_epoch']+state['policy']['duration_s']
                 if time.time()>deadline+1200:
                     raise ValueError('original campaign plus bounded calibration shutdown window exhausted')

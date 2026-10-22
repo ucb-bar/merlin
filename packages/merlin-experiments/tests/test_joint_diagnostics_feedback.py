@@ -27,8 +27,9 @@ def test_existing_observation_automatically_reaches_six_section_feedback(tmp_pat
                                                     'planned': {'peak_live_bytes': 10},
                                                     'emitted': {'arena_bytes': 32}}}}
     (tmp_path / 'joint_compiler_observations.json').write_text(json.dumps(receipt))
-    performance = dict(capsule_sha256='k', scope_sha256='s', model_sha256='m', status='UNKNOWN')
-    row = {'performance': performance}
+    performance = dict(capsule_sha256='k', scope_sha256='s', model_sha256='m', status='UNKNOWN',
+                       feature_counts=report['feature_counts'])
+    row = {'performance': performance, 'capsule': 'case', 'status': 'pass'}
     attach(row, tmp_path, report=report, observation=observation,
            result={'numeric': {'status': 'pass'}}, compiler=compiler)
     assert row['performance'] is performance
@@ -48,6 +49,13 @@ def test_existing_observation_automatically_reaches_six_section_feedback(tmp_pat
     assert brief['sections']['cpu_sync']['origin'] == 'native_observer'
     assert 'completion_wait_cycles' in brief['sections']['cpu_sync']['missing_metrics']
     assert not brief['physical_savings_claimed']
+    from merlin_experiments.phase1.feedback.public_scalability import _observed_result, public_result
+    public = public_result({'observed': {'case': _observed_result(row)}, 'score': {}})
+    displayed = public['cases'][0]['performance']['feedback_brief']
+    assert displayed['performance_signals']['scoped_counts']['target.commands'] == 3
+    assert displayed['experiment_record']['compiler_sha256'] == compiler_sha
+    assert displayed['experiment_record']['hypothesis'] is None
+    assert str(tmp_path) not in json.dumps(displayed)
     receipt['pins']['compiler_sha256'] = 'foreign'
     (tmp_path / 'joint_compiler_observations.json').write_text(json.dumps(receipt))
     attach(row, tmp_path, report=report, observation=observation,

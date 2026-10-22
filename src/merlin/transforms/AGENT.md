@@ -8,6 +8,16 @@ Hardware policies, instruction selection and device resource assignments stay in
 repositories. Derive facts from the current IR; unknown effects and unsupported layouts
 must remain conservative. A structural witness is not a formal proof receipt.
 
+`pipeline_policy.py` selects bounded semantic paths through `PipelineSession`.
+Source/context-stamped shape, graph, layout, numerical, capability and resource
+facts guide applicability; model/capsule identities and private scores are not
+predicate facets. Registry entries expose actual `PassSpec` contracts. Explicit
+fallback applies only before execution; a failed pass cannot reuse partial IR.
+Return the selected current output analysis, not a disconnected planned schedule.
+Keep each session at its declared IR level; native lowering adapters produce the
+next IR and verify its boundary. Compact counted loops are never expanded merely
+to use a finite schedule pass. Existing host verification obligations remain.
+
 Keep compilation space proportional to IR size and rank, rather than tensor elements or
 tile count. All covered changes must go through the host verification hook, except an
 explicitly unverified planning invocation. Tests belong in `merlin/tests/ir/`.

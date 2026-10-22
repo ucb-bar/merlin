@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import itertools
 import os
 import re
 import shutil
@@ -11,13 +12,14 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
 from merlin.model_check.bundle import Bundle
 from merlin.model_check.models import default_models_path, target_from_contract
 from merlin_experiments.phase1.run_inputs import strip_build_state
-from merlin_experiments.phase1.compiler_library import child_arguments, selected_child
+from merlin_experiments.phase1.compiler_library import child_arguments, selected_child, library_thread, join_background
 from merlin_experiments.phase1.context import add_context_arguments, context_argv, resolve_context
 
 PROGRAMS = {"resnet50": ("model",),
@@ -166,6 +168,125 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
                 **({"error": stderr[-2000:]} if process.returncode and report is None else {})}
 
 
+DEFAULT_MAX_ACTIVE_REQUESTS = 4
+MAX_QUEUED_REQUESTS = 32
+MAX_REQUEST_BYTES = 64 << 10
+
+
+def _request(path):
+    # Request contents are data, never execution/profile/library selection.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as stream:
+        raw = stream.read(MAX_REQUEST_BYTES + 1)
+    if len(raw) > MAX_REQUEST_BYTES:
+        raise ValueError("model-check request exceeds metadata limit")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError("model-check request must be an object")
+    return value
+
+
+def _publish(channel, job_id, result):
+    with tempfile.NamedTemporaryFile(mode="w", prefix=".model-response-", dir=channel,
+                                     delete=False, encoding="utf-8") as stream:
+        json.dump(result, stream, indent=2)
+        stream.write("\n")
+        temporary = Path(stream.name)
+    os.replace(temporary, channel / f"resp_{job_id}.json")
+
+
+def serve(ws, *, poll, stop, context=None, compiler_bundle_manifest=None,
+          max_active=DEFAULT_MAX_ACTIVE_REQUESTS):
+    """Concurrent independently snapshotted requests share the existing native pool.
+
+    There is no executor submission queue or per-model CPU reservation. The
+    bounded file-channel waiting set is descriptive; excess requests receive a
+    deferred response. Original library scopes remain alive until every worker
+    is joined, including STOP and owner loss. Existing exact caches are unchanged.
+    """
+    if type(max_active) is not int or not 1 <= max_active <= MAX_QUEUED_REQUESTS:
+        raise ValueError("model-check max-active must be1..32")
+    channel = ws / ".model_check_channel"
+    channel.mkdir(exist_ok=True)
+    completed = {path.stem.removeprefix("resp_") for path in channel.glob("resp_*.json")}
+    active = {}
+    shutdown = threading.Event()
+
+    def stopping():
+        return shutdown.is_set() or stop()
+
+    def pending():
+        candidates = (path for path in channel.glob("req_*.json")
+                      if path.stem.removeprefix("req_") not in completed
+                      and path.stem.removeprefix("req_") not in active)
+        return sorted(itertools.islice(candidates, MAX_QUEUED_REQUESTS + 1))
+
+    def work(request, box):
+        try:
+            box['result'] = execute_visible(ws, request, context=context,
+                compiler_bundle_manifest=compiler_bundle_manifest, stop=stopping)
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            box['result'] = {"status":"error", "error":f"{type(exc).__name__}: {exc}"}
+
+    try:
+        while True:
+            for job_id, (thread, box) in list(active.items()):
+                if thread.is_alive():
+                    continue
+                try:
+                    join_background(thread)
+                    result = box.get('result', {"status":"error", "error":"model worker returned no report"})
+                except (ValueError, RuntimeError) as exc:
+                    result = {"status":"error", "error":f"original model worker custody failed: {exc}"}
+                _publish(channel, job_id, result)
+                completed.add(job_id)
+                del active[job_id]
+            waiting = pending()
+            if stopping():
+                for path in waiting:
+                    job_id = path.stem.removeprefix("req_")
+                    _publish(channel, job_id, {"status":"cancelled", "error":"broker stopped before admission"})
+                    completed.add(job_id)
+                if not active:
+                    return 0
+            else:
+                if len(waiting) > MAX_QUEUED_REQUESTS:
+                    path = waiting.pop()
+                    job_id = path.stem.removeprefix("req_")
+                    _publish(channel, job_id, {"status":"deferred", "error":"model-check pending queue is full"})
+                    completed.add(job_id)
+                for path in waiting[:max_active - len(active)]:
+                    if stopping():
+                        break
+                    job_id = path.stem.removeprefix("req_")
+                    try:
+                        request = _request(path)
+                    except (OSError, ValueError, TypeError) as exc:
+                        _publish(channel, job_id, {"status":"error", "error":f"{type(exc).__name__}: {exc}"})
+                        completed.add(job_id)
+                        continue
+                    box = {}
+                    # library_thread transfers only the original live library
+                    # and shared-pass custody; profile/context are explicit.
+                    thread = library_thread(lambda request=request, box=box: work(request, box),
+                                            name="model-check-" + job_id)
+                    active[job_id] = (thread, box)
+                    thread.start()
+            time.sleep(poll)
+    finally:
+        # Also join if publication or channel I/O fails; never leave model
+        # children running after their original library lifetime has exited.
+        shutdown.set()
+        failures = []
+        for thread, _box in active.values():
+            try:
+                join_background(thread)
+            except BaseException as exc:
+                failures.append(exc)
+        if failures:
+            raise RuntimeError("model broker worker custody failed during drain") from failures[0]
+
+
 @selected_child
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
@@ -173,32 +294,21 @@ def main(argv=None) -> int:
     parser.add_argument("--compiler-bundle-manifest", type=Path)
     parser.add_argument("--ws", type=Path, required=True)
     parser.add_argument("--poll", type=float, default=0.5)
+    parser.add_argument("--max-active", type=int, help="Concurrent model requests, up to shared CPU capacity; default min(4,capacity) bounds concurrent model working sets")
     args = parser.parse_args(argv)
+    if not 0.01 <= args.poll <= 10:
+        parser.error("poll interval must be0.01..10seconds")
+    from merlin.common.cpu_pool import compute_capacity
+    capacity = compute_capacity() or len(os.sched_getaffinity(0))
+    max_active = min(DEFAULT_MAX_ACTIVE_REQUESTS, capacity) if args.max_active is None else args.max_active
+    if not 1 <= max_active <= min(capacity, MAX_QUEUED_REQUESTS):
+        parser.error("max-active must fit the existing shared CPU capacity and bounded request window")
     context = resolve_context(args, parser) if args.compiler_bundle_manifest is not None else None
     ws = args.ws.resolve(strict=True)
-    channel = ws / ".model_check_channel"
-    channel.mkdir(exist_ok=True)
     parent = os.getppid()
-    completed = {path.stem.removeprefix("resp_") for path in channel.glob("resp_*.json")}
-    while not (channel / "STOP").exists() and os.getppid() == parent:
-        for path in sorted(channel.glob("req_*.json")):
-            job_id = path.stem.removeprefix("req_")
-            if job_id in completed:
-                continue
-            try:
-                request = json.loads(path.read_text(encoding="utf-8"))
-                result = execute_visible(ws, request, context=context,
-                                         compiler_bundle_manifest=args.compiler_bundle_manifest, stop=lambda: (channel / "STOP").exists()
-                                         or os.getppid() != parent)
-            except (OSError, ValueError, TypeError) as exc:
-                result = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
-            target = channel / f"resp_{job_id}.json"
-            temporary = channel / f".resp_{job_id}.tmp"
-            temporary.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-            os.replace(temporary, target)
-            completed.add(job_id)
-        time.sleep(args.poll)
-    return 0
+    return serve(ws, poll=args.poll, context=context, max_active=max_active,
+                 compiler_bundle_manifest=args.compiler_bundle_manifest,
+                 stop=lambda: (ws / ".model_check_channel/STOP").exists() or os.getppid() != parent)
 
 
 if __name__ == "__main__":

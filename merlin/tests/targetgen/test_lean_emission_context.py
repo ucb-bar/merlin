@@ -426,6 +426,44 @@ def test_operation_batches_custody_reads_but_reopens_all_bytes_at_boundaries(ord
         assert len(scans) == 6
 
 
+@pytest.mark.parametrize('command_boundaries', [False, True])
+def test_emission_transport_amortizes_only_redundant_bookkeeping(ordinary, monkeypatch, command_boundaries):
+    from merlin.common import bundle_snapshot
+
+    fixture, owner = ordinary
+
+    @X.observe_emission
+    def emit(pkg, interface, generated, *, contract, timeout, memo=None, artifact_name='lowered.mlir'):
+        generated = Path(generated)
+        if command_boundaries:
+            # Stand in only for the native command edge. It must retain fresh
+            # independent checks, regardless of the enclosing custody batching.
+            with bundle_snapshot.independent_snapshot_reads():
+                X.active_emission_checks()
+                X.active_emission_checks()
+        (generated / 'input.interface.mlir').write_bytes(Path(interface).read_bytes())
+        (generated / 'command_buffer.json').write_text('{}')
+        (generated / artifact_name).write_text(FINAL)
+        return {}, FINAL
+
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        original, traversals = bundle_snapshot._payload_content, []
+
+        def payload(members):
+            traversals.append(1)
+            return original(members)
+
+        monkeypatch.setattr(bundle_snapshot, '_payload_content', payload)
+        _, product = emit(fixture['package'], fixture['original_source'], fixture['tmp'] / 'minimal',
+                          contract=fixture['contract'], timeout=30)
+        # Three independent reads: operation entry, operation exit, publication.
+        # Previous transport also read before entry and again during retain.
+        assert len(traversals) == (5 if command_boundaries else 3)
+        assert scope.products.identity(product) is not None
+        assert len(scope.records) == 1
+
+
 def test_copied_thread_and_ended_operation_never_reuse_admission(ordinary, monkeypatch):
     _, owner = ordinary
     with _scope(owner):

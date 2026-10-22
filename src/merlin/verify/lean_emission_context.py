@@ -150,9 +150,13 @@ class _Scope:
     def retain(self, pending):
         with self.lock:
             self.verify()
-            if len(self.records) + len(self.completed) >= _MAX_PENDING:
-                raise ValueError("ordinary emission scope exceeds its bounded live product inventory")
-            self.records[id(pending)] = pending
+            self._retain_verified(pending)
+
+    def _retain_verified(self, pending):
+        """Bookkeeping within the caller's just-verified locked publication."""
+        if len(self.records) + len(self.completed) >= _MAX_PENDING:
+            raise ValueError("ordinary emission scope exceeds its bounded live product inventory")
+        self.records[id(pending)] = pending
 
     def matching(self, source):
         digest = hashlib.sha256(source.encode()).hexdigest()
@@ -257,11 +261,22 @@ def original_emission_checks(service):
         _ISSUED.discard(scope)
 
 
-def active_emission_checks():
+def _issued_emission_checks():
+    """Inspect the live issuer only; the caller must enter original custody.
+
+    This is not an admission result. It is used solely by the two observed
+    transports immediately before their existing fresh operation boundary.
+    """
     scope = _ACTIVE.get()
     if scope is not None:
-        if type(scope) is not _Scope:
+        if type(scope) is not _Scope or scope not in _ISSUED or not scope.live:
             raise ValueError("ordinary emission checks have no original issuer")
+    return scope
+
+
+def active_emission_checks():
+    scope = _issued_emission_checks()
+    if scope is not None:
         scope.verify()
     return scope
 
@@ -455,7 +470,9 @@ def observe_emission(function):
 
     @functools.wraps(function)
     def observed(*args, **kwargs):
-        scope = active_emission_checks()
+        # The immediately following original operation performs full admission.
+        # Inspecting the same issuer here must not add another payload traversal.
+        scope = _issued_emission_checks()
         if scope is None:
             return function(*args, **kwargs)
         bound = signature.bind(*args, **kwargs)
@@ -512,25 +529,18 @@ def observe_emission(function):
             },
         )
         if declared:
-            # The original ABI's actual dispatch entry is selected only at
-            # object production. Standalone emission cannot assert that entry
-            # from a candidate-authored trace or a guessed helper function.
+            # Entry selection and any trace obligation still belong to the
+            # actual object consumer, not this source emission.
             with scope.lock:
                 scope.verify()
                 scope.products.verify_write(artifact, writer)
                 product = scope.products.issue(output[1], pin)
-                scope.retain(
-                    _Pending(
-                        package,
-                        source,
-                        products[0],
-                        artifact,
-                        call,
-                        pin,
-                        _manifest_identity(package),
-                        values["timeout"],
-                        product,
-                    )
+                # No candidate call or unlocked work intervenes between this
+                # fresh publication check and retaining its bookkeeping. Avoid
+                # a second complete payload traversal for the same admission.
+                scope._retain_verified(
+                    _Pending(package, source, products[0], artifact, call, pin,
+                             _manifest_identity(package), values["timeout"], product)
                 )
             return output[0], product
         return output
@@ -546,7 +556,9 @@ def observe_object(function):
     def observed(*args, **kwargs):
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        scope = _source_scope(bound.arguments["lowered_mlir_text"])
+        scope = _issued_emission_checks()
+        if type(bound.arguments["lowered_mlir_text"]) is IssuedEmission and scope is None:
+            raise ValueError("original issued emission requires its live original scope")
         if scope is None:
             return function(*args, **kwargs)
         values = bound.arguments

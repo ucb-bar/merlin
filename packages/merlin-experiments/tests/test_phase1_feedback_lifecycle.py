@@ -715,3 +715,29 @@ def test_handoff_during_source_verification_does_not_start_another_grade(tmp_pat
         fast_grade_callback=lambda *a: pytest.fail("existing verdict"), source_identity=source,
     )
     assert event.done
+
+
+@pytest.mark.parametrize("mode,expected_time,expected_source", [
+    ("settles", 45, "new"), ("churn", 120, "source-24"), ("stop", 10, None),
+])
+def test_superseded_grade_debounce_is_bounded_and_interruptible(
+    monkeypatch, mode, expected_time, expected_source,
+):
+    now = [0]
+
+    class Stop:
+        def is_set(self):
+            return mode == "stop" and now[0] >= 10
+
+        def wait(self, seconds):
+            now[0] += seconds
+            return self.is_set()
+
+    def source():
+        if mode == "churn":
+            return f"source-{int(now[0] // 5)}"
+        return "old" if now[0] < 15 else "new"
+
+    monkeypatch.setattr(L.time, "monotonic", lambda: now[0])
+    assert L.wait_for_stable_source(source, Stop()) == expected_source
+    assert now[0] == expected_time

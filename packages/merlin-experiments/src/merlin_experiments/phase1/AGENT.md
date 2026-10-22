@@ -1,5 +1,13 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase1
 
+`joint_calibration_readiness.py` projects the declared panel before variant selection.
+Check the currently selected runtime's structural denial even with no products;
+missing or changed denial evidence fails closed. Only current public source hashes,
+reviewed independent groups and passing native candidate Spike products enter the
+existing selector. Ready means native identifiability review remains pending, not
+physical authorization. Keep original ELF custody, budgets, train/held separation,
+fit gates and reviewed epoch promotion in their existing owners.
+
 `joint_calibration_intake.py` records selected public numerical products separately
 from the reviewed calibration fit registry. Reopen source selection and original
 ELF producer custody; retain native numerical/structural evidence independently.

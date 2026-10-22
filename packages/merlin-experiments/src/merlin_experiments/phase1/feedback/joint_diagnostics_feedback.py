@@ -65,7 +65,7 @@ def attach(row, root, *, report, observation, result, compiler):
     if runtime is not None:
         diagnostics['runtime'] = {key: runtime[key] for key in
                                   ('selected_window', 'feature_counts_complete', 'pressure', 'wholechain', 'unavailable')}
-    from .joint_outcome_brief import project as outcome_brief
+    from .joint_outcome_brief import project as outcome_brief, performance_signals
     diagnostics['feedback_brief'] = {
         'outcomes': outcome_brief(result, performance),
         'correctness': diagnostics['correctness'],
@@ -73,6 +73,21 @@ def attach(row, root, *, report, observation, result, compiler):
         'timing_mode': performance.get('timing_mode'),
         'model_sha256': performance.get('model_sha256'),
         'estimated_whole_soc_cycles': performance.get('estimated_whole_soc_cycles'),
+        'performance_signals': performance_signals(performance, runtime),
+        'experiment_record': {
+            'schema': 'merlin.existing_experiment_links.v1',
+            'compiler_sha256': compiler_sha256,
+            'capsule_sha256': context['capsule_sha256'],
+            'capsule': result.get('capsule'),
+            'model_sha256': performance.get('model_sha256'),
+            'scope_sha256': performance.get('scope_sha256'),
+            'comparison_domain_sha256': performance.get('comparison_domain_sha256'),
+            'observation_sha256': performance.get('report_sha256'),
+            'numerical_status': (result.get('numeric') or {}).get('status', 'unknown'),
+            'timing_status': performance.get('status', 'UNKNOWN'),
+            'hypothesis': None, 'pass_diff': None, 'promotion_decision': None,
+            'scope': 'Links to this existing native result; no invented author hypothesis or promotion.',
+        },
         'scope_excludes': performance.get('scope_excludes', []),
         'sections': {name: {key: section[key] for key in
                      ('status', 'origin', 'maturity', 'planned', 'emitted', 'missing_metrics', 'limits')}
@@ -83,5 +98,12 @@ def attach(row, root, *, report, observation, result, compiler):
         'physical_savings_claimed': False,
         'next_check_policy': 'Choose affected named cases. Missing observations are unknown, not zero. '
                              'Reuse matching evidence; gSIM requires a specific unresolved mechanism.',
+    }
+    # The ordinary public capsule projections already carry performance. Keep
+    # this bounded subset there so scalability does not drop the useful brief
+    # with the richer compiler_diagnostics receipt. No raw paths or arrays.
+    row['performance']['feedback_brief'] = {
+        key: diagnostics['feedback_brief'][key]
+        for key in ('outcomes', 'performance_signals', 'experiment_record')
     }
     row['compiler_diagnostics'] = diagnostics
