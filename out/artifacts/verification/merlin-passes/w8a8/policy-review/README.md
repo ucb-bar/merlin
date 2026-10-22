@@ -21,6 +21,13 @@ turn the public draft verdict into a verified receipt.
 
 ## Reference identity
 
+**Reference update (2026-10-21):** Agustin directed Jeremy to `examples/gemmini` on
+`feat/el4-experiment`. The [pinned intake](../reference/README.md) records commit
+`0cc289de52a10bed256f32c90cfbb54a21b3c81f`, historical TorchAO 0.15.0/0.16.0 references,
+the newer selected recipe digests and the differences from the current fallback policy.
+Versioned CPU API comparisons now have concrete package references. Selected capture receipts
+and independent approval of this provisional policy are not supplied by that source pointer.
+
 The existing reference fixture records TorchAO **0.16.0**, PyTorch **2.10.0+cu128** and symmetric
 per-token activation quantization with bounds -127/127, epsilon 1e-5 and zero point zero:
 `merlin/tests/data/torchao_affine/PROVENANCE.json`.

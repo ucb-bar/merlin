@@ -1145,3 +1145,53 @@ Evidence: `dynamic-public-qualified-v1.{xml,log}`, `dynamic-public-guard-v1.log`
 `dynamic-public-isolation-v1.json`, `dynamic-public-freeze-v1.json` and
 `dynamic-public-qualification-v1.json`. The provisional review packet records the exact new
 reporting route and its unchanged review requirements.
+
+## EL4 references and direct TorchAO qualification
+
+Agustin identified `examples/gemmini` on `feat/el4-experiment` as the numerical reference.
+The [reference intake](reference/README.md) pins commit
+`0cc289de52a10bed256f32c90cfbb54a21b3c81f`, retains eight documents/recipes, and verifies all
+three selected recipe file hashes and canonical digests. Its historical guide records torch
+2.10.0 with TorchAO 0.16.0 for ResNet50/TinyLlama and 0.15.0 for SmolVLA. The newer selected
+protocol uses grouped-16 weight scales and different epilogue arithmetic; its capture identities
+must not be inferred from the historical guide or the older retained development inputs.
+
+The new standalone oracle runs those two TorchAO releases on the existing torch 2.10.0+cpu /
+NumPy 2.4.6 reference installation, with actual package source hashes and initialization diagnostics
+retained. It imports no Merlin implementation or reference helper. CPU quantization and integer
+arithmetic are exercised; the original CUDA capture environments and optional GPU extensions are
+not qualified. No external package source is patched.
+
+TorchAO's default integer-linear dispatcher requires full-range weight metadata, whereas the
+declared two-dynamic-operand recipe uses reduced range for both. The oracle records that distinction
+and calls configured TorchAO quantization and its scaled integer-matmul primitive explicitly.
+Captured-operand reuse instead exercises actual quantized `F.linear` with the supported integer
+dispatch predicate checked. This establishes neither equality to TorchAO's default whole-Linear
+recipe nor approval of a new selected capture policy.
+
+The main regression passes **132 tests, zero skipped** (325.77 seconds). Final review then adds
+shared pre-cast validation for captured reference scales and two additional refusal cases at each
+version; the final oracle suite passes **34 tests, zero skipped** (152.41 seconds). These runs cover
+**136 unique successful test cases**. All 20 positive TorchAO result records are unchanged by that
+guard hardening. New numerical observations comprise **30** actual dynamic-output comparisons
+among Lean, native MLIR, configured TorchAO and ordered NumPy; **10** captured-source-output
+comparisons among the additive Lean interpretation, actual TorchAO linear and ordered NumPy;
+and **108 each** per-tensor quantize/dequantize comparisons against Lean and standard native MLIR.
+The latter include i32/i64 zero points, scalar/ranked tensors, saturation and odd-zero-point ties.
+The 14 final negative cases refuse unsupported bounds, invalid scales and undefined conversions.
+
+No Lean proof source, frozen file, statement pin, public checker binary or production pass changes
+in this batch. All **349** isolated sources and the prior **8543-theorem, zero-violation** audit
+remain applicable by exact digest checks. Ruff, formatting, whitespace, artifact layout, frozen
+file checks and regenerated package docs pass. Structure retains the unrelated `zephyr_model.py`
+size-ceiling failure. Concurrent BF16/frontend/Main/CLI work remains excluded.
+
+This resolves reference discovery and adds direct versioned API fidelity evidence. Independent
+policy/domain review, source index/numerical proofs, the newer selected capture binding, complete
+retained-model coverage and frozen receipt promotion remain unfinished. EL4's W8A8 implementation
+also adds promoted bf16/f16 and widening-reuse paths beyond the checked branch; those do not inherit
+qualification automatically. Full-pass verified receipts remain unavailable.
+
+Evidence: `reference/el4-0cc289de52a1/reference-intake.json`,
+`torchao-reference-qualified-v{1,2}.{xml,log}`, `torchao-reference-freeze-v{1,2}.json` and
+`torchao-reference-qualification-v1.json`.
