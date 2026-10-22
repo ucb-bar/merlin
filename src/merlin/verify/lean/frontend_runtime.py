@@ -2,7 +2,9 @@
 
 This additive API does not issue frozen-model receipts or activate candidate semantics. Lean
 checks the complete f32 repair boundary, actual initialized prefix/selection execution, and
-every supplied suffix boundary. Suffixes currently require complete alpha correspondence.
+every supplied suffix boundary. Optional actual source slices have explicit initialized
+cut-input contracts, independent of the initialized initial-segment claim. Suffixes
+currently require complete alpha correspondence.
 The census enumerates remaining full-model obligations; it is not a definedness proof.
 """
 
@@ -20,11 +22,13 @@ from merlin.verify.lean import check as infrastructure
 
 SCHEMA = "merlin.frontend.runtime.receipt.v1"
 REQUEST = "merlin.frontend.runtime.request.v1"
-MODULE = "MerlinVerify.Rules.FrontendRuntimeObligations"
+MODULE = "MerlinVerify.Rules.FrontendRuntimeEvidence"
 THEOREMS = (
     "MerlinVerify.Rules.FrontendRuntimeVerification.check_sound",
     "MerlinVerify.Rules.FrontendRuntimeVerification.full_policy",
     "MerlinVerify.Rules.FrontendRuntimeChain.compose",
+    "MerlinVerify.Rules.FrontendRangeProjection.check_sound",
+    "MerlinVerify.Rules.FrontendMaskRange.check_sound",
 )
 CONFIGURATION = {
     "base": "MerlinVerify.Rules.FrontendMaskRuntime.sem",
@@ -117,6 +121,7 @@ def verify_candidate(
     start: int,
     compiler_python: Path,
     suffix: tuple[Path, ...] = (),
+    bounds_slices: tuple[tuple[int, int], ...] = (),
     lake: Path | None = None,
 ) -> dict[str, Any]:
     """Verify actual MLIR snapshots and all ordered suffix stages using the inactive candidate.
@@ -139,11 +144,15 @@ def verify_candidate(
         "configuration": dict(CONFIGURATION),
         "work": str(work.resolve()),
         "artifacts": [],
+        "bounds_slices": [{"start": begin, "count": count} for begin, count in bounds_slices],
     }
     lake = lake or Path.home() / ".elan/bin/lake"
     try:
         if not isinstance(start, int) or isinstance(start, bool) or start < 0:
             raise ValueError("checkpoint start must be a nonnegative integer")
+        for begin, count in bounds_slices:
+            if type(begin) is not int or type(count) is not int or begin < 0 or count <= 0:
+                raise ValueError("bounds slices require nonnegative starts and positive counts")
         _run(
             [str(lake), "-f", "FrontendRuntime.lakefile.toml", "build", "merlin-lean-frontend-runtime"],
             work,
@@ -174,6 +183,7 @@ def verify_candidate(
             "before_export": str(exported[0]),
             "after_export": str(exported[1]),
             "suffix_exports": [str(p) for p in exported[2:]],
+            "bounds_slices": receipt["bounds_slices"],
         }
         path = work / "request.json"
         path.write_text(json.dumps(request, indent=2) + "\n")
@@ -250,6 +260,7 @@ def validate_receipt(receipt: dict[str, Any], *, compiler_python: Path | None = 
         "before_export": artifacts[0]["export"]["path"],
         "after_export": artifacts[1]["export"]["path"],
         "suffix_exports": [entry["export"]["path"] for entry in artifacts[2:]],
+        "bounds_slices": receipt.get("bounds_slices"),
     }
     if request != expected:
         raise ValueError("receipt order or checkpoint differs from actual checker request")

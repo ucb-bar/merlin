@@ -2,6 +2,7 @@
 import MerlinVerify.Rules.FrontendMaskTemplate
 import MerlinVerify.Rules.ReshapeIndex
 import MerlinVerify.Rules.FrontendMaskTyping
+import MerlinVerify.Rules.FrontendMaskProperties
 
 namespace MerlinVerify.Rules.FrontendMaskWhole
 open MerlinVerify MerlinVerify.Check
@@ -185,7 +186,7 @@ theorem root_op (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op) (t : Merlin
 
 set_option maxRecDepth 20000 in
 set_option maxHeartbeats 8000000 in
-theorem body_inputs_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
+theorem body_inputs_exec_properties (limit : Nat) (ctx : Ctx) (call : CallSem)
     (bits : Nat → Bool) (values seed : Nat → BitVec 64)
     (maskInput valuesInput seedInput : MerlinVerify.Tensor)
     (hMask : Represents maskInput [1,32,32] (.int 1) (fun i => Arith.boolVal (bits i)))
@@ -197,7 +198,11 @@ theorem body_inputs_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
         [.tensor maskInput, .tensor valuesInput, .tensor seedInput] =
         .ok [.tensor out, index (countFrom bits 1024 0)] ∧
       out.shape = [1,1024] ∧ RVal.Defined (.tensor out) ∧
-        RVal.HasTy 64 (.tensor out) (.tensor [1,1024] (.int 64)) := by
+        RVal.HasTy 64 (.tensor out) (.tensor [1,1024] (.int 64)) ∧
+      ∀ P : Val → Prop,
+        (∀ i, i < 1024 → P (.some (.bits 64 (values i)))) →
+        (∀ i, i < 1024 → P (.some (.bits 64 (seed i)))) →
+        FrontendMaskProperties.Elements P out := by
   let bf : Nat → Val := fun i => Arith.boolVal (bits i)
   let vf : Nat → Val := fun i => .some (.bits 64 (values i))
   let sf : Nat → Val := fun i => .some (.bits 64 (seed i))
@@ -255,7 +260,28 @@ theorem body_inputs_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
     intro p hp
     simpa only [out, ReshapeIndex.reshape, Tensor.canon, hp, ↓reduceIte] using finalWords
       (Tensor.delinearize final.1.shape (linearIndex [1,1024] p))
-  refine ⟨out, ?_, rfl, reshape_defined final.1 [1,1024] (.int 64) hsi.2.2 ?_, outTyped⟩
+  have outProperties : ∀ P : Val → Prop,
+      (∀ i, i < 1024 → P (.some (.bits 64 (values i)))) →
+      (∀ i, i < 1024 → P (.some (.bits 64 (seed i)))) →
+      FrontendMaskProperties.Elements P out := by
+    intro P hv hs
+    have hcompact := FrontendMaskProperties.gather_prefix P bits (fun i => vals.get [i])
+      1024 0 buf 0 cap rfl (by intro i hi; omega) (by rw [hcap]; omega)
+      (by
+        intro i _ hi
+        rw [show vals = row [1024] (.int 64) vf from rfl, row_flat _ vf (by omega)]
+        exact hv i (by omega))
+    rw [hgather, hcap] at hcompact
+    have hseedP : FrontendMaskProperties.Elements P initial := by
+      intro p hp
+      change Idx.InBounds [1024] p at hp
+      have hk := linearIndex_lt [1024] p hp
+      simpa [initial, row, Tensor.canon, hp, sf] using hs _ hk
+    have hfinalP := FrontendMaskProperties.scatter_elements P bits compact.1
+      1024 0 initial 0 cap (by simpa using hcompact) hseedP (by rw [hcap]; omega)
+    rw [hscatter] at hfinalP
+    exact FrontendMaskProperties.reshape_elements [1,1024] (.int 64) hfinalP (by rw [hsi.1]; decide)
+  refine ⟨out, ?_, rfl, reshape_defined final.1 [1,1024] (.int 64) hsi.2.2 ?_, outTyped, outProperties⟩
   swap
   · rw [hsi.1]; decide
   have h_maskCollapse0 := root_op limit ctx call maskCollapse0 maskInput [1, 32, 32] [1024] (.int 1) [[0, 1, 2]] bf hMask
@@ -343,6 +369,26 @@ theorem body_inputs_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
     apply captured_corr <;> rfl)
   advance resultExpand using h_result
   rfl
+
+/-- Compatibility projection of the stronger element-predicate theorem. -/
+theorem body_inputs_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
+    (bits : Nat → Bool) (values seed : Nat → BitVec 64)
+    (maskInput valuesInput seedInput : MerlinVerify.Tensor)
+    (hMask : Represents maskInput [1,32,32] (.int 1) (fun i => Arith.boolVal (bits i)))
+    (hValues : Represents valuesInput [1,1024] (.int 64) (fun i => .some (.bits 64 (values i))))
+    (hSeed : Represents seedInput [1,1024] (.int 64) (fun i => .some (.bits 64 (seed i))))
+    (hib : ctx.indexBits = 64) (hu : FrontendBoolFptosi.UneCorrect ctx.M) (hl : 1024 ≤ limit) :
+    ∃ out : MerlinVerify.Tensor,
+      evalRegion (FrontendMaskRuntime.sem limit) ctx call [] FrontendMaskTemplate.body
+        [.tensor maskInput, .tensor valuesInput, .tensor seedInput] =
+        .ok [.tensor out, index (countFrom bits 1024 0)] ∧
+      out.shape = [1,1024] ∧ RVal.Defined (.tensor out) ∧
+        RVal.HasTy 64 (.tensor out) (.tensor [1,1024] (.int 64)) := by
+  obtain ⟨out, he, hs, hd, ht, _⟩ := body_inputs_exec_properties limit ctx call bits values seed
+    maskInput valuesInput seedInput hMask hValues hSeed hib hu hl
+  exact ⟨out, he, hs, hd, ht⟩
+
+#print axioms body_inputs_exec_properties
 
 set_option maxRecDepth 20000 in
 set_option maxHeartbeats 8000000 in

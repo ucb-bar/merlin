@@ -2,7 +2,7 @@
    The census is an inventory, not a whole-function execution claim. -/
 import MerlinVerify.Core.Json
 import MerlinVerify.Core.Print
-import MerlinVerify.Rules.FrontendRuntimeObligations
+import MerlinVerify.Rules.FrontendRuntimeEvidence
 import MerlinVerify.Check.TypedModule
 
 open MerlinVerify MerlinVerify.Check MerlinVerify.Rules Lean
@@ -72,6 +72,20 @@ def run (j : Json) : IO Json := do
   let ib ← natural j "index_bits"
   unless ib == 64 do throw (IO.userError "candidate requires index64")
   let target ← readModule (← string j "after_export")
+  if mode == "bounds_slice" then
+    let name ← string j "function"
+    let start ← natural j "start"
+    let count ← natural j "count"
+    return Json.mkObj [("accepted", toJson (FrontendRangeProjection.check target name start count limit)),
+      ("whole_function_defined", toJson false), ("input_domain", toJson "typed initialized cut inputs"),
+      ("theorem", toJson "MerlinVerify.Rules.FrontendRangeProjection.check_sound")]
+  if mode == "bounds_defined" then
+    let name ← string j "function"
+    let accepted := match TypedModule.signature? 64 target name with
+      | none => false
+      | some (a,r) => Definedness.Refined.check (FrontendRangeDefined.candidateBook limit 64) target name a r
+    return Json.mkObj [("accepted", toJson accepted),
+      ("theorem", toJson "MerlinVerify.Rules.FrontendRangeDefined.check_sound")]
   if mode == "defined" then
     let name ← string j "function"
     let accepted := match TypedModule.signature? 64 target name with
@@ -87,19 +101,36 @@ def run (j : Json) : IO Json := do
   let tail ← paths.mapM fun p => do
     let .ok path := Decode.str p | throw (IO.userError "invalid suffix path")
     readModule path
+  let slices ← match j.getObjVal? "bounds_slices" with
+    | .error _ => pure []
+    | .ok raw => do
+      let .ok rows := Decode.arr raw | throw (IO.userError "invalid bounds-slice list")
+      rows.mapM fun row => do
+        let start ← natural row "start"
+        let count ← natural row "count"
+        pure (start, count)
+  let sliceResults := slices.map fun (begin, count) => Json.mkObj [
+    ("start", toJson begin), ("count", toJson count),
+    ("accepted", toJson (FrontendRangeProjection.check target name begin count limit)),
+    ("input_domain", toJson "typed initialized cut inputs"),
+    ("theorem", toJson "MerlinVerify.Rules.FrontendRangeProjection.check_sound")]
+  let slicesAccepted := slices.all fun (begin, count) => FrontendRangeProjection.check target name begin count limit
   let repair := FrontendBoolSimulation.check source target
   let checkpoint := FrontendRuntimeCheckpoint.check target name start limit
   let accepted := decide (1024 ≤ limit) && repair &&
     FrontendRuntimeVerification.checkpoint source target name start limit
   let suffix := FrontendRuntimeChain.suffix target tail
   return Json.mkObj [("schema", toJson "merlin.frontend.runtime.result.v1"),
-    ("active", toJson false), ("accepted", toJson (accepted && suffix)),
+    ("active", toJson false), ("accepted", toJson (accepted && suffix && slicesAccepted)),
+    ("bounds_slices", toJson sliceResults),
     ("repair", toJson repair), ("checkpoint", toJson checkpoint), ("suffix", toJson suffix),
     ("whole_function_defined", toJson false),
     ("claim", toJson "A2 f32 policy matching and defined actual initial segment"),
     ("theorems", toJson ["MerlinVerify.Rules.FrontendRuntimeVerification.check_sound",
       "MerlinVerify.Rules.FrontendRuntimeVerification.full_policy",
-      "MerlinVerify.Rules.FrontendRuntimeChain.compose"]),
+      "MerlinVerify.Rules.FrontendRuntimeChain.compose",
+      "MerlinVerify.Rules.FrontendRangeProjection.check_sound",
+      "MerlinVerify.Rules.FrontendMaskRange.check_sound"]),
     ("inventory", inventory target)]
 end FrontendCheckpointDriver
 
