@@ -1,0 +1,419 @@
+{
+  "status": "passed",
+  "date": "2026-10-20",
+  "merlin_branch": "comparisons/tvm-gemmini-byoc",
+  "merlin_base": "a4745c66aaead245a58979f0d1d85cf244aee117",
+  "tvm_base": "6b376cc8895a83387ec38cc06ef8f7b09827b071",
+  "integration": "C1 BYOC partitioning to TVM-fused and scheduled call_tir; no RunCodegen runtime module",
+  "sources": [
+    {
+      "path": "examples/gemmini/comparisons/tvm/byoc/gemmini_byoc.py",
+      "sha256": "b34b0ddad85964f6afd9ae3256f83db164c1ef26f817a4285cec251534485191",
+      "bytes": 13884
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/byoc/byoc_primitives.c",
+      "sha256": "dc5f1141004733e22499f4ea0c60d6d625615bb4a211701b445833c8b9c40edc",
+      "bytes": 1983
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/byoc/verify_byoc.py",
+      "sha256": "99d68ff7ff6b32a5eb72b60c0546ff3a6154ba59bec5e8cc82fa674a5ec07918",
+      "bytes": 19453
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/byoc/test_byoc.py",
+      "sha256": "4e3e5f2d71cb08cdea79f2ae6e99170aa6cc3ff213f749c14ddef6148ef78059",
+      "bytes": 8521
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/byoc/install_backend.py",
+      "sha256": "0e9e3565a694a6b43665e97382265d8df1a5413049c89f57a32b8d679b2f2b8a",
+      "bytes": 1649
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/byoc/run_local.sh",
+      "sha256": "fefa78e1b948bcf98d9677af9efe45952474870579c8df1eac683fc92393e761",
+      "bytes": 2399
+    }
+  ],
+  "host_tests": {
+    "status": "passed",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "resources": {
+      "memory.max": "1073741824",
+      "memory.swap.max": "0",
+      "cpu.max": "100000 100000",
+      "memory.peak": "127975424",
+      "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    "backend": {
+      "path": "/home/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-source/python/tvm/relax/backend/contrib/gemmini_byoc.py",
+      "bytes": 13884,
+      "sha256": "b34b0ddad85964f6afd9ae3256f83db164c1ef26f817a4285cec251534485191"
+    },
+    "test_source": {
+      "path": "/home/grammy/blast/merlin-tvm-gemmini/examples/gemmini/comparisons/tvm/byoc/test_byoc.py",
+      "bytes": 8521,
+      "sha256": "4e3e5f2d71cb08cdea79f2ae6e99170aa6cc3ff213f749c14ddef6148ef78059"
+    },
+    "hardware_execution": false
+  },
+  "cases": [
+    {
+      "case": "tails",
+      "calls": 1,
+      "workspace_bytes": 0,
+      "tile_updates_per_inference": 2,
+      "schedules": [
+        {
+          "symbol": "gemmini_byoc_region",
+          "shape_mnk": [
+            3,
+            5,
+            17
+          ],
+          "invocations": 1
+        }
+      ],
+      "engines": {
+        "spike": {
+          "status": "passed",
+          "cycles": [
+            2938,
+            2938
+          ],
+          "practice_cycles": [
+            954
+          ],
+          "wall_seconds": 0.023670166003284976,
+          "peak_cgroup_bytes": 375902208,
+          "elf_sha256": "243704e628f80666767845bfbc633a4d3d42e4cb0dcf20039eeebcd7f03d0dde",
+          "engine_sha256": "de7f9407e30a2923483b0b132dd742c726a582deb2ea3c4becf3c1e3775014fa"
+        },
+        "rtl": {
+          "status": "passed",
+          "cycles": [
+            4644,
+            4175
+          ],
+          "practice_cycles": [
+            2127
+          ],
+          "wall_seconds": 23.29012292099651,
+          "peak_cgroup_bytes": 54784000,
+          "elf_sha256": "243704e628f80666767845bfbc633a4d3d42e4cb0dcf20039eeebcd7f03d0dde",
+          "engine_sha256": "a37f42b6d2f3413881faf154a94eaffaedf8d65b800e667200f523570d30d0d7"
+        }
+      },
+      "elf_audit": {
+        "executable_sections": [
+          ".text"
+        ],
+        "instructions": 2284,
+        "prohibited_hits": []
+      },
+      "custom_opcode": 123
+    },
+    {
+      "case": "bmm",
+      "calls": 5,
+      "workspace_bytes": 192,
+      "tile_updates_per_inference": 4,
+      "schedules": [
+        {
+          "symbol": "gemmini_byoc_region",
+          "shape_mnk": [
+            2,
+            3,
+            17
+          ],
+          "invocations": 2
+        }
+      ],
+      "engines": {
+        "spike": {
+          "status": "passed",
+          "cycles": [
+            5837,
+            5837
+          ],
+          "practice_cycles": [],
+          "wall_seconds": 0.006225780991371721,
+          "peak_cgroup_bytes": 188739584,
+          "elf_sha256": "632e80a9b1463fe5151c632b3a070503e6c673ae3973443f5a453187d298d15d",
+          "engine_sha256": "de7f9407e30a2923483b0b132dd742c726a582deb2ea3c4becf3c1e3775014fa"
+        },
+        "rtl": {
+          "status": "passed",
+          "cycles": [
+            8747,
+            8197
+          ],
+          "practice_cycles": [],
+          "wall_seconds": 21.312730111007113,
+          "peak_cgroup_bytes": 27090944,
+          "elf_sha256": "632e80a9b1463fe5151c632b3a070503e6c673ae3973443f5a453187d298d15d",
+          "engine_sha256": "a37f42b6d2f3413881faf154a94eaffaedf8d65b800e667200f523570d30d0d7"
+        }
+      },
+      "elf_audit": {
+        "executable_sections": [
+          ".text"
+        ],
+        "instructions": 876,
+        "prohibited_hits": []
+      },
+      "custom_opcode": 123
+    },
+    {
+      "case": "conv",
+      "calls": 3,
+      "workspace_bytes": 192,
+      "tile_updates_per_inference": 2,
+      "schedules": [
+        {
+          "symbol": "gemmini_byoc_region",
+          "shape_mnk": [
+            4,
+            3,
+            18
+          ],
+          "invocations": 1
+        }
+      ],
+      "engines": {
+        "spike": {
+          "status": "passed",
+          "cycles": [
+            4871,
+            4871
+          ],
+          "practice_cycles": [],
+          "wall_seconds": 0.0052309249876998365,
+          "peak_cgroup_bytes": 188669952,
+          "elf_sha256": "9e813e15e229712dc46326c318efb5700bdeeaea9a92e0a6b66eb02b23e6250b",
+          "engine_sha256": "de7f9407e30a2923483b0b132dd742c726a582deb2ea3c4becf3c1e3775014fa"
+        },
+        "rtl": {
+          "status": "passed",
+          "cycles": [
+            7707,
+            7109
+          ],
+          "practice_cycles": [],
+          "wall_seconds": 21.535046876990236,
+          "peak_cgroup_bytes": 26468352,
+          "elf_sha256": "9e813e15e229712dc46326c318efb5700bdeeaea9a92e0a6b66eb02b23e6250b",
+          "engine_sha256": "a37f42b6d2f3413881faf154a94eaffaedf8d65b800e667200f523570d30d0d7"
+        }
+      },
+      "elf_audit": {
+        "executable_sections": [
+          ".text"
+        ],
+        "instructions": 977,
+        "prohibited_hits": []
+      },
+      "custom_opcode": 123
+    }
+  ],
+  "negative_controls": [
+    {
+      "engine": "spike",
+      "control": "bad-oracle",
+      "host_returncode": 22,
+      "guest_code": 22,
+      "receipt": {
+        "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/spike-bad-oracle.json",
+        "sha256": "9eeaa0c1de3099c6db3746cfa840934edbc1e540f7b159ed26c6071a61af3835",
+        "bytes": 2094
+      }
+    },
+    {
+      "engine": "rtl",
+      "control": "bad-oracle",
+      "host_returncode": 255,
+      "guest_code": 22,
+      "receipt": {
+        "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/rtl-bad-oracle.json",
+        "sha256": "a167931e10ba12f88f72360255fcf5846cc6891b6d74d6d48e08d901490ab68d",
+        "bytes": 2008
+      }
+    },
+    {
+      "engine": "spike",
+      "control": "bad-input",
+      "host_returncode": 26,
+      "guest_code": 26,
+      "receipt": {
+        "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/spike-bad-input.json",
+        "sha256": "7017da29f5ae4135d7b3b216ac077c590b5148c5011420e9eec93f9462bf1d49",
+        "bytes": 2091
+      }
+    },
+    {
+      "engine": "rtl",
+      "control": "bad-input",
+      "host_returncode": 255,
+      "guest_code": 26,
+      "receipt": {
+        "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/rtl-bad-input.json",
+        "sha256": "c162f21b6a8c11c201b72feb0ccd98f0f68f19e5f09d8feadd094a50b3d22c6b",
+        "bytes": 2004
+      }
+    }
+  ],
+  "receipts": [
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/spike.json",
+      "sha256": "a776bb6e10e4b393eaac7638ac49b9d2bc512890b5c81920555d408acf93f5f9",
+      "bytes": 2079
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/spike.log",
+      "sha256": "3b40e6cea6172b561982863cca87b286eea426e917f1236f9d479b815adac173",
+      "bytes": 192
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/rtl.json",
+      "sha256": "7e672f151f3c0bc9a8720fc33d2bc5cdf0174e5c33dc6db6a7332fdfff8620c0",
+      "bytes": 1986
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/rtl.log",
+      "sha256": "cfd4ec22825c890694c53d1c173713652e8cf3490b0497e544610cc53159f8c7",
+      "bytes": 501
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/build.json",
+      "sha256": "dabb7996c8115e0803dc48c33401e7cf702d9f5f17688ba2a2e68817ef453741",
+      "bytes": 19957
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-bmm/spike.json",
+      "sha256": "91c9b4c6846e58f6000ace616322875703e4f0c359baff606f547da0b873e2be",
+      "bytes": 2073
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-bmm/spike.log",
+      "sha256": "09b14f6280075f501d78cee8b298c88307d6499ceecc17f2fed6196d4f716aaa",
+      "bytes": 150
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-bmm/rtl.json",
+      "sha256": "195d2eb18ad24cde0c32cb1d72cdd4aa9cfb21f336c2e726f58570e85e604ffb",
+      "bytes": 1979
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-bmm/rtl.log",
+      "sha256": "2f21d13ef45407e303bb1dd5b957b71b7ab74b36ef1e177e1342b3a82261e88c",
+      "bytes": 458
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-bmm/build.json",
+      "sha256": "8f80aa44307fa8dd5185122a9f2b32088e3190bb62bfbcf25fe1870e9b665e16",
+      "bytes": 24487
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-conv/spike.json",
+      "sha256": "ec695da4a0021f781c2305e63395e7f573f8ddab3cc3929487370e5cb799bfd7",
+      "bytes": 2077
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-conv/spike.log",
+      "sha256": "3698e285609c719f4068727c5c0fc8f62245199fb2e0aa42ea6a5797aafbb501",
+      "bytes": 150
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-conv/rtl.json",
+      "sha256": "d29299fff94a7d6f989a48a51cde455321fc3a7aa1f0e8ae872b731e60bf2ab7",
+      "bytes": 1983
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-conv/rtl.log",
+      "sha256": "2c7e802e481233c4b70abc09b9e09151145e4a6c52857e132d42e5e4f8995163",
+      "bytes": 458
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-conv/build.json",
+      "sha256": "1aa489457022cbf5479479e5cbff332630f94f6d0395c0b38c35c8bed853e4ca",
+      "bytes": 22035
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/spike-bad-oracle.json",
+      "sha256": "9eeaa0c1de3099c6db3746cfa840934edbc1e540f7b159ed26c6071a61af3835",
+      "bytes": 2094
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/spike-bad-oracle.log",
+      "sha256": "da98924a499264dd2695e4b42518cd42edc75378ee4f61d5fbb81037a109ddf5",
+      "bytes": 142
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/rtl-bad-oracle.json",
+      "sha256": "a167931e10ba12f88f72360255fcf5846cc6891b6d74d6d48e08d901490ab68d",
+      "bytes": 2008
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/rtl-bad-oracle.log",
+      "sha256": "8a5f179c195fe0845ae366a7731c34d5a5435dbf060926c42cab9aad7d26fa06",
+      "bytes": 703
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/spike-bad-input.json",
+      "sha256": "7017da29f5ae4135d7b3b216ac077c590b5148c5011420e9eec93f9462bf1d49",
+      "bytes": 2091
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/spike-bad-input.log",
+      "sha256": "fad47a0c52d4cf4c3ffe1c996668c356d328d8671df56854a89b97581bb3b8ee",
+      "bytes": 185
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/rtl-bad-input.json",
+      "sha256": "c162f21b6a8c11c201b72feb0ccd98f0f68f19e5f09d8feadd094a50b3d22c6b",
+      "bytes": 2004
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/preservation-tails/rtl-bad-input.log",
+      "sha256": "8b0da1b7e61546e1812366b14ced249e902d933f83f7d0d3c1a526623b2b464f",
+      "bytes": 747
+    },
+    {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/host-preservation/report.json",
+      "sha256": "1ee955c740b63afaa15f82cdc55ffcb82b70a4aca15af54efbc9621d1358a9b4",
+      "bytes": 823
+    }
+  ],
+  "hardware_binding_receipt": {
+    "path": "out/artifacts/verification/gemmini/tvm/rtl-blocks-20261020T050040Z/hardware-binding.json",
+    "sha256": "b39c85b1d489b03d9e57af4d08c5111cb0e646e955973e2fc0286c54e4b5f3df",
+    "bytes": 13731
+  },
+  "caps": {
+    "memory_max_bytes": 1073741824,
+    "swap_max_bytes": 0,
+    "cpus": 1,
+    "run_wall_seconds": 45,
+    "rtl_max_cycles": 200000,
+    "service_wall_seconds": 60
+  },
+  "performance_qualified": false,
+  "full_model_qualified": false,
+  "all_aten_ops_qualified": false,
+  "rtl_memory": "existing 256-MiB magic memory, no DRAMSim or FireSim timing",
+  "input_preservation": {
+    "method": "writable input, volatile runtime byte reads, independent host-computed 64-bit FNV digest",
+    "control": "one input byte deliberately changed after numerical checks; guest 26 required on both engines",
+    "correction": "Original input and constant reference copy were pooled onto the same address. Original preservation claim was invalid. Previous numerical and instruction results are independent; current reports supersede preservation evidence.",
+    "arithmetic_objects_unchanged_from_original_fused_runs": true,
+    "previous_receipt_archive": {
+      "path": "out/artifacts/verification/gemmini/tvm/byoc-20261020/validation-before-preservation-fix.json",
+      "sha256": "a566f38ec3a5677c661dddc1b62e7da2106c6f69287984510cdbb400c7646955",
+      "bytes": 12142
+    }
+  }
+}
