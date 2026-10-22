@@ -14,9 +14,22 @@ def BodyTotal {Info : Type} (M : Model Info) (ib : Nat) (allowed : Conditions) (
   ∀ ctx, ctx.indexBits = ib → allowed ctx call → ∀ args, Refined.FactsHold M ib args inputs →
     ∃ results, body ctx args = .ok results ∧ Refined.FactsHold M ib results outputs
 
+/-- A structured body need only run at the actual bounded points of its enclosing loop.
+The numerical/call premise is unchanged; coordinates are a separate checked premise. -/
+def PointBodyTotal {Info : Type} (M : Model Info) (ib : Nat) (allowed : Conditions) (call : CallSem)
+    (ranges : List Nat) (body : Ctx → RegionSem) (inputs outputs : List (Refined.Fact Info)) : Prop :=
+  ∀ ctx, ctx.indexBits = ib → allowed ctx call → Idx.InBounds ranges ctx.loopIndex →
+    ∀ args, Refined.FactsHold M ib args inputs →
+      ∃ results, body ctx args = .ok results ∧ Refined.FactsHold M ib results outputs
+
 variable {Info : Type} {M : Model Info} {ib : Nat} {allowed : Conditions} {call : CallSem}
 
-theorem bodyAt_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
+theorem BodyTotal.atPoints {ranges : List Nat} {body : Ctx → RegionSem}
+    {inputs outputs : List (Refined.Fact Info)} (total : BodyTotal M ib allowed call body inputs outputs) :
+    PointBodyTotal M ib allowed call ranges body inputs outputs :=
+  fun ctx width permitted _ => total ctx width permitted
+
+theorem bodyAt_point_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
     {ranges point : List Nat} (bounds : Idx.InBounds ranges point) {ctx : Ctx}
     (width : ctx.indexBits = ib) (permitted : allowed ctx call)
     {ins : List RVal} {inMaps outMaps : List AffineMap} {cur : List Tensor}
@@ -25,7 +38,7 @@ theorem bodyAt_refined (elementwise : Elementwise M) (stable : LoopStable allowe
     (current : Refined.FactsHold M ib (cur.map RVal.tensor) outFacts)
     (inputMaps : MapsInBounds ranges inMaps (inFacts.map (·.base.ty)))
     (outputMaps : MapsInBounds ranges outMaps (outFacts.map (·.base.ty)))
-    (total : BodyTotal M ib allowed call body ((inFacts ++ outFacts).map Refined.elementFact)
+    (total : PointBodyTotal M ib allowed call ranges body ((inFacts ++ outFacts).map Refined.elementFact)
       (outFacts.map Refined.elementFact)) :
     ∃ values, bodyAt ctx ins inMaps outMaps cur body point = .ok values ∧
       Refined.FactsHold M ib (values.map RVal.scalar) (outFacts.map Refined.elementFact) := by
@@ -40,7 +53,7 @@ theorem bodyAt_refined (elementwise : Elementwise M) (stable : LoopStable allowe
     rw [List.map_append, List.map_append]
     exact List.rel_append inputFacts outputFacts
   obtain ⟨results, executed, holds⟩ := total {ctx with loopIndex := point} width
-    (stable ctx call point permitted) _ arguments
+    (stable ctx call point permitted) bounds _ arguments
   have typed : HasTys ib results ((outFacts.map (·.base.ty)).map VTy.eltScalar) := by
     simpa only [Refined.elementFact, Definedness.elementFact, List.map_map, Function.comp_def] using holds.typed
   have count : results.length = cur.length := by
@@ -52,7 +65,7 @@ theorem bodyAt_refined (elementwise : Elementwise M) (stable : LoopStable allowe
   exact mapM_scalars_total _ (by intro _; rfl) values
 
 /-- Reduction steps maintain the checked numerical invariant in execution order. -/
-theorem genericSem_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
+theorem genericSem_point_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
     {ctx : Ctx} (width : ctx.indexBits = ib) (permitted : allowed ctx call)
     {maps : List AffineMap} {iters : List IterKind} {ins outs : List RVal}
     {body : Ctx → RegionSem} {inFacts outFacts : List (Refined.Fact Info)} {ranges : List Nat}
@@ -60,7 +73,7 @@ theorem genericSem_refined (elementwise : Elementwise M) (stable : LoopStable al
     (tensors : ∀ fact ∈ outFacts, fact.base.ty.isTensor = true)
     (initialized : ∀ fact ∈ outFacts, fact.base.initialized = true)
     (inputs : Refined.FactsHold M ib ins inFacts) (outputs : Refined.FactsHold M ib outs outFacts)
-    (total : BodyTotal M ib allowed call body ((inFacts ++ outFacts).map Refined.elementFact)
+    (total : PointBodyTotal M ib allowed call ranges body ((inFacts ++ outFacts).map Refined.elementFact)
       (outFacts.map Refined.elementFact)) :
     ∃ results, genericSem ctx maps iters ins outs body = .ok results ∧
       Refined.FactsHold M ib results outFacts := by
@@ -84,7 +97,7 @@ theorem genericSem_refined (elementwise : Elementwise M) (stable : LoopStable al
       loopStep ctx ins (maps.take ins.length) (maps.drop ins.length) body current point = .ok results ∧
       Refined.FactsHold M ib (results.map RVal.tensor) outFacts := by
     intro current point holds bounds
-    obtain ⟨values, executed, valid⟩ := bodyAt_refined elementwise stable bounds width permitted
+    obtain ⟨values, executed, valid⟩ := bodyAt_point_refined elementwise stable bounds width permitted
       inputs holds inputMaps outputMaps total
     obtain ⟨results, written, valid⟩ := mapM_write_refined elementwise bounds
       (fun (value, tensor, map) => writeAt tensor map point value) (by intro _ _ _; rfl)
@@ -100,14 +113,14 @@ theorem genericSem_refined (elementwise : Elementwise M) (stable : LoopStable al
 
 /-- A full overwrite obtains its numerical postcondition from actual body execution, even
 when the destination is poison. No numerical premise is invented for the old destination. -/
-theorem overwriteSem_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
+theorem overwriteSem_point_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
     {ctx : Ctx} (width : ctx.indexBits = ib) (permitted : allowed ctx call)
     {ins : List RVal} {inFacts : List (Refined.Fact Info)} {maps : List AffineMap} {iters : List IterKind}
     {tensor : Tensor} {shape : List Nat} {elt : Ty} {info : Info} {body : Ctx → RegionSem}
     (structured : StructuredOk maps iters.length (inFacts.map (·.base.ty) ++ [.tensor shape elt]) shape)
     (outputMap : maps.drop inFacts.length = [identityMap shape.length])
     (inputs : Refined.FactsHold M ib ins inFacts) (typed : RVal.HasTy ib (.tensor tensor) (.tensor shape elt))
-    (total : BodyTotal M ib allowed call body
+    (total : PointBodyTotal M ib allowed call shape body
       ((inFacts ++ [emptyFact M ⟨.tensor shape elt, false⟩]).map Refined.elementFact)
       [⟨⟨.scalar elt, true⟩, info⟩]) :
     ∃ results, genericSem ctx maps iters ins [.tensor tensor] body = .ok results ∧
@@ -139,7 +152,7 @@ theorem overwriteSem_refined (elementwise : Elementwise M) (stable : LoopStable 
         (.cons ⟨⟨typed.2.2 point bounds, by simp [Refined.elementFact, Definedness.elementFact, emptyFact]⟩,
           M.empty_sound _⟩ .nil)
     obtain ⟨results, bodyExecuted, bodyHolds⟩ := total {ctx with loopIndex := point} width
-      (stable ctx call point permitted) _ argsHold
+      (stable ctx call point permitted) bounds _ argsHold
     obtain _ | ⟨head, tail⟩ := bodyHolds
     cases tail
     rename_i result
@@ -171,6 +184,54 @@ theorem overwriteSem_refined (elementwise : Elementwise M) (stable : LoopStable 
     change Idx.InBounds shape point at bounds
     simpa only [Tensor.canon, bounds, ↓reduceIte] using (resultHolds point bounds).2.2
 
+/-- The original interfaces retain their stronger, coordinate-independent body obligation. -/
+theorem bodyAt_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
+    {ranges point : List Nat} (bounds : Idx.InBounds ranges point) {ctx : Ctx}
+    (width : ctx.indexBits = ib) (permitted : allowed ctx call)
+    {ins : List RVal} {inMaps outMaps : List AffineMap} {cur : List Tensor}
+    {body : Ctx → RegionSem} {inFacts outFacts : List (Refined.Fact Info)}
+    (inputs : Refined.FactsHold M ib ins inFacts)
+    (current : Refined.FactsHold M ib (cur.map RVal.tensor) outFacts)
+    (inputMaps : MapsInBounds ranges inMaps (inFacts.map (·.base.ty)))
+    (outputMaps : MapsInBounds ranges outMaps (outFacts.map (·.base.ty)))
+    (total : BodyTotal M ib allowed call body ((inFacts ++ outFacts).map Refined.elementFact)
+      (outFacts.map Refined.elementFact)) :
+    ∃ values, bodyAt ctx ins inMaps outMaps cur body point = .ok values ∧
+      Refined.FactsHold M ib (values.map RVal.scalar) (outFacts.map Refined.elementFact) :=
+  bodyAt_point_refined elementwise stable bounds width permitted inputs current inputMaps outputMaps total.atPoints
+
+theorem genericSem_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
+    {ctx : Ctx} (width : ctx.indexBits = ib) (permitted : allowed ctx call)
+    {maps : List AffineMap} {iters : List IterKind} {ins outs : List RVal}
+    {body : Ctx → RegionSem} {inFacts outFacts : List (Refined.Fact Info)} {ranges : List Nat}
+    (structured : StructuredOk maps iters.length (inFacts.map (·.base.ty) ++ outFacts.map (·.base.ty)) ranges)
+    (tensors : ∀ fact ∈ outFacts, fact.base.ty.isTensor = true)
+    (initialized : ∀ fact ∈ outFacts, fact.base.initialized = true)
+    (inputs : Refined.FactsHold M ib ins inFacts) (outputs : Refined.FactsHold M ib outs outFacts)
+    (total : BodyTotal M ib allowed call body ((inFacts ++ outFacts).map Refined.elementFact)
+      (outFacts.map Refined.elementFact)) :
+    ∃ results, genericSem ctx maps iters ins outs body = .ok results ∧
+      Refined.FactsHold M ib results outFacts :=
+  genericSem_point_refined elementwise stable width permitted structured tensors initialized inputs outputs total.atPoints
+
+theorem overwriteSem_refined (elementwise : Elementwise M) (stable : LoopStable allowed)
+    {ctx : Ctx} (width : ctx.indexBits = ib) (permitted : allowed ctx call)
+    {ins : List RVal} {inFacts : List (Refined.Fact Info)} {maps : List AffineMap} {iters : List IterKind}
+    {tensor : Tensor} {shape : List Nat} {elt : Ty} {info : Info} {body : Ctx → RegionSem}
+    (structured : StructuredOk maps iters.length (inFacts.map (·.base.ty) ++ [.tensor shape elt]) shape)
+    (outputMap : maps.drop inFacts.length = [identityMap shape.length])
+    (inputs : Refined.FactsHold M ib ins inFacts) (typed : RVal.HasTy ib (.tensor tensor) (.tensor shape elt))
+    (total : BodyTotal M ib allowed call body
+      ((inFacts ++ [emptyFact M ⟨.tensor shape elt, false⟩]).map Refined.elementFact)
+      [⟨⟨.scalar elt, true⟩, info⟩]) :
+    ∃ results, genericSem ctx maps iters ins [.tensor tensor] body = .ok results ∧
+      Refined.FactsHold M ib results [⟨⟨.tensor shape elt, true⟩, info⟩] :=
+  overwriteSem_point_refined elementwise stable width permitted structured outputMap inputs typed total.atPoints
+
+#print axioms BodyTotal.atPoints
+#print axioms bodyAt_point_refined
+#print axioms genericSem_point_refined
+#print axioms overwriteSem_point_refined
 #print axioms bodyAt_refined
 #print axioms genericSem_refined
 #print axioms overwriteSem_refined

@@ -27,7 +27,7 @@ theorem invariant_sound (rules : Invariants M ib) {values : List RVal} {facts : 
   | nil => exact .nil
   | cons head _ ih => exact .cons ⟨head.1, rules.widen_sound _ _ head.2⟩ ih
 
-def initializedRule (rules : Invariants M ib) (bodyBook : Regions M sem ib allowed)
+def initializedPointRule (rules : Invariants M ib) (bodyBook : PointRegions M sem ib allowed)
     (Γ : Refined.FEnv Info) (op : Op) (facts : List (Refined.Fact Info)) : Option (List (Refined.Fact Info)) :=
   if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
     match splitInsOuts op facts, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
@@ -36,22 +36,23 @@ def initializedRule (rules : Invariants M ib) (bodyBook : Regions M sem ib allow
           op.results.length = outs.length ∧
           (structuredRanges? maps iters.length ((ins ++ outs).map (·.base.ty))).isSome then do
         let outputs := outs.map (invariant rules)
-        let results ← bodyBook.infer Γ body ((ins ++ outputs).map Refined.elementFact)
+        let ranges := (structuredRanges? maps iters.length ((ins ++ outs).map (·.base.ty))).getD []
+        let results ← bodyBook.infer Γ ranges body ((ins ++ outputs).map Refined.elementFact)
         if rules.implies results (outputs.map Refined.elementFact) then some outputs else none
       else none
     | _, _, _, _ => none
   else none
 
-theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
+theorem initializedPointRule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
     (agreement : Definedness.Structured.GenericAgreement sem) (rules : Invariants M ib)
-    (bodyBook : Regions M sem ib allowed) : ∀ Γ op facts results,
-    initializedRule rules bodyBook Γ op facts = some results → ∀ ctx call env args,
+    (bodyBook : PointRegions M sem ib allowed) : ∀ Γ op facts results,
+    initializedPointRule rules bodyBook Γ op facts = some results → ∀ ctx call env args,
     ctx.indexBits = ib → allowed ctx call → Refined.EnvHolds M ib Γ env →
     Refined.FactsHold M ib args facts → ∃ values,
       sem ctx call op args (evalRegions sem call env op.regions) = .ok values ∧
       Refined.FactsHold M ib values results := by
   intro Γ op facts results checked ctx call env args width permitted valid inputs
-  unfold initializedRule at checked
+  unfold initializedPointRule at checked
   split at checked
   · next header =>
     obtain ⟨modelled, dialect, named⟩ := header
@@ -61,7 +62,9 @@ theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable
       · next conditions =>
         obtain ⟨initialized, tensors, arity, rangesFound⟩ := conditions
         obtain ⟨ranges, rangesFound⟩ := Option.isSome_iff_exists.1 rangesFound
-        cases inferred : bodyBook.infer Γ body
+        rw [rangesFound] at checked
+        dsimp only [Option.getD] at checked
+        cases inferred : bodyBook.infer Γ ranges body
             ((ins ++ outs.map (invariant rules)).map Refined.elementFact) with
         | none =>
           simp only [inferred, bind, Option.bind] at checked
@@ -72,12 +75,12 @@ theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable
           · next subsumed =>
             cases checked
             obtain ⟨xs, ys, splitArgs, inputFacts, outputFacts⟩ := splitInsOuts_refined splitFacts inputs
-            have total : BodyTotal M ib allowed call (fun ctx => evalRegion sem ctx call env body)
+            have total : PointBodyTotal M ib allowed call ranges (fun ctx => evalRegion sem ctx call env body)
                 ((ins ++ outs.map (invariant rules)).map Refined.elementFact)
                 ((outs.map (invariant rules)).map Refined.elementFact) := by
-              intro ctx width permitted args holds
+              intro ctx width permitted bounds args holds
               obtain ⟨values, executed, holds, _⟩ :=
-                bodyBook.sound Γ body _ _ inferred ctx call env args width permitted valid holds
+                bodyBook.sound Γ ranges body _ _ inferred ctx call env args width permitted bounds valid holds
               exact ⟨values, executed, rules.implies_sound _ _ subsumed _ holds⟩
             have structured : StructuredOk maps iters.length
                 (ins.map (·.base.ty) ++ (outs.map (invariant rules)).map (·.base.ty)) ranges := by
@@ -91,7 +94,7 @@ theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable
               intro fact member
               obtain ⟨original, originalMember, rfl⟩ := List.mem_map.1 member
               exact initialized original originalMember
-            obtain ⟨values, executed, holds⟩ := genericSem_refined elementwise stable width permitted
+            obtain ⟨values, executed, holds⟩ := genericSem_point_refined elementwise stable width permitted
               structured outputTensors outputInitialized inputFacts (invariant_sound rules outputFacts) total
             refine ⟨values, ?_, holds⟩
             have count : values.length = op.blind.results.length := by
@@ -107,14 +110,14 @@ theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable
     · cases checked
   · cases checked
 
-def overwriteRule (bodyBook : Regions M sem ib allowed) (Γ : Refined.FEnv Info)
+def overwritePointRule (bodyBook : PointRegions M sem ib allowed) (Γ : Refined.FEnv Info)
     (op : Op) (facts : List (Refined.Fact Info)) : Option (List (Refined.Fact Info)) :=
   if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
     match splitInsOuts op facts, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
     | some (ins, [⟨⟨.tensor shape elt, _⟩, _⟩]), some maps, some iters, [body] =>
       if op.results.length = 1 ∧ maps.drop ins.length = [identityMap shape.length] ∧
           structuredRanges? maps iters.length (ins.map (·.base.ty) ++ [.tensor shape elt]) = some shape then
-        match bodyBook.infer Γ body
+        match bodyBook.infer Γ shape body
             ((ins ++ [emptyFact M ⟨.tensor shape elt, false⟩]).map Refined.elementFact) with
         | some [⟨⟨.scalar yielded, true⟩, info⟩] =>
           if yielded = elt then some [⟨⟨.tensor shape elt, true⟩, info⟩] else none
@@ -123,15 +126,15 @@ def overwriteRule (bodyBook : Regions M sem ib allowed) (Γ : Refined.FEnv Info)
     | _, _, _, _ => none
   else none
 
-theorem overwriteRule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
-    (agreement : Definedness.Structured.GenericAgreement sem) (bodyBook : Regions M sem ib allowed) :
-    ∀ Γ op facts results, overwriteRule bodyBook Γ op facts = some results → ∀ ctx call env args,
+theorem overwritePointRule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Definedness.Structured.GenericAgreement sem) (bodyBook : PointRegions M sem ib allowed) :
+    ∀ Γ op facts results, overwritePointRule bodyBook Γ op facts = some results → ∀ ctx call env args,
     ctx.indexBits = ib → allowed ctx call → Refined.EnvHolds M ib Γ env →
     Refined.FactsHold M ib args facts → ∃ values,
       sem ctx call op args (evalRegions sem call env op.regions) = .ok values ∧
       Refined.FactsHold M ib values results := by
   intro Γ op facts results checked ctx call env args width permitted valid inputs
-  unfold overwriteRule at checked
+  unfold overwritePointRule at checked
   split at checked
   · next header =>
     obtain ⟨modelled, dialect, named⟩ := header
@@ -153,14 +156,14 @@ theorem overwriteRule_sound (elementwise : Elementwise M) (stable : LoopStable a
             cases output with
             | scalar _ => cases head.1.1
             | tensor tensor =>
-              have total : BodyTotal M ib allowed call (fun ctx => evalRegion sem ctx call env body)
+              have total : PointBodyTotal M ib allowed call shape (fun ctx => evalRegion sem ctx call env body)
                   ((ins ++ [emptyFact M ⟨.tensor shape elt, false⟩]).map Refined.elementFact)
                   [⟨⟨.scalar elt, true⟩, info⟩] := by
-                intro ctx width permitted args holds
+                intro ctx width permitted bounds args holds
                 obtain ⟨values, executed, holds, _⟩ :=
-                  bodyBook.sound Γ body _ _ inferred ctx call env args width permitted valid holds
+                  bodyBook.sound Γ shape body _ _ inferred ctx call env args width permitted bounds valid holds
                 exact ⟨values, executed, holds⟩
-              obtain ⟨values, executed, holds⟩ := overwriteSem_refined elementwise stable width permitted
+              obtain ⟨values, executed, holds⟩ := overwriteSem_point_refined elementwise stable width permitted
                 (structuredRanges?_spec ranges) outputMap inputFacts head.1.1 total
               refine ⟨values, ?_, holds⟩
               have count : values.length = op.blind.results.length := by
@@ -179,21 +182,53 @@ theorem overwriteRule_sound (elementwise : Elementwise M) (stable : LoopStable a
 
 /-- Try a complete overwrite first so pointwise producers retain their inferred facts.
 Reduction initialization requires a separately checked invariant. -/
-def bookRegions (elementwise : Elementwise M) (stable : LoopStable allowed)
+def bookPointRegions (elementwise : Elementwise M) (stable : LoopStable allowed)
     (agreement : Definedness.Structured.GenericAgreement sem) (rules : Invariants M ib)
-    (bodyBook : Regions M sem ib allowed) : Book M sem ib allowed where
-  rule Γ op facts := (overwriteRule bodyBook Γ op facts).orElse fun _ => initializedRule rules bodyBook Γ op facts
+    (bodyBook : PointRegions M sem ib allowed) : Book M sem ib allowed where
+  rule Γ op facts := (overwritePointRule bodyBook Γ op facts).orElse fun _ => initializedPointRule rules bodyBook Γ op facts
   sound Γ op facts results checked ctx call env args width permitted valid inputs := by
-    cases overwritten : overwriteRule bodyBook Γ op facts with
+    cases overwritten : overwritePointRule bodyBook Γ op facts with
     | none =>
       simp only [overwritten, Option.orElse_none] at checked
-      exact initializedRule_sound elementwise stable agreement rules bodyBook Γ op facts results checked
+      exact initializedPointRule_sound elementwise stable agreement rules bodyBook Γ op facts results checked
         ctx call env args width permitted valid inputs
     | some outputs =>
       simp only [overwritten, Option.orElse_some, Option.some.injEq] at checked
       subst results
-      exact overwriteRule_sound elementwise stable agreement bodyBook Γ op facts outputs overwritten
+      exact overwritePointRule_sound elementwise stable agreement bodyBook Γ op facts outputs overwritten
         ctx call env args width permitted valid inputs
+
+def initializedRule (rules : Invariants M ib) (bodyBook : Regions M sem ib allowed) :
+    Refined.FEnv Info → Op → List (Refined.Fact Info) → Option (List (Refined.Fact Info)) :=
+  initializedPointRule rules (.fromRegions bodyBook)
+
+theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Definedness.Structured.GenericAgreement sem) (rules : Invariants M ib)
+    (bodyBook : Regions M sem ib allowed) : ∀ Γ op facts results,
+    initializedRule rules bodyBook Γ op facts = some results → ∀ ctx call env args,
+    ctx.indexBits = ib → allowed ctx call → Refined.EnvHolds M ib Γ env →
+    Refined.FactsHold M ib args facts → ∃ values,
+      sem ctx call op args (evalRegions sem call env op.regions) = .ok values ∧
+      Refined.FactsHold M ib values results :=
+  initializedPointRule_sound elementwise stable agreement rules (.fromRegions bodyBook)
+
+def overwriteRule (bodyBook : Regions M sem ib allowed) :
+    Refined.FEnv Info → Op → List (Refined.Fact Info) → Option (List (Refined.Fact Info)) :=
+  overwritePointRule (.fromRegions bodyBook)
+
+theorem overwriteRule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Definedness.Structured.GenericAgreement sem) (bodyBook : Regions M sem ib allowed) :
+    ∀ Γ op facts results, overwriteRule bodyBook Γ op facts = some results → ∀ ctx call env args,
+    ctx.indexBits = ib → allowed ctx call → Refined.EnvHolds M ib Γ env →
+    Refined.FactsHold M ib args facts → ∃ values,
+      sem ctx call op args (evalRegions sem call env op.regions) = .ok values ∧
+      Refined.FactsHold M ib values results :=
+  overwritePointRule_sound elementwise stable agreement (.fromRegions bodyBook)
+
+def bookRegions (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Definedness.Structured.GenericAgreement sem) (rules : Invariants M ib)
+    (bodyBook : Regions M sem ib allowed) : Book M sem ib allowed :=
+  bookPointRegions elementwise stable agreement rules (.fromRegions bodyBook)
 
 def book (elementwise : Elementwise M) (stable : LoopStable allowed)
     (agreement : Definedness.Structured.GenericAgreement sem) (rules : Invariants M ib)
@@ -237,6 +272,9 @@ def recursiveBook (elementwise : Elementwise M) (stable : LoopStable allowed)
 #print axioms invariant_sound
 #print axioms initializedRule_sound
 #print axioms overwriteRule_sound
+#print axioms initializedPointRule_sound
+#print axioms overwritePointRule_sound
+#print axioms bookPointRegions
 #print axioms book
 #print axioms bookRegions
 #print axioms recursiveBookWith
