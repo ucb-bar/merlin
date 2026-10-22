@@ -176,8 +176,10 @@ Explicit bounded `MERLIN_SNAPSHOT_LEASE_MIN_BYTES` and
 `MERLIN_SNAPSHOT_LEASE_MAX_FILES` select cache admission, never replace a live
 kernel read lease. Cached path checks pin an O_PATH lookup and compare its
 kernel-resolved ordinary name and inode; replaced, indirect or deleted names
-refuse. Descriptor headroom is reserved at cache admission without a quadratic
-per-member descriptor enumeration.
+refuse. Cache admission reserves at least one quarter of the descriptor limit
+(and at least 64 descriptors) for ordinary concurrent work, then rechecks current
+headroom every 32 admissions. Existing leases retain custody; new admissions
+decline to full hashing when the available budget shrinks.
 `read_lease_digest.reuse` batches hits for a closed pin set that one process
 reverifies repeatedly. It returns only members admitted earlier by `digest`,
 after rechecking every member's O_PATH name, identity and lease, then every lease

@@ -107,6 +107,8 @@ def step(*, profile_pin, state_path, context, output):
     view=profile.get('native_view')
     if not view:
         return dict(status='blocked_native_runtime_view',round=str(round_root),reason='operator profile must pin the selected gSIM namespace inputs before physical measurement')
+    from .joint_calibration_launcher import selected as selected_launcher
+    launcher = selected_launcher(view)
     with contextlib.ExitStack() as stack:
         for v in view['readonly_roots']:
             if 'expected_members' in v and sorted(p.name for p in Path(v['source']).iterdir()) != v['expected_members']:
@@ -116,7 +118,7 @@ def step(*, profile_pin, state_path, context, output):
         roots=tuple((Path(v['source']),Path(v['target'])) for v in view['readonly_roots'])
         owner=prepare_native_runtime_view(round_root/('native-view-'+str(time.time_ns())),backend=backend,
             engine=backend.gsim_path(),readonly_roots=roots,output_root=Path(view['output_root']),
-            bwrap=Path(view['bwrap']),max_files=view['max_files'],max_bytes=view['max_bytes'],
+            bwrap=launcher,max_files=view['max_files'],max_bytes=view['max_bytes'],
             max_console_bytes=view['max_console_bytes'])
         stack.callback(owner.close)
         stack.enter_context(executing_native_runtime(owner))

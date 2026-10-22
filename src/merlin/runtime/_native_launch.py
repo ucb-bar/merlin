@@ -212,10 +212,15 @@ def run_process(
                 if len(relative.parts) != 1 or relative.name in {".", ".."}:
                     raise ValueError("build storage selection escaped private temporary backing")
                 (temporary / relative).mkdir()
-        control, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        # Bash read consumes bytes; SEQPACKET would discard the remainder of
+        # a GO packet after its first byte and hang before engine exec.
+        control, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
         control.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
+        # Source snapshot leases can retain thousands of descriptors. Only this
+        # socket is inherited via Popen(pass_fds); bubblewrap forwards inherited
+        # descriptors and has no --preserve-fds option. Never pass a whole range.
         descriptor = child.fileno()
-        if not 3 <= descriptor <= 512:
+        if not 3 <= descriptor <= 65535:
             control.close()
             child.close()
             raise ValueError("native private channel exceeds its fixed descriptor bound")
@@ -235,8 +240,6 @@ def run_process(
             "--die-with-parent",
             "--new-session",
             "--clearenv",
-            "--preserve-fds",
-            str(descriptor - 2),
             "--ro-bind",
             str(owner.image),
             "/",

@@ -281,6 +281,31 @@ def test_unsupported_kernel_keeps_independent_full_reads(tmp_path, monkeypatch):
             os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
 
 
+def test_admission_rechecks_later_descriptor_pressure(tmp_path):
+    import resource
+
+    files = []
+    for index in range(L.FD_RECHECK_INTERVAL + 1):
+        path = tmp_path / str(index)
+        path.write_bytes(b"a" * 8192)
+        files.append(path)
+    for path in files[:-1]:
+        require_lease(path)
+    old_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    opened = len(os.listdir("/proc/self/fd"))
+    # Pressure appears after the initial cache budget was computed.
+    soft = opened + L.FD_HEADROOM + L._FD_OVERHEAD
+    try:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, old_limit[1]))
+        assert L.digest(files[-1]) is None
+        assert len(L._CACHE.entries) == L.FD_RECHECK_INTERVAL
+        assert require_lease(files[0]) == hashlib.sha256(files[0].read_bytes()).hexdigest()
+        assert hashlib.sha256(files[-1].read_bytes()).hexdigest()
+    finally:
+        L.close()
+        resource.setrlimit(resource.RLIMIT_NOFILE, old_limit)
+
+
 def test_final_snapshot_guard_refuses_broken_previously_used_member(tmp_path):
     workspace, bundle, repo, path = frozen(tmp_path)
     require_lease(path)

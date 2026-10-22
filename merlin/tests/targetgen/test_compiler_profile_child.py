@@ -595,3 +595,35 @@ def test_serialized_resource_claims_cannot_replace_actual_kernel_controls(origin
                 os.close(writable)
                 if readonly is not None:
                     os.close(readonly)
+
+
+def test_actual_child_preserves_mandatory_shared_pass_requirement(original):
+    from merlin.targetgen.shared_pass_context import scoped_shared_pass_requirement
+    from merlin.targetgen.shared_pass_contract import shared_pass_requirement
+
+    requirement = shared_pass_requirement(required_supported=('buffering_pipelining',), version=2)
+    script = _CONTROL.replace(
+        "    job=json.loads(raw)",
+        "    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement, scoped_shared_pass_requirement\n"
+        f"    assert active_shared_pass_requirement() == {requirement!r}\n"
+        "    try:\n"
+        "        with scoped_shared_pass_requirement(None): pass\n"
+        "    except ValueError: pass\n"
+        "    else: raise AssertionError('mandatory shared pass was weakened')\n"
+        "    job=json.loads(raw)",
+    )
+    with _scope(original), scoped_shared_pass_requirement(requirement):
+        with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
+                                       package_dir=original.candidate) as transport:
+            assert transport.document['shared_pass_requirement'] == requirement
+            result = _run(transport, original, script=script)
+            assert result.returncode == 0, result.stderr
+            transport.verify_result(json.loads(result.stdout))
+            # Even a changed parent context must not validate the sealed result.
+            from merlin.targetgen import shared_pass_context as S
+            token = S._REQUIREMENT.set(None)
+            try:
+                with pytest.raises(StageGateError, match='shared-pass requirement changed'):
+                    transport.verify_result(json.loads(result.stdout))
+            finally:
+                S._REQUIREMENT.reset(token)

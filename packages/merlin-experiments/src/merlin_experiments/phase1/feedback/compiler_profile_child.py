@@ -225,6 +225,7 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         "merlin_experiments.phase1.feedback.compile_only",
         "merlin.targetgen.simulation_certificate",
         "merlin.targetgen.shared_pass_context",
+        "merlin.targetgen.shared_pass_contract",
         "merlin.llvmlower.target_schedule",
         "merlin.llvmlower.device_target_passes",
     )
@@ -323,7 +324,11 @@ class ModelChildTransport:
         return (self.fd,)
 
     def _verify_original(self):
+        from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+
         original = self.document
+        if active_shared_pass_requirement() != original.get("shared_pass_requirement"):
+            raise StageGateError("original model child shared-pass requirement changed")
         if (
             _pin(original["spec"]["path"]) != original["spec"]
             or _source(original["candidate"]) != original["candidate_sha256"]
@@ -434,7 +439,11 @@ class _RestoredChild:
         """
         from merlin.verify import lean_emission_context as emission
 
+        from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+
         document, owner = self.document, self.executor.owner
+        if active_shared_pass_requirement() != document.get("shared_pass_requirement"):
+            raise StageGateError("restored model child shared-pass requirement changed")
         if (
             self not in _RESTORED_ISSUED
             or _RESTORED_CHILD.get() is not self
@@ -545,10 +554,8 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     """
     from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
 
-    if active_shared_pass_requirement() is not None:
-        raise StageGateError(
-            "shared-pass requirement is not supported by sealed fresh model/operator children; use in-process grading"
-        )
+    if active_shared_pass_requirement() is not None and _original_executor() is None:
+        raise StageGateError("shared-pass model child requires its original execution owner")
     from merlin.llvmlower import reviewed_metadata
 
     if reviewed_metadata._ACTIVE.get() is not None:
@@ -573,6 +580,9 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
     """
     library = active_compiler_library()
     passes = active_compiler_passes()
+    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+
+    shared_requirement = active_shared_pass_requirement()
     from merlin.targetgen import checked_source_model_diagnostic as diagnostic
 
     from .compiler_pass_delegation import active_original_parent_pass_delegation
@@ -592,7 +602,7 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
         selected_diagnostic.verify_for(spec["capsule"], target=spec["target"])
     executor = _original_executor()
     if executor is None:
-        if library is not None or passes is not None or checked is not None or delegated is not None:
+        if library is not None or passes is not None or checked is not None or delegated is not None or shared_requirement is not None:
             raise StageGateError("additional compiler library/pass model child requires its original execution owner")
         yield None
         return
@@ -623,6 +633,7 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
         **({diagnostic.CONTEXT_FIELD: checked} if checked is not None else {}),
         **({"compiler_library": library.record()} if library is not None else {}),
         **({"compiler_passes": passes.record()} if passes is not None else {}),
+        "shared_pass_requirement": shared_requirement,
         "parent": _process(os.getpid()),
         "spec": _pin(spec_path),
         "environment": invocation_record.environment_identity(environment),
@@ -754,8 +765,11 @@ def prepare_model_children(*, spec_paths, environment, package_dir):
 @contextlib.contextmanager
 def restore_model_child(fd, *, spec_path, spec_bytes):
     """Reopen sealed parent provenance and enter original execution before work."""
+    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement, scoped_shared_pass_requirement
+
     if (
-        type(fd) is not int
+        active_shared_pass_requirement() is not None
+        or type(fd) is not int
         or fd < 3
         or P.active_package_executor() is not None
         or API.active_compiler_imports() is not None
@@ -822,6 +836,9 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
     )
     bundle = yaml.safe_load(archive.read_bytes())
     with contextlib.ExitStack() as execution:
+        # Restored only from the sealed, source-bound original parent document.
+        # The ordinary compiler entrypoints enforce this same mandatory contract.
+        execution.enter_context(scoped_shared_pass_requirement(document.get("shared_pass_requirement")))
         if document["schema"] == DELEGATED_PASSES_SCHEMA:
             from .compiler_pass_delegation import restored_original_parent_qualification
             from .compiler_pass_parent_proof import _verified_parent_scope

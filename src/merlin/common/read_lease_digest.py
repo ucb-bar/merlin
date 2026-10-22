@@ -28,6 +28,7 @@ except ImportError:  # Windows and other non-Linux hosts retain full hashing.
 MIN_BYTES = 256 << 10
 MAX_FILES = 4096
 FD_HEADROOM = 64
+FD_RECHECK_INTERVAL = 32
 _FD_OVERHEAD = 4  # Custodian channel, pending input, hash duplicate and IPC setup.
 _LOCK = threading.RLock()
 _CHANGED = threading.Condition(_LOCK)
@@ -65,7 +66,10 @@ def _descriptor_budget():
         if soft == resource.RLIM_INFINITY:
             return maximum_files()
         opened = len(os.listdir("/proc/self/fd"))
-        return max(0, min(maximum_files(), soft - opened - FD_HEADROOM - _FD_OVERHEAD))
+        # A long-lived grader opens subprocess pipes and concurrent imports after
+        # cache creation. Preserve a share of its limit for those ordinary uses.
+        reserve = max(FD_HEADROOM, soft // 4)
+        return max(0, min(maximum_files(), soft - opened - reserve - _FD_OVERHEAD))
     except OSError:
         return 0
 
@@ -86,6 +90,7 @@ class _Cache:
         self.pending = set()
         self.process, self.channel, self.disabled = None, None, False
         self.capacity = _descriptor_budget()
+        self.admissions_until_budget_check = 0
         self.minimum_bytes = minimum_bytes()
         self.readers, self.retiring = 0, False
 
@@ -211,8 +216,14 @@ class _Cache:
             return None
         if not path.is_absolute() or path.resolve() != path:
             raise RuntimeError("original snapshot read lease requires a canonical file")
-        # Capacity reserves descriptor headroom once. Enumerating /proc/self/fd
-        # for every admission makes large immutable input sets quadratic.
+        # Recheck in bounded batches as other grader work opens descriptors.
+        # Existing leases keep their custody; declined new members use full reads.
+        if self.admissions_until_budget_check == 0:
+            self.capacity = min(self.capacity, len(self.entries) + _descriptor_budget())
+            self.admissions_until_budget_check = FD_RECHECK_INTERVAL
+        self.admissions_until_budget_check -= 1
+        if len(self.entries) >= self.capacity:
+            return None
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         self.pending.add(descriptor)
         try:

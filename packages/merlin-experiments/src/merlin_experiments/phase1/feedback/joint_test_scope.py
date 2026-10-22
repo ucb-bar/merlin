@@ -37,24 +37,38 @@ def select(root, *, submission):
                                         "selected": required, "pending": []}
     families = {r[0] for r in records}
     reason = "unknown impact: representative semantic-family smoke"
+    chosen = None
     hint = Path(submission) / "joint-test-scope.json"
     try:
         if hint.is_symlink() or hint.stat().st_size > 16384:
             raise ValueError("invalid impact hint")
         value = json.loads(hint.read_text())
-        requested = value.get("families")
-        if not isinstance(requested, list) or not requested or not set(requested) <= families:
-            raise ValueError("unknown impact families")
-        families = set(requested)
-        reason = "author-declared affected families; advisory selection only"
+        if not isinstance(value, dict):
+            raise ValueError("impact hint must be an object")
+        if "capsules" in value:
+            requested = value["capsules"]
+            if ("families" in value or not isinstance(requested, list) or not 1 <= len(requested) <= 16
+                    or any(type(name) is not str for name in requested)
+                    or len(set(requested)) != len(requested) or not set(requested) <= set(required)):
+                raise ValueError("exact smoke requires unique permitted development capsule IDs, at most 16")
+            selected = set(requested)
+            chosen = [row for row in records if row[2] in selected]
+            reason = "author-requested exact development cases; advisory selection only"
+        else:
+            requested = value.get("families")
+            if not isinstance(requested, list) or not requested or not set(requested) <= families:
+                raise ValueError("unknown impact families")
+            families = set(requested)
+            reason = "author-declared affected families; advisory selection only"
     except (OSError, ValueError, TypeError):
         pass
-    chosen = []
-    for family in sorted(families):
-        members = sorted(r for r in records if r[0] == family)
-        chosen.append(members[0])
-        if len(members) > 1:
-            chosen.append(members[-1])
+    if chosen is None:
+        chosen = []
+        for family in sorted(families):
+            members = sorted(r for r in records if r[0] == family)
+            chosen.append(members[0])
+            if len(members) > 1:
+                chosen.append(members[-1])
     # Keep a known bounded smoke. Uncovered families are explicitly still pending.
     chosen = chosen[:16]
     names = sorted(r[2] for r in chosen)

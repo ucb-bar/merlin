@@ -508,7 +508,7 @@ def test_controller_original_selection_survives_early_and_late_callbacks(tmp_pat
     assert called == ([True] if mutation == "execution" else [])
 
 
-def test_nested_sealed_model_child_refuses_before_owner_or_process(tmp_path, monkeypatch):
+def test_nested_sealed_model_child_requires_original_owner_before_process(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import compiler_profile_child as child
     from merlin_experiments.phase2.contracts import StageGateError
 
@@ -516,7 +516,7 @@ def test_nested_sealed_model_child_refuses_before_owner_or_process(tmp_path, mon
     monkeypatch.setattr(child, "_prepare_model_child", lambda **k: pytest.fail("sealed child transport created"))
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: pytest.fail("child process launched"))
     with scoped_shared_pass_requirement(shared_pass_requirement()):
-        with pytest.raises(StageGateError, match="not supported by sealed fresh model/operator children"):
+        with pytest.raises(StageGateError, match="shared-pass model child requires its original execution owner"):
             with child.prepare_model_child(spec_path=tmp_path / "missing", environment={}, package_dir=tmp_path):
                 pytest.fail("unsupported sealed child admitted")
 

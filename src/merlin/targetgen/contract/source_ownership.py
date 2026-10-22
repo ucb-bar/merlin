@@ -46,8 +46,11 @@ def _source_owned_mutables(command_buffer: Mapping, inventory: Mapping) -> tuple
     source_values = {row["tensor"]: (row["op_index"], row["result_index"]) for row in plan["source_values"]}
     if len(source_values) != len(plan["source_values"]):
         raise SourceOwnershipError("mutable source values alias one pointer without a carry contract")
-    temporary_owners = {row["tensor"]: row["source_op_index"] for row in plan["compiler_temporaries"]}
-    if len(temporary_owners) != len(plan["compiler_temporaries"]):
+    # The public plan schema permits omitting this array when there are no
+    # compiler-created scratch values; source-owned values remain checked below.
+    temporaries = plan.get("compiler_temporaries", [])
+    temporary_owners = {row["tensor"]: row["source_op_index"] for row in temporaries}
+    if len(temporary_owners) != len(temporaries):
         raise SourceOwnershipError("compiler temporaries have duplicate pointer identity")
     if read.intersection(set(source_values) | set(temporary_owners)):
         raise SourceOwnershipError("source-produced value aliases a captured read-only entry")

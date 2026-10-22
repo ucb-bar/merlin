@@ -41,6 +41,27 @@ def _verify_scope_extension(old, new, evidence):
         raise ValueError('structural scope extension changes unreviewed model facts')
 
 
+def _verify_capability_restriction(old, new, evidence):
+    """Bind reviewed disabled optional features without changing timing prices."""
+    if evidence.get('schema') != 'merlin.target_capability_restriction_review.v1':
+        raise ValueError('capability restriction lacks its explicit review')
+    PERF._read(evidence['source_audit'])
+    disabled = evidence.get('disabled_optional_features')
+    if (not isinstance(disabled, list) or not disabled
+            or any(not isinstance(key, str) or not key.isidentifier() for key in disabled)
+            or len(disabled) != len(set(disabled))):
+        raise ValueError('capability restriction needs explicit optional feature names')
+    before, after = _fixed_model(old), _fixed_model(new)
+    hardware = before.get('target', {}).get('hardware', {})
+    new_hardware = after.get('target', {}).get('hardware', {})
+    for key in disabled:
+        if hardware.get(key) not in (None, 1) or new_hardware.get(key) != 0:
+            raise ValueError('capability restriction must disable a reviewed optional feature')
+        hardware[key] = 0
+    if before != after:
+        raise ValueError('capability restriction changes prices or unreviewed model semantics')
+
+
 def validate(initial, current):
     from .joint_source_revision import normalized
     comparable = normalized(initial, current)
@@ -61,6 +82,8 @@ def validate(initial, current):
         kind = revision.get('kind', 'implementation_correction')
         if kind == 'structural_scope_extension':
             _verify_scope_extension(old, new, evidence)
+        elif kind == 'capability_restriction':
+            _verify_capability_restriction(old, new, evidence)
         elif kind != 'implementation_correction' or _fixed_model(old) != _fixed_model(new):
             raise ValueError('implementation correction changes prices or model semantics')
         prior = revision['runtime']

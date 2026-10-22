@@ -90,6 +90,16 @@ def test_live_scope_authorizes_scratch_and_is_closed_afterward():
     assert active_source_owned_mutables(cb) == ()
 
 
+def test_optional_empty_compiler_temporaries_preserves_source_ownership():
+    cb = _buffer()
+    plan = cb["params"]["global_program_plan"]
+    del plan["compiler_temporaries"]
+    assert source_owned_mutables(SOURCE, cb) == ("tmp",)
+    plan["tasks"][0]["reads"].append("tmp")
+    with pytest.raises(SourceOwnershipError):
+        source_owned_mutables(SOURCE, cb)
+
+
 @pytest.mark.parametrize(
     "mutation", ["wrong_source", "read_before_write", "wrong_writer", "hide_output", "changed_type", "entry_readwrite"]
 )

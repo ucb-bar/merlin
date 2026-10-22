@@ -48,3 +48,22 @@ def test_implementation_promotion_cannot_bypass_calibration(tmp_path,monkeypatch
     monkeypatch.setattr(R.PERF,'_read',lambda p:old if p.get('id')=='old' else new)
     with pytest.raises(ValueError,match='tuned epochs'):
         R.request_promotion({'id':'new'},previous_run=tmp_path,review_id='operator',output=tmp_path/'epoch.json')
+
+
+def test_capability_restriction_preserves_prices_ordering_and_capacity(monkeypatch):
+    model = dict(target=dict(hardware=dict(rows=16), scheduling=dict(version=4),
+                             prices=dict(compute=dict(latency=40))))
+    after = copy.deepcopy(model); after['target']['hardware']['optional_norm'] = 0
+    runtime = lambda m: SimpleNamespace(model_json=json.dumps(m))
+    evidence = dict(schema='merlin.target_capability_restriction_review.v1',
+                    source_audit={}, disabled_optional_features=['optional_norm'])
+    monkeypatch.setattr(R.PERF, '_read', lambda p: {'pinned': 'selected RTL'})
+    R._verify_capability_restriction(runtime(model), runtime(after), evidence)
+    for section, key, value in [('prices', 'compute', {'latency':12}),
+                                ('scheduling', 'version', 5), ('hardware', 'rows', 32)]:
+        changed = copy.deepcopy(after); changed['target'][section][key] = value
+        with pytest.raises(ValueError, match='unreviewed'):
+            R._verify_capability_restriction(runtime(model), runtime(changed), evidence)
+    after['target']['hardware']['optional_norm'] = 1
+    with pytest.raises(ValueError, match='disable'):
+        R._verify_capability_restriction(runtime(model), runtime(after), evidence)

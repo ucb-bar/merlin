@@ -33,6 +33,21 @@ Small functional cases and large performance cases both matter throughout
 development. An instruction-count reduction alone is not a performance win.
 The operator owns the versioned cycle evaluator and its calibration.
 
+Prioritize the selected INT8 deployment contracts: integer contractions use
+INT8 operands and the declared INT32 accumulation semantics. Preserve quantization
+scales, rounding, saturation, overflow and permitted error bounds. Host operations
+that the reviewed recipe leaves unquantized remain part of correctness and whole-SoC
+cost. Do not silently replace integer contractions with floating-point host work or
+change the numerical recipe to improve performance.
+
+Select a small named check set after each edit: the relevant numerical corner,
+the changed scheduling/fusion boundary, and a medium or large performance case.
+Do not sweep all small capsules on each iteration. Reuse native exact-identity
+results; never infer unaffected correctness from a self-declared family hint.
+Broaden checks at candidate milestones and require complete correctness coverage
+before final promotion. gSIM needs a specific missing mechanism or calibration
+question after cheap correctness; being on the roster does not require execution.
+
 Use the roofline and resource feedback to identify bottlenecks and unused
 capacity. Treat partial bounds and unsupported timing domains explicitly.
 Distinguish useful work from padded/issued work, actual occupancy from modeled
