@@ -146,7 +146,7 @@ def summarize(entries: list[dict], *, host_only: bool = False, scope: str) -> di
     }
 
 
-def account_program(program: Path, *, name: str, target: str, evidence) -> list[dict]:
+def account_program(program: Path, *, name: str, target: str, evidence, source_context=None) -> list[dict]:
     """Per-operation admission entries of one Linalg/source program, as for a captured application."""
     from merlin.targetgen.application_inventory import application_demand_inventory
     from merlin.targetgen.operation_accounting import build_operation_accounting
@@ -164,11 +164,11 @@ def account_program(program: Path, *, name: str, target: str, evidence) -> list[
         capability_contract=evidence.contract,
         host_capabilities=getattr(evidence, "host_capabilities", None),
     )
-    _join_source_admissions(accounting, {name: program}, evidence=evidence)
+    _join_source_admissions(accounting, {name: program}, evidence=evidence, source_context=source_context)
     return accounting["applications"][name]["signatures"]
 
 
-def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evidence) -> None:
+def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evidence, source_context=None) -> None:
     """Re-screen exact inventoried source bodies; serialized signatures are insufficient."""
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
@@ -176,12 +176,16 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
 
     if set(captures) != set(accounting["applications"]):
         raise ValueError("source admission captures must cover the exact application roster")
+    if source_context is not None:
+        from .connected_source_context import require_context
+        require_context(source_context, captures)
     for name, application in accounting["applications"].items():
         raw = Path(captures[name]).read_bytes()
         if hashlib.sha256(raw).hexdigest() != application["capture_sha256"]:
             raise ValueError("source admission capture differs from inventoried bytes")
         normalized, _ = normalize_capture_mlir(raw.decode("utf-8"))
         operations = tuple(mq.walk(mq.parse(normalized)))
+        bound_context = source_context.for_program(captures[name]) if source_context is not None else None
         for entry in application["signatures"]:
             if entry["host_admission"]["status"] != "unknown":
                 continue
@@ -193,8 +197,11 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
                     capability_contract=evidence.contract,
                     host_capabilities=getattr(evidence, "host_capabilities", None),
                     source_operations=tuple(operations[ordinal] for ordinal in row["ordinals"]),
+                    source_context=bound_context,
                 )
             )
+    if source_context is not None:
+        require_context(source_context, captures)
 
 
 def account_interface(program: Path, *, target: str, evidence, numeric_screens: list[dict] | None = None) -> list[dict]:

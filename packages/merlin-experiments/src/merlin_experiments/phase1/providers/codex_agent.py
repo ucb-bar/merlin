@@ -131,6 +131,8 @@ DEFAULT_CODEX_MODEL = os.environ.get("CODEX_MODEL", "gpt-5.6-sol")
 _INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md", "AGENT.md", "TASK.md")
 
 _POLL_S = 0.25
+_CONTROL_POLL_S = 1.0
+OPERATOR_INTERRUPTED_EXIT_CODE = 130
 _CANDIDATE_PERMISSION_PROFILE = "merlin-candidate"
 
 
@@ -586,7 +588,7 @@ class _Transcript:
 
 def _terminate_process_group(pgid: int, proc: subprocess.Popen | None = None) -> None:
     """Terminate a saved child process group even after its leader has exited."""
-    if pgid <= 1:
+    if pgid <= 1 or pgid == os.getpgrp():
         raise ValueError("refusing to signal an unsafe process-group id")
     for sig, grace in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 5.0)):
         try:
@@ -603,11 +605,40 @@ def _terminate_process_group(pgid: int, proc: subprocess.Popen | None = None) ->
         while time.monotonic() < deadline:
             if proc is not None:
                 proc.poll()  # reap an exited group leader so an empty group disappears
+                if proc.returncode is not None and _process_group_quiescent(pgid):
+                    return
             try:
                 os.killpg(pgid, 0)
             except ProcessLookupError:
                 return
             time.sleep(0.05)
+
+
+def _process_group_quiescent(pgid: int) -> bool:
+    """Confirm no remaining writer in the owned Linux group; zombies cannot write."""
+    if pgid <= 1 or pgid == os.getpgrp():
+        raise ValueError("cannot establish custody of the evaluator process group")
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return True
+    # A killed orphan may remain a zombie until its parent reaps it. killpg(0)
+    # alone cannot distinguish that harmless state from a still-running writer.
+    procfs = Path("/proc")
+    if not procfs.is_dir():
+        return False
+    for entry in procfs.iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+        except FileNotFoundError:
+            continue
+        except (OSError, IndexError):
+            return False
+        if int(fields[2]) == pgid and fields[0] not in {"Z", "X"}:
+            return False
+    return True
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
@@ -869,11 +900,11 @@ def run_round(
     working; ``keep_launching``'s "one invocation per process" contract is preserved, because this is
     still one session -- just delivered over several processes. Off by default: in ROUNDS mode a
     round ending is how the harness re-grades and re-prompts, and continuing would break that cadence.
-    ``continuation_stop`` optionally names a trusted host's between-turn stop reason.
-
-    ``continuation_stop`` lets the original host stop a continuous session at a
-    live target or admission budget. It runs between turns, never in candidate
-    code, and its explicit reason reaches the existing session transcript.
+    ``continuation_stop`` names a trusted host's stop reason. It is polled
+    between turns and at most once per second while a turn is running. An
+    explicit stop ends only the owned author process group before returning an
+    interrupted status to the host's normal drain/checkpoint path. Received
+    logs and workspace files are retained; a partial turn earns no success.
 
     Legacy model-tier selections are recorded without changing spawned models.
     Explicit ``max_concurrent_subagents`` selects the native multi-agent limit
@@ -1015,6 +1046,8 @@ def run_round(
     capacity_retries = 0
     thread_id = None
     timed_out = False
+    operator_interrupted = None
+    interrupted_turn = False
     seq = 0
 
     raw_f = open(raw_path, "wb")
@@ -1152,13 +1185,33 @@ def run_round(
                     return 127, tpath
 
                 buf = bytearray()
+                next_control_poll = time.monotonic()
+                stopped_drain_deadline = None
                 with selectors.DefaultSelector() as sel:
                     sel.register(proc.stdout.fileno(), selectors.EVENT_READ)
                     while True:
-                        if time.monotonic() >= deadline:
+                        now = time.monotonic()
+                        if operator_interrupted is None and continuation_stop is not None and now >= next_control_poll:
+                            next_control_poll = now + _CONTROL_POLL_S
+                            reason = continuation_stop()
+                            if reason is not None:
+                                if type(reason) is not str or not reason.strip():
+                                    raise ValueError("host continuation stop must return a nonempty reason or None")
+                                operator_interrupted = reason
+                                interrupted_turn = not turn_completed
+                                tr.emit({"type": "codex_operator_interrupt", "reason": reason,
+                                         "turn": turn_index + 1, "turn_incomplete": interrupted_turn,
+                                         "author_process_group": proc.pid, "arrived_at": _now()})
+                                _kill_tree(proc)
+                                if not _process_group_quiescent(proc.pid):
+                                    raise RuntimeError("author process group remains live; refusing snapshot handoff")
+                                stopped_drain_deadline = time.monotonic() + _CONTROL_POLL_S
+                        if stopped_drain_deadline is not None and time.monotonic() >= stopped_drain_deadline:
+                            break
+                        if time.monotonic() >= deadline and operator_interrupted is None:
                             timed_out = True
                             break
-                        wait = min(_POLL_S, max(deadline - time.monotonic(), 0.0))
+                        wait = min(_POLL_S, max((stopped_drain_deadline or deadline) - time.monotonic(), 0.0))
                         if not sel.select(timeout=wait):
                             if proc.poll() is not None and not sel.select(timeout=0):
                                 break
@@ -1344,7 +1397,7 @@ def run_round(
             turn_index += 1
             remaining = deadline - time.monotonic()
             turn_errors = errors[turn_errors_start:]
-            host_stop = continuation_stop() if continuation_stop is not None else None
+            host_stop = operator_interrupted or (continuation_stop() if continuation_stop is not None else None)
             if host_stop is not None and (type(host_stop) is not str or not host_stop.strip()):
                 raise ValueError("host continuation stop must return a nonempty reason or None")
             retry_capacity = (
@@ -1404,6 +1457,8 @@ def run_round(
                     "stopped_because": stop,
                     "remaining_s": round(max(remaining, 0.0), 1),
                     "thread_id": thread_id,
+                    "interrupted": operator_interrupted is not None,
+                    "turn_incomplete": interrupted_turn,
                     "arrived_at": _now(),
                 }
             )
@@ -1433,7 +1488,8 @@ def run_round(
     final_text = final_path.read_text() if final_path.is_file() else ""
     usage_complete = turns_started > 0 and turns_reported >= turns_started
     unrecovered_errors = [error for index, error in enumerate(errors) if index not in recovered_errors]
-    result_rc = 124 if timed_out else ((rc or 1) if unrecovered_errors else rc)
+    result_rc = (OPERATOR_INTERRUPTED_EXIT_CODE if operator_interrupted is not None else
+                 124 if timed_out else ((rc or 1) if unrecovered_errors else rc))
     summary = {
         "thread_id": thread_id,
         "turns_started": turns_started,
@@ -1444,6 +1500,9 @@ def run_round(
         "capacity_retries": capacity_retries,
         "unrecovered_errors": unrecovered_errors[:10],
         "timed_out": timed_out,
+        "operator_interrupted": operator_interrupted is not None,
+        "interruption_reason": operator_interrupted,
+        "turn_incomplete": interrupted_turn,
         "exit_code": result_rc,
         "process_exit_code": rc,
         # Which CLI parsed this stream. `unknown_types` above DETECTS contract drift; this says what
@@ -1467,6 +1526,12 @@ def run_round(
     tr.emit({"type": "codex_summary", **summary})
     _link_for_aet(run_dir, raw_path, rnd)
 
+    if operator_interrupted is not None:
+        tr.emit({"type": "result", "subtype": "interrupted", "is_error": True,
+                 "result": "trusted host interrupted author: " + operator_interrupted,
+                 "turn_incomplete": interrupted_turn})
+        tr.close()
+        return result_rc, tpath
     if timed_out:
         tr.emit(
             {"type": "result", "subtype": "error", "is_error": True, "result": f"codex exec timed out after {timeout}s"}

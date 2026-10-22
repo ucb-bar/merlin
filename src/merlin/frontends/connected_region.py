@@ -8,13 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from io import StringIO
 
 from xdsl.dialects import arith, tensor
 from xdsl.dialects.builtin import FunctionType, ModuleOp
 from xdsl.dialects.func import FuncOp, ReturnOp
 from xdsl.ir import Block, Operation, Region
-from xdsl.printer import Printer
 
 from merlin.common import mlir_query as mq
 
@@ -30,9 +28,11 @@ class SourceWindow:
 
 
 def text(module) -> str:
-    stream = StringIO()
-    Printer(stream=stream).print_op(module)
-    return stream.getvalue() + "\n"
+    # Generic canonical syntax preserves all attributes (ReduceOp's upstream
+    # custom printer drops them) and exact dense floating-point payload bits.
+    from merlin.xdsl_dialects._common import text as canonical_text
+
+    return canonical_text(module, generic=True) + "\n"
 
 
 def extract_window(module, start: int, stop: int) -> SourceWindow:
@@ -121,3 +121,37 @@ def verify_window(source: str, projected: str, *, source_sha256: str,
     if text(result.module) != text(mq.parse(projected)):
         raise ValueError("source window does not equal exact source reconstruction")
     return result
+
+
+def verify_provenance_restoration(original: str, restored: str, *,
+                                  original_sha256: str, restored_sha256: str) -> dict:
+    """Prove a new preparation only adds missing provenance, with unchanged math.
+
+    This does not verify the truth of added provenance or authorize new source
+    admission. Capture/trace binding remains an independent caller obligation.
+    Existing attributes, types, literals, SSA edges and every output must survive.
+    """
+    if (sha256(original.encode()).hexdigest() != original_sha256
+            or sha256(restored.encode()).hexdigest() != restored_sha256):
+        raise ValueError("provenance restoration source pin differs")
+    before, after = mq.parse(original), mq.parse(restored)
+    before.verify()
+    after.verify()
+    old_ops, new_ops = tuple(before.walk()), tuple(after.walk())
+    if len(old_ops) != len(new_ops):
+        raise ValueError("provenance restoration changes the operation roster")
+    changes = []
+    for ordinal, (old, new) in enumerate(zip(old_ops, new_ops, strict=True)):
+        if any(new.attributes.get(key) != value for key, value in old.attributes.items()):
+            raise ValueError("provenance restoration removes or replaces an existing attribute")
+        added = set(new.attributes) - set(old.attributes)
+        if any(not key.startswith("prov.") for key in added):
+            raise ValueError("provenance restoration adds a semantic attribute")
+        if added:
+            changes.append({"ordinal": ordinal, "operation": old.name, "added_attributes": sorted(added)})
+            old.attributes.update({key: new.attributes[key] for key in added})
+    if not before.is_structurally_equivalent(after):
+        raise ValueError("provenance restoration changes typed operations, literals or SSA")
+    return {"schema": "merlin.provenance_restoration.v1", "original_sha256": original_sha256,
+            "restored_sha256": restored_sha256, "n_source_operations": len(old_ops),
+            "changes": changes, "scope": "provenance-only additions; trace truth and admission remain unproved"}

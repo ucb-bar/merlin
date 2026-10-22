@@ -106,8 +106,14 @@ def _program_row(model: str, program: str, result: dict) -> dict:
     failures = report.get("failures") or []
     first_bad = next((row.get("first_bad_group") for row in failures if isinstance(row, dict)
                       and row.get("program") == program and row.get("first_bad_group") is not None), None)
+    census = item.get("census")
+    coverage = {"scope": "source_contractions_only", "all_operator_coverage": "unknown",
+                "host_reason_counts": census.get("host") if isinstance(census, dict) else None,
+                "eligible_but_host": None, "boundary_bytes": None, "host_time_cycles": None,
+                "remaining_evidence": "complete source-demand placement and standalone/fused legality"}
     return {"model": model, "program": program, "status": status,
             "build": item.get("build"), "census": item.get("census"),
+            "accelerator_coverage": coverage,
             "metrics": report.get("model_metrics"), "cycles": cycles,
             "first_bad_group": first_bad}
 

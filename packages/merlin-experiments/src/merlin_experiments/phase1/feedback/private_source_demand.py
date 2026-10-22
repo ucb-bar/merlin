@@ -308,6 +308,12 @@ def derive(
         "demanded_group_provenance": provenance,
         "scope": "all original source-admitted device roots and direct hardware-eligible operations; no host fallback",
     }
+    from .private_placement_feedback import describe
+
+    receipt["placement_feedback"] = describe(
+        groups, capability, demanded=set(demand), unknown_host=set(unknown),
+        missing_direct=len(missing) + len(data_missing),
+    )
     if unknown or missing or data_missing or receipt["n_unresolved_raw_regions"]:
         receipt["status"] = "incomplete"
         raise SourceDemandIncomplete(receipt)

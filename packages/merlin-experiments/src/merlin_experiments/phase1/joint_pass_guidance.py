@@ -34,6 +34,37 @@ performance win: save the reproducer and continue independently measurable work.
 
 ## Model deployment and numerical boundaries
 
+Maximize accelerator coverage over ALL operations and connected regions admitted
+by the selected hardware facts and numerical contract, not only contractions.
+Inspect standalone and fused forms separately: residual/elementwise addition,
+bias, scaling/requantization, activation, pooling and movement may be available
+through different legal device forms. A readout-only epilogue capability does
+not imply a standalone instruction. Derive eligibility from actual operand and
+result types, shape/layout, numeric order and selected capabilities; an operator
+name alone is insufficient. Preserve every live output when grouping or fusing.
+
+Do not silently send a supported legal domain to the CPU because its compiler
+adapter is unimplemented, inconvenient, or has an unmeasured cost. Hardware
+unsupported, compiler unimplemented, numerically invalid and unresolved proof
+are different outcomes. Missing target lowering is a compiler task. Profitability
+guides device grouping, schedules and fusion choices; it is not blanket permission
+to evade required accelerator coverage. Initially establish reusable lowering for
+the supported domain. Subsequently compare legal CPU/device placements under the
+same numeric and complete-call cost scope; a measured or supported-model CPU win
+may justify CPU placement where the selected admission policy permits that choice.
+If a current mandatory device gate prevents that comparison, report the precise
+policy limitation for review; do not silently bypass it or label the hardware
+unsupported. Retain real hardware-unsupported floating or nonlinear/control seams
+through Merlin host codegen with explicit evidence.
+
+Maintain source-bound placement diagnostics: source region/node IDs, standalone
+versus fused-only capability, selected device form, host reason and remaining
+compiler/proof gap. Report required/covered/eligible-but-host/unknown counts and
+static boundary bytes separately from measured host time and transferred bytes.
+Unknown measurements stay unknown. The fast model-check contraction census is
+only a contraction census, not evidence that every supported operator is offloaded.
+Inspect the native complete source-demand report for all-region obligations.
+
 The selected deployment for ResNet50, TinyLlama and SmolVLA is W8A8:
 signed INT8 weights and activations at accelerator contractions, with the selected
 integer accumulation and output ABI. This does not require every intermediate or
