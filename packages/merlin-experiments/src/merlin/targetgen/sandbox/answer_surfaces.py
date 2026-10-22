@@ -239,8 +239,12 @@ def weight_files(te: TargetExperiment) -> list[Path]:
         roots.append(te.capsule_corpus.parent)
     for caps_root in dict.fromkeys(roots):
         if caps_root.is_dir():
-            files.extend(caps_root.rglob("*.safetensors"))
-            files.extend(caps_root.rglob("*.safetensors.manifest.json"))
+            # One fresh directory traversal serves both suffixes. os.walk,
+            # like Path.rglob, does not descend through child directory symlinks;
+            # explicitly selected root symlinks and leaf-file aliases still work.
+            for directory, _children, names in os.walk(caps_root, followlinks=False):
+                files.extend(Path(directory) / name for name in names
+                             if name.endswith((".safetensors", ".safetensors.manifest.json")))
     return sorted({path for path in files if path.is_file()})
 
 

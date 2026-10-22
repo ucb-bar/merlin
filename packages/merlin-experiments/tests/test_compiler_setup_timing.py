@@ -51,3 +51,65 @@ def test_suppression_and_failed_entry_not_changed(tmp_path):
     rows = json.loads(timeline.path.read_text())['stages']
     assert [r['stage'] for r in rows] == ['suppress.enter', 'suppress.exit', 'refuse.enter']
     assert rows[-1]['status'] == 'raised'
+
+
+def test_concurrent_capsule_identity_is_exact_and_contexts_are_restored(tmp_path):
+    import os
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+
+    barrier = threading.Barrier(2)
+    def worker(name, tier):
+        with T.capsule_scope(name, tier=tier):
+            with T.selected(tmp_path, name + '-source') as timeline:
+                with T.stage('package_policy'):
+                    barrier.wait(timeout=10)
+            document = json.loads(timeline.path.read_text())
+            assert document['capsule'] == name and document['tier'] == tier
+            assert document['pid'] == os.getpid()
+            assert document['native_tid'] == threading.get_native_id()
+            assert document['thread_ident'] == threading.get_ident()
+            assert document['thread_name'] == threading.current_thread().name
+            assert document['stages'][0]['native_tid'] == document['native_tid']
+            assert document['source_sha256'] == name + '-source'
+        assert T._CAPSULE.get() == ('parent', None)
+        assert T._ACTIVE.get() is None
+        return document
+
+    with T.capsule_scope('parent'):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            jobs = [pool.submit(copy_context().run, worker, name, tier)
+                    for name, tier in [('first', None), ('second', 'L3')]]
+            documents = [job.result(timeout=10) for job in jobs]
+        assert T._CAPSULE.get() == ('parent', None)
+    assert T._CAPSULE.get() == (None, None)
+    assert documents[0]['native_tid'] != documents[1]['native_tid']
+
+
+def test_native_capsule_worker_supplies_name_without_inventing_tier(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from merlin.targetgen import capsule_runner as C
+
+    monkeypatch.setenv('MERLIN_OPERATOR_GRADE_PROCESSES', '0')
+    monkeypatch.setattr(C, 'load_package', lambda *a, **k: SimpleNamespace())
+    monkeypatch.setattr(C, 'integrity_scan', lambda p: None)
+    monkeypatch.setattr(C, 'build_package', lambda p: None)
+    monkeypatch.setattr(C, '_split_ineligible', lambda caps, target: (caps, []))
+    monkeypatch.setattr(C._tier_policy, 'covering_set', lambda caps: [])
+    monkeypatch.setattr(C, '_CALIBRATION_CAP', 0)
+    observed = {}
+    def capsule(cap, *args, **kwargs):
+        with T.selected(tmp_path, 'native-source') as timeline:
+            with T.stage('package_policy'):
+                pass
+        observed[cap['name']] = json.loads(timeline.path.read_text())
+        return {'capsule': cap['name'], 'status': 'pass', 'tiers': {}}
+    monkeypatch.setattr(C, 'run_capsule', capsule)
+    C._run_suite([{'name': 'A'}, {'name': 'B'}], tmp_path,
+                 runs_root=tmp_path / 'runs', max_workers=2)
+    assert set(observed) == {'A', 'B'}
+    for name, row in observed.items():
+        assert row['capsule'] == name and row['tier'] is None
+        assert row['authority'] == 'diagnostic_only'
+    assert T._CAPSULE.get() == (None, None)

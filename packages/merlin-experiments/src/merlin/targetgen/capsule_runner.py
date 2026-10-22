@@ -6356,11 +6356,19 @@ def run_suite(*args, **kwargs) -> list[dict]:
                 if bool((capsule.get("semantic") or {}).get("must_accelerate")):
                     pinned["__suite_model_pin"] = _SUITE_MODEL_PIN
                 frozen.append(pinned)
-            if args:
-                results = _run_suite(frozen, *args[1:], **kwargs)
-            else:
-                results = _run_suite(**{**kwargs, "capsules": frozen})
-            return finish(results)
+            # CAS model pinning can alter frozen input inode link metadata.
+            # Refresh only through the original owner's full native admission,
+            # before _run_suite creates any workers. Legacy owners stay fresh.
+            from .package_runtime import active_package_executor
+
+            executor = active_package_executor()
+            refresh = getattr(executor, "staged_suite_snapshot_scope_v1", None)
+            with refresh() if callable(refresh) else nullcontext():
+                if args:
+                    results = _run_suite(frozen, *args[1:], **kwargs)
+                else:
+                    results = _run_suite(**{**kwargs, "capsules": frozen})
+                return finish(results)
 
 
 def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
@@ -6488,6 +6496,29 @@ def _run_streaming_model_gate(
     )
 
 
+@contextmanager
+def _original_capsule_worker_scope():
+    """Rebind the original executor's guarded entry on this actual worker thread.
+
+    A copied parent context alone deliberately grants no thread-local snapshot
+    reuse. Reuse requires the executor's existing live concurrency capability;
+    its scope checks owner/selection identity at entry and exit. Legacy owners
+    retain ordinary fresh verification, and every command keeps its final read.
+    """
+    from merlin.targetgen.package_runtime import active_package_executor
+
+    owner = active_package_executor()
+    capability = getattr(owner, "concurrent_entrypoints_v1", None)
+    if not callable(capability) or capability() is not True:
+        yield
+        return
+    scope = getattr(owner, "concurrent_entrypoint_scope_v1", None)
+    if not callable(scope):
+        raise ValueError("concurrent capsule execution requires its original worker scope")
+    with scope():
+        yield
+
+
 def _run_suite(
     capsules: list[dict],
     package_dir: str | Path,
@@ -6601,7 +6632,12 @@ def _run_suite(
             )
 
     def _one(cap: dict, workers: int = 1) -> dict:
-        result = _one_native(cap, workers)
+        from merlin_experiments.phase1.feedback import setup_timing
+
+        # Diagnostic identity only. This worker may execute multiple tiers;
+        # selecting/requesting L2 does not make every setup stage an L2 event.
+        with setup_timing.capsule_scope(cap["name"]), _original_capsule_worker_scope():
+            result = _one_native(cap, workers)
         gate = cap.get("_driver_model_gate_admission")
         if cap.get("kind") == "model" and isinstance(gate, dict):
             result["model_gate_admission"] = gate

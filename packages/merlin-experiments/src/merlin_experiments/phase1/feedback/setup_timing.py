@@ -5,11 +5,31 @@ import contextlib
 import contextvars
 import json
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
 
 _ACTIVE = contextvars.ContextVar('compiler_setup_timing', default=None)
+_CAPSULE = contextvars.ContextVar('compiler_setup_capsule', default=(None, None))
+
+
+def _thread_identity():
+    return {
+        'native_tid': threading.get_native_id(),
+        'thread_ident': threading.get_ident(),
+        'thread_name': threading.current_thread().name,
+    }
+
+
+@contextlib.contextmanager
+def capsule_scope(name, *, tier=None):
+    """Exact native scheduling identity, never inferred from requested tiers."""
+    token = _CAPSULE.set((name, tier))
+    try:
+        yield
+    finally:
+        _CAPSULE.reset(token)
 
 
 class Timeline:
@@ -17,6 +37,8 @@ class Timeline:
         self.path = Path(root) / 'setup-timing' / (uuid.uuid4().hex + '.json')
         self.rows = []
         self.source = source_sha256
+        self.capsule, self.tier = _CAPSULE.get()
+        self.thread = _thread_identity()
 
     def write(self):
         # Diagnostics cannot change a verifier's result, including on full disks.
@@ -25,7 +47,8 @@ class Timeline:
             temporary = self.path.with_suffix('.tmp')
             temporary.write_text(json.dumps({
                 'schema': 'merlin.compiler_setup_timing.v1',
-                'pid': os.getpid(), 'source_sha256': self.source,
+                'pid': os.getpid(), **self.thread, 'source_sha256': self.source,
+                'capsule': self.capsule, 'tier': self.tier,
                 'measurement': 'host_wall_seconds_including_waits',
                 'authority': 'diagnostic_only', 'stages': self.rows,
             }, sort_keys=True) + '\n')
@@ -36,7 +59,8 @@ class Timeline:
     @contextlib.contextmanager
     def stage(self, name):
         start = time.monotonic()
-        row = {'stage': name, 'status': 'running', 'started_ns': time.time_ns()}
+        row = {'stage': name, 'status': 'running', 'started_ns': time.time_ns(),
+               **_thread_identity()}
         self.rows.append(row)
         self.write()
         try:

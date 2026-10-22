@@ -17,6 +17,7 @@ import os
 import shlex
 import subprocess
 import tempfile
+import threading
 import time
 import weakref
 from pathlib import Path
@@ -441,6 +442,9 @@ class _Executor:
         self.work_root.mkdir(parents=True, mode=0o700, exist_ok=True)
         self._snapshot_entry = self._snapshot_binding = None
         self._concurrent_binding = None
+        self._snapshot_thread = None
+        self._snapshot_worker_lock = threading.Lock()
+        self._snapshot_workers = 0
 
     def _snapshot_identity(self):
         owner = self.owner
@@ -468,13 +472,58 @@ class _Executor:
             if self._snapshot_identity() != binding:
                 raise ValueError("original executor changed during shared snapshot entry setup")
             self._snapshot_entry, self._snapshot_binding = entry, binding
+            self._snapshot_thread = threading.current_thread()
             with shared_entry_scope(entry):
                 yield
         finally:
-            self._snapshot_entry = self._snapshot_binding = None
+            current = self._snapshot_entry
+            self._snapshot_entry = self._snapshot_binding = self._snapshot_thread = None
             # A fork must not operate the original parent's inherited guard locks.
-            if entry is not None and os.getpid() == binding[0]:
-                entry.close()
+            if os.getpid() == binding[0]:
+                for selected in (entry, current):
+                    if selected is not None:
+                        selected.close()
+
+    @contextlib.contextmanager
+    def staged_suite_snapshot_scope_v1(self):
+        """Re-admit after native model staging, before this suite starts workers.
+
+        CAS placement can change link metadata on a frozen input inode. Such an
+        event MUST invalidate the old guard. Only the original owner thread may
+        replace it, using the ordinary full verification and a new kernel guard.
+        Worker admission is excluded during replacement; command final reads and
+        all payload/roster/policy checks remain unchanged.
+        """
+        from merlin.common.bundle_snapshot import shared_entry_scope, shared_entry_verification
+
+        if (type(self) is not _Executor or self._snapshot_binding is None
+                or os.getpid() != self._snapshot_binding[0]
+                or threading.current_thread() is not self._snapshot_thread
+                or active_original_execution() is not self
+                or self._snapshot_identity() != self._snapshot_binding):
+            raise ValueError("staged snapshot refresh requires its exact original owner thread")
+        with self._snapshot_worker_lock:
+            if self._snapshot_workers:
+                raise ValueError("staged snapshot refresh cannot overlap original workers")
+            old = self.snapshot_entry_for_call()
+            # None is the original safe no-sharing route, not an invitation to
+            # manufacture authority. Stable entries need no new admission.
+            if old is not None and not old.reusable(old.root, old.repo, old.policy_bytes):
+                replacement = shared_entry_verification(
+                    self.owner.workspace, self.owner.bundle, repo=self.owner.repo
+                )
+                if self._snapshot_identity() != self._snapshot_binding:
+                    if replacement is not None:
+                        replacement.close()
+                    raise ValueError("original executor changed during staged snapshot refresh")
+                self._snapshot_entry = replacement
+                old.close()
+            entry = self.snapshot_entry_for_call()
+        with shared_entry_scope(entry):
+            try:
+                yield
+            finally:
+                self.snapshot_entry_for_call()
 
     def snapshot_entry_for_call(self):
         entry = self._snapshot_entry
@@ -540,12 +589,19 @@ class _Executor:
 
         if not self.concurrent_entrypoints_v1():
             raise ValueError("concurrent entrypoints require their live original lifetime")
-        with shared_entry_scope(self.snapshot_entry_for_call()):
-            try:
-                yield
-            finally:
-                if not self.concurrent_entrypoints_v1():
-                    raise ValueError("concurrent original entrypoint lifetime expired during work")
+        with self._snapshot_worker_lock:
+            entry = self.snapshot_entry_for_call()
+            self._snapshot_workers += 1
+        try:
+            with shared_entry_scope(entry):
+                try:
+                    yield
+                finally:
+                    if not self.concurrent_entrypoints_v1():
+                        raise ValueError("concurrent original entrypoint lifetime expired during work")
+        finally:
+            with self._snapshot_worker_lock:
+                self._snapshot_workers -= 1
 
     @contextlib.contextmanager
     def _concurrent_lifetime(self):
