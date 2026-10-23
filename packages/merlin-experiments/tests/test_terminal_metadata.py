@@ -111,3 +111,17 @@ def test_foreign_partial_and_oversized_records_are_unknown(tmp_path):
     assert result["coverage"] is None and result["attempts"] == []
     assert any("byte bound" in notice for notice in result["notices"])
     assert capsule_metric({"performance": [1], "numeric": "not an object"})["cycles"] is None
+
+
+def test_scoped_bookings_require_exact_cycle_model_and_scope():
+    perf=performance()
+    scoped=dict(schema='merlin.scoped_performance_feedback.v1',activity_status='modeled',
+        estimated_cycles_same_window=1000,scope_sha256=perf['scope_sha256'],model_sha256=perf['model_sha256'],
+        resources=[dict(name='compute.capacity',capacity_normalized_activity=.25)])
+    perf['scoped_resource_feedback']=scoped
+    row=dict(capsule='case',performance=perf)
+    assert capsule_metric(row,source_sha256='compiler')['modeled_resource_activity'][0]['activity_pct']==25
+    for key,value in [('scope_sha256','foreign'),('model_sha256','foreign'),('estimated_cycles_same_window',999),('activity_status','UNKNOWN')]:
+        original=scoped[key];scoped[key]=value
+        assert not capsule_metric(row,source_sha256='compiler')['modeled_resource_activity']
+        scoped[key]=original

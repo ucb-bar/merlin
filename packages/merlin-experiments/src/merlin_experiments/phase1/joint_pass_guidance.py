@@ -38,7 +38,11 @@ Read PUBLIC_CAPABILITIES.md once, then query PUBLIC_CAPABILITIES.json only for
 relevant families and members. Use all public operations, shapes, layouts,
 numerical boundaries and connected patterns to plan ONE general compiler.
 Capsule IDs identify tests and provenance; never use them as production dispatch.
-Build reusable capabilities rather than repairing cases independently. Validate
+Assign capability families across compiler boundaries: graph/pattern legality,
+numeric/layout, schedule/storage, ISA lowering, host/runtime, and integration.
+Agree on typed contracts and disjoint source ownership; do not create a compiler
+per capsule. Readiness gates admit only the relevant tests, never stop independent
+construction. Build reusable capabilities rather than repairing cases independently. Validate
 each new capability through one tiny emission/target-consumption/link/Spike/output
 canary, then admit its eligible cases to the rolling queue while construction
 continues elsewhere. Do not wait for the entire compiler before first execution.
@@ -47,12 +51,20 @@ Original correctness, calibration prerequisites and scalability can advance
 concurrently. Preserve every declared Spike/gSIM obligation; performance effort
 primarily targets the scalability cohort once executable. Small original cases
 remain regression checks and model evidence, not the main performance objective.
-Use compact family-level feedback and retrieve details on demand. Prefer a bounded
+Use compact family-level feedback and retrieve details on demand. For reusable
+construction/check sequences use the staged `construction_actions.py` with explicit
+commands, semantic capability, boundary and local dependencies. Automatic and
+offline studies execute the same client and self-check broker; its command success
+is not numerical certification. Keep source/request identities in the action log.
+Prefer a bounded
 machine-run search over legal pass choices to one agent turn per parameter trial.
 If exported in the selected library, `pipeline_policy.evaluate_variants` evaluates
 applicable policies on separate IR clones and returns transformed artifacts and
 receipts. Feed those artifacts into real emission and independent checks; a search
-receipt is neither a correctness certificate nor a timing measurement.
+receipt is neither a correctness certificate nor a timing measurement. When the
+selected version provides `host_pass_profile`, inspect action_wall_ns separately
+from framework_wall_ns to find expensive transformations versus orchestration.
+These are host pass costs, not target cycles or capsule numerical evidence.
 
 ## One evolving compiler, parallel bounded work
 
@@ -87,7 +99,9 @@ Maximize accelerator coverage over ALL operations and connected regions admitted
 by the selected hardware facts and numerical contract, not only contractions.
 Inspect standalone and fused forms separately: residual/elementwise addition,
 bias, scaling/requantization, activation, pooling and movement may be available
-through different legal device forms. A readout-only epilogue capability does
+through different legal device forms. Every must-accelerate supported region needs
+a legal fused OR unfused device path; a failed fusion attempt does not justify
+silent CPU substitution. A readout-only epilogue capability does
 not imply a standalone instruction. Derive eligibility from actual operand and
 result types, shape/layout, numeric order and selected capabilities; an operator
 name alone is insufficient. Preserve every live output when grouping or fusing.
@@ -144,14 +158,16 @@ model-name dispatch.
 
 ## Scheduling integration and shared-pass development
 
-Use the exported scheduling IR in the production compiler: `merlin.sched.ir.kernel`
-provides Kernel, Call, Loop and explicit dependency/stage fields; `ir.expr` supplies
-symbolic indices and `ir.parse.parse_kernel` reopens retained schedules. Do not
-replace that integration with an unused scheduling import or a side demonstration.
+Try the exported scheduling IR where useful in the production compiler:
+`merlin.sched.ir.kernel` provides Kernel, Call, Loop and explicit dependency/stage
+fields; `ir.expr` supplies symbolic indices and `ir.parse.parse_kernel` reopens
+retained schedules. These are useful abstractions, not a dialect-use score or a
+requirement to run every pass. Honor the selected shared-pass contract; an unused
+import or a side demonstration does not establish production integration.
 Keep symbolic counted loops for large problems; the finite `compile_schedule`
 route is for bounded instruction regions, not unrolling a full large tensor.
 
-Represent buffer ownership and lifetimes in that shared scheduling IR: host input,
+Represent buffer ownership and lifetimes explicitly in the chosen scheduling IR: host input,
 DMA destination, resident compute operands, accumulator and output each need an
 identified owner, read/write effects, completion and safe reuse boundary. Construct
 legal load/compute/store interleaving across tiles, with prologue, steady state,

@@ -141,6 +141,22 @@ The finite schedule pipeline cannot simply be applied to a huge nested-loop
 program by expanding every iteration. Use a compatible region adapter or the
 counted-loop interfaces, and retain the compact representation.
 
+`fusion_workflow.discover` returns bounded pages with a source/contract-bound
+`next_cursor`. Each page grows deterministic producer–consumer frontiers and
+shared-input prefixes; it does not enumerate all subsets. Region-size limits
+and deferred work are explicit. Resume with unchanged input/contract identities.
+Candidate-budget exhaustion no longer fails the compilation.
+
+`realize_candidate` rechecks the selected source opportunity and delegates to
+the available native realization. `evaluate_fusions` emits an unfused baseline
+and at most fifteen alternatives on independent IR copies. Its emitter receives
+the actual `Realization.artifact` and storage objects, not merely a success
+receipt. Unsupported routes keep concrete reasons and the original source.
+An emitted source or logical schedule is not an executable; the target compiler
+must consume it through its normal lowering and independently check its outputs.
+The public `examples/compiler/fusion_exploration.py` exercises these same APIs
+for small synthetic integer residual, shared-projection and MLP structures.
+
 ## Reviewing an authored compiler
 
 Trace the entrypoint through graph selection, schedule construction, emission and

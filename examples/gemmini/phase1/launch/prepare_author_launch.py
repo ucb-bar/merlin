@@ -23,6 +23,7 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
     old = json.loads(template.read_bytes())
     library = restore_selection(json.loads(Path(library_selection).read_bytes()))
     argv = list(old["argv"])
+    previous_run_id = old.get("run_id") or argv[argv.index("--run-id") + 1]
     previous_repo = Path(argv[argv.index("--repo") + 1])
     previous_release = Path(argv[argv.index("--descriptor") + 1]).parents[2]
     task = repo.parent
@@ -77,7 +78,7 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
             value.replace(str(previous_release), str(release))
             .replace(str(previous_repo), str(repo))
             .replace(str(previous_repo.parent / ".tmp"), str(task / ".tmp"))
-            .replace(old["run_id"], run_id)
+            .replace(previous_run_id, run_id)
         )
     for key in (
         "MERLIN_JOINT_CAMPAIGN_STATE",
@@ -101,6 +102,7 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
     record = {
         "schema": "operator.proposed_coevolution_launch.v1",
         "execution_started": False,
+        "run_id": run_id,
         "native_preparation": "pending_no_author_preflight",
         "argv": argv,
         "reserved_argv": reserved,

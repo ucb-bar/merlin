@@ -63,3 +63,26 @@ def test_existing_observation_automatically_reaches_six_section_feedback(tmp_pat
     assert row['compiler_diagnostics']['sections']['crosslayer_lifetimes']['emitted'] == {}
 
     assert row['compiler_diagnostics']['feedback_brief']['sections']['crosslayer_lifetimes']['emitted'] == {}
+
+
+def test_native_scoped_feedback_matches_offline_and_reaches_brief():
+    from merlin_timing.scoped_resources import project, compact
+    from merlin_experiments.phase1.feedback.joint_performance_report import project as automatic
+    from merlin_experiments.phase1.feedback.joint_outcome_brief import performance_signals
+    from pathlib import Path
+    source=Path(__file__).resolve().parents[3]/'experiments/reference-data/scoped-resources-20261023/on-report.json'
+    report=json.loads(source.read_text())
+    observation=dict(status='observed',complete_counts=True,scope_binding=report['scope_binding'])
+    # This retained public probe executes 24 windows; the automatic harness's
+    # existing single-window contract must continue to refuse that whole report.
+    assert automatic(report,observation,{},selection_sha256='e'*64,reason='test')['status']=='UNKNOWN'
+    # Synthetic single-window transport fixture checks shared projection only.
+    # It is never saved as native evidence or used to grant execution credit.
+    report['counter_windows']=report['counter_windows'][:1]
+    perf=automatic(report,observation,{},selection_sha256='e'*64,reason='synthetic transport test')
+    assert perf['estimated_whole_soc_cycles']==354
+    assert perf['scoped_resource_feedback']==project(report)
+    brief=performance_signals(perf)['scoped_resource_feedback']
+    assert brief==compact(project(report))
+    assert len(brief['resources'])==16 and brief['resource_rows_omitted']==3
+    assert not brief['qualification_issued']

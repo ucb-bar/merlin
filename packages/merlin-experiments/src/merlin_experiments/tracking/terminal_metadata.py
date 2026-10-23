@@ -46,7 +46,21 @@ def capsule_metric(row, *, source_sha256=None, source=None):
     ratio = perf.get("structural_floor_to_estimate_ratio")
     ratio_ok = (usable and _number(roof) and roof <= cycles and _number(ratio)
                 and math.isclose(ratio, roof / cycles, rel_tol=1e-9, abs_tol=1e-12))
+    scoped = _object(perf.get("scoped_resource_feedback"))
+    scoped_ok = (usable and scoped.get("schema") == "merlin.scoped_performance_feedback.v1"
+                 and scoped.get("activity_status") == "modeled"
+                 and scoped.get("estimated_cycles_same_window") == cycles
+                 and all(scoped.get(k) == perf.get(k) for k in ("scope_sha256", "model_sha256")))
+    resources = []
+    if scoped_ok:
+        for resource in _rows(scoped.get("resources")):
+            ratio = _object(resource).get("capacity_normalized_activity")
+            if type(ratio) in (int, float) and math.isfinite(ratio) and 0 <= ratio <= 1:
+                resources.append({"name": resource.get("name"), "activity_pct": 100 * ratio})
+        resources.sort(key=lambda r: -r["activity_pct"])
     return {
+        "modeled_resource_activity": resources[:3],
+        "modeled_resource_activity_status": "modeled" if scoped_ok else "UNKNOWN",
         "capsule": row.get("capsule") or row.get("name"),
         "source_sha256": source_sha256, "status": row.get("status", "UNKNOWN"),
         "numeric_status": _object(row.get("numeric")).get("status", "UNKNOWN"),

@@ -217,6 +217,32 @@ def test_named_ssa_builder_requires_explicit_allocation(tmp_path):
         generated.create('step', operands=dict(lhs=block.args[0]), immediates=dict(shift=2))
 
 
+def test_encoder_rechecks_selected_types_and_callback_mutation(tmp_path):
+    from xdsl.ir import Block, Operation
+    from xdsl.dialects.builtin import IntegerAttr, IntegerType
+
+    model = _model()
+    generated = _load_module(tmp_path, model)
+
+    class ForeignInstruction(Operation):
+        name = 'alpha.step'
+
+    block = Block(arg_types=[IntegerType(32)] * 2)
+    foreign = ForeignInstruction.create(operands=block.args, attributes={'shift': IntegerAttr(1, 8)})
+    with pytest.raises(IsaSpecError, match='SSA type differs'):
+        generated.encode_op(foreign, allocate=lambda value, arg: 1)
+    block = Block(arg_types=[IntegerType(8)] * 2)
+    op = generated.create('step', operands=dict(lhs=block.args[0], rhs=block.args[1]),
+                          immediates={'shift': 1})
+
+    def mutate(value, arg):
+        op.attributes['shift'] = IntegerAttr(2, 8)
+        return 1
+
+    with pytest.raises(IsaSpecError, match='allocation callback changed'):
+        generated.encode_op(op, allocate=mutate)
+
+
 @pytest.mark.parametrize('width', [32, 64])
 def test_ssa_result_allocation_is_separate_from_payload_width(tmp_path, width):
     from xdsl.ir import Block

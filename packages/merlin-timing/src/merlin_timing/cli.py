@@ -19,6 +19,7 @@ from . import native_sensitivity as S
 from . import replay as R
 from . import validation as V
 from . import memory_reference as M
+from . import scoped_resources as U
 
 
 def parser() -> argparse.ArgumentParser:
@@ -53,6 +54,9 @@ def parser() -> argparse.ArgumentParser:
     )
     sensitivity.add_argument("--dataset", required=True)
     sensitivity.add_argument("--evaluations", required=True)
+    scoped = commands.add_parser("scoped-resources", help="same-window modeled activity, traffic and structural feedback")
+    scoped.add_argument("--report", required=True)
+    scoped.add_argument("--structural")
     diagnostic = commands.add_parser(
         "native-diagnostics", help="separate declared execution-window observations from whole-trace resource context"
     )
@@ -121,6 +125,7 @@ def parser() -> argparse.ArgumentParser:
         validate,
         sensitivity,
         diagnostic,
+        scoped,
         compare,
         native,
         probe,
@@ -142,7 +147,9 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
     try:
-        if arguments.command == "memory-reference-prepare":
+        if arguments.command == "scoped-resources":
+            result = U.project(C.read(arguments.report), structural=C.read(arguments.structural) if arguments.structural else None)
+        elif arguments.command == "memory-reference-prepare":
             result = M.prepare(C.read(arguments.selection), source_root=arguments.source_root)
         elif arguments.command == "memory-boundary-compare":
             result = M.compare(arguments.reference, arguments.candidate, maximum_cycles=arguments.maximum_cycles)

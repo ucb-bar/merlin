@@ -18,10 +18,18 @@ def performance_signals(performance, runtime=None):
         'structural_floor_to_estimate_ratio': performance.get('structural_floor_to_estimate_ratio'),
         'roofline_missing_terms': (roofline.get('missing_terms') or [])[:8],
         'scoped_counts_status': 'UNKNOWN', 'scoped_counts': {},
+        'scoped_resource_feedback': performance.get('scoped_resource_feedback'),
         'limits': ['Structural floors are not measured or attainable whole-call performance.',
                    'Counts and requested bytes are not cycles or physical bandwidth.',
-                   'Whole-trace resource busy totals are excluded; no stall decomposition or overlap claim.'],
+                   'Whole-trace totals are excluded. Explicit scoped bookings remain modeled reservations, not physical utilization or stalls.'],
     }
+    scoped = signals['scoped_resource_feedback']
+    if isinstance(scoped, dict):
+        try:
+            from merlin_timing.scoped_resources import compact
+            signals['scoped_resource_feedback'] = compact(scoped)
+        except ImportError:
+            signals['scoped_resource_feedback'] = {'status': 'UNKNOWN', 'reason': 'timing package unavailable'}
     runtime = runtime or {}
     records = runtime.get('observations') or {}
     pinned = bool(performance.get('scope_sha256') and performance.get('model_sha256'))

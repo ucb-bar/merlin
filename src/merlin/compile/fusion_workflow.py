@@ -17,7 +17,7 @@ ROUTES = {
     "adjacent_elementwise": "merlin.compile.scheduling.fusion.plan_fusion",
     "epilogue": "merlin.xdsl_dialects.lowering.output_fusion.decisions",
     "shared_input": "merlin.compile.scheduling.shared_input_schedule.schedule_shared_input",
-    "connected_residency": "merlin.compile.compiler_observations.lifetimes",
+    "connected_residency": "merlin.compile.connected_regions.compile_connected_pointwise",
     "preparation_reuse": "merlin.compile.compiler_observations.install_prepared_observed",
 }
 
@@ -156,10 +156,13 @@ def compare_region_costs(baseline, candidate):
 
 
 def realize_candidate(module, candidate, *, capability_contract, numerical_policy_sha256,
-                      preparation_requests=(), max_region_operations=8, **selection):
+                      preparation_requests=(), max_region_operations=8, connected=None, **selection):
     """Revalidate one paged opportunity, then use its existing closed realizer.
 
-    Unsupported graph routes return the unchanged source with a concrete reason.
+    ``connected=...`` selects the source-owned sequential composition bridge
+    with explicit target stage options, storage and runtime continuation. No
+    backend or runtime contract is inferred. Unsupported graph routes return
+    the unchanged source with a concrete reason.
     Resource/search-budget refusals are local to this alternative. Invalid source
     or contract bindings refuse before any native action. No arbitrary graph
     rewrite is inferred from the advisory capability declarations.
@@ -182,6 +185,18 @@ def realize_candidate(module, candidate, *, capability_contract, numerical_polic
         legality = candidate.get('source_legality')
         if legality is not None and legality.get('status') == 'declined':
             raise ValueError(legality['reason'])
+        if connected is not None and route in {'adjacent_elementwise', 'connected_residency', 'epilogue'}:
+            from merlin.compile.connected_regions import plan_connected_region, compile_connected_pointwise
+            members = tuple(module.walk())
+            region = plan_connected_region(module, tuple(members[i] for i in candidate['operation_ordinals']))
+            product = compile_connected_pointwise(region, **connected)
+            if ir_digest(module) != before:
+                raise ValueError('connected realization mutated the retained source')
+            return Realization(product, module, {'route': 'connected_pointwise', 'status': 'applied',
+                'source_ir_sha256': before, 'connected': product.report,
+                'maturity': 'executable_unfused_composition_not_cross_stage_fusion',
+                'whole_region_cost': None, 'physical_savings_claimed': False,
+                'execution_qualification': 'not_established'})
         if route == 'shared_input' and candidate['operation_ordinals']:
             fields = candidate['detail']
             group = SharedInputGroup(fields['source_ir_sha256'], tuple(fields['source_op_indices']),

@@ -92,6 +92,7 @@ class RunOptions:
     joint_epoch: str = ""
     author_token_target: int | None = None
     author_token_reserve: int | None = None
+    offline_actions: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -109,6 +110,8 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     environment = os.environ if environ is None else environ
     ap = argparse.ArgumentParser()
+    ap.add_argument("--offline-actions", default="", metavar="PUBLIC_JSON",
+                    help="run an explicit public construction action study through ordinary admission, sandbox and brokers; no provider")
     ap.add_argument("--author-token-target", type=int, default=None,
                     help="soft aggregate input (including cache) plus output token target across all authors; "
                          "joint campaigns default to 40000000, never a hard stop")

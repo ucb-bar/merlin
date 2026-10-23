@@ -360,6 +360,10 @@ def treatment_snapshot_record(ws: Path, run_dir: Path, bundle_dir: Path, resolve
         specs.extend((f"{kind}/{name}", root / name, True)
                      for kind, root in (("served", ws), ("archived", run_dir))
                      for name in capability_docs)
+    for name in ("construction_actions.py", "CONSTRUCTION_ACTIONS.json"):
+        if any((root / name).exists() or (root / name).is_symlink() for root in (ws, run_dir)):
+            specs.extend((f"{kind}/{name}", root / name, True)
+                         for kind, root in (("served", ws), ("archived", run_dir)))
     specs.extend(
         (f"source_bundle/{name}", bundle_dir / name, name == "input_bundle_manifest.yaml")
         for name in _TREATMENT_BUNDLE_DECLARATIONS

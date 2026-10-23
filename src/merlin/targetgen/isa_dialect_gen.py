@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
-from xdsl.dialects.builtin import IntegerAttr, IntegerType
+from xdsl.dialects.builtin import IntAttr, IntegerAttr, IntegerType, StringAttr
 from xdsl.ir import Dialect, Operation, SSAValue
 from xdsl.traits import EffectInstance, MemoryEffect, MemoryEffectKind, Resource
 from xdsl.utils.exceptions import VerifyException
@@ -173,11 +173,32 @@ def encode_operation(model, op, *, allocate):
     verify_instruction(op, instruction)
     if len(op.operands) != len(instruction.operands) or len(op.results) != len(instruction.results):
         raise IsaSpecError("operation does not have the declared SSA signature")
+    if op.regions or op.successors:
+        raise IsaSpecError("instruction operation cannot carry regions or successors")
+    for arg, value in zip(instruction.operands + instruction.results, (*op.operands, *op.results), strict=True):
+        actual = value.type
+        matches = (actual == IntegerType(arg.type.bits) if arg.type.kind == 'integer' else
+                   actual.name == f'{model.namespace}.address'
+                   and getattr(actual, 'space', None) == StringAttr(arg.type.space)
+                   and getattr(actual, 'bits', None) == IntAttr(arg.type.bits))
+        if not matches:
+            raise IsaSpecError(f'{arg.name}: SSA type differs from the selected instruction declaration')
+
+    def snapshot():
+        return (op.name, tuple(op.operands), tuple(op.results),
+                tuple(str(value.type) for value in (*op.operands, *op.results)),
+                tuple(sorted((key, str(value)) for key, value in op.attributes.items())),
+                tuple(sorted((key, str(value)) for key, value in op.properties.items())),
+                tuple(op.regions), tuple(op.successors))
+
+    before = snapshot()
     values = {}
     fields = {field.argument for field in instruction.fields if field.argument is not None}
     for arg, value in zip(instruction.operands + instruction.results, (*op.operands, *op.results), strict=True):
         if arg.name in fields:
             values[arg.name] = allocate(value, arg)
+            if snapshot() != before:
+                raise IsaSpecError('allocation callback changed the selected instruction operation')
     for arg in instruction.immediates:
         if arg.name in fields:
             value = op.attributes[arg.name].value.data

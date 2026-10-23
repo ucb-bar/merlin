@@ -88,6 +88,13 @@ def build(public, *, scalability=(), policy):
     return {'schema': SCHEMA, 'total': len(members), 'capability_groups': capabilities,
             'cohorts': dict(sorted(Counter(v['cohort'] for v in members.values()).items())),
             'families': dict(sorted(groups.items())), 'members': members,
+            'construction_boundaries': {
+                'graph': 'typed graph patterns, region legality, fusion and live outputs',
+                'numeric_layout': 'numeric contracts, layout/panel plans and preparation reuse',
+                'schedule_storage': 'dependencies, storage lifetimes, resource schedules and pass policy',
+                'isa_lowering': 'generic ISA generation, target emission and command legality',
+                'host_runtime': 'shared host codegen, dispatch, completion and complete-call execution',
+                'integration': 'shared interfaces, committed compiler changes and immutable evaluations'},
             'witnesses_outside_public_roster': len(witnesses - core_names),
             'policy': {
                 'construction_unit': 'semantic capability; capsule IDs are traceability only',
@@ -161,7 +168,12 @@ def stage(workspace, run_dir, inventory):
              f'Read `{SUMMARY}` first. It summarizes {inventory["total"]} selected public cases; '
              f'Use `python {QUERY} --groups`, `--group PREFIX` or `--capsule ID` '
              f'for bounded queries over `{FILENAME}`. '
-             'Build one reusable compiler around the required semantic capabilities. '
+             'Build one reusable compiler around the required semantic capabilities and compiler boundaries: '
+             'graph, numeric/layout, schedule/storage, ISA lowering, host/runtime, integration. '
+             'Assign bounded disjoint edits, integrate shared interfaces early, and let admission gate only tests, '
+             'never construction in an independent capability. '
+             'For reproducible action sequences use `python construction_actions.py PLAN.json --out OUTPUT`; '
+             'it invokes ordinary commands and agent_selfcheck.py, just as an offline study does. '
              'Test a tiny end-to-end case as each capability becomes executable; continue independent '
              'construction while immutable snapshots are evaluated. Calibration prerequisites and large '
              'shape cases can proceed before all original correctness cases pass. The scalability cohort '
@@ -173,6 +185,9 @@ def stage(workspace, run_dir, inventory):
         (root / SUMMARY).write_text(brief)
         (root / QUERY).write_bytes(query_script)
         (root / QUERY).chmod(0o444)
+        action_client = Path(__file__).with_name('construction_actions.py').read_bytes()
+        (root / 'construction_actions.py').write_bytes(action_client)
+        (root / 'construction_actions.py').chmod(0o444)
         (root / 'TASK.md').write_text(existing + block)
     return {'schema': SCHEMA, 'sha256': hashlib.sha256(data.encode()).hexdigest(),
             'total': inventory['total'], 'cohorts': inventory['cohorts']}

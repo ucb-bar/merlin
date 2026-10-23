@@ -1,5 +1,6 @@
 """Public, target-neutral source exploration for offline and agent callers.
 
+These are small mechanism patterns, not ResNet or TinyLlama coverage.
 Run: PYTHONPATH=src python examples/compiler/fusion_exploration.py --output <dir>
 This starts from public source IR and selected synthetic resource declarations,
 not an authored backend. Outputs are source IR and checked logical schedules;
@@ -14,6 +15,7 @@ import json
 from pathlib import Path
 
 from merlin.compile import fusion_workflow as F
+from merlin.compile.connected_regions import ConnectedCompilation, plan_connected_region
 from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
 from merlin.compile.scheduling.shared_input_schedule import SharedInputSchedule
 from merlin.frontends.linalg_mlir import parse_mlir_text
@@ -55,7 +57,7 @@ def patterns():
                            '%value=arith.addi %x0,%x1:i8')
     residual += elementwise('out', ('%sum',), '%init', '3x5', 'i8', 'i8',
                             '%zero=arith.constant 0:i8\n%value=arith.maxsi %x0,%zero:i8')
-    yield 'residual', f'''module {{func.func @residual(%x:tensor<3x5xi8>,%skip:tensor<3x5xi8>)
+    yield 'simple_integer_residual', f'''module {{func.func @residual(%x:tensor<3x5xi8>,%skip:tensor<3x5xi8>)
       ->tensor<3x5xi8> {{%init=tensor.empty():tensor<3x5xi8>
       {residual}
       return %out:tensor<3x5xi8>}}}}'''
@@ -85,7 +87,7 @@ def patterns():
         '%lo=arith.constant 0:i32\n%hi=arith.constant 127:i32\n'
         '%positive=arith.maxsi %x0,%lo:i32\n%clipped=arith.minsi %positive,%hi:i32\n'
         '%value=arith.trunci %clipped:i32 to i8')
-    yield 'mlp', f'''module {{func.func @mlp(%x:tensor<3x5xi8>,%up:tensor<5x7xi8>,%down:tensor<7x2xi8>)
+    yield 'simple_integer_mlp', f'''module {{func.func @mlp(%x:tensor<3x5xi8>,%up:tensor<5x7xi8>,%down:tensor<7x2xi8>)
       ->tensor<3x2xi32> {{
       %zero=arith.constant 0:i32
       %h_init="tensor.splat"(%zero):(i32)->tensor<3x7xi32>
@@ -97,7 +99,12 @@ def patterns():
       return %out:tensor<3x2xi32> }} }}'''
 
 
-def run(output):
+def run(output, *, connected_selector=None):
+    """Optional selected target callback receives a typed ConnectedRegion plan.
+
+    It returns compile_connected_pointwise options; no target implementation is
+    supplied by this example. The default run only emits generic mechanism IR.
+    """
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     capability = {'compute_units': [{'name': 'synthetic_array', 'semantic_capabilities': [
@@ -119,6 +126,18 @@ def run(output):
         cursor, rounds, emitted = None, [], []
         def emit(product, session):
             path = folder / f'artifact-{len(emitted)}'
+            if isinstance(product.artifact, ConnectedCompilation):
+                files = []
+                for stage, images in enumerate(product.artifact.images()):
+                    launch = []
+                    for segment, data in enumerate(images):
+                        target = folder / f'{path.name}-stage-{stage}-{segment}.bin'
+                        target.write_bytes(data)
+                        launch.append(str(target))
+                    files.append(launch)
+                record = {'launches': files, 'kind': 'native_checked_images_runtime_unqualified'}
+                emitted.append(record)
+                return record
             if isinstance(product.artifact, SharedInputSchedule):
                 path = path.with_suffix('.schedule.json')
                 path.write_text(json.dumps(asdict(product.artifact), indent=2) + '\n')
@@ -132,15 +151,27 @@ def run(output):
             return record
         while True:
             page = F.discover(module, max_candidates=15, cursor=cursor, **discovery)
-            alternatives = []
+            alternatives, plans = [], []
             for row in page['candidates']:
+                if row['route'] in {'adjacent_elementwise', 'connected_residency', 'epilogue'}:
+                    try:
+                        members = tuple(module.walk())
+                        region = plan_connected_region(module, tuple(members[i] for i in row['operation_ordinals']))
+                        plans.append({'candidate': row['candidate_index'], 'plan': region.record()})
+                    except ValueError as error:
+                        plans.append({'candidate': row['candidate_index'], 'reason': str(error)})
                 def realize(private, row=row):
                     selection = dict(primitive_tile=(2, 3, 4), storage=storage, resources=resources,
                                      selected_block=(1, 1, 1)) if row['route'] == 'shared_input' else {}
+                    if connected_selector is not None and row['route'] in {
+                            'adjacent_elementwise', 'connected_residency', 'epilogue'}:
+                        members = tuple(private.walk())
+                        plan = plan_connected_region(private, tuple(members[i] for i in row['operation_ordinals']))
+                        selection['connected'] = connected_selector(plan)
                     return F.realize_candidate(private, row, **discovery, **selection)
                 alternatives.append(F.FusionAlternative(f"candidate-{row['candidate_index']}", realize))
             results = list(F.evaluate_fusions(module, alternatives, emit, context=context))
-            rounds.append({'page': page, 'results': [{'name': r.name, 'status': r.status,
+            rounds.append({'page': page, 'connected_plans': plans, 'results': [{'name': r.name, 'status': r.status,
                 'reason': r.reason, 'realization': r.realization.receipt if r.realization else None,
                 'pipeline': r.evaluation.result.receipt if r.evaluation.result else None} for r in results]})
             cursor = page['next_cursor']

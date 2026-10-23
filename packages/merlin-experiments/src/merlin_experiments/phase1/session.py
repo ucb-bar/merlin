@@ -128,11 +128,14 @@ class RunRequest:
     def run_config(self) -> dict:
         a = self.options
         from .telemetry import token_budget
+        from .construction_study import selection as study_selection
 
         return {
             "schedule": a.schedule,
             "session_mode": (
-                "joint_campaign"
+                "offline_construction_study"
+                if getattr(a, "offline_actions", "")
+                else "joint_campaign"
                 if getattr(a, "joint_campaign", "")
                 else "codex_canary"
                 if a.codex_canary
@@ -157,6 +160,7 @@ class RunRequest:
             **({"joint_epoch_review": hashlib.sha256(Path(a.joint_epoch).read_bytes()).hexdigest()}
                if getattr(a, "joint_epoch", "") else {}),
             "launcher_argv": list(self.launcher_argv),
+            **({"construction_study": study} if (study := study_selection(a)) is not None else {}),
             **({"live_conformance_feedback": True} if a.live_conformance_feedback else {}),
             **(
                 {"public_object_build_budget_s": a.public_object_build_budget_s}
@@ -472,6 +476,8 @@ def validate_preflight_options(a: RunOptions) -> None:
 def validate_options(a: RunOptions) -> int | None:
     """Pre-initialization refusals shared by native and installed admission."""
     validate_preflight_options(a)
+    from .construction_study import validate as validate_study
+    validate_study(a)
     FB.validate(a)
     from . import joint_control
     joint_control.validate(a)
@@ -975,6 +981,9 @@ def _prepare(
             contract=_contract_root or context.repo / "merlin/contract",
             excluded=_te().effective_exclusions,
         )
+    if not _resuming:
+        from .construction_study import stage as stage_study
+        stage_study(ws, run_dir, a)
     _resolved_tool_ids = request.resolved_tools()
     CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
     verify_tool_profile(bundle, tools=tuple(_resolved_tool_ids))

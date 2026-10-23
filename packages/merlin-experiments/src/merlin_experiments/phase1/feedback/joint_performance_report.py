@@ -83,6 +83,13 @@ def project(report, observation, structural, *, selection_sha256, reason):
                                               "unknown_events", "peak_queue_entries")}
                        for r in breakdown.get("resources", [])[:128]],
         )
+    try:
+        from merlin_timing.scoped_resources import project as scoped_resource_feedback
+        value["scoped_resource_feedback"] = scoped_resource_feedback(report, structural=structural)
+    except (ImportError, ValueError, KeyError, TypeError):
+        value["scoped_resource_feedback"] = {"status": "UNKNOWN", "activity_status": "UNKNOWN",
+            "reason": "scoped resource source absent or invalid; whole-trace totals are not substituted",
+            "qualification_issued": False}
     if _positive(cycles) and complete:
         floor = (structural or {}).get("structural_compute_floor_cycles")
         if _positive(floor) and cycles < floor:

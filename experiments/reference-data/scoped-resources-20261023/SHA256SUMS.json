@@ -1,0 +1,12 @@
+{
+  "AGENT.md": "d603cd7489b7bdecd87b899e7e7df5fb08bafcaf2522dccfa2c29b6719a59bfa",
+  "README.md": "0751d892db180e0fbc701f5b2b22495477c729b7bebfceebbeb026ba8a930b40",
+  "acceptance.json": "ada62d8b4bfd0165cd66b75f4e6cf50b20cb56c255aaa6897bb12721deaf427e",
+  "build.json": "482ceb0ac00887f9d2e20978413e7b6e026101c75409bbf6c6d398efc82fde87",
+  "feedback-compact.json": "c32d0d765d66a23f179bf2037ee8b59d58e65f7757e85176b33d787b5268c4bc",
+  "feedback.json": "cd66af3e5b5e72f4a478c882e1869cb43f1a90471bfa2df20d03b97278faabb3",
+  "off-report.json": "688d6ff84e37ada690217a170d358fdff718252ceba69f3f6dfc82b177e428a7",
+  "on-report.json": "7aa27c291451567d242fbe18f24b5118c6000489e3d45673193be236fc6154ee",
+  "selected-base-build.json": "92179295aa776238246946ab6e36b2cf7f8ed63e0b5f3d697d6d33f3d4d90989",
+  "source-overlay.json": "abc7e63e26625ca08c6b246a3616d6b3bc89595c54f8e32a051a4571f3a11b7a"
+}

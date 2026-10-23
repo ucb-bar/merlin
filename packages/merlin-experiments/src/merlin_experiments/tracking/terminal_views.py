@@ -251,6 +251,8 @@ def _performance(metadata, width, color, offset):
         state = clean(row.get('status') or 'not recorded', 25)
         lines.append(f' {name:<32}{number(cycles, 0):>11} {number(floor, 0):>11} ' +
                      paint(f'{ratio_text:>13}', COLORS['L2'], color) + f'  {label or state}')
+        if row.get('modeled_resource_activity'):
+            lines.append(paint('   modeled bookings: ' + ', '.join(clean(r.get('name'), 32) + ' ' + number(r.get('activity_pct')) + '%' for r in row['modeled_resource_activity']), '2', color))
         source = row.get('source_sha256')
         if source:
             lines.append(paint(f'   compiler {clean(source, 16)}  {state}', '2', color))
@@ -384,6 +386,9 @@ def overview(sample, metadata, history, *, lines, width, height, color, frame, p
         right.append(' ' + name)
         right.append(paint(f" {number(row.get('cycles'), 0)} / {number(row.get('roofline_cycles'), 0)} / {ratio_text}", COLORS['L2'], color))
         right.append(paint(' ' + clean(' / '.join(str(row.get(k) or '') for k in ('engine', 'model_status')), right_width - 2), '2', color))
+        if row.get('modeled_resource_activity'):
+            top = row['modeled_resource_activity'][0]
+            right.append(paint(' ' + clean('modeled booking ' + str(top.get('name')) + ' ' + number(top.get('activity_pct')) + '%', right_width - 2), '2', color))
     if not capsules:
         right += [' No qualified cycles recorded yet.', ' Roofline efficiency: not recorded.']
     right += [paint(' structural floor / estimate; not HW utilization', '2', color), '',

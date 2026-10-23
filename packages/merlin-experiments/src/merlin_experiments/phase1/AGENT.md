@@ -358,3 +358,17 @@ Copy enumerated leaves only; never mount a companion checkout. Existing library
 freeze/seal/transport and resume rules remain authoritative. Label the treatment
 as a fresh optimized backend atop generated scaffolding; do not manufacture an
 empty-input comparison, optimized backend, encoding proof or timing qualification.
+
+`construction_actions.py` is an explicitly staged, standard-library-only public
+client, like `capability_query.py`; seal its exact served/archived bytes in the
+ordinary treatment record. It executes authored argv and the existing standalone
+self-check client. It creates no grader, compilation, pass, or access authority.
+`construction_study.py` is private orchestration for `--offline-actions`: ordinary
+fresh preparation followed by the same sandbox composition and broker lifecycle.
+Require empty-backend origin, a bounded wall budget, no retained seed/epoch or
+resume, and no isolation/oracle bypass. Operator-authored scripts are not a model
+transcript or a fresh automatic compiler achievement. Preserve source-bound raw
+feedback separately from compact action status; command success is not a grade.
+A failed capability defers only explicit dependent actions, never independent
+construction. Automatic authors can use the identical client; it is not a second
+controller or a different offline validation policy.

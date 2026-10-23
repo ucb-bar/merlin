@@ -33,6 +33,7 @@ def prepare(
     manifest_sha256=None,
     facts_sha256=None,
     declaration_sha256=None,
+    reviewed_module=(),
 ):
     repo, output = Path(repo).resolve(), Path(output).absolute()
     actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
@@ -58,33 +59,36 @@ def prepare(
     if reviewed_shared_manifest(sdk, version=8) != manifest:
         raise ValueError("shared SDK identity changed during preparation")
     members = {row.path: row for row in base.contract.members}
+    additions = reviewed_modules(reviewed_module, existing=base.contract.public_modules)
+    sources = {member.path: member.module for member in base.contract.members}
+    sources.update(additions)
     for row in manifest["members"]:
-        if row["path"] not in members or members[row["path"]].module != row["module"]:
+        if row["path"] not in sources or sources[row["path"]] != row["module"]:
             raise ValueError("new SDK source grant requires explicit review: " + row["path"])
     sdk_paths = {row["path"] for row in manifest["members"]} | set(manifest["review_resources"])
     library = output / "generic-library"
     library.mkdir()
     changed, hashes = [], {}
-    for member in base.contract.members:
-        source = sdk / member.path
-        if member.path.endswith("/__init__.py") and member.path not in sdk_paths:
-            source = base.root / member.path
+    for path, module in sources.items():
+        source = sdk / path
+        if path.endswith("/__init__.py") and path not in sdk_paths:
+            source = base.root / path
         elif not source.is_file():
-            source = repo / "src" / member.path if member.module else base.root / member.path
+            source = repo / "src" / path if module else base.root / path
         if source.is_symlink() or not source.is_file():
             raise ValueError("selected source is absent or linked: " + str(source))
         raw = source.read_bytes()
-        hashes[member.path] = hashlib.sha256(raw).hexdigest()
-        if hashes[member.path] != member.sha256:
-            changed.append(member.path)
-        target = library / member.path
+        hashes[path] = hashlib.sha256(raw).hexdigest()
+        if path not in members or hashes[path] != members[path].sha256:
+            changed.append(path)
+        target = library / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(raw)
     contract = freeze_compiler_library(
         library,
         review_id=REVIEW_PREFIX + "coevolution-readiness:" + source_revision[:12],
-        public_modules=base.contract.public_modules,
-        sources=tuple((member.path, member.module) for member in base.contract.members),
+        public_modules=(*base.contract.public_modules, *additions.values()),
+        sources=tuple(sources.items()),
     )
     selection = CompilerLibrarySelection(contract, library)
     (output / "generic-library-contract.json").write_text(
@@ -115,6 +119,7 @@ def prepare(
         "members": len(selection.contract.members),
         "public_modules": len(selection.contract.public_modules),
         "changed_generic_members": changed,
+        "explicitly_reviewed_new_modules": list(additions.values()),
         "editable_generic_compiler": True,
         "generated_isa_selected": generated_package is not None,
         "grading_authority_changed": False,
@@ -130,6 +135,23 @@ def prepare(
     return report
 
 
+def reviewed_modules(modules, *, existing):
+    """Select exact reviewed generic leaves, never a package or companion source."""
+    selected = {}
+    for module in modules:
+        if (
+            not isinstance(module, str)
+            or not module.startswith("merlin.")
+            or any(not part.isidentifier() for part in module.split("."))
+            or module.endswith(".__init__")
+            or module in existing
+            or module in selected.values()
+        ):
+            raise ValueError("reviewed module must name one new generic Merlin leaf")
+        selected[module.replace(".", "/") + ".py"] = module
+    return selected
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("repo", "previous-root", "previous-contract", "output"):
@@ -137,6 +159,12 @@ def main():
     for name in ("source-revision", "previous-sha256"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--generated-package", type=Path)
+    parser.add_argument(
+        "--reviewed-module",
+        action="append",
+        default=[],
+        help="one explicitly reviewed new generic Merlin leaf (repeat for each; no package grant)",
+    )
     for name in ("manifest-sha256", "facts-sha256", "declaration-sha256"):
         parser.add_argument("--" + name)
     report = prepare(**vars(parser.parse_args()))

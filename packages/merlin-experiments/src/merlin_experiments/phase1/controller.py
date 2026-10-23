@@ -179,6 +179,10 @@ def _execute_prepared(prepared, options, authoring, bundle_id, oracle_timing, pu
         from . import canary
 
         return canary.execute(prepared)
+    if getattr(options, "offline_actions", ""):
+        from . import construction_study
+
+        return construction_study.execute(prepared, timing_file=oracle_timing)
     if options.qualify_submission:
         from . import qualification
 

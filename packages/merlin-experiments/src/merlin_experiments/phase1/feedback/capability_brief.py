@@ -101,7 +101,9 @@ def render(inventory, latest, previous=None):
     lines += ['', 'Submit ready capabilities immediately and consume individual results while other work continues. '
               'Required original gSIM checks remain mandatory; additional calibration witnesses are selective.',
               'Read `PUBLIC_CAPABILITIES.md` first; query relevant entries in `PUBLIC_CAPABILITIES.json` on demand. '
-              'Give helpers bounded capability briefs and merge their completed changes into this compiler.', '']
+              'Give helpers bounded capability + compiler-boundary briefs (graph, numeric/layout, schedule/storage, '
+              'ISA lowering, host/runtime). Merge their completed changes into this compiler. '
+              'A blocked test or capability must not stop independent construction.', '']
     return '\n'.join(lines)
 
 
