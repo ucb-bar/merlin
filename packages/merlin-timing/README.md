@@ -105,3 +105,18 @@ and its executable checks. Version 1 exports retain their exact original roster
 and remain verifiable without being rewritten. The simulator's source package
 must retain the manifest of its exact canonical export; copied vendor bytes are
 a versioned source snapshot, never another maintained implementation.
+
+### Timing qualification profiles
+
+New `spike-timing validate` reports use `strict_per_case_v1`: every declared
+held-out case must have a usable prediction and absolute relative cycle error
+at most 4%. The existing source-group, ranking, family and calibration-interval
+gates also remain required. Missing cases stay in the denominator, and one
+bad case cannot disappear behind a good median or percentile. Prediction and
+measurement still need the same executable, inputs, memory regime and timing
+scope; this arithmetic policy cannot establish simulator equivalence.
+
+`--qualification-profile legacy_v1` reproduces the historical 80% coverage and
+median/p95 gates for old report replay. Comparison receipts retain their selected
+profile; historical reports without a profile replay as legacy. A legacy report
+is not evidence of the strict 4% claim.

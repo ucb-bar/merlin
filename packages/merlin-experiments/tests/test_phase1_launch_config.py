@@ -254,6 +254,14 @@ def test_legacy_launch_argv_does_not_add_validation_scope(tmp_path):
     assert "--validation-scope" not in launch.argv
 
 
+def test_launch_renders_explicit_all_author_token_target(tmp_path):
+    config = _checkout(tmp_path, lambda doc: doc["author"].update(
+        token_target=40_000_000, token_reserve=8_000_000))
+    launch = lc.build(lc.load(config), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    for flag, expected in (("--author-token-target", "40000000"), ("--author-token-reserve", "8000000")):
+        assert launch.argv[launch.argv.index(flag) + 1] == expected
+
+
 @pytest.mark.parametrize("live_conformance", [False, True])
 def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path, live_conformance):
     from merlin_experiments.phase1 import options

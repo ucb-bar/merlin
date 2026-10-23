@@ -43,6 +43,10 @@ def parser() -> argparse.ArgumentParser:
     validate.add_argument("--dataset", required=True)
     validate.add_argument("--model", help="required for empirical_screen; unused for event_timing")
     validate.add_argument("--prediction-kind", choices=("empirical_screen", "event_timing"), default="empirical_screen")
+    validate.add_argument(
+        "--qualification-profile", choices=V.QUALIFICATION_PROFILES,
+        default="strict_per_case_v1", help="strict every-case 4% gate; legacy only for historical replay",
+    )
     sensitivity = commands.add_parser(
         "native-sensitivity", help="diagnose TRAIN-only native price responses without fitting or launching"
     )
@@ -143,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
                 C.read(arguments.dataset),
                 C.read(arguments.model) if arguments.model else None,
                 prediction_kind=arguments.prediction_kind,
+                qualification_profile=arguments.qualification_profile,
             )
         elif arguments.command == "compare":
             result = B.compare(

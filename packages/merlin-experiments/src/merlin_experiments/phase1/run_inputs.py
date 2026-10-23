@@ -352,6 +352,14 @@ def treatment_snapshot_record(ws: Path, run_dir: Path, bundle_dir: Path, resolve
         authored_name = "archived_bundle/authored_input_bundle_manifest.yaml"
         specs.append((authored_name, authored, True))
     specs.extend((f"served/{name}", ws / name, False) for name in MERLIN_WS_DOCS)
+    # Fresh corpus guidance is sealed alongside TASK.md. Historical treatments
+    # without it retain their original record shape; never regenerate on resume.
+    capability_docs = ("PUBLIC_CAPABILITIES.json", "PUBLIC_CAPABILITIES.md")
+    if any((root / name).exists() or (root / name).is_symlink()
+           for root in (ws, run_dir) for name in capability_docs):
+        specs.extend((f"{kind}/{name}", root / name, True)
+                     for kind, root in (("served", ws), ("archived", run_dir))
+                     for name in capability_docs)
     specs.extend(
         (f"source_bundle/{name}", bundle_dir / name, name == "input_bundle_manifest.yaml")
         for name in _TREATMENT_BUNDLE_DECLARATIONS

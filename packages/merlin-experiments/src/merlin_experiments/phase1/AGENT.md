@@ -338,3 +338,12 @@ authored alternatives. New state has no inherited clock, ledgers or verdicts;
 no empty-origin assertion is manufactured. Ordinary seed lineage and empty
 backend checks remain unchanged; existing empty-origin model epochs do not
 implicitly admit this new origin.
+
+`capability_inventory` stages compact whole-public-corpus guidance only for fresh
+joint campaigns, using native public discovery and the verified frozen scalability
+selection. `capability_source` reads only each declared public interface through
+existing parsers. Preserve every original physical obligation, unknown source
+analysis and source/numeric/layout grouping; no oracle arrays or private sources
+are inputs. Canaries are advisory, never coverage or dispatch authority. Seal both
+served and archived inventory/summary bytes in the ordinary treatment record;
+resume must not regenerate them. The short task points to on-demand details.

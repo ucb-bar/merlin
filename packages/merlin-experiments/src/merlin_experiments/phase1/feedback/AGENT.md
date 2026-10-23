@@ -1,3 +1,5 @@
+# `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
+
 Concurrent original compiler operations may re-admit an invalidated snapshot guard
 under the same live owner and immutable marker. Reopen ordinary custody before
 publishing a replacement; preserve old guards until their owner drains and retain
@@ -6,7 +8,6 @@ before touching locks. Never wait for refresh while holding a CPU lease. Bound
 failed refresh attempts and retain the ordinary full-read fallback. This optimizes
 input admission only; it never reuses numerical verdicts or changes source grants.
 
-# `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
 
 `tier_boundary_join` joins independently passed native public operator L2/L3
 obligations only after reopening original source snapshots, executed-product

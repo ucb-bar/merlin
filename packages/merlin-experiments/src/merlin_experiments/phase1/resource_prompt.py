@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from merlin.common.cpu_pool import grading_cpus, parse_roster, preparation_cpus, shared_compute_enabled
+from .telemetry.token_budget import guidance as token_guidance
 
 
 def _public_codegen_policy_line(selection):
@@ -85,8 +86,9 @@ def render_resource_block(
         "- These are allocations and ceilings, not active-session counts. The scheduler runs only ready work. "
         "Use current selfcheck progress and broker status to report active/ready/queued work, "
         "operator L2/L3 coverage, and public/private whole-model L3 qualifications separately.",
-        f"- Batch independent cases with the documented selfcheck `--workers {workers}` option. "
-        "Keep the compiler snapshot stable until that batch returns; source edits invalidate its attribution.",
+        f"- Submit independent cases with the documented selfcheck `--workers {workers}` option. "
+        "Once the harness acknowledges its immutable snapshot, continue authoring. Results belong to "
+        "that captured revision; do not mutate a source while it is being captured.",
         "- Obtain focused L2 feedback first, then use immediate automatic L3 promotion or a documented "
         "full required-tier check. Whole-model requests need their same-request operator gate evidence "
         "or a harness-issued continuation; a model-only request cannot supply that evidence.",
@@ -180,7 +182,7 @@ def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budg
         # in addition to the compact legacy task and selected pass contract.
         # Keep an explicit bounded budget, without truncating required guidance.
         if joint:
-            task.write_text(task.read_text() + render_joint_resource_block(options))
+            task.write_text(task.read_text() + render_joint_resource_block(options) + token_guidance(options))
         limit = 64 * 1024 if joint else 12 * 1024
         if task.stat().st_size - len(selected_block.encode("utf-8")) > limit:
             raise RuntimeError(f"full-model TASK.md exceeds {limit // 1024} KB")
@@ -189,7 +191,7 @@ def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budg
     selected = {} if device_ir_budget is None else {"device_ir_budget": device_ir_budget}
     if public_codegen_policy is not None:
         selected["public_codegen_policy"] = public_codegen_policy
-    task.write_text(task.read_text() + render_resource_block(options, **selected))
+    task.write_text(task.read_text() + render_resource_block(options, **selected) + token_guidance(options))
     (Path(run_dir) / "TASK.md").write_bytes(task.read_bytes())
 
 
@@ -213,6 +215,8 @@ def render_joint_resource_block(options) -> str:
         "Waiting jobs are FIFO within a class; running leases are not preempted. "
         "These classes are assigned by the harness, not a selfcheck priority flag. "
         "Prioritize critical work by requesting its focused check through the native broker; "
-        "batch independent cases, reuse exact-input caches and avoid duplicate full sweeps. "
+        "submit independent cases to rolling admission, reuse exact-input caches and avoid duplicate full sweeps. "
+        "Continue compiler development after immutable snapshot acknowledgment; consume each finished result "
+        "without waiting for unrelated slow cases. "
         "Keep heavy work on the documented leased harness routes, not unmanaged shell jobs.\n"
     )

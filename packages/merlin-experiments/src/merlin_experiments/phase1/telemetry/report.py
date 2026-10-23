@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, resolve_context
-from merlin_experiments.phase1.telemetry import author_agents, evidence, timeline
+from merlin_experiments.phase1.telemetry import author_agents, evidence, timeline, token_budget
 
 
 def transcript_paths(run_dir: Path) -> list[Path]:
@@ -220,6 +220,11 @@ def decompose_run(run_dir: Path) -> dict:
     # Every author thread (lead + sub-agents). Accounting only: computed after, and never part of,
     # the integrity verdict above, and a defect in it is recorded rather than raised.
     rec["author_agents"] = _author_agents(run_dir)
+    budget = rec["author_agents"].get("token_budget", {})
+    rec["author_token_budget"] = token_budget.assess(
+        rec["author_agents"], budget.get("policy"),
+        usage_complete=rec["telemetry_integrity"].get("complete") is True,
+    )
     rec["generated_at"] = datetime.now(UTC).isoformat()
     rec["measurement_limits"] = {
         "provider_server_latency": "unavailable: provider request-start/TTFT is not emitted",
@@ -267,6 +272,7 @@ def report_run(run_dir: Path, *, write: bool = False) -> dict:
     rec = decompose_run(run_dir)
     print(f"== {run_dir}")
     print(f"  method            : {rec['method']}")
+    print(f"  {token_budget.summary(rec['author_token_budget'])}")
     if rec.get("unavailable_reason"):
         print(f"  UNAVAILABLE       : {rec['unavailable_reason']}")
     print(f"  think+generate    : {_fmt(rec['think_generate_s'])}")

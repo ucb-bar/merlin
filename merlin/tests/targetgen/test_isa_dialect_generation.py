@@ -17,7 +17,7 @@ from xdsl.printer import Printer
 from xdsl.traits import MemoryEffect
 from xdsl.utils.exceptions import VerifyException
 
-from merlin.targetgen.isa_codegen_cli import main
+from merlin.targetgen.isa_codegen_cli import inspect_inputs, main
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction, generate_package
 from merlin.targetgen.isa_spec import IsaSpecError, resolve_isa, resolved_isa_from_record, validate_isa_spec
 
@@ -98,6 +98,37 @@ def _inputs(variant: int = 0):
 def _model(variant=0):
     target, spec, facts, digest, _ = _inputs(variant)
     return resolve_isa(spec, facts, target=target, facts_sha256=digest)
+
+
+def test_readiness_reports_missing_declaration_without_generating(tmp_path, capsys):
+    target, spec, facts, digest, raw = _inputs()
+    sw = tmp_path / 'software.yaml'
+    fp = tmp_path / 'facts.json'
+    fp.write_bytes(raw)
+    sw.write_text(yaml.safe_dump({'schema': 'merlin.software_spec.v1', 'target': target}))
+    assert main(['--software-spec', str(sw), '--facts', str(fp), '--target', target, '--inspect']) == 2
+    report = json.loads(capsys.readouterr().out)
+    assert report['status'] == 'missing_declaration'
+    assert not report['generation_ready']
+    assert report['facts_sha256'] == digest
+    assert report['compiler_execution'] == 'UNKNOWN'
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['facts.json', 'software.yaml']
+
+
+def test_readiness_resolves_declaration_but_does_not_claim_rtl_or_execution(tmp_path):
+    target, spec, facts, digest, raw = _inputs()
+    sw = tmp_path / 'software.yaml'
+    fp = tmp_path / 'facts.json'
+    fp.write_bytes(raw)
+    sw.write_text(yaml.safe_dump({'schema': 'merlin.software_spec.v1', 'target': target, 'isa': spec}))
+    report = inspect_inputs(software_spec=sw, facts=fp, target=target)
+    assert report['generation_ready']
+    assert report['model_sha256'] == _model().identity()
+    assert report['independent_rtl_correspondence'] == report['compiler_execution'] == 'UNKNOWN'
+    spec['facts_sha256'] = '0' * 64
+    sw.write_text(yaml.safe_dump({'schema': 'merlin.software_spec.v1', 'target': target, 'isa': spec}))
+    invalid = inspect_inputs(software_spec=sw, facts=fp, target=target)
+    assert invalid['status'] == 'invalid' and not invalid['generation_ready']
 
 
 def _load_module(tmp_path, model):

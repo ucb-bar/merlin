@@ -3,9 +3,9 @@ title: Software instruction semantics declarations
 kind: reference
 status: current
 owner: targetgen
-last_verified: 2026-10-12
+last_verified: 2026-10-23
 related: [phase0_specification, independent_instruction_policy, verified_compiler_tooling]
-code_refs: [src/merlin/targetgen/instruction_semantics.py, src/merlin/targetgen/corpus_instruction_roles.py, src/merlin/targetgen/isa_spec.py]
+code_refs: [src/merlin/targetgen/instruction_semantics.py, src/merlin/targetgen/corpus_instruction_roles.py, src/merlin/targetgen/isa_spec.py, src/merlin/targetgen/isa_codegen_cli.py]
 ---
 
 # Software instruction semantics declarations
@@ -13,6 +13,24 @@ code_refs: [src/merlin/targetgen/instruction_semantics.py, src/merlin/targetgen/
 The minimal software specification declares mathematical behavior and numerical
 permissions. Optional instruction/effect declarations bind independent checks to
 selected facts; they do not select compiler tiling, layouts or schedules.
+
+## Inspect instruction scaffold readiness
+
+The existing ISA generator can inspect explicit inputs without writing generated
+code or invoking a simulator:
+
+```sh
+merlin-isa-generate --software-spec software.yaml --facts facts.json \
+  --target TARGET --inspect
+```
+
+The JSON report pins both input files and distinguishes `missing_declaration`,
+`invalid` and `ready_for_generation`; unavailable readiness exits with status 2.
+A complete typed `isa` declaration must resolve every encoding field against the
+selected facts. This checks generation inputs, not RTL correspondence, compiler
+lowering or target execution. Those fields remain `UNKNOWN`, and unknown
+instruction effects/semantics remain explicitly listed. The original `--out`
+generation route remains unchanged and cannot be combined with `--inspect`.
 
 ## Declare effects and operand interpretation
 

@@ -242,3 +242,41 @@ def test_native_execution_completion_cannot_be_a_descriptive_status_override(com
     raw["execution_completed"] = True
     row["event_report"]["sha256"] = C.digest(raw)
     assert V.validate(data, prediction_kind="event_timing")["metrics"]["predicted_held_cases"] == 24
+
+
+def test_strict_profile_rejects_one_bad_case_hidden_by_good_percentiles():
+    data = original_reports(sample())
+    raw = data["records"][-1]["event_report"]["report"]
+    raw["estimated_cycles"] *= 1.05
+    data["records"][-1]["event_report"]["sha256"] = C.digest(raw)
+    legacy = V.validate(data, prediction_kind="event_timing", qualification_profile="legacy_v1")
+    assert legacy["qualified"]
+    strict = V.validate(data, prediction_kind="event_timing")
+    assert strict["checks"]["median_error"] and strict["checks"]["p95_error"]
+    assert not strict["checks"]["every_case_error"] and not strict["qualified"]
+    assert strict["metrics"]["maximum_absolute_relative_error"] == pytest.approx(0.05)
+
+
+def test_strict_profile_requires_every_declared_case_and_keeps_refusal():
+    data = original_reports(sample())
+    data["records"][-1]["event_report"] = None
+    legacy = V.validate(data, prediction_kind="event_timing", qualification_profile="legacy_v1")
+    assert legacy["qualified"]
+    strict = V.validate(data, prediction_kind="event_timing")
+    assert not strict["checks"]["declared_case_coverage"] and not strict["qualified"]
+    assert strict["metrics"]["declared_held_cases"] == 24
+    assert strict["refusals"][-1]["case_id"] == data["cases"][-1]["case_id"]
+
+
+def test_four_percent_boundary_passes_but_larger_error_does_not():
+    data = original_reports(sample())
+    raw = data["records"][-1]["event_report"]["report"]
+    assert raw["estimated_cycles"] == 125
+    raw["estimated_cycles"] = 130
+    data["records"][-1]["event_report"]["sha256"] = C.digest(raw)
+    assert V.validate(data, prediction_kind="event_timing")["qualified"]
+    raw["estimated_cycles"] = 130.0001
+    data["records"][-1]["event_report"]["sha256"] = C.digest(raw)
+    assert not V.validate(data, prediction_kind="event_timing")["qualified"]
+    with pytest.raises(C.ContractError, match="profile"):
+        V.validate(data, prediction_kind="event_timing", qualification_profile="forgiving")

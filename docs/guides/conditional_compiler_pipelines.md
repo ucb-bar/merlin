@@ -3,7 +3,7 @@ title: Conditional compiler pipelines
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-22
+last_verified: 2026-10-23
 code_refs: [src/merlin/transforms/pipeline_policy.py, src/merlin/transforms/pipeline_state.py]
 ---
 
@@ -80,6 +80,50 @@ materialize iterations. Policies have at most 16 variants, 64 passes per path an
 fallback. Variant exploration uses separate private sessions and the existing
 agent's bounded job/measurement ownership.
 
+## Explore alternatives without another agent turn
+
+`evaluate_variants` executes a bounded list of explicit alternatives through the
+same registry and pass manager. Unlike first-match `execute_policy`, it visits
+every applicable alternative. It yields each completion immediately, so the
+caller can submit its actual artifact to the normal execution queue while the
+next variant compiles. A skipped or failed alternative has no artifact. It
+provides no simulator, ranking policy, correctness verdict or timing score.
+
+```python
+from merlin.transforms.pipeline_policy import evaluate_variants
+
+for evaluation in evaluate_variants(
+    source_module, variants, registry, derive_current_policy_facts,
+    output="emitted_ir", context=selected_context,
+):
+    publish_compact_feedback(evaluation.summary())
+    if evaluation.status == "compiled":
+        submit_immutable_artifact(evaluation.result.artifact,
+                                  evaluation.result.receipt)
+```
+
+The caller supplies the selected variants, source-derived facts, existing pass
+registry and execution callbacks. Register parameterized shared transformations
+under distinct names to explore options without an agent response for each
+value. Keep predicates on every alternative whose legality needs them. Missing
+capability/resource facts skip that alternative as `unknown`; the baseline is
+an explicit unconditional variant, never an implicit rescue of failed IR.
+
+Every alternative starts from a distinct clone of the same immutable source.
+The full search space is checked for pass-order, prerequisite, IR-level and
+output errors before executing any pass. A failed transformation discards its
+partial result while later alternatives can continue on fresh IR. Changing the
+original source aborts the iterator. Counted non-xDSL representations supply
+explicit clone/fingerprint/structural-verifier adapters; no loop expansion is
+introduced by the search driver. The maximum sixteen alternatives bounds retained
+IR; consume additional candidate groups under the caller's normal resource budget.
+
+Full receipts and transformed IR stay in caller-owned artifacts; `summary()`
+contains only status, source/output-IR identities, executed pass names and a
+bounded error. Independent numerical checks and comparable timing remain the
+only basis for accepting and ranking performance candidates. Existing host
+transform verification is unchanged; `plan_only` is still unverified planning.
+
 ## Readiness
 
 Focused checks exercise a real shared normalization pass, emission of its changed
@@ -88,6 +132,10 @@ interpreter comparisons, stale facts, invalid dependencies, failed transforms,
 unknown applicability and a billion-iteration loop retained as one loop.
 The checks use explicitly unverified planning for the transform test, not a
 production semantic certificate. No target simulation is required by this API.
+The machine-search checks additionally consume real normalized/unrolled IR on
+zero, small, tail and full-loop shapes, compare interpreted outputs, retain a
+trillion-iteration loop compactly, and test failed/unknown alternatives and
+incremental delivery.
 
 This module is usable by an ordinary compiler import. A sandboxed author also
 needs it added to a new reviewed immutable compiler-library export; existing

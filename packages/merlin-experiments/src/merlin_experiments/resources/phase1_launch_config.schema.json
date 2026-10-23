@@ -67,6 +67,8 @@
       "additionalProperties": false,
       "required": ["driver", "model", "effort", "sandbox"],
       "properties": {
+        "token_target": {"type": "integer", "minimum": 1},
+        "token_reserve": {"type": "integer", "minimum": 0},
         "driver": {"$ref": "#/$defs/token"},
         "model": {"$ref": "#/$defs/text"},
         "effort": {"$ref": "#/$defs/token"},

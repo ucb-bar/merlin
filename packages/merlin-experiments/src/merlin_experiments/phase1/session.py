@@ -76,6 +76,9 @@ def _verify_client_selection(options, environment: dict) -> None:
     if prior != options.codex_max_subagents:
         raise RuntimeError("explicit Codex delegation limit changed")
     AS.verify_resume(options, environment.get("run_config") or {})
+    from .telemetry import token_budget
+
+    token_budget.verify_resume(options, environment.get("run_config") or {})
     recorded = (environment.get("run_config") or {}).get("codex_runtime")
     if recorded != _client_selection(options):
         raise RuntimeError("explicit client selection changed")
@@ -124,6 +127,8 @@ class RunRequest:
     @property
     def run_config(self) -> dict:
         a = self.options
+        from .telemetry import token_budget
+
         return {
             "schedule": a.schedule,
             "session_mode": (
@@ -161,6 +166,7 @@ class RunRequest:
             **({"codex_runtime": _client_selection(a)} if a.codex_binary else {}),
             **({"codex_max_subagents": a.codex_max_subagents} if a.codex_max_subagents is not None else {}),
             **({"author_subagents": subagents} if (subagents := AS.selection(a)) is not None else {}),
+            **({"author_token_budget": budget} if (budget := token_budget.selection(a)) is not None else {}),
             **({"readback_policy": readback_record(self.context)} if self.context.readback_policy is not None else {}),
         }
 
@@ -961,6 +967,14 @@ def _prepare(
         CL.append_guidance(ws, run_dir, _library_binding, request.compiler_library_selection,
                            repo=context.repo, descriptor=context.descriptor)
         PSD.append_guidance(_public_software, ws, run_dir)
+        from .capability_inventory import stage_selected as stage_capabilities
+
+        stage_capabilities(
+            ws, run_dir, context=context,
+            public_roots=[_public_root] if _public_root is not None else _te().graded_roots(),
+            contract=_contract_root or context.repo / "merlin/contract",
+            excluded=_te().effective_exclusions,
+        )
     _resolved_tool_ids = request.resolved_tools()
     CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
     verify_tool_profile(bundle, tools=tuple(_resolved_tool_ids))

@@ -601,6 +601,10 @@ def account(run_dir: Path, *, codex_homes=(), now: float | None = None, window_s
             "threads and by the run's observed span. A running command appears only once it completes."
         ),
     }
+    from . import token_budget
+
+    policy = (_environment(run_dir).get("run_config") or {}).get("author_token_budget")
+    report["token_budget"] = token_budget.assess(report, policy)
     return report
 
 
@@ -621,7 +625,9 @@ def heartbeat_line(report: dict) -> str:
         f"commands={totals['commands_all']} selfchecks={totals['selfcheck_requests']} "
         f"unattributed={totals['selfcheck_requests_unattributed']} "
         f"sims={json.dumps(totals['simulations_by_engine'], sort_keys=True, separators=(',', ':'))} "
-        f"complete={str(report['complete']).lower()}"
+        f"complete={str(report['complete']).lower()} "
+        f"token_budget_status={report.get('token_budget', {}).get('status', 'not_selected')} "
+        f"token_target={report.get('token_budget', {}).get('policy', {}).get('target', 'unselected')}"
     )
 
 

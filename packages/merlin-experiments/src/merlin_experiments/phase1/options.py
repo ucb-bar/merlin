@@ -90,6 +90,8 @@ class RunOptions:
     fresh_backend: bool = False
     joint_campaign: str = ""
     joint_epoch: str = ""
+    author_token_target: int | None = None
+    author_token_reserve: int | None = None
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -107,6 +109,11 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     environment = os.environ if environ is None else environ
     ap = argparse.ArgumentParser()
+    ap.add_argument("--author-token-target", type=int, default=None,
+                    help="soft aggregate input (including cache) plus output token target across all authors; "
+                         "joint campaigns default to 40000000, never a hard stop")
+    ap.add_argument("--author-token-reserve", type=int, default=None,
+                    help="portion of the author token target reserved for integration/repairs; joint default 8000000")
     ap.add_argument(
         "--validation-scope", choices=("full", "capsules"), default="full",
         help="explicit completion scope; capsules exports a frozen compiler before external model validation",
@@ -485,4 +492,12 @@ def parse_options(
     default_arm: str = "raw_baseline",
     environ: Mapping[str, str] | None = None,
 ) -> RunOptions:
-    return RunOptions(**vars(build_parser(default_arm=default_arm, environ=environ).parse_args(argv)))
+    parser = build_parser(default_arm=default_arm, environ=environ)
+    options = RunOptions(**vars(parser.parse_args(argv)))
+    from .telemetry.token_budget import selection
+
+    try:
+        selection(options)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return options

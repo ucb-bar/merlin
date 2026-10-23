@@ -32,6 +32,28 @@ status, structural evidence and withheld RTL coverage separately; withheld gSIM 
 not an instruction to simulate the whole corpus. Unknown timing is not zero or a
 performance win: save the reproducer and continue independently measurable work.
 
+## Construct capabilities for the whole public corpus
+
+Read PUBLIC_CAPABILITIES.md once, then query PUBLIC_CAPABILITIES.json only for
+relevant families and members. Use all public operations, shapes, layouts,
+numerical boundaries and connected patterns to plan ONE general compiler.
+Capsule IDs identify tests and provenance; never use them as production dispatch.
+Build reusable capabilities rather than repairing cases independently. Validate
+each new capability through one tiny emission/target-consumption/link/Spike/output
+canary, then admit its eligible cases to the rolling queue while construction
+continues elsewhere. Do not wait for the entire compiler before first execution.
+
+Original correctness, calibration prerequisites and scalability can advance
+concurrently. Preserve every declared Spike/gSIM obligation; performance effort
+primarily targets the scalability cohort once executable. Small original cases
+remain regression checks and model evidence, not the main performance objective.
+Use compact family-level feedback and retrieve details on demand. Prefer a bounded
+machine-run search over legal pass choices to one agent turn per parameter trial.
+If exported in the selected library, `pipeline_policy.evaluate_variants` evaluates
+applicable policies on separate IR clones and returns transformed artifacts and
+receipts. Feed those artifacts into real emission and independent checks; a search
+receipt is neither a correctness certificate nor a timing measurement.
+
 ## One evolving compiler, parallel bounded work
 
 Act as one compiler coordinator and delegate bounded, independent tasks to the

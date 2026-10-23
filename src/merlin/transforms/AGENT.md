@@ -17,6 +17,10 @@ Return the selected current output analysis, not a disconnected planned schedule
 Keep each session at its declared IR level; native lowering adapters produce the
 next IR and verify its boundary. Compact counted loops are never expanded merely
 to use a finite schedule pass. Existing host verification obligations remain.
+`evaluate_variants` explores explicit alternatives on distinct source-equivalent
+private IR, yielding each completion separately. It does not rank, grant guards,
+invoke simulators or recover failed partial IR. Unknown predicates remain unknown;
+the caller supplies independent artifact execution and timing ownership.
 
 Keep compilation space proportional to IR size and rank, rather than tensor elements or
 tile count. All covered changes must go through the host verification hook, except an

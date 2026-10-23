@@ -233,6 +233,15 @@ def _check_identity(document: dict) -> None:
 
 def _check_author(document: dict) -> None:
     author = document["author"]
+    if "token_target" in author or "token_reserve" in author:
+        from types import SimpleNamespace
+        from .telemetry.token_budget import selection
+
+        try:
+            selection(SimpleNamespace(author_token_target=author.get("token_target"),
+                                      author_token_reserve=author.get("token_reserve")))
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
     driver = author["driver"]
     if "max_subagents" in author and driver not in SUBAGENT_FLAGS:
         raise ConfigError(f"author.max_subagents has no controller option for driver {driver!r}")
@@ -406,6 +415,9 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
     pairs += [(flag, x(client[key])) for key, flag in CLIENT_FLAGS.get(driver, ()) if key in client]
     if "max_subagents" in author:
         pairs.append((SUBAGENT_FLAGS[driver], str(author["max_subagents"])))
+    for key, flag in (("token_target", "--author-token-target"), ("token_reserve", "--author-token-reserve")):
+        if key in author:
+            pairs.append((flag, str(author[key])))
     pairs += [
         ("--sandbox", author["sandbox"]),
         ("--experiment", identity["experiment"]),

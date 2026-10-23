@@ -21,7 +21,10 @@ def compare(screen: dict, cases: dict, *, qualification: dict | None = None) -> 
     if qualification is not None:
         # A supplied receipt is an exact content-addressed result, not a toggle.
         C.closed(qualification, {"dataset", "report"}, "qualification receipt")
-        expected = V.validate(qualification["dataset"], screen)
+        expected = V.validate(
+            qualification["dataset"], screen,
+            qualification_profile=qualification["report"].get("qualification_profile", "legacy_v1"),
+        )
         if expected != qualification["report"]:
             raise C.ContractError("qualification differs from its original held-out validation")
         authorized = expected["qualified"] is True
@@ -106,7 +109,10 @@ def compare_native(cases: dict, *, qualification: dict | None = None) -> dict:
     if qualification is not None:
         C.closed(qualification, {"dataset", "report"}, "native qualification receipt")
         dataset = qualification["dataset"]
-        validation = V.validate(dataset, prediction_kind="event_timing")
+        validation = V.validate(
+            dataset, prediction_kind="event_timing",
+            qualification_profile=qualification["report"].get("qualification_profile", "legacy_v1"),
+        )
         if validation != qualification["report"]:
             raise C.ContractError("native qualification differs from its original held-out validation")
         if (

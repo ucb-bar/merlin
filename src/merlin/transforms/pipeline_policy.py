@@ -248,3 +248,108 @@ def execute_policy(session: PipelineSession, policy: PipelinePolicy,
                    capabilities=facts.capabilities, resources=facts.resources, graph=facts.graph),
         qualification='pass execution and current-IR custody only; no semantic or hardware proof',
     ))
+
+
+@dataclass(frozen=True)
+class VariantEvaluation:
+    """One completed machine-search alternative; compilation is not qualification."""
+
+    variant: str
+    status: Literal['compiled', 'unsupported', 'unknown', 'failed']
+    result: PolicyResult | None
+    applicability: tuple[bool | None, ...]
+    error: str | None = None
+
+    def summary(self):
+        """Bounded feedback; the caller retains the full IR/receipt separately."""
+        return dict(
+            variant=self.variant, status=self.status, applicability=self.applicability,
+            error=self.error,
+            source_sha256=self.result.receipt['before']['source_sha256'] if self.result else None,
+            output_ir_sha256=self.result.receipt['after']['source_sha256'] if self.result else None,
+            executed_passes=tuple(row['name'] for row in self.result.receipt['passes']) if self.result else (),
+            qualification='compilation only; independent correctness and timing required',
+        )
+
+
+def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
+                      registry: Mapping[str, RegisteredPass], facts: Callable, *, output: str,
+                      context=None, ir_level='structured', clone=None,
+                      fingerprint=None, verify_ir=None):
+    """Yield every applicable explicit variant on a fresh private IR.
+
+    This is deterministic compiler search, with no LLM, simulator or implicit
+    performance model. Variants may select different registered pass orders or
+    separately registered parameterizations. Each yielded result is immediately
+    available to the caller's rolling execution queue. Unsupported/unknown guards
+    never become permissions; failed alternatives discard their partial IR and
+    cannot contaminate later alternatives. No automatic fallback or ranking is
+    inferred from a compilation result.
+
+    ``facts(session)`` derives the existing typed facts for the current clone.
+    Ordinary xDSL modules use their native clone/verification. Alternate counted
+    IR must supply clone, fingerprint and verify_ir adapters without flattening
+    loops. Host transform verification and independent execution obligations are
+    unchanged. The source must remain immutable while this iterator is consumed.
+    """
+    if (type(variants) is not tuple or not 1 <= len(variants) <= 16
+            or any(type(v) is not PipelineVariant for v in variants)
+            or len({v.name for v in variants}) != len(variants)):
+        raise ValueError('search requires one to sixteen uniquely named variants')
+    if not callable(facts) or not isinstance(output, str) or not output:
+        raise ValueError('search requires a facts factory and explicit output analysis')
+    if clone is not None and not callable(clone):
+        raise ValueError('search clone adapter must be callable')
+    registry = dict(registry)
+    metadata = registry_metadata(registry)
+    # Validate the entire search space before any action, including late paths.
+    for variant in variants:
+        if any(name not in registry for name in variant.passes):
+            raise ValueError(f'unknown registered pass in variant {variant.name}')
+        specs = tuple(registry[name].spec for name in variant.passes)
+        validate_pass_order(specs)
+        if any(spec.ir_level != ir_level for spec in specs) or output not in specs[-1].produces:
+            raise ValueError('variant must consume its selected IR level and produce its final output')
+    source_session = PipelineSession(module, context=context, ir_level=ir_level,
+                                     fingerprint=fingerprint, verify_ir=verify_ir)
+    source_stamp = source_session.stamp()
+    retained_clones = []  # Bounded by sixteen; also detects reused mutable clones.
+    for variant in variants:
+        if source_session.stamp() != source_stamp:
+            raise ValueError('search source changed between alternatives')
+        private = clone(module) if clone is not None else module.clone()
+        if private is module or any(private is previous for previous in retained_clones):
+            raise ValueError('search requires a distinct private clone for every alternative')
+        retained_clones.append(private)
+        session = PipelineSession(private, context=source_stamp.context, ir_level=ir_level,
+                                  fingerprint=fingerprint, verify_ir=verify_ir)
+        if session.stamp() != source_stamp:
+            raise ValueError('search clone differs from the selected source or contracts')
+        applicability = ()
+        try:
+            current = facts(session)
+            if type(current) is not PolicyFacts or current.stamp != session.stamp() or session.stamp() != source_stamp:
+                raise ValueError('search facts require unchanged current-IR source and contracts')
+            applicability = tuple(predicate.match(current) for predicate in variant.predicates)
+            status = 'unsupported' if False in applicability else 'unknown' if None in applicability else 'compiled'
+            if status != 'compiled':
+                evaluation = VariantEvaluation(variant.name, status, None, applicability)
+            else:
+                before = session.stamp()
+                for name in variant.passes:
+                    entry = registry[name]
+                    session.run(entry.spec, lambda entry=entry: entry.action(session))
+                result = PolicyResult(session.analysis(output), session.module, dict(
+                    schema='merlin.compiler_pipeline_variant.v1', variant=asdict(variant),
+                    before=asdict(before), after=asdict(session.stamp()), registry=metadata,
+                    passes=tuple(asdict(record) for record in session.records), output=output,
+                    applicability=applicability,
+                    qualification='pass execution and current-IR custody only; no semantic or hardware proof',
+                ))
+                evaluation = VariantEvaluation(variant.name, status, result, applicability)
+        except Exception as exc:
+            evaluation = VariantEvaluation(variant.name, 'failed', None, applicability,
+                                           f'{type(exc).__name__}: {str(exc)[:512]}')
+        if source_session.stamp() != source_stamp:
+            raise ValueError('search source changed during an alternative')
+        yield evaluation

@@ -20,6 +20,9 @@ GATES = {
 }
 
 
+QUALIFICATION_PROFILES = ("strict_per_case_v1", "legacy_v1")
+
+
 def native_prediction(record: dict, case: dict, document: dict) -> tuple[float | None, str | None]:
     """Read an original complete native report; feature regressions never enter here."""
     envelope = record["event_report"]
@@ -95,8 +98,22 @@ def native_prediction(record: dict, case: dict, document: dict) -> tuple[float |
     return C.number(report["estimated_cycles"], "native estimated cycles", positive=True), None
 
 
-def validate(document: dict, screen: dict | None = None, *, prediction_kind: str = "empirical_screen") -> dict:
+def validate(
+    document: dict,
+    screen: dict | None = None,
+    *,
+    prediction_kind: str = "empirical_screen",
+    qualification_profile: str = "strict_per_case_v1",
+) -> dict:
     C.dataset(document)
+    if qualification_profile not in QUALIFICATION_PROFILES:
+        raise C.ContractError("unknown timing qualification profile")
+    gates = dict(GATES)
+    if qualification_profile == "strict_per_case_v1":
+        gates.update(
+            maximum_case_absolute_relative_error=0.04,
+            minimum_declared_case_prediction_coverage=1.0,
+        )
     if prediction_kind not in {"empirical_screen", "event_timing"}:
         raise C.ContractError("select empirical_screen or event_timing explicitly")
     if prediction_kind == "empirical_screen":
@@ -188,7 +205,7 @@ def validate(document: dict, screen: dict | None = None, *, prediction_kind: str
             separation = abs(a["measured_cycles"] - b["measured_cycles"]) / max(
                 a["measured_cycles"], b["measured_cycles"]
             )
-            if separation <= GATES["minimum_measured_separation"]:
+            if separation <= gates["minimum_measured_separation"]:
                 continue
             correct = (
                 (a["predicted_cycles"] - b["predicted_cycles"]) * (a["measured_cycles"] - b["measured_cycles"])
@@ -211,14 +228,18 @@ def validate(document: dict, screen: dict | None = None, *, prediction_kind: str
     median = statistics.median(errors) if errors else None
     p95 = F.quantile(errors, 0.95) if errors else None
     checks = {
-        "rank_agreement": agreement is not None and agreement >= GATES["minimum_rank_agreement"],
-        "median_error": median is not None and median <= GATES["maximum_median_absolute_relative_error"],
-        "p95_error": p95 is not None and p95 <= GATES["maximum_p95_absolute_relative_error"],
-        "eligible_pairs": len(pairs) >= GATES["minimum_eligible_held_pairs"],
-        "mechanism_families": len(by_family) >= GATES["minimum_mechanism_families"],
-        "declared_case_coverage": coverage >= GATES["minimum_declared_case_prediction_coverage"],
+        "rank_agreement": agreement is not None and agreement >= gates["minimum_rank_agreement"],
+        "median_error": median is not None and median <= gates["maximum_median_absolute_relative_error"],
+        "p95_error": p95 is not None and p95 <= gates["maximum_p95_absolute_relative_error"],
+        "eligible_pairs": len(pairs) >= gates["minimum_eligible_held_pairs"],
+        "mechanism_families": len(by_family) >= gates["minimum_mechanism_families"],
+        "declared_case_coverage": coverage >= gates["minimum_declared_case_prediction_coverage"],
         "calibration_intervals": residuals["status"] == "empirical",
     }
+    if qualification_profile == "strict_per_case_v1":
+        checks["every_case_error"] = bool(errors) and all(
+            error <= gates["maximum_case_absolute_relative_error"] for error in errors
+        )
     qualified = all(checks.values())
     return {
         "schema": C.REPORT,
@@ -236,7 +257,8 @@ def validate(document: dict, screen: dict | None = None, *, prediction_kind: str
         else document["domain"]["target_model_sha256"],
         "dataset_sha256": C.digest(document),
         "domain_sha256": C.digest(document["domain"]),
-        "gates": dict(GATES),
+        "gates": gates,
+        **({"qualification_profile": qualification_profile} if qualification_profile != "legacy_v1" else {}),
         "checks": checks,
         "held_source_group_sha256s": sorted({cases[key]["source_group_sha256"] for key in held_ids}),
         "metrics": {
@@ -248,6 +270,8 @@ def validate(document: dict, screen: dict | None = None, *, prediction_kind: str
             "declared_held_cases": len(held_ids),
             "predicted_held_cases": len(predictions),
             "prediction_coverage": coverage,
+            **({"maximum_absolute_relative_error": max(errors) if errors else None}
+               if qualification_profile != "legacy_v1" else {}),
         },
         "families": {
             name: {"eligible_pairs": len(values), "rank_agreement": sum(values) / len(values)}
