@@ -71,7 +71,11 @@ def test_gemmini_software_spec_does_not_admit_integer_shift_as_fused_readout():
     facts = {
         "forms": {
             "elementwise_map": {"fused": fused, "standalone": standalone, "fused_operand_sum": fused_operand_sum},
-            "reduction": {"fused": {**fused, "composed_with": FactField(("contraction", "movement"), True, ())}},
+            # The contract's standalone sum reduction (accumulate-on-load) backs `reduction_standalone`.
+            "reduction": {
+                "fused": {**fused, "composed_with": FactField(("contraction", "movement"), True, ())},
+                "standalone": standalone,
+            },
             "movement": {"standalone": standalone},
         },
         "quantization": {"contraction": FactField(("quantizable",), True, ())},
@@ -129,7 +133,8 @@ def test_generation_screens_mixed_host_and_device_entries_with_their_writer_bind
         "generalization": {"must_accelerate": False, "eligible": False},
     }
     stale = screen_entry(
-        {}, host,
+        {},
+        host,
         defaults={"operand_dtype": binding.operand_dtype, "accumulator_dtype": binding.accum_dtype},
         host_capabilities=capabilities,
     )
@@ -138,12 +143,18 @@ def test_generation_screens_mixed_host_and_device_entries_with_their_writer_bind
     decision = _screen_selected_entry({}, host, binding=binding, host_capabilities=capabilities)
     assert decision["status"] == "unknown"  # Ordered source operands still need the emitted program.
     assert "accum_dtype" not in decision["reason"]
-    assert _screen_selected_entry(
-        {}, {**host, "operand_dtype": "i8"}, binding=binding, host_capabilities=capabilities
-    )["status"] == "unsupported"
-    assert _screen_selected_entry(
-        {}, {**host, "accum_dtype": "i32"}, binding=binding, host_capabilities=capabilities
-    )["status"] == "unsupported"  # An explicit conflicting entry cannot be silently repaired.
+    assert (
+        _screen_selected_entry({}, {**host, "operand_dtype": "i8"}, binding=binding, host_capabilities=capabilities)[
+            "status"
+        ]
+        == "unsupported"
+    )
+    assert (
+        _screen_selected_entry({}, {**host, "accum_dtype": "i32"}, binding=binding, host_capabilities=capabilities)[
+            "status"
+        ]
+        == "unsupported"
+    )  # An explicit conflicting entry cannot be silently repaired.
     accelerator_spec = {
         "status": "reviewed",
         "operations": [
@@ -157,9 +168,10 @@ def test_generation_screens_mixed_host_and_device_entries_with_their_writer_bind
     }
     device = {"op": "matmul", "operand_dtype": "i8", "placement": "accelerator"}
     assert _screen_selected_entry(accelerator_spec, device, binding=binding)["status"] == "admitted"
-    assert _screen_selected_entry(accelerator_spec, {**device, "accum_dtype": "f32"}, binding=binding)[
-        "status"
-    ] == "unsupported"
+    assert (
+        _screen_selected_entry(accelerator_spec, {**device, "accum_dtype": "f32"}, binding=binding)["status"]
+        == "unsupported"
+    )
 
 
 def test_recipe_selects_only_contained_oot_software_spec(tmp_path, monkeypatch):
