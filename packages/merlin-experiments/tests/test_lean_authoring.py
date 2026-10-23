@@ -2,12 +2,32 @@
 
 import threading
 import time
+import subprocess
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase2 import lean_authoring as L
 from merlin_experiments.phase2.contracts import StageGateError
+
+
+def test_author_executable_uses_worker_path_or_explicit_selection(tmp_path, monkeypatch):
+    default = tmp_path / "codex"
+    explicit = tmp_path / "selected-author"
+    for path, marker in ((default, "worker-path"), (explicit, "explicit-selection")):
+        path.write_text(f"#!/bin/sh\nprintf '%s\\n' '{marker}'\n")
+        path.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    for config, marker in (({}, "worker-path"), ({"codex_binary": str(explicit)}, "explicit-selection")):
+        binary = L._codex_binary(config)
+        assert binary.is_absolute()
+        result = subprocess.run([str(binary)], capture_output=True, text=True, check=True, timeout=5)
+        assert result.stdout.strip() == marker
+    with pytest.raises(StageGateError, match="unavailable"):
+        L._codex_binary({"codex_binary": str(tmp_path / "missing")})
+    default.chmod(0o600)
+    with pytest.raises(StageGateError, match="unavailable"):
+        L._codex_binary({})
 
 
 def count(cycles=100):

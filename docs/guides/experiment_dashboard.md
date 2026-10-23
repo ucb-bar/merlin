@@ -3,8 +3,8 @@ title: Tracking experiments — the dashboard and the watch view
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-22
-related: [storage, reproducibility, phase2_test_justification]
+last_verified: 2026-10-23
+related: [storage, reproducibility, artifact_evaluation, phase2_test_justification]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/tracking/terminal.py
   - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_views.py
@@ -65,10 +65,31 @@ page in a browser.
 ## Unified animated terminal console
 
 ```bash
-merlin-experiment watch --task /path/to/campaign-task --operator-private
+merlin-experiment watch --task /path/to/campaign-task
 # Direct module entrypoint, with the research package installed:
-python -m merlin_experiments.tracking.terminal --task /path/to/campaign-task --operator-private
+python -m merlin_experiments.tracking.terminal --task /path/to/campaign-task
 ```
+
+Install `packages/merlin-experiments` into the same environment as Merlin and
+run on the Linux worker (for example through SSH). See the
+[artifact setup guide](artifact_evaluation.md) for a fresh machine. No browser,
+web service or additional terminal package is required. For a plain snapshot:
+
+```sh
+python -m merlin_experiments.tracking.terminal \
+  --task /path/to/campaign-task --once --no-color --width 160 --height 55
+```
+
+`--task` names the managed campaign directory, not `out/runs/.../<run-id>`.
+Discovery reads `.tmp/*/process/owner.json` and the exact hash-bound selection
+referenced there. `--selection /absolute/path/selection.json` restricts the
+matching owner; it does not manufacture a missing owner or bypass a hash check.
+If these records are absent or moved independently, `selection_unavailable`
+means the viewer cannot identify the campaign, not that zero capsules passed.
+Use `merlin-experiment watch /path/to/run --once` or
+`merlin-experiment dashboard /path/to/run` for retained run-directory evidence
+without those live-owner records. Such static views cannot reconstruct past
+per-core utilization. Do not fabricate live ownership for an archived run.
 
 One screen contains the per-core timeline, current utilization and actions, agent
 parent/child tree, weakest recorded floor-to-cycle ratios, recent optimization
@@ -111,6 +132,13 @@ timeouts, and progress records older than self-check responses. Reads are bounde
 absence in this inventory is not proof of campaign-wide absence. A repeated case
 failure is diagnostic grouping, not evidence that unrun cases fail. Missing stage
 timing remains unknown. These operator alerts never change grading or dispatch.
+
+The class progress display distinguishes the 153 original correctness capsules,
+20 calibration candidates and 77 scalability/performance cases when that roster
+is selected. L2 and L3 remain separate obligations. A historical union, a current
+snapshot count and the diagnostic snapshot/capsule-pair count are not interchangeable.
+Performance rounds and roofline/model fields only appear when their underlying
+records exist. Missing or stale values remain unavailable rather than zero.
 
 `--operator-private` enables operator details; keep this display outside the
 compiler author sandbox. Without it, unqualified private identities and records

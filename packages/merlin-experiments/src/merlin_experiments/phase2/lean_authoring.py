@@ -31,6 +31,17 @@ from .contracts import StageGateError, canonical_json, mapping_file, write_json
 from .edit_authority import FrozenEditAuthority
 from .retained_revisions import RetainedRevisionStore, executing_revisions, source_inventory
 
+
+def _codex_binary(config):
+    """Resolve an explicit executable or the worker's PATH before runtime pinning."""
+    selected = config.get("codex_binary", "codex")
+    if not isinstance(selected, (str, Path)) or not str(selected).strip():
+        raise StageGateError("codex_binary must name an executable")
+    resolved = shutil.which(str(selected))
+    if resolved is None:
+        raise StageGateError("Codex executable unavailable; set codex_binary or install codex on PATH")
+    return Path(resolved).resolve(strict=True)
+
 PROTOCOL = "merlin.phase2.lean_native_exploration.v1"
 WORKFLOW = "lean-native-exploration-v1"
 DISCLAIMER = dict(qualification="UNQUALIFIED", source_effects="PENDING", formal_admission=False,
@@ -396,7 +407,7 @@ def run_lean_authoring(config, *, evaluate_candidate, sandbox_inputs=None):
     )
     (workspace / "TASK.md").write_text(prompt)
     (stage / "prompt.txt").write_text(prompt)
-    binary = Path(config.get("codex_binary", "/home/ubuntu/.local/share/codex-0.162.0/bin/codex"))
+    binary = _codex_binary(config)
 
     def policy(ws, binds=()):
         original = AW.outer_codex_policy(ws, agent_inputs, binds, target, functional_base=baseline.source,

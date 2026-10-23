@@ -369,3 +369,28 @@ merlin/tests/data/lit/.lit_test_times.txt
 /merlin/experiments/voyager_h2h/LESSONS.md
 /merlin/experiments/voyager_h2h/STATUS.md
 /merlin/experiments/voyager_h2h/PLANE_B.md
+
+# Local generated results and retired deployment records are not source inputs.
+/out/**
+/experiments/reference-data/el4-performance-contribution/
+/experiments/reference-data/compiler-construction-20261023/
+/experiments/reference-data/readiness-execution-20261023/
+/experiments/reference-data/el4-artifact-release/READINESS.md
+/experiments/reference-data/el4-artifact-release/compiler-review.json
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/README.md
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/conv.c
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/matmul_ws.c
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/mvin_mvout.c
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/padded.c
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/rtl
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/README.md
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/isa_include
+/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/rtl
+/merlin/experiments/capsule_bench/targets/gemmini_g3arm97/_qa_ws
+/merlin/experiments/capsule_bench/targets/gemmini_universal/contracts/hwbringup_gemmini_universal_v0/isa_include
+
+# Local historical runtime experiments and continuation declarations.
+/examples/gemmini/phase2/el4_20261018/runtime_transport_experiment/
+/experiments/phase2_drafts/evidence-handoff.json
+/experiments/reference-data/joint-ready-epoch/

@@ -1,8 +1,8 @@
-# Compiler changes to investigate during fresh construction
+# Compiler contribution map
 
-Use this map with [the construction rehearsal](construction_rehearsal.md) and
-[the observed usage ledger](rehearsal_findings_20261023.md). It describes possible
-change locations, not a mandatory pass order or a supplied target implementation.
+Use this map with [the contributor guide](../../docs/guides/compiler_contributions.md)
+and [the construction workflow](construction_rehearsal.md). It describes change
+locations, not a mandatory pass order or a supplied target implementation.
 The author starts with an empty target backend and the selected public library.
 Only modules actually included in that selection are available to the author;
 an API existing in this repository does not establish that it was staged or used.
@@ -79,40 +79,21 @@ record that result and the specific representation or adapter mismatch. A single
 successful tiny execution cannot establish faster construction, better generality
 or a performance advantage for the full compiler.
 
-## Initial observed gaps
+## Supported composition boundaries
 
-At the early rehearsal cutoff, the author consumed generated typed encodings and
-the shared LLVM builder, but still authored payloads, loop choices and completion.
-Its opaque target program envelope did not expose a demonstrated typed schedule
-pipeline. The frontend duplicated some semantic admission, epilogues were absent,
-and the policy selector changed a receipt without changing emitted code. These
-are observed integration gaps, not evidence that every corresponding library
-needs redesign. First connect one useful shared product to emission, then measure
-the cost and benefit before expanding the abstraction.
+`DenseSourceResult.emit_llvm` uses the existing compact program and the caller's
+LLVM builder; it does not introduce a second scheduling algorithm. The
+[LLVM integration example](source_dense_llvm.md) documents the callback boundary.
+The target adapter still owns instruction implementation and completion.
 
-A later observation supersedes the absence of shared scheduling: request 4
-consumes `block_schedule.schedule_contraction` into emitted commands and passes
-the tiny numerical and structural checks. The author still wraps that one-tile
-schedule in its own compact loops, handling tails, accumulation and deferred
-stores manually. The next concrete question is whether the existing source-bound
-compact schedule route can replace that manual composition, or which adapter or
-representation extension it needs. Required gSIM and a matched optimization
-comparison were not established at this observation.
+`compile_connected_region` and `ConnectedProgram.ordered_invocations()` retain
+source-owned bindings across checked dense products and pointwise images.
+[Connected host code generation](connected_host.md) emits an unfused synchronous
+sequence with explicit buffer and stage contracts. This does not establish
+cross-stage device fusion, target ABI qualification or complete-model execution.
 
-The subsequent shared-library change adds `DenseSourceResult.emit_llvm` and a
-thin `FnBuilder` adapter over the existing compact program; it does not add a
-second scheduling algorithm. [The executable integration example](source_dense_llvm.md)
-documents the callback boundary. Independent native LLVM tests cover tails,
-continuation and final stores, including a deliberately wrong callback rejected
-by numerical comparison. This fixes a library seam for future selections;
-use by the running author and a target performance benefit are separate evidence.
-
-Mixed composition now has `compile_connected_region` and
-`ConnectedProgram.ordered_invocations()`: checked dense products and pointwise
-images retain source-owned bindings for ordinary emission. The separate
-synchronous `execute()` interface tests persistent buffers, fan-out and all
-visible outputs, with explicit physical backing origins. The
-[code generation example](connected_composition.py) consumes those same native
-products. The backend still supplies the target pointer/image launch ABI; this
-is a reusable unfused composition path, not demonstrated cross-stage device
-fusion or complete-model execution.
+`periodic_effects.check_drained_period` checks bounded storage/completion behavior
+for independently drained blocks while preserving counted emission. It does not
+prove arbitrary asynchronous recurrence or the complete numerical computation.
+These narrower contracts should be extended only with corresponding semantics
+and validation, rather than treated as complete target capabilities.
