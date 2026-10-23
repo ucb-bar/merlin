@@ -15,6 +15,7 @@ from .capability_source import analyze
 SCHEMA = 'merlin.public_capability_inventory.v1'
 FILENAME = 'PUBLIC_CAPABILITIES.json'
 SUMMARY = 'PUBLIC_CAPABILITIES.md'
+QUERY = 'capability_query.py'
 
 
 def _digest(value):
@@ -144,7 +145,8 @@ def summary(inventory):
     if len(inventory['families']) > 24:
         lines.append(f"Additional families: {len(inventory['families']) - 24}; inspect the JSON inventory.")
     lines += ['', f'Per-case shapes, dtypes, graph requirements and engine obligations: `{FILENAME}`.',
-              'Read the selected family/member with a small JSON query; do not paste the entire catalog into context.',
+              f'List groups: `python {QUERY} --groups`; inspect `--group PREFIX` or `--capsule ID`.',
+              'Use --offset/--limit for bounded pages; do not paste the entire catalog into context.',
               'Unknown source analysis remains an implementation/readiness gap, not evidence of an empty graph.',
               'Family grouping grants no grade, physical dispatch, model fit or capsule exemption.', '']
     return '\n'.join(lines)
@@ -154,9 +156,11 @@ def stage(workspace, run_dir, inventory):
     """Stage fresh author inputs before the existing task seal; never on resume."""
     data = json.dumps(inventory, sort_keys=True, indent=2, allow_nan=False) + '\n'
     brief = summary(inventory)
+    query_script = Path(__file__).with_name(QUERY).read_bytes()
     block = ('\n\n## Build against the whole public corpus\n\n'
              f'Read `{SUMMARY}` first. It summarizes {inventory["total"]} selected public cases; '
-             f'query `{FILENAME}` for the relevant families and member details. '
+             f'Use `python {QUERY} --groups`, `--group PREFIX` or `--capsule ID` '
+             f'for bounded queries over `{FILENAME}`. '
              'Build one reusable compiler around the required semantic capabilities. '
              'Test a tiny end-to-end case as each capability becomes executable; continue independent '
              'construction while immutable snapshots are evaluated. Calibration prerequisites and large '
@@ -167,6 +171,8 @@ def stage(workspace, run_dir, inventory):
     for root in (Path(workspace), Path(run_dir)):
         (root / FILENAME).write_text(data)
         (root / SUMMARY).write_text(brief)
+        (root / QUERY).write_bytes(query_script)
+        (root / QUERY).chmod(0o444)
         (root / 'TASK.md').write_text(existing + block)
     return {'schema': SCHEMA, 'sha256': hashlib.sha256(data.encode()).hexdigest(),
             'total': inventory['total'], 'cohorts': inventory['cohorts']}

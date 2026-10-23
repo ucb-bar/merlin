@@ -4,7 +4,7 @@ kind: guide
 status: draft
 owner: experiments
 last_verified: 2026-10-23
-related: [getting_started, gsim_worker_setup, phase0_phase1_setup, ../reference/compiler_optimization_workflow, ../design/joint_campaign_execution]
+related: [getting_started, gsim_worker_setup, phase0_phase1_setup, public_capability_planning, ../reference/compiler_optimization_workflow, ../design/joint_campaign_execution, ../design/compiler_coevolution_study]
 code_refs:
   - experiments/reference-data/el4-artifact-release/provenance.json
   - build_tools/scripts/audit_compiler_integration.py
@@ -47,6 +47,14 @@ Optimize primarily for the larger workloads. Do not count the repeated execution
 of one case or results from incompatible compiler revisions as more capsules
 passed by one compiler. Keep L2, L3, placement, timing-model admission and final
 physical validation visible as distinct gates.
+
+New joint preparations expose a compact capability inventory for all public
+sources before authoring. Use it to organize compiler work by semantics, with
+early executable canaries and continuous independent evaluation. They also
+record a 40M all-author soft token target (including cached input), with an 8M
+integration/repair reserve. The [study design](../design/compiler_coevolution_study.md)
+defines accounting, strict timing qualification and future comparisons; none of
+those comparisons is launched merely by installing this package.
 
 ## Worker and dependency setup
 

@@ -85,4 +85,4 @@ def project(result, performance):
                 next_priority=priority, next_owner=owner, next_action=action,
                 missing_rtl_is_numerical_failure=False, additional_gsim_requested=False,
                 certification_unchanged=True,
-                rtl_policy='Unobserved required RTL tiers remain uncertified. Use gSIM only for an admitted mechanism question, not to clear every development row.')
+                rtl_policy='Unobserved required RTL tiers remain uncertified. Original required gSIM checks remain mandatory; additional calibration gSIM needs an admitted mechanism question.')

@@ -14,13 +14,15 @@ import math
 from pathlib import Path
 
 from merlin.runtime import _native_files as F
-from merlin_timing.fitting import design_check, quantile
+from merlin_timing.fitting import design_check
 
 from . import joint_control, joint_measurements
 from .feedback import joint_performance as PERF
 from ..phase2.contracts import document_sha256
 
-SCHEMA = "merlin.joint_native_calibration_round.v1"
+SCHEMA = "merlin.joint_native_calibration_round.v2"
+
+from .joint_calibration_validation import GATES, local_validation
 
 
 def _write(path, value):
@@ -114,8 +116,7 @@ def freeze_round(*, selection_pin, cases, parameters, output, question, stage="b
         raise ValueError("training and held validation each need two independent source groups")
     value = dict(schema=SCHEMA, selection=selection_pin, runtime=selection["runtime"],
                  cases=cases, parameters=parameters, question=question, stage=stage,
-                 gates=dict(max_p95=0.30, min_rank_agreement=0.90, min_separation=0.05,
-                            minimum_train_improvement=0.02, max_condition=1000),
+                 gates=dict(GATES),
                  scope="local native-price calibration; broader model qualification remains separate")
     from .feedback.joint_timing_selection import choose
     choices = [choose(selection, PERF.capsule_identity(PERF.selected_capsule(selection, _capsule(c["capsule"])))) for c in cases]
@@ -254,32 +255,6 @@ def _reopen_physical(receipt, record, backend):
     return receipt["cycles"]
 
 
-def local_validation(cases, labels, incumbent, candidate, *, gates):
-    """Held-only local accuracy and within-workload variant ordering; no broad grant."""
-    held = [c for c in cases if c["split"] == "held"]
-    errors = lambda predictions: [abs(predictions[c["id"]] / labels[c["id"]] - 1) for c in held]
-    before, after = errors(incumbent), errors(candidate)
-    pairs = []
-    for a, b in itertools.combinations(held, 2):
-        if a["capsule"]["sha256"] != b["capsule"]["sha256"]:
-            continue
-        x, y = labels[a["id"]], labels[b["id"]]
-        if abs(x-y) / max(x,y) <= gates["min_separation"]:
-            continue
-        px, py = candidate[a["id"]], candidate[b["id"]]
-        pairs.append((x-y)*(px-py) > 0)
-    p95, old_p95 = quantile(after, .95), quantile(before, .95)
-    agreement = sum(pairs)/len(pairs) if pairs else None
-    admitted = (p95 <= gates["max_p95"] and p95 <= old_p95
-                and sum(after) <= sum(before) and agreement is not None
-                and agreement >= gates["min_rank_agreement"])
-    return dict(status="limited_calibrated_provisional" if admitted else "not_promoted",
-                admitted=admitted, p95=p95, incumbent_p95=old_p95,
-                materially_separated_pairs=len(pairs), rank_agreement=agreement,
-                timing_qualified=False, broad_qualification=False,
-                reason="local held-source accuracy and variant ordering only; full qualification gates unchanged")
-
-
 def _collect_labels(cases, *, root, plan, backend, base_model, labels):
     for case in cases:
         record = json.loads((root / "probe-0" / (case["id"] + ".json")).read_text())
@@ -304,6 +279,8 @@ def run_round(plan_pin, *, context, backend, output):
     plan = PERF._read(plan_pin)
     if plan.get("schema") != SCHEMA:
         raise ValueError("unsupported calibration plan")
+    if plan.get("gates") != GATES:
+        raise ValueError("calibration execution requires the current strict per-case gates")
     # Denial also covers retained labels and a previously completed selection.
     # Run before native sensitivity work or reopening any terminal result.
     from .joint_calibration_admission import assert_allowed

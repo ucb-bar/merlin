@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from merlin_experiments.phase1 import joint_calibration as C
 
-GATES=dict(max_p95=.30,min_rank_agreement=.90,min_separation=.05,minimum_train_improvement=.02,max_condition=1000)
+GATES=dict(C.GATES)
 
 
 def cases():
@@ -99,9 +99,9 @@ def test_native_probe_before_physical_fit_and_held_validation(tmp_path,monkeypat
 
 def test_supervisor_idle_accepts_pin_metadata_without_allocating_runtime(tmp_path, monkeypatch):
     from merlin_experiments.phase1 import joint_calibration_service as S
-    selection = C._write(tmp_path / 'selection.json', {'runtime': {}})
+    selection = C._write(tmp_path / 'selection.json', {'runtime': {}, 'members': {}})
     profile = C._write(tmp_path / 'profile.json', {'members': {}, 'performance_selection': selection})
-    monkeypatch.setattr(S.joint_control, 'selected', lambda: {'policy': {'native_calibration': profile}})
+    monkeypatch.setattr(S.joint_control, 'selected', lambda: {'policy': {'native_calibration': profile, 'gsim': {'witness_capsules': []}}})
     result = S.step(profile_pin={k: profile[k] for k in ('path', 'sha256')},
                     state_path=tmp_path / 'run' / 'joint_campaign.json', context=None, output=tmp_path / 'service')
     assert result['status'] == 'waiting_for_independent_variants'
@@ -111,7 +111,7 @@ def test_supervisor_idle_accepts_pin_metadata_without_allocating_runtime(tmp_pat
 
 def test_supervisor_refuses_unselected_profile(tmp_path, monkeypatch):
     from merlin_experiments.phase1 import joint_calibration_service as S
-    selection = C._write(tmp_path / 'selection.json', {'runtime': {}})
+    selection = C._write(tmp_path / 'selection.json', {'runtime': {}, 'members': {}})
     profile = C._write(tmp_path / 'profile.json', {'members': {}, 'performance_selection': selection})
     monkeypatch.setattr(S.joint_control, 'selected', lambda: {'policy': {'native_calibration': dict(profile, sha256='other')}})
     with pytest.raises(ValueError, match='immutable campaign policy'):
@@ -129,3 +129,23 @@ def test_bootstrap_rolls_into_bounded_refinement(tmp_path, monkeypatch, consumed
     monkeypatch.setattr(C.joint_measurements,'authorize',lambda names, **kwargs: calls.append((names,kwargs)))
     C._authorize_if_needed('current', {'stage':'bootstrap','question':'independent service price'})
     assert calls == [(['current'], {'question':'independent service price','stage':'refinement'})]
+
+
+def test_one_bad_case_and_missing_cases_cannot_promote_strict_round():
+    rows=cases();labels={r['id']:100+i*20 for i,r in enumerate(rows)}
+    incumbent={k:v*1.4 for k,v in labels.items()}
+    candidate=dict(labels);candidate['c7']*=1.05
+    result=C.local_validation(rows,labels,incumbent,candidate,gates=GATES)
+    assert not result['admitted'] and result['maximum_case_error'] > .04
+    del candidate['c7']
+    result=C.local_validation(rows,labels,incumbent,candidate,gates=GATES)
+    assert not result['admitted'] and result['declared_held_cases']==4
+    assert result['evaluated_held_cases']==3 and result['refusals']
+
+
+@pytest.mark.parametrize('bad', [float('nan'),float('inf'),True,0,-1])
+def test_invalid_cycle_observations_remain_outstanding(bad):
+    rows=cases();labels={r['id']:100+i*20 for i,r in enumerate(rows)}
+    candidate=dict(labels);candidate['c7']=bad
+    result=C.local_validation(rows,labels,labels,candidate,gates=GATES)
+    assert not result['admitted'] and not result['all_declared_cases_evaluated']

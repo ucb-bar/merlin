@@ -241,6 +241,11 @@ def _errata_section(run_dir: Path) -> list[str]:
 
 def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> str:
     """Markdown brief for the round ABOUT TO START (``rnd`` = the round just graded)."""
+    from .capability_brief import build_if_selected
+
+    joint = build_if_selected(run_dir, ws, errata=_errata_section(run_dir), notes_stale=notes_stale)
+    if joint is not None:
+        return joint
     verdicts = _load_verdicts(run_dir)
     L = [
         "# Round brief — your progress so far (READ THIS FIRST)",

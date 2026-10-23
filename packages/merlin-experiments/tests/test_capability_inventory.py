@@ -139,6 +139,8 @@ def test_staged_inventory_is_sealed_and_legacy_treatment_stays_compatible(tmp_pa
     C.stage(ws, run, v)
     record = R.treatment_snapshot_record(ws, run, bundle, ())
     assert len([r for r in record['files'] if 'PUBLIC_CAPABILITIES' in r['name']]) == 4
+    assert len([r for r in record['files'] if C.QUERY in r['name']]) == 2
+    assert (ws / C.QUERY).stat().st_mode & 0o222 == 0
     assert (ws / 'TASK.md').read_bytes() == (run / 'TASK.md').read_bytes()
     assert C.FILENAME in (ws / 'TASK.md').read_text()
     (ws / C.FILENAME).write_text('{}')

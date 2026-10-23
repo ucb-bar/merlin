@@ -354,7 +354,7 @@ def treatment_snapshot_record(ws: Path, run_dir: Path, bundle_dir: Path, resolve
     specs.extend((f"served/{name}", ws / name, False) for name in MERLIN_WS_DOCS)
     # Fresh corpus guidance is sealed alongside TASK.md. Historical treatments
     # without it retain their original record shape; never regenerate on resume.
-    capability_docs = ("PUBLIC_CAPABILITIES.json", "PUBLIC_CAPABILITIES.md")
+    capability_docs = ("PUBLIC_CAPABILITIES.json", "PUBLIC_CAPABILITIES.md", "capability_query.py")
     if any((root / name).exists() or (root / name).is_symlink()
            for root in (ws, run_dir) for name in capability_docs):
         specs.extend((f"{kind}/{name}", root / name, True)

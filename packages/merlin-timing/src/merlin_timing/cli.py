@@ -18,6 +18,7 @@ from . import native_diagnostics as N
 from . import native_sensitivity as S
 from . import replay as R
 from . import validation as V
+from . import memory_reference as M
 
 
 def parser() -> argparse.ArgumentParser:
@@ -108,6 +109,13 @@ def parser() -> argparse.ArgumentParser:
     )
     capacities.add_argument("--profile", required=True)
     capacities.add_argument("--facts", required=True, help=f"{K.SCHEMA} document")
+    memory = commands.add_parser("memory-reference-prepare", help="verify pinned memory sources and explicit settings")
+    memory.add_argument("--selection", required=True)
+    memory.add_argument("--source-root", required=True)
+    boundary = commands.add_parser("memory-boundary-compare", help="compare target-cycle memory adapter traces")
+    boundary.add_argument("--reference", required=True)
+    boundary.add_argument("--candidate", required=True)
+    boundary.add_argument("--maximum-cycles", type=int, default=1_000_000)
     for command in (
         fit,
         validate,
@@ -124,6 +132,8 @@ def parser() -> argparse.ArgumentParser:
         design,
         handoff,
         capacities,
+        memory,
+        boundary,
     ):
         command.add_argument("--output", required=True)
     return root
@@ -132,7 +142,11 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
     try:
-        if arguments.command == "fit":
+        if arguments.command == "memory-reference-prepare":
+            result = M.prepare(C.read(arguments.selection), source_root=arguments.source_root)
+        elif arguments.command == "memory-boundary-compare":
+            result = M.compare(arguments.reference, arguments.candidate, maximum_cycles=arguments.maximum_cycles)
+        elif arguments.command == "fit":
             result = F.fit(
                 C.read(arguments.dataset),
                 include_fixed=not arguments.no_fixed,

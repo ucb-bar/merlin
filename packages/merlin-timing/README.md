@@ -120,3 +120,25 @@ scope; this arithmetic policy cannot establish simulator equivalence.
 median/p95 gates for old report replay. Comparison receipts retain their selected
 profile; historical reports without a profile replay as legacy. A legacy report
 is not evidence of the strict 4% claim.
+
+### Memory reference and adapter checks
+
+`spike-timing memory-reference-prepare --selection selection.json --source-root
+SOURCE_ROOT --output prepared.json` reopens a `merlin.memory_reference_selection.v1`
+selection. It binds the configuration, AXI widths/limits/address range, original
+build receipt, timing/DRAM/LLC sources and explicit `+mm_` runtime settings by
+SHA256. It never guesses missing settings or infers deployed equivalence from a
+configuration name. Pass every deployed runtime override in the selected settings
+file, not merely the elaborator's printed defaults.
+
+`spike-timing memory-boundary-compare --reference reference.jsonl --candidate
+candidate.jsonl --output comparison.json` compares every recorded target cycle,
+including ready/valid backpressure. Headers bind model, initial state, timing
+scope, stimulus, engine and typed ports. Validity-qualified response payloads
+are compared only when meaningful; valid/ready signals are always compared.
+Truncated traces, changed inputs, missing cycles and different identities refuse.
+A matching trace grants no complete-model, hardware or 4% timing qualification.
+
+The standalone FASED wrapper and boundary-driver generator live in
+`build_tools/gsim/reference/`. They reuse existing FireSim timing RTL; the Python
+reference tools supply no substitute timing model or fitted memory prices.

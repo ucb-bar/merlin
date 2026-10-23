@@ -347,3 +347,6 @@ analysis and source/numeric/layout grouping; no oracle arrays or private sources
 are inputs. Canaries are advisory, never coverage or dispatch authority. Seal both
 served and archived inventory/summary bytes in the ordinary treatment record;
 resume must not regenerate them. The short task points to on-demand details.
+`capability_query.py` is served byte-for-byte as a standard-library-only, bounded,
+read-only helper. It opens only its adjacent inventory and has no private imports
+or dispatch authority; seal its served/archived bytes with the guidance.

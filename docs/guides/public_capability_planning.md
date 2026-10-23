@@ -8,6 +8,7 @@ related: [conditional_compiler_pipelines, ../reference/compiler_optimization_wor
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/capability_inventory.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/capability_source.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/capability_query.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/session.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/run_inputs.py
 ---
@@ -28,19 +29,21 @@ only an unresolved-whitelist count, never a new public member or dispatch grant.
 
 ## Read requirements without flooding context
 
-Start with the Markdown summary, then select a family or member from JSON:
+Start with the Markdown summary, then use the staged read-only helper:
 
-```python
-import json
-from pathlib import Path
-
-inventory = json.loads(Path("PUBLIC_CAPABILITIES.json").read_text())
-print(inventory["cohorts"])
-# Choose a name from the summary's family list.
-family = next(iter(inventory["families"]))
-for name in inventory["families"][family][:3]:
-    print(name, inventory["members"][name])
+```sh
+python capability_query.py --groups
+python capability_query.py --group PREFIX
+python capability_query.py --capsule PUBLIC_ID
+python capability_query.py --group PREFIX --offset 40 --limit 40
 ```
+
+The helper uses only Python's standard library and its adjacent public inventory.
+It has no arbitrary input-path option and no compiler, grader or oracle imports.
+Requests are paged and output is bounded to 32 KiB. Capsule details report graph
+counts; full graph structure stays in the JSON for an explicit targeted query.
+The served and archived helper bytes are sealed with the inventory. Nothing in
+the helper can schedule execution or grant a grade.
 
 Records include public input shapes/dtypes/layout requirements, exact declared
 numerical policy, source operation counts, graph edges and each case's engine
