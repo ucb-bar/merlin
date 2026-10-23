@@ -170,7 +170,9 @@ are preserved. This delivery adds comparison files/tests/docs to EL4 and does
 not rewrite its compiler/campaign code. A generic optional capture export
 now preserves the exact prepared Torch program for external compiler intake.
 
-TVM's local delivery branch is `gemmini/curated-handoff`, based on Apache v0.19.0
+TVM's pullable delivery is
+[`grammy117/tvm:gemmini/curated-handoff`](https://github.com/grammy117/tvm/tree/gemmini/curated-handoff)
+at `5b4c36da713234e48a0deb35365b42a26c196707`, based on Apache v0.19.0
 `c4dc0c29ff81ddae688da24625a603da3b4a2c0e`. Its historical measured source is
 `87f07883b65ee55dbd1b93f665aaab87cd8a1e50` on `gemmini/metaschedule-dse`.
 See the final handoff artifact for delivery commit IDs, bundles, hashes and tests.
