@@ -212,8 +212,8 @@ def get_model_and_inputs(*, checkpoint_dir, model2mlir_root, corpus_path,
             (prefill_tokens, decode_tokens) not in ((8, 3), (128, 32)) or quality_corpus_path is not None):
         raise ValueError("Synthetic feasibility requires explicit 8+3 or 128+32 and no quality corpus")
     if (type(prefill_tokens) is not int or type(decode_tokens) is not int
-            or prefill_tokens < 1 or decode_tokens < 2):
-        raise ValueError("Require a positive prefill and at least two recurrent decode steps")
+            or prefill_tokens < 1 or decode_tokens < 1):
+        raise ValueError("Require a positive prefill and at least one decode step")
     if type(cpu_threads) is not int or not 1 <= cpu_threads <= 8:
         raise ValueError("cpu_threads must be between 1 and 8")
     if prefill_tokens + decode_tokens > 2048:

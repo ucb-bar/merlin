@@ -54,7 +54,7 @@ class TinyLlamaArtifactTests(unittest.TestCase):
         base = {"checkpoint_dir": "/missing", "model2mlir_root": "/missing",
                 "corpus_path": "/missing"}
         for changes in ({"precision": "float16"}, {"prefill_tokens": 0},
-                        {"decode_tokens": 1}, {"cpu_threads": 32},
+                        {"decode_tokens": 0}, {"cpu_threads": 32},
                         {"prefill_tokens": 2048, "decode_tokens": 2}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 FACTORY.get_model_and_inputs(**{**base, **changes})
@@ -84,6 +84,13 @@ class TinyLlamaArtifactTests(unittest.TestCase):
     def test_restricted_artifact_path_is_rejected_before_read(self):
         with self.assertRaisesRegex(ValueError, "Restricted path component"):
             FACTORY.checkpoint_artifacts("/tmp/" + "ham" + "mer" + "-fixture")
+
+    def test_single_decode_admitted_before_checkpoint_gate(self):
+        with mock.patch.object(FACTORY, "checkpoint_artifacts", side_effect=FileNotFoundError("checkpoint")) as gate:
+            with self.assertRaisesRegex(FileNotFoundError, "checkpoint"):
+                FACTORY.get_model_and_inputs(checkpoint_dir="/missing", model2mlir_root="/missing",
+                                             corpus_path="/missing", prefill_tokens=16, decode_tokens=1)
+        gate.assert_called_once_with("/missing")
 
 
 try:
@@ -711,7 +718,7 @@ assert modules[0]._FIXED_TREE_OPS==modules[1]._FIXED_TREE_OPS
             self.assertEqual(checked["checked_codes"], values.size)
             self.assertEqual(codes[2].tolist(), [127, 8, 9, -9])
 
-    def hf_cache_fixture(self, arithmetic_policy=None):
+    def hf_cache_fixture(self, arithmetic_policy=None, prefill_tokens=4, decode_tokens=8):
         from transformers import LlamaConfig, LlamaForCausalLM
         from transformers.models.llama.modeling_llama import LlamaRMSNorm, LlamaAttention
         from types import SimpleNamespace
@@ -732,8 +739,17 @@ assert modules[0]._FIXED_TREE_OPS==modules[1]._FIXED_TREE_OPS
                     parent, _, leaf = name.rpartition(".")
                     replacement = INTEGER.FixedTreeRMSNorm(module) if isinstance(module, LlamaRMSNorm) else INTEGER.FixedTreeAttention(module, **attention_options)
                     setattr(lm.get_submodule(parent), leaf, replacement)
-        capture = SimpleNamespace(lm=lm, tokens=torch.arange(12).reshape(1, -1), prefill_tokens=4, decode_tokens=8, provenance=provenance)
+        capture = SimpleNamespace(lm=lm, tokens=torch.arange(prefill_tokens + decode_tokens).reshape(1, -1), prefill_tokens=prefill_tokens, decode_tokens=decode_tokens, provenance=provenance)
         return causal, capture
+
+    @unittest.skipUnless(os.environ.get("TVM_SESSION_MODEL2MLIR"), "Optional pinned cache-wrapper integration disabled")
+    def test_sixteen_prefill_single_decode_preserves_cache_and_reset(self):
+        causal, capture = self.hf_cache_fixture(prefill_tokens=16, decode_tokens=1)
+        first = FACTORY.validate_reference_stages(capture, causal, torch)
+        second = FACTORY.validate_reference_stages(capture, causal, torch)
+        self.assertEqual([row["tokens"] for row in first["checks"]], [16, 17])
+        self.assertEqual(first, second)
+        self.assertEqual(first["checks"][-1]["position"], [17, 17])
 
     @unittest.skipUnless(os.environ.get("TVM_SESSION_MODEL2MLIR"), "Optional pinned cache-wrapper integration disabled")
     def test_real_hf_fixed_tree_cache_dispatch_and_unchanged_gate(self):

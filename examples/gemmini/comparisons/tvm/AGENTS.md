@@ -6,10 +6,14 @@ This directory is a trusted comparison edge, not the generated compiler candidat
 
 ## Goal and current boundary
 
-Run the actual selected EL4 ResNet50, TinyLlama and SmolVLA sessions end to end
-on queued FireSim, with unchanged quality/correctness gates and complete timing
-and memory attribution. Historical host runs, INT8 cutouts and synthetic operator
-packages are bounded evidence. They do not finish this goal.
+Current user selection: prepare a pullable handoff for another agent to run full
+ResNet50 and full TinyLlama **16-token prefill + one decode** on queued FireSim.
+Use EL4 recipes with fresh public-data calibration and new reference hashes.
+Do not block this new preliminary profile on the old private numerical bundle.
+SmolVLA and exact reproduction of the old 32+32 run are outside this handoff.
+The README's first sections supersede historical scope/defaults below. No local
+FireSim execution is requested. Historical host runs, cutouts and synthetic
+operator packages remain bounded evidence.
 
 The current source delivery provides real semantic JSON intake for tuning and
 compilation, session route/reference planners and `build_package_session.py`.
@@ -43,11 +47,12 @@ SmolVLA numerical closure remain explicit execution prerequisites.
    Create outputs with `merlin.common.artifacts.new_product/new_measurement`.
 2. Reconcile actual selected EL4 inputs and numerical policy against
    `examples/gemmini/numerics/models.yaml` and the frozen run contract.
-   TinyLlama defaults in the comparison factory are diagnostic; select full
-   prefill/decode explicitly. SmolVLA requires dataset observations, all stages,
+   TinyLlama defaults in the comparison factory are diagnostic; select 16+1 and
+   cache capacity 17 explicitly. For future SmolVLA work, require all stages,
    ten recurrent updates and every padded action output; report physical channels
    separately. Do not substitute the TVM factories' numerical recipes for EL4's
-   frozen capture scales and integerized IR.
+   numerical policy. Fresh scales are authorized for this new profile; preserve
+   the recipes and record the new calibration/input/reference identities.
 3. Save semantic stage JSON with `--save-programs`, hash it and run the complete
    host reference/candidate session checks. Import-only does not establish
    candidate correctness. Keep calibration/development/held-out roles separate.

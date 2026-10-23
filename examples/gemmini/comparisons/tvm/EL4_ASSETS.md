@@ -1,5 +1,11 @@
 # Locate the selected EL4 captures and references
 
+**Historical reproduction only.** The current user request is a fresh preliminary
+ResNet50 and TinyLlama 16+1 run using EL4's checked-in quantization recipes.
+Regenerate scales and references from public checkpoints and calibration data;
+the old bundle paths below are not blockers. See the README's current preparation
+and implementation status. Retain these paths only for exact old-run reproduction.
+
 The source branch `feat/el4-experiment` at
 `0cc289de52a10bed256f32c90cfbb54a21b3c81f` contains the workload protocol,
 quantization recipes, source-input files and manifests. It does not contain the

@@ -50,6 +50,23 @@ narratives remain explicitly historical.
 
 ## Merlin comparison: every functional area
 
+The current preliminary profile adds a generic capture option in
+`src/merlin/targetgen/_m2m_capture_worker.py`: `--save-exported-program` serializes
+the exact retained prepared Torch program and records its hash, including each
+session stage. It introduces no target names, numerical policy or TVM dependency
+into core. A real two-stage round-trip test checks exact outputs and source-weight
+mutation refusal. The comparison factory now accepts TinyLlama 16+1, and the
+bounded ResNet input preparer admits the protocol's 260 calibration images.
+The README now selects fresh EL4 calibration instead of blocking on historical
+private artifacts. Old factory numerical recipes remain explicitly distinct.
+
+The companion TVM update ships nine stock MetaSchedule winner records, matched
+byte-for-byte against retained winner traces and successful measurement costs.
+`--tuning-preset rtl-v1` verifies capabilities/payloads and reports structural
+coverage. The database loader registers all stored workload families, including
+those absent from the current model; it does not generate needless sketches for
+unmatched input functions. There is no model-name dispatch or new search method.
+
 | Files/area | Responsibility and review finding | Disposition |
 | --- | --- | --- |
 | `target.yaml`, host config/requirements, `check_target.py`, `build_simulator.py`, `HOST_SETUP.md` | Original pinned compiler/header/runtime selection and host bringup | Retained, explicitly legacy; new TensorIR uses its own capabilities/receipts |

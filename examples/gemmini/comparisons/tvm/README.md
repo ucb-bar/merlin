@@ -1,10 +1,156 @@
-# TVM comparison: actual EL4 workloads through FireSim
+# TVM comparison: preliminary ResNet50 and TinyLlama FireSim handoff
 
 This directory is the model/session side of the TVM Gemmini comparison. The
 companion TVM fork owns mathematical lowering, device schedules and static
 packages. Merlin owns workload contracts, references, session routing and the
-existing queued execution infrastructure. The next execution milestone is full
-ResNet50, TinyLlama and SmolVLA sessions on the pinned EL4 FireSim device.
+existing queued execution infrastructure. The requested next run is full ResNet50
+and full TinyLlama with **16 prefill tokens and one teacher-forced decode step**.
+SmolVLA is outside this preliminary handoff. Another agent runs FireSim.
+
+## Current numerical decision and executable boundary
+
+Use the checked-in **EL4 quantization recipes**, freshly calibrated from their
+declared public checkpoint/data sources. Record new scales, input hashes and
+independent references under a new preliminary run identity. The old private
+`NUMERICS_BUNDLE` is required only to reproduce the old frozen run exactly;
+locating it is **not a prerequisite for this run**. Do not substitute the older
+comparison factories' power-of-two/dynamic recipes for EL4's recipes.
+
+| Owner | Responsibility for this run |
+| --- | --- |
+| EL4 protocol and capture preparation | Checkpoint, preprocessing, calibration, INT8 recipe, scale derivation, attention planes and rounding; independent numerical reference |
+| TVM | Import that quantized program; choose legal packing, tiling, OS/WS dataflow, software pipelining, SRAM allocation/reuse and CPU placement |
+| Merlin session runtime | Route prefill KV/positions into decode, own persistent tensor buffers, reset each repetition, check all outputs and collect complete-session timing |
+
+Cache residency within an operator is a TVM scheduling decision. KV state
+across separate calls is an explicit runtime tensor: the existing scheduler does
+not promise that the whole model's KV cache remains in Gemmini SRAM across calls.
+
+The generic capture worker now accepts `--save-exported-program`. It saves
+`program.pt2` from the **same prepared conversion** used for MLIR, without a second
+export or different quantizer, and records its SHA256 in `meta.json`. In a
+multi-program capture, each `stages/<name>/` receives its own archive. TVM's
+`compile_package.py --program` and `tune_models.py --program` accept these archives.
+Only successful, opaque-free, precision-preserving, integerization-checked
+conversions are saved. An archive alone does not establish full-model correctness.
+
+Local evidence: a small convolution/ReLU/pool/linear graph using the actual
+ResNet EL4 recipe passes TVM host comparison against the independent PT2E integer
+reference at `atol=2e-6, rtol=1e-5`. Its saved capture also compiles into a static
+RV64/Gemmini package and passes Spike positive and wrong-oracle controls. A
+two-stage capture test reloads both archives
+and verifies their outputs exactly. TinyLlama's explicit-cache tests cover the
+requested 16+1 shape and repeated reset. These are integration controls, not
+full checkpoint or FireSim results.
+
+## Preparation for the next agent
+
+Use the environment setup below with pinned model2MLIR
+[`ucb-bar/model2MLIR`](https://github.com/ucb-bar/model2MLIR) at
+`7915e23475c6db446a3c404847b11e8bc72c8a27`. The local capture probe used Python
+3.12, Torch 2.10.0, TorchAO 0.16.0, xDSL 0.68.0 and NumPy 1.26.4. TinyLlama's
+selected cache adapter additionally uses Transformers 5.4.0. Create outputs
+through Merlin's artifact helper, as shown below; `RUN` is that fresh directory.
+
+ResNet50 uses torchvision `IMAGENET1K_V2`, batch one, `[1,3,224,224]` FP32 input
+and all 1,000 logits. Its EL4 checkpoint hash is a **state-dictionary content
+hash**, not the SHA256 of the downloaded `.pth` container. Use the source loader's
+state hash when checking `protocol/experiment.yaml`. Prepare 260 calibration
+images (26 per Imagenette TRAIN class), and a separate validation input using
+the V2 resize/crop/normalization. Set explicit calibration variables so the loader
+does not default to calibrating on the measured stream.
+
+```bash
+"$PY" examples/gemmini/comparisons/tvm/prepare_resnet_inputs.py \
+  --archive "$IMAGENETTE_ARCHIVE" --output-dir "$RUN/resnet-inputs" \
+  --calibration-per-class 26 --evaluation-per-class 1
+# Select one validation image for the preliminary latency run; retain its source manifest.
+"$PY" - <<'PY'
+import os
+from pathlib import Path
+import numpy as np
+run = Path(os.environ["RUN"])
+with np.load(run / "resnet-inputs/evaluation.npz") as inputs:
+    np.savez(run / "resnet-input.npz", images=inputs["images"][:1])
+PY
+export M2M_RESNET_INPUT_NPZ="$RUN/resnet-input.npz" # images: [1,1,3,224,224]
+export M2M_RESNET_INPUT_SOURCE=Imagenette_validation
+export M2M_RESNET_PREPROCESSING=IMAGENET1K_V2
+export M2M_RESNET_CALIBRATION_NPZ="$RUN/resnet-inputs/calibration.npz"
+export M2M_RESNET_CALIBRATION_SOURCE=Imagenette_train_26_per_class
+export M2M_SESSION_STEPS=1
+export M2M_RESNET_PAPER_READY=1
+"$PY" -m merlin.targetgen._m2m_capture_worker \
+  --loader "$M2M/workloads/resnet50_v1_5/loader.py" --m2m-dir "$M2M" \
+  --dtype int8 --recipe examples/gemmini/protocol/recipes/resnet50.json \
+  --save-exported-program --materialize-bundle --out "$RUN/resnet-capture"
+```
+
+TinyLlama uses the complete 22-layer `TinyLlama/TinyLlama-1.1B-Chat-v1.0` checkpoint
+at `fe8a4ea1ffedaf415f4da2f062534de366a451e6`, loaded FP32 before quantization.
+Select prefill 16, decode 1, cache capacity **17**; the cache is FP32
+`[2,22,1,4,17,64]`, positions are i64 `[22]`. Compare all logits, cache entries
+and positions after both calls. Use a disjoint WikiText2 training calibration
+stream and a recorded test-token input. The profile is teacher-forced, not sampled
+generation. The checked-in protocol gives static attention-plane settings and
+SmoothQuant alpha 0.5, groups qkv/gate_up/o, 32 statistics segments, outlier split
+ratio 8 and alignment 16. Fresh channel widths follow those statistics; the old
+selected widths are not constants to copy into a new capture.
+
+**Remaining TinyLlama preparation code:** the pinned public model2MLIR loader
+provides the prefill/decode session but lacks the EL4 WikiText calibration hook
+and SmoothQuant/outlier preprocessing. Wire those declared transforms and
+stage-specific calibration into the source loader before invoking the worker
+with `recipes/tiny_llama.json`. TVM cannot infer them from a graph that never
+received them. This is implementation work with known policy, not a missing
+private artifact or a request for the user to locate scales. Likewise, validate
+the compiled host float islands against EL4's `portable_exp_trig` reference;
+native Torch nonlinear results alone do not prove that agreement.
+
+## Apply the learned TVM settings
+
+The companion branch ships `apps/gemmini/presets/rtl-v1/`: all **nine measured
+operator winners** as stock MetaSchedule workload/trace records, plus capability,
+payload and original measurement hashes. Use this preset for each prepared stage:
+
+```bash
+"$PY" "$TVM/apps/gemmini/compile_package.py" \
+  --program "$RUN/resnet-capture/program.pt2" \
+  --tuning-preset rtl-v1 --tensor-memory-bytes 8589934592 \
+  --adapter-receipt "$ADAPTER_RECEIPT" --riscv-gcc "$GCC" \
+  --output-dir "$RUN/resnet-package"
+
+# After the full EL4 TinyLlama capture has passed its numerical checks:
+for stage in prefill decode; do
+  "$PY" "$TVM/apps/gemmini/compile_package.py" \
+    --program "$RUN/tinyllama-capture/stages/$stage/program.pt2" \
+    --tuning-preset rtl-v1 --tensor-memory-bytes 8589934592 \
+    --adapter-receipt "$ADAPTER_RECEIPT" --riscv-gcc "$GCC" \
+    --output-dir "$RUN/tinyllama-$stage-package"
+done
+```
+
+The tensor-memory argument is a compilation ceiling, not a measured allocation
+or a complete device-memory reservation. Inspect package and final session maps.
+The traces include tile/reuse factors, traversal, OS/WS, operand hoisting,
+pipelining, epilogue/storage placement and unrolling. Config shadowing, DMA
+coalescing, first-K overwrite, lifetime allocation, fences and proved packing/bias
+folding remain compiler passes. No user-selected per-model SRAM tile sizes are
+required.
+
+Stock structural matching applies only compatible records. The old prefill
+winner has 32 rows; **it does not cover the new 16-row program**. EL4's different
+epilogues can also change matches. `placement.json` and `package.json` identify
+matched functions and unmeasured defaults; a preset permits zero matches and
+reports that truthfully. `--tuning-database` retains its stricter zero-match error.
+Do not call all full-model operators tuned merely because the preset is installed.
+The nine RTL measurements are not FireSim or E2E timing; remeasure the full chain.
+
+Finish the independent full-model output gates, construct the explicit route and
+fixtures, and follow the package-session and queued FireSim sections below. The
+matching full U250 driver/loader binding remains an execution-machine task.
+The old three-model/frozen-run discussion below is retained as background; its
+32+32 and private-bundle requirements do not select this new preliminary profile.
 
 The delivered operator studies are complete at their stated scope. They do not
 qualify those full-model FireSim sessions. Start with [AGENTS.md](AGENTS.md) and
@@ -21,7 +167,8 @@ The clean delivery branch `comparisons/tvm-el4-handoff` starts at EL4
 `comparisons/tvm-gemmini-byoc` at `1bd601422fc1defc4343bacbf4227ca17e8aefef`
 plus the saved working changes. The original comparison branch and dirty tree
 are preserved. This delivery adds comparison files/tests/docs to EL4 and does
-not rewrite its compiler/core/campaign code.
+not rewrite its compiler/campaign code. A generic optional capture export
+now preserves the exact prepared Torch program for external compiler intake.
 
 TVM's local delivery branch is `gemmini/curated-handoff`, based on Apache v0.19.0
 `c4dc0c29ff81ddae688da24625a603da3b4a2c0e`. Its historical measured source is

@@ -23,7 +23,9 @@ MAX_MEMBERS = 30000
 MAX_UNCOMPRESSED_BYTES = 2 * 1024**3
 MAX_IMAGE_BYTES = 16 * 1024**2
 MAX_IMAGE_PIXELS = 16 * 1024**2
-MAX_SELECTED_IMAGES = 200
+# The EL4 calibration cohort alone contains 26 images per class (260).
+# Keep a bounded allocation while allowing separate development/held-out inputs.
+MAX_SELECTED_IMAGES = 512
 
 
 class BoundedTarInfo(tarfile.TarInfo):
