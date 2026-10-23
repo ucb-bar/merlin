@@ -1,4 +1,8 @@
-"""A selected support package cannot inherit another provider's measurement authority."""
+"""A selected support package cannot inherit another provider's measurement authority.
+
+A same-named reference contract is the semantic view a selected support provider must implement,
+so a provider whose measurement block differs from that namesake is refused, never merged with it.
+"""
 
 import pytest
 import yaml
@@ -25,14 +29,32 @@ def selected(tmp_path, monkeypatch):
     return contract
 
 
-def test_selected_authority_beats_native_even_without_compute_family(selected):
+def _without_namesake(monkeypatch, tmp_path):
+    monkeypatch.setenv("MERLIN_TARGETS_DIR", str(tmp_path / "absent-native"))
+
+
+def test_selected_authority_beats_native_even_without_compute_family(selected, tmp_path):
+    # The namesake must agree with the selected support; the authority is still read through
+    # the selected provider, never through the native tracked-contract fallback.
+    native = tmp_path / "repo/merlin/targets/synthetic/contracts/target_contract.yaml"
+    native.write_text(selected.read_text())
     authority = authority_for("synthetic")
     assert authority.declared and authority.cycles_from == "selected"
     assert authority.source == "selected_support_contract"
 
 
-def test_absent_selected_measurement_is_undeclared_not_native(selected):
+def test_selected_authority_drifting_from_namesake_is_refused_not_inherited(selected):
+    authority = authority_for("synthetic")
+    assert not authority.declared and authority.cycles_from is None
+    assert "drifts" in authority.lookup_error and "measurement" in authority.lookup_error
+
+
+def test_absent_selected_measurement_is_undeclared_not_native(selected, monkeypatch, tmp_path):
     selected.write_text("name: synthetic\n")
+    authority = authority_for("synthetic")
+    assert not authority.declared and authority.cycles_from is None
+    assert "drifts" in authority.lookup_error  # the namesake's timer is refused, not borrowed
+    _without_namesake(monkeypatch, tmp_path)
     authority = authority_for("synthetic")
     assert not authority.declared
     assert authority.lookup_error is None
@@ -60,7 +82,8 @@ def test_legacy_tracked_declaration_still_available(selected, monkeypatch):
     assert authority.cycles_from == "native" and authority.source == "tracked_contract"
 
 
-def test_selected_custom_contract_location(selected):
+def test_selected_custom_contract_location(selected, monkeypatch, tmp_path):
+    _without_namesake(monkeypatch, tmp_path)
     custom = selected.with_name("custom.yaml")
     selected.rename(custom)
     metadata = selected.parent.parent / "provider.yaml"
@@ -71,5 +94,5 @@ def test_selected_custom_contract_location(selected):
 
 
 def test_external_only_authority_does_not_need_native_tree(selected, monkeypatch, tmp_path):
-    monkeypatch.setenv("MERLIN_TARGETS_DIR", str(tmp_path / "absent-native"))
+    _without_namesake(monkeypatch, tmp_path)
     assert authority_for("synthetic").cycles_from == "selected"

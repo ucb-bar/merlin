@@ -1103,6 +1103,7 @@ def test_release_hands_selected_capability_view_to_native_phase1(release_fixture
     from merlin_experiments.phase1.context import load_context
     from merlin_experiments.runner import _phase1_source_inputs
 
+    from merlin.targetgen.providers import ProviderError
     from merlin.targetgen.target_experiment import declared_vs_resolved_contract, load_target_experiment
     from merlin.targetgen.target_registry import resolve
 
@@ -1112,10 +1113,11 @@ def test_release_hands_selected_capability_view_to_native_phase1(release_fixture
     support = root / "support"
     (support / "contracts").mkdir(parents=True)
     provider_contract = support / "contracts/target_contract.yaml"
-    provider_contract.write_text("name: fixture-device\nplugin: {backend: provider_backend}\n")
+    selected = {"name": "fixture-device", "selection_marker": "phase0-effective", "eligibility": {"compute": []}}
+    # Executable support must implement the selected semantic view; only `plugin` is its own.
+    provider_contract.write_text(yaml.safe_dump({**selected, "plugin": {"backend": "provider_backend"}}))
     monkeypatch.setenv("MERLIN_TARGET_PATH", str(support))
     monkeypatch.delenv("MERLIN_TARGET_CONTRACT", raising=False)
-    selected = {"name": "fixture-device", "selection_marker": "phase0-effective", "eligibility": {"compute": []}}
     raw = json.dumps(selected, sort_keys=True, indent=2) + "\n"
     derivation = root / "derive.py"
     derivation.write_text(
@@ -1164,6 +1166,10 @@ def test_release_hands_selected_capability_view_to_native_phase1(release_fixture
     monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(copied))
     with pytest.raises(SpecError, match="source identity changed"):
         source_inputs.verify(record, **arguments)
+    # Support that does not implement the selected view is refused, never silently paired with it.
+    provider_contract.write_text("name: fixture-device\nplugin: {backend: provider_backend}\n")
+    with pytest.raises(ProviderError, match="drifts.*eligibility.*selection_marker"):
+        resolve(te.target).load_contract()
 
 
 def test_selected_capability_view_uses_verified_phase0_export(monkeypatch, tmp_path):
