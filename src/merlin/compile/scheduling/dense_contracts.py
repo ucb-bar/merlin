@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, replace
+from types import MappingProxyType
 
 from merlin.sched.ir import Ptr, as_expr
 from merlin.sched.ir.kernel import DTYPE_BYTES
@@ -20,6 +21,46 @@ from .program_limits import AddressWindow
 
 ROLES = ("lhs", "rhs", "accumulator")
 OPERATIONS = ("lhs_load", "rhs_load", "preload", "compute", "store")
+
+DENSE_FIELDS = ("schema", "primitive", "formats", "storage", "external", "instructions", "semantics", "support")
+DENSE_SEMANTICS = MappingProxyType({
+    "layout": "row_major", "arithmetic": "signed_integer_mac_modular", "reduction": "source_order",
+    "initialization": "zero", "continuation": "exact", "completion": "synchronous",
+    "accumulator": "addressable", "ownership": "invocation_private",
+})
+DENSE_SUPPORT = ("max_m_blocks", "max_k_blocks", "max_n_blocks", "partial_output_tiles",
+                 "partial_output_blocks", "partial_reduction_tiles")
+DENSE_POINTER_FIELDS = ("schema", "layout", "alignment_bytes", "access", "bounds", "completion")
+DENSE_STORAGE_FIELDS = ("resource", "backing", "row_bytes", "origin_bytes", "alignment_rows")
+
+
+def dense_contract_draft(*, schema):
+    """Editable shape of the existing resolver, with every target assertion unknown.
+
+    Supported family assumptions are exposed separately as DENSE_SEMANTICS; they
+    are not inferred target properties. No instruction, geometry, allocation,
+    policy, completion behavior or qualification is selected by this template.
+    """
+    if schema not in ("merlin.dense_schedule.v1", "merlin.dense_schedule.v2"):
+        raise ValueError("unknown dense scheduling contract version")
+    row = {
+        "schema": schema,
+        "primitive": {axis: {"fact": None} for axis in ("m", "k", "n")},
+        "formats": {role: {"dtype": None, "bits": {"fact": None}} for role in ROLES},
+        "storage": {role: {key: ({"fact": None} if key in
+                      ("row_bytes", "origin_bytes", "alignment_rows") else None)
+                      for key in DENSE_STORAGE_FIELDS} for role in ROLES},
+        "external": {role: None for role in ("lhs", "rhs", "output")},
+        "instructions": {operation: None for operation in OPERATIONS},
+        "semantics": {key: None for key in DENSE_SEMANTICS},
+        "support": {key: None for key in DENSE_SUPPORT},
+    }
+    if schema == "merlin.dense_schedule.v2":
+        row["logical_pointer_abi"] = {key: None for key in DENSE_POINTER_FIELDS}
+        row["logical_pointer_abi"]["schema"] = "merlin.logical_pointer_abi.v1"
+        row["external_pointer_arguments"] = {
+            operation: {"argument": None, "space": None} for operation in ("lhs_load", "rhs_load", "store")}
+    return row
 
 
 class DenseSchedulingUnavailable(ValueError):
@@ -81,7 +122,7 @@ class DenseIntegerReadout:
 def _logical_pointer_abi(row):
     if row is None:
         return None
-    row = _fields(row, ("schema", "layout", "alignment_bytes", "access", "bounds", "completion"), "logical pointer ABI")
+    row = _fields(row, DENSE_POINTER_FIELDS, "logical pointer ABI")
     alignments, access = row["alignment_bytes"], row["access"]
     if (
         row["schema"] != "merlin.logical_pointer_abi.v1"
@@ -161,16 +202,7 @@ class DenseSchedulingContract:
         output_readout=None,
     ):
         """Check allocation outputs and clamp optional search budgets to capabilities."""
-        expected = {
-            "layout": "row_major",
-            "arithmetic": "signed_integer_mac_modular",
-            "reduction": "source_order",
-            "initialization": "zero",
-            "continuation": "exact",
-            "completion": "synchronous",
-            "accumulator": "addressable",
-            "ownership": "invocation_private",
-        }
+        expected = DENSE_SEMANTICS
         for name, value in self.semantics:
             if value != expected[name]:
                 raise DenseSchedulingUnavailable(f"dense family requires {name}={expected[name]}; selected {value}")
@@ -306,7 +338,7 @@ def resolve_dense_contract(declaration, facts, isa):
         raise DenseSchedulingUnavailable("dense v2 requires a synchronous dense row-major logical pointer ABI")
     row = _fields(
         {key: value for key, value in declaration.items() if key not in optional},
-        ("schema", "primitive", "formats", "storage", "external", "instructions", "semantics", "support"),
+        DENSE_FIELDS,
         "contract",
     )
     primitive = _fields(row["primitive"], ("m", "k", "n"), "primitive")
@@ -326,30 +358,14 @@ def resolve_dense_contract(declaration, facts, isa):
         dtypes.append(item["dtype"])
     semantics = _fields(
         row["semantics"],
-        (
-            "layout",
-            "arithmetic",
-            "reduction",
-            "initialization",
-            "continuation",
-            "completion",
-            "accumulator",
-            "ownership",
-        ),
+        DENSE_SEMANTICS,
         "semantics",
     )
     if any(type(value) is not str or not value for value in semantics.values()):
         raise ValueError("dense semantics must be explicit strings; missing facts remain unknown")
     support = _fields(
         row["support"],
-        (
-            "max_m_blocks",
-            "max_k_blocks",
-            "max_n_blocks",
-            "partial_output_tiles",
-            "partial_output_blocks",
-            "partial_reduction_tiles",
-        ),
+        DENSE_SUPPORT,
         "support",
     )
     limits = tuple(support[key] for key in ("max_m_blocks", "max_k_blocks", "max_n_blocks"))
@@ -363,7 +379,7 @@ def resolve_dense_contract(declaration, facts, isa):
     stores = []
     for role in ROLES:
         item = _fields(
-            storage[role], ("resource", "backing", "row_bytes", "origin_bytes", "alignment_rows"), "storage role"
+            storage[role], DENSE_STORAGE_FIELDS, "storage role"
         )
         resource = resources.get(item["resource"]) if type(item["resource"]) is str else None
         if resource is None or resource.kind != "memory" or resource.unit != "bytes":

@@ -69,6 +69,8 @@
       "properties": {
         "token_target": {"type": "integer", "minimum": 1},
         "token_reserve": {"type": "integer", "minimum": 0},
+        "token_admission": {"type": "boolean", "description": "Opt in to live managed-turn admission and checkpointing; not a hard provider token cap."},
+        "token_turn_allowance": {"type": "integer", "minimum": 1},
         "driver": {"$ref": "#/$defs/token"},
         "model": {"$ref": "#/$defs/text"},
         "effort": {"$ref": "#/$defs/token"},

@@ -92,6 +92,8 @@ class RunOptions:
     joint_epoch: str = ""
     author_token_target: int | None = None
     author_token_reserve: int | None = None
+    author_token_admission: bool = False
+    author_token_turn_allowance: int | None = None
     offline_actions: str = ""
 
 
@@ -114,9 +116,13 @@ def build_parser(
                     help="run an explicit public construction action study through ordinary admission, sandbox and brokers; no provider")
     ap.add_argument("--author-token-target", type=int, default=None,
                     help="soft aggregate input (including cache) plus output token target across all authors; "
-                         "joint campaigns default to 40000000, never a hard stop")
+                         "joint campaigns default to 40000000, not a hard token cap")
     ap.add_argument("--author-token-reserve", type=int, default=None,
                     help="portion of the author token target reserved for integration/repairs; joint default 8000000")
+    ap.add_argument("--author-token-admission", action="store_true",
+                    help="opt in to managed author token admission/checkpointing using live all-thread usage; not a hard token cap")
+    ap.add_argument("--author-token-turn-allowance", type=int, default=None,
+                    help="planning allowance per outstanding author turn; requires token admission; default 1000000, not a provider bound")
     ap.add_argument(
         "--validation-scope", choices=("full", "capsules"), default="full",
         help="explicit completion scope; capsules exports a frozen compiler before external model validation",

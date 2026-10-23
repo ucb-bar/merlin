@@ -27,6 +27,7 @@ from .spill_contracts import SelectedSpillContract, resolve_spill_contract
 from .storage_contracts import TemporaryStorageContract, resolve_storage_contract
 
 SCHEMA = "merlin.schedule_effects.v1"
+SCHEDULING_FIELDS = frozenset({"schema", "numerical_policy", "instruction_byteorder", "configuration"})
 
 
 def _hash(payload):
@@ -207,9 +208,14 @@ def _parse(facts_bytes, software_bytes, target):
         or software.get("target") != target or software.get("status") != "reviewed"
     ):
         raise ValueError("scheduling requires an explicitly selected reviewed software/ISA specification")
-    isa = resolve_isa(software.get("isa"), facts, target=target, facts_sha256=_hash(facts_bytes))
+    return _resolve_declarations(facts, software, target, _hash(facts_bytes))
+
+
+def _resolve_declarations(facts, software, target, facts_sha256):
+    """Shared declaration semantics; selection policy remains in _parse."""
+    isa = resolve_isa(software.get("isa"), facts, target=target, facts_sha256=facts_sha256)
     extension = software.get("scheduling")
-    required = {"schema", "numerical_policy", "instruction_byteorder", "configuration"}
+    required = SCHEDULING_FIELDS
     if (type(extension) is not dict or not required <= set(extension)
             or set(extension) - required - {"dense", "storage", "fusion", "spills", "row_reduction", "program"}):
         raise ValueError("scheduling: expected versioned effects with optional declared scheduling families")
@@ -280,3 +286,113 @@ def _parse(facts_bytes, software_bytes, target):
         if "row_reduction" in extension else None,
         resolve_program_contract(extension["program"], facts, isa, storage) if "program" in extension else None,
     )
+
+
+def scheduling_spec_draft(software, *, target, isa=None, dense_schema=None):
+    """Copy an authored document into an explicitly incomplete construction draft.
+
+    No input files, facts, ISA pins or effects are rewritten. An explicit ISA
+    candidate can fill an absent section; it cannot replace a different one.
+    Nulls are questions for the author, not conservative executable defaults.
+    """
+    from copy import deepcopy
+    from .dense_contracts import dense_contract_draft
+
+    if (type(software) is not dict or software.get("schema") != "merlin.software_spec.v1"
+            or software.get("target") != target):
+        raise ValueError("draft requires the explicit target's software specification")
+    result = deepcopy(software)
+    result["status"] = "draft"
+    if isa is not None:
+        if result.get("isa") is not None and result["isa"] != isa:
+            raise ValueError("draft cannot replace an existing different ISA declaration")
+        result["isa"] = deepcopy(isa)
+    result.setdefault("isa", None)
+    if "scheduling" not in result:
+        result["scheduling"] = {key: None for key in sorted(SCHEDULING_FIELDS)}
+        result["scheduling"]["schema"] = SCHEMA
+    if dense_schema is not None:
+        extension = result["scheduling"]
+        if type(extension) is not dict or "dense" in extension:
+            raise ValueError("dense draft requires a scheduling mapping without an existing dense declaration")
+        extension["dense"] = dense_contract_draft(schema=dense_schema)
+    return result
+
+
+def inspect_scheduling_draft(facts_bytes, software_bytes, *, target, require_dense=False):
+    """Validate draft declarations through the ordinary resolver, without selecting them.
+
+    Returns data only, never SelectedSchedulingContracts or a qualification.
+    The existing status='reviewed' marker is an author assertion, not an
+    authenticated review certificate. Draft inspection does not create that
+    marker or an adapter qualification identity. The ordinary file-based reader
+    retains its selection checks and byte/source freshness behavior.
+    """
+    from .dense_contracts import DENSE_SEMANTICS
+
+    if (type(facts_bytes) is not bytes or type(software_bytes) is not bytes
+            or len(facts_bytes) > 64 << 20 or len(software_bytes) > 1 << 20):
+        raise ValueError("draft inspection requires bounded explicit input bytes")
+    facts, software = json.loads(facts_bytes), yaml.safe_load(software_bytes)
+    if (type(software) is not dict or software.get("schema") != "merlin.software_spec.v1"
+            or software.get("target") != target):
+        raise ValueError("draft inspection requires the explicit target's software specification")
+    issues = []
+    unknown = []
+
+    def holes(value, path):
+        if value is None:
+            unknown.append(path)
+        elif type(value) is dict:
+            for key, item in value.items():
+                holes(item, path + [str(key)])
+        elif type(value) is list:
+            for index, item in enumerate(value):
+                holes(item, path + [index])
+
+    for key in ("isa", "scheduling"):
+        holes(software.get(key), [key])
+        if software.get(key) is None:
+            issues.append({"path": [key], "reason": "missing declaration"})
+    extension = software.get("scheduling")
+    dense = extension.get("dense") if type(extension) is dict else None
+    if require_dense and dense is None:
+        issues.append({"path": ["scheduling", "dense"], "reason": "dense family was requested but not declared"})
+    isa_report = {"status": "unresolved", "resources": [], "unknown_effects": [], "unknown_semantics": []}
+    try:
+        isa = resolve_isa(software.get("isa"), facts, target=target, facts_sha256=_hash(facts_bytes))
+        isa_report = {
+            "status": "resolved_declaration", "identity": isa.identity(),
+            "resources": [{"name": item.name, "kind": item.kind, "unit": item.unit,
+                           "capacity": item.capacity} for item in isa.resources],
+            "unknown_effects": [item.name for item in isa.instructions
+                                if json.loads(item.effects_json) == {"status": "unknown"}],
+            "unknown_semantics": [item.name for item in isa.instructions
+                                  if json.loads(item.semantics_json) == {"status": "unknown"}],
+        }
+    except (ValueError, KeyError, TypeError) as error:
+        isa_report["reason"] = str(error)
+    resolved = None
+    try:
+        resolved = _resolve_declarations(facts, software, target, _hash(facts_bytes))
+    except (ValueError, KeyError, TypeError) as error:
+        issues.append({"path": ["declaration_resolver"], "reason": str(error)})
+    semantics = dense.get("semantics") if type(dense) is dict else None
+    mismatches = [{"field": key, "declared": semantics.get(key) if type(semantics) is dict else None, "family_requires": value}
+                  for key, value in DENSE_SEMANTICS.items()
+                  if type(semantics) is not dict or semantics.get(key) != value]
+    if require_dense and dense is not None and mismatches:
+        issues.append({"path": ["scheduling", "dense", "semantics"],
+                       "reason": "declared semantics do not match the synchronous dense family"})
+    return {
+        "schema": "merlin.scheduling_construction.v1",
+        "status": "declaration_resolved" if resolved is not None and not issues else "incomplete",
+        "target": target, "software_status": software.get("status"),
+        "facts_sha256": _hash(facts_bytes), "software_sha256": _hash(software_bytes),
+        "issues": issues, "unknown_fields": unknown, "isa": isa_report,
+        "dense": {"declared": dense is not None, "resolved": resolved is not None and resolved[4] is not None,
+                  "family_semantic_mismatches": mismatches if dense is not None else [],
+                  "family_requirements_are_target_facts": False},
+        "qualification": "not_established",
+        "scope": "declaration consistency only; no target execution, schedule, adapter or numerical qualification",
+    }

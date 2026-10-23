@@ -112,13 +112,13 @@ def _round_of(name: str) -> int | None:
     return int(digits) if head.startswith("round_") and digits.isdigit() else None
 
 
-def lead_thread_ids(run_dir: Path) -> dict[str, int]:
+def lead_thread_ids(run_dir: Path, *, _read_rows=None) -> dict[str, int]:
     """Lead thread ids announced by each round's provider stream: ``{thread_id: round}``."""
     leads: dict[str, int] = {}
     rounds = Path(run_dir) / "rounds"
     for path in sorted(rounds.glob("round_*.codex_events.raw.jsonl")):
         number = _round_of(path.name)
-        for row in _json_lines(path):
+        for row in (_read_rows or _json_lines)(path):
             if row.get("type") == "thread.started" and isinstance(row.get("thread_id"), str) and number is not None:
                 leads.setdefault(row["thread_id"], number)
     return leads
@@ -160,9 +160,9 @@ def session_roots(run_dir: Path, codex_homes=()) -> list[tuple[int | None, Path]
 # --- one rollout --------------------------------------------------------------------------------
 
 
-def read_rollout(path: Path) -> dict | None:
+def read_rollout(path: Path, *, _rows=None) -> dict | None:
     """The thread's OWN records from one rollout file (a fork's copied parent history excluded)."""
-    rows = _json_lines(path)
+    rows = _json_lines(path) if _rows is None else _rows
     if not rows or rows[0].get("type") != "session_meta" or not isinstance(rows[0].get("payload"), dict):
         return None
     meta = rows[0]["payload"]
@@ -341,7 +341,7 @@ def _tokens(responses: list[dict], fallback: dict | None) -> dict:
 # --- threads of one run -------------------------------------------------------------------------
 
 
-def threads(run_dir: Path, *, codex_homes=()) -> dict:
+def threads(run_dir: Path, *, codex_homes=(), _read_rows=None) -> dict:
     """The run's lead threads and all their descendant helpers, one metrics record each."""
     run_dir = Path(run_dir)
     env = _environment(run_dir)
@@ -351,14 +351,14 @@ def threads(run_dir: Path, *, codex_homes=()) -> dict:
     for number, root in session_roots(run_dir, codex_homes):
         for path in sorted(root.rglob("*.jsonl")):
             files += 1
-            rollout = read_rollout(path)
+            rollout = read_rollout(path, _rows=None if _read_rows is None else _read_rows(path))
             if rollout is None:
                 continue
             prior = by_thread.get(rollout["thread_id"])
             # A live home and its retained snapshot hold the same thread; keep the longer record.
             if prior is None or len(rollout["rows"]) > len(prior[1]["rows"]):
                 by_thread[rollout["thread_id"]] = (number, rollout)
-    leads = lead_thread_ids(run_dir)
+    leads = lead_thread_ids(run_dir, _read_rows=_read_rows)
     if not leads:
         leads = {tid: number for tid, (number, r) in by_thread.items() if r["parent_thread_id"] is None}
     included: dict[str, tuple[int | None, dict]] = {}
@@ -452,6 +452,82 @@ def _sum_tokens(rows: list[dict]) -> dict:
 def _add(target: dict, source: dict) -> None:
     for engine, n in (source or {}).items():
         target[engine] = target.get(engine, 0) + n
+
+
+class UsageRows:
+    """Incremental append-only provider-log reader retaining only accounting rows.
+
+    New bytes are parsed once. File replacement, truncation or same-size rewrites
+    invalidate the cache. Complete rows only; a trailing partial line is reread.
+    Canonical ownership, response deduplication and token arithmetic stay below.
+    """
+
+    def __init__(self):
+        self.files = {}
+        self.bytes_read = 0
+
+    def __call__(self, path):
+        try:
+            stat = path.stat()
+            identity = (stat.st_dev, stat.st_ino)
+            cached = self.files.get(path)
+            if (cached is None or cached['identity'] != identity or stat.st_size < cached['size']
+                    or (stat.st_size == cached['size'] and stat.st_mtime_ns != cached['mtime'])):
+                cached = dict(identity=identity, offset=0, rows=[], first=True)
+            with path.open('rb') as stream:
+                stream.seek(cached['offset'])
+                for line in stream:
+                    self.bytes_read += len(line)
+                    if not line.endswith(b'\n'):
+                        break
+                    cached['offset'] += len(line)
+                    try:
+                        row = json.loads(line)
+                    except (ValueError, UnicodeError):
+                        continue
+                    if not isinstance(row, dict):
+                        continue
+                    payload = row.get('payload')
+                    payload = payload if isinstance(payload, dict) else {}
+                    item = payload.get('item')
+                    keep = (cached['first'] or row.get('type') in ('session_meta', 'token_usage_record', 'thread.started')
+                            or (row.get('type') == 'event_msg' and
+                                (payload.get('type') in ('task_started', 'task_complete', 'token_count')
+                                 or (payload.get('type') == 'item_completed' and isinstance(item, dict)
+                                     and item.get('type') == 'SubAgentActivity'))))
+                    cached['first'] = False
+                    if keep:
+                        cached['rows'].append(row)
+            cached.update(size=stat.st_size, mtime=stat.st_mtime_ns)
+            self.files[path] = cached
+            return cached['rows']
+        except OSError:
+            return []
+
+
+def usage_snapshot(run_dir: Path, *, codex_homes=(), reader=None) -> dict:
+    """Live canonical usage only, without expensive simulation/request attribution.
+
+    Reports all known descendants and open turns, including stale open turns.
+    This is a lower bound, never a provider reservation or billing upper bound.
+    An explicitly opted-in provider supervisor may consume it for admission;
+    numerical grading and telemetry integrity remain separate.
+    """
+    found = threads(Path(run_dir), codex_homes=codex_homes, _read_rows=reader)
+    records = found['records']
+    finished = {child for record in records.values() for child in record['metrics']['finished_children']}
+    rows = [{'thread_id': tid, 'tokens': record['metrics']['tokens'],
+             'open_turn': record['metrics']['open_turn'] and tid not in finished,
+             'role': 'lead' if record['rollout']['parent_thread_id'] is None else 'subagent'}
+            for tid, record in records.items()]
+    complete = not found['missing_leads'] and not found['missing_subagents']
+    totals = _sum_tokens([row['tokens'] for row in rows])
+    return {'available': bool(rows) and complete and all(row['tokens']['available'] for row in rows),
+            'complete': complete, 'tokens': totals, 'threads': rows,
+            'open_threads': [row['thread_id'] for row in rows if row['open_turn']],
+            'missing_leads': found['missing_leads'], 'missing_subagents': found['missing_subagents'],
+            'pristine': not rows and not found['leads'] and found['files_scanned'] == 0,
+            'totals_are_lower_bounds': True, 'provider_upper_bound': None}
 
 
 def account(run_dir: Path, *, codex_homes=(), now: float | None = None, window_s: int = WINDOW_S) -> dict:

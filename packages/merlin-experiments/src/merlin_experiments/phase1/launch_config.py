@@ -233,13 +233,17 @@ def _check_identity(document: dict) -> None:
 
 def _check_author(document: dict) -> None:
     author = document["author"]
-    if "token_target" in author or "token_reserve" in author:
+    if any(key in author for key in ("token_target", "token_reserve", "token_admission", "token_turn_allowance")):
         from types import SimpleNamespace
         from .telemetry.token_budget import selection
 
         try:
             selection(SimpleNamespace(author_token_target=author.get("token_target"),
-                                      author_token_reserve=author.get("token_reserve")))
+                                      author_token_reserve=author.get("token_reserve"),
+                                      author_token_admission=author.get("token_admission", False),
+                                      author_token_turn_allowance=author.get("token_turn_allowance"),
+                                      driver=author.get("driver"),
+                                      schedule=document.get("identity", {}).get("schedule", "continuous")))
         except ValueError as exc:
             raise ConfigError(str(exc)) from exc
     driver = author["driver"]
@@ -415,7 +419,8 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
     pairs += [(flag, x(client[key])) for key, flag in CLIENT_FLAGS.get(driver, ()) if key in client]
     if "max_subagents" in author:
         pairs.append((SUBAGENT_FLAGS[driver], str(author["max_subagents"])))
-    for key, flag in (("token_target", "--author-token-target"), ("token_reserve", "--author-token-reserve")):
+    for key, flag in (("token_target", "--author-token-target"), ("token_reserve", "--author-token-reserve"),
+                      ("token_turn_allowance", "--author-token-turn-allowance")):
         if key in author:
             pairs.append((flag, str(author[key])))
     pairs += [
@@ -447,6 +452,8 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
         argv.append("--resume")
     if author.get("live_conformance_feedback", False):
         argv.append("--live-conformance-feedback")
+    if author.get("token_admission", False):
+        argv.append("--author-token-admission")
     return tuple(argv)
 
 

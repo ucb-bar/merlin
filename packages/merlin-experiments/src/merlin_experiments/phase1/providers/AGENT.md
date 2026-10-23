@@ -75,3 +75,18 @@ bound must equal it. Unrecorded legacy runs keep the provider default.
 
 `codex_usage` owns the pure token-subset conversion. Unreported usage remains
 unknown; the provider preserves its existing public conversion import.
+
+`token_admission.py` is opt-in trusted managed-turn control. It preserves the
+recorded v1 advisory behavior unless v2 admission is selected explicitly. Before
+launch and while running, count canonical lead/descendant usage plus declared
+outstanding planning allowances. Refuse missing usage, preserve high-water
+observations, and keep owned reservations until the supervising process finishes.
+Use the existing owned-process-group termination path; retain raw partial-turn
+logs and edits, mark unknown usage and require ordinary correctness checks.
+At the development threshold, only one bounded integration continuation may be
+admitted. No private score, model setting, native child-spawn hook or hard token
+cap is introduced. Poll/report latency and unbounded in-flight requests can
+overshoot the target. Resuming a thread preserves its history; the integration wall limit is
+not a claim of context compaction. Fresh under-budget exploration has no new
+periodic interruption; retain the existing overall wall/turn controls. Do not reset an admission ledger to continue
+exploration under the same recorded policy.

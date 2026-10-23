@@ -74,6 +74,21 @@ def _bound_trace_view(trace, target):
         if type(classes) is not list or any(type(name) is not str or name not in roster for name in classes):
             raise ValueError("corpus instruction roles differ from the selected ISA roster")
     observer = semantics.operand_observer
+    if observer is not None:
+        # An unqualified label must not mean different commands in the two
+        # selected vocabularies. Require explicit disambiguation in that case.
+        normalized = observer.isa_constants(target)
+        raw_codes = {}
+        semantic_codes = {}
+        for code, label in isa["FUNCT_CLASS"].items():
+            raw_codes.setdefault(label, set()).add(code)
+        for code, label in normalized["FUNCT_CLASS"].items():
+            semantic_codes.setdefault(label, set()).add(code)
+        for label in raw_codes.keys() & semantic_codes.keys():
+            if raw_codes[label] != semantic_codes[label]:
+                raise ValueError("raw and normalized instruction class identities are ambiguous")
+        if raw_codes.keys() & normalized.get("CONFIG_SUBTYPE", {}).values():
+            raise ValueError("raw instruction class collides with a normalized configuration subtype")
     view = copy.deepcopy(trace)
     raw_classes = []
     for row in view["instructions"]:
@@ -91,6 +106,33 @@ def _bound_trace_view(trace, target):
                 row["funct"], row["rs1"], row["rs2"], observer.isa_constants(target)
             )
     return view, roles, raw_classes, observer is not None
+
+
+def instruction_class_coverage(trace, *, target):
+    """Observe structural classes through the same selected view as core checks.
+
+    The input must be the runner's decode of its actual emitted artifact. The
+    selected bound path reopens its raw instruction identities and only projects
+    fields through the original operand observer; no spelling aliases or role
+    subsumption are inferred. Callers retain artifact/object/ELF custody. This
+    proves neither runtime execution nor numerical or temporal correctness.
+    """
+    binding = _bound_trace_view(trace, target)
+    if binding is None:
+        raw = list(_classes(trace))
+        view, selected = trace, False
+    else:
+        view, _roles, raw, selected = binding
+    projected = _classes(view)
+    if "UNKNOWN" in raw or "UNKNOWN" in projected:
+        raise ValueError("instruction coverage contains an unresolved raw or normalized command")
+    return {
+        "raw_classes": sorted(set(raw)),
+        "normalized_classes": sorted(set(projected)) if selected else [],
+        "observed_classes": sorted(set(raw) | set(projected)),
+        "operand_protocol_selected": selected,
+        "scope": "static emitted instruction classes; no execution or numerical qualification",
+    }
 
 
 def _classes(trace: dict) -> list[str]:

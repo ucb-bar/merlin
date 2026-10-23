@@ -106,3 +106,13 @@ documents the callback boundary. Independent native LLVM tests cover tails,
 continuation and final stores, including a deliberately wrong callback rejected
 by numerical comparison. This fixes a library seam for future selections;
 use by the running author and a target performance benefit are separate evidence.
+
+Mixed composition now has `compile_connected_region` and
+`ConnectedProgram.ordered_invocations()`: checked dense products and pointwise
+images retain source-owned bindings for ordinary emission. The separate
+synchronous `execute()` interface tests persistent buffers, fan-out and all
+visible outputs, with explicit physical backing origins. The
+[code generation example](connected_composition.py) consumes those same native
+products. The backend still supplies the target pointer/image launch ABI; this
+is a reusable unfused composition path, not demonstrated cross-stage device
+fusion or complete-model execution.

@@ -1071,6 +1071,8 @@ def run_round(
     )
     _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
     _CONTINUE_MSG += _AS.continuation_guidance(capacity, max_concurrent_subagents)
+    from .token_admission import ManagedTokens
+    token_control = ManagedTokens(run_dir, rnd, homes=(codex_home,) if sandbox == 'bwrap' else ())
     turn_index = 0
     rc = 0
     active_proc: subprocess.Popen | None = None
@@ -1079,18 +1081,25 @@ def run_round(
         while True:
             turn_errors_start = len(errors)
             turn_failed = turn_completed = False
+            admission = token_control.admit(turn_index)
+            if admission is not None:
+                tr.emit({'type': 'codex_token_admission', **admission})
+                if not admission['admitted']:
+                    rc = 75; errors.append('author token admission: ' + admission['reason']); break
             cur_prompt = (
                 prompt_path
                 if turn_index == 0
                 else prompt_path.with_name(f"{prompt_path.stem}.cont{turn_index:02d}{prompt_path.suffix}")
             )
+            if not turn_index and admission is not None:
+                cur_prompt.write_text(('' if token_control.phase == 'integration' else msg) + token_control.prompt())
             if turn_index:
                 # A previous attempt's final is not this resumed turn's answer.
                 if inner_final.is_file():
                     previous_final = rounds / f"round_{rnd:02d}.turn{turn_index - 1:02d}.final.txt"
                     previous_final.write_text(inner_final.read_text())
                     inner_final.unlink()
-                cur_prompt.write_text(_CONTINUE_MSG)
+                cur_prompt.write_text(('' if token_control.phase == 'integration' else _CONTINUE_MSG) + token_control.prompt())
                 if sandbox == "bwrap":
                     _verify_frozen_config(codex_home, home_info["config_sha256"])
                 resume_argv = build_resume_cmd(
@@ -1191,9 +1200,10 @@ def run_round(
                     sel.register(proc.stdout.fileno(), selectors.EVENT_READ)
                     while True:
                         now = time.monotonic()
-                        if operator_interrupted is None and continuation_stop is not None and now >= next_control_poll:
+                        if operator_interrupted is None and (continuation_stop is not None or token_control.policy is not None) and now >= next_control_poll:
                             next_control_poll = now + _CONTROL_POLL_S
-                            reason = continuation_stop()
+                            reason = continuation_stop() if continuation_stop is not None else None
+                            reason = reason or token_control.poll()
                             if reason is not None:
                                 if type(reason) is not str or not reason.strip():
                                     raise ValueError("host continuation stop must return a nonempty reason or None")
@@ -1397,6 +1407,16 @@ def run_round(
             turn_index += 1
             remaining = deadline - time.monotonic()
             turn_errors = errors[turn_errors_start:]
+            token_control.finish()
+            if (token_control.can_resume_checkpoint(operator_interrupted, thread_id=thread_id,
+                    continuous=continue_session, remaining_s=remaining)
+                    and not timed_out and turn_index < _CONTINUE_MAX_TURNS and remaining > _CONTINUE_MIN_S
+                    and (continuation_stop is None or continuation_stop() is None)):
+                tr.emit({'type': 'codex_token_checkpoint', 'reason': operator_interrupted,
+                         'turn_incomplete': interrupted_turn, 'usage_complete': False})
+                operator_interrupted = None; rc = 0
+                recovered_errors.update(range(turn_errors_start, len(errors)))
+                continue
             host_stop = operator_interrupted or (continuation_stop() if continuation_stop is not None else None)
             if host_stop is not None and (type(host_stop) is not str or not host_stop.strip()):
                 raise ValueError("host continuation stop must return a nonempty reason or None")
@@ -1467,6 +1487,7 @@ def run_round(
     finally:
         if active_proc is not None and active_pgid is not None:
             _terminate_process_group(active_pgid, active_proc)
+        token_control.finish()
         for handle in (raw_f, stamped_f):
             try:
                 os.fsync(handle.fileno())
@@ -1513,6 +1534,7 @@ def run_round(
         # figure downstream is notional and must not enter a money budget.
         "billing_mode": BILLING_MODE,
         "subagent_capacity": _AS.summary_record(capacity, max_concurrent_subagents),
+        "token_admission": token_control.last,
         "codex_home": home_info,
         "artifacts": {
             "raw": str(raw_path),

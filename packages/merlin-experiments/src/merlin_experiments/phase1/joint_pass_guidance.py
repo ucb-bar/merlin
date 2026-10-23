@@ -167,6 +167,14 @@ import or a side demonstration does not establish production integration.
 Keep symbolic counted loops for large problems; the finite `compile_schedule`
 route is for bounded instruction regions, not unrolling a full large tensor.
 
+If selected, `selected_contracts.scheduling_spec_draft` and
+`inspect_scheduling_draft` expose missing declaration fields through the ordinary
+resolver. Supply explicit authored facts/software paths; keep unknown effects
+unknown until established. Raw ISA encodings alone do not provide logical memory
+effects or completion. The current compact dense family requires synchronous
+logical operations; queued acceptance is not completion. Existing block schedules
+remain available while developing a sound asynchronous adapter or extension.
+
 Represent buffer ownership and lifetimes explicitly in the chosen scheduling IR: host input,
 DMA destination, resident compute operands, accumulator and output each need an
 identified owner, read/write effects, completion and safe reuse boundary. Construct
@@ -248,7 +256,12 @@ alongside an unfused baseline; pass the actual product to the emitter. Use
 `connected_regions.compile_connected_pointwise` bridge for supported ordered
 pointwise stages. Its explicit tensor bindings and runtime continuation preserve
 live buffers across launches; this is not proof of on-chip retention or a speedup.
-Mixed dense/pointwise composition still requires a multi-stage pointer/launch ABI.
+When selected, `compile_connected_region` also composes checked dense and pointwise
+products with explicit live buffers. Its `ordered_invocations()` supplies the
+actual products and bindings to ordinary target code generation; `execute()` is
+a separate synchronous buffer-runtime interface. Mixed dense/pointwise composition
+still requires the target's multi-stage pointer/launch ABI and completion checks.
+Neither API alone establishes fused device execution or on-chip retention.
 Implement missing reusable composition mechanisms through editable compiler
 code; retain a correct route and all live outputs while exploring alternatives.
 

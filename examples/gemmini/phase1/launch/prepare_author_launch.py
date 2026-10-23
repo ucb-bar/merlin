@@ -66,11 +66,14 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
         "--codex-home-root": task / "private" / ("codex-" + run_id),
         "--author-token-target": 40_000_000,
         "--author-token-reserve": 8_000_000,
+        "--author-token-turn-allowance": 1_000_000,
     }
     for key, value in values.items():
         set_flag(key, value)
     if "--fresh-backend" not in argv:
         argv.append("--fresh-backend")
+    if "--author-token-admission" not in argv:
+        argv.append("--author-token-admission")
     if int(argv[argv.index("--max-wall-s") + 1]) != selected_policy["duration_s"]:
         raise ValueError("native author clock differs from selected joint policy")
     env = old["environment"].copy()
@@ -119,7 +122,10 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
         "token_budget": {
             "target": 40_000_000,
             "reserve": 8_000_000,
-            "mode": "soft",
+            "mode": "managed_admission",
+            "turn_allowance": 1_000_000,
+            "hard_cap": False,
+            "limitation": "Unreported in-flight usage can exceed the planning target",
             "scope": "all authors including cached input",
         },
         "model_status": "provisional; no <=4percent qualification claim",

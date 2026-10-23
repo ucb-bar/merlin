@@ -7,14 +7,16 @@ concurrent discovery within the owner, never across requests or processes.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from contextlib import contextmanager
 import contextvars
 import os
-from pathlib import Path
 import stat
 import threading
 import time
+from bisect import bisect_left
+from contextlib import contextmanager
+from dataclasses import dataclass
+from functools import cached_property
+from pathlib import Path
 
 
 def _alias_members(root):
@@ -53,6 +55,35 @@ class TreeFacts:
     members: tuple
     linked_inodes: frozenset
     linked_members: tuple
+
+    @cached_property
+    def _member_index(self):
+        rows = tuple(sorted(self.members, key=lambda row: row[0]))
+        return tuple(row[0] for row in rows), rows
+
+    @cached_property
+    def _linked_index(self):
+        rows = tuple(sorted(self.linked_members, key=lambda row: row[0].parts))
+        return tuple(row[0].parts for row in rows), rows
+
+
+def _descendants(index, prefix):
+    """Visit only a lexical subtree of already guarded facts, never the disk.
+
+    Tuple components keep sibling prefixes distinct. The caller still checks
+    its live kernel guard before and after projection; this is an index of the
+    same immutable observation, not a new custody or filesystem cache.
+    """
+    keys, rows = index
+    position = bisect_left(keys, prefix)
+    width = len(prefix)
+    while position < len(keys):
+        key = keys[position]
+        if key[:width] != prefix:
+            break
+        if len(key) > width:
+            yield rows[position]
+        position += 1
 
 
 class GuardedInventory:
@@ -150,14 +181,12 @@ class GuardedInventory:
     def _project(facts, parent, root, *, nofollow):
         prefix = root.relative_to(parent).parts
         members = tuple((parts[len(prefix):], path, kind, size)
-                        for parts, path, kind, size in facts.members
-                        if parts[:len(prefix)] == prefix and len(parts) > len(prefix))
+                        for parts, path, kind, size in _descendants(facts._member_index, prefix))
         # A lexical runtime inventory must never authorize strict private-input
         # traversal through a symlink. Link-free subtrees have identical readers.
         if not nofollow and any(kind == 'symlink' for _, _, kind, _ in members):
             return None
-        linked = tuple((path, inode) for path, inode in facts.linked_members
-                       if path.is_relative_to(root))
+        linked = tuple(_descendants(facts._linked_index, root.parts))
         return TreeFacts(members, frozenset(inode for _, inode in linked), linked)
 
     def _drop_views(self, source):

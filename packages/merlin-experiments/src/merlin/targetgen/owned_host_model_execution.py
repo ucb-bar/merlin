@@ -590,6 +590,7 @@ def _dispatch_proof(record, *, target, facts):
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
     from merlin.targetgen.rocc.decode import decode_module
     from merlin.targetgen.rtl.facts import observed_facts
+    from merlin.targetgen.trace_check import instruction_class_coverage
 
     from .native_dispatch_accounting import _kernel_command_inventory, _verified_work_functs_by_family
     from .native_model_execution import _digest
@@ -618,6 +619,7 @@ def _dispatch_proof(record, *, target, facts):
     names = {int(key) for key in (table.get("names") or {})}
     entry_symbol = executable_kernel_entry(target)
     completed, decoded_classes, artifact_pins = [], set(), {}
+    class_observations = {}
     for row in assigned:
         symbol = row["symbol"]
         entry = kernels[symbol]
@@ -640,6 +642,9 @@ def _dispatch_proof(record, *, target, facts):
         function = _llvm_function(module, entry_symbol)
         with observed_facts(target, json.loads(Path(facts["path"]).read_text()), path=Path(facts["path"])):
             trace = decode_module(module, target=target)
+            coverage = instruction_class_coverage(trace, target=target)
+        class_observations[symbol] = coverage
+        decoded_classes.update(coverage["observed_classes"])
         opcode = (trace.get("abi") or {}).get("custom_opcode")
         if not isinstance(opcode, str) or int(opcode, 16) != table.get("custom_opcode"):
             raise ValueError("device LLVM decoder differs from selected RTL opcode")
@@ -651,7 +656,6 @@ def _dispatch_proof(record, *, target, facts):
         for op, decoded in zip(asm, instructions, strict=True):
             if decoded.get("class") == "UNKNOWN":
                 raise ValueError("actual device LLVM contains an unknown command")
-            decoded_classes.add(str(decoded.get("class")))
             funct = decoded.get("funct")
             if funct is None:
                 continue
@@ -735,6 +739,7 @@ def _dispatch_proof(record, *, target, facts):
         "device_artifacts": artifact_pins,
         "host_calls": host_calls,
         "observed_classes": sorted(decoded_classes),
+        "instruction_class_observations": class_observations,
         "scope": "completion-implied unavoidable source-bound work; "
         "not hardware commit trace or general transform theorem",
     }

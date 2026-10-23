@@ -20,3 +20,10 @@ analysis, not a second pricing/billing ledger. Cross-arm context must be explici
 execution; native CLI defaults remain only at the compatibility edge. Codex-cache discovery
 still recognizes the historical ancestor layout, not arbitrary relocated provider caches.
 Do not infer abandoned workspaces or replace their lease/retention semantics from timing data.
+
+The v1 token policy remains advisory. Explicit v2 `managed_turns` admission may
+consume `author_agents.usage_snapshot`: reuse the canonical descendant/response
+parser without request/simulator attribution. This is a lower bound, including
+cached input, not a provider upper bound. Missing usage is not zero; stale open
+turns remain outstanding. The provider supervisor owns admission/checkpoint
+changes, independently of grading and telemetry-integrity authority.

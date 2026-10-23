@@ -56,6 +56,34 @@ integration/repair reserve. The [study design](../design/compiler_coevolution_st
 defines accounting, strict timing qualification and future comparisons; none of
 those comparisons is launched merely by installing this package.
 
+For a fresh continuous Codex run, explicitly select `--author-token-admission`
+(or `author.token_admission: true` in the launch configuration). Historical
+advisory-only runs keep their original behavior. This records a v2 policy with
+live all-thread usage checks every five seconds, a 1M planning allowance per
+outstanding turn (`--author-token-turn-allowance`), and an 8M integration reserve.
+Cached input and every descendant helper still count; an allowance is not
+measured usage or a provider upper bound.
+
+The supervisor enforces admission before each managed process and polls during
+execution. At the projected 32M development boundary it terminates only its
+owned process group, retains logs and workspace edits, and can resume the same
+thread once for integration/checkpointing. That continuation cannot authorize
+new exploration, is limited to five minutes, and is refused if remaining planned
+headroom is insufficient. Partial interrupted work stays unqualified until
+reviewed and checked normally. Missing live usage is not zero: new admission
+refuses it, and running work gets a sixty-second telemetry grace. Under-budget
+work with available usage is not interrupted merely because time elapsed.
+
+`author_token_admission.json` retains policy, high-water observed usage,
+outstanding owner reservations and every decision. A stale open turn is not
+silently released. Native sub-agent spawn calls and requests already in flight
+cannot be individually admitted or bounded by this supervisor; usage publication,
+polling and termination can lag. Therefore this is **not a hard 40M token cap**.
+Resuming preserves thread history; it does not force context compaction. Use
+short file-specific helper briefs, read each catalog index once, fetch detailed
+source only as needed, and retain large logs/IR as artifact paths. No model or
+provider settings are changed by this policy.
+
 ## Worker and dependency setup
 
 Use an x86-64 Linux worker on AWS for the documented native gSIM runtime; a

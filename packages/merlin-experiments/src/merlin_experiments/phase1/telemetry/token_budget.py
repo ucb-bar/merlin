@@ -1,15 +1,16 @@
-"""Advisory all-author token targets; never a correctness or termination gate."""
+"""All-author token targets and explicit managed-turn admission selections."""
 
 from __future__ import annotations
 
 SCHEMA = "merlin.author_token_budget.v1"
 DEFAULT_TARGET = 40_000_000
 DEFAULT_RESERVE = 8_000_000
+ADMISSION_SCHEMA = "merlin.author_token_budget.v2"
 
 
 def validate(record: dict) -> dict:
     """Validate the recorded policy without silently changing historical selections."""
-    if not isinstance(record, dict) or record.get("schema") != SCHEMA:
+    if not isinstance(record, dict) or record.get("schema") not in (SCHEMA, ADMISSION_SCHEMA):
         raise ValueError("unsupported author token budget")
     target, reserve = record.get("target"), record.get("reserve")
     if type(target) is not int or target <= 0:
@@ -18,7 +19,17 @@ def validate(record: dict) -> dict:
         raise ValueError("author token reserve must be nonnegative and below the target")
     if record.get("mode") != "soft" or record.get("accounting") != "all_authors_input_including_cache_plus_output":
         raise ValueError("author token budget must use soft all-author accounting")
-    if set(record) != {"schema", "target", "reserve", "mode", "accounting"}:
+    fields = {"schema", "target", "reserve", "mode", "accounting"}
+    if record['schema'] == ADMISSION_SCHEMA:
+        fields.add('admission')
+        selected = record.get('admission')
+        if (type(selected) is not dict or set(selected) != {'kind', 'turn_allowance', 'poll_s',
+                'missing_usage_grace_s', 'integration_slice_s', 'integration_turns'}
+                or selected.get('kind') != 'managed_turns'
+                or any(type(selected[k]) is not int or selected[k] <= 0 for k in selected if k != 'kind')
+                or selected['turn_allowance'] > target or selected['integration_turns'] != 1):
+            raise ValueError('invalid explicit author token admission policy')
+    if set(record) != fields:
         raise ValueError("unknown author token budget fields")
     return dict(record)
 
@@ -26,15 +37,25 @@ def validate(record: dict) -> dict:
 def selection(options) -> dict | None:
     target = getattr(options, "author_token_target", None)
     reserve = getattr(options, "author_token_reserve", None)
-    if target is None and reserve is None and not getattr(options, "joint_campaign", ""):
+    admission = getattr(options, 'author_token_admission', False)
+    allowance = getattr(options, 'author_token_turn_allowance', None)
+    if admission and (getattr(options, 'driver', 'codex') != 'codex' or getattr(options, 'schedule', 'continuous') != 'continuous'):
+        raise ValueError('managed token admission requires the continuous Codex driver')
+    if allowance is not None and not admission:
+        raise ValueError('author token turn allowance requires explicit token admission')
+    if target is None and reserve is None and not admission and not getattr(options, "joint_campaign", ""):
         return None
-    return validate({
-        "schema": SCHEMA,
+    record = {
+        "schema": ADMISSION_SCHEMA if admission else SCHEMA,
         "target": DEFAULT_TARGET if target is None else target,
         "reserve": DEFAULT_RESERVE if reserve is None else reserve,
         "mode": "soft",
         "accounting": "all_authors_input_including_cache_plus_output",
-    })
+    }
+    if admission:
+        record['admission'] = dict(kind='managed_turns', turn_allowance=1_000_000 if allowance is None else allowance,
+            poll_s=5, missing_usage_grace_s=60, integration_slice_s=300, integration_turns=1)
+    return validate(record)
 
 
 def verify_resume(options, run_config: dict) -> None:
@@ -44,8 +65,17 @@ def verify_resume(options, run_config: dict) -> None:
         validate(recorded)
     explicit = any(getattr(options, key, None) is not None
                    for key in ("author_token_target", "author_token_reserve"))
+    explicit = explicit or getattr(options, 'author_token_admission', False) or getattr(options, 'author_token_turn_allowance', None) is not None
     if explicit:
         proposed = dict(recorded or selection(options))
+        if getattr(options, 'author_token_admission', False):
+            proposed['schema'] = ADMISSION_SCHEMA
+            proposed['admission'] = selection(options)['admission']
+        allowance = getattr(options, 'author_token_turn_allowance', None)
+        if allowance is not None:
+            if proposed.get('schema') != ADMISSION_SCHEMA:
+                raise ValueError('author token allowance requires a selected managed policy')
+            proposed['admission'] = {**proposed['admission'], 'turn_allowance': allowance}
         for option, key in (("author_token_target", "target"), ("author_token_reserve", "reserve")):
             value = getattr(options, option, None)
             if value is not None:
@@ -110,14 +140,26 @@ def guidance(options) -> str:
     policy = selection(options)
     if policy is None:
         return ""
+    controls = ''
+    if policy['schema'] == ADMISSION_SCHEMA:
+        controls = (
+            ' Managed admission includes outstanding-turn allowances and live descendant usage. '
+            'At the development boundary, stop new exploration and preserve a concise integration checkpoint. '
+            'One integration continuation is reserved; native calls inside a running provider turn cannot be individually admitted. '
+            'The host may interrupt an owned process at the selected budget boundary or bounded integration limit. '
+            'Partial edits must be reviewed; interruption is not correctness success. '
+            'Use short helper briefs with explicit files, capability, acceptance check and output artifact. '
+            'Read each catalog index once, then fetch only the relevant API/source sections by path. '
+            'Do not repeatedly print full catalogs, transcripts, generated IR or source trees. '
+        )
     return (
         "\n\n## Aggregate author token target\n\n"
         f"Target **{policy['target']:,} tokens** across the lead and all helpers, including cached input "
         f"and output. Plan {policy['target'] - policy['reserve']:,} for development and "
-        f"{policy['reserve']:,} for integration and repairs. This is a soft target: finish necessary "
-        "correctness/performance work and report overruns. Reasoning is already included in output. "
+        f"{policy['reserve']:,} for integration and repairs. This is a soft target, not a provider token cap; "
+        "report any overrun and respect the selected admission/checkpoint policy. Reasoning is already included in output. "
         "Give helpers bounded capability-specific briefs and artifact links, not copied full logs. "
         "Read detailed API/source records on demand. Let tools enumerate legal parameter variants; "
         "avoid an agent turn per capsule or tile size. Preserve full evidence on disk, compact feedback "
-        "in context, and merge completed reusable changes into the same compiler.\n"
+        "in context, and merge completed reusable changes into the same compiler.\n" + controls
     )

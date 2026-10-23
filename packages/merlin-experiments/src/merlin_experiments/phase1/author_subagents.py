@@ -171,8 +171,8 @@ def round_guidance(capacity: int | None, delegation: int | None) -> str:
         "splits into independent parts -- lowering for a disjoint group of operations or capsule "
         "families, diagnosing one failing capsule cluster, answering one specific ISA or ABI question -- "
         "delegate those parts instead of doing everything serially. Give each helper a self-contained "
-        "brief: the goal, the exact files it owns, the capsules it should check, and what to report "
-        'back; prefer fork_turns "none" (or a few turns) with that brief over a full-history fork, '
+        "brief of at most 1,200 words: the goal, the exact files it owns, the capsules it should check, and what to report "
+        'back; prefer fork_turns "none" with that brief over a full-history fork, '
         "which re-sends your entire context to every helper. Helpers share your workspace and see each "
         "other's edits immediately, so never give two agents the same file; give each helper its own "
         "variants/<name>/ copy and have it check that copy with `python3 agent_selfcheck.py "

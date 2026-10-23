@@ -570,3 +570,12 @@ def test_cli_verify_exit_codes(world, capsys):
         record = json.loads(capsys.readouterr().out)
         assert record["status"] == "drift" and record["drifts"][0]["subject"] == "plan argv --resume"
         assert lc.main(["verify", *common, "--report", str(world.prep / "r.json")]) == 2
+
+
+def test_launch_renders_opt_in_token_admission(tmp_path):
+    path = _checkout(tmp_path, lambda doc: doc['author'].update(
+        token_target=40_000_000, token_reserve=8_000_000,
+        token_admission=True, token_turn_allowance=750_000))
+    launch = lc.build(lc.load(path), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    assert '--author-token-admission' in launch.argv
+    assert launch.argv[launch.argv.index('--author-token-turn-allowance') + 1] == '750000'
