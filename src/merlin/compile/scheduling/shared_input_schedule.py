@@ -132,17 +132,25 @@ def schedule_shared_input(
         min(nt, resources.max_n_blocks),
         min(kt, resources.max_k_blocks),
     )
-    if bm_max * bn_max * bk_max > resources.candidate_budget:
+    if selected_block is not None and any(
+        value > maximum for value, maximum in zip(selected_block, (bm_max, bk_max, bn_max), strict=True)
+    ):
+        return None
+    candidate_count = 1 if selected_block is not None else bm_max * bn_max * bk_max
+    if candidate_count > resources.candidate_budget:
         raise ValueError("shared-input blocking search exceeds its candidate budget")
     commands = mt * kt + _ceil(mt, bm_max) * nt * kt + 2 * mt * nt * kt + mt * nt
     if commands > max_commands:
         raise ValueError("shared-input schedule exceeds its command budget before materialization")
     candidates, considered = [], 0
-    for bm in range(1, bm_max + 1):
-        for bn in range(1, bn_max + 1):
-            for bk in range(1, bk_max + 1):
-                if selected_block is not None and (bm, bk, bn) != selected_block:
-                    continue
+    # An explicit alternative tests only its selected block, not the entire
+    # search product. Native storage/effect checks below still apply unchanged.
+    m_choices = (selected_block[0],) if selected_block is not None else range(1, bm_max + 1)
+    n_choices = (selected_block[2],) if selected_block is not None else range(1, bn_max + 1)
+    k_choices = (selected_block[1],) if selected_block is not None else range(1, bk_max + 1)
+    for bm in m_choices:
+        for bn in n_choices:
+            for bk in k_choices:
                 considered += 1
                 if not resources.partial_output_blocks and (mt % bm or nt % bn):
                     continue

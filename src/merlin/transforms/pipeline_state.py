@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from time import perf_counter_ns
 
 from .certificates import ir_digest
 
@@ -170,6 +171,7 @@ class PipelineSession:
         self.max_repairs = max_repairs
         self.repair_round = 0
         self.records: list[PassRecord] = []
+        self.host_pass_profile: list[dict] = []
         self._analyses: dict[str, tuple[AnalysisStamp, object]] = {}
         self._dependencies: dict[str, set[str]] = {}
         self._stage = -1
@@ -190,6 +192,38 @@ class PipelineSession:
         return value
 
     def run(self, spec: PassSpec, action: Callable[[], Mapping[str, object]]):
+        """Execute once, recording host action and framework time separately.
+
+        Profiling does not enter IR/context identities or target-cycle metrics.
+        Failed actions are recorded too; no extra checks or IR traversals run.
+        """
+        started = perf_counter_ns()
+        action_ns = 0
+        invoked = False
+        status = "failed"
+
+        def measured_action():
+            nonlocal action_ns, invoked
+            invoked = True
+            before = perf_counter_ns()
+            try:
+                return action()
+            finally:
+                action_ns += perf_counter_ns() - before
+
+        try:
+            value = self._run(spec, measured_action)
+            status = "completed"
+            return value
+        finally:
+            elapsed = perf_counter_ns() - started
+            self.host_pass_profile.append(dict(
+                name=spec.name, status=status, action_invoked=invoked,
+                action_wall_ns=action_ns, framework_wall_ns=elapsed - action_ns,
+                total_wall_ns=elapsed, scope="host_pass_invocation",
+            ))
+
+    def _run(self, spec: PassSpec, action: Callable[[], Mapping[str, object]]):
         before = self.stamp()
         if spec.ir_level != self.ir_level or spec.stage < self._stage:
             raise ValueError(f"pass {spec.name} has invalid IR level or ordering")

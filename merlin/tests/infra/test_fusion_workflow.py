@@ -30,9 +30,10 @@ def test_discovery_on_distinct_graphs_retains_boundaries_and_unknown_legality():
     assert any(c["live_outputs"] for c in observed["candidates"])
     module, _, _, _, _ = shared_fixture()
     siblings = F.discover(module, capability_contract={}, numerical_policy_sha256="a" * 64)
-    assert siblings["routes"]["shared_input"]["candidates"] == 1
+    assert siblings["routes"]["shared_input"]["candidates"] == 2
     row = next(c for c in siblings["candidates"] if c["route"] == "shared_input")
-    assert len(row["live_outputs"]) == 3
+    assert len(row["live_outputs"]) == 2
+    assert [c["detail"]["widths"] for c in siblings["candidates"] if c["route"] == "shared_input"] == [(7, 3), (7, 3, 9)]
     assert row["storage_lifetimes"] == "unproved"
     json.dumps(siblings)
 

@@ -13,9 +13,57 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/run_inputs.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/generated_isa_library.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
+  - examples/gemmini/phase1/launch/prepare_author_library.py
+  - examples/gemmini/phase1/launch/prepare_source_release.py
+  - examples/gemmini/phase1/launch/prepare_author_launch.py
+  - examples/gemmini/phase1/launch/resource_reservation.py
 ---
 
 # Plan compiler construction from public capabilities
+
+## Prepare a concrete refreshed author environment
+
+The operator helpers in `examples/gemmini/phase1/launch/` prepare prospective
+inputs; none launches an author or reserves CPUs:
+
+1. `prepare_author_library.py` refreshes the existing explicit reviewed source
+   membership from a committed compiler revision. It retains the editable generic
+   compiler grant, closes imports, and refuses newly discovered SDK leaves without
+   a separate review. Both generic-only and optional scaffold selections are
+   recorded, so the latter is never silently enabled.
+2. `prepare_source_release.py` calls ordinary corpus release preparation from the
+   original generated lineage, public supplement and scalability selections. It
+   selects the new SDK and preserves the hash-checked explicit formal toolchain.
+   Its output requires ordinary review and sealing; an old seal or symlinked old
+   release cannot establish new source custody. The configured repo/out context
+   must be the intended new task. Independently stage any declared frozen host
+   package at its exact grant path; do not alias an entire previous checkout.
+3. Rebuild the public capability inventory from native capsule declarations and
+   check all cohort/engine obligations. Verify current host source identities with
+   the tool profile's `host_source_digest` rule: reviewed public namespace facades
+   intentionally differ from their original host namespace initializers.
+4. `prepare_author_launch.py` takes the prior operator launch selection as an
+   explicit runtime template plus the new sealed release, library selection,
+   policy and task root. It renders exact proposed JSON, a separate no-author
+   preflight selection, and a runnable reserved command. Historical compiler seed,
+   epoch and admission verdicts are not carried forward.
+5. Run only the selected native `--preflight-only` command to prove startup.
+   Record its actual result and the representative compiler execution separately.
+   `startup_checks_completed` is not proof of compiler correctness or performance.
+
+The proposed full command wraps the controller with `resource_reservation.py`.
+It uses a valid `merlinphase1` service identifier and restores the exact selected
+environment **inside** the reservation helper's restricted environment boundary.
+All twenty CPUs remain shared across authoring, builds, grading and calibration;
+reservation acquisition and restoration occur only if that command is explicitly
+executed. Rendering it does not reserve the cores. The launch retains the 40M
+aggregate soft token target with an 8M integration reserve.
+
+Treat scaffold source identities separately from timing qualification. A scaffold
+derived from augmented facts/declarations is not automatically the same treatment
+as a release selecting the original facts. Select matching public source inputs
+explicitly before enabling it. Likewise, preparing a new library does not activate
+a new timing model or qualify a provisional model.
 
 ## Optional reviewed generated instruction scaffold
 

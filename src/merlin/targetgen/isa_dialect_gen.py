@@ -13,7 +13,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from xdsl.dialects.builtin import IntegerAttr, IntegerType
-from xdsl.ir import Dialect, Operation
+from xdsl.ir import Dialect, Operation, SSAValue
 from xdsl.traits import EffectInstance, MemoryEffect, MemoryEffectKind, Resource
 from xdsl.utils.exceptions import VerifyException
 
@@ -132,6 +132,59 @@ def verify_instruction(op: Operation, instruction: Instruction) -> None:
             raise VerifyException(str(exc)) from exc
 
 
+def create_instruction(model, operations, result_types, name, *, operands, immediates):
+    """Build a generated operation by declared argument names, before allocation.
+
+    Values and encoded register indices are deliberately separate. Result types
+    come from the generated definition; no target layout or payload is inferred.
+    """
+    instruction = model.instruction(name)
+    if set(operands) != {arg.name for arg in instruction.operands} or set(immediates) != {
+        arg.name for arg in instruction.immediates
+    }:
+        raise IsaSpecError("builder bindings must exactly cover declared operands and immediates")
+    operation = operations[name]
+    if operation.name != f"{model.namespace}.{name}":
+        raise IsaSpecError("operation belongs to a different instruction namespace")
+    attributes = {}
+    for arg in instruction.immediates:
+        _check_value(arg, immediates[arg.name])
+        attributes[arg.name] = IntegerAttr(immediates[arg.name], IntegerType(arg.type.bits), truncate_bits=True)
+    op = operation.build(
+        operands=[SSAValue.get(operands[arg.name]) for arg in instruction.operands],
+        result_types=result_types[name], attributes=attributes,
+    )
+    op.verify()
+    return op
+
+
+def encode_operation(model, op, *, allocate):
+    """Encode a typed instruction using explicit allocation of its SSA bindings.
+
+    ``allocate(value, argument)`` returns the target's encoded register/address
+    binding. It never receives an immediate as an SSA value. The existing codec
+    checks field widths/alignment, including result-register bindings.
+    """
+    names = {f"{model.namespace}.{item.name}": item for item in model.instructions}
+    instruction = names.get(op.name)
+    if instruction is None or not callable(allocate):
+        raise IsaSpecError("encoding requires a declared operation and allocation callback")
+    op.verify()
+    verify_instruction(op, instruction)
+    if len(op.operands) != len(instruction.operands) or len(op.results) != len(instruction.results):
+        raise IsaSpecError("operation does not have the declared SSA signature")
+    values = {}
+    fields = {field.argument for field in instruction.fields if field.argument is not None}
+    for arg, value in zip(instruction.operands + instruction.results, (*op.operands, *op.results), strict=True):
+        if arg.name in fields:
+            values[arg.name] = allocate(value, arg)
+    for arg in instruction.immediates:
+        if arg.name in fields:
+            value = op.attributes[arg.name].value.data
+            values[arg.name] = value if arg.type.signed else value & ((1 << arg.type.bits) - 1)
+    return encode_instruction(model, instruction.name, values)
+
+
 def render_dialect_module(model: ResolvedISA) -> str:
     """Generate concrete xDSL definitions; identifiers come from validated declarations."""
     model = resolved_isa_from_record(model.record())
@@ -143,7 +196,8 @@ def render_dialect_module(model: ResolvedISA) -> str:
         "                       irdl_attr_definition, irdl_op_definition)",
         "from merlin.targetgen.isa_spec import resolved_isa_from_record",
         "from merlin.targetgen.isa_dialect_gen import (instruction_effect_trait, verify_instruction,",
-        "                                             encode_instruction, decode_instruction)",
+        "                                             encode_instruction, decode_instruction,",
+        "                                             create_instruction, encode_operation)",
         "",
         f"MODEL = resolved_isa_from_record({model.record()!r})",
         f"MODEL_SHA256 = {model.identity()!r}",
@@ -194,6 +248,10 @@ def render_dialect_module(model: ResolvedISA) -> str:
             "INSTRUCTIONS = {"
             + ", ".join(f"{ins.name!r}: {cls}" for ins, cls in zip(model.instructions, classes, strict=True))
             + "}",
+            "RESULT_TYPES = {"
+            + ", ".join(f"{ins.name!r}: [{', '.join(type_expression(arg) for arg in ins.results)}]"
+                        for ins in model.instructions)
+            + "}",
             f"DIALECT = Dialect({model.namespace!r}, [{', '.join(classes)}], [AddressType])",
             "",
             "def encode(name, values):",
@@ -201,6 +259,12 @@ def render_dialect_module(model: ResolvedISA) -> str:
             "",
             "def decode(word):",
             "    return decode_instruction(MODEL, word)",
+            "",
+            "def create(name, *, operands, immediates):",
+            "    return create_instruction(MODEL, INSTRUCTIONS, RESULT_TYPES, name, operands=operands, immediates=immediates)",
+            "",
+            "def encode_op(op, *, allocate):",
+            "    return encode_operation(MODEL, op, allocate=allocate)",
             "",
         ]
     )

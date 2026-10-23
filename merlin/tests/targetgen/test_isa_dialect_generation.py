@@ -198,6 +198,50 @@ def test_instruction_verifier_rejects_invalid_immediates_and_types(tmp_path, shi
         Parser(ctx, _program(model, shift=shift, dtype=dtype)).parse_module().verify()
 
 
+def test_named_ssa_builder_requires_explicit_allocation(tmp_path):
+    from xdsl.ir import Block
+    from xdsl.dialects.builtin import IntegerType
+
+    model = _model()
+    generated = _load_module(tmp_path, model)
+    block = Block(arg_types=[IntegerType(8), IntegerType(8)])
+    op = generated.create('step', operands=dict(lhs=block.args[0], rhs=block.args[1]),
+                          immediates=dict(shift=-2))
+    allocation = {block.args[0]: 2, block.args[1]: 4}
+    word = generated.encode_op(op, allocate=lambda value, arg: allocation[value])
+    assert generated.decode(word) == ('step', dict(lhs=2, rhs=4, shift=-2))
+    assert tuple(op.operands) == tuple(block.args)
+    with pytest.raises(IsaSpecError, match='outside range'):
+        generated.encode_op(op, allocate=lambda value, arg: 256)
+    with pytest.raises(IsaSpecError, match='exactly cover'):
+        generated.create('step', operands=dict(lhs=block.args[0]), immediates=dict(shift=2))
+
+
+@pytest.mark.parametrize('width', [32, 64])
+def test_ssa_result_allocation_is_separate_from_payload_width(tmp_path, width):
+    from xdsl.ir import Block
+    from xdsl.dialects.builtin import IntegerType
+
+    target, spec, facts, _, _ = _inputs()
+    facts['facts']['data_bits'] = width
+    digest = hashlib.sha256(json.dumps(facts, sort_keys=True).encode()).hexdigest()
+    spec['facts_sha256'] = digest
+    row = spec['instructions'][0]
+    row['results'] = [row['operands'].pop()]
+    for arg in row['operands'] + row['results']:
+        arg['unit'] = 'register_value'
+    model = resolve_isa(spec, facts, target=target, facts_sha256=digest)
+    generated = _load_module(tmp_path, model)
+    block = Block(arg_types=[IntegerType(width)])
+    op = generated.create('step', operands={'lhs': block.args[0]}, immediates={'shift': 1})
+    assert op.results[0].type == IntegerType(width)
+    allocation = {block.args[0]: 3, op.results[0]: 7}
+    assert generated.decode(generated.encode_op(op, allocate=lambda value, arg: allocation[value])) == (
+        'step', {'lhs': 3, 'rhs': 7, 'shift': 1})
+    with pytest.raises(IsaSpecError, match='outside range'):
+        generated.encode_op(op, allocate=lambda value, arg: 8)
+
+
 def test_unknown_effects_do_not_become_pure(tmp_path):
     target, spec, facts, digest, _ = _inputs()
     spec["instructions"][0].pop("effects")

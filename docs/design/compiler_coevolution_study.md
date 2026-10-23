@@ -50,6 +50,22 @@ compiler before the first executable. Assign independent helpers graph, schedule
 and host-lowering work behind shared interfaces; integrate into one compiler.
 Keep a known working checkpoint and test the boundaries changed by each merge.
 
+The backend directory starts empty for a new construction run. The offline
+study and automatic author share the admitted public inputs, sandbox, compiler
+library, action client, immutable execution requests and feedback. Offline
+operator decisions are recorded as replayable actions, never as extra privileged
+compiler APIs. A retained compiler may be an explicitly separate infrastructure
+control; it cannot establish fresh construction or enter the new author seed.
+Reusable instruction generation belongs in Merlin and takes public declarations
+as data, without requiring the existing target compiler repository.
+
+Organize parallel construction by frontend/source semantics, graph grouping,
+schedule/storage, target lowering/emission and host execution. Readiness gates
+only admit tests for executable capabilities. They do not pause other authoring
+or require completion of the whole compiler before testing. Multiple immutable
+snapshots may execute while their authors continue editing. A shared ABI failure
+defers its affected requests; it does not invalidate unrelated capability work.
+
 For the selected joint corpus, the public denominator is 250: 153 original
 correctness, 20 calibration and 77 scalability/performance cases. Original
 physical obligations remain mandatory, including their declared expected-refusal
@@ -106,6 +122,26 @@ is at most 4% absolute relative error on every predeclared held-out case, with
 complete case coverage. Final FireSim results remain independent of calibration.
 
 ## Token and feedback policy
+
+The performance objective is lower complete-call and complete-model latency.
+Utilization is diagnostic: padded or redundant work must not be rewarded for
+keeping an engine busy. Keep useful arithmetic efficiency, issued work, modeled
+resource occupancy and physically observed activity distinct. A structural peak
+ratio is not a measured active-lane fraction or a promise of attainable speedup.
+
+Resource activity must use the same execution window as its timing denominator.
+Clip intervals crossing the window boundaries, normalize by resource capacity,
+and report overlap without adding concurrent engine times. Keep bandwidth per
+memory boundary, host feeding and synchronization inside the call scope, and
+one-time preparation separate. Whole-trace bookings cannot supply windowed
+utilization; missing producer evidence remains unknown. Report exact model epoch
+and physical/model/structural provenance with every metric. Simulator-side
+observation should avoid perturbing the guest's instruction stream.
+
+Pass profiles separately report transformation and framework host time. These
+measure development overhead, not target execution. Common-prefix costs are
+reported once separately from per-variant work. Profiling adds no extra verifier
+or IR traversal, and time values do not enter semantic identity.
 
 New joint sessions record an aggregate soft target of 40,000,000 tokens: 32,000,000
 working budget and 8,000,000 integration/repair reserve. Input includes cached

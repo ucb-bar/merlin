@@ -53,6 +53,37 @@ def test_real_shared_transform_changes_consumed_emitted_ir_and_keeps_source_priv
     assert [v['name'] for v in result.receipt['passes']] == ['normalize', 'emit']
     assert result.receipt['before']['source_sha256'] != result.receipt['after']['source_sha256']
     assert result.receipt['selected_variant'] == 'integer'
+    assert [v['name'] for v in result.receipt['host_pass_profile']] == ['normalize', 'emit']
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_pass_profile_separates_action_from_framework_and_preserves_failure(monkeypatch, fails):
+    import merlin.transforms.pipeline_state as state
+
+    ticks = iter((0, 2, 5, 12))
+    monkeypatch.setattr(state, 'perf_counter_ns', lambda: next(ticks))
+    session = PipelineSession(source())
+    before = session.stamp()
+    invocations = []
+
+    def action():
+        invocations.append(True)
+        if fails:
+            raise RuntimeError('failed transformation')
+        return {}
+
+    if fails:
+        with pytest.raises(RuntimeError, match='failed transformation'):
+            session.run(PassSpec('inspect', 0, mutates_ir=False), action)
+        with pytest.raises(ValueError, match='session failed'):
+            session.stamp()
+    else:
+        session.run(PassSpec('inspect', 0, mutates_ir=False), action)
+        assert session.stamp() == before
+    assert invocations == [True]
+    assert session.host_pass_profile == [dict(
+        name='inspect', status='failed' if fails else 'completed', action_invoked=True,
+        action_wall_ns=3, framework_wall_ns=9, total_wall_ns=12, scope='host_pass_invocation')]
 
 
 @pytest.mark.parametrize('shape,status', [((None,), 'unknown'), ((7,), 'unsupported')])

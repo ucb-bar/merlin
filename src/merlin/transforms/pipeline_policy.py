@@ -242,6 +242,7 @@ def execute_policy(session: PipelineSession, policy: PipelinePolicy,
         fallback_selected=fallback, decisions=decisions, policy=asdict(policy),
         before=asdict(before), after=asdict(session.stamp()), registry=metadata,
         passes=tuple(asdict(record) for record in session.records), output=output,
+        host_pass_profile=tuple(session.host_pass_profile),
         facts=dict(shapes=facts.shapes, element_types=facts.element_types, layouts=facts.layouts,
                    operations=sorted(facts.operations) if facts.operations is not None else None,
                    numerical_semantics=sorted(facts.numerical_semantics) if facts.numerical_semantics is not None else None,
@@ -259,6 +260,7 @@ class VariantEvaluation:
     result: PolicyResult | None
     applicability: tuple[bool | None, ...]
     error: str | None = None
+    host_pass_profile: tuple[dict, ...] = ()
 
     def summary(self):
         """Bounded feedback; the caller retains the full IR/receipt separately."""
@@ -270,6 +272,7 @@ class VariantEvaluation:
             output_ir_sha256=self.result.receipt['after']['source_sha256'] if self.result else None,
             prepared_passes=tuple(row['name'] for row in self.result.receipt['prefix_passes']) if self.result else (),
             executed_passes=tuple(row['name'] for row in self.result.receipt['passes']) if self.result else (),
+            host_pass_profile=self.host_pass_profile,
             qualification='compilation only; independent correctness and timing required',
         )
 
@@ -346,6 +349,7 @@ def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
             prepared_session.run(entry.spec, lambda entry=entry: entry.action(prepared_session))
     prepared_stamp = prepared_session.stamp()
     prefix_records = tuple(asdict(record) for record in prepared_session.records)
+    prefix_profile = tuple(prepared_session.host_pass_profile)
     # Retain only prepared IR and records. Drop produced analysis objects even
     # from the preparation session; they may contain references into its IR.
     prepared_session = PipelineSession(prepared_session.module, context=prepared_stamp.context,
@@ -381,15 +385,19 @@ def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
                 result = PolicyResult(session.analysis(output), session.module, dict(
                     schema='merlin.compiler_pipeline_variant.v1', variant=asdict(variant),
                     source=asdict(source_stamp), prefix_passes=prefix_records,
+                    prefix_host_pass_profile=prefix_profile,
                     before=asdict(before), after=asdict(session.stamp()), registry=metadata,
                     passes=tuple(asdict(record) for record in session.records), output=output,
+                    host_pass_profile=tuple(session.host_pass_profile),
                     applicability=applicability,
                     qualification='pass execution and current-IR custody only; no semantic or hardware proof',
                 ))
-                evaluation = VariantEvaluation(variant.name, status, result, applicability)
+                evaluation = VariantEvaluation(variant.name, status, result, applicability,
+                                               host_pass_profile=tuple(session.host_pass_profile))
         except Exception as exc:
             evaluation = VariantEvaluation(variant.name, 'failed', None, applicability,
-                                           f'{type(exc).__name__}: {str(exc)[:512]}')
+                                           f'{type(exc).__name__}: {str(exc)[:512]}',
+                                           host_pass_profile=tuple(session.host_pass_profile))
         if source_session.stamp() != source_stamp:
             raise ValueError('search source changed during an alternative')
         if prepared_session.stamp() != prepared_stamp:

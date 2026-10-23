@@ -5,7 +5,6 @@ product and original alternative for the caller's ordinary emission pipeline.
 """
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import asdict, dataclass
 import math
 
@@ -14,6 +13,7 @@ from merlin.transforms.certificates import ir_digest
 
 
 ROUTES = {
+    "multioutput": "merlin.compile.scheduling.multioutput_fusion.compile_source_multioutput",
     "adjacent_elementwise": "merlin.compile.scheduling.fusion.plan_fusion",
     "epilogue": "merlin.xdsl_dialects.lowering.output_fusion.decisions",
     "shared_input": "merlin.compile.scheduling.shared_input_schedule.schedule_shared_input",
@@ -22,178 +22,8 @@ ROUTES = {
 }
 
 
-def _boundary(operations, ordinals):
-    # Regions may capture external SSA values without listing them as parent
-    # operands. Include the entire owned tree, excluding its own block args.
-    nested = tuple(dict.fromkeys(child for root in operations for child in root.walk()))
-    members = set(nested)
-    inputs, outputs = {}, {}
-    for op in nested:
-        for value in op.operands:
-            owner = value.owner
-            local_block_arg = hasattr(owner, "parent_op") and owner.parent_op() in members
-            if owner not in members and not local_block_arg:
-                inputs[value] = None
-        for value in op.results:
-            if any(use.operation not in members for use in value.uses):
-                outputs[value] = None
-
-    def value_record(value):
-        owner = value.owner
-        if owner in ordinals:
-            identity = {"producer_ordinal": ordinals[owner], "result": list(owner.results).index(value)}
-        else:
-            parent = owner.parent_op() if hasattr(owner, "parent_op") else None
-            identity = {"block_owner_ordinal": ordinals.get(parent), "argument": getattr(value, "index", None)}
-        return {**identity, "type": str(value.type)}
-
-    return {"live_inputs": [value_record(v) for v in inputs],
-            "live_outputs": [value_record(v) for v in outputs],
-            "source_ids": [{"ordinal": ordinals[op],
-                            "region_id": getattr(op.attributes.get("prov.region_id"), "data", None),
-                            "node_ids": [getattr(a, "data", None) for a in
-                                         getattr(op.attributes.get("prov.source_node_ids"), "data", ())]}
-                           for op in operations]}
-
-
-def _structural_family(op):
-    """Small public IR observation, never a hardware eligibility decision.
-
-    Named matrix operations have declared contraction semantics. A generic is
-    observed as elementwise only for parallel iterators and identity maps. Other
-    forms remain unknown; selected realization readers own stronger proofs.
-    """
-    if op.name in {"linalg.matmul", "linalg.batch_matmul", "linalg.matvec", "linalg.vecmat", "linalg.dot"}:
-        return "contraction"
-    if op.name != "linalg.generic":
-        return None
-    iterators = op.properties.get("iterator_types")
-    maps = op.properties.get("indexing_maps")
-    if not iterators or not maps or not iterators.data or not maps.data:
-        return None
-    if (all(getattr(item.data, "value", None) == "parallel" for item in iterators.data)
-            and all(item.data == item.data.identity(item.data.num_dims) for item in maps.data)):
-        return "elementwise_map"
-    return None
-
-
-def discover(module, *, capability_contract, numerical_policy_sha256, preparation_requests=(),
-             max_candidates=256):
-    """Bounded typed-SSA candidates; facts do not substitute for native proofs.
-
-Capability composition restrictions are retained. Absent facts stay unknown;
-an available semantic family does not prove scalar equivalence or target effects.
-No workload/model identifier or reference timing is a dispatch key.
-"""
-    from merlin.compile import compiler_observations as C
-    from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
-    from merlin.verify.lean_contract import document_digest
-
-    if not is_sha256(numerical_policy_sha256) or type(max_candidates) is not int or not 0 < max_candidates <= 1024:
-        raise ValueError("fusion discovery requires a numeric policy pin and bounded candidate count")
-    members = tuple(module.walk())
-    if len(members) > 10000:
-        raise ValueError("fusion source operation budget exceeded")
-    ordinals = {op: index for index, op in enumerate(members)}
-    # Read only explicit public declarations. This advisory index deliberately
-    # does not fold units, infer composite families, or consult eligibility.
-    caps = {}
-    for unit in capability_contract.get("compute_units", ()):
-        if not isinstance(unit, dict):
-            raise ValueError("public compute-unit declarations must be objects")
-        for declaration in unit.get("semantic_capabilities", ()):
-            if not isinstance(declaration, dict) or not isinstance(declaration.get("family"), str):
-                raise ValueError("public semantic declarations must explicitly name a family")
-            caps.setdefault(declaration["family"], []).append({
-                "unit": unit.get("name"), "declaration": dict(declaration)})
-    rows = []
-
-    def add(route, operations, *, premise, detail=None):
-        if len(rows) >= max_candidates:
-            raise ValueError("fusion candidate budget exceeded; no truncated roster")
-        families = sorted({_structural_family(op) for op in operations} - {None})
-        selected = []
-        for family in families:
-            declarations = caps.get(family, [])
-            selected.append({"family": family, "status": "declared" if declarations else "unknown",
-                             "basis": "explicit_public_family_declaration_only",
-                             "composed_with": [row["declaration"].get("composed_with") for row in declarations],
-                             "forms": [row["declaration"].get("forms") for row in declarations],
-                             "declarations": declarations,
-                             "applicability": "unknown_until_native_legality_checks"})
-        rows.append({"route": route, "entrypoint": ROUTES[route], "status": "unknown",
-                     "reason": "source opportunity; native legality and selected realization still required",
-                     "operation_ordinals": [ordinals[op] for op in operations],
-                     **_boundary(operations, ordinals), "capability_observations": selected,
-                     "legality_premises": premise,
-                     "storage_lifetimes": "unproved", "schedule_sha256": None,
-                     "whole_region_cost": None, "detail": detail})
-
-    typed = {op: _structural_family(op) for op in members if any(hasattr(v.type, "get_shape") for v in op.results)}
-    typed = {op: stage for op, stage in typed.items() if stage is not None}
-    seen = set()
-    for producer, stage in typed.items():
-        for result in producer.results:
-            for use in result.uses:
-                consumer = use.operation
-                if consumer not in typed or producer.parent is not consumer.parent or (producer, consumer) in seen:
-                    continue
-                seen.add((producer, consumer))
-                block = tuple(producer.parent.ops)
-                adjacent = block.index(consumer) == block.index(producer) + 1
-                if stage == "contraction" and typed[consumer] != "contraction":
-                    route = "epilogue"
-                elif adjacent and stage != "contraction" and typed[consumer] != "contraction":
-                    route = "adjacent_elementwise"
-                else:
-                    route = "connected_residency"
-                add(route, (producer, consumer), premise=[
-                    "complete live outputs and external observers retained",
-                    "exact scalar/numeric order and selected standalone versus composed form",
-                    "target storage ownership, lifetime, completion and capacity checked",
-                    "actual transformed result consumed by ordinary emission"], detail={"adjacent": adjacent})
-    shared_reader = None
-    try:
-        groups = find_shared_input_groups(module)
-    except ValueError as error:
-        groups = ()
-        shared_reader = {"status": "unsupported", "scope": "current closed source reader",
-                         "reason": str(error)[:240], "hardware_unsupported": False}
-    if groups:
-        from xdsl.dialects import func
-        function = next(op for op in module.body.block.ops if type(op) is func.FuncOp)
-        operations = tuple(function.body.block.ops)
-        for group in groups:
-            add("shared_input", tuple(operations[i] for i in group.source_op_indices), premise=[
-                "native immutable shared SSA/zero-seed reader passed",
-                "each output and epilogue retains independent state",
-                "native shared-input storage/effect verification remains required"], detail=group.record())
-    requests = tuple(preparation_requests)
-    packing = C.packing(module, requests)
-    fanout = C.connected_fusion(module, max_candidates=max_candidates)
-    for opportunity in packing["opportunities"]:
-        operations = tuple(members[i] for i in opportunity["consumer_ordinals"])
-        add("preparation_reuse", operations, premise=[
-            "explicit same format and actual SSA views",
-            "source lifetime proof plus native physical preparation writer",
-            "cross-invocation persistent ownership independently proved"], detail=opportunity)
-    counts = Counter(row["route"] for row in rows)
-    return {"planned": {"source_regions": len(rows)}, "emitted": {},
-            "schema": "merlin.fusion_workflow.v1", "source_ir_sha256": ir_digest(module),
-            "capability_sha256": document_digest(dict(capability_contract)),
-            "numerical_policy_sha256": numerical_policy_sha256,
-            "maturity": "source_opportunities_not_legalized", "physical_savings_claimed": False,
-            "structural_reader_scope": "named matrix operations and parallel identity-map generics only",
-            "unclassified_tensor_operations": [{"ordinal": ordinals[op], "operation": op.name}
-                for op in members if any(hasattr(v.type, "get_shape") for v in op.results)
-                and _structural_family(op) is None],
-            "metric_definitions": {"planned.source_regions": "source opportunities, not legalized regions"},
-            "routes": {route: {"status": "unknown" if counts[route] else "no-match", "candidates": counts[route]}
-                       for route in ROUTES}, "shared_input_reader": shared_reader, "candidates": rows,
-            "pointwise_fanout": fanout,
-            "fallback": "preserve original source and unfused schedule; no discovery mutation",
-            "missing": ["general connected graph residency realization", "native proof for each selected route",
-                        "complete-region numerical checks and same-scope runtime cost"]}
+# Stable public surface: discovery remains separate from physical realization.
+from .fusion_discovery import discover, _structural_family  # noqa: F401
 
 
 @dataclass(frozen=True)
@@ -228,6 +58,8 @@ regions must use their compact route; this helper never unrolls them.
     artifact = kernel if candidate is None else candidate.kernel
     return Realization(artifact, kernel, {
         "route": "adjacent_elementwise", "status": "no-match" if candidate is None else "applied",
+        "reason": "native finite composition checks passed" if candidate is not None else
+                  "no native composition satisfies the selected semantics, effects and resources",
         "planned": {} if candidate is None else {"source_regions": 1}, "emitted": {},
         "maturity": "checked_schedule_not_instruction_image",
         "source_schedule_sha256": before, "schedule_sha256": artifact.digest(),
@@ -255,6 +87,8 @@ def realize_shared_input(module, group, **selection):
     record = None if candidate is None else asdict(candidate)
     return Realization(candidate if candidate is not None else module, module, {
         "route": "shared_input", "status": "no-match" if candidate is None else "applied",
+        "reason": "native source/storage checks passed" if candidate is not None else
+                  "selected tails, output blocking or storage capacities admit no realization",
         "planned": {} if candidate is None else {"source_regions": 1}, "emitted": {},
         "source_ir_sha256": before,
         "maturity": "logical_schedule_not_target_instruction_image",
@@ -319,3 +153,122 @@ def compare_region_costs(baseline, candidate):
     return {"status": "reported_comparison", "saved_cycles": baseline["cycles"] - candidate["cycles"],
             "baseline": baseline, "candidate": candidate, "placement_authority": False,
             "qualification": "supplied observations; native timing and correctness owners remain authoritative"}
+
+
+def realize_candidate(module, candidate, *, capability_contract, numerical_policy_sha256,
+                      preparation_requests=(), max_region_operations=8, **selection):
+    """Revalidate one paged opportunity, then use its existing closed realizer.
+
+    Unsupported graph routes return the unchanged source with a concrete reason.
+    Resource/search-budget refusals are local to this alternative. Invalid source
+    or contract bindings refuse before any native action. No arbitrary graph
+    rewrite is inferred from the advisory capability declarations.
+    """
+    from merlin.compile.scheduling.shared_input_groups import SharedInputGroup
+    from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
+
+    index = candidate.get('candidate_index')
+    binding = candidate.get('binding_sha256')
+    page = discover(module, capability_contract=capability_contract,
+        numerical_policy_sha256=numerical_policy_sha256, preparation_requests=preparation_requests,
+        max_region_operations=max_region_operations, max_candidates=1,
+        cursor={'schema': 'merlin.fusion_cursor.v1', 'binding_sha256': binding, 'offset': index})
+    from merlin.verify.lean_contract import document_digest
+    if document_digest(page['candidates']) != document_digest([candidate]):
+        raise ValueError('fusion candidate differs from the current bound discovery row')
+    before = ir_digest(module)
+    route = candidate['route']
+    try:
+        legality = candidate.get('source_legality')
+        if legality is not None and legality.get('status') == 'declined':
+            raise ValueError(legality['reason'])
+        if route == 'shared_input' and candidate['operation_ordinals']:
+            fields = candidate['detail']
+            group = SharedInputGroup(fields['source_ir_sha256'], tuple(fields['source_op_indices']),
+                tuple(fields['contraction_ordinals']), fields['m'], fields['k'], tuple(fields['widths']))
+            return realize_shared_input(module, group, **selection)
+        if route == 'multioutput':
+            operations = tuple(module.walk())
+            return realize_multioutput(module, tuple(operations[i] for i in candidate['operation_ordinals']), **selection)
+        status = 'unsupported'
+        reason = ('use realize_adjacent after ordinary finite schedule lowering' if route == 'adjacent_elementwise'
+                  else 'this discovery route has no automatic whole-region realization; retain source')
+    except (ValueError, UnsupportedElementwise) as error:
+        if ir_digest(module) != before:
+            raise ValueError('failed fusion realization mutated the retained source') from error
+        reason = str(error)
+        status = 'budget_exhausted' if 'budget' in reason else 'declined'
+    return Realization(module, module, {'route': route, 'status': status, 'reason': reason,
+        'source_ir_sha256': before, 'whole_region_cost': None, 'planned': {}, 'emitted': {},
+        'hardware_unsupported': False, 'execution_qualification': 'not_established'})
+
+
+@dataclass(frozen=True)
+class FusionAlternative:
+    """One compiler-selected native realization on its private source clone."""
+    name: str
+    realize: object
+    predicates: tuple = ()
+
+
+@dataclass(frozen=True)
+class FusionEvaluation:
+    name: str
+    status: str
+    evaluation: object
+    realization: Realization | None
+    reason: str | None = None
+
+
+def evaluate_fusions(source, alternatives, emit, *, context=None, facts=None,
+                     clone=None, fingerprint=None, verify_ir=None, ir_level='structured', unfused_objects=()):
+    """Emit unfused plus at most fifteen realized alternatives using native search.
+
+    ``emit(realization, session)`` receives the actual returned artifact/objects,
+    never only a receipt. It must use the caller's normal allocation/target
+    emission path. Independent correctness and performance grading stay external.
+    Source IR/schedules and contract identities remain immutable across clones.
+    Discovery pages are resumable; parameterizations for one region are bounded
+    to sixteen paths including the unconditional unfused fallback per round.
+    """
+    from merlin.transforms.pipeline_policy import PipelineVariant, PolicyFacts, RegisteredPass, evaluate_variants
+    from merlin.transforms.pipeline_state import PassSpec
+
+    alternatives = tuple(alternatives)
+    if (len(alternatives) > 15 or any(type(a) is not FusionAlternative or not callable(a.realize)
+            or not isinstance(a.name, str) or not a.name or a.name == 'unfused' for a in alternatives)
+            or len({a.name for a in alternatives}) != len(alternatives) or not callable(emit)):
+        raise ValueError('fusion round requires an emitter and at most fifteen unique alternatives plus unfused')
+    outcomes = {}
+    def prepare(session, alternative=None):
+        before = session.stamp()
+        if alternative is None:
+            product = Realization(session.module, session.module, {'status': 'unfused',
+                'source_ir_sha256': before.source_sha256, 'execution_qualification': 'not_established'},
+                tuple(unfused_objects))
+        else:
+            product = alternative.realize(session.module)
+        name = 'unfused' if alternative is None else alternative.name
+        if type(product) is not Realization or product.unfused is not session.module or session.stamp() != before:
+            raise ValueError('fusion realization lost its unchanged private unfused source')
+        outcomes[name] = product
+        if product.receipt.get('status') not in {'applied', 'unfused'}:
+            raise ValueError(product.receipt.get('reason', 'native realization unavailable'))
+        return {'fusion': product}
+    registry = {'emit': RegisteredPass(PassSpec('emit', 1, requires=('fusion',), produces=('artifact',),
+                        mutates_ir=False, ir_level=ir_level),
+                        lambda s: {'artifact': emit(s.analysis('fusion'), s)})}
+    variants = []
+    for alternative in (None, *alternatives):
+        name = 'unfused' if alternative is None else alternative.name
+        prepare_name = 'realize:' + name
+        registry[prepare_name] = RegisteredPass(PassSpec(prepare_name, 0, produces=('fusion',),
+            mutates_ir=False, ir_level=ir_level), lambda s, a=alternative: prepare(s, a))
+        variants.append(PipelineVariant(name, (prepare_name, 'emit'), () if alternative is None else alternative.predicates))
+    for result in evaluate_variants(source, tuple(variants), registry,
+            facts or (lambda s: PolicyFacts(s.stamp())), output='artifact', context=context,
+            ir_level=ir_level, clone=clone, fingerprint=fingerprint, verify_ir=verify_ir):
+        product = outcomes.get(result.variant)
+        refused = product is not None and product.receipt.get('status') not in {'applied', 'unfused'}
+        yield FusionEvaluation(result.variant, product.receipt['status'] if refused else result.status,
+                               result, product, result.error)

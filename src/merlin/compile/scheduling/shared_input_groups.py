@@ -32,10 +32,25 @@ class SharedInputGroup:
         }
 
     def verify_current(self, module, *, max_source_operations=10_000, max_source_elements=64 << 20):
-        if self not in find_shared_input_groups(
-            module, max_source_operations=max_source_operations, max_source_elements=max_source_elements
-        ):
+        groups = find_shared_input_groups(
+            module, max_source_operations=max_source_operations, max_source_elements=max_source_elements)
+        if not any(self == prefix for group in groups for prefix in grow_shared_input_group(group)):
             raise ValueError("shared-input group differs from complete current typed source")
+
+
+def grow_shared_input_group(group):
+    """Yield consecutive prefixes, adding one sibling at a time; never subsets.
+
+    Each prefix retains its own exact zero initializers and output identities.
+    Unselected siblings and external consumers stay in the original module.
+    ``verify_current`` rederives the maximal group before accepting a prefix.
+    """
+    from dataclasses import replace
+
+    for count in range(2, len(group.widths) + 1):
+        last = group.contraction_ordinals[count - 1]
+        yield replace(group, source_op_indices=tuple(i for i in group.source_op_indices if i <= last),
+                      contraction_ordinals=group.contraction_ordinals[:count], widths=group.widths[:count])
 
 
 def find_shared_input_groups(module, *, max_source_operations=10_000, max_source_elements=64 << 20):

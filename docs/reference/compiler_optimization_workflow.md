@@ -15,6 +15,7 @@ code_refs:
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/fusion_workflow.py
   - src/merlin/targetgen/compiler_library_fork.py
+  - src/merlin/targetgen/isa_dialect_gen.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
   - build_tools/scripts/audit_compiler_integration.py
 ---
@@ -53,6 +54,13 @@ The agent creates or changes algorithms by editing source. Adding an algorithm
 does not automatically register it in every interface, select it in the backend,
 or promote it into Merlin's canonical source tree.
 
+`PipelineSession.host_pass_profile` records each pass invocation's host action
+time and framework time separately, including failures. Policy and variant
+receipts expose these profiles; common-prefix timing is reported separately so
+it is not charged again to every alternative. Profiling adds no verification
+pass or extra IR traversal, and timings do not enter semantic identities. These
+are compiler development costs, not target cycles or evidence of a faster kernel.
+
 ## Three representations that should not be conflated
 
 1. Typed source MLIR carries graph operations, layouts, numerical semantics,
@@ -89,6 +97,26 @@ flowchart TD
 
 The diagram describes integration boundaries. The caller still has to choose
 which graph transforms and scheduling algorithms run at each boundary.
+
+## Generated instruction values and allocation
+
+The backend starts empty. Reusable generation lives in Merlin and consumes
+explicit public ISA declarations as data; an existing target compiler checkout
+is not a construction dependency or an author input. Optional generated neutral
+operations are a separately declared input treatment, never an optimized seed.
+
+Every package produced by `isa_dialect_gen.generate_package` exposes
+`create(name, operands=..., immediates=...)` and `encode_op(op, allocate=...)`.
+The builder uses named SSA operands and generates result types from the declared
+signature. The encoder calls `allocate(value, argument)` for encoded SSA inputs
+and results; the callback supplies physical register/address bindings. It checks
+encoding field widths separately from the values' types. A 64-bit value does not
+mean a 64-bit register-index field. Immediate attributes remain immediate values.
+
+The author supplies the target lowering and allocation using the same public
+declarations. The generator does not infer payload semantics, packing, resource
+lifetimes or schedules. Undeclared effects remain unknown. Encoding success is
+not functional correctness or evidence of performance.
 
 ## Mapping optimization work to existing mechanisms
 
