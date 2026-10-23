@@ -186,13 +186,14 @@ def realize_candidate(module, candidate, *, capability_contract, numerical_polic
         if legality is not None and legality.get('status') == 'declined':
             raise ValueError(legality['reason'])
         if connected is not None and route in {'adjacent_elementwise', 'connected_residency', 'epilogue'}:
-            from merlin.compile.connected_regions import plan_connected_region, compile_connected_pointwise
+            from merlin.compile.connected_regions import plan_connected_region, compile_connected_pointwise, compile_connected_region
             members = tuple(module.walk())
             region = plan_connected_region(module, tuple(members[i] for i in candidate['operation_ordinals']))
-            product = compile_connected_pointwise(region, **connected)
+            compiler = compile_connected_region if 'dense_options' in connected else compile_connected_pointwise
+            product = compiler(region, **connected)
             if ir_digest(module) != before:
                 raise ValueError('connected realization mutated the retained source')
-            return Realization(product, module, {'route': 'connected_pointwise', 'status': 'applied',
+            return Realization(product, module, {'route': 'connected_mixed' if 'dense_options' in connected else 'connected_pointwise', 'status': 'applied',
                 'source_ir_sha256': before, 'connected': product.report,
                 'maturity': 'executable_unfused_composition_not_cross_stage_fusion',
                 'whole_region_cost': None, 'physical_savings_claimed': False,

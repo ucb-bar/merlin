@@ -184,6 +184,17 @@ Keep a legal serial schedule available for numerical diagnosis and comparison.
 The selected baseline inventory gives inspectable module paths, signatures and
 source hashes. When the editable generic fork is selected, improve its pass
 implementations alongside target adapters and policy in your submission. The
+compiler change may belong in semantic admission, graph/region construction,
+numeric/layout contracts, allocation, instruction lowering or host execution,
+not only a pass. Identify the missing boundary and retain a working route.
+When the selected `DenseSourceResult` provides `emit_llvm`, it connects the
+checked compact schedule to the ordinary `FnBuilder`: the target callback emits
+instructions while the shared schedule owns loops, tails, accumulation and final
+stores. Inspect that seam before reconstructing those semantics manually. This
+emitter preserves the chosen schedule; it is not by itself a performance win.
+Compare meaningful scheduling/policy alternatives through actual emitted code.
+Use only available APIs and extend the editable library when a real gap remains.
+The
 following are available mechanisms, with independent
 legality requirements; they are not a mandatory sequence of all passes:
 

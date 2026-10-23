@@ -34,6 +34,7 @@ def prepare(
     facts_sha256=None,
     declaration_sha256=None,
     reviewed_module=(),
+    reviewed_rtl_discovery_dependencies=False,
 ):
     repo, output = Path(repo).resolve(), Path(output).absolute()
     actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
@@ -59,7 +60,11 @@ def prepare(
     if reviewed_shared_manifest(sdk, version=8) != manifest:
         raise ValueError("shared SDK identity changed during preparation")
     members = {row.path: row for row in base.contract.members}
-    additions = reviewed_modules(reviewed_module, existing=base.contract.public_modules)
+    requested = reviewed_discovery_modules(
+        reviewed_module, existing=base.contract.public_modules,
+        enabled=reviewed_rtl_discovery_dependencies,
+    )
+    additions = reviewed_modules(requested, existing=base.contract.public_modules)
     sources = {member.path: member.module for member in base.contract.members}
     sources.update(additions)
     for row in manifest["members"]:
@@ -135,6 +140,20 @@ def prepare(
     return report
 
 
+def reviewed_discovery_modules(modules, *, existing, enabled=False):
+    """Opt into one reviewed leaf; never merge Python namespace paths broadly.
+
+    The generic common package shadows the base SDK common package. Its RTL
+    discovery generators need this dependency even though both releases contain
+    the parent namespace. Historical selections are unchanged by default.
+    """
+    requested = tuple(modules)
+    dependency = "merlin.common.facts_view"
+    if enabled and dependency not in existing and dependency not in requested:
+        requested += (dependency,)
+    return requested
+
+
 def reviewed_modules(modules, *, existing):
     """Select exact reviewed generic leaves, never a package or companion source."""
     selected = {}
@@ -159,6 +178,10 @@ def main():
     for name in ("source-revision", "previous-sha256"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--generated-package", type=Path)
+    parser.add_argument(
+        "--reviewed-rtl-discovery-dependencies", action="store_true",
+        help="explicitly include reviewed merlin.common.facts_view for public RTL discovery imports",
+    )
     parser.add_argument(
         "--reviewed-module",
         action="append",

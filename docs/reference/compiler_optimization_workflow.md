@@ -14,6 +14,9 @@ code_refs:
   - src/merlin/sched/ir/kernel.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/fusion_workflow.py
+  - src/merlin/compile/connected_regions.py
+  - src/merlin/compile/connected_runtime.py
+  - examples/compiler/connected_composition.py
   - src/merlin/targetgen/compiler_library_fork.py
   - src/merlin/targetgen/isa_dialect_gen.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
@@ -156,6 +159,44 @@ An emitted source or logical schedule is not an executable; the target compiler
 must consume it through its normal lowering and independently check its outputs.
 The public `examples/compiler/fusion_exploration.py` exercises these same APIs
 for small synthetic integer residual, shared-projection and MLP structures.
+
+## Mixed dense and pointwise composition
+
+`connected_regions.compile_connected_region` extends the finite pointwise bridge
+with existing `schedule_source_dense` products. It derives live-ins, live-outs
+and ordered arguments from current SSA identities. Caller callbacks select the
+ordinary dense and pointwise compiler options. They cannot override source,
+input/output bindings or absorb an externally visible epilogue. Intervening zero
+fills are admitted only when the native dense source reader proves their exact
+initialization semantics; arbitrary observers still prevent composition.
+
+The result is **unfused sequential composition**. `ordered_invocations()` returns
+checked native products and exact tensor windows in source order. Dense entries
+retain their compact loop representation and expose the existing C/LLVM emission
+APIs; pointwise entries retain their final checked images. The public
+`examples/compiler/connected_composition.py` shows native dense C emission with
+caller-supplied pointwise entrypoint and launch-sequence emitters. The target
+still owns pointer ABI, image loading, completion, and instruction implementations.
+This is not a completed compiled guest ABI or a target execution qualification.
+
+For a selected synchronous runtime, `execute(backings, launch)` supplies read-only
+input byte views and the exact writable result view to each launcher. Physical
+backings are explicit, distinct backing identities cannot share a bytearray, and
+live tensor windows cannot overlap. Explicit byte-address backing origins support
+nonzero physical bases without padding host buffers up to that address. Dense
+arguments retain the native compiler's disjoint-buffer premise. All externally
+consumed outputs stay live,
+including an intermediate with multiple consumers. Storage persists only under
+the selected continuation contract; no device residency or performance gain is
+inferred. A neutral runtime test consumes actual dense loop calls and decoded
+pointwise images and checks modular arithmetic, tails, fan-out and complete
+visible outputs. This test is separate from compiling and running a guest image.
+
+`realize_candidate(..., connected={..., dense_options: ...})` selects the same
+mixed bridge inside `evaluate_fusions`. The unchanged source remains the unfused
+alternative, and unsupported semantics or bindings decline locally. The public
+API is usable by the automatic compiler author once its exact source module is
+included in a reviewed library selection; an existing run's grants do not change.
 
 ## Reviewing an authored compiler
 

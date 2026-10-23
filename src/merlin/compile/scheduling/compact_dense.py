@@ -199,6 +199,32 @@ class CompactDenseResult:
         self.revalidate()
         return source
 
+    def emit_llvm(self, builder, lower_call):
+        """Emit the checked counted program through the ordinary LLVM builder.
+
+        ``lower_call(instruction, arguments)`` receives i64 SSA operands, including
+        exact tail extents, accumulation flags and assigned rows. It owns target
+        encoding and completion; it must not reconstruct outer loops or move
+        stores. On any exception discard the partially populated builder.
+        This is conditional emission, not an independent machine qualification.
+        """
+        from .llvm_program import FnBuilderIndexAdapter, emit_index_program
+
+        self.revalidate()
+        if self.index_bits != 64:
+            raise ValueError("LLVM dense emission currently requires selected 64-bit indices")
+        if not callable(lower_call):
+            raise ValueError("LLVM dense emission requires a target instruction callback")
+        bridge = FnBuilderIndexAdapter(builder)
+        result = emit_index_program(
+            self.kernel, bridge,
+            lambda instruction, arguments: lower_call(
+                instruction, {key: bridge.value(value) for key, value in arguments.items()}),
+        )
+        self.revalidate()
+        return {**result, "scope": "checked compact schedule consumed by LLVM target callbacks",
+                "machine_emission": "requires_independent_target_qualification"}
+
 
 @dataclass(frozen=True)
 class _Group:

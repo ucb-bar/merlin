@@ -51,3 +51,12 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   unchanged into `DeviceRouting`. Automatic `compile_model` planning currently has
   no independently selected live policy/accessor producer; an active ordinary
   device build must refuse rather than infer one from a target or package name.
+
+`connected_regions.py` owns source-SSA boundaries, lifetimes and native stage
+compiler selection. `connected_runtime.py` consumes its dense/pointwise products
+through explicit synchronous launch callbacks and checked ordered invocations.
+Retain every external observer and live output. Distinct declared physical
+backings cannot alias through caller buffers; output reuse needs disjoint live
+ranges. This is unfused composition, not on-chip residency or runtime
+qualification. Target pointer ABI, image loading and instruction implementations
+remain caller-owned. Neutral host-buffer execution is not a compiled guest ABI.

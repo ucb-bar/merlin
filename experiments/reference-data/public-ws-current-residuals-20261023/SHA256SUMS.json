@@ -1,0 +1,14 @@
+{
+  "AGENT.md": "cf801103ed110cf5a7199b63c3c585aefd0a1e3ceb498a1095b92b656043c8dd",
+  "README.md": "382b7a69004b8fa734f2d8647e8dfac2a01e6338a7c0a695fb4746f2a5d879f7",
+  "baseline-complete-calls.json": "2501627f182503b535fe96d535a81188264ae98d1562bb32143b3f24050e64b8",
+  "baseline-timeline.json": "d03cb27c0c08c3e467fdd2506639216431dc64ff69faacfa70d219f6e47ef41b",
+  "baseline-windows.json": "6c4f0f5a134e8ce9ed88caa55328bc75922964a2a2943ebaa6810988f2df9210",
+  "candidate-build.json": "26131440aca2fc9372d344b817866178d427f3cd27deb52a0155baffaf536f4f",
+  "candidate-checks.json": "724cb39d52ea4cb9da4b6fa37faab0febdb78e0dceffa5293d7dc8ac2f6bba68",
+  "candidate-comparison.json": "525dcf6c4a985a3470bbf5d5e24907006d82ea0a29c7681ebddabd21ac167ee0",
+  "candidate-model.json": "a0c5565fb7fbfc5778d2664640de104cd19f6ecb4b8a0f0935b910132392670b",
+  "proposed-supported-domain.json": "a3f3270f1f35ac2ab1a8e15f50e96b81af994f365d72dffa8bf4468f47ffce1a",
+  "redaction.json": "ae82869467026dbcfdec166c3fb74528abb9d22c061f31f0ef59f62645c52a04",
+  "structural-prerequisites.json": "22694bc637e63515b895ec60c7c852ef44022b8dabaf19775a651ea171825f77"
+}

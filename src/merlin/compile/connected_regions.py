@@ -2,8 +2,8 @@
 
 This bridge preserves tensor identities across sequential runtime launches. It
 is not an arbitrary graph optimizer, a target adapter or a runtime qualifier.
-Pointwise stages reuse the ordinary native compiler. Counted dense stages are
-planned but need a multi-stage pointer/launch ABI before this route can emit.
+Pointwise stages reuse the ordinary native compiler. Mixed stages can use the
+explicit synchronous buffer runtime; no cross-stage fusion is inferred.
 """
 from __future__ import annotations
 
@@ -79,8 +79,21 @@ def plan_connected_region(module, operations):
     positions = tuple(body.index(op) for op in operations)
     if positions != tuple(sorted(positions)):
         raise ValueError('connected region must retain original program order')
+    # Admit only source-proven pure zero fills used by selected contractions.
+    # This permits dense -> pointwise -> dense regions without treating an
+    # arbitrary intervening operation as an ignorable initializer.
+    initializers = set()
+    from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
+    for op in operations:
+        if _structural_family(op) == 'contraction':
+            dtypes = tuple(str(value.type.element_type) for value in (*op.operands[:2], op.results[0]))
+            read_zero_seeded_integer_matmul(op, dtypes=dtypes)
+            seed = op.operands[2].owner
+            if getattr(seed, 'name', None) == 'linalg.fill' and all(
+                    use.operation in operations for value in seed.results for use in value.uses):
+                initializers.add(seed)
     for op in body[positions[0]:positions[-1] + 1]:
-        if op not in operations and not (isinstance(op, (arith.ConstantOp, tensor.EmptyOp))
+        if op not in operations and op not in initializers and not (isinstance(op, (arith.ConstantOp, tensor.EmptyOp))
                                          or op.name == 'tensor.splat'):
             raise ValueError('connected region crosses an unmodeled operation or observer')
     values, inputs, stages = [], [], []
@@ -158,8 +171,8 @@ class ConnectedCompilation:
         return actual
 
 
-def compile_connected_pointwise(region, *, windows, byte_orders, selected_contracts,
-                                continuation, stage_options):
+def _compile_connected(region, *, windows, byte_orders, selected_contracts,
+                       continuation, stage_options, dense_options=None, dense_contracts=None):
     """Compile a connected region with source-owned bindings and explicit adapters.
 
     ``stage_options(region, stage, bindings)`` returns ordinary
@@ -179,8 +192,11 @@ def compile_connected_pointwise(region, *, windows, byte_orders, selected_contra
     if type(region) is not ConnectedRegion or not callable(stage_options):
         raise ValueError('connected compilation requires a current typed plan and target stage selector')
     region.revalidate()
-    if any(stage.kind != 'elementwise_map' for stage in region.stages):
+    if dense_options is None and any(stage.kind != 'elementwise_map' for stage in region.stages):
         raise ValueError('counted dense composition needs a multi-stage pointer/launch ABI; source plan retained')
+    if any(stage.kind == 'contraction' and len(set(stage.inputs)) != len(stage.inputs)
+           for stage in region.stages):
+        raise ValueError('dense pointer arguments alias; native dense route requires disjoint external buffers')
     if (type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.storage is None
             or type(continuation) is not Continuation or type(windows) is not tuple
             or len(windows) != len(region.values) or any(type(w) is not AddressWindow for w in windows)
@@ -212,25 +228,52 @@ def compile_connected_pointwise(region, *, windows, byte_orders, selected_contra
                     if first <= boundary < last}
         if not required <= set(continuation.preserved_spaces):
             raise ValueError('connected runtime does not preserve all live tensors across launches')
+    if dense_options is not None and not callable(dense_options):
+        raise ValueError('dense stage selector must be callable')
+    if dense_contracts is None:
+        dense_contracts = selected_contracts
+    dense_selection = None
+    if any(stage.kind == 'contraction' for stage in region.stages):
+        if type(dense_contracts) is not SelectedSchedulingContracts or dense_contracts.dense is None:
+            raise ValueError('mixed region requires explicit selected dense contracts')
+        dense_contracts.revalidate()
+        dense_selection = document_digest(dense_contracts.record())
     products = []
     for stage in region.stages:
         bindings = PointwiseBindings(tuple(windows[i] for i in stage.inputs), windows[stage.output],
             tuple(byte_orders[i] for i in (*stage.inputs, stage.output)), True)
         owned_bindings = asdict(bindings)
-        options = stage_options(region, stage, bindings)
+        selector = dense_options if stage.kind == 'contraction' else stage_options
+        options = selector(region, stage, bindings)
         if asdict(bindings) != owned_bindings:
             raise ValueError('connected tensor bindings changed during target selection')
-        if type(options) is not dict or set(options) & {'module', 'operation', 'bindings', 'selected_contracts'}:
+        if type(options) is not dict or set(options) & {'module', 'operation', 'bindings', 'selected_contracts',
+                'external_buffers_disjoint', 'output_operation', 'output_operations', 'readout_qualification_identity'}:
             raise ValueError('target stage selector cannot override source-owned bindings or contracts')
         region.revalidate()
         if (document_digest([asdict(w) for w in windows]) != bindings_sha
                 or document_digest(selected_contracts.record()) != selection_sha
                 or document_digest(asdict(continuation)) != continuation_sha):
             raise ValueError('connected contracts changed during target selection')
-        products.append(compile_source_pointwise(region.source, stage.operation,
-            bindings=bindings, selected_contracts=selected_contracts, **options))
+        if stage.kind == 'contraction':
+            from merlin.compile.scheduling.dense_source import schedule_source_dense
+            dense_contracts.revalidate()
+            if document_digest(dense_contracts.record()) != dense_selection:
+                raise ValueError('dense contracts changed during target selection')
+            product = schedule_source_dense(region.source, stage.operation,
+                selected_contracts=dense_contracts, external_buffers_disjoint=True, **options)
+            if product is None:
+                raise ValueError('no legal dense stage realization; retain unfused source')
+        else:
+            product = compile_source_pointwise(region.source, stage.operation,
+                bindings=bindings, selected_contracts=selected_contracts, **options)
+        products.append(product)
         if asdict(bindings) != owned_bindings:
             raise ValueError('connected tensor bindings changed during stage compilation')
+    if dense_options is not None:
+        from merlin.compile.connected_runtime import ConnectedProgram
+        return ConnectedProgram.checked(region, tuple(products), windows, byte_orders,
+            selected_contracts, continuation)
     images = tuple(product.images() for product in products)
     if sum(map(len, images)) > continuation.max_segments:
         raise ValueError('connected executable exceeds runtime launch budget')
@@ -244,3 +287,29 @@ def compile_connected_pointwise(region, *, windows, byte_orders, selected_contra
          'residency': 'selected_runtime_buffer_persistence_only; no on-chip placement inferred'})
     result.images()
     return result
+
+
+def compile_connected_pointwise(region, *, windows, byte_orders, selected_contracts,
+                                continuation, stage_options):
+    """Compile source-checked finite pointwise images with retained SSA boundaries."""
+    return _compile_connected(region, windows=windows, byte_orders=byte_orders,
+        selected_contracts=selected_contracts, continuation=continuation, stage_options=stage_options)
+
+
+def compile_connected_region(region, *, windows, byte_orders, selected_contracts,
+                             continuation, stage_options, dense_options, dense_contracts=None):
+    """Compose native dense loops and pointwise images through explicit launches.
+
+    Target callbacks select ordinary stage compiler options. ``dense_contracts``
+    defaults to the common selection, or may explicitly select a different dense
+    engine; no target identity is inferred. Dense stages cannot consume adjacent
+    epilogues here: every SSA stage and visible intermediate remains independent.
+    Returns a ConnectedProgram whose synchronous runtime passes exact input and
+    output byte views to the caller's target launcher. Source is never rewritten;
+    refusal leaves the caller's original unfused compilation path available.
+    """
+    if not callable(dense_options):
+        raise ValueError('mixed composition requires explicit dense stage selection')
+    return _compile_connected(region, windows=windows, byte_orders=byte_orders,
+        selected_contracts=selected_contracts, continuation=continuation,
+        stage_options=stage_options, dense_options=dense_options, dense_contracts=dense_contracts)

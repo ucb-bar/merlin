@@ -205,6 +205,21 @@ class DenseSourceResult:
         self.revalidate()
         return text
 
+    def emit_llvm(self, builder, lower_call):
+        """Consume source-bound compact IR with the same custody as C emission.
+
+        Targets bind the original logical arguments and implement instructions;
+        Merlin retains tails, reduction initialization/continuation and stores.
+        Any source/contract mutation during callbacks invalidates the result;
+        discard the caller's partial builder on failure.
+        """
+        self.revalidate()
+        result = self.compiled.emit_llvm(builder, lower_call)
+        self.revalidate()
+        return {**result, "source_sha256": self.source_stamp.source_sha256,
+                "source_operation_ordinal": self.operation_ordinal,
+                "selected_contracts_identity": self.selection_identity}
+
 
 def schedule_source_dense(
     module,

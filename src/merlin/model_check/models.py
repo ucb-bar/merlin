@@ -22,7 +22,7 @@ LEGACY_FLOAT_POLICY = {"atol": 2e-6, "rtol": 1e-5, "equal_nan": False, "finite_r
 
 CHAIN_KINDS = {"single", "flow", "causal"}
 JUDGED_KINDS = {"logits", "next_token_distribution", "per_channel"}
-BINDING_SOURCES = ("input", "tokens", "output", "constant")
+BINDING_SOURCES = ("input", "stream", "tokens", "output", "constant")
 # Full mode's differential per model (``full.differential``, contract §2): ``required`` runs the host twin
 # on a cache miss; ``cached`` compares with the bundle's twin cache only, a miss leaving the step pending.
 DIFFERENTIAL_POLICIES = ("required", "cached")
@@ -30,6 +30,16 @@ DIFFERENTIAL_POLICIES = ("required", "cached")
 
 class ModelsFileError(ValueError):
     """The models file is missing, malformed, or names something it does not define."""
+
+
+def validate_stream_binding(binding: dict, *, where: str = "stream") -> None:
+    """Require an explicit frame axis and rank policy, without implicit reuse."""
+    if (set(binding) != {"from", "key", "axis", "keepdims"}
+            or binding.get("from") != "stream"
+            or not isinstance(binding.get("key"), str) or not binding["key"]
+            or type(binding.get("axis")) is not int
+            or type(binding.get("keepdims")) is not bool):
+        raise ModelsFileError(f"{where}: stream needs exactly from, key, integer axis and boolean keepdims; no carry")
 
 
 def selected_host_math_policy(model: Model, full: dict[str, Any] | None = None) -> str:
@@ -185,6 +195,10 @@ def load(path: str | os.PathLike | None = None, *, source_bytes: bytes | None = 
                     raise ModelsFileError(
                         f"{where}.{program.name}: input source {source!r} is not one of {BINDING_SOURCES}"
                     )
+                if source == "stream":
+                    validate_stream_binding(binding, where=f"{where}.{program.name}")
+                    if program.steps < 1:
+                        raise ModelsFileError(f"{where}.{program.name}: stream needs positive declared steps")
                 if source == "output" and binding.get("program") not in names_so_far | {program.name}:
                     raise ModelsFileError(f"{where}.{program.name}: binds an output of a later or unknown program")
             names_so_far.add(program.name)

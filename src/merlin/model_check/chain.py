@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from merlin.model_check import catalog as CAT
-from merlin.model_check.models import Model, Program
+from merlin.model_check.models import Model, Program, validate_stream_binding
 
 if TYPE_CHECKING:
     from merlin.runtime.dispatch_runtime import ForwardArgsCache
@@ -84,12 +84,37 @@ def to_compute(values: list[np.ndarray], elements: list[str]) -> list[np.ndarray
     return [np.asarray(LN._load(np.asarray(v), e)) for v, e in zip(values, elements, strict=True)]  # noqa: SLF001
 
 
+def stream_input(binding: dict, arrays: Mapping[str, np.ndarray], step: int, steps: int) -> np.ndarray:
+    """Select one declared stream frame identically for reference and guest input.
+
+    The selected axis must contain exactly the complete declared step roster.
+    Existing fixed inputs keep their repeated-value behavior; streams opt in.
+    """
+    validate_stream_binding(binding)
+    if type(steps) is not int or steps < 1 or type(step) is not int or not 0 <= step < steps:
+        raise ChainError("stream step is outside the positive declared roster")
+    if binding["key"] not in arrays:
+        raise ChainError("stream input is missing its declared array")
+    array = np.asarray(arrays[binding["key"]])
+    axis = binding["axis"]
+    if not -array.ndim <= axis < array.ndim:
+        raise ChainError("stream axis is outside the input rank")
+    axis %= array.ndim
+    if array.shape[axis] != steps:
+        raise ChainError("stream extent differs from the complete declared step roster")
+    index = [slice(None)] * array.ndim
+    index[axis] = slice(step, step + 1) if binding["keepdims"] else step
+    return np.asarray(array[tuple(index)])
+
+
 def bind(program: Program, model: Model, arrays: Mapping[str, np.ndarray], step: int, run: ChainRun) -> dict:
     """``{"in0": ..., ...}`` for ``program`` at ``step``."""
     out: dict[str, np.ndarray] = {}
     for index, binding in enumerate(program.inputs):
         source = binding["from"]
-        if step > 0 and "carry" in binding:
+        if source == "stream":
+            value = stream_input(binding, arrays, step, program.steps)
+        elif step > 0 and "carry" in binding:
             value = run.last(program.name)[int(binding["carry"])]
         elif source == "input":
             value = arrays[binding["key"]]

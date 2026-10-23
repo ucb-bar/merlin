@@ -11,6 +11,7 @@ import numpy as np
 from merlin.common.mlir_query import forward_signature
 from merlin.llvmlower import c_runtime
 from merlin.model_check import models
+from merlin.model_check.chain import stream_input
 from merlin.model_check.full_build_inputs import _bindings
 
 from .chain_image_objects import completed_program, payload, pin, reopen
@@ -116,6 +117,8 @@ def prepare(selection: dict, directory: Path) -> dict:
                     else:
                         if source == "input":
                             value = arrays[declared["key"]]
+                        elif source == "stream":
+                            value = stream_input(declared, arrays, step, program.steps)
                         elif source == "tokens":
                             n = int(model.chain["prefill_tokens"])
                             tokens = np.asarray(arrays["tokens"], np.int64)

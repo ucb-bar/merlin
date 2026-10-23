@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import shlex
+import stat
 import subprocess
 from pathlib import Path
 
@@ -94,8 +95,7 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
         raise ValueError("this proposed treatment requires twenty distinct shared CPUs")
     for key in ("MERLIN_GRADE_WORKERS", "MERLIN_DEVICE_BUILD_JOBS", "MERLIN_GSIM_MAX_SLOTS", "MERLIN_SPIKE_MAX_SLOTS"):
         env[key] = "20"
-    for key in ("MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_GSIM_SLOT_ROOT"):
-        Path(env[key]).mkdir(parents=True, exist_ok=True)
+    prepare_slot_roots(env)
     reserved = reservation_argv(
         argv, env, task=task, output=output, run_id=run_id, cpus=cpus, duration_s=selected_policy["duration_s"]
     )
@@ -145,6 +145,24 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
     preflight.pop("reserved_argv")
     (output / "preflight-selection.json").write_text(json.dumps(preflight, indent=2) + "\n")
     return record
+
+
+def prepare_slot_roots(environment):
+    """Prepare owned private lock roots before the first simulator admission."""
+    for key in ("MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_GSIM_SLOT_ROOT"):
+        root = Path(environment[key])
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            if os.fstat(fd).st_uid != os.getuid():
+                raise ValueError(f"runtime slot directory must be owned by this user: {root}")
+            # mkdir's mode does not repair an already prepared directory. Apply
+            # this to the opened directory, never through a final symlink.
+            os.fchmod(fd, 0o700)
+            if stat.S_IMODE(os.fstat(fd).st_mode) != 0o700:
+                raise ValueError(f"runtime slot directory must be private: {root}")
+        finally:
+            os.close(fd)
 
 
 def reservation_argv(argv, environment, *, task, output, run_id, cpus, duration_s):

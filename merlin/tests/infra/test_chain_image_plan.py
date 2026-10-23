@@ -155,3 +155,57 @@ def test_reference_does_not_transfer_other_policy_or_bytes(case, changed):
         selected["reference"] = pin(path)
     with pytest.raises(ValueError):
         data.references(selected, plan, root)
+
+
+def test_stream_reference_and_guest_select_each_distinct_frame(case):
+    from merlin.model_check import chain
+
+    selected, _, root, _ = case
+    path = Path(selected['models']['path'])
+    declaration = yaml.safe_load(path.read_text())
+    program = declaration['models']['sample']['programs'][0]
+    program.update(steps=3, inputs=[{'from': 'stream', 'key': 'value', 'axis': 0, 'keepdims': False}])
+    path.write_text(yaml.safe_dump(declaration))
+    frames = np.asarray([[1, 2], [7, -3], [19, 5]], dtype=np.float32)
+    inputs = root / 'frames.npz'
+    np.savez(inputs, value=frames)
+    selected = dict(selected, models=pin(path), inputs=pin(inputs))
+    directory = root / 'stream-plan'
+    directory.mkdir()
+    plan = planning.prepare(selected, directory)
+    blob = Path(plan['input_blob']['path']).read_bytes()
+    model = plan['model']
+    assert len(plan['schedule']) == 3
+    for step, command in enumerate(plan['schedule']):
+        transfer, = command['transfers']
+        decoded = np.frombuffer(blob, dtype=np.float32, count=2, offset=transfer['source_offset'])
+        expected = frames[step]
+        np.testing.assert_array_equal(decoded, expected)
+        reference = chain.bind(model.programs[0], model, {'value': frames}, step, chain.ChainRun())
+        np.testing.assert_array_equal(reference['in0'], expected)
+
+
+@pytest.mark.parametrize('axis,keepdims,expected', [(1, False, [2, 5]), (-1, True, [[2], [5]])])
+def test_stream_axis_and_rank_are_explicit(axis, keepdims, expected):
+    from merlin.model_check.chain import stream_input
+
+    binding = {'from': 'stream', 'key': 'frames', 'axis': axis, 'keepdims': keepdims}
+    actual = stream_input(binding, {'frames': np.array([[1, 2, 3], [4, 5, 6]])}, 1, 3)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize('change', ['short', 'extra', 'axis', 'step', 'carry', 'rank_policy'])
+def test_stream_never_silently_repeats_or_truncates(change):
+    from merlin.model_check.chain import ChainError, stream_input
+    from merlin.model_check.models import ModelsFileError
+
+    binding = {'from': 'stream', 'key': 'frames', 'axis': 0, 'keepdims': False}
+    frames, step = np.arange(6).reshape(3, 2), 1
+    if change == 'short': frames = frames[:2]
+    elif change == 'extra': frames = np.arange(8).reshape(4, 2)
+    elif change == 'axis': binding['axis'] = 2
+    elif change == 'step': step = 3
+    elif change == 'carry': binding['carry'] = 0
+    else: binding.pop('keepdims')
+    with pytest.raises((ChainError, ModelsFileError)):
+        stream_input(binding, {'frames': frames}, step, 3)

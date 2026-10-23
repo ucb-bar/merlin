@@ -10,6 +10,66 @@ from __future__ import annotations
 from merlin.sched.ir import Const, Loop, Scaled, Select, Sum, Var, check_structure
 
 
+class FnBuilderIndexAdapter:
+    """Adapt Merlin's ordinary LLVM FnBuilder without reconstructing a schedule.
+
+    Only signed i64 host indices and ascending, positive-step loops are admitted.
+    The target callback still implements actual instructions and their completion.
+    This adapter does not infer target semantics or erase execution annotations.
+    """
+
+    def __init__(self, builder):
+        if any(not callable(getattr(builder, name, None)) for name in
+               ("const", "add", "add_i", "mul_i", "for_loop")):
+            raise ValueError("LLVM index emission requires the FnBuilder interface")
+        self.builder = builder
+
+    def value(self, value):
+        from xdsl.dialects.builtin import i64
+        from xdsl.ir import SSAValue
+
+        if type(value) is int:
+            if not -(1 << 63) <= value < (1 << 63):
+                raise ValueError("LLVM index value exceeds signed i64")
+            return self.builder.const(value)
+        if not isinstance(value, SSAValue) or value.type != i64:
+            raise ValueError("LLVM index operand must have type i64")
+        return value
+
+    def op(self, opcode, lhs, rhs):
+        if opcode not in ("add", "mul"):
+            raise ValueError("unsupported LLVM index arithmetic")
+        action = self.builder.add_i if opcode == "add" else self.builder.mul_i
+        return action(self.value(lhs), self.value(rhs))
+
+    def cmp(self, predicate, lhs, rhs):
+        from xdsl.dialects import llvm
+        from xdsl.dialects.builtin import IntegerAttr, i64
+
+        if predicate != "eq":
+            raise ValueError("LLVM index selection only supports equality")
+        return self.builder.add(llvm.ICmpOp(
+            self.value(lhs), self.value(rhs),
+            IntegerAttr(llvm.ICmpPredicateFlag.EQ.to_int(), i64),
+        )).results[0]
+
+    def select(self, condition, lhs, rhs):
+        from xdsl.dialects import llvm
+        from xdsl.dialects.builtin import i1
+        from xdsl.ir import SSAValue
+
+        if not isinstance(condition, SSAValue) or condition.type != i1:
+            raise ValueError("LLVM index selection requires an i1 condition")
+        return self.builder.add(llvm.SelectOp(condition, self.value(lhs), self.value(rhs))).results[0]
+
+    def loop(self, start, stop, step, callback):
+        if (any(type(value) is not int for value in (start, stop, step))
+                or not 0 <= start <= stop < (1 << 63) or not 0 < step < (1 << 63)
+                or stop and step > (1 << 63) - stop):
+            raise ValueError("LLVM index loop requires bounded ascending signed-i64 bounds and step")
+        self.builder.for_loop(start, stop, step, callback, retain_loop=True)
+
+
 def emit_index_program(kernel, builder, lower_call):
     errors = check_structure(kernel)
     if errors:

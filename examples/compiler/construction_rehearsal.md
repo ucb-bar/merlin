@@ -7,6 +7,11 @@ A negative result with the exact failing boundary is useful. Do not import a
 retained target compiler or private reference kernel, and do not create a backend
 outside the ordinary fresh author workspace.
 
+The [compiler change map](compiler_change_map.md) covers changes beyond passes:
+frontend semantics, graph regions, numerical/layout contracts, scheduling,
+allocation, instruction lowering, host execution and model assembly. Use it to
+locate the owner of a missing capability and record actual product consumption.
+
 ## Same mechanism offline and online
 
 Use the selected public library, software/target/numerical declarations, corpus,
@@ -57,7 +62,7 @@ this smaller epilogue as that model-region coverage.
 | --- | --- | --- |
 | Read typed source | `scheduling.dense_source.read_source_dense`, `read_zero_seeded_integer_matmul`; selected numerical and scheduling contracts | Source-derived dimensions, operand identity and exact recurrence; no capsule-name dispatch. Record unsupported/unknown reasons. |
 | General dense construction | `dense_source.schedule_source_dense`, `compact_dense.schedule_compact_dense`, `block_schedule.schedule_contraction` | Actual returned Kernel/counted IR consumed by the backend, with selected geometry/resources and tails. Small and large cases use the same semantic route. |
-| Compact real emission | `compact_dense.emit_compact_dense`, `llvm_program.emit_index_program` | Their emitted program enters the candidate's ordinary target artifact, linking and execution. Do not flatten a large loop into millions of Python calls. |
+| Compact real emission | `compact_dense.emit_compact_dense`, `DenseSourceResult.emit_llvm` when selected, `llvm_program.emit_index_program` | Their emitted program enters the candidate's ordinary target artifact, linking and execution. The LLVM callback supplies target instructions; shared loops retain tails, accumulation and final stores. Do not flatten a large loop into millions of Python calls. |
 | Physical finite schedule | `schedule_pipeline.compile_schedule` with the author's justified decoder/effect/storage/encoding adapters | Final image and remaining objects enter ordinary emission, allocation and runtime. Keep its schedule report and actual final bytes; imports and receipts alone are insufficient. Use this only for its supported finite representation. |
 | Mechanical instruction bridge | Generated typed ops; `resource_allocation.allocate_instruction_resources`, `emit_resource_allocation`, `validate_allocated_ir` where applicable | Explicit allocation maps SSA values to encoding resources. Consume returned allocated IR; generated raw encodings do not prove legal memory effects. |
 | Shared pass composition | `pipeline_state.PipelineSession`, `PassSpec`; `pipeline_policy.RegisteredPass`, `PipelineVariant`, `evaluate_variants` | One real transformed artifact per legal alternative reaches emission. Use a common `prefix` once where valid; IR-bound analyses are rebuilt for each clone. Never share analysis references across branches. |
