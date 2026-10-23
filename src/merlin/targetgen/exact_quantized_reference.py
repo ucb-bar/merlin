@@ -34,52 +34,84 @@ from merlin.targetgen.exact_arithmetic import (
 
 from contextvars import ContextVar
 from merlin.targetgen.exact_boundary_special import BoundarySpecial
-_boundary_state=ContextVar('exact_reference_boundary_state',default=None)
+
+_boundary_state = ContextVar("exact_reference_boundary_state", default=None)
+
 
 def rational(value):
-    state=_boundary_state.get()
-    if isinstance(value,BoundarySpecial):return value
-    if state is not None and not isinstance(value,Fraction):
-        number=float(value)
+    state = _boundary_state.get()
+    if isinstance(value, BoundarySpecial):
+        return value
+    if state is not None and not isinstance(value, Fraction):
+        number = float(value)
         if not math.isfinite(number):
-            state['special_seen']=True
+            state["special_seen"] = True
             import struct
-            word=(struct.unpack('<I',struct.pack('<f',number))[0] | (1<<22)) if math.isnan(number) else None
-            return BoundarySpecial(0 if math.isnan(number) else 1 if number>0 else -1,word)
+
+            word = (struct.unpack("<I", struct.pack("<f", number))[0] | (1 << 22)) if math.isnan(number) else None
+            return BoundarySpecial(0 if math.isnan(number) else 1 if number > 0 else -1, word)
     return _finite_rational(value)
 
+
 def exact_array(value):
-    if _boundary_state.get() is None:return _finite_exact_array(value)
-    if isinstance(value,ExactTensor):return value.values
-    if hasattr(value,'detach'):value=value.detach().cpu().tolist()
-    return np.vectorize(rational,otypes=[object])(np.asarray(value,dtype=object))
+    if _boundary_state.get() is None:
+        return _finite_exact_array(value)
+    if isinstance(value, ExactTensor):
+        return value.values
+    if hasattr(value, "detach"):
+        value = value.detach().cpu().tolist()
+    return np.vectorize(rational, otypes=[object])(np.asarray(value, dtype=object))
 
 
 def materialize(value):
-    if isinstance(value,tuple):return tuple(materialize(x) for x in value)
-    if isinstance(value,list):return [materialize(x) for x in value]
-    if isinstance(value,dict):return {k:materialize(x) for k,x in value.items()}
-    state=_boundary_state.get()
-    explicit_overflow=state is not None and state.get('f32_overflow')=='ieee_infinity'
-    special=isinstance(value,ExactTensor) and any(isinstance(x,BoundarySpecial) for x in value.values.flat)
-    if isinstance(value,ExactTensor) and (special or explicit_overflow and str(value.dtype)=='torch.float32'):
+    if isinstance(value, tuple):
+        return tuple(materialize(x) for x in value)
+    if isinstance(value, list):
+        return [materialize(x) for x in value]
+    if isinstance(value, dict):
+        return {k: materialize(x) for k, x in value.items()}
+    state = _boundary_state.get()
+    explicit_overflow = state is not None and state.get("f32_overflow") == "ieee_infinity"
+    special = isinstance(value, ExactTensor) and any(isinstance(x, BoundarySpecial) for x in value.values.flat)
+    if isinstance(value, ExactTensor) and (special or explicit_overflow and str(value.dtype) == "torch.float32"):
         import struct
         import torch
-        state=_boundary_state.get()
-        if special and (not state or state.get('floating_specials')!='single_residual_quiet_word_f32' or value.dtype!=torch.float32):
-            raise ValueError('special rational arithmetic requires a final byte quantizer')
-        words=[]
+
+        state = _boundary_state.get()
+        if special and (
+            not state
+            or state.get("floating_specials") != "single_residual_quiet_word_f32"
+            or value.dtype != torch.float32
+        ):
+            raise ValueError("special rational arithmetic requires a final byte quantizer")
+        words = []
         for x in value.values.flat:
-            if isinstance(x,BoundarySpecial):
-                if not x.sign and x.word is None:raise ValueError('competing or invalid NaNs lack a deterministic input word')
-                words.append(x.word if not x.sign else 0x7f800000 | (0x80000000 if x.sign<0 else 0))
-            else:words.append(struct.unpack('<I',struct.pack('<f',round_binary(x,32,overflow='infinity' if explicit_overflow else 'refuse')))[0])
-        return torch.tensor(words,dtype=torch.uint32).view(torch.float32).reshape(value.values.shape)
+            if isinstance(x, BoundarySpecial):
+                if not x.sign and x.word is None:
+                    raise ValueError("competing or invalid NaNs lack a deterministic input word")
+                words.append(x.word if not x.sign else 0x7F800000 | (0x80000000 if x.sign < 0 else 0))
+            else:
+                words.append(
+                    struct.unpack(
+                        "<I",
+                        struct.pack("<f", round_binary(x, 32, overflow="infinity" if explicit_overflow else "refuse")),
+                    )[0]
+                )
+        return torch.tensor(words, dtype=torch.uint32).view(torch.float32).reshape(value.values.shape)
     return _finite_materialize(value)
 
 
-def _clamp_array(values,bound,*,lower):
-    return np.vectorize(lambda value: value if isinstance(value,BoundarySpecial) and not value.sign else max(value,bound) if lower else min(value,bound),otypes=[object])(values)
+def _clamp_array(values, bound, *, lower):
+    return np.vectorize(
+        lambda value: (
+            value
+            if isinstance(value, BoundarySpecial) and not value.sign
+            else max(value, bound)
+            if lower
+            else min(value, bound)
+        ),
+        otypes=[object],
+    )(values)
 
 
 def mac_observation(lhs, rhs, accumulator, scales):
@@ -237,8 +269,10 @@ def convolution_backward(operands, args, node_name, sites):
     """Exact spatial adjoints, plus independent code-domain GEMM observations."""
     stride, padding, dilation = map(list, (args[4], args[5], args[6]))
     transposed, output_padding, groups, mask = args[7:11]
+
     def geometry(value):
         return value.values.shape if isinstance(value, ExactTensor) else value.shape
+
     grad = exact_array(operands[0]) if any(mask) else np.empty(geometry(operands[0]), dtype=object)
     source = exact_array(operands[1]) if mask[1] else np.empty(geometry(operands[1]), dtype=object)
     weight = exact_array(operands[2]) if mask[0] else np.empty(geometry(operands[2]), dtype=object)
@@ -304,6 +338,141 @@ def convolution_backward(operands, args, node_name, sites):
     )
 
 
+def _float_formats():
+    """IEEE storage formats by (bits, bfloat16), and which formats contain which grids."""
+    import torch
+
+    formats = {
+        torch.float16: (16, False),
+        torch.bfloat16: (16, True),
+        torch.float32: (32, False),
+        torch.float64: (64, False),
+    }
+    # A format's grid is a subset of another's when both its precision and its exponent
+    # range are: binary16 and bfloat16 each lie inside binary32, which lies inside binary64.
+    contains = {
+        torch.float16: {torch.float16},
+        torch.bfloat16: {torch.bfloat16},
+        torch.float32: {torch.float16, torch.bfloat16, torch.float32},
+        torch.float64: {torch.float16, torch.bfloat16, torch.float32, torch.float64},
+    }
+    return formats, contains
+
+
+def _cast_target(name, args, kwargs, source):
+    """The dtype an ``aten.to``/``aten._to_copy`` overload converts to, positional or keyword."""
+    overload = name.split(".")[2] if name.count(".") >= 2 else "default"
+    op = name.split(".")[1] if name.startswith("aten.") else name
+    if op == "_to_copy" or overload == "dtype_layout":
+        target = kwargs.get("dtype")
+    elif overload == "dtype":
+        target = args[1] if len(args) > 1 else kwargs.get("dtype")
+    elif overload == "device":
+        target = args[2] if len(args) > 2 else kwargs.get("dtype")
+    elif overload == "other":
+        other = args[1] if len(args) > 1 else kwargs.get("other")
+        target = getattr(other, "dtype", None)
+        if target is None:
+            raise ValueError("exact reference cannot derive the dtype of a conversion operand")
+    else:
+        raise ValueError(f"exact reference refuses conversion overload {name}")
+    target = source if target is None else target
+    if target not in _float_formats()[0]:
+        raise ValueError("exact reference refuses an intermediate integer cast")
+    return target
+
+
+def _conversion_copies(name, args, kwargs):
+    """Whether an ``aten.to`` overload was asked for a fresh copy (its ``copy`` argument)."""
+    overload = name.split(".")[2] if name.count(".") >= 2 else "default"
+    position = {"dtype": 3, "other": 3, "device": 4}.get(overload)
+    if position is not None and len(args) > position:
+        return bool(args[position])
+    return bool(kwargs.get("copy", False))
+
+
+def _cast_values(values, source, target):
+    """Exact IEEE conversion of rational values between floating formats.
+
+    Widening into a format whose grid contains the source grid is the identity. Any other
+    conversion rounds once, to nearest even, onto the target grid (its subnormals and
+    exponent range included); an overflow is the IEEE infinity, which only a declared
+    special-value boundary can carry. NaNs keep no payload through a format change.
+    """
+    formats, contains = _float_formats()
+    if source not in formats:
+        raise ValueError("exact reference refuses a conversion from a non-floating tensor")
+    if source in contains[target]:
+        return values.copy()
+    bits, bfloat16 = formats[target]
+
+    def convert(value):
+        if isinstance(value, BoundarySpecial):
+            if not value.sign:
+                raise ValueError("exact reference refuses a NaN payload through a format change")
+            return value
+        return rational(round_binary(value, bits, bfloat16=bfloat16, overflow="infinity"))
+
+    return np.vectorize(convert, otypes=[object])(values)
+
+
+_IN_PLACE_VALUE_OPS = frozenset(
+    {
+        "add_",
+        "sub_",
+        "mul_",
+        "div_",
+        "neg_",
+        "relu_",
+        "abs_",
+        "clamp_",
+        "clamp_min_",
+        "clamp_max_",
+        "hardtanh_",
+        "fmod_",
+        "remainder_",
+        "fill_",
+        "zero_",
+    }
+)
+
+
+def evaluate_in_place(name, args, kwargs):
+    """``self = op(self, ...)`` with ``self``'s dtype, written through every alias of ``self``.
+
+    Values whose storage is a NumPy view of ``self`` observe the write exactly as a Torch
+    view observes the mutation. Only value-producing in-place operations are accepted:
+    metadata mutations (``t_``, ``squeeze_``, ``resize_``, ...) never reach this path.
+    """
+    import torch
+
+    op = name.split(".")[1]
+    if op not in _IN_PLACE_VALUE_OPS:
+        raise ValueError(f"exact reference refuses in-place operation {name}")
+    target = args[0]
+    if not isinstance(target, ExactTensor):
+        raise ValueError("exact reference refuses an in-place write into a non-exact tensor")
+    overload = name.split(".")[2] if name.count(".") >= 2 else "default"
+    if op == "zero_":
+        result = ExactTensor(np.full(target.values.shape, Fraction(0), dtype=object), target.dtype)
+    elif op == "fill_":
+        if overload != "Scalar":
+            raise ValueError(f"exact reference refuses in-place operation {name}")
+        result = ExactTensor(np.full(target.values.shape, rational(args[1]), dtype=object), target.dtype)
+    else:
+        result = evaluate_operation(f"aten.{op[:-1]}.{overload}", args, kwargs)
+    if not isinstance(result, ExactTensor) or result.values.shape != target.values.shape:
+        raise ValueError("an in-place result must keep the mutated tensor's shape")
+    values = result.values
+    if result.dtype != target.dtype:
+        values = _cast_values(values, result.dtype or torch.float32, target.dtype)
+    target.values[...] = values
+    # The quantized codes described the values before the write.
+    target.codes = None
+    target.scale = None
+    return target
+
+
 def evaluate_operation(target, args, kwargs):
     """Closed rational operations. Unknown semantics cannot acquire an exactness claim."""
     import torch
@@ -320,7 +489,11 @@ def evaluate_operation(target, args, kwargs):
     op = name.split(".")[1] if name.startswith("aten.") else name
     if op in {"fill", "full", "full_like", "zeros", "zeros_like", "ones", "ones_like"}:
         value = 0 if op.startswith("zeros") else 1 if op.startswith("ones") else args[1]
-        shape = args[0] if op in {"full", "zeros", "ones"} else (args[0].values.shape if isinstance(args[0], ExactTensor) else args[0].shape)
+        shape = (
+            args[0]
+            if op in {"full", "zeros", "ones"}
+            else (args[0].values.shape if isinstance(args[0], ExactTensor) else args[0].shape)
+        )
         return ExactTensor(np.full(shape, rational(value), dtype=object), dtype)
     if op.startswith(("avg_pool", "adaptive_avg_pool", "_adaptive_avg_pool")) and op.endswith("backward"):
         # The primal tensor supplies geometry only. Its storage values have no
@@ -362,7 +535,9 @@ def evaluate_operation(target, args, kwargs):
             out = _clamp_array(out, rational(high), lower=False)
     elif op in {"mm", "bmm", "matmul", "linear", "addmm", "baddbmm"}:
         if op in {"addmm", "baddbmm"}:
-            out = (rational(kwargs.get("beta", 1)) * a[0] if kwargs.get("beta",1) else Fraction(0)) + rational(kwargs.get("alpha", 1)) * np.matmul(a[1], a[2])
+            out = (rational(kwargs.get("beta", 1)) * a[0] if kwargs.get("beta", 1) else Fraction(0)) + rational(
+                kwargs.get("alpha", 1)
+            ) * np.matmul(a[1], a[2])
         elif op == "linear":
             out = np.matmul(a[0], a[1].swapaxes(-1, -2))
             if len(a) > 2 and a[2] is not None:
@@ -370,12 +545,14 @@ def evaluate_operation(target, args, kwargs):
         else:
             out = np.matmul(a[0], a[1])
     elif op in {"fmod", "remainder"}:
+
         def remainder_value(x, y):
             if not y:
                 raise ValueError("exact remainder refuses a literal zero divisor")
             quotient = x / y
             whole = math.trunc(quotient) if op == "fmod" else math.floor(quotient)
             return x - whole * y
+
         other = a[1] if len(a) > 1 else kwargs["other"]
         divisor = exact_array(other) if isinstance(other, (ExactTensor, torch.Tensor)) else rational(other)
         out = np.vectorize(remainder_value, otypes=[object])(a[0], divisor)
@@ -394,7 +571,9 @@ def evaluate_operation(target, args, kwargs):
         axis = args[1] if len(args) > 1 else kwargs.get("dim")
         axis = None if axis is None or axis == [] else tuple(axis) if isinstance(axis, (list, tuple)) else axis
         keep = args[2] if len(args) > 2 else kwargs.get("keepdim", False)
-        out = {"sum": np.sum, "mean": np.mean, "amax": np.max, "amin": np.min, "prod": np.prod}[op](a[0], axis=axis, keepdims=keep)
+        out = {"sum": np.sum, "mean": np.mean, "amax": np.max, "amin": np.min, "prod": np.prod}[op](
+            a[0], axis=axis, keepdims=keep
+        )
     elif op in {"conv1d", "conv2d", "conv3d", "convolution"}:
         if op == "convolution" and (args[6] or any(args[7])):
             raise ValueError("exact reference refuses transposed convolution")
@@ -419,13 +598,21 @@ def evaluate_operation(target, args, kwargs):
         else:
             shape = args[1]
         out = a[0].reshape(shape)
-    elif op in {"clone", "detach", "contiguous", "alias"}:
+    elif op == "clone":
         out = a[0].copy()
+    elif op in {"detach", "alias"}:
+        # Torch returns a view sharing storage, which a later in-place write must reach.
+        out = a[0]
+    elif op == "contiguous":
+        out = np.ascontiguousarray(a[0])
     elif op in {"_to_copy", "to"}:
-        dtype = kwargs.get("dtype", dtype)
-        if dtype not in {torch.float16, torch.float32, torch.float64}:
-            raise ValueError("exact reference refuses an intermediate integer cast")
-        out = a[0].copy()
+        source_dtype = args[0].dtype if isinstance(args[0], ExactTensor) else dtype
+        dtype = _cast_target(name, args, kwargs, dtype)
+        if op == "to" and dtype == source_dtype and not _conversion_copies(name, args, kwargs):
+            # ``aten.to`` to the tensor's own dtype returns the tensor itself.
+            out = a[0]
+        else:
+            out = _cast_values(a[0], source_dtype, dtype)
     elif op in {"permute", "transpose", "t"}:
         out = (
             a[0].transpose(args[1])
@@ -508,7 +695,11 @@ def run(model, inputs):
 
     sites = []
     counts = {"linear": 0, "conv2d": 0, "matmul": 0}
-    boundary_policy = getattr(model, "_recipe_quantization_stats", {}).get("framework_capture_policy", {}).get("quantization_nonfinite")
+    boundary_policy = (
+        getattr(model, "_recipe_quantization_stats", {})
+        .get("framework_capture_policy", {})
+        .get("quantization_nonfinite")
+    )
 
     class Reference(torch.fx.Interpreter):
         def run_node(self, node):
@@ -535,18 +726,30 @@ def run(model, inputs):
                 return torch.tensor(codes.tolist(), dtype=dtype).reshape(codes.shape)
             leaves = torch.utils._pytree.tree_leaves((args, kwargs))
             if name == "aten.isnan.default" and isinstance(args[0], ExactTensor):
-                values = np.vectorize(lambda x: not isinstance(x, Fraction) and math.isnan(float(x)), otypes=[bool])(args[0].values)
+                values = np.vectorize(lambda x: not isinstance(x, Fraction) and math.isnan(float(x)), otypes=[bool])(
+                    args[0].values
+                )
                 return torch.tensor(values, dtype=torch.bool)
             if name == "aten.where.self" and any(isinstance(x, ExactTensor) for x in leaves):
+
                 def storage(value):
-                    return value.values if isinstance(value, ExactTensor) else value.detach().cpu().numpy() if isinstance(value, torch.Tensor) else value
+                    return (
+                        value.values
+                        if isinstance(value, ExactTensor)
+                        else value.detach().cpu().numpy()
+                        if isinstance(value, torch.Tensor)
+                        else value
+                    )
 
                 selected = np.where(storage(args[0]), storage(args[1]), storage(args[2]))
                 # A selector observes only selected elements. An unselected NaN
                 # does not enter rational arithmetic or invalidate that branch.
                 dtype = next(x.dtype for x in args[1:] if isinstance(x, (ExactTensor, torch.Tensor)))
                 if boundary_policy == "byte_storage_zero_nan_saturating_infinity":
-                    values = np.vectorize(lambda x: x if not isinstance(x, Fraction) and not math.isfinite(float(x)) else rational(x), otypes=[object])(selected)
+                    values = np.vectorize(
+                        lambda x: x if not isinstance(x, Fraction) and not math.isfinite(float(x)) else rational(x),
+                        otypes=[object],
+                    )(selected)
                     return ExactTensor(values, dtype)
                 return ExactTensor(exact_array(selected), dtype)
             constant = name.split(".")[1] if name.startswith("aten.") else None
@@ -589,8 +792,20 @@ def run(model, inputs):
             if name == "aten.convolution_backward.default":
                 counts["conv2d"] += 1
                 return convolution_backward(args[:3], args, node.name, sites)
-            result = evaluate_operation(node.target, args, kwargs)
             op = name.split(".")[1] if name.startswith("aten.") else name
+            if name.startswith("aten.") and op.endswith("_") and not op.startswith("_"):
+                mutated = evaluate_in_place(name, args, kwargs)
+                # Any other value viewing the written storage no longer carries its codes.
+                for value in torch.utils._pytree.tree_leaves(list(self.env.values())):
+                    if (
+                        isinstance(value, ExactTensor)
+                        and value.codes is not None
+                        and np.may_share_memory(value.values, mutated.values)
+                    ):
+                        value.codes = None
+                        value.scale = None
+                return mutated
+            result = evaluate_operation(node.target, args, kwargs)
             if op in {"mm", "bmm", "matmul", "linear", "addmm", "baddbmm", "conv1d", "conv2d", "conv3d", "convolution"}:
                 kind = "linear" if op == "linear" else "conv2d" if "conv" in op else "matmul"
                 counts[kind] += 1
@@ -637,14 +852,30 @@ def run(model, inputs):
 
     saved = copy.deepcopy(tuple(inputs))
     reference = Reference(model, garbage_collect_values=False)
-    state={'special_seen':False,'floating_specials':getattr(model, '_recipe_quantization_stats', {}).get('framework_capture_policy', {}).get('readout_specials'),'f32_overflow':getattr(model, '_recipe_quantization_stats', {}).get('framework_capture_policy', {}).get('f32_boundary_overflow')} if boundary_policy=='byte_storage_zero_nan_saturating_infinity' else None
-    token=_boundary_state.set(state)
+    state = (
+        {
+            "special_seen": False,
+            "floating_specials": getattr(model, "_recipe_quantization_stats", {})
+            .get("framework_capture_policy", {})
+            .get("readout_specials"),
+            "f32_overflow": getattr(model, "_recipe_quantization_stats", {})
+            .get("framework_capture_policy", {})
+            .get("f32_boundary_overflow"),
+        }
+        if boundary_policy == "byte_storage_zero_nan_saturating_infinity"
+        else None
+    )
+    token = _boundary_state.set(state)
     try:
         exact = reference.run(*inputs)
-        if state is not None and state['special_seen'] and state['floating_specials']!='single_residual_quiet_word_f32':
-            leaves=torch.utils._pytree.tree_leaves(exact)
-            if any(isinstance(x,ExactTensor) and x.codes is None for x in leaves):
-                raise ValueError('special rational arithmetic requires a final byte quantizer')
+        if (
+            state is not None
+            and state["special_seen"]
+            and state["floating_specials"] != "single_residual_quiet_word_f32"
+        ):
+            leaves = torch.utils._pytree.tree_leaves(exact)
+            if any(isinstance(x, ExactTensor) and x.codes is None for x in leaves):
+                raise ValueError("special rational arithmetic requires a final byte quantizer")
         output = materialize(exact)
     finally:
         _boundary_state.reset(token)
