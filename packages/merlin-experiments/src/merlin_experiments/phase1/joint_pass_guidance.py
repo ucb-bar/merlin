@@ -229,6 +229,18 @@ existing diagnostic feedback path; planned/checked schedules do not prove runtim
 traffic reduction or complete numerical execution. If the optional facade is not
 exported, use its listed native APIs from the actual inventory; no protected import.
 
+When the selected facade provides resumable discovery, bound each `discover`
+page with `max_candidates` and retain its returned cursor for the same source and
+contracts. `evaluate_fusions` evaluates isolated `FusionAlternative` products
+alongside an unfused baseline; pass the actual product to the emitter. Use
+`realize_candidate(..., connected=options)` with the selected
+`connected_regions.compile_connected_pointwise` bridge for supported ordered
+pointwise stages. Its explicit tensor bindings and runtime continuation preserve
+live buffers across launches; this is not proof of on-chip retention or a speedup.
+Mixed dense/pointwise composition still requires a multi-stage pointer/launch ABI.
+Implement missing reusable composition mechanisms through editable compiler
+code; retain a correct route and all live outputs while exploring alternatives.
+
 Maintain an input-derived pass applicability record for every compiler invocation:
 family, legal premises, applied/no-match/unsupported/unknown, precise reason,
 selected policy and actual source/result schedule digests. Unsupported means a

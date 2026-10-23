@@ -14,6 +14,33 @@ frequently; evaluate immutable snapshots while authoring continues. Preserve
 per-result revision and input identities. Do not wait for all 153 originals before
 working on calibration prerequisites or large connected workloads.
 
+Start with an empty target backend. The generic ISA generator is available as
+`merlin.targetgen.isa_spec.resolve_isa` and
+`merlin.targetgen.isa_dialect_gen.generate_package`; it is not an already
+generated target dialect. Inspect the selected software specification for an
+`isa` declaration. If absent, construct the declaration from admitted public
+ISA/RTL sources before calling the generator. Preserve source provenance and
+explicit unknown semantics/effects; do not invent fields from instruction names
+or import any existing target compiler/extractor. Generated files are outputs of
+this authoring run. Independently check encoding before using the generated ops.
+
+Divide work by compiler boundaries: source semantics and graph transformations,
+numerics/layouts, schedule/storage, instruction lowering, and host execution.
+Agree on their typed interfaces early. One integrator should keep an executable
+path while helpers expand independent capabilities; do not assign a separate
+compiler implementation per capsule. The first target executable is an early
+construction milestone: emission, target consumption, linking, Spike, and every
+output comparison must actually run before broad tests of that path. Missing
+symbols or a broken shared ABI defer affected tests while other work proceeds.
+
+Use bounded fusion discovery and pass alternatives, retaining a correct unfused
+route. Inspect the realization receipt: logical schedules, encoded stage
+composition and physically measured fusion are different outcomes. The current
+connected helper emits pointwise stage compositions; dense/pointwise chains still
+need a multi-stage pointer and launch ABI. Develop reusable missing mechanisms in
+the editable compiler instead of treating an unsupported helper as an instruction
+to drop layers, omit outputs or replace device work silently with CPU work.
+
 The 77 scalability cases are the primary performance targets. Push strongly for
 complete-workload performance while establishing correctness; use small originals
 primarily as regressions and model evidence. Select hypotheses from measured or

@@ -54,7 +54,7 @@ def panel(profile, selection, rows, *, witnesses):
             key = document_sha256(runtime)
             if key not in runtime_status:
                 try:
-                    assert_allowed(dict(runtime=runtime, parameters=profile['parameters']))
+                    assert_allowed(dict(runtime=runtime, parameters=profile['parameters'], selection_document=selection))
                     runtime_status[key] = None
                 except ValueError as error:
                     if not str(error).startswith('blocked_structural_model_admission:'):

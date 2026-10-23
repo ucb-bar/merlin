@@ -42,3 +42,45 @@ Offline projection uses that exact selected window. The automatic Phase1 wrapper
 retains its existing single-window guard and refuses the unmodified multi-window
 probe. Its shared projection path is tested separately with a clearly synthetic
 single-window transport fixture; that fixture grants no native execution credit.
+
+## Current selected WS runtime follow-up
+
+The exact current `ws-accumulate-operands-v1` model and its unchanged provider
+were then tested on the same public probe with original, rebuilt-disabled and
+rebuilt-enabled observers. All three predict **354 cycles**, preserve functional
+stdout and every observed feature/count/window, and the enabled capture is
+complete. `ws-acceptance.json` records actual invocations. No hardware execution
+was added. The full Phase1 `_runtime` freeze passes the original RTL facts,
+additional source alignment, library order/hashes, ISA, scope and model/source
+identity checks; `ws-runtime-freeze.json` is its recorded result.
+
+`ws-selection-delta.json` pins the old and new runtime/model/performance selection
+and records the only model changes: `domain.feature_engine_sha256` and optional
+`diagnostics.scoped_resources`. Timing parameters, target scheduling settings,
+provider, original functional Spike and scope policy remain exactly unchanged.
+The new selection is prepared under task-local
+`out/artifacts/ws-scoped-runtime-20261023/performance-selection.json`; the operator
+may explicitly choose its pinned JSON via `MERLIN_JOINT_PERFORMANCE_SELECTION`.
+No other environment change is needed. This adds diagnostics only to existing
+optional performance-observer executions, not to functional Spike itself.
+It does not launch a campaign, alter an active run, fit coefficients or qualify
+physical accuracy. The exact source/build/replay helpers and models remain in
+that artifact directory for local reproduction.
+
+## Publication redaction of the WS follow-up
+
+The curated `ws-*.json` records are explicitly non-executable projections.
+Absolute machine paths have been replaced by consistent opaque
+`<machine-path-NNN>` placeholders, including paths within command arguments and
+embedded environment JSON. Numerical values and original identity hash strings
+are unchanged. Embedded file pins still identify the original raw inputs; they
+do not authenticate the redacted projection or authorize executing it.
+
+`ws-redaction.json` records each original byte hash, sanitized byte hash and
+relative generated-artifact location. Exact original receipts are preserved in
+`out/artifacts/ws-scoped-runtime-20261023/curated-original`; actual executable
+runtime selections remain in their original generated-artifact directory.
+The preceding historical baseline files are unchanged. The original 354-cycle
+neutrality result is not evidence of calibration accuracy: independent held-out
+coverage, every-case error qualification, deployed memory/configuration identity,
+and missing physical/host attribution remain separate requirements.

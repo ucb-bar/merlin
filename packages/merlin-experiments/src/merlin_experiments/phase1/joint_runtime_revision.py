@@ -80,7 +80,10 @@ def validate(initial, current):
         evidence = PERF._read(revision['evidence'])
         old, new = PERF._runtime(prior), PERF._runtime(revision['runtime'])
         kind = revision.get('kind', 'implementation_correction')
-        if kind == 'structural_scope_extension':
+        if kind == 'scoped_observer_diagnostics':
+            from .joint_scoped_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'])
+        elif kind == 'structural_scope_extension':
             _verify_scope_extension(old, new, evidence)
         elif kind == 'capability_restriction':
             _verify_capability_restriction(old, new, evidence)

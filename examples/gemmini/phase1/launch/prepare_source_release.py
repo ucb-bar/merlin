@@ -15,7 +15,7 @@ import yaml
 from merlin_experiments.corpus import release
 
 
-def prepare(previous, output, sdk):
+def prepare(previous, output, sdk, public_reference_manifest=None):
     previous, output, sdk = Path(previous), Path(output), Path(sdk)
     old = json.loads((previous / "private/preparation.json").read_bytes())
     assembly, scaffold = old["assembly"], old["scaffolding"]
@@ -51,7 +51,11 @@ def prepare(previous, output, sdk):
         operand_protocol_revision=pair(scaffold["operand_revision"]),
         public_supplement=Path(assembly["public_supplement"]["selection"]["path"]),
         public_scalability=Path(scale["source"]["selection"]["path"]),
-        public_reference_manifest=Path(scaffold["public_reference_sources"]["path"]),
+        public_reference_manifest=(
+            Path(public_reference_manifest)
+            if public_reference_manifest is not None
+            else Path(scaffold["public_reference_sources"]["path"])
+        ),
     )
 
 
@@ -83,6 +87,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ("previous", "output", "sdk"):
         p.add_argument("--" + name, type=Path, required=True)
+    p.add_argument("--public-reference-manifest", type=Path)
     args = p.parse_args()
     report = prepare(**vars(args))
     (args.output.parent / "release-inspection.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")

@@ -372,3 +372,17 @@ feedback separately from compact action status; command success is not a grade.
 A failed capability defers only explicit dependent actions, never independent
 construction. Automatic authors can use the identical client; it is not a second
 controller or a different offline validation policy.
+
+`joint_scoped_revision` is the narrow `scoped_observer_diagnostics` runtime
+ancestry review. Only a pinned observer/source identity and explicit bounded
+scoped-resource diagnostics can change. Preserve the complete model otherwise,
+provider and functional runtime, dependencies, hardware facts, counter scope,
+shared ABI source pins and prior denial rows. Reopen the exact no-fit public
+baseline/off/on products and the current model's continued denial. This grants
+implementation ancestry only: no measurement, fit, native epoch or qualification.
+
+Calibration admission additionally binds an enabled scoped-observer model to its
+exact selected ancestry and active continued-denial environment pin. Readiness
+supplies the current selected document; frozen rounds supply its original pin.
+A stale or missing admission review refuses before native sensitivities, labels
+or retained selections. Updating diagnostics cannot evade a model-hash denial.

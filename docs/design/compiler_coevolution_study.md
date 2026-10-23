@@ -93,11 +93,15 @@ transformed across lowering boundaries.
 | Host preparation to inference | Merlin-owned preparation and ownership lifecycle | One-time versus repeated work, invalidation and safe storage reuse |
 | Performance selection | Matched scope, model epoch and structural roofline | Qualified estimates within domain; physical validation separately reported |
 
-Generate mechanical instruction scaffolding equally for study arms. It supplies
-no tensor compiler, operand packing, schedule or optimized kernel. A run using
-it is a fresh optimized backend atop neutral scaffolding, not an empty tooling
-environment. The target-owned source extractor must pin public source and refuse
-unsupported syntax instead of inferring instruction semantics from names.
+Keep the same generic instruction generator available to matched study arms.
+For an empty-backend construction study, the author invokes it after admission
+using the selected public declarations; generated target files are author-run
+outputs. It supplies no tensor compiler, operand packing, schedule or optimized
+kernel. A separately selected pre-generated scaffold is a different study input
+and must not be described as an empty initial backend. Neither route may import
+an extractor or implementation from an existing target compiler. Public-source
+extraction must pin its inputs and refuse unsupported syntax instead of inferring
+instruction semantics from names.
 
 Pass variant evaluation enumerates explicit legal alternatives on private IR and
 publishes each completed artifact. Machine search should handle parameter trials;
@@ -181,6 +185,40 @@ attribution, correct resume behavior and representative end-to-end execution.
 Synthetic infrastructure tests establish their tested behavior, not complete
 target readiness. Missing native memory equivalence, candidate execution or
 timing qualification must remain explicit outstanding gates.
+
+Keep the following milestones separate. Preparing a launch command or completing
+a tooling replay cannot mark the later milestones complete.
+
+| Milestone | Required observation | What it permits |
+| --- | --- | --- |
+| Input and execution admission | Empty initial backend, selected public declarations/library, protected evaluator, complete case inventory and working action transport | Begin bounded construction; no compiler correctness claim |
+| First executable capability | Newly authored emission consumed by target lowering, linked executable, actual Spike execution and complete numerical comparison through the ordinary broker | Admit more cases that use this capability while independent construction continues |
+| Required physical checks | Required gSIM cases with matching hardware identity and complete numerical checks; reuse only matching evidence | Credit the individual physical obligations and admit eligible public calibration evidence |
+| Model qualification | Complete scope accounting, declared calibration domain and independent held-out error results | Use qualified estimates within that domain; outside it retain provisional or unknown status |
+| Corpus completion | Every selected case meets its own numerical and engine obligations at the qualifying compiler identity | Claim corpus completion, not full-model completion |
+| Complete-model validation | Frozen compiler compiles complete selected models; complete outputs and whole-execution boundaries are checked | Claim those model results separately from connected-region results |
+| Final hardware comparison | Frozen inputs/compiler and unchanged selected FireSim configuration; independent numerical checks and matched timing scopes | Report physical performance; do not feed private comparison results into the same authoring/calibration run |
+
+The first-executable milestone is deliberately inside construction: an empty
+backend cannot already pass it before the author creates a compiler. Establish
+it cheaply before broad affected testing, rather than spending the full campaign
+on repeated shared ABI failures. An operator prototype may establish that the
+ordinary path supports a mechanism, but its target code is not a seed for the
+fresh author. Log its public actions and isolate it as a separate study.
+
+Do not wait for model qualification to implement lowering or explore legal
+optimization candidates. Provisional estimates and structural bounds can inform
+exploration with their limitations visible. Qualification changes the strength
+of timing claims, not permission to keep constructing the compiler. Likewise,
+fusion and pipeline improvements are experiment work: a correct unfused path
+must remain available while new transformations are developed and evaluated.
+
+Select final validation scope explicitly. The controller's `capsules` scope
+returns before complete-model validation even if a private model specification
+was supplied. A capsule-scoped campaign therefore needs a separately selected
+full-model evaluation of its frozen compiler. Connected public regions never
+substitute for that evaluation. A final report must retain this outstanding work
+until the complete models have actually executed and passed.
 
 Once ready, freeze definitions for these comparisons before running them:
 

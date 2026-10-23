@@ -54,3 +54,19 @@ new-disabled and new-enabled estimates all equal 354 cycles, with identical
 functional output and feature counts. This is observer neutrality evidence,
 not timing accuracy or calibration evidence. One wall-time sample was 17.91s
 disabled and 21.82s enabled; this opt-in diagnostic adds host processing cost.
+
+For automatic calibration ancestry, the selected performance document must carry
+a `scoped_observer_diagnostics` implementation revision. Its operator review pins
+the before/after runtime, models, binaries, source manifests, compiled sources,
+public neutrality receipts and continued calibration denial. The verifier allows
+only the feature-engine identity and explicit bounded diagnostic enablement;
+provider, coefficients, hardware, memory model, functional command and scope
+changes refuse. The new model identity must retain the old structural fitting
+denial. A source identity change cannot turn an existing denied fit into an
+allowed one. An accepted implementation revision still does not qualify timing
+accuracy or authorize calibration promotion.
+
+Select the reviewed performance document and its continued admission-denial pin
+together. The calibration admission guard checks this pairing again at actual
+panel/round execution; a prior model's denial environment cannot authorize a new
+diagnostic model. Missing or stale review pins refuse before any native fit work.

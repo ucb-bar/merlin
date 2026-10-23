@@ -92,6 +92,7 @@ def stage(workspace, run_dir, options):
 def execute(prepared, *, timing_file):
     from merlin.targetgen.sandbox import bwrap as BW
 
+    from . import joint_control
     from .feedback import lifecycle as FL
     from .providers import execution as EX
 
@@ -103,6 +104,10 @@ def execute(prepared, *, timing_file):
     _, digest = actions.load(ws / PLAN)
     if digest != expected["sha256"]:
         raise RuntimeError("served construction actions differ from native preparation")
+    # Match ordinary authoring: start the admitted joint clock immediately
+    # before launching broker-backed author work. The study still has its own
+    # smaller wall budget; start() does not reset an already-started clock.
+    joint_control.start()
     broker = FL.start_brokers(
         ws,
         FL.BrokerConfig(

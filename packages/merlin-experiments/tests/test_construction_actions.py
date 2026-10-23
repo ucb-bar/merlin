@@ -222,3 +222,101 @@ def test_long_command_does_not_block_independent_construction(tmp_path):
         ),
     )
     assert set(result["actions"].values()) == {"completed"}
+
+
+def test_scripted_joint_selfcheck_starts_native_clock_before_submission(tmp_path, monkeypatch):
+    """Real public-client IPC/native routing; synthetic evaluator, no simulator claim."""
+    import threading
+    import time
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase1 import joint_control as JC
+    from merlin_experiments.phase1.feedback import lifecycle as FL
+    from merlin_experiments.phase1.providers import execution as EX
+    from merlin_experiments.phase1.tools import selfcheck
+
+    from merlin.targetgen.sandbox import bwrap as BW
+
+    state = tmp_path / "joint_campaign.json"
+    state.write_text(json.dumps({"started_at_epoch": None, "policy": {"duration_s": 3600, "drain_s": 1}}))
+    monkeypatch.setenv(JC.ENV, str(state))
+    with pytest.raises(RuntimeError, match="clock has not started"):
+        JC.remaining()
+    source = tmp_path / "actions.json"
+    source.write_text(
+        json.dumps(
+            plan(
+                row(
+                    "check",
+                    kind="selfcheck",
+                    argv=["--capsules", "synthetic-public", "--sim", "spike", "--timeout", "5"],
+                )
+            )
+        )
+    )
+    options = parse_options(
+        ["--run-id", "joint-study", "--offline-actions", str(source), "--fresh-backend", "--max-wall-s", "10"],
+        environ={},
+    )
+    ws, run_dir = tmp_path / "ws", tmp_path / "run"
+    ws.mkdir()
+    run_dir.mkdir()
+    (ws / "submission").mkdir()
+    (ws / "agent_selfcheck.py").write_bytes(Path(selfcheck.__file__).read_bytes())
+    S.stage(ws, run_dir, options)
+    prepared = SimpleNamespace(
+        request=SimpleNamespace(options=options, context=SimpleNamespace(repo=tmp_path), resolved_tools=lambda: ()),
+        workspace=ws,
+        run_dir=run_dir,
+        bundle={},
+        public_root=None,
+        policy_root=None,
+        contract_root=None,
+        environment={"run_config": {"construction_study": S.selection(options)}},
+        verify_inputs=lambda: None,
+    )
+    monkeypatch.setattr(BW, "frozen_selected_rtl_facts", lambda *a, **k: None)
+    monkeypatch.setattr(EX, "sandbox_command", lambda inner, *a, **k: inner)
+    observed = []
+
+    def start_brokers(workspace, config):
+        channel = workspace / ".qa_channel"
+        channel.mkdir()
+
+        def serve():
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                requests = list(channel.glob("req_*.json"))
+                if requests:
+                    request = json.loads(requests[0].read_text())
+                    response = {
+                        "selfcheck_protocol": 3,
+                        "selfcheck_request_id": request["request_id"],
+                        "selfcheck_submission": request["submission"],
+                        "submission_sha256": request["submission_sha256"],
+                    }
+                    try:
+                        remaining = JC.remaining()
+                        forwarded = []
+                        routed = JC.selfcheck_policy(lambda argv: forwarded.extend(argv) or 0)(
+                            ["--capsules", request["capsules"], "--sim", request["sim"], "--timeout", "5"]
+                        )
+                        observed.append((remaining, routed, forwarded))
+                        response["all_pass"] = routed == 0
+                    except RuntimeError as error:
+                        response.update(all_pass=False, error=str(error))
+                    (channel / f"resp_{request['request_id']}.json").write_text(json.dumps(response))
+                    (channel / f"done_{request['request_id']}").touch()
+                    return
+                time.sleep(0.01)
+
+        worker = threading.Thread(target=serve, daemon=True)
+        worker.start()
+        return worker
+
+    monkeypatch.setattr(FL, "start_brokers", start_brokers)
+    monkeypatch.setattr(FL, "stop_brokers", lambda ws, worker, **kw: worker.join(timeout=2))
+    assert S.execute(prepared, timing_file=tmp_path / "timing") == 0
+    assert len(observed) == 1 and 0 < observed[0][0] <= 3600
+    assert observed[0][1] == 0 and "synthetic-public" in observed[0][2]
+    assert json.loads(state.read_text())["started_at_epoch"] is not None
