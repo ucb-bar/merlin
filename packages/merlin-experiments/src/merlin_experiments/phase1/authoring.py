@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -30,6 +29,9 @@ from merlin_experiments.phase1 import recovery as ROQ
 from merlin_experiments.phase1 import run_inputs as RI
 from merlin_experiments.phase1 import spend as SPEND
 from merlin_experiments.phase1 import treatments as T
+from merlin_experiments.phase1.authoring_config import AuthoringRuntime as AuthoringRuntime
+from merlin_experiments.phase1.authoring_config import _PASS_LINE as _PASS_LINE
+from merlin_experiments.phase1.authoring_config import _STATUS_LINES as _STATUS_LINES
 from merlin_experiments.phase1.audit import AnswerAudit
 from merlin_experiments.phase1.authoring_conformance import conformance_ever as _conformance_ever
 from merlin_experiments.phase1.authoring_conformance import live_launch as _live_launch
@@ -50,31 +52,9 @@ READY_MARKER = "READY_FOR_BARRIER"
 VERILATOR_ATTEMPTS = 3
 
 
-@dataclass(frozen=True)
-class AuthoringRuntime:
-    """Native edge selections not already recorded by PreparedRun.
-
-    public_root captures the legacy override at invocation time. Its descriptor
-    fallback is still materialized lazily, only when grading needs public capsules.
-    """
-
-    bundle_id: str
-    oracle_timing: Path
-    public_root: Path | None = None
-
-
 def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
     """Keep the established authoring patch/call surface while accounting lives in Phase 1."""
     return SPEND.spend_over_cap(this_round_cost)
-
-
-_PASS_LINE = "Baseline pilot passes all required public/dev pilot capsules and is ready for hidden pilot grading."
-_STATUS_LINES = (
-    _PASS_LINE,
-    "Baseline pilot does not yet pass all required public/dev pilot capsules; remaining failures "
-    "are listed by capsule and failure plane.",
-    "Baseline pilot is not comparable because it violates the compiler/runtime/integrity boundary.",
-)
 
 
 def _verified_status_line(verdict: dict) -> str:
@@ -198,6 +178,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     """Continue the existing authoring/completion policy inside the caller's workspace lease."""
     a, treatment = prepared.request.options, prepared.request.treatment
     from . import joint_control as JC
+
     joint = JC.selected() is not None
     arm = a.arm
     bundle_id = runtime.bundle_id
@@ -729,8 +710,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             break
 
         from . import joint_epochs
+
         if joint and joint_epochs.stop_reason(run_dir) is not None:
             from .joint_handoff import checkpoint
+
             verdict = checkpoint(ws, run_dir, rnd)
         else:
             verdict = GR.post_turn_grade(
@@ -897,10 +880,16 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     if joint:
         from .joint_completion import complete
         from .joint_final_coverage import validate
-        return complete(prepared, verdict=verdict, rounds=rounds_summary,
-                        workflow_conformant=_conformant_over_run(),
-                        final_coverage=lambda frozen, digest: validate(
-                            prepared, inputs=grading_inputs, frozen=frozen, compiler_sha256=digest))
+
+        return complete(
+            prepared,
+            verdict=verdict,
+            rounds=rounds_summary,
+            workflow_conformant=_conformant_over_run(),
+            final_coverage=lambda frozen, digest: validate(
+                prepared, inputs=grading_inputs, frozen=frozen, compiler_sha256=digest
+            ),
+        )
 
     # --- cycle-accurate cert checkpoint ------------------------------------------------------------
     # The loop gate is the fast functional tier; this is where kernels are validated on the real RTL.

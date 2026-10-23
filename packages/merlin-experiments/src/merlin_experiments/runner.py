@@ -22,6 +22,9 @@ from .runner_process import _stop_process_group as _stop_process_group
 from .spec import ExperimentSpec, SpecError, read_yaml
 from .spec import default_run_dir as default_run_dir
 
+from merlin_experiments.runner_records import _write_json as _write_json
+from merlin_experiments.runner_records import _read_json as _read_json
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -1014,22 +1017,6 @@ def preflight(plan: dict) -> dict:
         "inputs": pins,
         "phase0_synthesis": synthesis,
     }
-
-
-def _write_json(path: Path, value: dict) -> None:
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(path)
-
-
-def _read_json(path: Path) -> dict:
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise SpecError(f"invalid run record {path}: {exc}") from exc
-    if not isinstance(document, dict):
-        raise SpecError(f"invalid run record {path}: expected an object")
-    return document
 
 
 @contextmanager

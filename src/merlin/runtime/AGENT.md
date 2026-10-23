@@ -135,6 +135,10 @@ the per-backend adapters under `backends/`.
 
 ## Invariants
 
+- `dispatch_arguments.py` owns captured weight/input plan construction. The
+  dispatch runtime retains `_forward_plan` and `ForwardArgsCache` as its binding
+  and cache entrypoints, passing the selected numeric converters explicitly.
+
 - `host_fma_packet.py` and `host_rounding.py` own explicitly selected scalar CPU
   implementations independently of the accelerator; adapters retain symbol bindings.
   CPU selection never grants numerical or effect permissions.

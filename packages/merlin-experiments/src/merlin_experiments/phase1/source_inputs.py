@@ -165,6 +165,8 @@ def paths(
         ("frozen_import_resolver", "merlin.common.frozen_imports"),
         ("arrival_stamp", "merlin.common.arrival_stamp"),
         ("sandbox_bwrap", "merlin.targetgen.sandbox.bwrap"),
+        ("sandbox_mount_visibility", "merlin.targetgen.sandbox.mount_visibility"),
+        ("capsule_diagnostics", "merlin.targetgen.capsule_diagnostics"),
         ("sandbox_host_surfaces", "merlin.targetgen.sandbox.host_surfaces"),
         ("sandbox_toolchain", "merlin.targetgen.sandbox.toolchain"),
         ("sandbox_claude_home", "merlin.targetgen.sandbox.claude_home"),

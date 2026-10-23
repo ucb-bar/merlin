@@ -979,3 +979,7 @@ resource reservation, execution, timing or a new performance objective.
 `connected_source_context` is an operator-only, call-local carrier for exact connected source projections. It reconstructs the original window and reopens both source files before transporting a selected compiler index observation into `account_program`. Its reduction/control facts are source premises only, never copied capture ordinals or host/link/numerical grants. Missing original trace association and missing host declarations must remain refused.
 
 `connected_index_context` rechecks closed mask-count and literal-index forms on that reconstructed window against separately pinned capture model/trace/receipt metadata. Its distinct observation schema does not satisfy the full-capture index-proof schema: preparation ancestry, selected host placement and linked numerical obligations remain separate. Reopen original pins after proof; never transplant old operation ordinals, accept a changed literal because its shape matches, or use these source facts to force accelerator-eligible operations onto the host.
+
+`generation_paths` checks output and evidence destinations against retained and
+selected source corpora before generation. `generation` keeps the existing
+helper import; no source path is rewritten by this check.

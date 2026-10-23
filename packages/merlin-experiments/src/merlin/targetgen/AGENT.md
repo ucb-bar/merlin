@@ -148,3 +148,7 @@ ISA and numerical audits. Recheck after those audits; changed custody revokes
 passes. L0 describes this storage/build boundary only. Source arithmetic and
 actual product/effect correspondence still require the independent live owner;
 original required L3 remains pending under an explicit L2 ceiling.
+
+`capsule_diagnostics` owns bounded source-free exception, simulator and output
+diagnostics. It retains the runner's withheld grader identity; the runner keeps
+its existing helper aliases, wrapper calls and numerical decisions.

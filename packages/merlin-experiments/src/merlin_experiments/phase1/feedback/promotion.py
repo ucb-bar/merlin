@@ -44,6 +44,9 @@ from merlin.targetgen.oracle_schedule import FAIL as _FAIL
 from merlin.targetgen.oracle_schedule import PASS as _PASS
 from merlin_experiments.phase1.context import InvocationContext
 from merlin_experiments.phase1.feedback import snapshots
+
+from merlin_experiments.phase1.feedback.promotion_verdicts import row_status as row_status
+from merlin_experiments.phase1.feedback.promotion_verdicts import cert_already_executed as cert_already_executed
 from merlin_experiments.phase1.feedback.dispatch import cert_sim
 from merlin_experiments.phase1.feedback.promotion_sources import _DYNAMIC_IMPORT as _DYNAMIC_IMPORT
 from merlin_experiments.phase1.feedback.promotion_sources import (
@@ -78,50 +81,6 @@ from merlin_experiments.phase1.feedback.promotion_sources import (
 )
 
 _NEUTRAL_SIM = "contract"  # "grade on whatever tier this target's contract resolves to"
-
-
-def row_status(row) -> str | None:
-    """``"pass"`` / ``"fail"`` for one per-capsule row, or ``None`` when the row states no verdict.
-
-    TWO verdict producers feed this module and they SPELL THE ANSWER DIFFERENTLY. The brokers' runner
-    emits a boolean ``pass``; ``qa_check`` -- the reader behind the round grade and the in-turn grade --
-    emits a ``status`` string over the vocabulary ``pass | fail | declined | incomplete | gated`` and no
-    ``pass`` key at all. Reading only ``pass`` therefore answered "did not pass" for EVERY row a round
-    grade ever produced, which is not "no verdict" but a FABRICATED FAILURE: it was recorded into the
-    ledger as ``fail``, ``oracle_schedule``'s first gate ("the shallower tier must have PASSED") then
-    refused every capsule, and the round grade enqueued nothing while logging only the two lines it logs
-    when there is genuinely nothing to do.
-
-    Measured on out/runs/gemmini/capsule-bench/merlin_assisted/merlincirct_g4p1_20260905, round 5: the
-    verdict says 82/96 passed, promotion recorded 96/96 as ``fail``, 62 of the 82 genuine passes are on
-    disk in ``qa/tier_state.json`` as ``fail`` under their exact execution identity, and the run's whole
-    launch log holds 18 ``[promote]`` lines and zero enqueued cert jobs across 8 hours.
-
-    Read STRUCTURALLY and FAIL CLOSED. A boolean ``pass`` decides when the row carries one. Otherwise a
-    ``status`` of exactly ``pass``/``fail`` decides. Anything else -- a refusal, an ungradeable capsule,
-    a third producer with a fourth spelling -- returns ``None``, which the callers record as NOTHING
-    rather than as a failure. "Nobody has run this" re-runs; an invented ``fail`` retires the capsule.
-    """
-    if isinstance(row, dict):
-        flag = row.get("pass")
-        if isinstance(flag, bool):
-            return _PASS if flag else _FAIL
-        status = row.get("status")
-        if isinstance(status, str) and status.strip() in (_PASS, _FAIL):
-            return status.strip()
-    return None
-
-
-def cert_already_executed(verdict, cert_tier) -> bool:
-    """Whether the verdict's own oracle selection already ran ``cert_tier`` for its capsules.
-
-    A self-check on the grade's own selection runs the cert tier for every capsule its loop tier
-    passed, in the same request. Enqueueing a promotion for those bytes buys the same simulation a
-    second time. Read only from the verdict's declared ``oracle_tiers``: a verdict that declares none
-    keeps promoting as before.
-    """
-    tiers = verdict.get("oracle_tiers") if isinstance(verdict, dict) else None
-    return isinstance(cert_tier, str) and isinstance(tiers, list) and cert_tier in tiers
 
 
 def resolve_tiers(ws, *, context: InvocationContext, capsules_root: Path | None = None):

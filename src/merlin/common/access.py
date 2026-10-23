@@ -314,7 +314,8 @@ MODULE_ACCESS = (
     _module(
         "merlin.targetgen.capsule_runner",
         "grader",
-        aliases=("merlin.targetgen.oracle_policy", "merlin.targetgen._capsule_bundle_worker"),
+        aliases=("merlin.targetgen.oracle_policy", "merlin.targetgen._capsule_bundle_worker",
+                 "merlin.targetgen.capsule_diagnostics"),
     ),
     _module("merlin.targetgen.capsule_dram", "grader"),
     _module("merlin.targetgen.capsule_source_identity", "grader"),

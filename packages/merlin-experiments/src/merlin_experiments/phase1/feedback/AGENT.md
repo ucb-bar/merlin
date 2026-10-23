@@ -534,3 +534,8 @@ pass or completed grade. `SubmissionNotReady` covers the fast-grade admission
 race without updating grade health, and retains the required first-grade retry.
 Real grader errors retain bounded printable type/reason in their owned records;
 all snapshot custody, concurrent draining and numerical checks remain unchanged.
+
+`promotion_verdicts` interprets the two existing verdict spellings and already
+executed certificate tiers without issuing work. `selfcheck_selection` also owns
+explicit reachable-tier selection. Original promotion/selfcheck helper names
+remain re-exported; callers retain their original lookup and patch boundaries.

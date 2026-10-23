@@ -64,3 +64,19 @@ def selection_note(*, combined: bool, required: bool, sim: str, adapters: dict, 
             "with a mandatory tier outside them is not certified by this request. "
         )
     return f"Self-check on {sim} ({barrier_tier}). "
+
+
+def select_tiers(full: dict, default: dict, requested: str) -> tuple[dict, str | None]:
+    """Select explicit tiers from the full reachable map, or retain the default.
+
+    The default loop ladder may omit expensive certificate tiers. Explicit
+    requests are checked against the full endpoint inventory so those tiers
+    remain reachable. Return (adapters, error); never silently drop an
+    unavailable requested tier."""
+    want = {t.strip().upper() for t in requested.split(",") if t.strip()}
+    if not want:
+        return default, None
+    missing = sorted(want - set(full))
+    if missing:
+        return {}, (f"--tiers names {missing}, which this endpoint does not reach; reachable: {sorted(full)}")
+    return {t: ad for t, ad in full.items() if t in want}, None

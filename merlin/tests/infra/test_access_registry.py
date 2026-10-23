@@ -43,6 +43,16 @@ def test_evaluation_package_move_does_not_mask_public_descriptor_helper(tmp_path
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
 
 
+def test_extracted_capsule_diagnostics_keep_original_grader_mask(tmp_path, isolated_policy):
+    hidden = _write(tmp_path, "packages/merlin-experiments/src/merlin/targetgen/capsule_diagnostics.py")
+    assert "merlin.targetgen.capsule_diagnostics" in A.declared_modules("grader")
+    surfaces = AS.answer_surfaces(isolated_policy)
+    assert any(surface.path == hidden and surface.origin == "grader" for surface in surfaces)
+    unmasked = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert {surface.path for surface in BW.coverage_gap(unmasked, surfaces)} == {hidden}
+    assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
+
+
 def test_moved_golden_exporter_is_masked_without_hiding_public_emitter(tmp_path, isolated_policy):
     exporter = _write(tmp_path, "packages/merlin-experiments/src/merlin/targetgen/model_slice_export.py")
     emitter = _write(tmp_path, "src/merlin/targetgen/contract/matmul_interface.py")

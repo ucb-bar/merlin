@@ -100,3 +100,7 @@ Widening containment is therefore a reviewed edit to `answer_surfaces.py`, not a
 ### The audit's three outcomes
 
 Hits are advisory (the protection worked, or nothing was read), violations (withheld content demonstrably reached the agent), or INDETERMINATE — a withheld path was named and the outcome is not recoverable, typically because the captured output belongs to a whole compound pipeline. Indeterminate hits drive UNKNOWN rather than being guessed either way. Token matching is by shape, not bare substring: a bare module stem must BE a path component, because substring-matching `decode` against shell text flagged every `jq` filter mentioning a `decoded` field (30 of 34 accusations on the archived transcripts, all false).
+
+`mount_visibility` owns ordered mount parsing and per-call visibility indexing.
+`bwrap` retains its parser/class aliases and local override point. New phase-1
+source selections pin both owners; no frozen selection is silently rewritten.

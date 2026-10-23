@@ -35,3 +35,6 @@ pinned graph shape projections and renders selected standalone source contracts
 through the native interface IR API. All source occurrences remain attached.
 Independent stimuli grant no captured-boundary, connected-cut or whole-model
 equivalence. It selects no target schedule and performs no simulation.
+
+`preparation_io` owns private JSON writes and ordinary-tree validation.
+`preparation` retains its existing callable names and copying workflow.

@@ -41,6 +41,8 @@ from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from ..execution_memory import ExecutionMemoryError, MemoryMapBinding, MemoryReservation, admit_execution_memory
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
 from ._model_console import parse_model_console
+from ._model_host_transform import SpikeModelError as SpikeModelError
+from ._model_host_transform import _transform_host_ir as _transform_host_ir
 from .host_compiler_policy import _harness_cflags as _harness_cflags
 from .host_compiler_policy import _select_host_vectorize as _select_host_vectorize
 from .host_compiler_policy import selected_model_compiler_plan as selected_model_compiler_plan
@@ -64,55 +66,6 @@ CLANG_TARGET = "--target=riscv64-unknown-elf"
 # merlin_model.c additionally asserts that a pointer is one int64_t word. This is a
 # selected runtime ABI constraint, not a target-hardware index-width assumption.
 _C_DESCRIPTOR_INDEX_BITS = 64
-
-
-class SpikeModelError(RuntimeError):
-    pass
-
-
-def _transform_host_ir(
-    source: Path,
-    workdir: Path,
-    transform: Callable[[Path, Path], Path] | None,
-    *,
-    chain: HostLLVMTransformChain | None = None,
-) -> tuple[Path, dict | None]:
-    """Keep target-selected late legalization inside the normal object build.
-
-    The source lowering artifact remains immutable. Clang verifies the selected
-    LLVM IR, and its compiled object participates in the existing build hash.
-    The optional callback owns its semantic proof and supporting artifacts.
-    """
-    if chain is not None:
-        from ...llvmlower.host_transform_chain import apply_host_transform_chain
-
-        return apply_host_transform_chain(
-            source,
-            workdir,
-            chain,
-            terminal=(lambda current, work: _transform_host_ir(current, work, transform))
-            if transform is not None
-            else None,
-        )
-    if transform is None:
-        return source, None
-    import hashlib
-
-    before = source.read_bytes()
-    workdir.mkdir(parents=True, exist_ok=True)
-    selected = Path(transform(source, workdir)).resolve()
-    if source.read_bytes() != before:
-        raise SpikeModelError("host LLVM transform modified its source lowering artifact")
-    if selected != source.resolve() and not selected.is_relative_to(workdir.resolve()):
-        raise SpikeModelError("host LLVM transform output must be retained in its workdir")
-    if not selected.is_file():
-        raise SpikeModelError("host LLVM transform returned no LLVM IR file")
-    return selected, {
-        "source_path": str(source.resolve()),
-        "source_sha256": hashlib.sha256(before).hexdigest(),
-        "selected_path": str(selected),
-        "selected_sha256": hashlib.sha256(selected.read_bytes()).hexdigest(),
-    }
 
 
 def _harness_dir() -> Path:

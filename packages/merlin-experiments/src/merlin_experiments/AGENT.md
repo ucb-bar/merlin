@@ -54,3 +54,7 @@ retains its existing imports and overrides at plan execution boundaries.
 timing space, existing labels and the Phase 2 domain. A per-target backend realizes them
 from the target's data directory. Phase code never imports it, and its inputs and labels
 are never author-visible.
+
+`runner_records` owns atomic JSON process records and object-shape validation.
+`runner` re-exports the existing helper names and resolves those aliases at its
+original execution boundaries, preserving caller overrides.
