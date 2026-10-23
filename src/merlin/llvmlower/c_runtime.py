@@ -230,7 +230,7 @@ def generate(
     inputs = np.load(inputs_npz)
     extra_path = extra_npz or (model_dir / "extra.npz")
     extra = np.load(extra_path) if Path(extra_path).is_file() else {}
-    lifted_names = sorted(k for k in getattr(extra, "files", []) if not k.startswith("buf::"))
+    extra_names = set(getattr(extra, "files", []))
 
     def buffer_array(name: str):
         # manifest buffer name b_a_b_c  <->  extra key buf::a.b.c
@@ -276,7 +276,6 @@ def generate(
     static_io_bytes = 0  # bytes of STATIC storage the harness needs for the model's I/O (see below)
     embedded: set[int] = set()  # arg positions that GOT an embedded array (see the ptr table below)
     n_in = 0  # positional input counter (loaders with a single tuple)
-    li = 0  # lifted-constant counter
     for i, (shape, dt) in enumerate(sig):
         meta = man[str(i)]
         elem = DT_BYTES[dt]
@@ -309,14 +308,22 @@ def generate(
             continue
         if meta["kind"] == "buffer":
             arr = buffer_array(name)
-        elif name.startswith("c_lifted_tensor_"):
-            arr = np.ascontiguousarray(extra[lifted_names[li]])
-            li += 1
+        elif name in extra_names:
+            arr = np.ascontiguousarray(extra[name])
+        elif "lifted_tensor" in name or meta["kind"] == "constant":
+            raise ValueError(f"lifted constant {name!r} is not materialized in {extra_path}")
         elif name in input_order and f"in{input_order[name]}" in inputs.files:
             arr = np.ascontiguousarray(inputs[f"in{input_order[name]}"])
+        elif order_path.is_file():
+            raise ValueError(f"unbound captured input {name!r} in authoritative input_order.json")
         else:
             arr = np.ascontiguousarray(inputs[f"in{n_in}"])
             n_in += 1
+        expected_elements = int(np.prod(shape))
+        if arr.size != expected_elements:
+            raise ValueError(
+                f"captured input {name!r} has {arr.size} elements; ABI shape {shape} requires {expected_elements}"
+            )
         io_decls.append(f"static {C_OF[dt]} merlin_in_{i}[] = {{{_embed_array(arr, dt)}}};")
         embedded_arrays[i] = (arr, dt)
         static_io_bytes += _storage_nbytes(arr, dt)

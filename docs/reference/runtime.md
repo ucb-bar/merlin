@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-05
 related: [zephyr]
-code_refs: [src/merlin/runtime, merlin/runtime]
+code_refs: [src/merlin/runtime, merlin/runtime, src/merlin/llvmlower/c_runtime.py]
 ---
 
 # Runtime
@@ -50,6 +50,16 @@ adapters declare support against a version string `RUNTIME_ABI_VERSION` in their
 
 Backends register in `runtime/backends/base.py` and are enumerated in [Backends](#backends). Error
 model: integer return codes, `0 == success`.
+
+## Captured runtime data
+
+The generated C harness binds captured constants by their exact names in
+`extra.npz`. This includes module-scoped lifted tensors. When `input_order.json`
+is present, its named input mapping is authoritative; an unknown name raises an
+error. Legacy positional binding is available only without that mapping.
+Every embedded array must contain the number of elements required by its
+typed argument, including one element for a scalar. Missing constants and
+incompatible array sizes fail before linking.
 
 ## Schemas (Merlin-owned, validated)
 
