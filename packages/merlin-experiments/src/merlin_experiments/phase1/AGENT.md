@@ -350,3 +350,11 @@ resume must not regenerate them. The short task points to on-demand details.
 `capability_query.py` is served byte-for-byte as a standard-library-only, bounded,
 read-only helper. It opens only its adjacent inventory and has no private imports
 or dispatch authority; seal its served/archived bytes with the guidance.
+
+`generated_isa_library` prepares only an explicitly reviewed future additional
+library selection. Pin public facts/declaration and manifest identities, re-render
+the exact generated source and require the selected generator implementation.
+Copy enumerated leaves only; never mount a companion checkout. Existing library
+freeze/seal/transport and resume rules remain authoritative. Label the treatment
+as a fresh optimized backend atop generated scaffolding; do not manufacture an
+empty-input comparison, optimized backend, encoding proof or timing qualification.

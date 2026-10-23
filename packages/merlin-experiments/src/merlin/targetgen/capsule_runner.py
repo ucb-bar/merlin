@@ -4883,7 +4883,7 @@ def run_capsule(
         # directory says what started, when, and under what ceiling.
         _budget = model_budget_seconds() if model_budget_s is None else model_budget_seconds(override=model_budget_s)
         if selected_source_slice(capsule):
-            _budget = min(_budget, timeout)
+            _budget = timeout if _budget is None else min(_budget, timeout)
         if checked_source_diagnostic is not None and (not _budget or _budget <= 0):
             raise ValueError("checked source diagnostic requires the original sealed worker hard deadline")
         paths.run_path.mkdir(parents=True, exist_ok=True)

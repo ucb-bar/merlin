@@ -118,6 +118,70 @@ explicit clone/fingerprint/structural-verifier adapters; no loop expansion is
 introduced by the search driver. The maximum sixteen alternatives bounds retained
 IR; consume additional candidate groups under the caller's normal resource budget.
 
+## Prepare shared IR once, then evolve alternatives
+
+Pass libraries should reduce repeated implementation and compilation work, not
+only describe which functions exist. `evaluate_variants(..., prefix=(...))`
+executes common registered transformations once before cloning the resulting IR
+for each alternative. The prefix can normalize the source graph and simplify
+exact arithmetic; alternatives then explore fusion, tiling or schedule policy
+at their declared IR boundary. Use only transformations legal for every branch
+in this unconditional prefix. Shape/capability-dependent transformations retain
+their predicates inside the alternatives.
+
+For example, connect the existing shared normalization implementation directly:
+
+```python
+from merlin.transforms.pipeline import PipelineOptions, apply_common_pipeline
+from merlin.transforms.pipeline_policy import RegisteredPass, evaluate_variants
+from merlin.transforms.pipeline_state import PassSpec
+
+def prepare_common_ir(session):
+    prepared = apply_common_pipeline(
+        session.module,
+        PipelineOptions(index_bits=selected_index_bits, reuse_buffers=False),
+        verifier=host_transform_verifier,
+        context=session.context,
+    )
+    session.module = prepared.module
+    return {}
+
+registry["prepare_common_ir"] = RegisteredPass(
+    PassSpec("prepare_common_ir", stage=0), prepare_common_ir,
+)
+for evaluation in evaluate_variants(
+    source_module, variants, registry, derive_current_policy_facts,
+    output="emitted_ir", context=selected_context,
+    prefix=("prepare_common_ir",),
+):
+    if evaluation.status == "compiled":
+        submit_immutable_artifact(evaluation.result.artifact,
+                                  evaluation.result.receipt)
+```
+
+The selected index width, verifier, alternatives and target emission remain
+caller-owned inputs. The real shared transform and its existing host verifier
+run once for the prefix, not once per schedule alternative. This is preparation
+within one search invocation, not a persistent source/verdict cache. A new source,
+pass implementation or selected contract requires a new invocation.
+
+Each branch receives a fresh session with **no prefix analyses**. Derive policy
+facts from the prepared clone; register branch-local analyses before any pass
+requiring them. Values containing SSA or schedule-object references cannot be
+carried from the prefix into another clone. Stage ordering across the prefix and
+branches is checked before work begins, while branch prerequisites must be
+satisfied within that branch. The original source and prepared IR/context are
+rechecked before and after each alternative. Failed shared preparation stops the
+search; a failed branch discards only its own partial IR.
+
+Receipts distinguish the original source, prepared IR, prefix pass records and
+branch pass records. An agent can inspect that compact record, improve a shared
+transformation or add a guarded policy, and let deterministic search evaluate
+the alternatives without writing separate kernels or repeating normalization.
+Promoting a successful alternative still requires independent correctness,
+timing and additional shapes; neither preparation reuse nor a registry entry
+establishes a compiler optimization's generality.
+
 Full receipts and transformed IR stay in caller-owned artifacts; `summary()`
 contains only status, source/output-IR identities, executed pass names and a
 bounded error. Independent numerical checks and comparable timing remain the
@@ -136,6 +200,9 @@ The machine-search checks additionally consume real normalized/unrolled IR on
 zero, small, tail and full-loop shapes, compare interpreted outputs, retain a
 trillion-iteration loop compactly, and test failed/unknown alternatives and
 incremental delivery.
+Prefix checks additionally run a real shared transform once across branches,
+rederive separate IR-bound analyses, compare emitted-program numerical results,
+and refuse source, prepared-IR and selected-contract mutation.
 
 This module is usable by an ordinary compiler import. A sandboxed author also
 needs it added to a new reviewed immutable compiler-library export; existing

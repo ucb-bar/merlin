@@ -265,8 +265,10 @@ class VariantEvaluation:
         return dict(
             variant=self.variant, status=self.status, applicability=self.applicability,
             error=self.error,
-            source_sha256=self.result.receipt['before']['source_sha256'] if self.result else None,
+            source_sha256=self.result.receipt['source']['source_sha256'] if self.result else None,
+            prepared_ir_sha256=self.result.receipt['before']['source_sha256'] if self.result else None,
             output_ir_sha256=self.result.receipt['after']['source_sha256'] if self.result else None,
+            prepared_passes=tuple(row['name'] for row in self.result.receipt['prefix_passes']) if self.result else (),
             executed_passes=tuple(row['name'] for row in self.result.receipt['passes']) if self.result else (),
             qualification='compilation only; independent correctness and timing required',
         )
@@ -275,7 +277,7 @@ class VariantEvaluation:
 def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
                       registry: Mapping[str, RegisteredPass], facts: Callable, *, output: str,
                       context=None, ir_level='structured', clone=None,
-                      fingerprint=None, verify_ir=None):
+                      fingerprint=None, verify_ir=None, prefix: tuple[str, ...] = ()):
     """Yield every applicable explicit variant on a fresh private IR.
 
     This is deterministic compiler search, with no LLM, simulator or implicit
@@ -291,6 +293,12 @@ def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
     IR must supply clone, fingerprint and verify_ir adapters without flattening
     loops. Host transform verification and independent execution obligations are
     unchanged. The source must remain immutable while this iterator is consumed.
+
+    An explicit ``prefix`` executes shared preparation once before branching.
+    Its transformed IR is cloned, while all prefix analyses are discarded: each
+    branch must derive its own current facts and any pass prerequisites. This is
+    invocation-local preparation, not a persistent cache or reusable proof. Only
+    preparation legal for every alternative belongs in the unconditional prefix.
     """
     if (type(variants) is not tuple or not 1 <= len(variants) <= 16
             or any(type(v) is not PipelineVariant for v in variants)
@@ -302,6 +310,13 @@ def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
         raise ValueError('search clone adapter must be callable')
     registry = dict(registry)
     metadata = registry_metadata(registry)
+    if (type(prefix) is not tuple or len(prefix) > 64
+            or any(type(name) is not str or name not in registry for name in prefix)):
+        raise ValueError('search prefix requires at most sixty-four registered passes')
+    prefix_specs = tuple(registry[name].spec for name in prefix)
+    validate_pass_order(prefix_specs)
+    if any(spec.ir_level != ir_level for spec in prefix_specs):
+        raise ValueError('prefix must consume the selected IR level')
     # Validate the entire search space before any action, including late paths.
     for variant in variants:
         if any(name not in registry for name in variant.passes):
@@ -310,25 +325,49 @@ def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
         validate_pass_order(specs)
         if any(spec.ir_level != ir_level for spec in specs) or output not in specs[-1].produces:
             raise ValueError('variant must consume its selected IR level and produce its final output')
+        if prefix_specs and specs[0].stage < prefix_specs[-1].stage:
+            raise ValueError('variant pass order precedes shared preparation')
     source_session = PipelineSession(module, context=context, ir_level=ir_level,
                                      fingerprint=fingerprint, verify_ir=verify_ir)
     source_stamp = source_session.stamp()
-    retained_clones = []  # Bounded by sixteen; also detects reused mutable clones.
+    retained_clones = []  # At most one prefix plus sixteen private alternatives.
+    prepared_session = source_session
+    if prefix:
+        private = clone(module) if clone is not None else module.clone()
+        if private is module:
+            raise ValueError('search prefix requires a distinct private clone')
+        retained_clones.append(private)
+        prepared_session = PipelineSession(private, context=source_stamp.context, ir_level=ir_level,
+                                           fingerprint=fingerprint, verify_ir=verify_ir)
+        if prepared_session.stamp() != source_stamp:
+            raise ValueError('search prefix clone differs from the selected source or contracts')
+        for name in prefix:
+            entry = registry[name]
+            prepared_session.run(entry.spec, lambda entry=entry: entry.action(prepared_session))
+    prepared_stamp = prepared_session.stamp()
+    prefix_records = tuple(asdict(record) for record in prepared_session.records)
+    # Retain only prepared IR and records. Drop produced analysis objects even
+    # from the preparation session; they may contain references into its IR.
+    prepared_session = PipelineSession(prepared_session.module, context=prepared_stamp.context,
+                                       ir_level=ir_level, fingerprint=fingerprint, verify_ir=verify_ir)
     for variant in variants:
         if source_session.stamp() != source_stamp:
             raise ValueError('search source changed between alternatives')
-        private = clone(module) if clone is not None else module.clone()
-        if private is module or any(private is previous for previous in retained_clones):
+        if prepared_session.stamp() != prepared_stamp:
+            raise ValueError('search prepared IR or contracts changed between alternatives')
+        private = clone(prepared_session.module) if clone is not None else prepared_session.module.clone()
+        if (private is module or private is prepared_session.module
+                or any(private is previous for previous in retained_clones)):
             raise ValueError('search requires a distinct private clone for every alternative')
         retained_clones.append(private)
         session = PipelineSession(private, context=source_stamp.context, ir_level=ir_level,
                                   fingerprint=fingerprint, verify_ir=verify_ir)
-        if session.stamp() != source_stamp:
+        if session.stamp() != prepared_stamp:
             raise ValueError('search clone differs from the selected source or contracts')
         applicability = ()
         try:
             current = facts(session)
-            if type(current) is not PolicyFacts or current.stamp != session.stamp() or session.stamp() != source_stamp:
+            if type(current) is not PolicyFacts or current.stamp != session.stamp() or session.stamp() != prepared_stamp:
                 raise ValueError('search facts require unchanged current-IR source and contracts')
             applicability = tuple(predicate.match(current) for predicate in variant.predicates)
             status = 'unsupported' if False in applicability else 'unknown' if None in applicability else 'compiled'
@@ -341,6 +380,7 @@ def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
                     session.run(entry.spec, lambda entry=entry: entry.action(session))
                 result = PolicyResult(session.analysis(output), session.module, dict(
                     schema='merlin.compiler_pipeline_variant.v1', variant=asdict(variant),
+                    source=asdict(source_stamp), prefix_passes=prefix_records,
                     before=asdict(before), after=asdict(session.stamp()), registry=metadata,
                     passes=tuple(asdict(record) for record in session.records), output=output,
                     applicability=applicability,
@@ -352,4 +392,6 @@ def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
                                            f'{type(exc).__name__}: {str(exc)[:512]}')
         if source_session.stamp() != source_stamp:
             raise ValueError('search source changed during an alternative')
+        if prepared_session.stamp() != prepared_stamp:
+            raise ValueError('search prepared IR or contracts changed during an alternative')
         yield evaluation

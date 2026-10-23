@@ -88,6 +88,15 @@ publishes each completed artifact. Machine search should handle parameter trials
 agents propose or improve algorithms, applicability and search spaces. Neither
 an `applied` receipt nor successful compilation is a numerical or timing verdict.
 
+`evaluate_variants(..., prefix=(...))` applies common registered transformations
+once ahead of alternative exploration. Each alternative clones the prepared IR
+and starts a fresh pass session; analyses containing references into the previous
+IR are discarded and rederived. This is reuse of actual compiler transformations,
+not merely task grouping. Agents can improve the common preparation, individual
+passes, branch predicates or target realization independently while keeping the
+same representation contracts. The [conditional pipeline guide](../guides/conditional_compiler_pipelines.md)
+contains an executable-style example using the shared normalization pipeline.
+
 Before fitting timing parameters, match external-memory behavior with the selected
 FireSim configuration. Simplified functional memory and FASED timing are different
 reference domains. Compare target-cycle request admission, response ordering and

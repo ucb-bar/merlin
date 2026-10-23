@@ -97,6 +97,8 @@ def append_guidance(workspace, run_dir, record, selection, *, repo=None, descrip
         "is described below. Availability does not grant numerical or resource authority.\n\n"
         + details
     )
+    from .generated_isa_library import prompt as scaffold_prompt
+    text += scaffold_prompt(snapshot)
     from .joint_control import selected as joint_selected
     if joint_selected():
         from .joint_pass_guidance import prompt

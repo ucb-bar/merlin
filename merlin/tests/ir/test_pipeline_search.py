@@ -150,3 +150,94 @@ def test_source_mutation_and_bad_clone_do_not_gain_results():
     original.attributes['test.change'] = StringAttr('changed')
     with pytest.raises(ValueError, match='source changed'):
         next(stream)
+
+
+def test_shared_transform_prefix_runs_once_and_branches_rederive_analyses():
+    source_ir = source(13)
+    before = ir_text(source_ir)
+    passes = registry()
+    prefix_calls, analyses = [], []
+    cleanup = passes['clean']
+    def prepare(session):
+        prefix_calls.append(session.module)
+        cleanup.action(session)
+        return {'prefix_analysis': [session.module]}
+    passes['prepare'] = RegisteredPass(PassSpec('prepare', 0, produces=('prefix_analysis',)), prepare)
+    def analyze(session):
+        # A fresh per-branch prerequisite owns references into that branch only.
+        value = [session.module]
+        analyses.append(value)
+        return {'live': value}
+    passes['analyze'] = RegisteredPass(PassSpec('analyze', 1, produces=('live',), mutates_ir=False), analyze)
+    passes['emit'] = replace(passes['emit'], spec=replace(passes['emit'].spec, requires=('live',)))
+    def prepared_facts(session):
+        with pytest.raises(ValueError, match='missing or stale'):
+            session.analysis('prefix_analysis')
+        return facts(session)
+    paths = (PipelineVariant('prepared_baseline', ('analyze', 'emit')),
+             PipelineVariant('unrolled', ('unroll4', 'analyze', 'emit')))
+    rows = list(evaluate_variants(source_ir, paths, passes, prepared_facts,
+                                 output='ir', prefix=('prepare',)))
+    assert len(prefix_calls) == 1
+    assert len(analyses) == 2 and analyses[0] is not analyses[1]
+    assert analyses[0][0] is not analyses[1][0]
+    assert ir_text(source_ir) == before
+    for row in rows:
+        assert row.status == 'compiled'
+        summary = row.summary()
+        assert summary['prepared_passes'] == ('prepare',)
+        assert summary['prepared_ir_sha256'] != summary['source_sha256']
+        assert summary['source_sha256'] == ir_digest(source_ir)
+        for value in (-12, 0, 19):
+            assert execute(row.result.artifact, value) == execute(before, value)
+
+
+def test_prefix_analysis_cannot_satisfy_a_branch_prerequisite():
+    seen = []
+    passes = registry()
+    passes['prepare'] = RegisteredPass(PassSpec('prepare', 0, produces=('live',), mutates_ir=False),
+                                       lambda s: seen.append(1) or {'live': [s.module]})
+    passes['emit'] = replace(passes['emit'], spec=replace(passes['emit'].spec, requires=('live',)))
+    with pytest.raises(ValueError, match='prerequisites'):
+        list(evaluate_variants(source(), (variants()[0],), passes, facts,
+                               output='ir', prefix=('prepare',)))
+    assert seen == []
+
+
+def test_failed_prefix_aborts_before_any_branch():
+    passes = registry()
+    def fail(session):
+        session.module = source(2)
+        raise ValueError('shared preparation failed')
+    passes['prepare'] = RegisteredPass(PassSpec('prepare', 0), fail)
+    with pytest.raises(ValueError, match='shared preparation failed'):
+        list(evaluate_variants(source(), variants(), passes, facts, output='ir', prefix=('prepare',)))
+
+
+@pytest.mark.parametrize('changed', ['prepared', 'source', 'contracts'])
+def test_prefix_and_input_contract_changes_cannot_be_reused(changed):
+    from xdsl.dialects.builtin import StringAttr
+    from merlin.transforms.pipeline_state import PipelineContext
+    original = source()
+    passes, prepared = registry(), []
+    def remember(session):
+        prepared.append(session.module)
+        return {}
+    passes['prepare'] = RegisteredPass(PassSpec('prepare', 0, mutates_ir=False), remember)
+    context = PipelineContext(hardware='selected-hardware')
+    stream = evaluate_variants(original, variants(), passes, facts, output='ir',
+                               prefix=('prepare',), context=context)
+    assert next(stream).status == 'compiled'
+    if changed == 'contracts':
+        object.__setattr__(context, 'hardware', 'changed-hardware')
+    else:
+        (prepared[0] if changed == 'prepared' else original).attributes['test.change'] = StringAttr('changed')
+    with pytest.raises(ValueError, match='changed'):
+        next(stream)
+
+
+def test_prefix_stage_order_is_checked_before_actions():
+    passes = registry()
+    passes['late'] = RegisteredPass(PassSpec('late', 3, mutates_ir=False), lambda s: {})
+    with pytest.raises(ValueError, match='precedes shared preparation'):
+        list(evaluate_variants(source(), variants(), passes, facts, output='ir', prefix=('late',)))

@@ -11,9 +11,63 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/capability_query.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/session.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/run_inputs.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/generated_isa_library.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
 ---
 
 # Plan compiler construction from public capabilities
+
+## Optional reviewed generated instruction scaffold
+
+An operator may prepare a **future fresh optimized backend atop generated
+scaffolding**. This is an explicitly selected input treatment, not an empty-input
+comparison and not an already optimized backend. The submission still begins
+empty; the generated instruction library is a separate readonly input. Existing
+resume bindings remain immutable.
+
+`phase1.generated_isa_library.prepare_library` extends an explicitly reviewed
+compiler-library selection with `reviewed_isa.instruction_dialect`, its inert
+package initializer, resolved ISA, generator manifest and source-selection record.
+The helper copies only enumerated library members and those exact generated
+products. Unrelated package siblings, companion repositories, kernels and
+reference backends are not selected.
+
+After reviewing public declaration/facts identities and the generated manifest:
+
+```python
+from merlin_experiments.phase1.generated_isa_library import prepare_library
+
+selection = prepare_library(
+    reviewed_base_selection, generated_package, fresh_library_directory,
+    review_id=reviewed_new_release_id,
+    manifest_sha256=reviewed_manifest_bytes_sha256,
+    facts_sha256=selected_public_facts_sha256,
+    declaration_sha256=selected_public_declaration_sha256,
+)
+# Save selection.contract.record() as JSON outside fresh_library_directory.
+# Explicitly choose this future treatment with the ordinary three flags:
+# --compiler-library-root <fresh_library_directory>
+# --compiler-library-contract <saved_contract.json>
+# --compiler-library-contract-sha256 <selection.contract.sha256>
+```
+
+Keep the existing editable-generic release prefix when that separately reviewed
+base capability should remain enabled. The helper does not infer edit authority.
+It verifies manifest and public input identities, exact output membership,
+regenerated dialect bytes, and agreement between the manifest's generator
+implementation hashes and the selected library. If those generator leaves changed,
+review a matching library release; do not suppress the mismatch. No new sandbox
+mount or run-option mechanism is needed: ordinary reviewed-library freezing,
+source sealing, import admission and readonly transport apply before authoring.
+
+The generated declarations supply no tensor lowering, fusion, allocation or
+schedule. The agent builds those in its backend and permitted compiler fork.
+Independent encoding validation remains pending when no assembler/RTL evidence
+is supplied. Merely staging the scaffold supplies no numerical, runtime or
+performance qualification, and changes no capsule obligation. Initial guidance
+explicitly labels the selected scaffolding and its limits.
+
+## Whole-corpus planning
 
 Fresh joint campaigns stage `PUBLIC_CAPABILITIES.md` and
 `PUBLIC_CAPABILITIES.json` before the ordinary treatment seal. The initial task
