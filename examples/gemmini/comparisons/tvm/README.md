@@ -1,32 +1,90 @@
-# TVM comparison: preliminary ResNet50 and TinyLlama FireSim handoff
+# TVM comparison: ResNet50, TinyLlama and SmolVLA FireSim handoff
 
-This directory is the model/session side of the TVM Gemmini comparison. The
-companion TVM fork owns mathematical lowering, device schedules and static
-packages. Merlin owns workload contracts, references, session routing and the
-existing queued execution infrastructure. The requested next run is full ResNet50
-and full TinyLlama with **16 prefill tokens and one teacher-forced decode step**.
-SmolVLA is outside this preliminary handoff. Another agent runs FireSim.
+The goal is repeatable complete inference runs of **all three EL4 workloads**.
+The workload authority is Merlin EL4 at
+[`0cc289de52a10bed256f32c90cfbb54a21b3c81f`](https://github.com/ucb-bar/merlin/tree/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol).
+Its protocol already specifies model revisions, quantization recipes, calibration,
+input shapes, token counts, recurrence and output checks. The repo also includes
+stored visible inputs. The remaining task is to bind these definitions to a
+shared numerical release, complete compiled sessions and verified FireSim runs.
+This handoff supersedes the earlier two-model 16+1 preliminary selection.
 
-## Current numerical decision and executable boundary
+The 2026-10-23 fetch and pull found `origin/feat/el4-experiment` still at `0cc289de5`;
+this handoff already contains it, with no merge conflicts. The selected protocol,
+three base recipes and committed input definitions are unchanged from the user's
+earlier `db2f52415fe9f7d2cd7f028e122f8c9b039a925c` reference. Runtime tooling has
+advanced: EL4 now has a complete-chain image builder, compact all-element
+comparison, and strict or lightweight boot-file provenance. The TVM session
+bridge still needs an adapter to those newer manifest/transport contracts.
 
-Use the checked-in **EL4 quantization recipes**, freshly calibrated from their
-declared public checkpoint/data sources. Record new scales, input hashes and
-independent references under a new preliminary run identity. The old private
-`NUMERICS_BUNDLE` is required only to reproduce the old frozen run exactly;
-locating it is **not a prerequisite for this run**. Do not substitute the older
-comparison factories' power-of-two/dynamic recipes for EL4's recipes.
+The companion TVM fork owns mathematical lowering, schedules and static
+packages. Merlin owns the workload contract, independent references, session
+routing and execution evidence. Read [AGENTS.md](AGENTS.md) for the continuation
+sequence and [EL4_ASSETS.md](EL4_ASSETS.md) for the shared input/release checklist.
+
+## What is already standardized, per workload
+
+One selected `visible/v00` input per model is the functional benchmark cohort.
+Warmup and measured repetitions can reuse that input with a full state reset;
+record their counts in the run manifest. Larger quality cohorts are separate.
+The definitions below come from the pinned
+[functional profile](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/experiment.yaml#L24-L41).
+
+| Workload | Model and standardized input | Complete inference pass and outputs | Remaining workload preparation |
+| --- | --- | --- | --- |
+| ResNet50 v1.5 | torchvision `IMAGENET1K_V2`, 50 layers, batch 1. The committed crop for `v00` is normalized to FP32 `[1,3,224,224]`; its derived NPZ hash is pinned. | One call; all `[1,1000]` logits. | Publish the selected quantized weights/scales/IR and independent logits reference, then compile and qualify the complete model. The input definition is already usable. |
+| TinyLlama | `TinyLlama-1.1B-Chat-v1.0` at `fe8a4ea1ffedaf415f4da2f062534de366a451e6`; all 22 layers, hidden 2048, intermediate 5632, 32 attention heads / 4 KV heads. The committed `v00` contains 160 WikiText2 test token IDs; this chain consumes the first 64. | Prefill 32 tokens, then 32 teacher-forced single-token calls: 33 calls and 99 arrays. Each call returns logits `[1,32000]`, FP32 KV `[2,22,1,4,64,64]` and i64 positions `[22]`. | Bind the prescribed calibration, SmoothQuant/outlier transforms and `portable_exp_trig` host math to the capture path; publish both stage programs, scales and all-output references. Link the complete recurrence with cache capacity 64. |
+| SmolVLA | `lerobot/smolvla_base` at `c83c3163b8ca9b7e67c509fffd9121e66cb96205`, with the pinned SmolVLM2 backbone; 16 selected VLM layers and 16 expert layers. One camera, image `[1,3,512,512]`, 48 language slots, state `[1,32]`. `v00` fixes episode 0/frame 100/noise seed 1000. | Prefix once, denoise ten times, action decode once: 12 calls and 33 arrays. Carry actions/cache/time; compare all `[1,50,32]` final action values, including padding. | Reproduce the pinned processed observation from the committed raw frame/state/task/seed using the selected processor environment. Publish all three prepared programs and references with `portable_neural_f32`, then qualify the full recurrence. |
+
+Sources: [ResNet50 contract](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/experiment.yaml#L77-L102),
+[TinyLlama contract](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/experiment.yaml#L103-L147),
+[SmolVLA contract](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/experiment.yaml#L148-L202),
+[stored input formats](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/numerics/README.md#L91-L127).
+
+**ResNet's 260 images are calibration data, not 260 benchmark passes.** The
+recipe uses 26 training images per Imagenette class to determine quantization
+scales during model preparation. Once those scales are frozen, each benchmark
+pass processes one selected validation image. Likewise, TinyLlama's 128 prefill
+and 1,024 decode calibration samples are distinct from its measured 32+32 chain;
+SmolVLA selects one calibration sample per program. The historical stored cohort
+contains eight visible cases per model, but the selected functional profile uses
+`v00`. SmolVLA's final output is normalized policy-space actions; its six semantic
+channels can be reported separately, but physical-unit postprocessing is not
+part of the selected chain. These choices are specified in the contracts above.
+
+## Freeze one numerical release for the team
+
+A previous capture is **not inherently needed to create a new repeatable run**.
+The recipes define how to prepare the quantized model; calibration produces the
+actual scale and weight bytes. Prepare once, admit the independent references,
+then give every team member the same versioned package and hashes. Fresh
+calibration creates a new numerical identity and cannot silently replace the
+old selected scales or inherit its qualification. Exact reproduction of the
+historical frozen result requires its bytes or a verified identical rebuild.
+See the pinned [quantization authority](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/experiment.yaml#L61-L76)
+and [baseline workflow](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/baselines.md).
+
+The repo supplies definitions, input bytes, recipes and producers/checkers. It
+does not supply a portable, complete selected capture/reference release with a
+team-accessible payload location. Publish that release with checkpoint and
+environment pins, prepared inputs, calibration selection, scales/constants,
+integerized IR, all-output references and the resolved runtime configuration.
+Keep heavyweight/protected payloads in shared artifact storage; a checked-in
+manifest must let another member fetch and verify them. Historical absolute
+machine paths alone do not satisfy this requirement. Do not substitute the older
+comparison factories' quantization recipes for the selected EL4 recipe.
 
 | Owner | Responsibility for this run |
 | --- | --- |
 | EL4 protocol and capture preparation | Checkpoint, preprocessing, calibration, INT8 recipe, scale derivation, attention planes and rounding; independent numerical reference |
 | TVM | Import that quantized program; choose legal packing, tiling, OS/WS dataflow, software pipelining, SRAM allocation/reuse and CPU placement |
-| Merlin session runtime | Route prefill KV/positions into decode, own persistent tensor buffers, reset each repetition, check all outputs and collect complete-session timing |
+| Merlin session runtime | Route every stage and carried state, own persistent tensor buffers, reset each repetition, check all outputs and collect complete-session timing |
 
 Cache residency within an operator is a TVM scheduling decision. KV state
 across separate calls is an explicit runtime tensor: the existing scheduler does
 not promise that the whole model's KV cache remains in Gemmini SRAM across calls.
 
-The generic capture worker now accepts `--save-exported-program`. It saves
+The generic capture worker accepts `--save-exported-program`. It saves
 `program.pt2` from the **same prepared conversion** used for MLIR, without a second
 export or different quantizer, and records its SHA256 in `meta.json`. In a
 multi-program capture, each `stages/<name>/` receives its own archive. TVM's
@@ -34,78 +92,65 @@ multi-program capture, each `stages/<name>/` receives its own archive. TVM's
 Only successful, opaque-free, precision-preserving, integerization-checked
 conversions are saved. An archive alone does not establish full-model correctness.
 
-Local evidence: a small convolution/ReLU/pool/linear graph using the actual
+Existing delivery evidence: a small convolution/ReLU/pool/linear graph using the
 ResNet EL4 recipe passes TVM host comparison against the independent PT2E integer
-reference at `atol=2e-6, rtol=1e-5`. Its saved capture also compiles into a static
-RV64/Gemmini package and passes Spike positive and wrong-oracle controls. A
-two-stage capture test reloads both archives
-and verifies their outputs exactly. TinyLlama's explicit-cache tests cover the
-requested 16+1 shape and repeated reset. These are integration controls, not
-full checkpoint or FireSim results.
+reference at `atol=2e-6, rtol=1e-5`. Its capture compiles into a static RV64/Gemmini
+package and passes Spike positive and wrong-oracle controls. A two-stage capture
+round-trip verifies both archives exactly. TinyLlama explicit-cache tests cover
+the earlier 16+1 diagnostic and repeated reset. These controls do not qualify
+full checkpoints, the canonical 32+32 chain or FireSim execution.
 
-## Preparation for the next agent
+## Preparation gaps and current process stage
 
-Use the environment setup below with pinned model2MLIR
+These findings were rechecked against fetched EL4 `0cc289de5` and the delivered
+TVM code. A specified policy, an implemented tool and a qualified model run are
+different milestones:
+
+| Finding | Action before a shared run |
+| --- | --- |
+| Default `numerics/models.yaml` resolves host math to `native`; the protocol requires `portable_exp_trig` for TinyLlama and `portable_neural_f32` for SmolVLA. | Publish a resolved models configuration carrying these existing choices and use it for references/execution. The policy is specified; its runtime binding is incomplete. [Model defaults](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/src/merlin/model_check/models.py#L35-L42). |
+| SmolVLA input preparation reads `source.local_root` instead of the supplied data root. The generic setup script installs LeRobot 0.5.1, while the protocol selects 0.6 processors. | Make the data path portable and pin the matching processor environment; verify the processed observation hash. [Input preparation](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/src/merlin/model_check/inputs.py#L357-L365), [setup script](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/build_tools/scripts/setup_model2mlir.sh#L23-L40). |
+| EL4 now builds complete native guest chains from finished `baremetal_model.json` program builds. It can compare every output element in the guest and send compact results. | Reuse its contracts and checks. This is implemented for Merlin's native program ABI; TVM's `model_run` packages and `tvm_merlin_package_session_v1` manifest are not accepted as native build evidence. The remaining work is a TVM adapter, not inventing a complete-chain runtime. [Chain-image guide](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/docs/reference/chain_images.md). |
+| The FireSim selection is a template with `manager_contract: null` and empty model asset lists. | Bind actual compiler freeze, complete-chain ELFs, inputs/references and manager identity, then prepare the request. [Selection template](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/firesim_workhorse.yaml). |
+| Strict version-pinned upload/manager helpers and lightweight boot-file verification are implemented. The checked-in template selects strict version fields; the installed legacy helper has different behavior. | Choose one documented mode and supply its actual evidence. Strict helper installation is a separate deployment step; lightweight mode avoids that upgrade but still requires a compact complete-chain guest. Neither mode currently accepts the TVM session unchanged. [Strict integration](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/manager-provenance.md), [lightweight mode](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/booted-elf-provenance.md). |
+| TVM imports prepared `.pt2` programs, but its importer does not automatically apply Merlin's selected portable host-math policy. The session bridge records an aggregate warm/measured interval, without per-stage counters. | Check full-model agreement with the independent portable references; implement any required arithmetic compatibility without widening tolerances. Add stage counters while retaining the complete-chain interval, including CPU work, transfers and recurrence. [TVM intake](https://github.com/grammy117/tvm/blob/5b4c36da713234e48a0deb35365b42a26c196707/apps/gemmini/program_io.py), [session runtime](package_session.py). |
+
+**Current stage:** workload definitions and input/reference tooling exist;
+portable numerical-release assembly and complete-model integration/qualification
+remain. The V26 selection records a frozen generated compiler, 152 public numeric
+passes plus one expected refusal and eight hidden aggregate passes, followed by
+an independent **capsule-only** qualification. It still records
+`full_model_validation: NOT_RUN for V26`, no qualified release, and no bundled
+portable capsule receipt; original-source replay is required because four harness
+files differ. Those facts neither require a new authoring run nor qualify a TVM
+baseline. See the pinned [V26 status](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/phase2/el4_20261018/selected-phase1-v26.json#L40-L79).
+This delivery's small TVM/Spike controls also do not establish three-model
+FireSim completion.
+
+The current audit passed the protocol checker (3 models, 46 calls, 133 arrays),
+283 EL4 input/numerics/chain/transport tests, 218 TVM backend/CLI tests, and two
+explicit prepared-capture round-trip tests. The broader comparison run had
+256 passes, three failures and five skips: two failures are pinned AVX512 SiLU
+environment refusals; one is the LeRobot 0.5.1/diffusers/TorchAO import conflict.
+Three skips also require AVX512; the two capture skips passed when rerun with
+their explicit interpreter. These are unresolved environment coverage limits,
+not an all-green full-model result. Input derivations and the small EL4 recipe
+probe are recorded in [EL4_ASSETS.md](EL4_ASSETS.md); no full-model FireSim run
+or SmolVLA processed-input equality is claimed.
+
+For the TVM capture bridge, the tested model2MLIR pin is
 [`ucb-bar/model2MLIR`](https://github.com/ucb-bar/model2MLIR) at
-`7915e23475c6db446a3c404847b11e8bc72c8a27`. The local capture probe used Python
-3.12, Torch 2.10.0, TorchAO 0.16.0, xDSL 0.68.0 and NumPy 1.26.4. TinyLlama's
-selected cache adapter additionally uses Transformers 5.4.0. Create outputs
-through Merlin's artifact helper, as shown below; `RUN` is that fresh directory.
-
-ResNet50 uses torchvision `IMAGENET1K_V2`, batch one, `[1,3,224,224]` FP32 input
-and all 1,000 logits. Its EL4 checkpoint hash is a **state-dictionary content
-hash**, not the SHA256 of the downloaded `.pth` container. Use the source loader's
-state hash when checking `protocol/experiment.yaml`. Prepare 260 calibration
-images (26 per Imagenette TRAIN class), and a separate validation input using
-the V2 resize/crop/normalization. Set explicit calibration variables so the loader
-does not default to calibrating on the measured stream.
-
-```bash
-"$PY" examples/gemmini/comparisons/tvm/prepare_resnet_inputs.py \
-  --archive "$IMAGENETTE_ARCHIVE" --output-dir "$RUN/resnet-inputs" \
-  --calibration-per-class 26 --evaluation-per-class 1
-# Select one validation image for the preliminary latency run; retain its source manifest.
-"$PY" - <<'PY'
-import os
-from pathlib import Path
-import numpy as np
-run = Path(os.environ["RUN"])
-with np.load(run / "resnet-inputs/evaluation.npz") as inputs:
-    np.savez(run / "resnet-input.npz", images=inputs["images"][:1])
-PY
-export M2M_RESNET_INPUT_NPZ="$RUN/resnet-input.npz" # images: [1,1,3,224,224]
-export M2M_RESNET_INPUT_SOURCE=Imagenette_validation
-export M2M_RESNET_PREPROCESSING=IMAGENET1K_V2
-export M2M_RESNET_CALIBRATION_NPZ="$RUN/resnet-inputs/calibration.npz"
-export M2M_RESNET_CALIBRATION_SOURCE=Imagenette_train_26_per_class
-export M2M_SESSION_STEPS=1
-export M2M_RESNET_PAPER_READY=1
-"$PY" -m merlin.targetgen._m2m_capture_worker \
-  --loader "$M2M/workloads/resnet50_v1_5/loader.py" --m2m-dir "$M2M" \
-  --dtype int8 --recipe examples/gemmini/protocol/recipes/resnet50.json \
-  --save-exported-program --materialize-bundle --out "$RUN/resnet-capture"
-```
-
-TinyLlama uses the complete 22-layer `TinyLlama/TinyLlama-1.1B-Chat-v1.0` checkpoint
-at `fe8a4ea1ffedaf415f4da2f062534de366a451e6`, loaded FP32 before quantization.
-Select prefill 16, decode 1, cache capacity **17**; the cache is FP32
-`[2,22,1,4,17,64]`, positions are i64 `[22]`. Compare all logits, cache entries
-and positions after both calls. Use a disjoint WikiText2 training calibration
-stream and a recorded test-token input. The profile is teacher-forced, not sampled
-generation. The checked-in protocol gives static attention-plane settings and
-SmoothQuant alpha 0.5, groups qkv/gate_up/o, 32 statistics segments, outlier split
-ratio 8 and alignment 16. Fresh channel widths follow those statistics; the old
-selected widths are not constants to copy into a new capture.
-
-**Remaining TinyLlama preparation code:** the pinned public model2MLIR loader
-provides the prefill/decode session but lacks the EL4 WikiText calibration hook
-and SmoothQuant/outlier preprocessing. Wire those declared transforms and
-stage-specific calibration into the source loader before invoking the worker
-with `recipes/tiny_llama.json`. TVM cannot infer them from a graph that never
-received them. This is implementation work with known policy, not a missing
-private artifact or a request for the user to locate scales. Likewise, validate
-the compiled host float islands against EL4's `portable_exp_trig` reference;
-native Torch nonlinear results alone do not prove that agreement.
+`7915e23475c6db446a3c404847b11e8bc72c8a27`. The capture probe used Python 3.12,
+Torch 2.10.0, TorchAO 0.16.0, xDSL 0.68.0 and NumPy 1.26.4; TinyLlama's selected
+cache adapter additionally uses Transformers 5.4.0. These are delivery probe
+versions, not evidence that all EL4 captures can already be rebuilt in that
+environment. The [pinned TinyLlama loader](https://github.com/ucb-bar/model2MLIR/blob/7915e23475c6db446a3c404847b11e8bc72c8a27/workloads/tiny_llama/loader.py)
+has no EL4 WikiText calibration hook or SmoothQuant/outlier preparation;
+[Merlin's recipe worker](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/src/merlin/targetgen/_m2m_capture_worker.py#L1208-L1237)
+expects the loader to supply calibration inputs. This integration remains unfinished. Implement
+the specified transforms before accepting its full-model export; do not ask for
+new model-policy choices. Use the environment setup below and create outputs
+through Merlin's artifact helper; `RUN` is that fresh directory.
 
 ## Apply the learned TVM settings
 
@@ -138,32 +183,47 @@ coalescing, first-K overwrite, lifetime allocation, fences and proved packing/bi
 folding remain compiler passes. No user-selected per-model SRAM tile sizes are
 required.
 
-Stock structural matching applies only compatible records. The old prefill
-winner has 32 rows; **it does not cover the new 16-row program**. EL4's different
-epilogues can also change matches. `placement.json` and `package.json` identify
+Stock structural matching applies only compatible records. A 32-row prefill
+winner does not prove coverage of the selected full program: EL4 epilogues and
+other graph differences can change matches. `placement.json` and `package.json` identify
 matched functions and unmeasured defaults; a preset permits zero matches and
 reports that truthfully. `--tuning-database` retains its stricter zero-match error.
 Do not call all full-model operators tuned merely because the preset is installed.
 The nine RTL measurements are not FireSim or E2E timing; remeasure the full chain.
 
-Finish the independent full-model output gates, construct the explicit route and
-fixtures, and follow the package-session and queued FireSim sections below. The
-matching full U250 driver/loader binding remains an execution-machine task.
-The old three-model/frozen-run discussion below is retained as background; its
-32+32 and private-bundle requirements do not select this new preliminary profile.
+Compile SmolVLA's `prefix_encode`, `flow_denoise` and `action_decode` archives in
+the same way after their capture/reference gates pass. Finish the independent
+full-model output gates, construct the explicit routes and fixtures, and follow
+the package-session and direct FireSim sections below. The selected manager's
+driver, memory map and loader still need concrete bindings and qualification.
 
 The delivered operator studies are complete at their stated scope. They do not
 qualify those full-model FireSim sessions. Start with [AGENTS.md](AGENTS.md) and
 [UPSTREAM_AUDIT.md](UPSTREAM_AUDIT.md). [EL4_ASSETS.md](EL4_ASSETS.md) identifies the
-recorded private capture/bundle paths, required files and known hashes. The
+committed inputs, required shared release files and known hashes. The
 historical host, cutout and legacy BYOC
 reports remain in [README_HISTORICAL.md](README_HISTORICAL.md); their original
 inputs, tolerances, failures and attribution remain unchanged.
 
 ## Source checkout and documentation map
 
-The clean delivery branch `comparisons/tvm-el4-handoff` starts at EL4
-`0cc289de52a10bed256f32c90cfbb54a21b3c81f`. Original comparison work was on
+The delivery branch `comparisons/tvm-el4-handoff` contains fetched EL4
+`0cc289de52a10bed256f32c90cfbb54a21b3c81f`. Record the actual handoff compiler/runtime
+checkout separately from the EL4 workload pin. To refresh a clean handoff checkout:
+
+```bash
+git fetch origin
+git log --oneline HEAD..origin/feat/el4-experiment
+git diff --stat HEAD...origin/feat/el4-experiment
+git merge --no-edit origin/feat/el4-experiment
+```
+
+Review incoming changes and resolve conflicts before testing. Preserve dirty
+work in its existing worktree; do not reset it. In the separate TVM checkout,
+fetch/pull `grammy117/tvm` branch `gemmini/curated-handoff` with `--ff-only`.
+Record both resulting hashes and refresh this audit when code changes. This is
+a repeatable update procedure, not an automatic background synchronization job.
+Original comparison work was on
 `comparisons/tvm-gemmini-byoc` at `1bd601422fc1defc4343bacbf4227ca17e8aefef`
 plus the saved working changes. The original comparison branch and dirty tree
 are preserved. This delivery adds comparison files/tests/docs to EL4 and does
@@ -172,7 +232,9 @@ now preserves the exact prepared Torch program for external compiler intake.
 
 TVM's pullable delivery is
 [`grammy117/tvm:gemmini/curated-handoff`](https://github.com/grammy117/tvm/tree/gemmini/curated-handoff)
-at `5b4c36da713234e48a0deb35365b42a26c196707`, based on Apache v0.19.0
+with tested compiler/runtime source at `5b4c36da713234e48a0deb35365b42a26c196707`;
+this re-audit updates its handoff documentation without changing those sources.
+It is based on Apache v0.19.0
 `c4dc0c29ff81ddae688da24625a603da3b4a2c0e`. Its historical measured source is
 `87f07883b65ee55dbd1b93f665aaab87cd8a1e50` on `gemmini/metaschedule-dse`.
 See the final handoff artifact for delivery commit IDs, bundles, hashes and tests.
@@ -206,7 +268,7 @@ export PY=/absolute/python-with-torch-onnx-tvm-dependencies
 export M2M=/absolute/model2mlir-checkout
 export GCC=/absolute/riscv64-unknown-elf-gcc
 export MERLIN_REPO_ROOT="$MERLIN"
-export PYTHONPATH="$MERLIN/src:$TVM/python:$M2M"
+export PYTHONPATH="$MERLIN/src:$MERLIN/packages/merlin-experiments/src:$TVM/python:$M2M"
 export TVM_LIBRARY_PATH="$TVM_BUILD"
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
@@ -230,11 +292,12 @@ study used LLVM18/native compiler-v5 and a separate Python3.12 environment; a
 clean history does not require recompiling byte-identical native sources.
 Any subsequent C++ change does. Confirm the native source identity before reuse.
 The TinyLlama cache/session integration requires the selected Transformers 5.4.0
-overlay; the SmolVLA environment's 4.57.1 cache API is incompatible. Source-exact
-SiLU profiles additionally require AVX512; the current AVX2 host cannot qualify them.
+overlay; the older SmolVLA diagnostic environment's 4.57.1 cache API is incompatible.
+Source-exact SiLU diagnostics additionally require AVX512 and remain unqualified
+on this AVX2 host; distinguish those from the selected EL4 portable policies.
 The handoff artifact includes a local-path environment example; it is not portable.
 
-## Select the actual workload, not a development stand-in
+## Use the selected numerical contract
 
 The current EL4 model roster is
 [examples/gemmini/numerics/models.yaml](../../numerics/models.yaml), with source
@@ -245,16 +308,11 @@ authored development inputs, not actual pretrained model checkpoints. The old
 `el4_20261018/common.py` embeds server-specific paths and a stopped campaign;
 do not rerun it to discover a new model workflow.
 
-| Workload | Actual complete boundary | Required checks and unresolved work |
-| --- | --- | --- |
-| ResNet50 v1.5 | Real checkpoint; frozen preprocessing/calibration; every selected image; all logits and selected labels | Full-device graph and accuracy gates; separate quantized-vs-source quality from compiled-vs-quantized correctness; actual FireSim timing pending |
-| TinyLlama | EL4 default prefill32 + 32 teacher-forced decode steps; every stage output, full KV cache and position carried exactly; reset and repeat | Comparison factory defaults are a short frontend diagnostic and must be overridden; bind tokenizer/corpus/checkpoint and chosen precision; full memory/loader/E2E qualification pending |
-| SmolVLA | Prefix encode, ten flow/denoise updates, final action decode; real images/masks/language/state/noise; full cache, time and latent recurrence; all padded `[1,50,32]` action outputs | Synthetic fixture and one transformer-block cutout are insufficient. Six semantic channels are a separate quality report. The old complete 16-layer diagnostic failed its floating gate; numerical closure and full FireSim qualification remain required |
-
 EL4's default numerical policy names all declared outputs at every step,
 finite values and exact integer/boolean comparison. The roster's default
 functional thresholds are `atol=2e-6`, `rtol=1e-5`; its quality thresholds are a
-separate contract (e.g. TinyLlama KL/top-one agreement). Read the **selected frozen
+separate contract (e.g. TinyLlama KL/top-one agreement), report-only in the selected
+functional profile. Read the **selected frozen
 run policy** before adopting these defaults. TVM comparison CLI defaults differ
 and do not override EL4. Preserve historical recipes as historical; do not silently
 replace a full-model contract with the old 128+32 host study or an INT8 cutout.
@@ -264,9 +322,16 @@ model revision, original dtype, all quantization scales/zero points/rounding,
 input order/layout, source preprocessing, calibration/development/held-out roles,
 sequence/observation counts, cache capacity, recurrence/reset behavior, output
 meaning and accuracy policy. Protect held-out inputs/answers from tuning and
-public compiler-development artifacts. No checkpoints or tensors enter Git.
+public compiler-development artifacts. Preserve the already committed visible
+inputs; new heavyweight captures and protected reference payloads stay outside Git.
 
-## Import and save real semantic programs
+## Comparison frontend controls and semantic-program intake
+
+The primary EL4 intake is the prepared `program.pt2` saved by the capture worker
+above. The older comparison factories below remain useful for frontend/session
+diagnostics, but their quantizers and output interfaces do not automatically
+implement the selected EL4 recipe. Their exports are not substitutes for the
+frozen EL4 prepared program, even when the checkpoint and token counts match.
 
 The reusable [session verifier](verify_session.py) follows model2MLIR's
 `ExternalRuntimeSession`; factories supply model-specific contracts. It supports
@@ -278,7 +343,7 @@ inputs but does not build or execute the TVM candidate.
 
 For TinyLlama, prepare local factory arguments (JSON) with at least
 `checkpoint_dir`, `model2mlir_root`, `corpus_path`, `prefill_tokens: 32`,
-`decode_tokens: 32`, and the explicitly selected `precision`/`quantized` policy.
+`decode_tokens: 32`, and the diagnostic's explicit `precision`/`quantized` policy.
 The defaults in [tinyllama_session.py](tinyllama_session.py) are diagnostic.
 For SmolVLA use [smolvla_session.py](smolvla_session.py): `checkpoint_dir`,
 `backbone_dir`, `model2mlir_root`, `input_npz`, `input_manifest`, `input_source`,
@@ -295,7 +360,7 @@ selected cameras and the declared original precision/quantization policy. Select
 # ResNet intake accepts --model resnet50 --checkpoint /absolute/checkpoint.
 ```
 
-For complete host candidate/reference checks use the verifier, not just import:
+For host candidate/reference checks of that diagnostic, use the verifier:
 
 ```bash
 "$PY" examples/gemmini/comparisons/tvm/verify_session.py \
@@ -307,8 +372,8 @@ For complete host candidate/reference checks use the verifier, not just import:
   --output-dir "$RUN/tinyllama-host"
 ```
 
-This example uses the roster defaults; a selected frozen contract may require
-other flags/source-preserving export options. Native BF16 source reproduction is
+This diagnostic uses the roster tolerances; passing it does not admit the EL4
+quantized program. Native BF16 source reproduction is
 not established by generic FP32 fused export. An import/refusal or host mismatch
 must be resolved and recorded before any device performance claim.
 
@@ -319,13 +384,14 @@ path requires explicit sources/preprocessing and accepts a frozen quantization
 plan for held-out evaluation. `--export-baremetal` also saves
 `integer_semantic.json`, the full integer recipe including its declared outputs.
 Its Imagenette development stream is not a substitute for an EL4 selected dataset
-or canonical ImageNet accuracy. See `verify_resnet.py --help` and retain the
-source-versus-quantized quality gate before handing the program to the compiler.
+or canonical ImageNet accuracy. See `verify_resnet.py --help` for that comparison's
+controls. In the selected EL4 functional profile, source-versus-quantized quality
+is reported separately; compiled-versus-quantized agreement is the functional gate.
 
 ## Extract, tune and compile exactly those programs
 
 ```bash
-export PROGRAM="$RUN/tinyllama-host/stage_0/semantic.json"
+export PROGRAM="$RUN/tinyllama-capture/stages/prefill/program.pt2"
 "$PY" "$TVM/apps/gemmini/tune_models.py" --program "$PROGRAM" \
   --work-dir "$RUN/stage0-extraction" --extract-only
 ```
@@ -382,12 +448,13 @@ Use the session verifier's existing route/fixture format, with real compiled
 packages and independent references from the **selected** quantized captures:
 
 ```sh
-"$PYTHON" examples/gemmini/comparisons/tvm/build_package_session.py \
+export SESSION="$RUN/session-inputs"  # populated stage/route/fixture/provenance files
+"$PY" examples/gemmini/comparisons/tvm/build_package_session.py \
   --tvm-source "$TVM" --stages "$SESSION/stages.json" \
   --route "$SESSION/route.json" --fixture "$SESSION/fixture.npz" \
   --fixture-provenance "$SESSION/reference.json" \
-  --riscv-gcc "$RISCV_GCC" --output-dir "$OUT/linked-session" \
-  --rtol "$SELECTED_RTOL" --atol "$SELECTED_ATOL" --readback
+  --riscv-gcc "$GCC" --output-dir "$RUN/linked-session" \
+  --rtol 1e-5 --atol 2e-6 --readback
 ```
 
 `stages.json` is `{"version":1,"stages":{"prefill":"prefill-package","decode":"decode-package"}}`;
@@ -436,16 +503,17 @@ selected-reference correctness and hardware execution remain unfinished.
 Use TVM `qualify_package.py` for an independently referenced stage and
 `verify_tensorir.py run` for Spike/RTL positive and wrong-oracle controls. Then
 verify the entire linked session on the selected functional engine. Check every
-output and state at every invocation, not just a final cosine. Resolve the preserved
-full SmolVLA numerical failure. Keep source/quantization quality and compiler
+output and state at every invocation, not just a final cosine. Retain the preserved
+SmolVLA diagnostic failure and establish correctness for the selected EL4 capture.
+Keep source/quantization quality and compiler
 agreement as separate verdicts. Spike gives functional evidence, not hardware cost.
 
 After execution, export complete UART outputs for the shared offline checker:
 
 ```sh
-"$PYTHON" examples/gemmini/comparisons/tvm/read_package_session.py \
-  --session "$OUT/linked-session/session.json" --uart "$RUN/uart.log" \
-  --validation-policy "$OUT/linked-session/validation-policy.json" \
+"$PY" examples/gemmini/comparisons/tvm/read_package_session.py \
+  --session "$RUN/linked-session/session.json" --uart "$RUN/uart.log" \
+  --validation-policy "$RUN/linked-session/validation-policy.json" \
   --output-dir "$RUN/readback"
 ```
 
@@ -467,58 +535,129 @@ executed ELF/device, or qualify timing; retain the original execution receipts.
 The exporter has local malformed-log tests and exact all-output comparisons
 against the two-stage near/absolute Spike controls, not full EL4 model evidence.
 
-## Bind the actual FireSim device and use the existing queue
+## Bind the actual FireSim device and run complete chains
 
-The intended device is the full one-hart RV64GC U250 design, with no RVV:
+The pinned EL4 workload selects the full one-hart RV64GC U250 design, with no RVV.
+Retain its hardware identity separately from the compiler and numerical release:
 
-| Artifact | Expected identity / remaining gate |
+| Artifact | Selected identity / remaining gate |
 | --- | --- |
 | Hardware pin | `firesim_gemmini_rocket_u250_30mhz` in `merlin/contract/hardware_pins.yaml` |
-| Queue hw_config | `alveo_u250_firesim_gemmini_rocket_30mhz` |
+| Legacy queue hw_config | `alveo_u250_firesim_gemmini_rocket_30mhz`; only relevant to that deployment |
 | Bitstream archive SHA-256 | `0af6f26e1cbad1c03f9e5873217505a5100bf2d0d068205cfa486522b24fc603` |
 | Elaborated design SHA-256 | `7b6280272c7d8db3e013c7e5fd07592d2fd317a42c669e8b3b08f29c32944d08` |
 | Params header SHA-256 | `3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924` |
 | DTS SHA-256 | `c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df` |
-| Matching driver | Must be recovered/hashed with this image; TVM target record is currently null |
-| DRAM | Declared 16 GiB starting at `0x80000000`; loader/high-address capacity needs actual qualification |
+| Matching driver | Bind and hash the actual manager driver; the delivery's TVM target record is null |
+| DRAM | Declared 16 GiB starting at `0x80000000`; qualify the actual manager/loader address map |
 
-The similarly named stock and lean images are different devices. Header agreement
-is necessary but not whole-SoC proof; adapter and FireSim source lineages differ.
-The `30mhz` name is not a qualified clock/cycle conversion. Verify actual bytes.
+Header agreement alone does not establish whole-SoC or memory-timing equivalence.
+If the execution manager uses F2 or another image, record a distinct hardware
+identity and qualify its loader, memory map and source correspondence. Do not
+transfer old U250 cycle claims to it. FPGA host MHz and simulation wall time are
+not the architectural target-clock denominator. See the pinned
+[hardware selection](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/experiment.yaml#L42-L50)
+and [FireSim clock guidance](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/README.md#L154-L159).
 
-Follow [FireSim guide](../../../../docs/guides/firesim.md),
-[whole-model execution](../../../../docs/guides/whole_model_on_accelerator.md),
-[whole-model machines](../../phase2/whole-model-machines.yaml) and the selected
-[EL4 setup](../../../../docs/guides/phase2_el4_v26_setup.md). The objective JSON is
-an `/ABSOLUTE/…` template, not a runnable configuration. The selected V26 generated
-compiler admission is separate from the trusted TVM baseline; do not grant the
-candidate TVM schedules, reference answers or compiler-bearing support.
+The current [post-freeze FireSim workflow](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/README.md)
+uses direct ELF transport through locked SSM, serialized one complete model at a
+time. It does not require Merlin's old queue or per-model registration. Its modes
+have different evidence requirements; choose explicitly before building the guest:
 
-Use the manifest schema documented in the FireSim guide. Set raw queue path,
-queue state root, chipyard, exact hardware pin/hw_config/one-entry hwdb artifact,
-workload/bootbinary, final ELF and an independent validation-policy file per entry.
-The existing checkpoint tool validates the installed queue contract:
+| Mode | Implemented path | Remaining deployment/integration work |
+| --- | --- | --- |
+| Strict version-pinned provenance | `prepare` returns `staging_module`, then `elf_upload` uploads and re-downloads versioned ELF/request objects and writes an **unsent** SSM plan. The manager records the actual boot file before/after execution and the runtime/cleanup outcome. | Install and pin the supplied manager wrapper and SSM document version. The supplied manager-result publisher requires compact `all_element_comparison_v1`; a full-array request passing prepare is not evidence that this publisher supports it. |
+| Lightweight `booted_elf_hash_v1` | `prepare` returns the installed `fpga-run-elf ELF NAME` launch arguments. Collection verifies an actual runtime-host boot-file hash, simulator `+prog0` path/argv, UART and compact roster. | Retain the real `booted-elf.json` plus SSM/upload evidence. Requires compact complete-chain transport; no strict-manager installation or synthetic `result_manifest.json` is required. |
+| Legacy direct full-array transport | Without strict version pins or lightweight selection, the old helper and manager output-file manifest remain usable. | Produce the source-bound chain manifest, complete arrays and manager records; separately check timing and teardown. This mode does not establish the newer boot-file custody guarantee. |
 
-```bash
-"$PY" -m merlin.perf.firesim_checkpoint "$RUN/checkpoint.yaml" --dry-run
-# After the concrete image/driver/loader/control/session gates above pass:
-"$PY" -m merlin.perf.firesim_checkpoint "$RUN/checkpoint.yaml"
-```
+Sources: [strict manager integration](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/manager-provenance.md),
+[lightweight boot-file contract](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/booted-elf-provenance.md),
+[publisher's compact-only admission](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/packages/merlin-experiments/src/merlin_experiments/post_freeze/manager_result.py#L215-L216).
 
-The final caller must emit the existing warm/measured protocol and exact output
-validation markers expected by the receipt. TVM's operator HTIF harness does not
-emit that protocol automatically. Reuse Merlin's explicit warm-profile support;
-do not rewrite UART logs to appear compliant. Keep warm and measured calls in
-one boot, ensure one positive measured cycle count and preserve full output gates.
-The queue owns `kill -> infrasetup -> runworkload -> kill` under one lock. No direct
-FireSim invocations, manual staging races or parallel UART readers.
+**TVM-specific gap:** the existing builder emits `tvm_merlin_package_session_v1`
+and `TVM_SESSION_*`/warm-profile output, optionally with full `OUT_BIN` arrays.
+The newer chain path expects `merlin.post_freeze.firesim.chain_image.v1`, retained
+native build/ABI evidence and `CHAIN_*` compact comparisons. Renaming the schema
+does not make the pointer-array TVM ABI into Merlin's native memref ABI. Extend
+the existing comparison bridge to bind its actual source, packages, routes,
+references and ELF to the transport contract, and add compatible compact
+comparison or explicitly integrate the supported full-array mode. No such
+adapter is delivered yet. The native builder and its checks are in
+[chain_images.md](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/docs/reference/chain_images.md);
+the current TVM artifacts are generated by [build_package_session.py](build_package_session.py)
+and [package_session.py](package_session.py).
 
-Before submission audit all final ELF instructions, undefined symbols, LOAD
-segments, entrypoint, ISA/ABI, code, .bss/.noinit, stack, weights/packed duplicates,
-inputs/outputs, KV caches, host scratch, session arena and verifier buffers.
-Qualify needed high-DRAM addresses through the actual loader. A stage tensor budget
-excludes these other reservations; a multi-GB blob cannot be treated as ordinary
-medany-relative data. Use the existing absolute-pointer loader convention.
+Compact validation still checks **every element** of all 133 declared arrays
+against admitted references; it sends errors/counts/digests instead of every
+tensor byte. A digest alone is not the numerical check. This avoids making large
+KV readback through UART a prerequisite for each benchmark pass.
+
+1. Copy [firesim_workhorse.yaml](../../validation/firesim_workhorse.yaml) to the
+   run directory and fill its compiler freeze, manager contract and per-model
+   assets. Each model needs a complete-chain ELF, matching `chain_manifest`,
+   input, independent reference and build/source/placement receipts. For TVM,
+   bind the actual frozen TVM compiler and its freeze record; the generated V26
+   compiler's capsule receipt does not qualify this baseline.
+2. Audit the final ELF and memory map. Include code/stack, weights and packed
+   duplicates, input and output buffers, KV caches, host scratch, workspace and
+   retained outputs and references. Qualify the required high addresses through the
+   actual loader. The small Spike high-address control is not that qualification.
+3. Prepare the request and resolve every reported blocker:
+
+   ```bash
+   "$PY" -m merlin_experiments.post_freeze.firesim prepare \
+     --selection "$RUN/selected-firesim.yaml" --out "$RUN/request.json"
+   ```
+
+4. Use the selected mode. For strict provenance, stage with the existing tool:
+
+   ```bash
+   "$PY" -m merlin_experiments.post_freeze.elf_upload "$RUN/request.json" \
+     --model resnet50 --output "$RUN/resnet50-upload" --upload
+   ```
+
+   This command **does write to S3**; prepare/collect do not. Staging does not
+   send its SSM plan. Submit that exact plan through the installed locked path
+   only after the model and deployment gates pass. For lightweight/legacy mode,
+   use the request's `launch_argv`. Keep original upload/SSM and full UART
+   evidence, plus the selected mode's actual boot/manager records. The installed
+   old helper's truncated stdout, unbounded error polling and incomplete shell
+   failure/cleanup reporting remain documented limitations; the strict replacement
+   already implements additional execution/cleanup checks. Local tests do not
+   prove that replacement is installed on a manager.
+5. Import the complete result for each model:
+
+   ```bash
+   "$PY" -m merlin_experiments.post_freeze.firesim collect \
+     --request "$RUN/request.json" --result-dir "$RUN/model-result" \
+     --ssm-invocation "$RUN/ssm-invocation.json" \
+     --ssm-command "$RUN/send-command.json" --elf-upload "$RUN/elf-upload.json" \
+     --out "$RUN/observation.json"
+   ```
+
+6. For full arrays, use `read_package_session.py` and the shared baseline checker;
+   map those files into the actual manager roster. For compact transport, retain
+   the admitted reference bindings and complete guest comparison transcript.
+   In both cases, retain independent instruction/placement/exact-kernel checks.
+   `collect` intentionally leaves `model_validation_complete: false`, including
+   after compact comparison succeeds. Combine evidence in the final report.
+
+The session must execute the entire chain in one guest run, carrying its own
+computed state. The TVM bridge currently supplies one warm and one measured
+complete-session invocation with reset and aggregate counters; add per-stage
+counters and explicit repetition support for any different selected run policy.
+Conversely, native `CHAIN_STEP` windows exclude input transfers and descriptor
+preparation: summing them is not a full-chain E2E measurement. Preserve both
+whole-chain and stage windows, separating initialization and output publication.
+No larger calibration or quality dataset is required just to repeat these
+inference passes. The E2E scope includes CPU work, transfers and all recurrent
+calls, as specified by the
+[performance contract](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/experiment.yaml#L204-L212).
+
+The older `merlin.perf.firesim_checkpoint` queue workflow remains documented in
+[the FireSim guide](../../../../docs/guides/firesim.md) for deployments explicitly
+using it. Its queue lock and receipt rules apply there; do not mix them into the
+direct workhorse workflow or claim that a direct observation is a queue receipt.
 
 ## Completion criteria for the next agent
 
@@ -531,8 +670,9 @@ packing, state updates, completion fences and repetition policy. Do not report
 summed operator minima as measured E2E latency. Preserve failed cases and CPU work
 in the report. Compare only matching hardware and numerical/timing contracts.
 
-Further tuning priorities are real-stage coverage, more post-XGB-training search
-batches, CPU-only task tuning, a queue-backed FireSim Builder/Runner, full-session
+Optional later tuning priorities are real-stage coverage, more post-XGB-training
+search batches, CPU-only task tuning, a FireSim measurement adapter, full-session
 memory/residency planning and independently tested new legal sketch families.
+These are not prerequisites for collecting the first correct complete-chain runs.
 The detailed ownership/optimization chart is in TVM `apps/gemmini/OWNERSHIP.md`;
 the extension plan and cost-model caveats are in its `TUNING.md`.
