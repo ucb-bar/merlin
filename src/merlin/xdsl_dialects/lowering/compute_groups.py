@@ -162,8 +162,6 @@ def declared_stage_name(kind: str) -> str:
     return names[SCALE] if kind in CONVERSION_OF_SCALED_STORE else names.get(kind, kind)
 
 
-
-
 _ADD = {"arith.addf", "arith.addi"}
 _MUL = {"arith.mulf", "arith.muli"}
 _DIV = {"arith.divf"}
@@ -563,6 +561,7 @@ class TargetOracle:
         readout: Any | None = None,
         prohibited_roles=(),
         semantic_facts=None,
+        reviewed_families: Sequence[str] = (),
         routes: Sequence[Any] | None = None,
     ):
         from merlin.targetgen import eligibility as E
@@ -575,6 +574,9 @@ class TargetOracle:
         self.routes = tuple(routes) if routes is not None else tuple(readout_facet.epilogue_stage_routes(target))
         # The experiment's prohibited instruction roles: a standalone form that needs one is refused.
         self.prohibited_roles, self.semantic_facts = tuple(prohibited_roles), semantic_facts
+        # Families whose unchecked standalone declaration the selected software spec explicitly
+        # reviewed. Without a review an unchecked declaration is reported but never admitted.
+        self.reviewed_families = frozenset(reviewed_families)
         self._E = E
         self.cap_map = E.capability_map_for_target(target)
         self.undetermined = E.undetermined_families_for_target(target)
@@ -610,8 +612,9 @@ class TargetOracle:
         from merlin.targetgen.target_registry import load_contract
 
         units = list(CU.compute_units(load_contract(self.target)))
+        review = "reviewed" if family in self.reviewed_families else None
         return CR.family_admission(units, family, prohibited_roles=self.prohibited_roles,
-                                   semantic_facts=self.semantic_facts)  # fmt: skip
+                                   semantic_facts=self.semantic_facts, review_status=review)  # fmt: skip
 
     def absorbs(self, kind: str) -> Admission:
         """Does a readout, or a declared stage route, carry ``kind`` out of a contraction with it?"""
@@ -1297,7 +1300,8 @@ def _grow(
         sequence_check = getattr(oracle, "absorbs_sequence", None)
         if absorbable.admitted and sequence_check is not None:
             absorbable = sequence_check(
-                [*(stage_of[id(member)].kind for member in members), stage.kind], unit=group.placement,
+                [*(stage_of[id(member)].kind for member in members), stage.kind],
+                unit=group.placement,
             )
         if not absorbable.admitted:
             group.stopped_by, group.stopped_at = stage.kind, pending_pad or user
