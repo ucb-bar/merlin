@@ -899,6 +899,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         help="also emit the full model2MLIR runtime bundle from this exact conversion and model instance",
     )
     ap.add_argument(
+        "--save-exported-program",
+        action="store_true",
+        help="save program.pt2 from the exact successful prepared conversion, including each session stage",
+    )
+    ap.add_argument(
         "--quantize-activation-contractions",
         action="store_true",
         help="also quantize the contractions the scheme cannot reach (activation x activation "
@@ -1604,6 +1609,16 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # are indistinguishable afterwards, and only one of them can back an accuracy statement.
         **provenance,
     }
+    if getattr(a, "save_exported_program", False) and (
+        res.ok and n_opaque == 0 and integerization_ok and precision_exact
+    ):
+        if res.exported_program is None:
+            raise ValueError("successful conversion did not retain its prepared ExportedProgram")
+        export_path = out / "program.pt2"
+        torch.export.save(res.exported_program, export_path)
+        with export_path.open("rb") as stream:
+            export_digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        meta["exported_program"] = {"path": "program.pt2", "sha256": export_digest}
     (out / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     if a.diagnostic_model_copy:
         _diagnostic_model_copy(out, Path(a.loader), capture_api=capture_api)

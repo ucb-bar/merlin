@@ -1,5 +1,6 @@
 """The ordinary worker publishes each stage once and retains full trajectories."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -50,8 +51,20 @@ import functools, importlib.util, json, sys, time
 from pathlib import Path
 import numpy as np
 import m2m.capture.bundle as B
+import torch
 
 calls, sessions, writes = [], [], []
+saved_programs = []
+original_export_save = torch.export.save
+def save_program(program, path, *args, **kwargs):
+    original_export_save(program, path, *args, **kwargs)
+    restored = torch.export.load(path)
+    positional, keywords = program.example_inputs
+    with torch.no_grad():
+        torch.testing.assert_close(restored.module()(*positional, **keywords),
+                                   program.module()(*positional, **keywords), rtol=0, atol=0)
+    saved_programs.append(Path(path).parent.name)
+torch.export.save = save_program
 original_bundle, original_session, original_savez = B.write_bundle, B.write_session_artifacts, np.savez
 if len(sys.argv) > 7 and sys.argv[7] == "mutate":
     original_inventory, original_multi = B._shared_tensor_inventory, B.write_multi_program_bundle
@@ -91,9 +104,10 @@ spec=importlib.util.spec_from_file_location("worker_under_test", sys.argv[1])
 W=importlib.util.module_from_spec(spec); spec.loader.exec_module(W)
 start=time.perf_counter()
 rc=W.main(["--m2m-dir",sys.argv[2],"--loader",sys.argv[3],"--dtype","int8",
-           "--recipe",sys.argv[4],"--materialize-bundle","--seed","3","--out",sys.argv[5]])
+           "--recipe",sys.argv[4],"--materialize-bundle","--save-exported-program",
+           "--seed","3","--out",sys.argv[5]])
 Path(sys.argv[6]).write_text(json.dumps(dict(returncode=rc, calls=calls, sessions=sessions,
-    writes=writes, seconds=time.perf_counter()-start)))
+    writes=writes, saved_programs=saved_programs, seconds=time.perf_counter()-start)))
 raise SystemExit(rc)
 """
 
@@ -160,10 +174,17 @@ def test_materialize_each_selected_stage_and_carried_trajectory_once(tmp_path, m
         return
     assert result.returncode == 0, result.stderr[-6000:]
     observed = json.loads(metrics.read_bytes())
+    assert observed["saved_programs"] == ["prefix", "step"]
     assert [(row["stage"], row["capture_regions"]) for row in observed["calls"]] == [("prefix", True), ("step", True)]
     assert [(row["stage"], row["steps"]) for row in observed["sessions"]] == [("step", 5)]
     for stage in ("prefix", "step"):
         assert (output / "stages" / stage / "capture_receipt.json").is_file()
+        folder = output / "stages" / stage
+        meta = json.loads((folder / "meta.json").read_bytes())
+        assert meta["exported_program"] == {
+            "path": "program.pt2",
+            "sha256": hashlib.sha256((folder / "program.pt2").read_bytes()).hexdigest(),
+        }
     assert (output / "session-receipt.json").is_file()
     with np.load(output / "stages/step/session_goldens.npz") as saved:
         values = saved["output0"]
