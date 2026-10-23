@@ -1240,6 +1240,7 @@ def build(
             "-nostdlib",
             "-nostartfiles",
             f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(lay['weights_base'])}",
+            f"-Wl,--defsym,MERLIN_ARENA_BASE={hex(lay['arena_base'])}",
             f"-Wl,--defsym,MERLIN_STACK_BYTES={hex(int(stack_bytes))}",
             # A packed map states its DRAM span, so a runner sizes the simulated memory from the image
             # (declared_memory) rather than from a default that may be smaller than the model.

@@ -13,6 +13,7 @@
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
 MERLIN_WEIGHTS_BASE = DEFINED(MERLIN_WEIGHTS_BASE) ? MERLIN_WEIGHTS_BASE : 0x200000000;
+MERLIN_ARENA_BASE = DEFINED(MERLIN_ARENA_BASE) ? MERLIN_ARENA_BASE : MERLIN_WEIGHTS_BASE;
 /* Stack reserve, overridable at link time for the same reason the weights base is: it is a SIZING
  * decision that depends on the model, not a property of the layout. The lowering promotes static
  * intermediates to stack `alloca`s for this target, so the demand scales with the model rather than
@@ -29,6 +30,7 @@ SECTIONS {
               *(EXCLUDE_FILE(*weights_blob.o) .srodata*) }
   . = ALIGN(8);
   .data : { *(EXCLUDE_FILE(*weights_blob.o) .data*) *(.sdata*) }
+  .got : { *(.got .got.*) }
   . = ALIGN(8);
   _bss_start = .;
   .bss : { *(.bss*) *(.sbss*) *(COMMON) }
@@ -36,6 +38,16 @@ SECTIONS {
   . = ALIGN(16);
   . += MERLIN_STACK_BYTES; /* stack (per-hart), kept near the code */
   _stack_top = .;
+
+  /* Providers use full-address references for large immutable sections. Keep
+   * the runtime, its ordinary constants, mutable state and stack near code. */
+  . = ALIGN(64);
+  .merlin.large_rodata : { *(.merlin.large_rodata .merlin.large_rodata.*) }
+  _merlin_static_end = .;
+  ASSERT(_merlin_static_end <= MERLIN_WEIGHTS_BASE,
+         "large readonly data overlaps the absolute weight blob")
+  ASSERT(_merlin_static_end <= MERLIN_ARENA_BASE,
+         "static data overlaps the activation arena; select a later arena base")
 
   /* weight blob at its absolute high address (loaded by spike from the ELF) */
   . = MERLIN_WEIGHTS_BASE;

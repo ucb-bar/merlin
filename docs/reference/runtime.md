@@ -61,6 +61,13 @@ Every embedded array must contain the number of elements required by its
 typed argument, including one element for a scalar. Missing constants and
 incompatible array sizes fail before linking.
 
+The RV64 bare-metal linker also supports provider data in
+`.merlin.large_rodata`. Providers must use full-address references for that
+section. Runtime code, its ordinary constants, mutable storage, address tables
+and stack remain nearby; the large readonly section follows them. The linker
+checks its complete extent against the selected arena and absolute weight-blob
+base, and exposes `_merlin_static_end` for session layout checks.
+
 ## Schemas (Merlin-owned, validated)
 
 - `command_buffer` — the target-independent command-buffer format (its `abi_version` names a runtime
