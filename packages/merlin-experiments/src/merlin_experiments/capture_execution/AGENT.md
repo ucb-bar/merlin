@@ -12,6 +12,13 @@ The existing preselection and independent isolated replay remain
 authoritative. Pin the selected verifier bytes; arithmetic/target correspondence,
 private exclusion, compiler correctness and complete cohort admission are separate.
 
+`sealed_m2m_validation.py` holds the source and materialization checks delegated
+by the issuer. Its exact source digest is embedded in `sealed_m2m.py` and checked
+before delegation, so the selected issuer identity also binds this helper.
+Changes require a new issuer identity; existing historical-issuer sets and
+native-integer/read-only-runtime admission rules are unchanged. The original
+issuer functions retain their callable signatures and callback patch points.
+
 `readonly_runtime` is an explicit cache-hit-only mount route. Never open locks,
 write, copy or hardlink in the source CAS. V2 defaults to16 absent leaves/1MiB;
 explicit serialized limits may select at most64 leaves/16MiB. Compose only explicitly

@@ -69,6 +69,14 @@ def selected_lean_manifest(bundle):
         for row in bundle.get("host_inputs", [])
         if "closed_toolchain_root" in row
     }
+    # Ungrouped formal closures retain the manifest as an ordinary host input.
+    # This is the declaration emitted by tool_profile_toolchain, not a search
+    # through dependencies or an environment-selected replacement toolchain.
+    selections.update(
+        row["path"]
+        for row in bundle.get("host_inputs", [])
+        if row.get("note") == "selected formal verification toolchain manifest"
+    )
     if len(selections) != 1:
         raise ValueError("source refresh requires one explicit closed formal toolchain manifest")
     path = Path(next(iter(selections)))

@@ -40,6 +40,44 @@ def selected_host_leaf(capsule):
     )
 
 
+def declared_host_only(capsule):
+    """A frozen metadata reason to grade host work despite absent device dtypes.
+
+    This selects no compiler and supplies no execution credit. The existing host
+    runner still reopens original source and independently checks its placement,
+    complete outputs and required tiers before reporting infrastructure results.
+    Incomplete or contradictory declarations cannot create this exemption.
+    """
+    from .elf_lanes import ACCELERATOR_LANE
+
+    semantic = capsule.get("semantic")
+    screen = capsule.get("software_screen")
+    expected = capsule.get("expected")
+    lanes = capsule.get("lanes", {})
+    if not all(isinstance(value, dict) for value in (semantic, screen, expected, lanes)):
+        return False
+    if (semantic.get("eligible") is not False or semantic.get("must_accelerate") is not False
+            or expected.get("instruction_classes") != []
+            or screen.get("status") != "admitted" or screen.get("constraints_status") != "matched"):
+        return False
+    required = lanes.get("require", [])
+    if type(required) is not list or ACCELERATOR_LANE in required:
+        return False
+    digest = screen.get("program_sha256")
+    if type(digest) is not str or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        return False
+    decisions = screen.get("decisions")
+    if type(decisions) is not list or screen.get("placements") != ({"host": len(decisions)} if decisions else {}):
+        return False
+    for row in decisions:
+        if (type(row) is not dict or row.get("placement") != "host" or row.get("status") != "admitted"
+                or row.get("classification") != "host_required"
+                or type(row.get("count")) is not int or row["count"] <= 0
+                or type(row.get("mlir_operation")) is not str or not row["mlir_operation"]):
+            return False
+    return selected_host_leaf(capsule)
+
+
 def _host_scope_record(capsule, record):
     """Project only the original producer's completed source/ELF/native joins."""
     required = sorted(set(capsule.get("required_oracle_tiers") or []))

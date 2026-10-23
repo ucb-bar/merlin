@@ -4,8 +4,18 @@ kind: guide
 status: current
 owner: experiments
 last_verified: 2026-10-23
-related: [storage, reproducibility, artifact_evaluation, phase2_test_justification]
+related: [experiment_console, storage, reproducibility, artifact_evaluation, phase2_test_justification]
 code_refs:
+  - packages/merlin-experiments/src/merlin_experiments/tracking/console/discovery.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/console/model.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/console/serve.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/console/diagnose.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/console/placement.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/timeline.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/machine.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/__init__.py
+  - packages/merlin-experiments/console/internal/ui/model.go
+  - merlin/contract/compiler_stages.yaml
   - packages/merlin-experiments/src/merlin_experiments/tracking/terminal.py
   - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_views.py
   - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_probe.py
@@ -62,10 +72,35 @@ view goes to `.../dashboard/target.html`. That home is the storage contract's `e
 product root (`merlin/contract/storage.yaml`). `--out` writes elsewhere, and `--open` also opens the
 page in a browser.
 
-## Unified animated terminal console
+## Experiment command console
+
+The interactive terminal console (`merlin-experiment console`) has its own user guide:
+**[experiment_console.md](experiment_console.md)**. It covers setup, finding and browsing experiments,
+every panel and key, common debugging tasks, the bottleneck findings and troubleshooting. Notes for
+maintainers:
+
+- **Two processes.** The data process (`python -m merlin_experiments.tracking.console.serve`) owns
+  every record read. It streams `merlin.console.snapshot.v1` JSON lines (after the first snapshot,
+  only the sections that changed) and answers `select`, `inspect` and `refresh` commands on stdin.
+  The Bubble Tea v2 frontend (`packages/merlin-experiments/console`) only renders that stream. The
+  section contract is the docstring of `tracking/console/sources/__init__.py`, and
+  `console/internal/proto/proto.go` mirrors it. Change both together.
+- **Sources** are read-only, bounded readers (`io.Reader`: stat-cached documents, a per-refresh
+  byte budget, offset tails). A source returns the same section object when nothing changed, so the
+  server skips re-encoding it. Fast tier: resources, machine, agents, tokens, jobs, events, timeline.
+  Slow tier: capsules, progress, perf, golden (operator only), passes, stages.
+- **State** is decided by `discovery.classify` and always carries its basis. An owner record alone
+  never decides it.
+- **Bottlenecks** are rules in `diagnose.py` over recorded numbers. The critical-path attribution
+  comes from `sources/timeline.py`.
+- **Footprint.** `placement.py` keeps the console off the CPUs that live experiments hold, derived
+  from runner affinity and cgroup containment with no machine-specific configuration. `serve.py`
+  throttles itself above 15% of one core.
+
+## Unified animated terminal console (legacy single screen)
 
 ```bash
-merlin-experiment watch --task /path/to/campaign-task
+merlin-experiment watch --task /path/to/campaign-task --legacy
 # Direct module entrypoint, with the research package installed:
 python -m merlin_experiments.tracking.terminal --task /path/to/campaign-task
 ```

@@ -9,6 +9,7 @@ Experiment tracking views: a static HTML dashboard and a live terminal view, fro
 - `activity.py` — What the authoring agent did, from its own event stream: a feed, tool-call spans and token use.
 - `activity_html.py` — The agent-activity section of a run page: what it is doing now, a feed, and per-round tokens/time.
 - `charts.py` — Inline-SVG chart primitives the richer views share: a Gantt, a treemap, a scatter, a time series.
+- `console/` — The experiment command console: discovery, per-experiment snapshots, diagnostics and the Bubble Tea frontend's data process.
 - `compiler.py` — What compiler the agent has built, checkpoint by checkpoint: passes, dialects, ops, entry points, LOC.
 - `explorer.py` — Explore a target's runs: an index of every phase's runs, the lineage between them, and comparisons.
 - `html.py` — Render a tracking summary as ONE self-contained HTML page: inline CSS, inline SVG, a few lines of JS.

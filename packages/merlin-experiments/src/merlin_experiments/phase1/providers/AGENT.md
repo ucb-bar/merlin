@@ -16,6 +16,10 @@ native snapshot verification boundary, not a repeated full-corpus hash on every 
 Never recreate a second sandbox policy here. No composition mounts the operator's `~/.claude` or
 `~/.claude.json`; a command that runs the `claude` CLI gets a fresh per-launch home from
 `merlin.targetgen.sandbox.claude_home`, whose only operator bind is the OAuth credential file.
+Startup call observations use `telemetry.startup` around the original callbacks.
+Preserve call order and count, arguments, return values, exceptions and all native
+checks. No new verification, credential inspection or policy caching belongs in
+these timing hooks. Continuations carry their own turn identity before admission.
 Installed bridge startup requires explicit proxy config
 and executable paths; checkout defaults require a physically detected source checkout.
 The resource sampler is a standalone stdlib CLI, also runnable with the canonical module name.

@@ -102,4 +102,6 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin_experiments.post_freeze` | Operator preparation and evidence intake after compiler freezing. |
 | `merlin_experiments.timing_probes` | Operator timing-calibration probes, derived from a target's own timing space and data. |
 | `merlin_experiments.tracking` | Experiment tracking views: a static HTML dashboard and a live terminal view, from records only. |
+| `merlin_experiments.tracking.console` | The experiment command console: discover, track, inspect and diagnose any experiment from its records. |
+| `merlin_experiments.tracking.console.sources` | Console sources: one bounded, read-only reader per concern, each ``read(ctx) -> section``. |
 | `merlin_timing` | Portable timing calibration and validation without compiler dependencies. |

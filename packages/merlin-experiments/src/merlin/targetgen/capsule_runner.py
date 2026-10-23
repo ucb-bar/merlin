@@ -1389,7 +1389,12 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
         # Withheld, the negative lane is never graded, and an axis that derives such capsules produces
         # nothing while looking like it ran -- the exact silence this corpus is built to prevent. The
         # forbid IS gradeable: a decoded accelerator instruction violates it.
-        if _forbids_the_mesh(c):
+        # Explicit frozen host-only work is also gradeable through the existing
+        # Merlin host provider. That route rechecks source eligibility and credits
+        # infrastructure only, never candidate accelerator capability.
+        from .owned_host_leaf_execution import declared_host_only
+
+        if _forbids_the_mesh(c) or declared_host_only(c):
             keep.append(c)
             continue
         withheld.append(
@@ -1443,7 +1448,9 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
         return True
     if getattr(verdict, "undetermined", False) or getattr(verdict, "eligible", True):
         return True
-    if _forbids_the_mesh(cap):
+    from .owned_host_leaf_execution import declared_host_only
+
+    if _forbids_the_mesh(cap) or declared_host_only(cap):
         return True
     dtype_absent, _why = _dtype_has_no_datapath(region, cmap, _el)
     return not dtype_absent

@@ -5,11 +5,13 @@ The sources are the run's own snapshots, read without touching them:
 * each graded snapshot the harness committed to the run's ``oot/`` history repository, named by
   ``oot_commits.jsonl`` -- read with ``git ls-tree`` / ``git cat-file`` only (no checkout, no index, no
   optional locks; the harness's own hardened git environment);
-* the final ``submission/`` copy, when the run has one.
+* the final compiler tree, when the run has one: ``submission/``, the frozen ``joint_frozen_submission/``
+  copy, or the agent workspace's ``submission/`` named by the run's ``environment.yaml``.
 
 From a snapshot's files this module lists, structurally and without regular expressions:
 
-* the ``manifest.yaml`` entry points, command names, components and optimization surfaces;
+* the ``manifest.yaml`` entry points, command names (and their pipeline order), components,
+  optimization surfaces and shared-pass-contract families;
 * TableGen ``def`` records: dialects (``: Dialect`` with ``let name = "..."``), operations (a ``def`` whose
   base class is an op class and whose first template argument is a quoted mnemonic) and passes
   (``: Pass<"name"`` / ``InterfacePass<"name"``);
@@ -151,6 +153,12 @@ def parse_manifest(text: str) -> dict[str, Any]:
         return {"error": "manifest.yaml is not a mapping"}
     commands = doc.get("commands") if isinstance(doc.get("commands"), Mapping) else {}
     surfaces = [s.get("id") for s in doc.get("optimization_surfaces") or () if isinstance(s, Mapping)]
+    contract = doc.get("shared_pass_contract") if isinstance(doc.get("shared_pass_contract"), Mapping) else {}
+    families = [
+        {"name": str(f.get("name")), "boundary": f.get("boundary"), "status": f.get("status")}
+        for f in contract.get("families") or ()
+        if isinstance(f, Mapping) and f.get("name")
+    ]
     return {
         "package_id": doc.get("package_id"),
         "language": doc.get("language"),
@@ -160,6 +168,9 @@ def parse_manifest(text: str) -> dict[str, Any]:
         if isinstance(doc.get("components"), Mapping)
         else [],
         "surfaces": [str(s) for s in surfaces if s],
+        # Command order is the pipeline; ``commands`` above stays sorted for existing readers.
+        "pipeline": [str(k) for k in commands],
+        "pass_families": families,
     }
 
 
@@ -290,6 +301,20 @@ def read_tree(root: Path) -> dict[str, bytes]:
     return out
 
 
+def _submission(run_dir: Path) -> Path | None:
+    """The run's final compiler tree: ``submission/``, the frozen copy, or the agent workspace's."""
+    for candidate in (run_dir / "submission", run_dir / "joint_frozen_submission"):
+        if candidate.is_dir():
+            return candidate
+    from .console.discovery import workspace_of
+    from .console.io import Reader
+
+    workspace = workspace_of(run_dir, Reader(budget=8 << 20))
+    if workspace and (Path(workspace) / "submission").is_dir():
+        return Path(workspace) / "submission"
+    return None
+
+
 def evolution(
     run_dir: Path,
     commits: Sequence[Mapping[str, Any]] | None,
@@ -325,15 +350,15 @@ def evolution(
                 "analysis": cache[commit],
             }
         )
-    submission = run_dir / "submission"
-    if submission.is_dir():
+    submission = _submission(run_dir)
+    if submission is not None:
         key = f"tree:{submission}"
         stamp = max((p.stat().st_mtime for p in submission.rglob("*") if p.is_file()), default=None)
         if cache.get(key, (None,))[0] != stamp:
             cache[key] = (stamp, analyse(read_tree(submission)))
         checkpoints.append(
             {
-                "source": "submission/",
+                "source": f"{submission.name}/",
                 "label": "final submission",
                 "commit": None,
                 "at": stamp,

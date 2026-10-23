@@ -44,6 +44,19 @@ At ``--sandbox none`` Codex's own ``workspace-write`` sandbox is used.
 
 from __future__ import annotations
 
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _INSTRUCTION_FILES as _INSTRUCTION_FILES,
+    _TOOL_OUTPUT_CAP as _TOOL_OUTPUT_CAP,
+    ITEM_COMMAND_EXECUTION as ITEM_COMMAND_EXECUTION,
+    ITEM_FILE_CHANGE as ITEM_FILE_CHANGE,
+    _instruction_files as _instruction_files,
+    _clip_tool_output as _clip_tool_output,
+    _tool_block as _tool_block,
+    _Transcript as _Transcript,
+    last_message_path as last_message_path,
+    _error_text as _error_text,
+)
+
 import json
 import os
 import selectors
@@ -61,6 +74,7 @@ from typing import Any
 from merlin.common.paths import module_source_path
 from merlin_experiments.phase1.providers.authoring_prompt import authoring_prompt
 from merlin_experiments.phase1.providers.codex_usage import usage_to_claude_shape as usage_to_claude_shape
+from merlin_experiments.phase1.telemetry import startup as _START
 
 # --- The measured event contract (codex-cli 0.147.0) ------------------------
 # Verified by capturing a live run, not read from documentation. Envelope types
@@ -75,11 +89,9 @@ EVENT_ITEM_UPDATED = "item.updated"
 EVENT_ITEM_COMPLETED = "item.completed"
 EVENT_ERROR = "error"
 
-ITEM_COMMAND_EXECUTION = "command_execution"
 ITEM_AGENT_MESSAGE = "agent_message"
 ITEM_REASONING = "reasoning"
 ITEM_ERROR = "error"
-ITEM_FILE_CHANGE = "file_change"
 ITEM_MCP_TOOL_CALL = "mcp_tool_call"
 ITEM_WEB_SEARCH = "web_search"
 # Emitted by the tool and observed in captured sessions, though this driver handles neither: a plan
@@ -128,7 +140,6 @@ DEFAULT_CODEX_MODEL = os.environ.get("CODEX_MODEL", "gpt-5.6-sol")
 
 #: Instruction files whose presence in the workspace changes what an agent is
 #: told. Recorded, never authored, so arms stay comparable.
-_INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md", "AGENT.md", "TASK.md")
 
 _POLL_S = 0.25
 _CONTROL_POLL_S = 1.0
@@ -508,84 +519,6 @@ def codex_runtime_binds(codex_home: Path) -> list[str]:
     return binds
 
 
-def _instruction_files(ws: Path) -> dict[str, int]:
-    """Which instruction files the workspace carries, and their sizes."""
-    found = {}
-    for name in _INSTRUCTION_FILES:
-        path = ws / name
-        if path.is_file():
-            found[name] = path.stat().st_size
-    return found
-
-
-_TOOL_OUTPUT_CAP = 20000
-
-
-def _clip_tool_output(text: str, cap: int = _TOOL_OUTPUT_CAP) -> str:
-    """Bound a recorded tool result WITHOUT discarding its tail.
-
-    Head-only truncation destroys evidence silently. A discovery command that prints a large
-    structure and THEN its summary -- ``print(facts); print('DERIVED_LEVERS', levers)`` -- loses
-    exactly the closing lines the conformance checks read, so the run is graded as though the agent
-    never ran the tool. Measured on the atlas arm-4 run of 2026-09-04: 29 of 467 results were cut at
-    the cap, and the one carrying the arm-4 discovery evidence was among them. Keeping both ends
-    preserves the structure and the summary inside the same budget.
-    """
-    if len(text) <= cap:
-        return text
-    head = cap * 2 // 3
-    tail = cap - head
-    return f"{text[:head]}\n...[{len(text) - head - tail} chars elided by the harness]...\n{text[-tail:]}"
-
-
-def _tool_block(item: dict, tool_use_id: str) -> dict:
-    """Render a Codex tool item as a Claude ``tool_use`` block.
-
-    ``tool_use_id`` is REQUIRED and must be the same string the paired ``tool_result`` carries: it is
-    the only key joining a call to its result, so every consumer of the transcript keys on it. Emitting
-    the block WITHOUT an id silently costs the run its entire tool telemetry -- aet's stream parser
-    records a call only ``if tc.tool_use_id``, so the atlas round of 2026-09-04 reported
-    ``tool_call_count=0`` and ``unique_tools_used=[]`` for a round that made 125 tool calls, and the
-    per-call latency (measured as the gap between a tool_use and its tool_result) had nothing to pair.
-    """
-    itype = item.get("type")
-    if itype == ITEM_COMMAND_EXECUTION:
-        return {"type": "tool_use", "id": tool_use_id, "name": "Bash", "input": {"command": item.get("command", "")}}
-    if itype == ITEM_FILE_CHANGE:
-        changes = item.get("changes")
-        return {
-            "type": "tool_use",
-            "id": tool_use_id,
-            "name": "Edit",
-            "input": {"changes": changes if isinstance(changes, list) else []},
-        }
-    return {
-        "type": "tool_use",
-        "id": tool_use_id,
-        "name": str(itype or "tool"),
-        "input": {k: v for k, v in item.items() if k not in ("id", "type")},
-    }
-
-
-class _Transcript:
-    """Writes the harness's Claude-stream JSONL, one flushed line at a time."""
-
-    def __init__(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._f = open(path, "w")
-        self.path = path
-
-    def emit(self, obj: dict) -> None:
-        self._f.write(json.dumps(obj) + "\n")
-        self._f.flush()
-
-    def close(self) -> None:
-        try:
-            self._f.close()
-        except OSError:
-            pass
-
-
 def _terminate_process_group(pgid: int, proc: subprocess.Popen | None = None) -> None:
     """Terminate a saved child process group even after its leader has exited."""
     if pgid <= 1 or pgid == os.getpgrp():
@@ -671,20 +604,6 @@ def _link_for_aet(run_dir: Path, raw_path: Path, rnd: int) -> Path | None:
         return dest
     except Exception:
         return None
-
-
-def last_message_path(ws: Path, final_path: Path, sandbox: str) -> Path:
-    """Where codex may actually WRITE its last message (``-o``).
-
-    ``final_path`` lives under the run directory, which is on /scratch -- and the sandbox tmpfs-hides
-    /scratch* by design, so codex could not create it and reported ``Failed to write last message file
-    ... (os error 2)`` on every sandboxed round. The read afterwards is guarded, so the loss was
-    SILENT: the round's ``result`` was simply empty. Inside the sandbox the workspace is the one
-    writable tree, so the file goes there and is copied out (and removed) once the process exits.
-    """
-    if sandbox != "bwrap":
-        return final_path
-    return ws / ".codex_out" / final_path.name
 
 
 #: A continuation needs enough budget left to be worth a turn; below this the session stops cleanly
@@ -854,6 +773,7 @@ def _preflight_candidate_sandbox(
         )
 
 
+@_START.observed
 def run_round(
     ws: Path,
     run_dir: Path,
@@ -1024,14 +944,15 @@ def run_round(
             home_options["max_concurrent_subagents"] = capacity
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
-        _verify_frozen_config(codex_home, home_info["config_sha256"])
+        _START.call("config_verify", _verify_frozen_config, codex_home, home_info["config_sha256"])
         preflight_options = {"runtime_binds": runtime_selector} if runtime_binds is not None else {}
         _preflight_candidate_sandbox(
             ws, codex_home, codex_bin, bundle, sandbox_command, rounds, rnd, **preflight_options
         )
         inner = " ".join(shlex.quote(c) for c in run_cmd)
         cmd = _sandbox_script(
-            rounds, rnd, 0, sandbox_command(inner, ws, bundle, extra_binds=runtime_selector(codex_home))
+            rounds, rnd, 0, _START.call("sandbox_assembly", sandbox_command, inner, ws, bundle,
+                extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home))
         )
     else:
         cmd = run_cmd
@@ -1081,6 +1002,7 @@ def run_round(
         while True:
             turn_errors_start = len(errors)
             turn_failed = turn_completed = False
+            _START.turn(turn_index)
             admission = token_control.admit(turn_index)
             if admission is not None:
                 tr.emit({'type': 'codex_token_admission', **admission})
@@ -1101,8 +1023,8 @@ def run_round(
                     inner_final.unlink()
                 cur_prompt.write_text(('' if token_control.phase == 'integration' else _CONTINUE_MSG) + token_control.prompt())
                 if sandbox == "bwrap":
-                    _verify_frozen_config(codex_home, home_info["config_sha256"])
-                resume_argv = build_resume_cmd(
+                    _START.call("config_verify", _verify_frozen_config, codex_home, home_info["config_sha256"])
+                resume_argv = _START.call("resume_argv", build_resume_cmd,
                     ws,
                     model=resolved,
                     effort=effort,
@@ -1120,7 +1042,8 @@ def run_round(
                         rounds,
                         rnd,
                         turn_index,
-                        sandbox_command(_inner, ws, bundle, extra_binds=runtime_selector(codex_home)),
+                        _START.call("sandbox_assembly", sandbox_command, _inner, ws, bundle,
+                            extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home)),
                     )
                 else:
                     cmd = resume_argv
@@ -1129,7 +1052,7 @@ def run_round(
                     from merlin.common.cpu_pool import parse_roster, selected_pool
 
                     with selected_pool(parse_roster(os.environ.get("MERLIN_CODEX_CPUS", ""))):
-                        proc = subprocess.Popen(
+                        proc = _START.call("provider_popen", subprocess.Popen,
                             cmd,
                             stdin=in_f,
                             stdout=subprocess.PIPE,
@@ -1574,15 +1497,3 @@ def run_round(
     tr.emit({"type": "result", "subtype": "success", "is_error": False, "result": final_text[:2000]})
     tr.close()
     return 0, tpath
-
-
-def _error_text(value: Any) -> str:
-    """Render an error payload without losing the message nested inside it."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        message = value.get("message")
-        if isinstance(message, str):
-            return message
-        return json.dumps(value, sort_keys=True)
-    return "" if value is None else str(value)

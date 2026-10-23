@@ -1,6 +1,13 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase1/telemetry
 
 Host-owned raw process evidence and measurements are withheld from candidates.
+`startup.py` observes provider startup and continuation calls in the private
+`rounds/author_startup.jsonl` stream. Keep start events durable before the call,
+round/turn and parent stage identities explicit, and errors type-only. Never
+serialize arguments, credentials, argv, prompts or exception messages. Failed
+diagnostic writes cannot alter admission, sandbox verification or callback results.
+This append-only pre-spawn stream is distinct from capsule setup timelines;
+an unmatched start denotes an unfinished observation, not a diagnosed deadlock.
 `timeline.py` owns event boundaries, interval union, token buckets and arrival-time analysis.
 `evidence.py` owns retained workspace/rollout copies, hashes and stream/resource observations.
 `report.py` composes run records and the canonical CLI; importing any owner is target-inert.

@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 from merlin_experiments.capture_execution import sealed_m2m
 from merlin_experiments.capture_execution.precision_staging import staging_error
+
+
 from merlin_experiments.capture_execution.sealed_m2m import (
     SealedM2MError,
     _capture_api_missing,
@@ -1083,3 +1085,24 @@ def test_failed_capture_retains_both_complete_process_streams(tmp_path):
         sealed_m2m._process_record(3, out, err, failure_dir=tmp_path / "failure")
     assert (tmp_path / "failure/stdout.bin").read_bytes() == out
     assert (tmp_path / "failure/stderr.bin").read_bytes() == err
+
+
+def test_materialization_helper_is_bound_to_selected_issuer_bytes(tmp_path, monkeypatch):
+    assert sealed_m2m._validation_functions().__name__.endswith("sealed_m2m_validation")
+    source = Path(sealed_m2m.__file__).with_name("sealed_m2m_validation.py")
+    selected = tmp_path / source.name
+    selected.write_bytes(source.read_bytes())
+    monkeypatch.setattr(sealed_m2m, "__file__", str(tmp_path / "sealed_m2m.py"))
+    with pytest.raises(sealed_m2m.SealedM2MError, match="verifier import differs"):
+        sealed_m2m._validation_functions()
+    selected.write_bytes(selected.read_bytes() + b"\n# modified verifier\n")
+    with pytest.raises(sealed_m2m.SealedM2MError, match="verifier source changed"):
+        sealed_m2m._capture_api_missing(tmp_path)
+
+
+def test_materialization_helper_refuses_indirect_source(tmp_path, monkeypatch):
+    source = Path(sealed_m2m.__file__).with_name("sealed_m2m_validation.py")
+    (tmp_path / source.name).symlink_to(source)
+    monkeypatch.setattr(sealed_m2m, "__file__", str(tmp_path / "sealed_m2m.py"))
+    with pytest.raises(sealed_m2m.SealedM2MError, match="verifier source changed"):
+        sealed_m2m._validation_functions()

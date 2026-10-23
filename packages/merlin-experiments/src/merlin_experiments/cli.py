@@ -344,13 +344,42 @@ def main(argv: list[str] | None = None) -> int:
     watch = commands.add_parser("watch", help="live terminal view of a run's records; refreshes until Ctrl-C")
     watch.add_argument("run_dir", type=Path, nargs="?")
     watch.add_argument("--task", type=Path, help="unified animated console following a managed campaign task")
-    watch.add_argument("--operator-private", action="store_true", help="include recorded capsule, agent and performance details")
+    watch.add_argument(
+        "--operator-private", action="store_true", help="include recorded capsule, agent and performance details"
+    )
     watch.add_argument("--window", type=int, default=120, help="--task core timeline window in seconds")
     watch.add_argument("--width", type=int, help="--task display columns")
     watch.add_argument("--height", type=int, help="--task display rows")
     watch.add_argument("--interval", type=float, help="refresh seconds (run summary: 30; task console: 1)")
     watch.add_argument("--once", action="store_true", help="print once and exit")
     watch.add_argument("--no-color", action="store_true", help="plain text even on a terminal")
+    watch.add_argument(
+        "--legacy", action="store_true", help="--task: keep the single-screen view instead of the command console"
+    )
+    console = commands.add_parser(
+        "console",
+        help="experiment command console: every experiment on this machine, live or stored, in one view",
+        description="Track, inspect and debug any experiment on this machine from its records (read-only).",
+        epilog="Inside the console press ? for keys: b browse runs, L running experiment, Enter inspect, "
+        "z zoom, q quit. Guide: docs/guides/experiment_console.md",
+    )
+    console.add_argument("--task", type=Path, action="append", help="limit discovery to this task folder (repeatable)")
+    console.add_argument("--run-dir", type=Path, action="append", help="also show this run or record directory")
+    console.add_argument("--experiment", help="open this experiment first (run id or run directory)")
+    console.add_argument("--tasks-root", type=Path, help="directory holding the task folders (default: derived)")
+    console.add_argument(
+        "--operator-private", action="store_true", help="show capsule names, paths and golden references"
+    )
+    console.add_argument("--interval", type=float, help="fast refresh seconds for a running experiment (default 1)")
+    console.add_argument("--once", action="store_true", help="print the selected experiment as text and exit")
+    console.add_argument("--list", action="store_true", help="print the discovered experiments and exit")
+    console.add_argument("--json", action="store_true", help="with --once: print the snapshot as JSON")
+    console.add_argument(
+        "--build", action="store_true", help="compile the Bubble Tea frontend (needs Go) before starting"
+    )
+    console.add_argument("--plain", action="store_true", help="never start the frontend; refresh plain text instead")
+    console.add_argument("--width", type=int, help="text width for --once/--plain (default: terminal)")
+    console.add_argument("--no-color", action="store_true", help="plain text even on a terminal")
     for view in (dashboard, watch):
         view.add_argument(
             "--store", type=Path, help="phase-2 measurement store when the run records none (store_roots.screen)"
@@ -841,7 +870,12 @@ def main(argv: list[str] | None = None) -> int:
                 for flag, value in (("--interval", args.interval), ("--width", args.width), ("--height", args.height)):
                     if value is not None:
                         options += [flag, str(value)]
-                for flag, enabled in (("--operator-private", args.operator_private), ("--once", args.once), ("--no-color", args.no_color)):
+                for flag, enabled in (
+                    ("--operator-private", args.operator_private),
+                    ("--once", args.once),
+                    ("--no-color", args.no_color),
+                    ("--legacy", args.legacy),
+                ):
                     if enabled:
                         options.append(flag)
                 return terminal_main(options)
@@ -855,6 +889,10 @@ def main(argv: list[str] | None = None) -> int:
                 stall_hours=args.stall_hours,
                 colour=False if args.no_color else None,
             )
+        elif args.verb == "console":
+            from .tracking.console.cli import run as run_console
+
+            return run_console(args)
         elif args.verb == "resume":
             code = runner.resume(args.run_dir, checkpoint=args.checkpoint)
             print(json.dumps(runner.status(args.run_dir), indent=2))

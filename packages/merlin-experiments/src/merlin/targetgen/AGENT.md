@@ -152,3 +152,13 @@ original required L3 remains pending under an explicit L2 ceiling.
 `capsule_diagnostics` owns bounded source-free exception, simulator and output
 diagnostics. It retains the runner's withheld grader identity; the runner keeps
 its existing helper aliases, wrapper calls and numerical decisions.
+
+`owned_host_leaf_execution.declared_host_only` permits grade admission despite
+an absent accelerator operand dtype only for explicit frozen host declarations:
+false acceleration demand/eligibility, admitted matched host decisions, consistent
+placement counts, a source digest and no required device instruction/lane. Names,
+workload axes or dtype alone never select the exemption. Suite admission and the
+model-gate denominator share it. It supplies no execution or pass credit: ordinary
+host execution still reopens the original source, independently checks eligibility,
+and verifies complete outputs and all required tiers. Results qualify Merlin host
+infrastructure, never candidate compiler arithmetic or accelerator support.

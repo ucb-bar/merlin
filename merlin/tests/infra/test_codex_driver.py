@@ -388,6 +388,9 @@ def test_a_successful_round_translates_the_stream_into_the_harness_transcript(tm
     assert len(usages) == 1
     assert usages[0]["input_tokens"] == 8607
     assert _by_type(records, "result")[0]["subtype"] == "success"
+    stages = [json.loads(line) for line in (tpath.parent / "author_startup.jsonl").read_text().splitlines()]
+    assert [(r["stage"], r["event"]) for r in stages] == [("provider_popen", "start"), ("provider_popen", "finish")]
+    assert all((r["round"], r["turn"]) == (0, 0) for r in stages)
 
 
 def test_the_summary_records_subscription_billing_and_usage_completeness(tmp_path):
@@ -435,6 +438,9 @@ def test_capacity_interruption_resumes_same_thread_and_retains_failed_usage(tmp_
     assert _by_type(records, "codex_capacity_retry")[0]["thread_id"] == summary["thread_id"]
     raw = (tpath.parent / "round_00.codex_events.raw.jsonl").read_text()
     assert '"turn.failed"' in raw and '"turn.completed"' in raw
+    stages = [json.loads(line) for line in (tpath.parent / "author_startup.jsonl").read_text().splitlines()]
+    assert [(r["stage"], r["turn"]) for r in stages if r["event"] == "start"] == [
+        ("provider_popen", 0), ("resume_argv", 1), ("provider_popen", 1)]
 
 
 def test_host_continuation_control_resumes_then_stops_the_same_thread(tmp_path):

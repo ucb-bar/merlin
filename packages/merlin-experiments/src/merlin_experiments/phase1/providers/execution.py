@@ -21,6 +21,7 @@ from merlin.targetgen import experiment_tokens as ET
 from .. import author_subagents
 from ..context import InvocationContext
 from ..feedback import lifecycle as FL
+from ..telemetry import startup as _START
 
 _MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
 _MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
@@ -164,7 +165,7 @@ def sandbox_command(
     base_options = {"repo": context.repo, "include_claude_home": False}
     if codex_mode:
         base_options["inherit_environment"] = False
-    parts = _BW.base_argv(ws, bundle, **base_options)
+    parts = _START.call("sandbox_base", _BW.base_argv, ws, bundle, **base_options)
     home = None
     if not codex_mode:
         parts += _CH.without_operator_state(_BW.claude_runtime_binds())
@@ -191,13 +192,13 @@ def sandbox_command(
     # A trusted toolchain bind may overlap a declared arm grant (LLVM is both).
     # Reassert the frozen per-run bundle after every such bind so no live
     # worktree/tool input can override the snapshot, then apply answer masks.
-    parts = _BW.reapply_bundle_snapshot(parts, ws, bundle, repo=context.repo)
+    parts = _START.call("snapshot_overlay", _BW.reapply_bundle_snapshot, parts, ws, bundle, repo=context.repo)
     from ..compiler_library import sandbox_overlay
 
-    parts, library_environment = sandbox_overlay(
+    parts, library_environment = _START.call("library_overlay", sandbox_overlay,
         parts, workspace=ws, bundle=bundle, context=context, private_run_dir=private_run_dir
     )
-    parts = _BW.apply_final_answer_masks(
+    parts = _START.call("final_answer_masks", _BW.apply_final_answer_masks,
         parts, load_target_experiment(context.descriptor), ws, bundle, repo=context.repo
     )
     # Sibling homes hold other launches' sessions; only this launch's home, at the CLI's paths, is visible.
@@ -235,7 +236,7 @@ def codex_sandbox_command(inner, ws, bundle, extra_binds=None, *, context, priva
     from merlin.targetgen.sandbox import toolchain as TC
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    runtime.verify()
+    _START.call("runtime_verify", runtime.verify)
     target = load_target_experiment(context.descriptor)
     if (
         tuple(TC.toolchain_binds(target)) != runtime.toolchain_mounts

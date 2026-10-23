@@ -76,14 +76,10 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
         argv.append("--author-token-admission")
     if int(argv[argv.index("--max-wall-s") + 1]) != selected_policy["duration_s"]:
         raise ValueError("native author clock differs from selected joint policy")
-    env = old["environment"].copy()
-    for key, value in env.items():
-        env[key] = (
-            value.replace(str(previous_release), str(release))
-            .replace(str(previous_repo), str(repo))
-            .replace(str(previous_repo.parent / ".tmp"), str(task / ".tmp"))
-            .replace(previous_run_id, run_id)
-        )
+    env = relocate_environment(old["environment"], (
+        (str(previous_release), str(release)), (str(previous_repo), str(repo)),
+        (str(previous_repo.parent / ".tmp"), str(task / ".tmp")), (previous_run_id, run_id),
+    ))
     for key in (
         "MERLIN_JOINT_CAMPAIGN_STATE",
         "MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION",
@@ -151,6 +147,32 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
     preflight.pop("reserved_argv")
     (output / "preflight-selection.json").write_text(json.dumps(preflight, indent=2) + "\n")
     return record
+
+
+def relocate_environment(environment, replacements):
+    """Replace original longest matches once; never rewrite selected destinations.
+
+    A retained release may live below the old repository. Its explicit selection
+    takes precedence over repository relocation, even when that release stays put.
+    Scan each original value so paths inside JSON and path lists follow the same rule.
+    """
+    ordered = sorted(replacements, key=lambda pair: len(pair[0]), reverse=True)
+    if any(not source for source, _ in ordered):
+        raise ValueError("environment relocation requires nonempty source identities")
+    relocated = {}
+    for key, value in environment.items():
+        pieces, index = [], 0
+        while index < len(value):
+            for source, destination in ordered:
+                if value.startswith(source, index):
+                    pieces.append(destination)
+                    index += len(source)
+                    break
+            else:
+                pieces.append(value[index])
+                index += 1
+        relocated[key] = "".join(pieces)
+    return relocated
 
 
 def prepare_slot_roots(environment):

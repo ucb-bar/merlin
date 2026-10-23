@@ -18,9 +18,7 @@ an isolation property; the experiment's protection comes from exact mounts, mask
 from __future__ import annotations
 
 import copy
-import json
 import os
-import tempfile
 import time
 from dataclasses import replace
 from functools import partial
@@ -50,6 +48,7 @@ from merlin_experiments.phase2 import capsule_source_development as CAPSULE_DEV
 from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
 from merlin_experiments.phase2 import compiler_library_guidance as LIBRARY_GUIDANCE
 from merlin_experiments.phase2 import compiler_library_state as LIBRARY
+from merlin_experiments.phase2 import compiler_pass_preparation as PREPARATION
 from merlin_experiments.phase2 import contracts as CONTRACTS
 from merlin_experiments.phase2 import development_feedback as DF  # noqa: F401 -- historical host injection seam
 from merlin_experiments.phase2 import emission_analysis as EA
@@ -125,256 +124,19 @@ def functional_emission_guard(
     grade_root: Path | None = None,
     sandbox_inputs: PC.PackageSandboxInputs | PC.FrozenPackageSandboxInputs | None = None,
 ) -> dict[str, Any]:
-    """Reuse complete unchanged execution dependencies or regrade full outputs.
+    """Apply the paired library guard before independent emission validation."""
+    from .functional_emission import functional_emission_guard as guard
 
-    Identical LLVM and command buffers alone cannot establish identical behavior:
-    runtime, packing, linking and publication code also contribute. Reuse requires
-    the entire package and every selected frozen execution grant to be unchanged.
-    Any remaining capsule goes through the ordinary numerical/certification engine.
-
-    Trace findings are compared DIFFERENTIALLY, never absolutely. ``trace_check.check`` documents its
-    violations as advisory diagnostics that deliberately do not decide pass/fail (the oracle does), so
-    gating on their presence would manufacture the false refusals this harness has already produced
-    twice today. A finding the CERTIFIED baseline does not produce is a different claim: a regression
-    this candidate introduced.
-    """
-    from merlin.targetgen import oot_runner as OR  # noqa: PLC0415
-    from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
-    from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
-    from merlin_experiments.phase1 import corpus_inputs
-
-    from . import functional_guard_execution as guard_execution
-
-    if frozen_functional.host_provenance is None:
-        raise StageGateError("functional emission guard requires admitted V4 host provenance")
-    verified = FI._verify_private_functional_provenance(frozen_functional.host_provenance)
-    from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
-    from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_execution
-
-    profile_service = (
-        None
-        if verified["bundle"].get("compiler_tool_profile") is None
-        else CommonTransformService(
-            workspace=verified["workspace"],
-            bundle_manifest=Path(frozen_functional.host_provenance["bundle_manifest"]),
-            repo=verified["repo"],
-        )
+    return guard(
+        baseline,
+        candidate,
+        target_experiment,
+        frozen_functional=frozen_functional,
+        timeout_s=timeout_s,
+        grade_root=grade_root,
+        sandbox_inputs=sandbox_inputs,
+        active_compiler_library=active_compiler_library,
     )
-    environment_path = Path(frozen_functional.host_provenance["environment"])
-    environment = CONTRACTS.mapping_file(environment_path, yaml_file=True)
-    # The grading view is a declared host input, not an agent-visible grant. Reuse
-    # Phase 1's frozen resolver; never rediscover live descriptor siblings or mix
-    # hidden answers and performance-development corpora into its public cohort.
-    try:
-        view = corpus_inputs.resolve(
-            verified["workspace"],
-            verified["bundle"],
-            environment.get("public_corpus_input"),
-            repo=verified["repo"],
-        )
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise StageGateError(f"functional public corpus is unavailable: {exc}") from exc
-    if _sha256_file(environment_path) != frozen_functional.host_provenance["environment_sha256"]:
-        raise StageGateError("functional host provenance changed during corpus selection")
-    capsules = sorted(path.parent for path in view.public.rglob("capsule.yaml"))
-    if not capsules:
-        raise StageGateError("functional frozen public corpus contains no capsules")
-
-    base_pkg, cand_pkg = OR.load_package(Path(baseline)), OR.load_package(Path(candidate))
-    package_identity = (
-        CONTRACTS.exact_tree_record(Path(baseline))["sha256"],
-        CONTRACTS.exact_tree_record(Path(candidate))["sha256"],
-    )
-    dependencies_unchanged = package_identity[0] == package_identity[1] and active_compiler_library() is None
-    grants = getattr(frozen_functional, "grants", ())
-    # An omitted closure is UNKNOWN, including an older synthetic/archive record.
-    dependencies_unchanged = dependencies_unchanged and bool(grants)
-    for grant in grants:
-        source, selected = Path(grant.source), Path(grant.destination)
-        identity = CONTRACTS.exact_tree_record if source.is_dir() else _sha256_file
-        frozen_identity = identity(source)
-        frozen_digest = frozen_identity["sha256"] if isinstance(frozen_identity, dict) else frozen_identity
-        if frozen_digest != grant.source_sha256:
-            raise StageGateError("functional execution dependency changed after admission")
-        if not selected.exists() or selected.is_symlink():
-            dependencies_unchanged = False
-            continue
-        selected_identity = CONTRACTS.exact_tree_record(selected) if selected.is_dir() else _sha256_file(selected)
-        selected_digest = selected_identity["sha256"] if isinstance(selected_identity, dict) else selected_identity
-        dependencies_unchanged = dependencies_unchanged and selected_digest == frozen_digest
-    rows: list[dict[str, Any]] = []
-    offenders: list[dict[str, Any]] = []
-    for capsule_dir in capsules:
-        name = capsule_dir.name
-        try:
-            descriptor = CONTRACTS.mapping_file(capsule_dir / "capsule.yaml", yaml_file=True)
-        except Exception:  # noqa: BLE001 - an unreadable descriptor is reported, never skipped silently
-            offenders.append({"capsule": name, "kind": "descriptor_unreadable"})
-            continue
-        interface = capsule_dir / str(descriptor.get("interface_mlir") or "capsule.interface.mlir")
-        if not interface.is_file():
-            rows.append({"capsule": name, "status": "no_interface"})
-            offenders.append({"capsule": name, "kind": "interface_missing"})
-            continue
-        with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR") or None) as raw:
-            scratch = Path(raw)
-            with original_compiler_execution(
-                profile_service,
-                target_experiment=target_experiment,
-                candidate=baseline,
-                work_root=scratch / "profile-baseline",
-                sandbox_inputs=sandbox_inputs,
-            ):
-                base_rc, base_llvm, base_buffer = guard_execution.emit_pair(
-                    base_pkg, interface, scratch, "baseline", timeout_s, target_experiment, inputs=sandbox_inputs
-                )
-            with original_compiler_execution(
-                profile_service,
-                target_experiment=target_experiment,
-                candidate=candidate,
-                work_root=scratch / "profile-candidate",
-                sandbox_inputs=sandbox_inputs,
-            ):
-                cand_rc, cand_llvm, cand_buffer = guard_execution.emit_pair(
-                    cand_pkg, interface, scratch, "candidate", timeout_s, target_experiment, inputs=sandbox_inputs
-                )
-        if base_rc != 0:
-            offenders.append(
-                {"capsule": name, "kind": "baseline_emission_failed", "baseline_rc": base_rc, "candidate_rc": cand_rc}
-            )
-            continue
-        if base_rc == 0 and cand_rc != 0:
-            offenders.append(
-                {"capsule": name, "kind": "lowering_regressed", "baseline_rc": base_rc, "candidate_rc": cand_rc}
-            )
-            continue
-        emissions_equal = _sha256(base_llvm.encode("utf-8")) == _sha256(cand_llvm.encode("utf-8")) and _sha256(
-            base_buffer.encode("utf-8")
-        ) == _sha256(cand_buffer.encode("utf-8"))
-        if dependencies_unchanged and emissions_equal:
-            rows.append({"capsule": name, "status": _GUARD_UNCHANGED})
-            continue
-        row: dict[str, Any] = {"capsule": name, "status": _GUARD_CHANGED}
-        if emissions_equal:
-            row["reason"] = "execution dependencies changed or are unavailable"
-            rows.append(row)
-            continue
-        try:
-            expected = descriptor.get("expected") or {}
-            base_trace = RD.decode_text(base_llvm, source="baseline", target=target_experiment.target)
-            cand_trace = RD.decode_text(cand_llvm, source="candidate", target=target_experiment.target)
-            base_findings = set(
-                TCK.check(
-                    base_trace,
-                    expected,
-                    json.loads(base_buffer) if base_buffer else None,
-                    target=target_experiment.target,
-                )["violations"]
-            )
-            cand_findings = set(
-                TCK.check(
-                    cand_trace,
-                    expected,
-                    json.loads(cand_buffer) if cand_buffer else None,
-                    target=target_experiment.target,
-                )["violations"]
-            )
-            introduced = sorted(cand_findings - base_findings)
-            row["introduced_findings"] = introduced
-            row["drives_accelerator"] = [
-                bool(TCK.drives_accelerator(base_trace)),
-                bool(TCK.drives_accelerator(cand_trace)),
-            ]
-            if row["drives_accelerator"] == [True, False]:
-                offenders.append({"capsule": name, "kind": "accelerator_dispatch_regressed"})
-            if introduced:
-                offenders.append({"capsule": name, "kind": "trace_findings_introduced", "findings": introduced[:8]})
-        except Exception as exc:  # noqa: BLE001 - an undecodable candidate trace is absence of proof
-            row["decode_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
-            offenders.append({"capsule": name, "kind": "trace_not_decodable"})
-        rows.append(row)
-
-    regrade = None
-    if any(row.get("status") == _GUARD_CHANGED for row in rows):
-        from merlin.targetgen import capsule_grade as CG  # noqa: PLC0415
-        from merlin.targetgen import capsule_runner as CR  # noqa: PLC0415
-
-        # Grade the complete admitted public cohort: a changed shared producer,
-        # runtime or host publication routine can affect consumers elsewhere.
-        with tempfile.TemporaryDirectory(prefix="functional-regrade-") as scratch:
-            output = Path(scratch) if grade_root is None else Path(grade_root)
-            if grade_root is not None:
-                if output.exists():
-                    raise StageGateError("functional regrade evidence destination is not fresh")
-                output.mkdir(parents=True)
-            try:
-                adapters = CR.qa_checkpoint_adapters(target_experiment.target, target_experiment.sim_via)
-                import shutil  # noqa: PLC0415
-
-                grading_candidate = output / "compiler"
-                shutil.copytree(candidate, grading_candidate)
-                with original_compiler_execution(
-                    profile_service,
-                    target_experiment=target_experiment,
-                    candidate=grading_candidate,
-                    work_root=output / "profile-package-work",
-                    sandbox_inputs=sandbox_inputs,
-                ):
-                    guard_execution.require_inline_models(capsules)
-                    with guard_execution.boxed_guard_package(
-                        target_experiment, output, grading_candidate, inputs=sandbox_inputs
-                    ):
-                        score = CG.grade(
-                            grading_candidate,
-                            capsules_root=view.public,
-                            runs_root=output,
-                            model_snapshot_root=output / ".private_model_sources",
-                            labels={"public", "dev"},
-                            contract=view.contract,
-                            oracle_adapters=adapters,
-                            timeout=timeout_s,
-                            target=target_experiment.target,
-                        )
-                scored = score.get("per_capsule") or []
-                expected_names = {
-                    CONTRACTS.mapping_file(path / "capsule.yaml", yaml_file=True).get("name", path.name)
-                    for path in capsules
-                }
-                complete = (
-                    len(scored) == len(expected_names)
-                    and {row.get("capsule") for row in scored} == expected_names
-                    and all(
-                        row.get("status") == "pass" and row.get("numeric") == "pass" and not row.get("cert_verdict")
-                        for row in scored
-                    )
-                    and score.get("integrity_status") == "clean"
-                )
-                regrade = {
-                    "status": "pass" if complete else "fail",
-                    "score": score,
-                    "evidence_root": str(output) if grade_root is not None else None,
-                }
-                if not complete:
-                    offenders.append({"kind": "complete_functional_regrade_failed"})
-            except Exception as exc:  # noqa: BLE001 - missing execution remains a refusal
-                regrade = {"status": "unavailable", "error_type": type(exc).__name__}
-                offenders.append({"kind": "complete_functional_regrade_unavailable"})
-    if CONTRACTS.exact_tree_record(Path(candidate))["sha256"] != package_identity[1]:
-        offenders.append({"kind": "candidate_changed_during_functional_guard"})
-    FI._verify_private_functional_provenance(frozen_functional.host_provenance)
-
-    unchanged = sum(1 for row in rows if row.get("status") == _GUARD_UNCHANGED)
-    changed = sum(1 for row in rows if row.get("status") == _GUARD_CHANGED)
-    return {
-        "status": "clean" if not offenders else "offending",
-        "capsules": len(rows),
-        "proved_unchanged": unchanged,
-        "changed": changed,
-        "offenders": offenders,
-        "rows": rows,
-        "execution_dependencies_unchanged": dependencies_unchanged,
-        "full_output_regrade": regrade,
-    }
 
 
 #: Fields an unmeasured cell carries. It is the same shape as a measured one so the redacted
@@ -539,6 +301,7 @@ def run_stage(
         if rounds != 1 or compiler_edit_contract is None:
             raise StageGateError("queued corpus search uses one continuous round and an explicit edit contract")
         from .search_session import require_stage_budget
+
         require_stage_budget(search.settings, wall_budget_seconds, round_timeout_seconds)
     PREPARATION.validate_stage_selection(
         compiler_pass_selection,
@@ -728,8 +491,9 @@ def run_stage(
     if search is not None:
         from .search_session import timing_projection
 
-        prompt_inputs = replace(prompt_inputs, author_agents=search.author_agents,
-                                search_session=timing_projection(search.settings))
+        prompt_inputs = replace(
+            prompt_inputs, author_agents=search.author_agents, search_session=timing_projection(search.settings)
+        )
     staged_prompt = stage_root / "prompt.txt"
     prompt = SP.materialize_canonical_prompt(prompt_inputs, staged_prompt)
     staged_prompt.chmod(0o444)
@@ -739,6 +503,7 @@ def run_stage(
         raise StageGateError(f"functional fork is invalid before performance authoring: {fork_check.reason}")
 
     from .search_session import stage_deadline
+
     deadline = stage_deadline(search.settings if search is not None else None, wall_budget_seconds)
     previous_submission = candidate_seed
     previous_digest = seed_digest
@@ -814,13 +579,21 @@ def run_stage(
             workspace / "STAGE_CONTEXT.json",
             {
                 "functional_run_id": functional.run_id,
-                **({"queued_author_continuation": {
-                    "enabled": True, "prompt_sha256": _sha256(SP.QUEUED_AUTHOR_CONTINUATION.encode()),
-                    "stop_owner": "original live search coordinator and broker budgets",
-                }} if continue_queued_author else {}),
+                **(
+                    {
+                        "queued_author_continuation": {
+                            "enabled": True,
+                            "prompt_sha256": _sha256(SP.QUEUED_AUTHOR_CONTINUATION.encode()),
+                            "stop_owner": "original live search coordinator and broker budgets",
+                        }
+                    }
+                    if continue_queued_author
+                    else {}
+                ),
                 **({"author_guidance": dict(guidance_record)} if guidance_record is not None else {}),
-                **({"search_session": prompt_inputs.search_session}
-                   if prompt_inputs.search_session is not None else {}),
+                **(
+                    {"search_session": prompt_inputs.search_session} if prompt_inputs.search_session is not None else {}
+                ),
                 **({"broker_transport": broker_transport} if broker_transport != "tcp" else {}),
                 **(
                     {"broker_control_ordering": "Serialize broker requests; evaluation jobs can run in parallel."}
@@ -1030,9 +803,13 @@ def run_stage(
                     timeout_s=round_timeout,
                     codex_binary=codex_path,
                     **(
-                        {"continue_session": True, "continuation_stop":
-                         lambda: queued_author_stop(workflow, broker, deadline)}
-                        if continue_queued_author and not (search is not None and search.settings.continue_author_session) else {}
+                        {
+                            "continue_session": True,
+                            "continuation_stop": lambda: queued_author_stop(workflow, broker, deadline),
+                        }
+                        if continue_queued_author
+                        and not (search is not None and search.settings.continue_author_session)
+                        else {}
                     ),
                     **(
                         {"external_boundary": external_resource_boundary}
@@ -1147,8 +924,11 @@ def run_stage(
         if coordinator is not None:
             target_status = coordinator.status().get("target", {})
             if target_status.get("achieved") is True:
-                stopped_by = {"conditions": ["declared_performance_target"],
-                              "target": target_status, "round": round_index}
+                stopped_by = {
+                    "conditions": ["declared_performance_target"],
+                    "target": target_status,
+                    "round": round_index,
+                }
                 break
         if getattr(broker.workflow, "stop_verdict", None) is not None:
             stopped_by = dict(broker.workflow.stop_verdict)
