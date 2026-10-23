@@ -8,12 +8,13 @@ and a closed integer group runs it as
 
     acc = sum x_q * w_q                         (integer accumulator)
     acc = acc + bias_q                          bias_q = roundeven(bias / (s_x * s_w)), computed ONCE
+    acc = max(acc, 0)                           where the group carries a relu
     y   = clamp(roundeven(acc * M), lo, hi)     M = s_x * s_w / s_out, held by the readout
-    y   = max(y, 0)                             where the group carries a relu
 
 The two agree up to the rounding of the bias into accumulator units and of one single-precision
-product, and they agree on which side of zero a value lands because ``M`` is positive, so applying
-the activation after the scale is the same function as applying it before.
+product. The readout applies the activation to the accumulator before the scale, as the hardware
+does; that equals the source's activation-then-quantize only because ``M`` is positive, which the
+epilogue candidate requires.
 
 This module reads ``s_x``, ``s_w``, ``s_out``, the zero points, the clamp, the activation and
 where the bias comes from, out of the group's own operations. It states the result as the
@@ -321,8 +322,8 @@ def stages(numerics: GroupNumerics) -> tuple[str, ...]:
     """The group's readout stages in the epilogue contract's vocabulary and order."""
     return (
         (("bias_i32",) if numerics.bias_arg_index is not None else ())
-        + ("scale_f32", "round_to_nearest_even", "clamp")
         + (("relu",) if numerics.activation == "relu" else ())
+        + ("scale_f32", "round_to_nearest_even", "clamp")
     )
 
 

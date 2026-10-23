@@ -247,13 +247,16 @@ def test_every_declared_grading_module_exists():
         "merlin.targetgen.golden_provenance",
         "merlin.targetgen.oracle_helpers.program_cosim",
         "merlin.targetgen.oracle_helpers.functional_errata_runner",
+        "merlin.targetgen.rtl_simulator_execution",
+        "merlin.targetgen.rtl_simulator_pin",
+        "merlin.targetgen.rtl_simulator_slot",
     ],
 )
 def test_extracted_policy_and_worker_bytes_remain_in_instrument_identity(tmp_path, monkeypatch, module):
     from merlin.common import paths
 
     sources = {}
-    for name in TC._GRADING_MODULES:
+    for name in {*TC._GRADING_MODULES, module}:
         source = tmp_path / (name + ".py")
         source.write_text("# synthetic instrument source\n")
         sources[name] = source
@@ -271,7 +274,32 @@ def test_extracted_policy_and_worker_bytes_remain_in_instrument_identity(tmp_pat
     assert TC.lookup("synthetic", "L2", DIGEST_A, after, root=cache, ledgers=()) is None
     policy.unlink()
     TC._INSTRUMENT_MEMO.clear()
-    assert TC.instrument_digest(None, "L2", rtl_tier=False) is None
+    removed = TC.instrument_digest(None, "L2", rtl_tier=False)
+    assert removed is None or removed != after
+    assert TC.lookup("synthetic", "L2", DIGEST_A, removed, root=cache, ledgers=()) is None
+
+
+@pytest.mark.parametrize("helper", ["rtl_simulator_execution", "rtl_simulator_pin", "rtl_simulator_slot"])
+def test_simulator_helpers_belong_to_the_real_grading_inventory(helper):
+    from merlin.common.paths import module_source_path
+
+    source = module_source_path(f"merlin.targetgen.{helper}")
+    assert source in TC.grading_path()
+
+
+def test_grading_packages_discover_new_helpers_and_refuse_symlinks(tmp_path, monkeypatch):
+    from merlin.common import paths
+
+    seed = tmp_path / "grader.py"
+    seed.write_text("# grading entrypoint\n")
+    monkeypatch.setattr(paths, "module_source_path", lambda _: seed)
+    assert TC.grading_path() == (seed,)
+    helper = tmp_path / "new_helper.py"
+    helper.write_text("# new grading helper\n")
+    assert set(TC.grading_path()) == {seed, helper}
+    helper.unlink()
+    helper.symlink_to(seed)
+    assert TC.grading_path() is None
 
 
 @pytest.mark.parametrize(

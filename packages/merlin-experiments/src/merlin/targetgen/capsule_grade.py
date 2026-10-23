@@ -33,7 +33,7 @@ from merlin.perf import lowering_coverage as _LOWERING_COVERAGE
 from . import capsule_runner as CR
 from . import coverage_report as CV
 from . import tier_integrity as _TIER_INTEGRITY
-from .capsule_common import NOT_MEASURED_STATUSES
+from .capsule_common import NOT_MEASURED_STATUSES, host_guards_pass, lane_entry_fields, readback_kw, score_lanes
 from .capsule_common import tier_field as _tier_field
 from .capsule_common import tier_status as _tier_status
 from .capsule_perf_ledger import _activity_source as _activity_source
@@ -172,7 +172,7 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
         native,
         target=target,
         entry_symbol=entry,
-        **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+        **readback_kw(readback_policy),
     )
     numeric_status = (native.get("numeric") or {}).get("status") if isinstance(native, dict) else None
     if (
@@ -226,7 +226,7 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
         target=target,
         entry_symbol=entry,
         completed_dispatch=dispatch,
-        **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+        **readback_kw(readback_policy),
         oracle_tier_ceiling=oracle_tier_ceiling,
     )
     static_tiers = tier_check.get("tiers") or {}
@@ -323,7 +323,7 @@ def model_execution_check(
         candidate_check = candidate_native_model_check(
             result,
             target=effective_target if isinstance(effective_target, str) else "",
-            **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+            **readback_kw(readback_policy),
             **({"oracle_tier_ceiling": "L2"} if numerical_screen_requested(result, capsule) else {}),
         )
         violations.extend(candidate_check["violations"])
@@ -785,12 +785,7 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
     if result.get("status") == "gated":
         # The scheduler never executed this model; retain its original deferral.
         return result
-    check = model_execution_check(
-        result,
-        capsule,
-        target=target,
-        **({"readback_policy": readback_policy} if readback_policy is not None else {}),
-    )
+    check = model_execution_check(result, capsule, target=target, **readback_kw(readback_policy))
     from .native_model_policy import attach_numerical_screen
 
     attach_numerical_screen(result, capsule, check)
@@ -1145,6 +1140,9 @@ def _bounded_grade_workers(requested: int, oracle_adapters: dict | None) -> int:
     """
     from .rtl_engine_policy import capsule_worker_cap
 
+    explicit = os.environ.get("MERLIN_GRADE_WORKERS", "")
+    if explicit.isdigit() and int(explicit) > 0:  # an operator who names a number gets it, here too
+        return min(requested, int(explicit))
     engines = {
         str(engine)
         for adapter in (oracle_adapters or {}).values()
@@ -1382,6 +1380,7 @@ def grade(
             score["integrity_exempt"] = pkg.integrity_exempt
             integrity_scan(pkg, **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}))
             score["integrity_status"] = "clean" if not pkg.integrity_exempt else "exempt"
+            CR.require_candidate_product_scope(pkg, oracle_adapters)
         build_package(pkg)
         # A manifest can land before its source entrypoint during authoring.
         # Check once, after a declared build has had the chance to produce it,
@@ -1489,7 +1488,7 @@ def grade(
                 result,
                 _caps_by_name.get(str(result.get("capsule"))),
                 target=target,
-                **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+                **readback_kw(readback_policy),
             )
             # The runner persisted the model result before this suite-level cross-record proof existed.
             # Keep the durable row in sync because QA/selfcheck/checkpoint consumers deliberately re-glob
@@ -1603,7 +1602,7 @@ def grade(
     ungraded = [r for r in results if r.get("status") == "not_graded"]
     deferred = [r for r in results if r.get("status") == "gated"]
     screened = [r for r in results if r.get("status") == "screened_only"]
-    graded = [r for r in results if r.get("status") not in NOT_MEASURED_STATUSES]
+    graded = score_lanes([r for r in results if r.get("status") not in NOT_MEASURED_STATUSES], score)
     from . import expected_refusal as _ER
 
     _declared_refusals = {str(cap.get("name")): cap for cap in caps if _ER.expects_refusal(cap)}
@@ -1760,7 +1759,7 @@ def grade(
                 "generalizing over shape; `with_runtime_loop` is a statement about the pair."
             ),
         }
-    score["functional_pass"] = int(n_pass == len(graded) and len(graded) > 0)
+    score["functional_pass"] = int(n_pass == len(graded) and len(graded) > 0 and host_guards_pass(score))
     # Structure-only smoke bookkeeping (honest, never a numeric pass): a capsule is structurally clean
     # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
     # withheld under --no-oracle). `gradeable` says whether this run had a numeric oracle at all.
@@ -2180,7 +2179,7 @@ def grade(
             for k in ("contract_obligations", "tiers_unexercised"):
                 if r.get(k):
                     entry[k] = r[k]
-        score["per_capsule"].append(entry)
+        score["per_capsule"].append({**entry, **lane_entry_fields(r)})
 
     # active-vs-waiting rollup: wall is the suite wall-clock (overlapped under parallelism); the sum of
     # active_sim across capsules can exceed wall (that ratio IS the parallel speedup). oracle_wait_s is

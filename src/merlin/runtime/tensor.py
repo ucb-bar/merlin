@@ -37,6 +37,12 @@ def pool_out_dims(H: int, W: int, pool_size, pool_stride, pool_padding) -> tuple
     return (H + pt + pb - ph) // sh + 1, (W + pl + pr - pw) // sw + 1
 
 
+#: Attributes that select the exact rational host readout for an ``acc_scale`` stage.
+EXACT_READOUT_PARAMETERS = frozenset(
+    {"scale_numerator", "scale_denominator", "zero_point", "quant_min", "quant_max", "rounding"}
+)
+
+
 @dataclass
 class Tensor:
     """A 1-D or 2-D integer tensor stored row-major in a flat list."""
@@ -54,14 +60,14 @@ class Tensor:
 
     # -- construction -------------------------------------------------------
     @classmethod
-    def zeros(cls, shape: tuple[int, ...], dtype: str = "i32") -> "Tensor":
+    def zeros(cls, shape: tuple[int, ...], dtype: str = "i32") -> Tensor:
         n = 1
         for d in shape:
             n *= d
         return cls(tuple(shape), [0] * n, dtype)
 
     @classmethod
-    def deterministic(cls, name: str, shape: tuple[int, ...], dtype: str = "i8", lo: int = 0, hi: int = 3) -> "Tensor":
+    def deterministic(cls, name: str, shape: tuple[int, ...], dtype: str = "i8", lo: int = 0, hi: int = 3) -> Tensor:
         """Fill deterministically from ``name`` (no RNG): stable across runs/machines.
 
         The fill is indexed by ``(row, col)`` rather than by flat position, so rows and columns
@@ -111,7 +117,7 @@ class Tensor:
         return _nest(list(self.shape), self.data)
 
     # -- ops ----------------------------------------------------------------
-    def matmul(self, rhs: "Tensor") -> "Tensor":
+    def matmul(self, rhs: Tensor) -> Tensor:
         """2-D integer matmul: (m,k) x (k,n) -> (m,n) accumulated in i32."""
         m, k = self.shape
         k2, n = rhs.shape
@@ -131,7 +137,7 @@ class Tensor:
                     out[oi + j] += aip * b[bp + j]
         return Tensor((m, n), out, "i32")
 
-    def add_bias(self, bias: "Tensor") -> "Tensor":
+    def add_bias(self, bias: Tensor) -> Tensor:
         """Add a length-n bias vector to each row of an (m,n) tensor."""
         m, n = self.shape
         if bias.shape != (n,):
@@ -143,7 +149,7 @@ class Tensor:
                 out[oi + j] += bias.data[j]
         return Tensor((m, n), out, self.dtype)
 
-    def requant(self, shift: int) -> "Tensor":
+    def requant(self, shift: int) -> Tensor:
         """Rounding arithmetic right shift by ``shift`` (a fixed-point requantization).
 
         Integer requantization rounds half up. A command buffer can instead declare
@@ -155,13 +161,16 @@ class Tensor:
         out = [(x + half) >> shift for x in self.data]
         return Tensor(self.shape, out, self.dtype)
 
-    def requant_acc_scale(self, scale: float) -> "Tensor":
+    def requant_acc_scale(self, scale: float, *, parameters: dict | None = None) -> Tensor:
         """Scale in float32 and round to the nearest integer, ties to even.
 
         This is the declared ``acc_scale`` command-buffer arithmetic. An ``output_dtype: i8``
         stage applies saturation separately through :meth:`to_i8`; integer-shift
-        :meth:`requant` remains a distinct operation.
+        :meth:`requant` remains a distinct operation. A command that names the exact host
+        readout (``EXACT_READOUT_PARAMETERS``) gets :meth:`requant_exact` instead.
         """
+        if parameters and not EXACT_READOUT_PARAMETERS.isdisjoint(parameters):
+            return self.requant_exact(scale, parameters=parameters)
         import struct
 
         def f32(v: float) -> float:  # round a Python float to IEEE-754 single
@@ -182,6 +191,28 @@ class Tensor:
                 y = i if i % 2 == 0 else nxt
             out.append(int(y))
         return Tensor(self.shape, out, self.dtype)
+
+    def requant_exact(self, scale: float, *, parameters: dict | None = None) -> Tensor:
+        """Exact rational scaling and one host RNE; never a device fp32 chain."""
+        import numpy as np
+
+        from merlin.runtime.exact_readout import requantize_int32
+        from merlin.targetgen.exact_arithmetic import rational
+
+        attrs = parameters or {}
+        if ("scale_numerator" in attrs) != ("scale_denominator" in attrs):
+            raise ValueError("paired exact scale numerator and denominator required")
+        factor = rational(1 if "scale_numerator" in attrs else scale)
+        codes = requantize_int32(
+            np.asarray(self.data).reshape(self.shape),
+            scale_numerator=attrs.get("scale_numerator", factor.numerator),
+            scale_denominator=attrs.get("scale_denominator", factor.denominator),
+            zero_point=attrs.get("zero_point", 0),
+            quant_min=attrs.get("quant_min", -(2**31)),
+            quant_max=attrs.get("quant_max", 2**31 - 1),
+            rounding=attrs.get("rounding", "half_to_even"),
+        )
+        return Tensor(self.shape, codes.reshape(-1).tolist(), self.dtype)
 
     def requant_acc_scale_by_column(self, scales: list[float]) -> Tensor:
         """Apply one declared float32 multiplier per final-axis column.
@@ -204,57 +235,40 @@ class Tensor:
         return Tensor(self.shape, [columns[column][row] for row in range(rows) for column in range(width)],
                       self.dtype)
 
-    def residual_add_scaled(self, other: "Tensor", lhs_scale: float, rhs_scale: float) -> "Tensor":
-        """``roundeven(self * lhs_scale + other * rhs_scale)``, elementwise, in float32.
-
-        THE REFERENCE for a quantized residual add, and it rounds ONCE: both operands are scaled into
-        the output's domain, summed, and the sum is rounded half-to-even. That is what a
-        fake-quantized capture computes (dequantize, add in floating point, quantize). A unit that
-        scales and rounds each operand on the way in and then adds integers computes a different
-        function, up to one output step per operand; a capsule says how far a target may be from
-        this reference (``bound_lsb``) instead of pretending the two are one.
-        """
-        import struct
+    def residual_add_scaled(self, other: Tensor, lhs_scale: float, rhs_scale: float) -> Tensor:
+        """Exact scaled sum with a single host RNE after both terms."""
+        from merlin.targetgen.exact_arithmetic import rational
 
         if self.shape != other.shape:
             raise ValueError(f"residual_add shape mismatch: {self.shape} vs {other.shape}")
+        sa, sb = rational(lhs_scale), rational(rhs_scale)
+        return Tensor(
+            self.shape, [round(a * sa + b * sb) for a, b in zip(self.data, other.data, strict=True)], self.dtype
+        )
 
-        def f32(v: float) -> float:
-            return struct.unpack("<f", struct.pack("<f", v))[0]
-
-        sa, sb = f32(lhs_scale), f32(rhs_scale)
-        out = []
-        for a, b in zip(self.data, other.data):
-            total = f32(f32(f32(float(a)) * sa) + f32(f32(float(b)) * sb))
-            i = int(total)
-            nxt = i - 1 if total < 0 else i + 1
-            rem = abs(total - i)
-            out.append(i if rem < 0.5 else (nxt if rem > 0.5 else (i if i % 2 == 0 else nxt)))
-        return Tensor(self.shape, out, self.dtype)
-
-    def relu(self) -> "Tensor":
+    def relu(self) -> Tensor:
         return Tensor(self.shape, [x if x > 0 else 0 for x in self.data], self.dtype)
 
     # -- vector-family (SIMD) ops: elementwise over equal-shape vectors + reduction --
-    def ew_add(self, other: "Tensor") -> "Tensor":
+    def ew_add(self, other: Tensor) -> Tensor:
         """Elementwise add of two equal-shape tensors."""
         if self.shape != other.shape:
             raise ValueError(f"ew_add shape mismatch: {self.shape} vs {other.shape}")
         return Tensor(self.shape, [a + b for a, b in zip(self.data, other.data)], self.dtype)
 
-    def ew_mul(self, other: "Tensor") -> "Tensor":
+    def ew_mul(self, other: Tensor) -> Tensor:
         """Elementwise multiply of two equal-shape tensors."""
         if self.shape != other.shape:
             raise ValueError(f"ew_mul shape mismatch: {self.shape} vs {other.shape}")
         return Tensor(self.shape, [a * b for a, b in zip(self.data, other.data)], self.dtype)
 
-    def reduce_sum(self) -> "Tensor":
+    def reduce_sum(self) -> Tensor:
         """Sum all elements -> a length-1 tensor."""
         return Tensor((1,), [sum(self.data)], self.dtype)
 
     def maxpool2d_rows(
         self, *, in_dims, pool_size, pool_stride, pool_padding=(0, 0, 0, 0), pad_value: int | None = None
-    ) -> "Tensor":
+    ) -> Tensor:
         """Windowed MAX over the spatial axes of a 2-D ``[batch*H*W, C]`` tensor -> ``[batch*Ho*Wo, C]``.
 
         THE ONLY windowed-max primitive in the runtime, on purpose. ``reduce_sum`` above is a TOTAL
@@ -336,7 +350,7 @@ class Tensor:
                         oi += 1
         return Tensor((batch * Ho * Wo, channels), out, self.dtype)
 
-    def dequant_per_channel(self, scale: "Tensor", axis: int = 1) -> "Tensor":
+    def dequant_per_channel(self, scale: Tensor, axis: int = 1) -> Tensor:
         """Dequantize a 2-D integer weight by a per-channel float scale -> a float32 weight.
 
         This is model2MLIR's int8 weight-only idiom: ``W_f32[k, n] = W_i8[k, n] * scale[c]`` where
@@ -358,5 +372,5 @@ class Tensor:
             raise ValueError(f"dequant_per_channel axis must be 0 or 1, got {axis}")
         return Tensor((k, n), out, "f32")
 
-    def to_i8(self) -> "Tensor":
+    def to_i8(self) -> Tensor:
         return Tensor(self.shape, [_i8_clamp(x) for x in self.data], "i8")

@@ -59,12 +59,17 @@ the prose sections below, `interface_dialect_contract.yaml` and the registered d
 
 | op | command-buffer opcode | positional operands (in order) | registered dialect (IRDL) |
 | --- | --- | --- | --- |
+| `affine_map` | `AFFINE_MAP` | `x`, `y?` | no |
 | `attention_pv` | `ATTENTION_PV` | `p`, `v` | no |
 | `attention_qk` | `ATTENTION_QK` | `q`, `k` | no |
 | `bias_add` | `BIAS_ADD` | `src`, `bias` | no |
 | `commit` | `COMMIT` | — | yes |
+| `concat` | `CONCAT` | `src0`, `src1`, `src2?`, `src3?`, `src4?`, `src5?`, `src6?`, `src7?` | no |
 | `conv2d` | `CONV2D` | `ifm`, `weight` | yes |
 | `evict` | `EVICT` | — | yes |
+| `fence` | `FENCE` | — | no |
+| `fill` | `FILL` | — | no |
+| `insert_slice` | `INSERT_SLICE` | `dest`, `src` | no |
 | `matmul` | `MATMUL_RESIDENT` | — | yes |
 | `matmul_batched` | `BATCHED_MATMUL` | `a`, `w` | no |
 | `movement` | `MOVEMENT` | `src` | yes |
@@ -74,9 +79,11 @@ the prose sections below, `interface_dialect_contract.yaml` and the registered d
 | `rope` | `ROPE` | `src` | no |
 | `softmax` | `SOFTMAX` | `src` | no |
 | `tensor` | — (declares a leaf, issues no command) | — | yes |
+| `window_sum` | `WINDOW_SUM` | `src` | no |
 
 Positional operands are given in the order the op takes them; the parser refuses a count that does not
-match (truncating either side would change the ABI). Every whole-op result is recorded as
+match (truncating either side would change the ABI). An operand written `k?` is an optional TRAILING
+operand: the op takes between its required count and its full count. Every whole-op result is recorded as
 `role = "output"` under its `name` attribute, which becomes the command's `dst` operand. The residency
 ops (`resident_pack`, `matmul`, `commit`, `evict`) name their operands in their own sections.
 
@@ -221,6 +228,74 @@ Maps to `MOVEMENT` (`operands: {src, dst}`). A load→store round trip: `dst` ho
 UNCHANGED, only the container dtype widens. No clamp, no requantize -- the point of the capsule is that
 the data survives the trip bit-for-bit. Its capsules carry exactly ONE op, so a parser that skips it
 reads them as empty programs.
+
+Optional `form` attribute: `identity` (the default above), `permute` {`perm`}, `slice`
+{`offsets`, `sizes`, `strides`}, `pad` {`low`, `high`, `mode` = constant|reflect|replicate, `value_code`
+for a constant pad}, `broadcast` (to the declared result shape, LEADING dims only) or `repeat`
+{`repeats`}. Each form's attributes are required; an attribute that belongs to another form is
+rejected. An optional `scale` (f32) requantizes every moved element once. Exact semantics:
+`command_buffer_abi.yaml` → `MOVEMENT`.
+```mlir
+%P = merlin_iface.movement %X {name = "P", form = "pad", low = [0, 1], high = [0, 1], mode = "constant",
+       value_code = 0 : i64, output_dtype = "i8"} : (tensor<4x4xi8>) -> tensor<4x6xi8>
+```
+
+### `merlin_iface.affine_map` — an affine map of one or two int8 tensors, rounded once
+```mlir
+%Z = merlin_iface.affine_map %X, %Y {name = "Z", weights = [304, -245], constant = 0 : i64,
+       activation = "none", readout_scale = 0.0021 : f32, output_dtype = "i8"} :
+     (tensor<16x16xi8>, tensor<16x16xi8>) -> tensor<16x16xi8>
+```
+Maps to `AFFINE_MAP` (`operands: {x, y?, dst}`). `acc = weights[0]*x + weights[1]*y + constant` in exact
+integers, ReLU on the accumulator iff `activation = "relu"`, then ONE readout `clamp(RNE(f32(acc) *
+readout_scale))`; an `i32` result has no readout. The second operand is optional (a scalar map reads one
+tensor) and may broadcast along leading dims only. `weights`, `constant`, `activation`,
+`readout_scale` and `output_dtype` are REQUIRED. This is the exact form of add/sub.Tensor,
+add/sub/mul/div.Scalar, neg, standalone relu and int8 → int32 widening. Full rules:
+`command_buffer_abi.yaml` → `AFFINE_MAP`.
+
+### `merlin_iface.concat` — tensors joined along one axis
+```mlir
+%C = merlin_iface.concat %A, %B {name = "C", axis = 1 : i64, output_dtype = "i8"} :
+     (tensor<4x8xi8>, tensor<4x8xi8>) -> tensor<4x16xi8>
+```
+Maps to `CONCAT` (`operands: {src0, src1, src2?..src7?, dst}`). `axis` is required; an optional `scales`
+list requantizes each source once (independent input scales); without it the sources share qparams.
+
+### `merlin_iface.insert_slice` — a tensor written into a slice of another
+```mlir
+%S = merlin_iface.insert_slice %D, %X {name = "S", offsets = [1, 0], strides = [1, 1], output_dtype = "i8"} :
+     (tensor<4x4xi8>, tensor<2x4xi8>) -> tensor<4x4xi8>
+```
+Maps to `INSERT_SLICE` (`operands: {dest, src, dst}`): `dst` is `dest` with
+`dst[offsets + i*strides] = src` (slice_scatter; select_scatter keeps the selected dim at size 1).
+
+### `merlin_iface.fill` — one quantized code everywhere
+```mlir
+%F = merlin_iface.fill {name = "F", value_code = 0 : i64, output_dtype = "i8"} : () -> tensor<4x4xi8>
+```
+Maps to `FILL` (`operands: {dst}`). `value_code` is the already-quantized code `sat(RNE(v/s_out))`;
+fill, full, full_like and zero_fill (code 0) are all this op.
+
+### `merlin_iface.window_sum` — exact window sums, one readout per output
+```mlir
+%P = merlin_iface.window_sum %X {name = "P", mode = "window", kernel = [2, 2], stride = [2, 2], padding = [0, 0],
+       count_include_pad = true, readout_scale = 0.8 : f32, output_dtype = "i8"} :
+     (tensor<1x8x8x16xi8>) -> tensor<1x4x4x16xi8>
+```
+Maps to `WINDOW_SUM` (`operands: {src, dst}`). `mode` is `window` (average pools), `adaptive`, `reduce`
+{`dims`, `average`} (mean.dim / sum), `window_transpose` / `adaptive_transpose` (the pool backwards) or
+`fold` (col2im). Sums are exact int32; each output reads out once at `readout_scale / count`. Spatial dims
+are channels-last by default (`layout = "nchw"` for trailing). Full rules: `command_buffer_abi.yaml` →
+`WINDOW_SUM`.
+
+### `merlin_iface.fence` — a completion barrier between commands
+```mlir
+merlin_iface.fence : () -> ()
+```
+Maps to `FENCE` (no operands, no result). Every earlier command's memory effects are complete and visible
+before any later command issues; no value changes. A command reading a tensor an earlier command of the
+same buffer wrote needs one between them on a target obliged to `must_fence_dram_read_after_write`.
 
 ### `merlin_iface.attention_qk` — the first matmul of attention
 ```mlir

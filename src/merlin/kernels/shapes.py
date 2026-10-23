@@ -77,6 +77,40 @@ def zero_initialised(op) -> bool:
     return _is_zero_attr(getattr(const, "value", None))
 
 
+def accumulator_init(op) -> str | None:
+    """How ``op``'s accumulator starts: ``"zero"``, ``"int32_seed"`` or None (unrecognised).
+
+    ``int32_seed`` is an integer bias preloaded into the accumulator: the init is a ``linalg.broadcast``
+    (or ``tensor.splat``) of an i32 value tagged ``prov.role = "acc_seed"``, or a full i32 init on a
+    contraction tagged ``prov.accumulator_init = "int32_seed"``. A seeded contraction ADDS its init, so
+    it is never zero-initialised; only a caller that preloads the seed (an accumulator-seed load) may
+    take it, and :func:`zero_initialised` keeps answering no for it.
+    """
+    from xdsl.ir import Operation
+
+    if zero_initialised(op):
+        return "zero"
+    operands = list(getattr(op, "operands", ()))
+    if len(operands) < 3:
+        return None
+    init = operands[2]
+    element = getattr(getattr(init, "type", None), "element_type", None)
+    if str(element) != "i32":
+        return None
+
+    def tag(owner, key):
+        value = (getattr(owner, "attributes", {}) or {}).get(key)
+        return getattr(value, "data", None)
+
+    if tag(op, "prov.accumulator_init") == "int32_seed":
+        return "int32_seed"
+    owner = init.owner
+    if isinstance(owner, Operation) and owner.name in {"linalg.broadcast", "tensor.splat"}:
+        if tag(owner, "prov.role") == "acc_seed":
+            return "int32_seed"
+    return None
+
+
 def _is_zero_attr(attr) -> bool:
     """Whether ``attr`` is a zero constant of any numeric kind. Unrecognised => False (fail closed).
 
@@ -141,7 +175,7 @@ def _iterator_types(op) -> "list[str] | None":
             inner = getattr(entry, "data", entry)
             name = getattr(inner, "data", inner)
             out.append(str(name))
-        return out or None
+        return out
     return None
 
 

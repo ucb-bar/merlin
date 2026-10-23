@@ -299,3 +299,76 @@ resolved performance entry, claim, template, facts and selected requirement
 identity; the manifest binds its bytes, and release preparation copies it.
 The ledger is pending work: it issues no performance capsule, measurement, or
 Phase 2 readiness. Phase 2 needs a separately completed full preparation run.
+
+## Optional device coverage
+
+Retained-call packaging keeps strict device rows and unscored host guards as its
+existing defaults. An explicitly selected `core_aten.cohorts` row may instead set
+`lane: any`: its full-call correctness counts whether execution uses the host or
+an admitted device route. It neither requires nor forbids the device lane. Empty
+`host_guard` selections require `core_aten.allow_empty_host_guards: true`; public
+and hidden cohorts remain required and retain their private-oracle isolation.
+
+An optional row does not receive numeric preparation merely because a global
+`numeric_flow` exists. Select `prepare_numeric: true` on that row to use the
+existing frozen flow. This preserves its exact integer-reference and readout
+checks. Correct host fallback may satisfy the selected numerical contract, but
+cannot supply attributed device evidence or qualified device credit.
+There is no new numeric policy or expansion of the software specification.
+
+Before optional fallback, the selected execution provider must implement
+`validate_package(directory, *, target, package, facts) -> None`. It validates the
+submitted catalog against the prepared source independently of route applicability
+and raises on invalid input. A missing hook, non-None return, invalid catalog/hash,
+or compiler failure is an execution failure. Only an ordinary route decline after
+successful validation permits host fallback. Device counts require the existing
+source-bound calls, linked-build identity and actual executed instruction evidence.
+Inventory validation alone is not a compiled-object or device certificate.
+
+`device_lane_scored_pass` measures ordinary full-call correctness with verified,
+source-bound executed device instructions. It does not by itself establish
+software-spec numerical qualification. For the selected Gemmini `spec_int8` example,
+a spec-tied release must separately require
+source-selected numeric admission against the pinned software/host/facts contracts,
+the checked emitted schedule and partial-sum/full-i32 bounds, and exact raw i32
+accumulator and readout references through the existing `spec_int8` path.
+
+`spec_qualified_device_pass` counts the subset whose trusted grader verifies those
+selected-policy obligations against the actual candidate and executed build.
+`device_unqualified_pass` records ordinary correct device executions without that
+qualification. Missing, malformed or incomplete proof earns no qualified credit;
+candidate-provided flags cannot issue the trusted qualification. The counter does
+not establish agreement with the original FP32 output or qualify a new format.
+The initial supported domain is prepared, quantized `spec_int8` calls with complete
+raw-i32 and ordered-f32 observations. The selected provider's verifier checks a
+closed source-derived emitted schedule, independently reproduces its object bytes,
+and joins them to the executed ELF and trace. Other proof forms remain unqualified
+until an independently reviewed checker supports them.
+
+Wrapping-i8 widening and host truncation preserve final modulo bytes; that proof
+does not establish bounds on the 20-bit internal partial sums or exact raw i32
+readout. Explicit native `spec_int8` adds those obligations but retains the standing
+qualification caveat when host int8 narrowing is not declared. Keep that caveat
+when describing the mixed pipeline. The existing `int8_w8a8` path remains diagnostic
+and does not confer spec conformity. Neither ordinary device success nor the
+qualified subset establishes release/launch readiness. These distinctions
+preserve the existing spec, numerical gates and prepared-host-fallback limit above.
+
+For continued device-coverage optimization, explicitly choose
+`--objective device-coverage --schedule continuous --max-wall-s <seconds>
+--plateau-rounds 0`. Correctness and functional completion remain honest independent
+results; all-host correctness and READY do not prove maximum device coverage or
+end authoring early. The active-work budget is checked between provider rounds,
+with the existing round timeout; it is not hard wall preemption. The objective and
+budget outcome are recorded, and resume cannot change the objective. No corpus,
+route, numeric format, or device eligibility is selected by this option.
+
+In source-bound provider mode, fallback uses trusted Merlin host lowering. The
+submitted host `llvm_mlir` text is not executed or qualified; the submitted device
+catalog is validated and bound to the source. Coverage grading evaluates the final
+current workspace package. The harness does not select or restore a best earlier
+snapshot, so the agent must retain its best fully correct implementation itself.
+Neither budget termination nor a functional pass proves maximum device coverage.
+The receipt records the actual authoring stop reason and its active-work boundary
+separately from recorded later certification/finalization work. A cost-cap stop
+keeps that reason even if the wall budget is also exhausted.

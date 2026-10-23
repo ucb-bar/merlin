@@ -9,15 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-# Flat-staged in the experiment sandbox, `generate` IS the top-level package, so the three-dot form
-# raises "attempted relative import beyond top-level package" and, because __init__ imports this
-# module eagerly, takes the whole package with it. MEASURED: a mandated authoring command failed
-# that way and the run was recorded not conformant on scaffold_generators_used. `common` is staged
-# as a top-level package beside `generate`, so the absolute form resolves there.
-try:
-    from ...common.artifacts import Artifact
-except ImportError:  # flat-staged: `common` is a top-level package beside us
-    from common.artifacts import Artifact
+from merlin.common.artifacts import Artifact
 
 
 def _module_yml(module_name: str) -> str:

@@ -972,3 +972,13 @@ Finite-point row observations require pure returned-value quantization, stable R
 ## Exact BF16 integer observations
 
 Exact BF16 integer observations preserve the original scale/product DAG and require pure roundeven values, integer-only observations, stable RNE, nontrapping arithmetic, unobserved flags and standard unobserved representation copies. Compose after finite-point specialization; each contract remains independently required.
+
+## Closed integer contraction widening
+
+- `modular_contractions.py` widens only closed unflagged integer multiply/add
+  reductions from a proven zero initializer, using caller-supplied wider datapaths.
+  A retained truncating host readout preserves every original wrapping result bit,
+  including wider-accumulator overflow. Nonzero initialization, overflow promises,
+  extra arithmetic, ambiguous precision and floating point refuse. This is an
+  explicit preparation step with original/source hashes; it changes no default
+  scalar or quantization policy and grants no backend or execution qualification.

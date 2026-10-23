@@ -301,10 +301,14 @@ def test_gptq_is_deterministic_across_processes(algorithm):
 _CAPTURE = r"""
 import importlib.util
 import json
+import pathlib
 import sys
 
 sys.path.insert(0, sys.argv[1])
 sys.path.insert(0, sys.argv[2])
+# The quantizer imports its own Merlin package (as the capture worker arranges), so
+# the capture puts the package that owns the selected source on the path, never another checkout.
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve().parents[1]))
 import torch
 from torch.nn import functional as F
 

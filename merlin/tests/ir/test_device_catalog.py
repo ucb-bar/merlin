@@ -87,19 +87,25 @@ module {
         op = next(mq.walk(module, "linalg.matmul"))
         op.attributes["prov.region_id"] = StringAttr("matmul_0")
         ordinal = next(index for index, entry in enumerate(module.walk()) if entry is op)
-        row = {"region": "matmul_0", "symbol": "converted_kernel",
-               "source_operation_ordinal": ordinal, "tensor_types": list(types),
-               "target_dtypes": ["i8", "i8", "i32"]}
-        manifest = {"abi": {"dtypes": ["f32", "f32", "f32"]},
-                    "bindings": [row], "source_conversion": conversion}
+        row = {
+            "region": "matmul_0",
+            "symbol": "converted_kernel",
+            "source_operation_ordinal": ordinal,
+            "tensor_types": list(types),
+            "target_dtypes": ["i8", "i8", "i32"],
+        }
+        manifest = {"abi": {"dtypes": ["f32", "f32", "f32"]}, "bindings": [row], "source_conversion": conversion}
         return module, row, manifest
 
     module, row, manifest = prepared()
     assert not offload.offloadable_contractions(module, "gemmini")
     assert catalog_source_conversion(manifest, "gemmini") == ("f32", "f32", "f32")
     result = rewrite_contractions_to_device(
-        module, "gemmini", catalog_selection={"matmul_0": types},
-        catalog_bindings={"matmul_0": row}, catalog_manifest_data=manifest,
+        module,
+        "gemmini",
+        catalog_selection={"matmul_0": types},
+        catalog_bindings={"matmul_0": row},
+        catalog_manifest_data=manifest,
     )
     assert result.moved == 1
     assert result.routed[0].dtypes == ("f32", "f32", "f32")
@@ -115,18 +121,29 @@ module {
     module, row, manifest = prepared()
     row["target_dtypes"] = ["f32", "f32", "f32"]
     with pytest.raises(ValueError, match="unbound target format"):
-        rewrite_contractions_to_device(module, "gemmini", catalog_selection={"matmul_0": types},
-                                       catalog_bindings={"matmul_0": row}, catalog_manifest_data=manifest)
+        rewrite_contractions_to_device(
+            module,
+            "gemmini",
+            catalog_selection={"matmul_0": types},
+            catalog_bindings={"matmul_0": row},
+            catalog_manifest_data=manifest,
+        )
 
     nonzero = source.replace("constant 0.0", "constant 1.0")
     module = mq.parse(nonzero)
     op = next(mq.walk(module, "linalg.matmul"))
     op.attributes["prov.region_id"] = StringAttr("matmul_0")
     with pytest.raises(ValueError, match="absent or ambiguous"):
-        rewrite_contractions_to_device(module, "gemmini", catalog_selection={"matmul_0": types},
-                                       catalog_manifest_data={"abi": {"dtypes": ["f32", "f32", "f32"]},
-                                                              "bindings": [prepared()[1]],
-                                                              "source_conversion": conversion})
+        rewrite_contractions_to_device(
+            module,
+            "gemmini",
+            catalog_selection={"matmul_0": types},
+            catalog_manifest_data={
+                "abi": {"dtypes": ["f32", "f32", "f32"]},
+                "bindings": [prepared()[1]],
+                "source_conversion": conversion,
+            },
+        )
 
 
 @pytest.mark.skipif(_CC is None, reason="no C compiler")

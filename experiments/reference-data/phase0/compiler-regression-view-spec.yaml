@@ -1,0 +1,90 @@
+schema_version: 1
+status: pending_fix_capsules_registry_integration
+reason: >-
+  Registry and regression_capsules.py are absent on core-aten and on the locally
+  available origin/fix-capsules revision c7c4ea63. Fetch was attempted, but
+  GitHub DNS is unavailable in this environment. These are authored capsule
+  specifications for integration with that registry, not generated evidence.
+mechanism:
+  frontend: m2m.result_layout module attribute from same-conversion FakeTensor metadata
+  compiler: borrowed memref reinterpretation or owned strided allocation and logical copy
+  abi: descriptor results; legacy output-parameter calls retain value semantics
+  ownership: normalize deallocation first, then return borrowed views and reclaim discarded owned results
+  checks: native allocation identity, write-through, strides, offsets, runtime extents, values and mutations
+  exclusions: expected answers and operator-name dispatch cannot select compiler behavior
+regressions:
+  - id: result-view-alias
+    overload: aten.alias.default
+    call: "alias(x)"
+    input_shape: [3, 5]
+    obligation: shares input allocation
+  - id: result-view-as-strided
+    overload: aten.as_strided.default
+    call: "as_strided(x, [2, 3], [5, 1], 6)"
+    input_shape: [4, 5]
+    obligation: shares input allocation, stride and nonzero offset
+  - id: result-view-diagonal
+    overload: aten.diagonal.default
+    call: "diagonal(x, 1, 0, 2)"
+    input_shape: [2, 3, 4]
+    obligation: shares input allocation with composed diagonal strides
+  - id: result-view-expand
+    overload: aten.expand.default
+    call: "expand(x, [3, 5])"
+    input_shape: [1, 5]
+    obligation: zero stride and writes through returned storage
+  - id: result-view-permute
+    overload: aten.permute.default
+    call: "permute(x, [2, 0, 1])"
+    input_shape: [2, 3, 4]
+    obligation: reordered strides and shared allocation
+  - id: result-view-resize
+    overload: aten.resize_.default
+    call: "resize_(x, [3, 2])"
+    input_shape: [2, 3]
+    obligation: capacity-proven input reuse with mutation and user result aliases
+  - id: result-view-select
+    overload: aten.select.int
+    call: "select(x, 1, 1)"
+    input_shape: [2, 3, 4]
+    obligation: rank reduction preserves strides and offset
+  - id: result-view-slice
+    overload: aten.slice.Tensor
+    call: "slice(x, 1, 1, 5, 2)"
+    input_shape: [4, 5]
+    obligation: step multiplies stride and start sets offset
+  - id: result-view-split
+    overload: aten.split_with_sizes.default
+    call: "split_with_sizes(x, [2, 3], 1)"
+    input_shape: [4, 5]
+    obligation: both results share the input with distinct offsets
+  - id: result-view-squeeze-dim
+    overload: aten.squeeze.dim
+    call: "squeeze(x, 1)"
+    input_shape: [3, 1, 5]
+    obligation: singleton removal retains allocation
+  - id: result-view-squeeze-dims
+    overload: aten.squeeze.dims
+    call: "squeeze(x, [0, 2])"
+    input_shape: [1, 3, 1, 5]
+    obligation: multiple singleton removals retain allocation
+  - id: result-view-unsqueeze
+    overload: aten.unsqueeze.default
+    call: "unsqueeze(x, 1)"
+    input_shape: [3, 5]
+    obligation: inserted stride and shared allocation
+  - id: result-view-reshape
+    overload: aten.view.default
+    call: "view(x, [5, 3])"
+    input_shape: [3, 5]
+    obligation: legal reshaping retains allocation
+  - id: result-layout-dynamic-fresh
+    overload: aten.nonzero.default
+    call: "nonzero(x)"
+    input_shape: [3, 5]
+    obligation: owned column-major storage with stride expressed in runtime result extent
+validation:
+  frontend: tests/test_result_layout.py
+  compiler: merlin/tests/ir/test_result_layout.py
+  transport: merlin/tests/targetgen/test_core_aten_batch.py
+  campaign: fresh captures and all 193 SCALAR calls

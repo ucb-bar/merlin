@@ -143,6 +143,9 @@ module_access = _module
 
 
 MODULE_ACCESS = (
+    _module(
+        "merlin.targetgen.exact_quantized_reference", "oracle", aliases=("merlin.targetgen.core_aten_w8a8_reference",)
+    ),
     _module("merlin.perf.analysis_worker", "grader"),
     # The whole-model build reads a model capsule's golden and recomputes its oracle; the rest of the
     # family grades or measures what a candidate built. Host code, withheld from a candidate compiler.
@@ -232,6 +235,7 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.rocc.decode", "grader"),
     _module("merlin.targetgen.trace_check", "grader"),
     _module("merlin.targetgen.capsule_grade", "grader"),
+    _module("merlin.targetgen.core_aten_capsules", "grader"),
     _module("merlin.targetgen.capsule_perf_ledger", "grader"),
     _module("merlin.targetgen.capsule_tier_result", "grader"),
     _module("merlin.targetgen.capsule_lane_evidence", "grader"),

@@ -325,3 +325,34 @@ def test_gguf_capture_uses_framework_python_not_compiler(tmp_path, monkeypatch):
     assert result.root == tmp_path / "bundle"
     assert calls[0][:2] == [str(capture), "-c"]
     assert "m2m.frontends.gguf" in calls[0][2]
+
+
+def test_capture_registry_pins_reviewed_full_call_frontend():
+    from merlin.common import provenance
+
+    pin = provenance.load_pins(provenance.software_pins_path())[model2mlir.CAPTURE_PIN]
+    assert pin.commit == "9ef1c80ca21e6d82b9353f6966cefc4614b7c421"
+    assert pin.content_check is True
+    assert pin.repo_canonical == "https://github.com/ucb-bar/model2MLIR.git"
+    assert {
+        "m2m/ir/decompositions.py",
+        "m2m/capture/static_aten.py",
+        "m2m/capture/torch_export.py",
+        "m2m/capture/causal_session.py",
+        "m2m/capture/trace.py",
+        "m2m/ir/import_fx.py",
+        "m2m/ir/complex_factories.py",
+        "m2m/ir/torch_cpu_rng.py",
+        "m2m/capture/fake_metadata.py",
+        "m2m/ir/result_layout.py",
+        "m2m/ir/structural.py",
+        "m2m/ir/fft.py",
+        "m2m/ir/embedding_bag_cpu.py",
+        "m2m/ir/cpu_sum.py",
+        "m2m/ir/cpu_group_norm.py",
+        "m2m/ir/cpu_layer_norm_backward.py",
+        "m2m/ir/half_layer_norm.py",
+        "m2m/ir/grid_sample.py",
+        "m2m/ir/torchmlir_decomps.py",
+        "m2m/ir/storage_resize.py",
+    }.issubset(pin.requires_paths)

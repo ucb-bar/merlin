@@ -1,0 +1,8 @@
+{
+  "target": "synthetic_core_aten",
+  "fixture_only": true,
+  "facts": {
+    "datapaths": [{"name": "input", "dtype": "i8"}, {"name": "accumulator", "dtype": "i32"}],
+    "interfaces": [{"name": "funct_decode_table", "custom_opcode": 43}]
+  }
+}

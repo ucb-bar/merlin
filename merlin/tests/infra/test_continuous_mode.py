@@ -52,7 +52,7 @@ def test_qa_grade_grades_a_snapshot_not_the_live_workspace():
     from merlin_experiments.phase1.feedback import loop_grading
 
     src = inspect.getsource(loop_grading.grade)
-    assert "copytree" in src, (
+    assert "copy_candidate_tree" in src, (  # run_inputs' copy that refuses links and special files
         "qa_grade must copy the submission before grading — continuous mode grades while the agent is "
         "still writing, and grading the live workspace would grade a half-written tree"
     )

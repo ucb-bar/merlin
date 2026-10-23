@@ -85,11 +85,15 @@ class TestOperandStoreSelection:
         )
         assert cap and cap > 0
 
-    def test_an_unresolvable_target_yields_no_store_rather_than_a_default(self):
+    def test_an_unresolvable_target_yields_no_store_rather_than_a_default(self, monkeypatch):
+        # MERLIN_RTL_FACTS selects one facts file for EVERY target name, so a suite run with it set
+        # would resolve this unknown target to that target's RTL facts.
+        monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
         store, cap = MR.operand_store("definitely_not_a_target")
         assert store is None and cap is None
 
-    def test_a_target_with_no_store_requires_no_regime_and_says_why(self):
+    def test_a_target_with_no_store_requires_no_regime_and_says_why(self, monkeypatch):
+        monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
         got = MR.required_regimes({}, "definitely_not_a_target")
         assert got["by_regime"] == {}
         assert "we do not know" in got.get("why", "")

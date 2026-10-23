@@ -412,7 +412,12 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         return space
     space.sources = {"facts": "merlin.targetgen.rtl.facts.load_facts(target)['facts']"}
 
-    mems = body.get("memories")
+    # An explicitly extracted logical view may alias the physical census. Ranking
+    # both together counts the same SRAM twice and can lose the operand/accumulator
+    # distinction. Legacy bundles without a logical view keep their existing path.
+    mems = body.get("memory_address_spaces", body.get("memories"))
+    if "memory_address_spaces" in body:
+        space.sources["stores"] = "explicit memory_address_spaces; physical census excluded"
     if mems is None:
         space.stores_status = UNKNOWN
         unknowns.append(

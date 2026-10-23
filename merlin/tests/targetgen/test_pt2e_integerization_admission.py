@@ -11,6 +11,7 @@ import pytest
 
 from merlin.capture.integerization import contraction_partition
 from merlin.targetgen import capsule_source as source
+from merlin.targetgen.integerization_export import receipt_export_complete
 
 _ONE_INTEGER_MM = """builtin.module {
   func.func @forward(%a: tensor<2x4xi8>, %b: tensor<4x2xi8>) -> tensor<2x2xi32> {
@@ -100,6 +101,21 @@ def test_static_pt2e_receipt_accepts_complete_proof():
         {"integerization_receipt": _receipt(), "quantization_stats": {"annotated_contractions": 1}},
         agreement_tolerance=(0.03125, 0.02),
     )
+
+
+def test_worker_accepts_v1_receipt_without_batched_matmul_field():
+    receipt = _receipt()
+    receipt["exported_integer_bmm_count"] = 0
+    assert "integer_bmm_emitted" not in receipt
+    assert receipt_export_complete(receipt, contraction_partition(receipt))
+
+
+def test_worker_does_not_accept_unreported_batched_matmul():
+    receipt = _receipt()
+    receipt["exported_integer_bmm_count"] = 1
+    assert not receipt_export_complete(receipt, contraction_partition(receipt))
+    receipt["integer_bmm_emitted"] = 1
+    assert receipt_export_complete(receipt, contraction_partition(receipt))
 
 
 def test_preserved_qdq_partition_requires_complete_typed_accounting():

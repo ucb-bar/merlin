@@ -197,6 +197,7 @@
           "type": "string",
           "enum": [
             "exact_int",
+            "exact_bits",
             "tolerance_float",
             "bounded_int"
           ]

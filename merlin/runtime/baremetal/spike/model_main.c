@@ -75,7 +75,7 @@ static void merlin_emit_full_outputs(void) {
   }
 }
 #else
-#if !MERLIN_OUT_IS_F32 && !MERLIN_OUT_IS_I64 && !MERLIN_OUT_IS_I1
+#if !defined(MERLIN_DUMP_ALL_OUTPUTS) && !MERLIN_OUT_IS_F32 && !MERLIN_OUT_IS_I64 && !MERLIN_OUT_IS_I1
 #error "bare-metal model output supports only f32, i64 or i1"
 #endif
 #endif
@@ -88,6 +88,9 @@ void merlin_group_profile_dump(uint64_t forward_start, uint64_t forward_end);
 #define OUT ((float *)MERLIN_OUTPUT_PTR[0])
 #endif
 static merlin_descriptor_t DESCS[MERLIN_N_ARGS];
+#if defined(MERLIN_DUMP_ALL_OUTPUTS) && __has_include("semantic_io.h")
+#include "semantic_io.h"
+#endif
 
 int main(int hart) {
   if (hart != 0) {
@@ -102,6 +105,9 @@ int main(int hart) {
 
   merlin_reset_session();
   merlin_prepare_step(0);
+#ifdef MERLIN_SEMANTIC_IO
+  merlin_semantic_before();
+#endif
 #ifdef MERLIN_GROUP_PROFILE
   uint64_t merlin_forward_start = merlin_group_profile_now();
 #endif
@@ -121,6 +127,35 @@ int main(int hart) {
   uint64_t c1;
   __asm__ volatile("csrr %0, mcycle" : "=r"(c1));
 
+#ifdef MERLIN_DUMP_ALL_OUTPUTS
+#ifdef MERLIN_SEMANTIC_IO
+  merlin_semantic_after();
+#endif
+  /* Lossless storage readback in MLIR result order, outside model timing. */
+  for (int output = 0; output < MERLIN_N_OUTPUTS; output++) {
+#ifdef MERLIN_RETURNED_DESCRIPTORS
+    htif_puts("OUT_SHAPE ");
+    htif_putd((long)output);
+    htif_putc(' ');
+    htif_putd(MERLIN_OUTPUT_RANKS[output]);
+    for (int axis = 0; axis < MERLIN_OUTPUT_RANKS[output]; axis++) {
+      htif_putc(' ');
+      htif_putd(merlin_result_extent(output, axis));
+    }
+    htif_putc('\n');
+#endif
+    const unsigned char *bytes = (const unsigned char *)MERLIN_OUTPUT_PTR[output];
+    htif_puts("OUT_BYTES ");
+    htif_putd((long)output);
+    htif_putc(' ');
+    htif_putd((long)MERLIN_OUTPUT_NBYTES[output]);
+    for (size_t i = 0; i < MERLIN_OUTPUT_NBYTES[output]; i++) {
+      htif_putc(' ');
+      htif_putd((long)bytes[i]);
+    }
+    htif_putc('\n');
+  }
+#else
   /* Output protocol:
    *   OUT <k> <bits...>     : the first k = min(N, 4096) raw values (exact prefix).
    *   OUT_I64 <k> <lo hi...>: i64 values as unsigned 32-bit halves, low first.
@@ -205,6 +240,7 @@ int main(int hart) {
 #endif
 #endif
 #endif /* MERLIN_FULL_READBACK */
+#endif /* MERLIN_DUMP_ALL_OUTPUTS */
   htif_puts("METRIC cycles ");
   htif_putd((long)(c1 - c0));
   htif_putc('\n');

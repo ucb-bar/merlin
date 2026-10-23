@@ -19,8 +19,36 @@ from typing import Any
 
 import yaml
 
+from merlin.targetgen.build_cache import certification_cache
+
 from . import package_runtime as _runtime
 from .package_records import payload_inventory
+
+
+def _run_certificate_oracle(backend: Any, cb: dict, llvm: str, **options) -> dict:
+    """Use the same selected-product and simulator-slot boundary as capsule tiers."""
+    from .rtl_simulator_execution import SimulatorExecution, run_verified
+
+    return run_verified(
+        SimulatorExecution(backend, options["simulator"], options["target"], options["timeout"]),
+        lambda remaining: _runtime.oot_compile.run_on_oracle(cb, llvm, **{**options, "timeout": remaining}),
+    )
+
+
+def _certificate_oracle_record(result: dict, simulator: str, passed: bool) -> dict:
+    """Retain selected-product evidence when projecting a numerical verdict."""
+    record = {
+        **result["oracle"],
+        "kind": result["oracle"].get("kind"),
+        "engine": simulator,
+        "derived_from_rtl": result["oracle"].get("derived_from_rtl", False),
+        "cycle_accurate": simulator in _runtime._CYCLE_ACCURATE_SIMULATORS and passed,
+        "result": "pass" if passed else "fail",
+        "cycles": result.get("cycles"),
+    }
+    if "timing" in result:
+        record["timing"] = result["timing"]
+    return record
 
 
 def _qualifying_pointer_abi(command_buffer: dict, backend: Any) -> dict[str, Any]:
@@ -38,55 +66,71 @@ def _qualifying_pointer_abi(command_buffer: dict, backend: Any) -> dict[str, Any
     declaration = command_buffer.get("compiler_pointer_abi")
     if not isinstance(declaration, dict):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "compiler command buffer declares no compiler_pointer_abi; numerical accelerator "
             "qualification requires its exact ordered pointer arguments",
         )
     compiler_order = declaration.get("arguments")
-    if declaration.get("version") != 1 or not isinstance(compiler_order, list) or not compiler_order or any(
-        not isinstance(name, str) or not name for name in compiler_order
+    if (
+        declaration.get("version") != 1
+        or not isinstance(compiler_order, list)
+        or not compiler_order
+        or any(not isinstance(name, str) or not name for name in compiler_order)
     ):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "compiler_pointer_abi must declare version 1 and nonempty ordered tensor names",
         )
     tensors = command_buffer.get("tensors")
     if not isinstance(tensors, dict) or any(name not in tensors for name in compiler_order):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "compiler_pointer_abi names a tensor absent from the emitted command buffer",
         )
     resolver = getattr(backend, "kernel_abi_from_commands", None)
     if not callable(resolver):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "selected runner provides no kernel_abi_from_commands pointer-order capability",
         )
     try:
         harness_abi = resolver(command_buffer)
     except Exception as exc:  # noqa: BLE001 -- an unresolvable ABI cannot qualify numerics
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             f"selected runner could not derive its pointer order: {type(exc).__name__}: {exc}",
         ) from exc
     arguments = harness_abi.get("args") if isinstance(harness_abi, dict) else None
-    if not isinstance(arguments, list) or not arguments or any(
-        not isinstance(arg, dict) or not isinstance(arg.get("tensor"), str) or not arg["tensor"]
-        for arg in arguments
+    if (
+        not isinstance(arguments, list)
+        or not arguments
+        or any(
+            not isinstance(arg, dict) or not isinstance(arg.get("tensor"), str) or not arg["tensor"]
+            for arg in arguments
+        )
     ):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "selected runner returned no explicit ordered kernel-ABI tensor arguments",
         )
     harness_order = [arg["tensor"] for arg in arguments]
     if compiler_order != harness_order:
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             f"compiler pointer order {compiler_order} differs from selected runner harness order "
             f"{harness_order}; refuse numerical accelerator qualification before execution",
         )
     return {
-        "status": "pass", "version": 1, "arguments": list(compiler_order),
+        "status": "pass",
+        "version": 1,
+        "arguments": list(compiler_order),
         "scope": "declaration_agreement_only",
     }
 
@@ -125,6 +169,7 @@ def _cert_artifact_identity(paths: _runtime.RunPaths, run_id: str) -> dict[str, 
     }
 
 
+@certification_cache
 def certify(
     package_dir: str | Path,
     interface_mlir: str | Path,
@@ -220,8 +265,15 @@ def certify(
     def invoke(name: str, input_path: Path, output_path: Path | None = None):
         verify_inputs()
         try:
-            return _runtime.run_entrypoint(pkg, name, input_path, output_path, timeout=timeout, write_bytecode=False,
-                                           invocation_directory=paths.generated)
+            return _runtime.run_entrypoint(
+                pkg,
+                name,
+                input_path,
+                output_path,
+                timeout=timeout,
+                write_bytecode=False,
+                invocation_directory=paths.generated,
+            )
         finally:
             verify_inputs()
 
@@ -406,7 +458,8 @@ def certify(
                 # device materialized every leaf from its name while K5 above compared reference and
                 # simulate over the INJECTED values, so any caller injecting real operands failed the
                 # three-way gate by construction -- and the failure was attributed to the target.
-                res = _runtime.oot_compile.run_on_oracle(
+                res = _run_certificate_oracle(
+                    gem,
                     cb,
                     p.stdout,
                     simulator=simulator,
@@ -423,14 +476,7 @@ def certify(
                 ) from e
             ok = outputs_match(res["outputs"], ref) and outputs_match(res["outputs"], sim)
             oracle_outputs = res["outputs"]  # what the mesh actually produced (bit-exact == ref when ok)
-            oracle = {
-                "kind": res["oracle"].get("kind"),
-                "engine": simulator,
-                "derived_from_rtl": res["oracle"].get("derived_from_rtl", False),
-                "cycle_accurate": simulator in _runtime._CYCLE_ACCURATE_SIMULATORS and ok,
-                "result": "pass" if ok else "fail",
-                "cycles": res.get("cycles"),
-            }
+            oracle = _certificate_oracle_record(res, simulator, ok)
             if res.get("console") is not None:
                 cpath = paths.artifacts_dir / "console.log"
                 cpath.write_text(res["console"], encoding="utf-8")

@@ -407,3 +407,25 @@ def test_canonical_cli_refuses_implicit_roots_before_grading(tmp_path, missing):
     assert missing in result.stderr
     assert "cannot resolve formal whole-model simulator" not in result.stderr
     assert not run.exists()
+
+
+def test_phase_manifest_keeps_host_correctness_and_verified_device_coverage_distinct():
+    from merlin_experiments.phase1.feedback import formal
+
+    score = {
+        "n_capsules": 2,
+        "n_passed": 2,
+        "functional_pass": True,
+        "host_lane_scored_pass": 1,
+        "device_lane_scored_pass": 1,
+        "device_evidence_count": 1,
+        "spec_qualified_device_pass": 0,
+        "device_unqualified_pass": 1,
+        "host_guard_pass": 0,
+        "host_guard_total": 0,
+    }
+    manifest = formal._phase_manifest(score, required_tier="L3")
+    assert manifest["functional_pass"] is True and manifest["n_passed"] == 2
+    assert manifest["host_lane_scored_pass"] == 1 and manifest["device_lane_scored_pass"] == 1
+    assert manifest["spec_qualified_device_pass"] == 0 and manifest["device_unqualified_pass"] == 1
+    assert manifest["formal_complete"] is False

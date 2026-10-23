@@ -26,10 +26,14 @@ def implementation_identity() -> dict:
 
     owners = (
         "merlin.targetgen.capsule_source",
+        "merlin.targetgen.capture_refusals",
         "merlin.targetgen.capture_cache",
+        "merlin.targetgen.integerization_export",
         "merlin.targetgen._m2m_capture_worker",
         "merlin.targetgen._m2m_capture_artifacts",
         "merlin.targetgen._m2m_capture_deployment",
+        "merlin.targetgen._capture_tensor_values",
+        "merlin.targetgen._capture_result_contract",
         "merlin.targetgen._capture_session_reference",
         "merlin.targetgen._aten_opset_worker",
         "merlin.targetgen._recipe_quantizer",
@@ -47,6 +51,24 @@ def implementation_identity() -> dict:
         "merlin.targetgen._static_attention",
         "merlin.targetgen._static_planes",
         "merlin.targetgen._gptq",
+        "merlin.targetgen.declared_calibration",
+        "merlin.targetgen.affine_float_domain",
+        "merlin.targetgen.declared_readout_specials",
+        "merlin.targetgen.readout_quantizer_fusion",
+        "merlin.targetgen.exact_boundary_special",
+        "merlin.capture.integerization",
+        "merlin.capture.static_metadata",
+        "merlin.targetgen.core_aten_w8a8_reference",
+        "merlin.targetgen.exact_arithmetic",
+        "merlin.runtime.exact_readout",
+        "merlin.targetgen.exact_quantized_reference",
+        "merlin.targetgen.recipe_numerics",
+        "merlin.targetgen.quant_recipe",
+        "merlin.targetgen.readout_facet",
+        "merlin.xdsl_dialects.lowering.compute_groups",
+        "merlin.xdsl_dialects.lowering.window_sum",
+        "merlin.targetgen._recipe_integer",
+        "merlin.targetgen._capture_integer_agreement",
         "merlin.targetgen.quant_layer_plan",
         "merlin.targetgen.software_spec",
         "merlin.targetgen.transfer_contracts",
@@ -54,6 +76,7 @@ def implementation_identity() -> dict:
         "merlin.common.quant_formats",
         "merlin.runtime.commandbuffer",
         "merlin.frontends.capture_normalization",
+        "merlin.frontends.bitcast_views",
         "merlin.frontends.linalg_mlir",
         "merlin.llvmlower.torchao_affine",
         "merlin.xdsl_dialects._common",
@@ -65,6 +88,11 @@ def implementation_identity() -> dict:
     for owner in owners:
         path = module_source_path(owner)
         result[owner] = {"path": str(path), "sha256": sha256_file(path)}
+    from merlin.common.paths import contract_dir
+
+    for name in ("quant_schema.json", "quant_schema_source.json"):
+        path = contract_dir() / name
+        result["contract/" + name] = {"path": str(path), "sha256": sha256_file(path)}
     return result
 
 

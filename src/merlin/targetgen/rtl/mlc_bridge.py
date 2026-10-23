@@ -1427,6 +1427,8 @@ def discovered_mesh(target: str) -> dict | None:
     Target-agnostic."""
     from .source_selection import active_selection
 
+    if mlc_dir() is None:
+        return None
     selected = active_selection(target)
     if selected is not None:
         if "_mesh_discovery" not in selected:
@@ -1453,8 +1455,6 @@ def discovered_mesh(target: str) -> dict | None:
                     }
                 )
         return copy.deepcopy(selected["_mesh_discovery"])
-    if mlc_dir() is None:
-        return None
     try:
         with _mlc_cwd():
             _ensure_interface_cache(target)

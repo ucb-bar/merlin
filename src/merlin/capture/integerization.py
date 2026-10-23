@@ -7,11 +7,61 @@ target implementation for that floating operation.
 
 from __future__ import annotations
 
+#: Identity shared by capture receipts and both independent-reference admission checks.
+INTEGER_REFERENCE = "pt2e_integer"
+
+
+#: Recipe families whose quantized work is not a contraction (merlin.targetgen.quant_recipe).
+NON_CONTRACTION_ANNOTATIONS = ("annotated_sums", "annotated_means", "annotated_affine_maps", "annotated_movements")
+
+
+def non_contraction_annotations(quantization_stats: dict | None) -> dict[str, int] | None:
+    """The PT2E quantizer's non-contraction annotation census, when it annotated any; else None."""
+    if not isinstance(quantization_stats, dict):
+        return None
+    counts = {key: quantization_stats.get(key, 0) for key in NON_CONTRACTION_ANNOTATIONS}
+    if any(type(value) is not int or value < 0 for value in counts.values()) or not sum(counts.values()):
+        return None
+    return counts
+
+
+def non_contraction_program(receipt: dict | None) -> bool:
+    """A receipt for a quantized program with NO contraction but annotated non-contraction work.
+
+    The frontend integerizes contractions only, so such a program's receipt has an all-zero
+    contraction census; the capture worker marks it ``integer_program: non_contraction`` with the
+    quantizer's annotation census. Every contraction-census check that requires at least one
+    contraction accepts exactly this marked, zero, refusal-free receipt instead.
+    """
+    if not isinstance(receipt, dict) or receipt.get("integer_program") != "non_contraction":
+        return False
+    annotations = receipt.get("non_contraction_annotations")
+    by_kind = receipt.get("quantized_by_kind")
+    return (
+        isinstance(annotations, dict)
+        and set(annotations) == set(NON_CONTRACTION_ANNOTATIONS)
+        and all(type(value) is int and value >= 0 for value in annotations.values())
+        and sum(annotations.values()) > 0
+        and all(
+            receipt.get(key) == 0
+            for key in (
+                "quantized_contractions_seen",
+                "quantized_contractions_integerized",
+                "quantized_contractions_remaining",
+            )
+        )
+        and isinstance(by_kind, dict)
+        and all(isinstance(row, dict) and not any(row.values()) for row in by_kind.values())
+        and receipt.get("refusals") == []
+    )
+
 
 def contraction_partition(receipt: dict) -> dict[str, int]:
     """Reject missing work, unresolved rewrites, or unaccounted precision refusals."""
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
         raise ValueError("unsupported integerization receipt")
+    if non_contraction_program(receipt):
+        return {"seen": 0, "integerized": 0, "preserved": 0}
 
     def count(value: object) -> int:
         if type(value) is not int or value < 0:
@@ -442,3 +492,95 @@ def dynamic_integerization_projection(
     }
     dynamic_integerization_count(evidence, emitted=emitted, exported=exported, program_sha256=program_sha256)
     return evidence
+
+
+#: The frontend's integer readouts: two f32 multiplies on the host (PT2E-portable), or the int8
+#: accelerator readout -- an int32 bias seed and ONE RNE requantization (gate-3 validated).
+READOUT_NUMERICS = ("float_readout", "integer_readout")
+
+
+def accelerator_readout_numerics(recipe=None):
+    """Exact integer semantics are mandatory for accelerator capture."""
+    numerics = (recipe or {}).get("readout_numerics", "integer_readout")
+    if numerics != "integer_readout":
+        raise ValueError("accelerator capture requires integer_readout; float_readout is host-only")
+    return numerics
+
+
+def integerize_static_pt2e(model, inputs, *, numerics: str = "integer_readout"):
+    """Reuse frontend integerization while preserving each source result layout.
+
+    The frontend's conv rewrite computes its i32 matrix in patch order and
+    exposes an NHWC-backed NCHW view. Materialize the source's own dense output
+    layout after the readout; its rank and arithmetic are unchanged.
+
+    ``numerics`` selects the frontend's readout (:data:`READOUT_NUMERICS`). A frontend build that
+    predates the selection can only give the float readout, so asking it for the integer one is refused
+    rather than silently answered with the other arithmetic.
+    """
+    if numerics not in READOUT_NUMERICS:
+        raise ValueError(f"unknown integer readout numerics {numerics!r}; expected one of {READOUT_NUMERICS}")
+    import inspect
+
+    import torch
+
+    if not isinstance(model, torch.fx.GraphModule):
+        raise ValueError("static PT2E integerization requires a converted FX GraphModule")
+
+    from m2m.capture.pt2e_integerize import integerize_pt2e
+
+    boundary_policy = getattr(model, "_recipe_quantization_stats", {}).get("framework_capture_policy", {}).get("quantization_nonfinite")
+    floating_policy = getattr(model, "_recipe_quantization_stats", {}).get("framework_capture_policy", {}).get("readout_specials")
+    layouts = {}
+    for node in model.graph.nodes:
+        value = node.meta.get("val")
+        if node.target == torch.ops.aten.conv2d.default and isinstance(value, torch.Tensor):
+            if value.is_contiguous():
+                layout = torch.contiguous_format
+            elif value.is_contiguous(memory_format=torch.channels_last):
+                layout = torch.channels_last
+            else:
+                raise ValueError("integer convolution source has no supported dense result layout")
+            layouts[node.name] = (layout, list(value.stride()))
+    if "numerics" in inspect.signature(integerize_pt2e).parameters:
+        model, receipt = integerize_pt2e(model, inputs, numerics=numerics)
+    elif numerics == "float_readout":
+        model, receipt = integerize_pt2e(model, inputs)
+    else:
+        raise ValueError("the selected frontend integerizer cannot produce the integer_readout numerics")
+    receipt.setdefault("readout_numerics", numerics)
+    restorations = []
+    graph = model.graph
+    for node in list(graph.nodes):
+        source = node.meta.get("pt2e_integerized_from")
+        if source not in layouts:
+            continue
+        layout, stride = layouts[source]
+        with graph.inserting_after(node):
+            restored = graph.call_function(torch.ops.aten.clone.default, args=(node,), kwargs={"memory_format": layout})
+        node.replace_all_uses_with(restored)
+        restored.args = (node,)
+        restored.meta = dict(node.meta)
+        node.meta.pop("pt2e_integerized_from")
+        restorations.append({"source": source, "stride": stride, "memory_format": str(layout)})
+    graph.lint()
+    model.recompile()
+    receipt["result_layout_restorations"] = restorations
+    from merlin.targetgen.readout_quantizer_fusion import fuse_readout_quantizers
+    from merlin.targetgen.declared_readout_specials import retain_special_readouts
+
+    receipt["readout_quantizer_fusions"] = fuse_readout_quantizers(model)
+
+    retain_special_readouts(model, boundary_policy, floating_policy=floating_policy)
+    receipt["ieee_quantizer_residuals"] = getattr(model, "_merlin_special_readout_proofs", [])
+    return model, receipt
+
+
+def integerize_capture_model(model,inputs,*,numerics,directory):
+    """Emit an explicitly typed static refusal for the subprocess caller."""
+    from merlin.targetgen.capture_refusals import NumericCaptureRefused,write_exception_refusal
+    try:
+        return integerize_static_pt2e(model,inputs,numerics=numerics)
+    except NumericCaptureRefused as refusal:
+        write_exception_refusal(directory,refusal,fallback_code='unquantized_special_readout_unproved')
+        raise SystemExit(4) from refusal

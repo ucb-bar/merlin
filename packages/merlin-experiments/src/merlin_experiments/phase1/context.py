@@ -31,6 +31,7 @@ class InvocationContext:
     #: capsule-bench root, read only to resume a run that started there.
     phase_runs: Path | None = None
     readback_policy: str | None = None
+    candidate_policy: Path | None = None
 
 
 def load_context(
@@ -39,6 +40,7 @@ def load_context(
     repo: str | Path,
     harness: str | Path | None = None,
     readback_policy: str | None = None,
+    candidate_policy: str | Path | None = None,
     _legacy_target_reader: Callable[[Path], str] | None = None,
 ) -> InvocationContext:
     """Initialize one invocation, requiring an explicit descriptor and repository/work root.
@@ -97,6 +99,7 @@ def load_context(
         harness=Path(harness).resolve() if harness is not None else None,
         phase_runs=phase_runs_root(target, 1),
         readback_policy=readback_policy,
+        candidate_policy=Path(candidate_policy).absolute() if candidate_policy is not None else None,
     )
 
 
@@ -128,6 +131,7 @@ def add_context_arguments(parser) -> None:
     parser.add_argument("--descriptor", type=Path, help="target experiment descriptor")
     parser.add_argument("--repo", type=Path, help="repository/work root for declared resources")
     parser.add_argument("--readback-policy", choices=READBACK_TRANSPORTS, default=None)
+    parser.add_argument("--candidate-policy", type=Path, default=None)
 
 
 def resolve_context(args, parser, context=None) -> InvocationContext:
@@ -137,11 +141,16 @@ def resolve_context(args, parser, context=None) -> InvocationContext:
             parser.error("--descriptor and --repo must be supplied together")
         selected = getattr(args, "readback_policy", None)
         kwargs = {} if selected is None else {"readback_policy": selected}
+        if getattr(args, "candidate_policy", None) is not None:
+            kwargs["candidate_policy"] = args.candidate_policy
         return load_context(args.descriptor, repo=args.repo, **kwargs)
     if context is not None:
         resolved = context() if callable(context) else context
         selected = getattr(args, "readback_policy", None)
-        return replace(resolved, readback_policy=selected) if selected is not None else resolved
+        changes = {} if selected is None else {"readback_policy": selected}
+        if getattr(args, "candidate_policy", None) is not None:
+            changes["candidate_policy"] = Path(args.candidate_policy).absolute()
+        return replace(resolved, **changes) if changes else resolved
     parser.error("installed execution requires --descriptor and --repo")
 
 
@@ -150,6 +159,8 @@ def context_argv(context: InvocationContext) -> list[str]:
     args = ["--descriptor", str(context.descriptor), "--repo", str(context.repo)]
     if context.readback_policy is not None:
         args += ["--readback-policy", context.readback_policy]
+    if getattr(context, "candidate_policy", None) is not None:
+        args += ["--candidate-policy", str(context.candidate_policy)]
     return args
 
 
@@ -160,6 +171,16 @@ def readback_kwargs(context: InvocationContext) -> dict:
     from merlin.targetgen.contract.readback_policy import ReadbackPolicy
 
     return {"readback_policy": ReadbackPolicy(context.readback_policy)}
+
+
+def oracle_kwargs(context: InvocationContext) -> dict:
+    """Bind selected host compiler transport separately from numerical readback."""
+    result = readback_kwargs(context)
+    if getattr(context, "candidate_policy", None) is not None:
+        from .candidate_execution import transport
+
+        result["candidate_transport"] = transport(context)
+    return result
 
 
 def readback_record(context: InvocationContext) -> dict | None:

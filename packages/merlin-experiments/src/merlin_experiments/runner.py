@@ -236,6 +236,16 @@ def _phase0_operator_inputs(command: dict) -> dict[str, dict | None]:
         observed["phase0:operator:application_demands_sidecar"] = (
             {"path": str(sidecar.resolve()), "present": sidecar.is_file()} if sidecar is not None else None
         )
+    recipe = inputs.get("recipe")
+    if recipe and Path(recipe).is_file():
+        from .phase0.core_aten_stage import declaration, input_paths
+
+        if declaration(Path(recipe)) is not None:
+            try:
+                for index, path in enumerate(input_paths(Path(recipe))):
+                    observed[f"phase0:operator:core_aten:{index:06d}"] = {"path": str(path), "present": True}
+            except (OSError, ValueError) as exc:
+                raise SpecError(f"invalid Core ATen stage inputs: {exc}") from exc
     return observed
 
 
@@ -611,7 +621,7 @@ def resolve_plan(
         if adapter.name == "capsule_bench" and command.get("module") == PHASE1_MODULE:
             # The native process inherits the caller's environment. Freeze selections
             # that otherwise could differ between preflight and launch/resume.
-            for key in (
+            frozen = (
                 "MERLIN_TARGET_PATH",
                 "MERLIN_TARGET_CONTRACT",
                 "MERLIN_CODEX_CPUS",
@@ -633,9 +643,30 @@ def resolve_plan(
                 "MERLIN_SNAPSHOT_LEASE_CACHE",
                 "MERLIN_SIMULATION_CERT_CACHE",
                 "MERLIN_GSIM_SLOT_ROOT",
-            ):
-                if key in os.environ:
+                "MERLIN_CAPSULE_TIER_FLOOR",
+                "MERLIN_SPIKE",
+                "MERLIN_RISCV_GCC",
+                "MERLIN_CHIPYARD",
+                "MERLIN_EXT_CHIPYARD",
+                "MERLIN_CORE_ATEN_EXECUTION_PROVIDER",
+                "MERLIN_ORACLE_JAIL_ROOTS",
+                "MERLIN_ORACLE_LD_LIBRARY_PATH",
+                "MERLIN_ORACLE_PATH",
+                "MERLIN_ORACLE_TOOLCHAIN",
+            )
+            target_tools = f"MERLIN_{spec.target.upper().replace('-', '_')}_"  # its simulator and tool selections
+            for key in os.environ:
+                if key in frozen or key.startswith(target_tools):
                     command["env"][key] = os.environ[key]
+            if os.environ.get("MERLIN_ORACLE_TOOLCHAIN"):
+                # The operator's frozen simulator toolchain: its bytes are pinned and re-verified on resume.
+                command["inputs"]["oracle_toolchain"] = str(Path(os.environ["MERLIN_ORACLE_TOOLCHAIN"]).absolute())
+            from merlin.targetgen.tier_policy import raised_tiers
+
+            try:  # an invalid operator floor is refused here, never mid-grade
+                raised_tiers(())
+            except ValueError as error:
+                raise SpecError(str(error)) from error
             from merlin.targetgen.target_registry import effective_target_path
 
             # An unset selection is the checkout's in-repo support default. Spell it out, so a

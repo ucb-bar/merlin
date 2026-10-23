@@ -80,6 +80,29 @@ engine is `python -m merlin_experiments.phase0`; installed use requires explicit
 directory is selected implicitly. Start with the
 [Gemmini Phase 0 walkthrough](../examples/gemmini/phase0/README.md) for the catalog interface.
 
+A retained Core ATen full-call recipe may instead declare `capsule_policy: derived_only`
+and a `core_aten` block. Select `overlay` explicitly and declare `cohorts.public`,
+`cohorts.hidden`, and `cohorts.host_guard` as lists of `{cases, captures, select}`
+mappings. `cases` names a canonical/overlay case corpus or bounded suite; `select`
+contains exact case IDs (canonical cases use overload IDs). Capture roots are explicit.
+Public and hidden case identities and emitted programs must be disjoint.
+
+For this stage, `corpus derive DEFINITION --output NEW_DIRECTORY` binds the selected
+capture files and writes a generated `recipe.yaml` plus an owner-only selection receipt.
+Select that recipe in a copied Phase 0 definition, then run Phase 0 normally. No
+`--application-capture` or RTL facts are required by this retained-call derivation;
+model-form derivation still requires both. The definition retains the explicit
+performance-template input required by the common adapter. This stage accepts only
+diagnostic packaging: it does not recapture, issue capture attestations, or claim
+numerical or hardware qualification. Explicit capability contracts and optional RTL
+facts are exported as selected data for release staging. Output is restricted to
+`<run>/phase0/capsules/`, including host-only `_private/` full-call answers.
+Preparation verifies those answer commitments, copies them independently, and marks
+that tree as host-only in regenerated bundles. The public manifest records public and
+host-guard members, aggregate hidden counts, and a private provenance commitment.
+Host-guard capsules declare `scored: false`; downstream grading must honor that
+reporting category independently of device-lane success.
+
 ## Capsules from captured compute groups
 
 `merlin experiment corpus groups --help` discovers the existing captured-model
@@ -152,6 +175,12 @@ ambient target tooling. Its explicit requirement is separately hashed. Source-po
 coverage can include functional capsules, so it is not the selected Phase 2
 performance-cohort coverage. It does not establish numerical correctness, graded
 admission, or whole-model compilation.
+
+For retained Core ATen recipes, `corpus derive` returns an explicit generated
+recipe, conformance spec and synthesis profile. Select all three in a fresh
+Phase 0 run before preparing the release. Their digest-bound selection verifies
+the finite retained-call packaging contract; execution coverage stays unverified.
+Older recipe-only runs must be re-derived and frozen again before sealing.
 
 For Phase 1, the catalog examples require a reviewed release and a newly generated
 bundle. When selecting the neutral data runtime, rebind `MERLIN_TARGET_CONTRACT`

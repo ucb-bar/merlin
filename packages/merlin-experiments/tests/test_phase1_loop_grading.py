@@ -308,6 +308,25 @@ def test_cert_policy_intersects_all_public_roots_after_derivation(tmp_path, monk
     assert events == ["checkpoint", ("loop", {"L2", "L3"}), "public"]
 
 
+def test_operator_tier_floor_makes_the_cert_tier_mandatory_for_scored_capsules(tmp_path, monkeypatch):
+    from merlin.targetgen import capsule_runner as runner
+
+    monkeypatch.setattr(G, "load_target_experiment", lambda _: SimpleNamespace(target="fixture", sim_via="fixture"))
+    monkeypatch.setattr(runner, "qa_checkpoint_adapters", lambda *a: {"L2": 1, "L3": 2})
+    monkeypatch.setattr(runner, "qa_loop_adapters", lambda *a, **kw: {"L2": 1})
+    (tmp_path / "guard").mkdir()
+    (tmp_path / "guard" / "capsule.yaml").write_text("required_oracle_tiers: [L2]\nscored: false\n")
+    policy = dict(context=context(tmp_path), policy_roots=(), public_roots=lambda: (tmp_path / "guard",))
+    monkeypatch.setenv("MERLIN_CAPSULE_TIER_FLOOR", "L3")
+    assert G.cert_tiers_beyond_loop(**policy) == ({"L3"}, set())
+    (tmp_path / "device").mkdir()
+    (tmp_path / "device" / "capsule.yaml").write_text("required_oracle_tiers: [L2]\nscored: true\n")
+    policy["public_roots"] = lambda: (tmp_path / "guard", tmp_path / "device")
+    assert G.cert_tiers_beyond_loop(**policy) == ({"L3"}, {"L3"})
+    monkeypatch.delenv("MERLIN_CAPSULE_TIER_FLOOR")
+    assert G.cert_tiers_beyond_loop(**policy) == ({"L3"}, set())
+
+
 def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import promotion
 
@@ -891,3 +910,73 @@ def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp
     # A result that has not been durably published cannot unlock a certificate.
     callback({"capsule": "first", "tiers": {"L2": {"status": "pass"}}, "tampered": True})
     assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1
+
+
+@pytest.mark.parametrize("floor", [None, "L3"])
+def test_round_grade_defers_floor_tiers_to_certification(tmp_path, monkeypatch, floor):
+    from merlin.targetgen import capsule_runner as runner
+    from merlin.targetgen.contract import materialize
+    from merlin_experiments.phase1.feedback import qa
+
+    monkeypatch.setattr(qa, "_loop_target_sim_via", lambda context: ("fixture", "fixture"))
+    monkeypatch.setattr(materialize, "declared_oracle_tiers", lambda *roots: {"L2"})
+    rtl = object()
+    monkeypatch.setattr(runner, "qa_checkpoint_adapters", lambda *a, **k: {"L2": object(), "L3": rtl})
+    seen = {}
+
+    def grade(*args, oracle_adapters, **kwargs):
+        seen.update(oracle_adapters)
+        return {"per_capsule": [], "n_capsules": 0, "n_passed": 0}
+
+    monkeypatch.setattr(qa.CG, "grade", grade)
+    if floor:
+        monkeypatch.setenv("MERLIN_CAPSULE_TIER_FLOOR", floor)
+    else:
+        monkeypatch.delenv("MERLIN_CAPSULE_TIER_FLOOR", raising=False)
+    try:
+        qa.run(str(tmp_path), str(tmp_path), tmp_path / "runs", {"public"}, False, 1, context=context(tmp_path))
+    except Exception:  # noqa: BLE001 -- only the adapters handed to the grade are under test
+        pass
+    assert set(seen) == {"L2", "L3"}
+    assert (seen["L3"] is rtl) is (floor is None)
+    assert getattr(seen["L3"], "_merlin_deferred", False) is (floor is not None)
+
+
+@pytest.mark.parametrize("member", ["private_dir", "truth_file", "relative_escape", "fifo"])
+def test_grade_copies_refuse_links_and_special_files_without_naming_paths(tmp_path, member):
+    import os
+
+    from merlin_experiments.phase1 import run_inputs as RI
+
+    secret = tmp_path / "payload" / "corpus" / "_private"
+    secret.mkdir(parents=True)
+    (secret / "golden.npz").write_text("ANSWER")
+    (tmp_path / "truth.json").write_text("TRUTH")
+    submission = tmp_path / "ws" / "submission"
+    (submission / "pkg").mkdir(parents=True)
+    (submission / "manifest.yaml").write_text("target: t\n")
+    (submission / "build").mkdir()
+    (submission / "build" / "cache").symlink_to(secret)  # inside an ignored tree: never copied or followed
+    if member == "private_dir":
+        (submission / "pkg" / "data").symlink_to(secret)
+    elif member == "truth_file":
+        (submission / "truth.json").symlink_to(tmp_path / "truth.json")
+    elif member == "relative_escape":
+        (submission / "pkg" / "up").symlink_to("../../../payload")
+    else:
+        os.mkfifo(submission / "pkg" / "pipe")
+    with pytest.raises(RI.IndirectSubmission) as refused:
+        RI.copy_candidate_tree(submission, tmp_path / "cand", ignore=RI.SUBMISSION_IGNORED)
+    assert str(tmp_path) not in str(refused.value) and "symbolic link or special file" in str(refused.value)
+    assert not (tmp_path / "cand").exists()
+
+
+def test_ordinary_submission_copies_without_its_ignored_build_tree(tmp_path):
+    from merlin_experiments.phase1 import run_inputs as RI
+
+    submission = tmp_path / "submission"
+    (submission / "build").mkdir(parents=True)
+    (submission / "build" / "link").symlink_to(tmp_path)
+    (submission / "manifest.yaml").write_text("target: t\n")
+    RI.copy_candidate_tree(submission, tmp_path / "cand", ignore=RI.SUBMISSION_IGNORED)
+    assert sorted(p.name for p in (tmp_path / "cand").iterdir()) == ["manifest.yaml"]

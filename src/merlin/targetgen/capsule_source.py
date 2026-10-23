@@ -41,12 +41,20 @@ from merlin.common.digest import is_sha256
 from merlin.common.paths import env as _env
 from merlin.common.paths import repo_root
 from merlin.targetgen import capture_cache, component_sources
+from merlin.targetgen.capture_refusals import (
+    M2MUnavailable,
+    NumericCaptureRefused,
+    read_refusal,
+)
+from merlin.targetgen.capture_refusals import (
+    NoEligibleCaptureOperations as NoEligibleCaptureOperations,
+)
 from merlin.targetgen.golden_store import write_golden
 
 from ._capture_diagnostics import stderr_cause as _stderr_cause
 from .capsule_capture_spec import _capture_spec
 
-_MODEL_CAPTURE_ABI_VERSION = 6
+_MODEL_CAPTURE_ABI_VERSION = 7
 
 
 # ------------------------------------------------------------------------------------------------
@@ -71,17 +79,37 @@ def _m2m_python(*, checkout: Path | None = None) -> Path:
     return capture_python_path(checkout=checkout if checkout is not None else _m2m_dir())
 
 
-class M2MUnavailable(RuntimeError):
-    """The m2m venv (torch) or the model2MLIR repo could not be located/run — fail closed, never fake."""
-
-
-def _require_integer_contraction(program: str, *, scheme: str | None, recipe: dict | None) -> None:
+def _require_integer_contraction(
+    program: str, *, scheme: str | None, recipe: dict | None, meta: dict | None = None
+) -> None:
     """A W8A8 declaration is not evidence of an integer datapath.
 
     TorchAO may leave an ineligible Linear unchanged (for example, tiny dimensions)
     while model2MLIR still labels the module with the requested scheme. Inspect the
     parsed arithmetic before admitting or caching that capture as an integer test.
+
+    A program whose receipt marks it contraction-free (only affine maps, movements and window sums
+    were quantized) owes no contraction: it must instead carry at least one int8 quantize in the
+    parsed program, so the declaration is still checked against actual arithmetic.
     """
+    from merlin.capture.integerization import non_contraction_program
+
+    if non_contraction_program((meta or {}).get("integerization_receipt")):
+        from merlin.common import mlir_query as query
+
+        try:
+            module = query.parse(program)
+            quantizes = [
+                op
+                for op in query.walk(module)
+                if query.op_name(op) == "quant_ext.quantize_per_tensor"
+                and query.type_shape_dtype(op.results[0].type)[1] == "i8"
+            ]
+        except Exception as exc:
+            raise M2MUnavailable(f"cannot verify W8A8 capture arithmetic: {exc}") from exc
+        if quantizes:
+            return
+        raise NoEligibleCaptureOperations("contraction-free W8A8 capture carries no int8 quantize")
     integer_recipe = recipe is not None and all(
         (recipe.get(part) or {}).get("dtype") in {"int8", "i8"} for part in ("activation", "weight")
     )
@@ -151,7 +179,7 @@ def _require_pt2e_integerization_receipt(
     Finding *one* integer matmul in the MLIR proves only an existential fact.
     This receipt additionally binds complete Q/DQ-fed linear/conv/matmul census,
     safe accumulation and a selected numerical comparison to the captured
-    program. Missing fields are never treated as zero or as success.
+    program. Batch counters added to v1 default to zero; other missing fields refuse.
     """
     receipt = meta.get("integerization_receipt")
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
@@ -174,7 +202,12 @@ def _require_pt2e_integerization_receipt(
         raise M2MUnavailable(
             f"integerization receipt census {seen} disagrees with PT2E's {annotated} annotated contractions"
         )
-    if seen < 1 or seen != rewritten + remaining:
+    from merlin.capture.integerization import INTEGER_REFERENCE, non_contraction_annotations, non_contraction_program
+
+    contraction_free = non_contraction_program(receipt)
+    if contraction_free and receipt["non_contraction_annotations"] != non_contraction_annotations(quantization_stats):
+        raise M2MUnavailable("integerization receipt's non-contraction census disagrees with PT2E's annotations")
+    if (seen < 1 and not contraction_free) or seen != rewritten + remaining:
         raise M2MUnavailable("integerization receipt has inconsistent quantized contraction census")
     if remaining != 0 or rewritten != seen:
         raise M2MUnavailable(f"integerization receipt has {remaining} quantized contractions remaining")
@@ -199,9 +232,10 @@ def _require_pt2e_integerization_receipt(
         raise M2MUnavailable(f"integerization receipt reports refusal(s): {refusals!r}")
     # Worst case signed-int8 product bound; compare using the *same* arithmetic
     # as the upstream integerizer, without assuming a particular accelerator.
-    max_k = count(receipt.get("max_reduction_k"), "accumulator reduction K")
-    if receipt.get("accumulator_bound_checked") is not True or max_k < 1 or max_k * 128 * 128 > (1 << 31) - 1:
-        raise M2MUnavailable("integerization receipt does not prove a safe i32 accumulator")
+    if not contraction_free:
+        max_k = count(receipt.get("max_reduction_k"), "accumulator reduction K")
+        if receipt.get("accumulator_bound_checked") is not True or max_k < 1 or max_k * 128 * 128 > (1 << 31) - 1:
+            raise M2MUnavailable("integerization receipt does not prove a safe i32 accumulator")
 
     engine = (meta.get("recipe") or {}).get("software_numerical_engine")
     if engine not in (None, "integer_reference"):
@@ -209,7 +243,11 @@ def _require_pt2e_integerization_receipt(
     expected = (0.0, 0.0) if engine == "integer_reference" else agreement_tolerance or (_DEF_ATOL, _DEF_RTOL)
     agreement = receipt.get("golden_agreement")
     if not isinstance(agreement, dict) or agreement.get("status") != "passed":
-        raise M2MUnavailable("integerization receipt has no passed original-vs-rewrite golden agreement")
+        raise NumericCaptureRefused(
+            "integerization receipt has no passed original-vs-rewrite golden agreement",
+            code="integerization_golden_disagreement",
+            details={"integerization_receipt": receipt},
+        )
     if any(agreement.get(name) != tolerance for name, tolerance in zip(("atol", "rtol"), expected)):
         raise M2MUnavailable("integerization receipt golden agreement tolerance differs from the request")
     if count(agreement.get("samples"), "golden agreement samples") < 1:
@@ -229,7 +267,7 @@ def _require_pt2e_integerization_receipt(
     if any(row.get("atol") != expected[0] or row.get("rtol") != expected[1] for row in outputs):
         raise M2MUnavailable("integerization receipt has a golden agreement output with different tolerance")
     if engine == "integer_reference":
-        if agreement.get("reference") != "pt2e_integer":
+        if agreement.get("reference") != INTEGER_REFERENCE:
             raise M2MUnavailable("integerization receipt did not use the selected independent integer reference")
         source = agreement.get("source")
         if (
@@ -266,33 +304,12 @@ def _require_pt2e_integerization_receipt(
             raise M2MUnavailable("independent integer reference artifact does not match its digest")
 
     emitted = count(receipt.get("integer_mm_emitted"), "emitted integer matmul count")
-    if emitted < rewritten:
+    emitted_bmm = count(receipt.get("integer_bmm_emitted", 0), "emitted integer batched matmul count")
+    if emitted + emitted_bmm < rewritten:
         raise M2MUnavailable("integerization receipt emitted fewer integer matmuls than rewritten regions")
-    from merlin.common import mlir_query as query
+    from merlin.targetgen.integerization_export import exported_integer_counts
 
-    try:
-        module = query.parse(program)
-        forward = next(
-            (
-                op
-                for op in query.walk(module, "func.func")
-                if getattr(getattr(op, "sym_name", None), "data", None) == "forward"
-            ),
-            None,
-        )
-        if forward is None:
-            raise ValueError("no @forward function")
-        structural = 0
-        for op in query.walk(forward, "linalg.matmul", "linalg.generic"):
-            if query.op_name(op) == "linalg.generic" and query.attr_str(op, "prov.op") != "int_matmul":
-                continue
-            if len(op.operands) < 2 or not op.results:
-                continue
-            lhs, rhs = (query.type_shape_dtype(value.type)[1] for value in op.operands[:2])
-            result = query.type_shape_dtype(op.results[0].type)[1]
-            structural += (lhs, rhs, result) == ("i8", "i8", "i32")
-    except Exception as exc:
-        raise M2MUnavailable(f"cannot verify integerized model export: {exc}") from exc
+    structural, structural_bmm = exported_integer_counts(program)
     if structural < emitted:
         raise M2MUnavailable(
             f"integerization receipt claims {emitted} integer matmuls, but export contains only {structural}"
@@ -301,6 +318,12 @@ def _require_pt2e_integerization_receipt(
     if reported_export != structural:
         raise M2MUnavailable(
             f"integerization receipt export count {reported_export} disagrees with parsed program {structural}"
+        )
+    reported_bmm = count(receipt.get("exported_integer_bmm_count", 0), "exported integer batched matmul count")
+    if emitted_bmm != structural_bmm or reported_bmm != structural_bmm:
+        raise M2MUnavailable(
+            f"integerization receipt batched export counts {emitted_bmm}/{reported_bmm} "
+            f"disagree with parsed program {structural_bmm}"
         )
 
 
@@ -1100,7 +1123,7 @@ class PytorchRefSource:
                     and capture_cache.frontend_trace_matches(cached, cached_slot)
                 ):
                     cached_program = (cached_slot / "linalg.mlir").read_text(encoding="utf-8")
-                    _require_integer_contraction(cached_program, scheme=scheme, recipe=recipe)
+                    _require_integer_contraction(cached_program, scheme=scheme, recipe=recipe, meta=cached)
                     if _static_pt2e_model(op, scheme=scheme, recipe=recipe, already_quantized=already_quantized):
                         _require_pt2e_integerization_receipt(
                             cached_program, cached, agreement_tolerance=agreement_tolerance, capture_root=cached_slot
@@ -1171,6 +1194,8 @@ class PytorchRefSource:
         # cannot inherit the previous attempt's success.
         meta_p = workdir / "meta.json"
         meta_p.unlink(missing_ok=True)
+        refusal_path = workdir / "refusal.json"
+        refusal_path.unlink(missing_ok=True)
         proc = self._launch_worker(
             cmd,
             env=env,
@@ -1185,16 +1210,12 @@ class PytorchRefSource:
             declared_env=declared_env,
             interpreter=interpreter,
         )
-        # ⚠️ A NON-ZERO RC IS NOT NECESSARILY A CRASH, and treating it as one threw away the
-        # diagnosis. The worker returns 3 for "ran fine, but the program is not clean" -- and it
-        # WRITES meta.json with `opaque` and `opaque_detail` before doing so. This branch fired first
-        # on rc=3 and dumped the stderr tail, which for a torch export is a wall of warnings, while
-        # the block just below already had the useful message. Measured on the lstmnetvit roster model
-        # at W8A8: the real answer is opaque ops from un-inlined torchAO quantization calls, and what
-        # got reported was an LSTM `_flat_weights` contiguity notice.
-        #
-        # So the stderr path is now for a worker that produced NO diagnosis at all; if meta.json
-        # exists the worker reached its own verdict and that verdict is what to report.
+        if proc.returncode == 4 and refusal_path.is_file():
+            refusal = read_refusal(refusal_path)
+            if refusal is not None:
+                raise refusal
+        # A diagnosed capture failure can still write meta.json. Preserve that
+        # verdict; use stderr only when the worker produced no structured result.
         if not meta_p.exists():
             # ⚠️ REPORT THE CAUSE, NOT THE TAIL. This used to print `stderr[-1500:]`, and a capture
             # that emits warnings AFTER its traceback therefore reported the warnings. Measured on
@@ -1236,7 +1257,7 @@ class PytorchRefSource:
                 try:
                     normalized, normalization = normalize_capture_mlir(
                         raw_linalg,
-                        reported_opaque=meta.get("opaque_detail") or {},
+                        reported_opaque=meta.get("opaque_detail") or {}, capture_metadata=meta,
                     )
                 except CaptureNormalizationError as exc:
                     raise M2MUnavailable(f"m2m capture normalization failed for op {op!r}/{dtype}: {exc}") from exc
@@ -1264,7 +1285,7 @@ class PytorchRefSource:
                 f"0-opaque. Opaque ops: {top or '(none reported)'}"
             )
         program = (workdir / "linalg.mlir").read_text(encoding="utf-8")
-        _require_integer_contraction(program, scheme=scheme, recipe=recipe)
+        _require_integer_contraction(program, scheme=scheme, recipe=recipe, meta=meta)
         if _static_pt2e_model(op, scheme=scheme, recipe=recipe, already_quantized=already_quantized):
             _require_pt2e_integerization_receipt(
                 program, meta, agreement_tolerance=agreement_tolerance, capture_root=workdir

@@ -143,3 +143,48 @@ def test_selected_checks_in_existing_snapshot_seal(selected, tmp_path):
     copied.write_text("CHECKS = ('tampered',)\n")
     with pytest.raises(snapshots.SnapshotError):
         snapshots.verify(frozen)
+
+
+@pytest.fixture
+def selected_dependency(selected):
+    root, arguments = selected
+    dependency = root.with_name("compiler_sources")
+    dependency.mkdir()
+    (dependency / "checker.py").write_text("raise AssertionError('private dependency must not import')\n")
+    (dependency / "layout.json").write_text('{"layout": "reviewed"}\n')
+    metadata = root / "provider.yaml"
+    metadata.write_text(metadata.read_text() + "source_dependencies:\n  compiler: ../compiler_sources\n")
+    return dependency, arguments
+
+
+def test_dependency_python_and_resource_bytes_are_bound(selected_dependency):
+    dependency, arguments = selected_dependency
+    receipt = SI.record(**arguments)
+    for relative in ("checker.py", "layout.json"):
+        assert receipt["inputs"][f"phase1:startup:provider:dependency:compiler:{relative}"] == {
+            "path": str(dependency / relative),
+            "sha256": SI.fingerprint(dependency / relative),
+        }
+    cache = dependency / "__pycache__"
+    cache.mkdir()
+    (cache / "checker.cpython-313.pyc").write_bytes(b"cache")
+    SI.verify(receipt, **arguments)
+
+
+@pytest.mark.parametrize("damage", ["python", "resource", "added", "removed", "link", "missing_owner"])
+def test_resume_refuses_dependency_member_or_owner_drift(selected_dependency, damage):
+    dependency, arguments = selected_dependency
+    receipt = SI.record(**arguments)
+    if damage in {"python", "resource"}:
+        relative = "checker.py" if damage == "python" else "layout.json"
+        (dependency / relative).write_text("changed\n")
+    elif damage == "added":
+        (dependency / "new_resource.bin").write_bytes(b"new")
+    elif damage == "removed":
+        (dependency / "checker.py").unlink()
+    elif damage == "link":
+        (dependency / "alias").symlink_to(dependency / "layout.json")
+    else:
+        shutil.rmtree(dependency)
+    with pytest.raises(SpecError, match="source identity changed|source admission failed"):
+        SI.verify(receipt, **arguments)

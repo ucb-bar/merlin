@@ -57,9 +57,12 @@ def test_fits_on_reuse_is_unreachable_from_a_capsules_inputs_and_says_so():
     assert MR.extents_for_regime(TARGET, MR.FITS_ON_REUSE, tile_dim=16, dtype="i8") is None
 
 
-def test_an_unsizeable_target_returns_none_rather_than_a_default():
-    assert MR.extents_for_regime("no_such_target_anywhere", MR.SPILLS, tile_dim=16) is None
+def test_an_unsizeable_target_returns_none_rather_than_a_default(monkeypatch):
     assert MR.extents_for_regime(TARGET, MR.SPILLS, tile_dim=0, dtype="i8") is None
+    # MERLIN_RTL_FACTS selects one facts file for EVERY target name, so a suite run with it set
+    # would resolve this unknown target to that target's RTL facts.
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
+    assert MR.extents_for_regime("no_such_target_anywhere", MR.SPILLS, tile_dim=16) is None
 
 
 def _spec_with_regimes():

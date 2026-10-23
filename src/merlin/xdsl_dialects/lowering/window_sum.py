@@ -70,3 +70,52 @@ def window_sum_of(working: Sequence[Any], stage_of: Mapping[int, Any]) -> tuple[
         "out_elements": CG._product(out_shape),
         "in_dtype": narrow_dtype,
     }, None
+
+
+def window_mean_refusal(mean: dict[str, Any], oracle: Any, dtype: str | None) -> str | None:
+    """Why no unit takes the mean as a contraction, or ``None`` with ``mean['units']`` set.
+
+    Two questions, both the ones a fake-quantized layer is asked: can a unit contract these
+    integers, and does its readout hold the one scale the mean needs. ``mean['asked']`` records
+    whether a contracting unit exists at all, so a target with none plans the region as before.
+    """
+    from .compute_groups import CONTRACTION, FAMILY_OF_STAGE, QUANTIZE
+
+    contraction = oracle.ask(
+        op=CONTRACTION, family="contraction", in_dtype=dtype, weight_dtype=dtype, rank=2, attached=False
+    )
+    if not contraction.admitted:
+        mean["asked"], mean["refusal"] = False, contraction.refusal
+        return contraction.reason or "no unit contracts these operands"
+    mean["asked"] = True
+    if mean.get("exactness") != "exact" or mean.get("multiplier") != 1:
+        mean["refusal"] = "exact_arithmetic"
+        return "floating mean reassociation requires full int32 readout and an exact rational host quantization binding"
+    from merlin.common.quant_formats import get
+    from merlin.runtime.exact_readout import prove_fp32_products
+
+    try:
+        fmt = get(dtype)
+        bits = fmt.element_bits
+        low, high = (-(2 ** (bits - 1)), 2 ** (bits - 1) - 1) if fmt.signed else (0, 2**bits - 1)
+        mean["product_proof"] = prove_fp32_products(1, low * mean["window"], high * mean["window"])
+    except (KeyError, ValueError) as exc:
+        mean["refusal"] = "exact_arithmetic"
+        return str(exc)
+    scaled = oracle.ask(
+        op=QUANTIZE, family=FAMILY_OF_STAGE[QUANTIZE], in_dtype=dtype, attached=True, granularity="tensor"
+    )
+    if not scaled.admitted:
+        mean["refusal"] = scaled.refusal
+        return scaled.reason or "the readout does not hold the scale a mean needs"
+    readout = getattr(oracle, "readout", None)
+    for facet in getattr(readout, "facets", ()) or ():
+        fits = getattr(facet, "sum_fits_accumulator", None)
+        if callable(fits) and fits(mean["window"]) is False:
+            mean["refusal"] = "scale_granularity"
+            return (
+                f"a window of {mean['window']} elements of {facet.element_dtype} can exceed the "
+                f"{facet.accumulator_dtype} accumulator"
+            )
+    mean["units"] = contraction.units
+    return None

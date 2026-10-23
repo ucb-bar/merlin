@@ -1,0 +1,19 @@
+# Public composed program input; eager execution supplies answers at test time.
+schema: merlin.regression_programs.v1
+calls:
+- case_id: regression::zero_stride_partial_mutation
+  overload: aten.add_.Tensor
+  guards: [ba786b69]
+  boundary: Refuse write-back and borrowed aliases of non-injective input storage.
+  origin:
+    design: Expanded input with a partial channel mutation, derived from the landing probe.
+    contract: Distinct logical channels share the same caller storage addresses.
+    refusal: input 0 has overlapping logical elements
+  program: |
+    def input_tensor():
+        base = torch.arange(12, dtype=torch.float32).reshape(1, 1, 3, 4) / 10 + 0.1
+        return base.expand(1, 2, 3, 4)
+
+    class Model(torch.nn.Module):
+        def forward(self, x):
+            return x[:, 0].add_(1), x

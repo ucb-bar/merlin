@@ -527,7 +527,7 @@ def _support_package_dirs() -> list[Path]:
     compiler and host-schedule packages are not support providers.
     """
     from merlin.targetgen import target_registry
-    from merlin.targetgen.providers import ProviderRole
+    from merlin.targetgen.providers import ProviderRole, read_provider, support_source_dependencies
 
     roots: set[Path] = set()
     references = target_registry.reference_targets()
@@ -536,6 +536,7 @@ def _support_package_dirs() -> list[Path]:
         provider = info.provider
         if provider is not None and provider.role == ProviderRole.SUPPORT:
             roots.add(provider.root)
+            roots.update(support_source_dependencies(provider.root).values())
             # A legacy reference link and its physical example are two paths to
             # the same support bytes.  Mask both, even when installed resolution
             # promotes the physical package for provider-boundary validation.
@@ -547,8 +548,21 @@ def _support_package_dirs() -> list[Path]:
     # Vendored support is tracked source inside the checkout, so every copy is masked whatever
     # MERLIN_TARGET_PATH selects. Selection decides which support EXECUTES, not which is private --
     # and a support directory is private whether or not it declares a provider.
-    roots.update(target_registry.in_repo_support().values())
+    for root in target_registry.in_repo_support().values():
+        roots.add(root)
+        roots.update(support_source_dependencies(root).values())
     roots.update(target_registry.vendored_support_dirs())
+    # A shadowed reference provider still owns private dependencies. Selection
+    # changes executable support, never the privacy of an unselected copy.
+    for root in tuple(roots):
+        metadata = root / "provider.yaml"
+        if not metadata.exists() and not metadata.is_symlink():
+            # Contract-only legacy aliases have no dependency declaration and
+            # may point at their already masked physical reference owner.
+            continue
+        provider = read_provider(root)
+        if provider is not None and provider.role == ProviderRole.SUPPORT:
+            roots.update(support_source_dependencies(provider.root).values())
     return sorted(roots)
 
 

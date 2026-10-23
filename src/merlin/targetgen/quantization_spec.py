@@ -154,7 +154,14 @@ def _record(value, basis: str, *, not_applicable=False) -> dict:
 
 def _unresolved(value, prefix: str) -> list[str]:
     if isinstance(value, Mapping):
-        return [name for key, member in value.items() for name in _unresolved(member, f"{prefix}.{key}")]
+        # Evidence prose describes the declaration; it is not a numerical
+        # parameter. Review acceptance remains the software admission gate.
+        return [
+            name
+            for key, member in value.items()
+            if key not in {"evidence", "provenance"}
+            for name in _unresolved(member, f"{prefix}.{key}")
+        ]
     if isinstance(value, list):
         return [name for index, member in enumerate(value) for name in _unresolved(member, f"{prefix}[{index}]")]
     return [prefix] if _unknown(value) else []

@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -349,3 +350,15 @@ def update_provenance_manifest(
     head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
     man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
     return man_path
+
+
+def _json(value: Any) -> bytes:
+    return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
+
+
+def _digest(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _canonical_digest(value: Any) -> str:
+    return _digest(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())

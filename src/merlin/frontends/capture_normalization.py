@@ -66,6 +66,7 @@ def _normalize_capture_mlir_uncached(
     raw_text: str,
     *,
     reported_opaque: Mapping[str, int] | None = None,
+    capture_metadata: Mapping | None = None,
 ) -> tuple[str, dict]:
     """Normalize one captured module and return ``(text, content-addressed receipt)``.
 
@@ -81,6 +82,8 @@ def _normalize_capture_mlir_uncached(
             f"captured MLIR could not be parsed for normalization: {type(exc).__name__}: {exc}"
         ) from exc
 
+    if capture_metadata is not None and reported_opaque is None:
+        reported_opaque=capture_metadata.get('opaque_detail') or {}
     if reported_opaque is not None:
         try:
             reported = {str(name): int(count) for name, count in reported_opaque.items() if int(count) != 0}
@@ -99,6 +102,11 @@ def _normalize_capture_mlir_uncached(
             rewrites = int(normalizer.apply(module))
             if rewrites:
                 applied.append({"identity": normalizer.identity, "rewrites": rewrites})
+        if capture_metadata is not None:
+            from merlin.frontends.bitcast_views import lower_captured_bitcast_views
+
+            count=lower_captured_bitcast_views(module,capture_metadata)
+            if count:applied.append(dict(identity='merlin.frontends.bitcast_views/v1',rewrites=count))
         module.verify()
         # Custom dialect printers can omit unknown attributes (tensor.empty does
         # so on the pinned xDSL), silently severing exact frontend lineage. This
@@ -136,10 +144,18 @@ def normalize_capture_mlir(
     raw_text: str,
     *,
     reported_opaque: Mapping[str, int] | None = None,
+    capture_metadata: Mapping | None = None,
 ) -> tuple[str, dict]:
-    """Normalize captured MLIR, preserving independent importer-census checks."""
-    if reported_opaque is not None:
-        return _normalize_capture_mlir_uncached(raw_text, reported_opaque=reported_opaque)
+    """Normalize captured MLIR, preserving independent importer-census checks.
+
+    ``capture_metadata`` (the capture worker's trace-proved metadata) also lowers
+    value-only bitcast views. The result then depends on the metadata, not only on
+    the text, so that path bypasses the text-keyed cache.
+    """
+    if reported_opaque is not None or capture_metadata is not None:
+        return _normalize_capture_mlir_uncached(
+            raw_text, reported_opaque=reported_opaque, capture_metadata=capture_metadata
+        )
     normalized, receipt = _normalize_capture_mlir_cached(raw_text)
     # Callers may attach their own observations to a receipt. The cache retains
     # only the immutable normalization result, never a caller-mutated record.

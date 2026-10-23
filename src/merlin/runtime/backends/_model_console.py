@@ -49,9 +49,10 @@ def parse_model_console(console: str, *, error_type: type[RuntimeError]) -> dict
                 raise error_type("malformed or duplicate model METRIC")
             _, k, v = parts
             # Not every metric is a number: `build_hash` is a hex digest. Keeping the string beats
-            # crashing the parse of an otherwise complete run.
+            # crashing the parse of an otherwise complete run. It stays a string even when every
+            # hex digit happens to be decimal, so it is never reinterpreted as an int.
             try:
-                metrics[k] = int(v)
+                metrics[k] = v if k == "build_hash" else int(v)
             except ValueError:
                 metrics[k] = v
         elif line.startswith("ARGMAX "):

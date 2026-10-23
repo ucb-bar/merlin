@@ -128,6 +128,9 @@ class RegionDescriptor:
     #: Exact parsed linalg input roles; unknown slots are not an inapplicable
     #: weight. None retains direct descriptors. Keep appended for positional ABI.
     captured_input_formats: tuple[str | None, ...] | None = None
+    #: Observed reduction kind (``compute_units.REDUCTION_KINDS``) of a reduction region, read from
+    #: its body; None when not observed. A kind-restricted capability does not decide an unknown kind.
+    kind: str | None = None
 
     def resolved_family(self) -> str | None:
         """The CANONICAL family, resolving a capture's own coarse tag rather than trusting it.
@@ -338,7 +341,9 @@ def is_eligible(
             in_dtype=observed[0],
             weight_dtype=observed[1] if family == "contraction" else region.weight_dtype,
         )
-    for c in caps:
+
+    def _row_refusal(c: SemanticCapability) -> EligibilityVerdict | None:
+        """Why ONE declared row cannot run the region, or None when it can."""
         if not _dtype_ok(region.in_dtype, c.dtypes):
             return EligibilityVerdict(
                 False,
@@ -415,7 +420,24 @@ def is_eligible(
                 f"layout {region.layout!r} not in {c.family} legal layouts {list(c.layouts)}",
                 refusal="layout",
             )
-        if c.forms and region.form not in c.forms:
+        if c.kinds:
+            if region.kind is None:
+                return EligibilityVerdict(
+                    False,
+                    family,
+                    f"UNDETERMINED: {c.family} computes only {list(c.kinds)} reductions and the region's "
+                    "reduction kind was not observed",
+                    undetermined=True,
+                    refusal="reduction_kind_unknown",
+                )
+            if region.kind not in c.kinds:
+                return EligibilityVerdict(
+                    False,
+                    family,
+                    f"{region.kind} reduction not in {c.family} supported kinds {list(c.kinds)}",
+                    refusal="reduction_kind",
+                )
+        if c.forms and not sf.form_admitted(region.form, c.forms):
             return EligibilityVerdict(
                 False,
                 family,
@@ -441,6 +463,20 @@ def is_eligible(
                     f"{list(c.composed_with)}; no such producer feeds this region"
                 )
             return EligibilityVerdict(False, family, why, refusal="fused_only")
+        return None
+
+    # A family declared by several rows (one fused, one standalone for a narrower kind; or one per
+    # unit) runs the region when ANY one row does. The merged capability alone would union their
+    # fields and lose which limits belong together.
+    passing: list[SemanticCapability] = []
+    for merged in caps:
+        rows = merged.rows()
+        refusals = [_row_refusal(row) for row in rows]
+        admitted = [row for row, refusal in zip(rows, refusals, strict=True) if refusal is None]
+        if not admitted:
+            # An undecidable row means the region may still be runnable: report it as unmeasured.
+            return next((refusal for refusal in refusals if refusal.undetermined), refusals[0])
+        passing.extend(admitted)
     if region.scale_granularity is not None and readout is not None:
         admitted = readout.admits_granularity(region.scale_granularity)
         if admitted is None:
@@ -462,7 +498,7 @@ def is_eligible(
             )
     engines = tuple(dict.fromkeys(e for c in caps for e in c.engines))
     units = tuple(dict.fromkeys(n for c in caps for n, _ in (providers or {}).get(c.family, ())))
-    attached = sorted({p for c in caps for p in c.composed_with if p in (fused_with or ())})
+    attached = sorted({p for c in passing for p in c.composed_with if p in (fused_with or ())})
     how_text = f"{how}, attached to {attached}" if attached else how
     return EligibilityVerdict(True, family, f"eligible ({how_text})", engines=engines, units=units)
 

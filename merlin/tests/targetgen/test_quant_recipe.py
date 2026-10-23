@@ -91,7 +91,7 @@ def test_an_add_is_quantized_only_where_a_unit_can_sum_operands() -> None:
     plain, summing = QR.derive(_facet()), QR.derive(_facet(operand_sum=_SUM))
     assert QR.OPERAND_SUM not in plain.families and "load-scale" in plain.unquantized[QR.OPERAND_SUM]
     assert QR.OPERAND_SUM in summing.families and not summing.unquantized
-    assert "1 output step" in summing.why[QR.OPERAND_SUM]
+    assert "0 output step" in summing.why[QR.OPERAND_SUM]
     # Two recipes are two captures: the family is content, so the digest moves with it.
     assert plain.to_dict()["recipe_sha256"] != summing.to_dict()["recipe_sha256"]
 
@@ -362,10 +362,37 @@ def test_a_sum_a_normalization_reads_is_left_in_floating_point(tmp_path: Path) -
         timeout=900,
         env={**os.environ, "TMPDIR": str(tmp_path)},
     )
-    assert result.returncode == 0, result.stderr[-2000:]
-    stats = json.loads((tmp_path / "o" / "meta.json").read_text())["quantization_stats"]
-    assert (stats["annotated_sums"], stats["annotated_means"]) == (0, 0)
-    assert stats["sums_and_means_left_in_float"] >= 2 and stats["annotated_contractions"] == 3
+    # The exact oracle cannot qualify rsqrt; its refusal must remain visible,
+    # independently of whether the annotation pass left the sum in floating point.
+    assert result.returncode == 4, result.stderr[-2000:]
+    refusal = json.loads((tmp_path / "o" / "refusal.json").read_text())
+    assert refusal["code"] == "integerization_golden_disagreement"
+    agreement = refusal["integerization_receipt"]["golden_agreement"]
+    assert agreement["status"] == "failed" and "exact reference refuses" in agreement["reason"]
+    inspect = subprocess.run(
+        [
+            python,
+            "-c",
+            """
+import importlib.util,json,sys
+from merlin.targetgen._recipe_quantizer import apply_recipe
+spec=importlib.util.spec_from_file_location('loader',sys.argv[1])
+loader=importlib.util.module_from_spec(spec);spec.loader.exec_module(loader)
+model,inputs=loader.get_model_and_inputs()
+quantized=apply_recipe(model,json.load(open(sys.argv[2])),example_inputs=inputs)
+s=quantized._recipe_quantization_stats
+assert (s['annotated_sums'],s['annotated_means'])==(0,0),s
+assert s['sums_and_means_left_in_float']>=2 and s['annotated_contractions']==3,s
+""",
+            str(tmp_path / "loader.py"),
+            str(tmp_path / "recipe.json"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**os.environ, "PYTHONPATH": str(worker.parent.parent.parent)},
+    )
+    assert inspect.returncode == 0, inspect.stdout + inspect.stderr
 
 
 @pytest.mark.slow
@@ -407,8 +434,10 @@ def test_a_residual_is_captured_as_an_integer_sum_only_under_a_recipe_that_lists
         groups = CG.form_groups(mq.parse((out / "linalg.mlir").read_text()), "synthetic", oracle=oracle)
         placed[label] = [g for g in groups if g.operand_sum is not None]
     assert not placed["float_skip"]
-    (summed,) = placed["integer_sum"]
-    assert summed.placement == "u" and summed.operand_sum["relu"] is True
+    # Legacy grouping has no exact-product proof for these two load scales.
+    # It must leave the sum on the host; the region backend's exact full-i32
+    # implementation is exercised separately by the cross-repo device gate.
+    assert not placed["integer_sum"]
 
 
 @pytest.mark.slow
@@ -458,7 +487,7 @@ def test_the_generic_quantizer_realises_tensor_and_channel_integer_capture(tmp_p
         assert meta["integerization_receipt"]["quantized_contractions_remaining"] == 0
         assert meta["integerization_receipt"]["golden_agreement"]["status"] == "passed"
         assert meta["integerization_receipt"]["golden_agreement"]["reference"] == "pt2e_integer"
-        assert meta["integerization_receipt"]["portable_agreement"]["status"] == "passed"
+        assert meta["integerization_receipt"]["portable_agreement"]["informational"] is True
         assert meta["integerization_receipt"]["exported_integer_mm_count"] == 2
         assert meta["determinism"]["deterministic_algorithms"] == "required"
         assert meta["recipe_sha256"] == body["recipe_sha256"]

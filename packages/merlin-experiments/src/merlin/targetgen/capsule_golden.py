@@ -3,7 +3,8 @@
 The golden is computed from the **capsule's declared operation** (not from the package's emitted
 command buffer), so a wrong command buffer is caught by ``golden != reference(cb)``. The arithmetic
 reuses the authoritative, dependency-free :class:`~merlin.runtime.tensor.Tensor` primitives (exact
-int matmul, round-half-even f32 ``acc_scale``, saturating i8 cast) so the golden is bit-identical in
+int matmul, round-half-even f32 ``acc_scale`` or the declared exact rational host readout, saturating
+i8 cast) so the golden is bit-identical in
 *semantics* to the reference/simulate/oracle paths while being structurally independent.
 
 Leaves are materialized via :meth:`Tensor.deterministic` — the SAME function the command-buffer
@@ -583,9 +584,36 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             batches.append(_apply_epilogue(a_i.matmul(w_i), attrs, env).to_list())
         return {out_name: batches}
 
-    if op == "movement":
-        src = env[attrs.get("src", _pick("input"))]
-        return {out_name: src.to_list()}
+    if op in ("movement", "affine_map", "concat", "insert_slice", "fill", "window_sum"):
+        # The movement forms and the integer affine/movement ops are defined ONCE, in
+        # runtime.integer_ops, and the reference engine and the simulator call the same functions.
+        from merlin.runtime import integer_ops
+
+        operation = {k: v for k, v in attrs.items() if k not in {"out", "src", "x", "y", "dest", "sources", "shape"}}
+        shape = attrs.get("shape")
+        if op == "movement":
+            src = env[attrs.get("src", _pick("input"))]
+            if operation.get("form", "identity") == "identity" and "scale" not in operation:
+                return {out_name: src.to_list()}
+            return {out_name: integer_ops.move(src, operation, shape, op=f"movement {out_name!r}").to_list()}
+        if op == "affine_map":
+            y = attrs.get("y")
+            t = integer_ops.affine_map(
+                env[attrs.get("x", _pick("input"))], env[y] if y else None, operation, op=f"affine_map {out_name!r}"
+            )
+        elif op == "concat":
+            t = integer_ops.concat([env[name] for name in attrs["sources"]], operation, op=f"concat {out_name!r}")
+        elif op == "window_sum":
+            t = integer_ops.window_sum(env[attrs["src"]], operation, shape, op=f"window_sum {out_name!r}")
+        elif op == "insert_slice":
+            t = integer_ops.insert_slice(
+                env[attrs["dest"]], env[attrs["src"]], operation, op=f"insert_slice {out_name!r}"
+            )
+        else:
+            if not isinstance(shape, list):
+                raise ValueError(f"fill {out_name!r} declares no output shape")
+            t = integer_ops.fill(shape, operation, op=f"fill {out_name!r}")
+        return {out_name: t.to_list()}
 
     if op == "fused_matmul_bias":
         # The matmul whose epilogue is the bias, so it is the matmul branch with the bias stage forced
@@ -796,6 +824,8 @@ def compare(
     golden, or the INDEPENDENT source (e.g. ``specir_refmodel_fp8_bf16``) when it was read from
     ``golden.yaml`` rather than recomputed."""
     mode = policy.get("compare", "exact_int")
+    if mode == "exact_bits":
+        raise ValueError("exact_bits requires full-call storage-boundary grading, not decoded numeric values")
     rep: dict[str, Any] = {
         "policy": mode,
         "golden_source": golden_source,

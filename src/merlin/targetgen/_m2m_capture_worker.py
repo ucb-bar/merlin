@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Capture a model through model2MLIR inside its torch-enabled environment.
 
-The request names a loader, dtype and output directory. The worker constructs and
-quantizes the model, lowers it through m2m, rejects opaque operations, evaluates the
-host reference and writes the MLIR, weights, inputs, golden output and metadata.
-Scoped quantization recipes use the selected package's Merlin admission screen.
+Invoked by capsule_source in the declared m2m interpreter. The request names a loader,
+dtype and output directory. The worker constructs the model, applies the selected
+precision recipe, lowers it through m2m, rejects opaque operations, evaluates the host
+reference and writes the MLIR, weights, inputs, golden output, independent reference and
+provenance metadata. Recipe screening uses shared Merlin admission inside the m2m process
+without target-name dispatch.
 """
 
 from __future__ import annotations
@@ -40,6 +42,10 @@ else:
     )
     from merlin.targetgen._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 
+# The worker is also executed as a standalone script in the capture interpreter.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from capture_refusals import refuse_integerization, write_exception_refusal, write_refusal  # noqa: E402
+
 # canonical dtype token -> (torchAO scheme | None, base-weight dtype cast | None). Mirrors
 # workloads/capture.py SCHEME + DTYPE_CAST so a capsule's precision matches how models are captured.
 _SCHEME = {
@@ -54,7 +60,7 @@ _SCHEME = {
     "fp8_e4m3": ("float8_weight_only_e4m3", None),
 }
 
-_CAPTURE_ABI_VERSION = 6
+_CAPTURE_ABI_VERSION = 7
 
 
 def _capture_api_report(m2m) -> dict[str, list[str]]:
@@ -213,15 +219,9 @@ def _quant_for(dtype: str, override: str | None = None):
 
 
 def _to_native(t):
-    """A torch tensor -> JSON-safe lists without rounding integer or boolean values."""
-    import torch
+    from _capture_tensor_values import to_native
 
-    if isinstance(t, torch.Tensor):
-        value = t.detach().cpu()
-        return (value if not (value.is_floating_point() or value.is_complex()) else value.to(torch.float64)).tolist()
-    if isinstance(t, (list, tuple)):
-        return [_to_native(x) for x in t]
-    return t
+    return to_native(t)
 
 
 def _scalars(mapping) -> dict:
@@ -398,25 +398,10 @@ class _RecordedForwards:
 
 
 def _float_reference(mdl, inputs, torch) -> dict:
-    """The untransformed model's outputs on ``inputs``, in the golden's JSON shape.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _capture_result_contract import float_reference
 
-    Every RNG this worker seeds is saved and restored around the forward, so a loader whose forward
-    draws random numbers produces the same golden afterwards as it would have without this run.
-    """
-    import numpy as np
-
-    states = (random.getstate(), np.random.get_state(), torch.get_rng_state())
-    try:
-        with torch.no_grad():
-            y = mdl(*inputs)
-        leaves, abi = _output_abi(y)
-        leaves = [leaf.detach().clone() for leaf in leaves]
-        values = [_to_native(x) for x in leaves]
-    finally:
-        random.setstate(states[0])
-        np.random.set_state(states[1])
-        torch.set_rng_state(states[2])
-    return {"outputs": values[0] if len(values) == 1 else values, "output_abi": abi, "leaves": leaves}
+    return float_reference(mdl, inputs, torch, _input_abi, _output_abi, _to_native)
 
 
 def _output_abi(outputs):
@@ -437,51 +422,9 @@ def _output_abi(outputs):
 
 
 def _integerized_agreement(before, after, *, atol: float, rtol: float) -> dict:
-    """Compare two independently supplied executions on the capture input."""
-    import torch
+    from merlin.targetgen._capture_integer_agreement import integerized_agreement
 
-    left, left_abi = _output_abi(before)
-    right, right_abi = _output_abi(after)
-    rows = []
-    compatible = left_abi == right_abi and bool(left)
-    for original, rewritten in zip(left, right):
-        lhs = original.detach().to(torch.float64)
-        rhs = rewritten.detach().to(torch.float64)
-        same_shape = lhs.shape == rhs.shape
-        finite = bool(torch.isfinite(lhs).all() and torch.isfinite(rhs).all()) if same_shape else False
-        if same_shape and finite and lhs.numel():
-            delta = (lhs - rhs).abs()
-            max_abs = float(delta.max())
-            max_rel = float((delta / lhs.abs().clamp_min(1e-12)).max())
-            within = bool(torch.all(delta <= atol + rtol * lhs.abs()))
-        elif same_shape and finite:
-            max_abs = max_rel = 0.0
-            within = True
-        else:
-            max_abs = max_rel = 0.0
-            within = False
-        rows.append(
-            {
-                "max_abs": max_abs,
-                "max_rel": max_rel,
-                "within_tolerance": within,
-                "finite": finite,
-                "atol": atol,
-                "rtol": rtol,
-                "shape": list(original.shape),
-            }
-        )
-    passed = compatible and len(rows) == len(left) and all(row["within_tolerance"] for row in rows)
-    return {
-        "status": "passed" if passed else "failed",
-        "samples": 1,
-        "atol": atol,
-        "rtol": rtol,
-        "max_abs": max((row["max_abs"] for row in rows), default=0.0),
-        "max_rel": max((row["max_rel"] for row in rows), default=0.0),
-        "outputs": rows,
-        "finite": compatible and all(row["finite"] for row in rows),
-    }
+    return integerized_agreement(before, after, atol=atol, rtol=rtol, output_abi=_output_abi)
 
 
 def _fp32_stage_observation(
@@ -541,8 +484,8 @@ def _fp32_stage_observation(
     }
 
 
-def _exported_integer_mm_count(module) -> int:
-    """Count proven i8×i8→i32 contractions in the emitted, unnormalized MLIR."""
+def _exported_integer_mm_count(module, *, batched: bool = False) -> int:
+    """Count integer contractions, separating matrix and batched matrix forms."""
     from xdsl.dialects.builtin import IntegerType, TensorType
 
     def width(value) -> int | None:
@@ -562,6 +505,7 @@ def _exported_integer_mm_count(module) -> int:
             str(getattr(prov, "data", "")) == "int_matmul"
             and [width(value) for value in op.operands[:2]] == [8, 8]
             and width(op.results[0]) == 32
+            and (len(op.results[0].type.get_shape()) > 2) == batched
         ):
             count += 1
     return count
@@ -953,10 +897,12 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
 
     if a.m2m_dir and a.m2m_dir not in sys.path:
         sys.path.insert(0, a.m2m_dir)
-    # Shared software admission belongs to the selected worker's own Merlin
-    # package, in both source and wheel layouts, never another editable checkout.
-    if a.recipe:
-        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    # Shared software admission and the integerization export check belong to the selected worker's
+    # own Merlin package, in both source and wheel layouts, never another editable checkout. Every
+    # capture reads the export check (receipt_export_complete), not only a recipe capture, so the
+    # worker's own package is always on the path: in a capture interpreter without Merlin installed
+    # an fp32 capture otherwise died with ModuleNotFoundError: merlin.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
     import m2m
     import torch
@@ -1091,6 +1037,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             }
     elif a.already_quantized:
         original_snapshot["reason"] = "loader supplies an already-quantized graph; the original model was not captured"
+    from merlin.capture.static_metadata import specialize_static_metadata
+
+    static_metadata = None
+    if getattr(loader, "STATIC_METADATA_ONLY", False):
+        mdl, static_metadata = specialize_static_metadata(mdl, tuple(inputs))
     _scheme, cast = _SCHEME.get(a.dtype, (None, None))
     # THE FLOAT MODEL'S OWN OUTPUT, before any precision cast or quantization rewrites it. The golden
     # below is the transformed model -- what the compiler must reproduce -- and so can say nothing about
@@ -1206,8 +1157,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     )
     agreement = None
     if recipe is not None:
-        # THE TARGET'S OWN QUANTIZATION. The recipe was derived from what the hardware's readout
-        # holds; the quantizer that realises it is generic and lives beside this worker.
+        # Realize the target-derived recipe in the capture interpreter.
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import _recipe_quantizer as RQ
         from m2m.capture.torchao_pipeline import QuantizationConfig
@@ -1236,28 +1186,31 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             import copy
 
             reference = copy.deepcopy(mdl)  # quantize_ mutates in place
-        mdl = RQ.apply_recipe(
-            mdl,
-            recipe,
-            example_inputs=tuple(inputs),
-            calibration_inputs=calibration,
-            original_frontend_snapshot=original_snapshot if trace_supported else None,
-            source_layer_inventory=source_layer_inventory,
-        )
+        import copy
+
+        try:
+            mdl = RQ.apply_recipe(
+                mdl,
+                recipe,
+                example_inputs=copy.deepcopy(tuple(inputs)),
+                calibration_inputs=copy.deepcopy(calibration),
+                original_frontend_snapshot=original_snapshot if trace_supported else None,
+                source_layer_inventory=source_layer_inventory,
+            )
+        except (RQ.NoEligibleRecipeOperations, RQ.CalibrationRefused) as exc:
+            write_exception_refusal(out, exc, fallback_code="no_eligible_recipe_operations")
+            return 4
         quant_stats = getattr(mdl, "_recipe_quantization_stats", None)
         if fp32_staging is not None:
             fp32_staging["source_layer_plan_sha256"] = (
                 quant_stats.get("plan_sha256") if isinstance(quant_stats, dict) else None
             )
-        # The receipt: the recipe-quantized model against the floating-point one, on the
-        # calibration stream and the capture input. Recorded, not judged here.
+        # Diagnostic agreement on owned samples, independently of correctness.
         agreement = RQ.agreement(
             reference if agreement_reference is None else agreement_reference,
             mdl,
             [tuple(inputs), *(calibration or [])],
         )
-        # The capture library is told which lowering family this graph is, and that the
-        # quantization is already applied; the numbers are the recipe's.
         formats = {str(recipe[part]["dtype"]) for part in ("activation", "weight")}
         if formats == {"int8"}:
             provenance_scheme = "int8_static_act_int8_weight" if static else "int8_dyn_act_int8_weight"
@@ -1290,32 +1243,74 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         mdl = apply_quantization(mdl, q, **quant_trace_options)
         quant_stats = getattr(mdl, "_m2m_quantization_stats", None)
     integerization_receipt = None
-    # A recipe whose dynamic block emitted every integer contraction leaves PT2E nothing to integerize.
-    pt2e_selected = not isinstance(quant_stats, dict) or quant_stats.get("annotated_contractions") != 0
-    if q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized and pt2e_selected:
-        # Account for every selected PT2E contraction: genuine integer work or
-        # an explicitly preserved non-FP32 floating Q/DQ operation. Preserving
-        # precision is not accelerator/host admission. The independent reference
-        # compares the complete output and counts only genuine integer work.
-        from m2m.capture.pt2e_integerize import integerize_pt2e
+    from merlin.capture.integerization import non_contraction_annotations
 
-        selected_engine = recipe.get("software_numerical_engine") if recipe is not None else None
+    # A recipe whose dynamic block emitted every integer contraction leaves PT2E nothing to integerize,
+    # unless it still declares integer non-contraction sites (affine, movement) for the integerizer.
+    pt2e_selected = (
+        not isinstance(quant_stats, dict)
+        or quant_stats.get("annotated_contractions") != 0
+        or non_contraction_annotations(quant_stats) is not None
+    )
+    if q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized and pt2e_selected:
+        if (
+            not isinstance(mdl, torch.fx.GraphModule)
+            or not isinstance(quant_stats, dict)
+            or quant_stats.get("api") != "pt2e"
+        ):
+            write_refusal(
+                out,
+                code="no_eligible_recipe_operations",
+                reason="static integer recipe did not produce a converted PT2E FX graph",
+                quantization_stats=quant_stats,
+            )
+            return 4
+        # Independently account for integer and preserved-float contractions.
+        from merlin.capture.integerization import (
+            INTEGER_REFERENCE,
+            accelerator_readout_numerics,
+            integerize_capture_model as integerize_static_pt2e,
+        )
+
+        selected_engine = (recipe or {}).get("software_numerical_engine", "integer_reference")
+        # Accelerator captures retain exact integer math and one rational quantize boundary.
+        readout_numerics = accelerator_readout_numerics(recipe)
+        from merlin.capture.integerization import non_contraction_annotations
+
+        contraction_free = (
+            non_contraction_annotations(quant_stats) is not None
+            and isinstance(quant_stats, dict)
+            and not quant_stats.get("annotated_contractions")
+        )
+        # Software-admitted graphs require an independent declared-graph reference,
+        # including contractions discovered only after integerization.
+        declared_graph = recipe is not None and (
+            recipe.get("host_readout_declarations") is not None
+            or contraction_free
+            or recipe.get("software_admission") is not None
+        )
         if selected_engine not in (None, "integer_reference"):
             raise ValueError(f"static int8 capture cannot realize numerical engine {selected_engine!r}")
         with torch.no_grad():
-            portable_output = mdl(*inputs)
+            import copy
+
+            portable_output = mdl(*copy.deepcopy(inputs))
         independent = None
         independent_error = None
         independent_source = None
         if selected_engine == "integer_reference":
             try:
-                from m2m.capture import pt2e_integer_reference as integer_reference
+                from merlin.targetgen.core_aten_w8a8_reference import selected_pt2e_reference
 
-                source = Path(integer_reference.__file__).resolve()
-                if not source.is_file():
-                    raise RuntimeError("selected integer reference source is unavailable")
-                independent_source = {"path": str(source), "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
-                independent = integer_reference.run_pt2e_integer_reference(mdl, tuple(inputs))
+                # A quantized program with no contraction has no readout to choose: its independent
+                # reference is the Q/DQ graph interpreted as declared, which the host-readout reference
+                # does (and it records the post-call inputs the boundary binds).
+                independent, independent_source = selected_pt2e_reference(
+                    mdl,
+                    tuple(inputs),
+                    declared_readout=declared_graph,
+                    numerics=readout_numerics,
+                )
                 if not all(
                     hasattr(independent, field)
                     for field in ("contraction_count", "conv2d_count", "linear_count", "matmul_count")
@@ -1324,26 +1319,40 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             except Exception as exc:  # noqa: BLE001 -- record a failed selected reference, never substitute portable
                 independent_error = f"{type(exc).__name__}: {exc}"[:2000]
                 independent = None
-        mdl, integerization_receipt = integerize_pt2e(mdl, tuple(inputs))
+        mdl, integerization_receipt = integerize_static_pt2e(mdl, tuple(inputs), numerics=readout_numerics, directory=out)
+        if declared_graph:
+            if independent is not None:
+                leaves, _ = _output_abi(independent.output)
+                from merlin.targetgen.core_aten_w8a8_reference import write_pt2e_reference
+
+                write_pt2e_reference(out / "spec-int8-reference.json", independent, leaves, independent_source)
         from merlin.capture.integerization import contraction_partition
 
+        annotations = non_contraction_annotations(quant_stats)
+        if annotations is not None and integerization_receipt.get("quantized_contractions_seen") == 0:
+            # A quantized program with no contraction: mark it so the contraction-census checks can
+            # tell "nothing to integerize" from "integerization dropped the work".
+            integerization_receipt["integer_program"] = "non_contraction"
+            integerization_receipt["non_contraction_annotations"] = annotations
         try:
             integer_partition = contraction_partition(integerization_receipt)
         except ValueError as exc:
             integer_partition = None
             integerization_receipt["partition_error"] = str(exc)
         with torch.no_grad():
-            integer_output = mdl(*inputs)
+            integer_output = mdl(*copy.deepcopy(inputs))
         portable_agreement = _integerized_agreement(
             portable_output, integer_output, atol=a.agreement_atol, rtol=a.agreement_rtol
         )
         portable_agreement["reference"] = "portable_pt2e"
+        portable_agreement["informational"] = True
+        portable_agreement["label"] = "eager-float divergence"
         integerization_receipt["portable_agreement"] = portable_agreement
         if selected_engine == "integer_reference":
             if independent is None:
                 golden_agreement = {
                     "status": "failed",
-                    "reference": "pt2e_integer",
+                    "reference": INTEGER_REFERENCE,
                     "reason": independent_error or "selected integer reference returned no result",
                 }
             else:
@@ -1373,7 +1382,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 reference_path = out / "integer-reference.json"
                 reference_path.write_bytes(reference_bytes)
                 golden_agreement.update(
-                    reference="pt2e_integer",
+                    reference=INTEGER_REFERENCE,
+                    arithmetic="exact_rational",
+                    eager_float_divergence=independent.eager_float_divergence,
                     source=independent_source,
                     output={"path": reference_path.name, "sha256": hashlib.sha256(reference_bytes).hexdigest()},
                     executed_contractions={
@@ -1390,6 +1401,8 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             integerization_receipt["golden_agreement"] = golden_agreement
         else:
             integerization_receipt["golden_agreement"] = portable_agreement
+        if refuse_integerization(out, integerization_receipt):
+            return 4
     act_census = None
     if a.quantize_activation_contractions:
         # THE CONTRACTIONS quantize_ CANNOT REACH. The scheme replaces Linear weights; a matmul of two
@@ -1411,14 +1424,14 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         act_census = AC.install(mdl)
     nl_census = None
     if a.integer_nonlinear:
-        # THE NONLINEAR LAYERS BETWEEN THE CONTRACTIONS, in integer arithmetic. Defined only on top of the
-        # int8 contractions (the softmax's int8 numerators are the next contraction's own operand), so it
-        # is refused without them rather than mixed into a floating-point program.
+        # Install the selected integer nonlinear layers over integer contractions.
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import _integer_nonlinear as NL
 
         nl_census = NL.install(mdl)
     trace_options = {"capture_trace": True, "original_frontend_snapshot": original_snapshot} if trace_supported else {}
+    pre_call_leaves, pre_call_abi = _input_abi(inputs)
+    pre_call_values = [_to_native(x) for x in pre_call_leaves]
     res = m2m.convert(
         mdl,
         inputs,
@@ -1434,12 +1447,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     n_opaque = sum(opaque.values())
     if integerization_receipt is not None:
         integerization_receipt["exported_integer_mm_count"] = _exported_integer_mm_count(res.module)
-    integerization_ok = integerization_receipt is None or (
-        integer_partition is not None
-        and integerization_receipt.get("accumulator_bound_checked") is True
-        and integerization_receipt["exported_integer_mm_count"] > 0
-        and integerization_receipt["integer_mm_emitted"] <= integerization_receipt["exported_integer_mm_count"]
-        and integerization_receipt["golden_agreement"]["status"] == "passed"
+        integerization_receipt["exported_integer_bmm_count"] = _exported_integer_mm_count(res.module, batched=True)
+    from merlin.targetgen.integerization_export import receipt_export_complete
+
+    integerization_ok = integerization_receipt is None or receipt_export_complete(
+        integerization_receipt, integer_partition
     )
     # A recipe requests a format; only the applied transform and its emitted
     # arithmetic establish the captured scheme. In particular, an already-
@@ -1490,7 +1502,6 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     # host torch-eager reference — THE golden. Run the (cast/quantized) model the compiler must reproduce.
     with torch.no_grad():
         y = mdl(*inputs)
-    # The census of the forward that produced the golden, taken before anything runs the model again.
     act_sites = act_census.to_dict() if act_census is not None else None
     nl_sites = nl_census.to_dict() if nl_census is not None else None
     output_leaves, output_abi = _output_abi(y)
@@ -1498,8 +1509,12 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     # Preserve the version-1 single-result JSON shape so existing operator capsules and caches remain
     # byte-compatible.  ``output_abi`` is what disambiguates one list-shaped tensor from many results.
     outputs = output_values[0] if len(output_values) == 1 else output_values
-    input_leaves, input_abi = _input_abi(inputs)
-    input_prov = [_to_native(x) for x in input_leaves]
+    input_leaves, input_abi = pre_call_leaves, pre_call_abi
+    input_prov = pre_call_values
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _capture_result_contract import exported_contract, raw_tensor_boundary
+
+    result_contract = exported_contract(res, input_leaves)
 
     (out / "inputs.json").write_text(json.dumps(input_prov), encoding="utf-8")
     (out / "golden.json").write_text(json.dumps(outputs), encoding="utf-8")
@@ -1514,6 +1529,8 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         "ok": bool(res.ok) and precision_exact,
         "precision_realization": precision if precision else {"status": "unknown"},
         "precision_conversion": precision_conversion,
+        "native_eager_boundary": raw_tensor_boundary(output_leaves, input_leaves) if recipe is None else None,
+        **({"static_metadata_specialization": static_metadata} if static_metadata is not None else {}),
         **({"fp32_staging": fp32_staging} if fp32_staging is not None else {}),
         "opaque": int(n_opaque),
         "opaque_detail": opaque,
@@ -1599,6 +1616,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # independently against the captured @forward signature before declaring capsule inputs.
         "input_abi": input_abi,
         "output_abi": output_abi,
+        "result_contract": result_contract,
         # WHAT THE INPUTS WERE, as the loader itself declares them. The parent turns this into the
         # capsule's input-provenance record; without it a synthetic-input capture and a real-data one
         # are indistinguishable afterwards, and only one of them can back an accuracy statement.

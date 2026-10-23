@@ -304,11 +304,23 @@ def main(argv=None):
             checks += [
                 ("spike", "spike --help 2>&1 | head -1"),
                 ("riscv64-unknown-elf-gcc", "riscv64-unknown-elf-gcc --version | head -1"),
-                (
-                    "verilator L3 sim",
-                    f"test -x {TC.CHIPYARD_VERILATOR}/simulator-chipyard.harness-{_verilator_design()} && echo present",
-                ),
             ]
+            if os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() == "vcs":
+                # A VCS-pinned run never executes Verilator: require the simv and its runtime database.
+                from merlin_experiments.phase1.timing import selected_simulator
+
+                simv = selected_simulator("vcs", C.TARGET, _verilator_design())
+                checks.append(("vcs L3 simv", f"test -x '{simv}' && test -d '{simv}.daidir' && echo present"))
+            else:
+                checks.append(
+                    (
+                        "verilator L3 sim",
+                        (
+                            f"test -x {TC.CHIPYARD_VERILATOR}/simulator-chipyard.harness-"
+                            f"{_verilator_design()} && echo present"
+                        ),
+                    )
+                )
         else:
             print(
                 f"  [n/a ] RISC-V/chipyard toolchain — {C.TARGET} declares no bespoke sim "

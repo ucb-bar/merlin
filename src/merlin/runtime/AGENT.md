@@ -127,6 +127,11 @@ the per-backend adapters under `backends/`.
 - `out_packet.py` reuses the binary codec for closed in-memory full-value packets,
   bounded by a caller-owned typed output roster. Packet DONE is wire closure only;
   native completion and numerical comparison remain independent obligations.
+- `byte_readback.py` parses the opt-in whole-model `OUT_BYTES` console protocol:
+  every result as ordered storage bytes, optional `OUT_SHAPE` extents for
+  descriptor results, one terminal DONE. `semantic_readback.py` adds the strict
+  optional `OUT_META`/`OUT_ALIAS`/`PRE_BYTES` call-boundary frames. Neither grants
+  dtype interpretation or numerical authority; graders own that.
 
 ## What does not belong here
 

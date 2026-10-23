@@ -387,3 +387,30 @@ def is_external_path_unset(exc: BaseException | None) -> bool:
             return True
         exc = exc.__cause__
     return False
+
+
+def rtl_facts_path(target: str, *, explicit: str | Path | None = None) -> Path:
+    """Resolve the RTL facts artifact PATH (pure — no I/O, no regeneration): explicit >
+    ``$MERLIN_RTL_FACTS`` > the purgeable cache ``out/artifacts/cache/rtl_introspect/<t>/facts.json``.
+
+    This resolves to the GENERATED artifact's location; it never points at ``merlin/targets/<t>``.
+    Use :func:`ensure_facts` / :func:`load_facts` when you need the file to actually exist (they
+    regenerate the cache when it is cold)."""
+    if explicit:
+        return Path(explicit)
+    env = os.environ.get("MERLIN_RTL_FACTS")
+    if env:
+        return Path(env)
+    return rtl_cache_dir(target) / "facts.json"
+
+
+def rtl_cache_dir(target: str, *, ensure: bool = False) -> Path:
+    """Purgeable introspect scratch (hw.mlir input, ``*.ll``/``*.o``, arcilator bins, per-run
+    facts.json) under ``artifacts/cache/rtl_introspect/<target>/`` — never inside ``merlin/``.
+
+    Mirrors :func:`merlin.common.artifacts.cache_dir` (``artifacts/cache/<ns>/``, PURGEABLE) without
+    forcing directory creation at import time; pass ``ensure=True`` when about to write."""
+    d = artifacts_dir() / "cache" / "rtl_introspect" / target
+    if ensure:
+        d.mkdir(parents=True, exist_ok=True)
+    return d

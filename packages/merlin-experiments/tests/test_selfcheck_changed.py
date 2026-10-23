@@ -109,13 +109,17 @@ def bench(tmp_path, monkeypatch):
 
     def grade(sub, *, capsules_root, runs_root, labels, oracle_adapters, **_kwargs):
         assert set(oracle_adapters) == {"L2", "L3"}, "changed classifies on the grade's own selection"
-        state.grade_roots.append(Path(capsules_root))
+        # One root or several, like the real grader: a focused grade passes the selected original
+        # capsule directories, a whole-suite grade (and the probe) passes the corpus.
+        roots = [Path(capsules_root)] if isinstance(capsules_root, (str, Path)) else [Path(r) for r in capsules_root]
+        state.grade_roots.extend(roots)
         state.labels.append(set(labels))
         probing = os.environ.get(SC.PROBE_ENV)
         state.probe_env.append(probing)
+        dirs = [d for root in roots for d in ([root] if (root / "capsule.yaml").is_file() else root.iterdir())]
         names = sorted(
             d.name
-            for d in Path(capsules_root).iterdir()
+            for d in dirs
             if (d / "capsule.yaml").is_file() and json.loads((d / "capsule.yaml").read_text())["label"] in labels
         )
         (state.probes if probing else state.simulated).append(names)
@@ -309,7 +313,7 @@ def test_hidden_capsules_are_never_probed_simulated_or_reported(bench):
     (bench.submission / "cap_b.prog").write_text("cap_b-v2")
     code, report = bench.run("changed")
     assert all(labels == {"public", "dev"} for labels in bench.labels)
-    assert all(root == bench.corpus or root.parent != bench.corpus for root in bench.grade_roots)
+    assert all(root == bench.corpus or root.parent == bench.corpus and root.name in NAMES for root in bench.grade_roots)
     graded = {name for batch in bench.probes + bench.simulated for name in batch}
     assert "cap_hidden" not in graded and "cap_hidden" not in json.dumps(report)
     assert report["changed_selection"]["n_public"] == 3

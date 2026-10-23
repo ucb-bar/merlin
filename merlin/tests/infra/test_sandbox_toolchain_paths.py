@@ -51,6 +51,9 @@ def test_explicit_clang_selects_external_llvm_install(tmp_path, monkeypatch):
     for tool in ("clang-23", "mlir-opt"):
         (llvm / "bin" / tool).write_text("fixture\n")
     monkeypatch.setattr(TC, "repo_root", lambda: checkout)
+    # The checkout's .env can declare a separate compiler install. This case
+    # exercises the default inferred from the explicitly selected clang.
+    monkeypatch.setattr(TC, "env", lambda name, default: default)
     monkeypatch.setenv("MERLIN_CLANG", str(llvm / "bin/clang-23"))
     selected = TC.ToolchainPaths.from_checkout()
     assert selected.llvm == str(llvm)
@@ -95,3 +98,31 @@ def test_explicit_paths_drive_binds_environment_and_probes(tmp_path, monkeypatch
         paths.llvm,
         paths.clang_bin,
     ]
+
+
+def test_venv_mounts_its_external_interpreter_and_libraries(tmp_path):
+    runtime = tmp_path / "runtime"
+    (runtime / "bin").mkdir(parents=True)
+    (runtime / "lib").mkdir()
+    interpreter = runtime / "bin/python"
+    interpreter.write_text("synthetic interpreter")
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin/python").symlink_to(interpreter)
+    (venv / "pyvenv.cfg").write_text(f"home = {runtime / 'bin'}\n")
+    paths = TC.ToolchainPaths(tmp_path, str(venv), "", "", "", "")
+    target = SimpleNamespace(sim_via="", curated_harness=None, target="synthetic")
+    argv = TC.toolchain_binds(target, paths=paths, sim=TC.SimToolchain(), harness="", memory_dir="")
+    for path in (runtime / "bin", runtime / "lib", venv):
+        assert ["--ro-bind", str(path), str(path)] in [argv[i : i + 3] for i in range(len(argv))]
+
+
+def test_copied_venv_interpreter_uses_its_configured_home(tmp_path):
+    runtime = tmp_path / "base"
+    (runtime / "lib").mkdir(parents=True)
+    (runtime / "bin").mkdir()
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin/python").write_text("copied interpreter")
+    (venv / "pyvenv.cfg").write_text(f"home = {runtime / 'bin'}\n")
+    assert TC._venv_runtime_paths(str(venv)) == (str(runtime / "bin"), str(runtime / "lib"))

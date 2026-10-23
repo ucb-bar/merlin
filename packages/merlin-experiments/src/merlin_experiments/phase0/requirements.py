@@ -502,6 +502,18 @@ def derive(
     independent_public = _independent_public_sources(getattr(declaration, "recipe", None))
     if independent_public and heldout_layers is not None:
         raise ValueError("functional v3 derives from public sources only; private layer shapes are not inputs")
+    from .core_aten_stage import declaration as core_declaration
+    from .core_aten_stage import derive as derive_core
+
+    recipe = getattr(declaration, "recipe", None)  # Only a declared recipe can select the retained stage.
+    if recipe is not None and core_declaration(recipe) is not None:
+        if captures or native_qualifications or capture_preselections or quantization_policies:
+            raise ValueError("Core ATen uses only recipe-declared case selections and retained captures")
+        return derive_core(
+            declaration.recipe, Path(output_root), target=declaration.target, descriptor=declaration.descriptor
+        )
+    if rtl_facts is None:
+        raise ValueError("model derivation requires explicit --rtl-facts")
     te = load_target_experiment(declaration.descriptor)
     performance_captures = performance_scale_selection(te.workload_spec, captures, performance_captures)
     layer_guard = None

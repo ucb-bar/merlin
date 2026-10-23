@@ -114,6 +114,8 @@ def _stop_policy():
     )
     src = (
         "def _factory(a, rnd, active_wall_s, _authoring_complete):\n"
+        # main() records why authoring stopped through a sibling closure; the policy only calls it.
+        "    def _record_authoring_stop(reason):\n        pass\n"
         + textwrap.indent(ast.unparse(fn), "    ")
         + "\n    return _keep_going\n"
     )

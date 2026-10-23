@@ -484,3 +484,18 @@ def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_ou
     (tmp_path / index["recipes"][0]["path"]).write_text("{}")
     with pytest.raises(ValueError, match="bytes differ"):
         _selected_capture_recipe(tmp_path, target=spec["target"], operand_dtype="int8", accumulator_dtype="int32")
+
+
+def test_evidence_prose_is_not_an_unknown_numerical_parameter():
+    from merlin.targetgen.quantization_spec import _unresolved
+
+    semantics = {
+        "domain": {
+            "minimum": -1.0,
+            "maximum": 1.0,
+            "provenance": "authored fixed observer range; pending operator review",
+            "evidence": {"review_status": "authored, pending operator review"},
+        },
+        "rounding": "unknown",
+    }
+    assert _unresolved(semantics, "numerical_semantics") == ["numerical_semantics.rounding"]

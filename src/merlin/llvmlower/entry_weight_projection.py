@@ -358,6 +358,12 @@ def _pure_result_operation(operation) -> bool:
         or operation.has_trait(SymbolOpInterface, value_if_unregistered=False)
     ):
         return False
+    # These value casts have no effects, although some supported xDSL versions
+    # omit their Pure trait. Do not retain dead integer component subgraphs just
+    # because that trait is absent.
+    value_casts = {"arith.extsi", "arith.extui", "arith.trunci", "arith.bitcast"}
+    if operation.name in value_casts:
+        return True
     # Tensor structured operations can report unknown generic memory effects,
     # while their tensor results and fully pure scalar body are value-only.
     if isinstance(operation, LinalgStructuredOperation):
@@ -369,7 +375,7 @@ def _pure_result_operation(operation) -> bool:
             return False
         for region in operation.regions:
             for child in region.walk():
-                if isinstance(child, YieldOp):
+                if isinstance(child, YieldOp) or child.name in value_casts:
                     continue
                 if get_effects(child) != set():
                     return False

@@ -232,7 +232,7 @@ def build_cmd(
 _FROZEN_CONFIG = (
     "model = {model}\nmodel_reasoning_effort = {effort}\n"
     f'default_permissions = "{_CANDIDATE_PERMISSION_PROFILE}"\n'
-    "{provider}\n{profile}{trust}"
+    "{service_tier}{provider}\n{profile}{trust}"
 )
 
 
@@ -361,11 +361,15 @@ def prepare_codex_home(
     from merlin_experiments.phase1.providers import agent_bridge as _BR
 
     provider = _BR.codex_config_fragment(model)
+    service_tier = os.environ.get("CODEX_SERVICE_TIER", "").strip()
+    if service_tier not in {"", "fast", "flex"}:
+        raise ValueError("CODEX_SERVICE_TIER must be fast or flex when selected")
     config = _FROZEN_CONFIG.format(
         model=json.dumps(_BR.codex_model_name(model)),
         effort=json.dumps(effort or "high"),
         profile=_candidate_permission_config(dest, read_paths=candidate_read_paths),
         provider=provider,
+        service_tier=f"service_tier = {json.dumps(service_tier)}\n" if service_tier else "",
         trust=f'[projects.{json.dumps(str(workspace))}]\ntrust_level = "trusted"\n',
     )
     if max_concurrent_subagents is not None:

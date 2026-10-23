@@ -1,0 +1,317 @@
+{
+  "attributes": {
+    "prov.quant.acc_scale": {
+      "meaning": "Legacy rounded product, informational only; only emitted with float_readout and host_only=true.",
+      "op_kinds": [
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "f64 | array<f64>"
+    },
+    "prov.quant.accumulator": {
+      "meaning": "i32, the full-width exact integer accumulator. Device readout defaults to full i32, with exact requantization performed separately.",
+      "op_kinds": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required": true,
+      "required_on": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required_when": null,
+      "type": "string"
+    },
+    "prov.quant.alpha": {
+      "meaning": "Exact binary scalar multiplier of the contraction, included in the rational pair.",
+      "op_kinds": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "f64"
+    },
+    "prov.quant.arithmetic": {
+      "meaning": "exact means rational/integer math until the required final rounding; eager_float_reassociated makes no exactness claim.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": true,
+      "required_on": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required_when": null,
+      "type": "string"
+    },
+    "prov.quant.axis": {
+      "meaning": "Q/DQ channel axis (negative axes use tensor rank).",
+      "op_kinds": [
+        "quantize",
+        "dequantize"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": "channel Q/DQ",
+      "type": "i64"
+    },
+    "prov.quant.beta": {
+      "meaning": "Exact binary multiplier of the explicit bias operand. The scale pair describes the accumulator coefficient only: an unfused bias operand is additional exact math, not an integer seed.",
+      "op_kinds": [
+        "integer_readout"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "f64"
+    },
+    "prov.quant.gradient": {
+      "meaning": "Backward contraction output: input or weight.",
+      "op_kinds": [
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "string"
+    },
+    "prov.quant.granularity": {
+      "meaning": "tensor or channel; a single static scale broadcasts.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": true,
+      "required_on": [
+        "quantize",
+        "dequantize"
+      ],
+      "required_when": null,
+      "type": "string"
+    },
+    "prov.quant.host_only": {
+      "meaning": "true forbids accelerator placement: legacy approximate numerics or non-fp32 source scales. Absence/false is not admission or an accumulator-overflow proof.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": "float_readout, or a source scale is not fp32-representable",
+      "type": "string(\"true\" | \"false\")"
+    },
+    "prov.quant.lhs_scale": {
+      "meaning": "Source lhs scale factor for diagnostics; exact consumers use the rational pair. Accelerator factors must be fp32-representable.",
+      "op_kinds": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "f64"
+    },
+    "prov.quant.numerics": {
+      "meaning": "integer_readout (exact) or float_readout (legacy approximate and host-only). This is not device-placement permission.",
+      "op_kinds": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required": true,
+      "required_on": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required_when": null,
+      "type": "string"
+    },
+    "prov.quant.output_scale": {
+      "meaning": "Output Q scale factor, diagnostic; it is already divided into the readout rational pair. Do not divide by it a second time.",
+      "op_kinds": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "f64"
+    },
+    "prov.quant.quant_max": {
+      "meaning": "Inclusive upper storage-code clamp bound; permits narrow ranges.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": true,
+      "required_on": [
+        "quantize",
+        "dequantize"
+      ],
+      "required_when": "integer_readout with integer result",
+      "type": "i64"
+    },
+    "prov.quant.quant_min": {
+      "meaning": "Inclusive lower storage-code clamp bound; never an accumulator bound.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": true,
+      "required_on": [
+        "quantize",
+        "dequantize"
+      ],
+      "required_when": "integer_readout with integer result",
+      "type": "i64"
+    },
+    "prov.quant.relu": {
+      "meaning": "Exact real ReLU before final output quantization.",
+      "op_kinds": [
+        "integer_readout"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": "integer_readout with integer result",
+      "type": "string(\"true\" | \"false\")"
+    },
+    "prov.quant.rhs_scale": {
+      "meaning": "Source rhs scale factor(s), in output-channel order; diagnostic, never a rounded substitute for the rational pair.",
+      "op_kinds": [
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "f64 | array<f64>"
+    },
+    "prov.quant.rounding": {
+      "meaning": "half_to_even (RNE), before adding zero point and clamping; float results round once to their IEEE result type.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": true,
+      "required_on": [
+        "quantize"
+      ],
+      "required_when": "integer_readout with integer result",
+      "type": "string"
+    },
+    "prov.quant.saturate": {
+      "meaning": "Whether final integer codes clamp to quant_min/max; never permits intermediate saturation.",
+      "op_kinds": [
+        "integer_readout"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": "integer_readout with integer result",
+      "type": "string(\"true\" | \"false\")"
+    },
+    "prov.quant.scale": {
+      "meaning": "Informational nearest fp32 representation of the effective scale. Never use for exact computation; optional when rational attributes exist.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "f32 | array<f32>"
+    },
+    "prov.quant.scale_denominator": {
+      "meaning": "Positive reduced exact rational denominators; same length and ordering as scale_numerator. Dynamic Q/DQ scales remain SSA operands and cannot be admitted using absent static provenance.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": "scale_numerator is present",
+      "type": "array<positive_decimal_integer_string>"
+    },
+    "prov.quant.scale_numerator": {
+      "meaning": "Reduced exact rational numerators, paired with scale_denominator. Q/DQ: original scale; contraction: alpha * lhs_scale * rhs_scale; readout: that product / output_scale for integer output, or that product for float output. One entry broadcasts; multiple entries follow the output channel (readout/contraction last axis; Q/DQ axis). Products and ratios are formed exactly from fp32-canonical factors, without rounding the product to fp32.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": "statically known exact scale; both rational arrays must appear together",
+      "type": "array<decimal_integer_string>"
+    },
+    "prov.quant.storage_dtype": {
+      "meaning": "Public quantized storage dtype (int8 or uint8); i8 alone does not express signedness.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": true,
+      "required_on": [
+        "quantize",
+        "dequantize"
+      ],
+      "required_when": "integer_readout with integer result",
+      "type": "string"
+    },
+    "prov.quant.zero_point": {
+      "meaning": "Storage zero code, added AFTER round-half-to-even; Q/DQ tensor zero points remain SSA operands when not literal.",
+      "op_kinds": [
+        "quantize",
+        "dequantize",
+        "integer_readout",
+        "contraction"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": "integer_readout with integer result",
+      "type": "i64"
+    },
+    "prov.quant.zero_point_dtype": {
+      "meaning": "Source zero-point tensor dtype, e.g. int8, uint8, int32, int64; controls extension from signless storage.",
+      "op_kinds": [
+        "quantize",
+        "dequantize"
+      ],
+      "required": false,
+      "required_on": [],
+      "required_when": null,
+      "type": "string"
+    }
+  },
+  "namespace": "prov.quant.",
+  "op_kinds": {
+    "contraction": "Integer matmul/bmm, including seeded and backward contractions",
+    "dequantize": "DQ operation, including expanded standard-dialect bodies",
+    "integer_readout": "Exact accumulator readout, including legacy m2m_q readout operators",
+    "quantize": "Q operation, including expanded standard-dialect bodies"
+  },
+  "schema_version": 1,
+  "unknown_keys": "reject"
+}

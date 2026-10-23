@@ -468,6 +468,49 @@ def test_validation_scope_is_admitted_and_cannot_change_on_resume(project, monke
         _run(changed, lambda _: pytest.fail("resume changed validation scope"))
 
 
+def test_candidate_selection_is_frozen_across_real_admission_and_resume(project, monkeypatch, tmp_path):
+    import hashlib
+
+    from merlin_experiments.phase1.candidate_execution import selection_record
+    from merlin_experiments.phase2 import qualification_policy
+
+    _external_substitutes(monkeypatch)
+    frozen, workers = tmp_path / "compiler-runtime", tmp_path / "compiler-workers"
+    frozen.mkdir()
+    workers.mkdir()
+    binary = tmp_path / "selected-bwrap"
+    binary.write_bytes(b"synthetic executable identity; this admission fixture never executes it")
+    policy = {"sha256": "c" * 64}
+    monkeypatch.setattr(qualification_policy, "restore", lambda root, record: SimpleNamespace(record=policy))
+    selection = tmp_path / "compiler-selection.json"
+    selection.write_text(
+        json.dumps(
+            dict(
+                root=str(frozen),
+                policy=policy,
+                workspace_root=str(workers),
+                bwrap=dict(path=str(binary), sha256=hashlib.sha256(binary.read_bytes()).hexdigest()),
+            )
+        )
+    )
+    base = _request(project)
+    request = dataclasses.replace(base, context=dataclasses.replace(base.context, candidate_policy=selection))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["candidate_compilation"] == selection_record(request.context)
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    with pytest.raises(RuntimeError, match="candidate compilation selection"):
+        _run(_request(project, resume=True), lambda _: pytest.fail("resume dropped frozen compiler transport"))
+    selection.write_text(selection.read_text() + "\n")
+    with pytest.raises(RuntimeError, match="candidate compilation selection"):
+        _run(resumed, lambda _: pytest.fail("resume reused changed compiler selection"))
+
+
 def test_public_object_build_selection_is_frozen_and_cannot_be_enabled_on_resume(project, monkeypatch):
     _external_substitutes(monkeypatch)
     selection = {"trusted_source_pins_sha256": "a" * 64, "clang": {"sha256": "b" * 64}}
@@ -781,6 +824,83 @@ def test_broken_oracle_compiler_refuses_before_authoring(project, monkeypatch):
     assert yaml.safe_load(receipts[0].read_text())["compiler_ok"] is False
 
 
+@pytest.mark.parametrize("scope", ["functional", "hidden_L3", "explicit_backend", "selection_drift"])
+def test_source_product_admission_scopes_only_the_unselected_legacy_smoke(project, monkeypatch, scope):
+    import hashlib
+
+    from merlin_experiments.phase1 import candidate_execution
+
+    from merlin.targetgen import capsule_runner
+
+    _external_substitutes(monkeypatch, codegen=False)
+    for path in project.glob("corpus/*/*/capsule.yaml"):
+        capsule = yaml.safe_load(path.read_text())
+        capsule["operation"]["attributes"]["core_aten_contract"] = "full_call_v1"
+        capsule["operation"]["attributes"]["overload"] = "aten.matmul.default"
+        answers = project / "corpus/_private" / path.parent.parent.name / capsule["name"]
+        answers.mkdir(parents=True)
+        golden = answers / "golden.yaml"
+        golden.write_text(
+            yaml.safe_dump(
+                {
+                    "schema": "merlin.core_aten_capsule.v1",
+                    "public_files": {},
+                    "batch_map": {"cases": [{"overload": "aten.matmul.default"}]},
+                }
+            )
+        )
+        capsule["full_call_golden"] = {"golden.yaml": hashlib.sha256(golden.read_bytes()).hexdigest()}
+        if path.parent.name == "hidden_member" and scope == "hidden_L3":
+            capsule["required_oracle_tiers"] = ["L2", "L3"]
+        path.write_text(yaml.safe_dump(capsule))
+    if scope == "explicit_backend":
+        path = project / "target_experiment.yaml"
+        descriptor = yaml.safe_load(path.read_text())
+        descriptor["preflight"] = {"codegen_backend": "explicit_compiler"}
+        path.write_text(yaml.safe_dump(descriptor))
+    selected = project / "selected-policy.json"
+    identity = {"sha256": "a" * 64, "policy_sha256": "b" * 64}
+    selections = []
+
+    def selection(path):
+        # Only the external policy resource owner is substituted in this fixture;
+        # admission still snapshots and scans the real public and hidden capsules.
+        assert path == selected
+        selections.append(path)
+        return {}, {**identity, **({"sha256": "c" * 64} if scope == "selection_drift" and len(selections) > 1 else {})}
+
+    monkeypatch.setattr(candidate_execution, "selection", selection)
+    calls = []
+    monkeypatch.setattr(
+        capsule_runner,
+        "codegen_smoke",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or (False, "legacy failed"),
+    )
+    request = _request(project)
+    request = dataclasses.replace(request, context=dataclasses.replace(request.context, candidate_policy=selected))
+    invoked = []
+    if scope == "selection_drift":
+        with pytest.raises(RuntimeError, match="selection changed during codegen admission"):
+            _run(request, lambda prepared: invoked.append(prepared) or 0)
+        assert not invoked and not calls
+        return
+    assert _run(request, lambda prepared: invoked.append(prepared) or 0) == (0 if scope == "functional" else 4)
+    receipt = yaml.safe_load(next(project.rglob("codegen_smoke.yaml")).read_text())
+    if scope == "functional":
+        assert len(selections) >= 2  # Environment binding and the scoped admission revalidation.
+        assert not calls
+        assert invoked
+        assert receipt["codegen_ok"] is None
+        assert receipt["scope"]["status"] == "legacy_not_run"
+        assert receipt["scope"]["n_capsules"] == 2
+        assert receipt["scope"]["candidate_compilation"] == identity
+        assert "per-candidate production grading remains required" in receipt["reason"]
+    else:
+        assert calls and not invoked
+        assert receipt["codegen_ok"] is False
+        assert "scope" not in receipt
+
+
 def test_inoperable_sandbox_refuses_before_workspace_snapshot_or_authoring(project, monkeypatch):
     from merlin.targetgen.sandbox import preflight
 
@@ -1024,3 +1144,25 @@ with MonkeyPatch.context() as patch:
             timeout=40,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_coverage_objective_is_frozen_across_real_admission_and_resume(project, monkeypatch):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    selected = dataclasses.replace(
+        base,
+        options=dataclasses.replace(
+            base.options, objective="device-coverage", schedule="continuous", max_wall_s=30, plateau_rounds=0
+        ),
+    )
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["run_config"]["objective"] == "device-coverage"
+        return 0
+
+    assert _run(selected, admitted) == 0
+    resumed = dataclasses.replace(selected, options=dataclasses.replace(selected.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    with pytest.raises(RuntimeError, match="objective changed"):
+        _run(_request(project, resume=True), lambda _: pytest.fail("resume dropped coverage objective"))

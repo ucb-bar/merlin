@@ -92,3 +92,68 @@ def test_a_real_targets_declared_ranks_are_honoured():
     if outside is None:
         pytest.skip("every probed rank is declared")
     assert any(_legal_on(u, OpDemand(site="x", rank=outside, **_I8))[0] is False for u in units)
+
+
+# ------------------------------------------------------------------ the envelope is the demand's own family's
+
+
+def _mixed_unit():
+    return ComputeUnit(
+        name="u",
+        kind="systolic",
+        dtypes=("int8",),
+        ops=("matmul",),
+        semantic_capabilities=(
+            SemanticCapability(family="contraction", dtypes=("int8",), ranks=(2, 3, 4)),
+            SemanticCapability(family="movement", dtypes=("int8",), forms=("copy",)),
+            SemanticCapability(family="reduction", dtypes=("int8",), composed_with=("contraction",)),
+            SemanticCapability(family="reduction", dtypes=("int8",)),
+        ),
+    )
+
+
+@pytest.mark.parametrize("family, form", [("movement", "copy"), ("reduction", None)])
+def test_another_familys_rank_list_does_not_refuse_this_family(family, form):
+    """Contraction ranks [2, 3, 4] used to refuse every rank-5 demand of ANY family (3-D pools/pads)."""
+    demand = OpDemand(site="x", in_fmt="int8", op="copy", family=family, form=form, rank=5)
+    assert _shape_envelope_ok(_mixed_unit(), demand) is True
+    assert _legal_on(_mixed_unit(), demand)[0] is True
+
+
+def test_the_own_family_envelope_is_still_enforced():
+    demand = OpDemand(site="x", family="contraction", rank=5, **_I8)
+    assert _legal_on(_mixed_unit(), demand)[0] is False
+    assert _legal_on(_mixed_unit(), OpDemand(site="x", family="contraction", rank=4, **_I8))[0] is True
+
+
+def test_a_family_with_several_rows_fits_when_any_row_does():
+    unit = ComputeUnit(
+        name="u",
+        kind="systolic",
+        dtypes=("int8",),
+        ops=("matmul",),
+        semantic_capabilities=(
+            SemanticCapability(family="reduction", dtypes=("int8",), ranks=(2,)),
+            SemanticCapability(family="reduction", dtypes=("int8",), ranks=(5,)),
+        ),
+    )
+    assert _shape_envelope_ok(unit, OpDemand(site="x", in_fmt="int8", op="sum", family="reduction", rank=5))
+    assert not _shape_envelope_ok(unit, OpDemand(site="x", in_fmt="int8", op="sum", family="reduction", rank=3))
+
+
+@pytest.mark.target("gemmini")
+@pytest.mark.parametrize(
+    "family, form",
+    [("reduction", None), ("movement", "copy")],  # avg_pool3d / _adaptive_avg_pool3d; reflection/replication_pad3d
+)
+def test_gemmini_rank5_pools_and_pads_are_routable(family, form):
+    from merlin.common.paths import repo_root
+    from merlin.common.yaml import load_yaml
+    from merlin.targetgen.compute_units import compute_units
+
+    contract = load_yaml(repo_root() / "examples/gemmini/target/contracts/target_contract.yaml")
+    unit = compute_units(contract)[0]
+    demand = OpDemand(
+        site="x", in_fmt="int8", op="pool" if family == "reduction" else "copy", family=family, form=form, rank=5
+    )
+    assert _legal_on(unit, demand)[0] is True

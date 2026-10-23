@@ -264,6 +264,8 @@ def declared_acc_scale(attrs: dict[str, Any], *, op: str) -> float:
     passes for a reason unrelated to what it tests.
     """
     value = (attrs or {}).get("acc_scale")
+    if "scale_numerator" in attrs and "scale_denominator" in attrs:
+        return 1.0  # Informational legacy scalar; the exact pair is consumed by the host readout API.
     if value is None:
         raise ValueError(
             f"{op}: an 'acc_scale' epilogue stage is declared and the command names no `acc_scale` "
@@ -304,7 +306,7 @@ def apply_declared_acc_scale(value: Tensor, attrs: dict[str, Any], *, op: str) -
     This states arithmetic, not hardware admission or a scale-change schedule.
     """
     if "acc_scale_by_column" not in attrs:
-        return value.requant_acc_scale(declared_acc_scale(attrs, op=op))
+        return value.requant_acc_scale(declared_acc_scale(attrs, op=op), parameters=attrs)
     scales = declared_acc_scale_by_column(attrs, value.shape[-1] if value.shape else 0, op=op)
     return value.requant_acc_scale_by_column(scales)
 

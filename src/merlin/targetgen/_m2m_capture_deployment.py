@@ -22,6 +22,8 @@ def _mlir_dtype(torch_dtype) -> str:
         torch.bfloat16: "bf16",
         torch.float32: "f32",
         torch.float64: "f64",
+        torch.complex64: "complex<f32>",
+        torch.complex128: "complex<f64>",
     }
     for name, mlir in (("float8_e4m3fn", "f8E4M3FN"), ("float8_e5m2", "f8E5M2")):
         dtype = getattr(torch, name, None)

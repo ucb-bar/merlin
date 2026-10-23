@@ -18,18 +18,7 @@ from typing import Any
 import yaml
 
 from .evidence_output import _materialize_evidence
-
-
-def _json(value: Any) -> bytes:
-    return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
-
-
-def _digest(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest()
-
-
-def _canonical_digest(value: Any) -> str:
-    return _digest(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
+from .provenance import _canonical_digest, _digest, _json
 
 
 def _existing_receipt_path(member: Mapping) -> Path | None:
@@ -311,6 +300,7 @@ class EvidenceSelection:
     raw_facts: bytes | None
     archived_artifacts: tuple[tuple[str, bytes], ...] = ()
     instruction_semantics_source: bytes | None = None
+    contract_yaml: bytes | None = None
 
     @property
     def source_paths(self) -> tuple[Path, ...]:
@@ -352,6 +342,8 @@ class EvidenceSelection:
     def __getattr__(self, name: str) -> Any:
         # Every consumer receives a fresh value. The authoritative views are
         # immutable serialized bytes, not mutable objects shared with callers.
+        if name == "contract" and self.contract_yaml is not None:
+            return yaml.safe_load(self.contract_yaml)
         for key, raw in self._view_bytes:
             if key == name:
                 return json.loads(raw)
@@ -1162,6 +1154,7 @@ def select_evidence(
         _json(views),
         raw_facts,
         instruction_semantics_source=instruction_semantics_source,
+        contract_yaml=yaml.safe_dump(contract, sort_keys=False).encode(),
     )
 
 
@@ -1192,6 +1185,9 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
         outputs[f"hardware/effective-views/{name}.json"] = _json(value)
     for name in ("contract", "residual", "hardware_spec", "software_spec", "datapath", "diagnostics"):
         outputs[f"software/{name.replace('_', '-')}.json"] = _json(getattr(selection, name))
+    # YAML preserves numeric mapping keys that JSON objects necessarily stringify.
+    if selection.contract_yaml is not None:
+        outputs["software/contract.yaml"] = selection.contract_yaml
     outputs["software/instruction-semantics.json"] = _json(selection.instruction_semantics)
     if selection.instruction_semantics_source is not None:
         outputs["software/instruction-semantics-authored.yaml"] = selection.instruction_semantics_source
@@ -1466,6 +1462,7 @@ def load_exported_evidence(artifact_root: str | Path) -> EvidenceSelection:
         observed.get("hardware/circt/facts.json"),
         tuple(sorted({**observed, "evidence-manifest.json": manifest_raw}.items())),
         observed.get("software/instruction-semantics-authored.yaml"),
+        observed.get("software/contract.yaml"),
     )
     if selection.raw_facts_sha256 != manifest.get("raw_facts_sha256"):
         raise ValueError("raw facts identity differs from evidence manifest")

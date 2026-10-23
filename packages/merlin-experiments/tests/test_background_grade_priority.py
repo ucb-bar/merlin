@@ -369,7 +369,7 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     monkeypatch.setattr(LG, "declared_loop_tiers", lambda *a: {"L2", "L3"})
     monkeypatch.setattr(LG, "cert_tiers_beyond_loop", lambda **k: ({"L3"}, {"L3"}))
     monkeypatch.setattr(CR, "qa_loop_adapters", lambda *a, **k: {"L2": object()})
-    monkeypatch.setattr(LG, "readback_kwargs", lambda _: {})
+    monkeypatch.setattr(LG, "oracle_kwargs", lambda _: {})
     monkeypatch.setattr(LG, "_record_plateau", lambda *a, **kw: None)
     monkeypatch.setattr(LG.FL, "record_channel_health", lambda *a: None)
     from merlin_experiments.phase1.feedback import promotion, qa

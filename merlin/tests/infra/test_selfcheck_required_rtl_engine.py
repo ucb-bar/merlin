@@ -64,7 +64,7 @@ def test_direct_selfcheck_refuses_verilator_and_builds_gsim_adapter(monkeypatch)
 
 
 def test_required_vcs_never_constructs_the_legacy_verilator_rung(monkeypatch):
-    """The general engine pin is fail-closed even on VCS's historical L4 ladder."""
+    """A VCS pin builds L3 on VCS itself (same rung as Verilator/GSIM) and never a Verilator rung."""
     selfcheck = _module("agent_selfcheck")
     selected = []
     monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "vcs")
@@ -74,11 +74,10 @@ def test_required_vcs_never_constructs_the_legacy_verilator_rung(monkeypatch):
         lambda engine, target: selected.append((engine, target)) or object(),
     )
 
-    try:
-        selfcheck._adapters("vcs", "gemmini", "chipyard")
-    except ValueError:
-        pass  # An unavailable required VCS engine is the expected fail-closed result.
-    assert selected == [("spike", "gemmini")]
+    adapters, sim = selfcheck._adapters("vcs", "gemmini", "chipyard")
+    assert selected == [("spike", "gemmini"), ("vcs", "gemmini")]
+    assert sorted(adapters) == ["L2", "L3"] and sim == "vcs"
+    assert selfcheck.SIM_TIER["vcs"] == "L3"
 
 
 def test_both_brokers_narrow_rtl_requests_to_gsim_but_keep_spike(monkeypatch):
@@ -227,7 +226,9 @@ def test_the_shims_pinned_default_is_served_by_the_grade_selection(monkeypatch):
     assert dispatch.grade_selection_for("spike") == "spike"
     assert dispatch.grade_selection_for(None) is None
     monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "vcs")
-    assert dispatch.grade_selection_for("vcs") == "vcs", "VCS's historical L4 rung is another ladder shape"
+    # VCS now shares the L3 rung with Verilator/GSIM (selfcheck.SIM_TIER), so a VCS pin is served by the
+    # grade's own selection exactly like a GSIM pin.
+    assert dispatch.grade_selection_for("vcs") == dispatch.REQUIRED_SIM
     monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE")
     assert dispatch.grade_selection_for("gsim") == "gsim", "with no pin an explicit engine stays explicit"
 

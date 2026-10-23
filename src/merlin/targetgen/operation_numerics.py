@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from merlin.targetgen.operator_review import review_record
 
-def integer_split_k_limit(numeric_policy: dict | None, *, tile_dim: int, full_k: int) -> dict | None:
+
+def integer_split_k_limit(
+    numeric_policy: dict | None, *, tile_dim: int, full_k: int, operand_range: tuple[int, int] | None = None
+) -> dict | None:
     """Derive the worst-case signed-integer primitive K from selected arithmetic.
 
     This is a target-neutral numerical obligation shared by capture selection and
@@ -33,7 +37,11 @@ def integer_split_k_limit(numeric_policy: dict | None, *, tile_dim: int, full_k:
         or full_k < 1
     ):
         raise ValueError("integer mesh has unsupported selected MAC/accumulator arithmetic")
-    maximum_operand = 1 << (operand_bits - 1)
+    storage_lo, storage_hi = -(1 << (operand_bits - 1)), (1 << (operand_bits - 1)) - 1
+    lo, hi = operand_range if operand_range is not None else (storage_lo, storage_hi)
+    if type(lo) is not int or type(hi) is not int or not storage_lo <= lo <= hi <= storage_hi:
+        raise ValueError("declared operand range exceeds selected signed storage")
+    maximum_operand = max(abs(lo), abs(hi))
     maximum_product = maximum_operand * maximum_operand
     full_bound = full_k * maximum_product
     if full_bound > (1 << 31) - 1:
@@ -48,6 +56,7 @@ def integer_split_k_limit(numeric_policy: dict | None, *, tile_dim: int, full_k:
         "mac_result_bits": mac_bits,
         "signed_operand_bits": operand_bits,
         "maximum_product": maximum_product,
+        "operand_range": [lo, hi],
         "aggregation": "exact_integer_sum_before_epilogue",
     }
 
@@ -110,13 +119,15 @@ def _explicit_contract(contract: dict | None) -> dict:
     unknowns = _unknowns(semantics) if isinstance(semantics, dict) and semantics else ["semantics"]
     if not isinstance(evidence, dict) or not evidence:
         unknowns.append("evidence")
-    if contract.get("status") != "reviewed":
+    review = review_record(contract, default="unreviewed")
+    if not review["operator_accepted"]:
         unknowns.append("review_status")
     return {
         "status": "unknown" if unknowns else "resolved",
         "semantics": semantics,
         "unknowns": sorted(unknowns),
-        "qualification": "reviewed declaration, not measured numerical conformance",
+        "qualification": "accepted declaration, not measured numerical conformance",
+        **review,
     }
 
 
@@ -143,21 +154,23 @@ def operation_numerical_contracts(entry: dict, software_spec: dict | None, host_
             else:
                 unknowns.append("model.engine")
             unknowns.extend(sorted(required - set(semantics)))
-            if spec.get("status") != "reviewed":
+            review = review_record(spec, default="unreviewed")
+            if not review["operator_accepted"]:
                 unknowns.append("software_spec_review")
             decision = {
                 "status": "unknown" if unknowns else "resolved",
                 "unknowns": sorted(set(unknowns)),
                 "semantics": semantics,
                 "basis": "selected contraction numerical semantics",
-                "qualification": "reviewed declaration, not measured numerical conformance",
+                "qualification": "accepted declaration, not measured numerical conformance",
+                **review,
             }
         else:
             decision = _explicit_contract(None)
         accelerator.append({"declaration": declaration["id"], **decision})
     host = []
     for profile in entry["host_admission"].get("profiles") or []:
-        if profile["status"] != "admitted" or not profile.get("reviewed"):
+        if profile["status"] != "admitted" or not profile.get("operator_accepted", profile.get("reviewed")):
             continue
         selected = (host_capabilities or {}).get(profile["profile"]) or {}
         document = selected.get("capability_spec") or {}

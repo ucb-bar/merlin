@@ -743,7 +743,7 @@ def build_rvv_pipeline(
 # act_poly runner called the PassManager directly, so every fork that also enabled
 # `vectorized_transcendental_activation` (the whole-model proposer enables it by default) got the
 # self-copy erase requested, reported as applied, and never run.
-from . import fusion_guard
+from . import fusion_guard, result_buffers, result_layout
 from .alloca_scope_lower import RUNNER_PRELUDE as _ALLOCA_SCOPE_LOWER_PRELUDE
 from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
 from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
@@ -1367,7 +1367,7 @@ def _select_runner(
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
     # Every variant runs elementwise fusion under the broadcast control function (fusion_guard).
     return bind_inspection(
-        fusion_guard.inject(source),
+        result_layout.inject(result_buffers.inject(fusion_guard.inject(source))),
         inspection_dir,
         keep_exact=keep_exact,
         print_before=printing[0],
@@ -1420,6 +1420,7 @@ def lower_to_llvm_ir(
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
     borrowed_buffer_calls=None,
+    preserve_result_descriptors: bool = False,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
@@ -1573,15 +1574,9 @@ def lower_to_llvm_ir(
                 "borrowed_buffer_calls": borrowed_buffer_calls is not None,
             },
         )
-    from .llvm_loop_outline import (
-        FEATURE as _OUTLINE_LOOPS,
-    )
-    from .llvm_loop_outline import (
-        MERGE_FEATURE as _OUTLINE_MERGE_LOOPS,
-    )
-    from .llvm_loop_outline import (
-        outline_loops,
-    )
+    from .llvm_loop_outline import FEATURE as _OUTLINE_LOOPS
+    from .llvm_loop_outline import MERGE_FEATURE as _OUTLINE_MERGE_LOOPS
+    from .llvm_loop_outline import outline_loops
 
     if _OUTLINE_LOOPS in feats and _OUTLINE_MERGE_LOOPS in feats:
         raise PipelineError("Select one explicit LLVM loop outlining policy")
@@ -1652,6 +1647,7 @@ def lower_to_llvm_ir(
             pipeline = _parallel_pipeline(feats)  # multicore (OpenMP) scalar path — K1 big models
         else:
             pipeline = _upstream_pipeline(feats)
+    pipeline = result_buffers.descriptor_results(pipeline, mlir_text, preserve=preserve_result_descriptors)
     if index_bits is not None:
         if not data_layout:
             raise ValueError("explicit index width requires selected compiler data layout")

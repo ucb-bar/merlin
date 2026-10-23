@@ -19,7 +19,7 @@ def provider(tmp_path, monkeypatch):
     helper.write_text("VALUE = 1\n")
     monkeypatch.setattr(tier_cache, "_GRADING_MODULES", ())
     monkeypatch.setattr(base, "get_backend", lambda _: SimpleNamespace(__file__=str(entry)))
-    monkeypatch.setattr(target_registry, "resolve", lambda _: SimpleNamespace(base=tmp_path))
+    monkeypatch.setattr(target_registry, "resolve", lambda _: SimpleNamespace(base=tmp_path, load_contract=lambda: {}))
     return tmp_path, helper
 
 

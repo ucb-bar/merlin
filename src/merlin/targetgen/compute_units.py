@@ -22,7 +22,7 @@ contains — so the MX unit works standalone or as a sub-unit.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from merlin.common import quant_formats as qf
@@ -135,6 +135,23 @@ class SemanticCapability:
     #: merging. None retains the older direct-construction API. Appended so the
     #: existing positional shape arguments keep their meaning.
     operand_pairs: tuple[tuple[str, str], ...] | None = None
+    #: Which KINDS of reduction this row computes (:data:`REDUCTION_KINDS`): a sum unit is not a max
+    #: unit. Empty is unconstrained, the reading for every row written before the field existed.
+    kinds: tuple[str, ...] = ()
+    #: The individually declared rows a merged capability was folded from, in declaration order.
+    #: The fold unions fields (and intersects ``composed_with``), so a family declared once fused
+    #: and once standalone for a narrower kind reads as standalone for every kind. Eligibility checks
+    #: these rows ANY-OF, so the correlation within each row survives the merge. Empty on an
+    #: unmerged row. Not part of equality: two folds of the same rows are the same capability.
+    alternatives: tuple[SemanticCapability, ...] = field(default=(), compare=False, repr=False)
+
+    def rows(self) -> tuple[SemanticCapability, ...]:
+        """The declared rows this capability stands for: its alternatives, or itself."""
+        return self.alternatives or (self,)
+
+
+#: The closed vocabulary of reduction kinds, the structural classes ``classify_generic`` separates.
+REDUCTION_KINDS: frozenset[str] = frozenset({"sum", "max", "absmax", "other"})
 
 
 @dataclass(frozen=True)
@@ -236,9 +253,21 @@ def _sem_cap(raw: dict[str, Any], unit_name: str) -> SemanticCapability:
     if result_dtypes is not None:
         if not isinstance(result_dtypes, list) or not result_dtypes or any(not qf.has(d) for d in result_dtypes):
             raise ValueError(f"compute unit {unit_name!r}: {family} result_dtypes must name known formats")
+    kinds = raw.get("kinds")
+    if kinds is not None and (
+        family != "reduction"
+        or not isinstance(kinds, list)
+        or not kinds
+        or any(kind not in REDUCTION_KINDS for kind in kinds)
+    ):
+        raise ValueError(
+            f"compute unit {unit_name!r}: {family} kinds must be a nonempty reduction kind list "
+            f"from {sorted(REDUCTION_KINDS)}"
+        )
     return SemanticCapability(
         family=family,
         dtypes=dtypes,
+        kinds=tuple(kinds or ()),
         operand_pairs=operand_pairs,
         result_dtypes=tuple(result_dtypes) if result_dtypes is not None else None,
         ranks=tuple(raw.get("ranks", ()) or ()),
@@ -416,7 +445,7 @@ def datatype_tokens(unit: ComputeUnit) -> set[str]:
     return tokens
 
 
-def _merge_caps(a: SemanticCapability, b: SemanticCapability) -> SemanticCapability:
+def _merge_caps(a: SemanticCapability, b: SemanticCapability, *, keep_rows: bool = False) -> SemanticCapability:
     """Union two same-family capabilities into the most-permissive combined capability (a target is
     capable of a family if ANY of its units is): union dtypes/layouts/ranks, OR the boolean flags.
 
@@ -424,6 +453,10 @@ def _merge_caps(a: SemanticCapability, b: SemanticCapability) -> SemanticCapabil
     capability: if one unit runs the family standalone and another only as an epilogue, the TARGET runs
     it standalone, so the restriction must not survive the merge. Unioning it would let one unit's
     limitation constrain another unit's freedom; an empty intersection correctly means "standalone".
+
+    ``keep_rows`` retains the folded rows as ``alternatives`` so eligibility can check them any-of.
+    :func:`semantic_capability_map` keeps them for the rows ONE unit declares for a family (a fused
+    and a standalone form of the same hardware); a fold across units keeps the legacy union view.
     """
 
     def _u(x: tuple, y: tuple) -> tuple:
@@ -461,6 +494,9 @@ def _merge_caps(a: SemanticCapability, b: SemanticCapability) -> SemanticCapabil
         # Evidence UNIONS: either unit's way of running the family standalone is a way the target has.
         standalone_evidence=_u(a.standalone_evidence, b.standalone_evidence),
         notes=notes,
+        # A row with no kind restriction computes every kind, so the union is unconstrained.
+        kinds=(() if not a.kinds or not b.kinds else _u(a.kinds, b.kinds)),
+        alternatives=a.rows() + b.rows() if keep_rows else (),
     )
 
 
@@ -476,13 +512,18 @@ def semantic_capability_map(units: list[ComputeUnit]) -> dict[str, SemanticCapab
     for u in units:
         effective(u, units)
     for u in units:
+        own: dict[str, SemanticCapability] = {}
         for cap in u.semantic_capabilities:
             # Attribute to the unit that DECLARED it before merging. `effective` folds a containing
             # unit's capabilities together with what it contains, so the attribution is taken from the
             # declaring unit found by `providers_of`, not from the outer unit's kind -- otherwise a
             # SIMT cluster containing a systolic mesh would report every family as SIMT.
             cap = _attribute(_with_operand_pairs(cap, u), providers_of(cap.family, units))
-            merged[cap.family] = _merge_caps(merged[cap.family], cap) if cap.family in merged else cap
+            # Several rows of one family on ONE unit are alternative forms of that unit's hardware
+            # (fused vs standalone, or a narrower kind): keep each row for an any-of check.
+            own[cap.family] = _merge_caps(own[cap.family], cap, keep_rows=True) if cap.family in own else cap
+        for family, cap in own.items():
+            merged[family] = _merge_caps(merged[family], cap) if family in merged else cap
     return merged
 
 

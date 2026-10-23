@@ -108,6 +108,107 @@ float __extendbfsf2(merlin_bf16_t b) {
   return f;
 }
 
+/* IEEE binary16 soft conversions. The compiler derives native conversion
+ * availability from the selected -march (Zfh/Zfhmin); the same compiler/ISA
+ * builds this runtime and its callers. _Float16 preserves that compiler ABI
+ * even on CPUs with no half instructions. No floating cast is used inside a
+ * helper: a cast could recursively call the very helper being implemented.
+ * Integer rounding is fixed RNE, independent of the ambient rounding mode.
+ * Binary64 narrows directly, avoiding binary64 -> binary32 double rounding. */
+typedef _Float16 merlin_f16_t;
+
+static uint64_t merlin_rne_shift(uint64_t significand, unsigned shift) {
+  if (!shift) return significand;
+  if (shift > 64) return 0;
+  if (shift == 64) return significand > (UINT64_C(1) << 63);
+  uint64_t kept = significand >> shift;
+  uint64_t remainder = significand & ((UINT64_C(1) << shift) - 1);
+  uint64_t halfway = UINT64_C(1) << (shift - 1);
+  return kept + (remainder > halfway || (remainder == halfway && (kept & 1)));
+}
+
+/* Format fields describe IEEE storage, not hardware instruction encodings. */
+static uint16_t merlin_ieee_narrow16(uint64_t word, unsigned fraction_bits,
+                                    unsigned exponent_bits, int exponent_bias,
+                                    unsigned output_fraction_bits, int output_bias) {
+  uint64_t exponent_mask = (UINT64_C(1) << exponent_bits) - 1;
+  uint64_t fraction_mask = (UINT64_C(1) << fraction_bits) - 1;
+  uint16_t sign = (uint16_t)((word >> (fraction_bits + exponent_bits)) & 1) << 15;
+  unsigned exponent = (unsigned)((word >> fraction_bits) & exponent_mask);
+  uint64_t fraction = word & fraction_mask;
+  uint16_t output_inf = (uint16_t)(((1u << (15 - output_fraction_bits)) - 1) << output_fraction_bits);
+  if (exponent == exponent_mask) {
+    uint16_t payload = (uint16_t)(fraction >> (fraction_bits - output_fraction_bits));
+    uint16_t quiet = (uint16_t)(1u << (output_fraction_bits - 1));
+    return sign | output_inf | (fraction ? (payload | quiet) : 0);
+  }
+  if (!exponent) return sign; /* these source subnormals are below the output zero midpoint */
+  int unbiased = (int)exponent - exponent_bias;
+  uint64_t significand = (UINT64_C(1) << fraction_bits) | fraction;
+  int minimum_exponent = 1 - output_bias;
+  if (unbiased < minimum_exponent) {
+    unsigned shift = (unsigned)((int)fraction_bits - unbiased + minimum_exponent - (int)output_fraction_bits);
+    return sign | (uint16_t)merlin_rne_shift(significand, shift);
+  }
+  if (unbiased > output_bias) return sign | output_inf;
+  unsigned rounded = (unsigned)merlin_rne_shift(significand, fraction_bits - output_fraction_bits);
+  /* The carried hidden bit naturally advances the exponent, including overflow. */
+  return sign | (uint16_t)(((unbiased + output_bias - 1) << output_fraction_bits) + rounded);
+}
+
+static merlin_f16_t merlin_f16_from_bits(uint16_t bits) {
+  merlin_f16_t value;
+  __builtin_memcpy(&value, &bits, sizeof(bits));
+  return value;
+}
+static uint16_t merlin_f16_bits(merlin_f16_t value) {
+  uint16_t bits;
+  __builtin_memcpy(&bits, &value, sizeof(bits));
+  return bits;
+}
+merlin_f16_t __truncsfhf2(float value) {
+  uint32_t word;
+  __builtin_memcpy(&word, &value, sizeof(word));
+  return merlin_f16_from_bits(merlin_ieee_narrow16(word, 23, 8, 127, 10, 15));
+}
+merlin_f16_t __truncdfhf2(double value) {
+  uint64_t word;
+  __builtin_memcpy(&word, &value, sizeof(word));
+  return merlin_f16_from_bits(merlin_ieee_narrow16(word, 52, 11, 1023, 10, 15));
+}
+float __extendhfsf2(merlin_f16_t value) {
+  uint16_t bits = merlin_f16_bits(value);
+  uint32_t sign = (uint32_t)(bits & 0x8000u) << 16;
+  unsigned exponent = (bits >> 10) & 31;
+  uint32_t fraction = bits & 0x03ffu;
+  uint32_t word;
+  if (exponent == 31) {
+    word = sign | 0x7f800000u | (fraction << 13);
+  } else if (exponent) {
+    word = sign | ((exponent + 112) << 23) | (fraction << 13);
+  } else if (fraction) {
+    int unbiased = -14;
+    while (!(fraction & 0x0400u)) { fraction <<= 1; --unbiased; }
+    word = sign | ((uint32_t)(unbiased + 127) << 23) | ((fraction & 0x03ffu) << 13);
+  } else {
+    word = sign;
+  }
+  float result;
+  __builtin_memcpy(&result, &word, sizeof(word));
+  return result;
+}
+double __extendhfdf2(merlin_f16_t value) {
+  /* Binary16 -> binary32 is exact; widening binary32 to binary64 is exact. */
+  return (double)__extendhfsf2(value);
+}
+
+/* LLVM also emits this direct binary64 conversion for bf16 casts. */
+merlin_bf16_t __truncdfbf2(double value) {
+  uint64_t word;
+  __builtin_memcpy(&word, &value, sizeof(word));
+  return merlin_bf16_from_bits(merlin_ieee_narrow16(word, 52, 11, 1023, 7, 127));
+}
+
 /* UnrankedMemRefType<char>: {rank, ptr-to-descriptor}.
  * Descriptor layout: void* allocated; void* aligned; int64_t offset;
  *                    int64_t sizes[rank]; int64_t strides[rank]. */

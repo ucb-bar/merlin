@@ -129,6 +129,7 @@ merlin = [
     "semantic_compiler/egg_bridge/Cargo.lock",
     "semantic_compiler/egg_bridge/src/main.rs",
     "capture/workload_roster.json",
+    "targetgen/native_ieee_certificate.json",
     "kernels/ceiling_drivers/baremetal_support.c",
     "kernels/ceiling_drivers/common.h",
     "kernels/ceiling_drivers/k1_harness/util.h",

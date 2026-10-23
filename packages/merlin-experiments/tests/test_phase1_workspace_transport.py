@@ -132,6 +132,56 @@ def test_copy_probe_detects_file_symlinks_into_selected_external_corpus(inputs):
     assert result["symlinks_into_capsules"] == [str(ws / "innocent-alias")]
 
 
+def _sibling_category(inputs):
+    context, public, ws = inputs
+    primary = public.parent / "isa"
+    primary.mkdir()
+    case = public / "selected case"
+    case.mkdir()
+    (public / "capsule.interface.mlir").rename(case / "capsule.interface.mlir")
+    (case / "capsule.yaml").write_text("name: selected_case\n")
+    context.descriptor.write_text(f"target: fixture\ncapsule_corpus: {primary}\n")
+    return context, primary, public, case, ws
+
+
+@pytest.mark.parametrize("sandbox", ["none", "bwrap"])
+def test_probe_accepts_selected_public_sibling_of_empty_primary(inputs, monkeypatch, sandbox):
+    context, primary, public, case, ws = _sibling_category(inputs)
+    bundle = {"allowed": [{"path": str(primary), "as": "isa"}, {"path": str(public), "as": "public"}]}
+    if sandbox == "none":
+        bundle = {"allowed": [{"path": "merlin/contract"}]}
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(ws.parent / "out"))
+    W.assemble(bundle, ws, sandbox, context=context)
+    if sandbox == "bwrap":
+        # The real sealed snapshot retains the interface after its live owner changes.
+        (case / "capsule.interface.mlir").unlink()
+        monkeypatch.setattr(W, "sandbox_command", lambda *a, **kw: "synthetic sandbox")
+        monkeypatch.setattr(W.subprocess, "run", lambda *a, **kw: SimpleNamespace(stdout="DONE\n", returncode=0))
+    try:
+        result = W.probe(ws, bundle, sandbox, context=context)
+        assert result["pilot_golden_visible_to_agent"] == "OK"
+        if sandbox == "bwrap":
+            assert result["n_answer_files_masked"] == 1
+    finally:
+        if sandbox == "bwrap":
+            W.BW.remove_bundle_snapshot(ws)
+
+
+def test_probe_rejects_missing_frozen_sibling_interface_even_if_live_appears(inputs, monkeypatch):
+    context, primary, public, case, ws = _sibling_category(inputs)
+    (case / "capsule.interface.mlir").unlink()
+    bundle = {"allowed": [{"path": str(primary), "as": "isa"}, {"path": str(public), "as": "public"}]}
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(ws.parent / "out"))
+    W.assemble(bundle, ws, "bwrap", context=context)
+    (case / "capsule.interface.mlir").write_text("module { /* unsealed live input */ }")
+    monkeypatch.setattr(W.subprocess, "run", lambda *a, **kw: pytest.fail("missing frozen interface executed a probe"))
+    try:
+        with pytest.raises(RuntimeError, match="no frozen public specification"):
+            W.probe(ws, bundle, "bwrap", context=context)
+    finally:
+        W.BW.remove_bundle_snapshot(ws)
+
+
 def test_frozen_assembly_filters_snapshot_not_mutable_live_membership(inputs, monkeypatch):
     context, corpus, ws = inputs
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(ws.parent / "out"))

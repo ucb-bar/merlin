@@ -322,3 +322,33 @@ def test_formal_uses_only_masked_run_owned_freeze(tmp_path: Path):
     environment_path.symlink_to(original_environment)
     with pytest.raises(ValueError, match="indirect"):
         formal._private_source_freeze_for_formal(run, private_spec, "fixture", workspace=workspace, repo=tmp_path)
+
+
+@pytest.mark.parametrize("alias_kind", ["hardlink", "private_symlink", "ancestor_symlink", "ordinary"])
+def test_large_private_roster_preserves_alias_denials(tmp_path, alias_kind):
+    from merlin.targetgen.sandbox.bwrap import _validate_host_sources
+
+    public, private = tmp_path / "public", tmp_path / "private"
+    public.mkdir()
+    private.mkdir()
+    hosts = []
+    for i in range(512):
+        root = private / str(i)
+        root.mkdir()
+        hosts.append((str(root), root))
+    secret = hosts[-1][1] / "answer"
+    secret.write_text("same bytes are allowed; inode aliases are not")
+    alias = public / "input"
+    if alias_kind == "hardlink":
+        os.link(secret, alias)
+    elif alias_kind == "private_symlink":
+        alias.symlink_to(secret)
+    elif alias_kind == "ancestor_symlink":
+        alias.symlink_to(private, target_is_directory=True)
+    else:
+        alias.write_bytes(secret.read_bytes())
+    if alias_kind == "ordinary":
+        _validate_host_sources([("public", public)], hosts)
+    else:
+        with pytest.raises(RuntimeError, match="alias"):
+            _validate_host_sources([("public", public)], hosts)

@@ -1,0 +1,2148 @@
+# Reviewed public numeric inputs; no stored answers, verdicts or tolerance overrides.
+schema: merlin.regression_calls.v1
+calls:
+- case_id: regression::numeric_float16_sigmoid
+  overload: aten.sigmoid.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id001
+        kind: tensor
+        dtype: float16
+        shape:
+        - 2
+        - 3
+        stride:
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - -1.0
+          - -0.5
+          - 0.125
+        - - 0.5
+          - 1.0
+          - 1.5
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Evaluate sigmoid in f32 opmath before its only storage rounding.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_mean
+  overload: aten.mean.dim
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id001
+      - - 1
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Accumulate and divide in f32, retaining the original result storage.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_variance
+  overload: aten.var.dim
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id001
+      - - 1
+      - false
+      - false
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Keep mean, squared deviations and variance accumulation in f32.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_log_softmax
+  overload: aten._log_softmax.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id001
+      - 1
+      - false
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Observe native CPU last-dimension sum and log scratch rounding before
+    the final subtraction.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_addmm
+  overload: aten.addmm.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 2
+        - 2
+        stride:
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - -60000.0
+          - -60000.0
+        - - -60000.0
+          - -60000.0
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 2
+        - 2
+        stride:
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 200.0
+          - 200.0
+        - - 200.0
+          - 200.0
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 2
+        - 2
+        stride:
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 200.0
+          - 200.0
+        - - 200.0
+          - 200.0
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Keep contraction and bias addition wide until the single public result
+    rounding.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_pool
+  overload: aten.avg_pool2d.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id002
+        kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        - 1
+        - 2
+        - 2
+        stride:
+        - 4
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 60000.0
+              - 60000.0
+            - - -60000.0
+              - -60000.0
+      - - 2
+        - 2
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Use f32 window accumulation and division before half publication.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_adaptive_pool
+  overload: aten._adaptive_avg_pool2d.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id002
+      - - 1
+        - 1
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Adaptive average pooling keeps its complete reduction in f32.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_convolution_backward
+  overload: aten.convolution_backward.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        - 2
+        - 2
+        - 2
+        stride:
+        - 8
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.625
+              - -0.4107142857142857
+            - - -0.19642857142857145
+              - 0.017857142857142905
+          - - - 0.2321428571428571
+              - 0.4464285714285714
+            - - 0.6607142857142858
+              - 0.875
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        - 1
+        - 5
+        - 5
+        stride:
+        - 25
+        - 25
+        - 5
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.875
+              - -0.7916666666666666
+              - -0.7083333333333334
+              - -0.625
+              - -0.5416666666666667
+            - - -0.4583333333333333
+              - -0.375
+              - -0.29166666666666663
+              - -0.20833333333333337
+              - -0.125
+            - - -0.04166666666666663
+              - 0.04166666666666663
+              - 0.125
+              - 0.20833333333333326
+              - 0.29166666666666674
+            - - 0.375
+              - 0.45833333333333326
+              - 0.5416666666666667
+              - 0.625
+              - 0.7083333333333333
+            - - 0.7916666666666667
+              - 0.875
+              - 0.9583333333333333
+              - 1.0416666666666667
+              - 1.125
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 2
+        - 1
+        - 3
+        - 3
+        stride:
+        - 9
+        - 9
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.875
+              - -0.7573529411764706
+              - -0.6397058823529411
+            - - -0.5220588235294117
+              - -0.40441176470588236
+              - -0.2867647058823529
+            - - -0.16911764705882348
+              - -0.05147058823529416
+              - 0.06617647058823528
+        - - - - 0.18382352941176472
+              - 0.30147058823529416
+              - 0.4191176470588236
+            - - 0.536764705882353
+              - 0.6544117647058822
+              - 0.7720588235294117
+            - - 0.8897058823529411
+              - 1.0073529411764706
+              - 1.125
+      - - 2
+      - - 2
+        - 2
+      - - 0
+        - 0
+      - - 1
+        - 1
+      - false
+      - - 0
+        - 0
+      - 1
+      - - true
+        - true
+        - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Preserve f32 GEMM accumulation, column-buffer rounding and col2im storage
+    additions; absent forward edges have no product.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_batch_norm_zero_eps
+  overload: aten._native_batch_norm_legit.no_stats
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 2
+        - 3
+        - 2
+        - 2
+        stride:
+        - 12
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+          - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+          - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+        - - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+          - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+          - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 3
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+        - 0.5
+        - -1.0
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 3
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.5
+        - -1.0
+        - 0.25
+      - true
+      - 0.1
+      - 0.0
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Return zero saved inverse standard deviation for exactly zero variance
+    and epsilon; preserve saved-stat storage before affine evaluation.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_grid_sampler
+  overload: aten.grid_sampler_2d.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        - 1
+        - 2
+        - 2
+        stride:
+        - 4
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.75
+              - -0.125
+            - - 0.5
+              - 1.25
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        - 2
+        - 2
+        - 2
+        stride:
+        - 8
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.75
+              - -0.25
+            - - 0.0
+              - 1.0
+          - - - 1.25
+              - -1.25
+            - - 0.375
+              - 0.625
+      - 0
+      - 0
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Observe native CPU coordinate and interpolation storage rounding, including
+    missing neighbors.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_sigmoid
+  overload: aten.sigmoid.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id003
+        kind: tensor
+        dtype: bfloat16
+        shape:
+        - 2
+        - 3
+        stride:
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - -1.0
+          - -0.5
+          - 0.125
+        - - 0.5
+          - 1.0
+          - 1.5
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Evaluate sigmoid in f32 opmath before its only storage rounding.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_mean
+  overload: aten.mean.dim
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id003
+      - - 1
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Accumulate and divide in f32, retaining the original result storage.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_variance
+  overload: aten.var.dim
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id003
+      - - 1
+      - false
+      - false
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Keep mean, squared deviations and variance accumulation in f32.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_log_softmax
+  overload: aten._log_softmax.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id003
+      - 1
+      - false
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Observe native CPU last-dimension sum and log scratch rounding before
+    the final subtraction.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_addmm
+  overload: aten.addmm.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 2
+        - 2
+        stride:
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - -60000.0
+          - -60000.0
+        - - -60000.0
+          - -60000.0
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 2
+        - 2
+        stride:
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 200.0
+          - 200.0
+        - - 200.0
+          - 200.0
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 2
+        - 2
+        stride:
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 200.0
+          - 200.0
+        - - 200.0
+          - 200.0
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Keep contraction and bias addition wide until the single public result
+    rounding.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_pool
+  overload: aten.avg_pool2d.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id004
+        kind: tensor
+        dtype: bfloat16
+        shape:
+        - 1
+        - 1
+        - 2
+        - 2
+        stride:
+        - 4
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 60000.0
+              - 60000.0
+            - - -60000.0
+              - -60000.0
+      - - 2
+        - 2
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Use f32 window accumulation and division before half publication.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_adaptive_pool
+  overload: aten._adaptive_avg_pool2d.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id004
+      - - 1
+        - 1
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Adaptive average pooling keeps its complete reduction in f32.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_convolution_backward
+  overload: aten.convolution_backward.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 1
+        - 2
+        - 2
+        - 2
+        stride:
+        - 8
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.625
+              - -0.4107142857142857
+            - - -0.19642857142857145
+              - 0.017857142857142905
+          - - - 0.2321428571428571
+              - 0.4464285714285714
+            - - 0.6607142857142858
+              - 0.875
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 1
+        - 1
+        - 5
+        - 5
+        stride:
+        - 25
+        - 25
+        - 5
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.875
+              - -0.7916666666666666
+              - -0.7083333333333334
+              - -0.625
+              - -0.5416666666666667
+            - - -0.4583333333333333
+              - -0.375
+              - -0.29166666666666663
+              - -0.20833333333333337
+              - -0.125
+            - - -0.04166666666666663
+              - 0.04166666666666663
+              - 0.125
+              - 0.20833333333333326
+              - 0.29166666666666674
+            - - 0.375
+              - 0.45833333333333326
+              - 0.5416666666666667
+              - 0.625
+              - 0.7083333333333333
+            - - 0.7916666666666667
+              - 0.875
+              - 0.9583333333333333
+              - 1.0416666666666667
+              - 1.125
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 2
+        - 1
+        - 3
+        - 3
+        stride:
+        - 9
+        - 9
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.875
+              - -0.7573529411764706
+              - -0.6397058823529411
+            - - -0.5220588235294117
+              - -0.40441176470588236
+              - -0.2867647058823529
+            - - -0.16911764705882348
+              - -0.05147058823529416
+              - 0.06617647058823528
+        - - - - 0.18382352941176472
+              - 0.30147058823529416
+              - 0.4191176470588236
+            - - 0.536764705882353
+              - 0.6544117647058822
+              - 0.7720588235294117
+            - - 0.8897058823529411
+              - 1.0073529411764706
+              - 1.125
+      - - 2
+      - - 2
+        - 2
+      - - 0
+        - 0
+      - - 1
+        - 1
+      - false
+      - - 0
+        - 0
+      - 1
+      - - true
+        - true
+        - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Preserve f32 GEMM accumulation, column-buffer rounding and col2im storage
+    additions; absent forward edges have no product.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_batch_norm_zero_eps
+  overload: aten._native_batch_norm_legit.no_stats
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 2
+        - 3
+        - 2
+        - 2
+        stride:
+        - 12
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+          - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+          - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+        - - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+          - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+          - - - 0.5
+              - 0.5
+            - - 0.5
+              - 0.5
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 3
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+        - 0.5
+        - -1.0
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 3
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.5
+        - -1.0
+        - 0.25
+      - true
+      - 0.1
+      - 0.0
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Return zero saved inverse standard deviation for exactly zero variance
+    and epsilon; preserve saved-stat storage before affine evaluation.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_grid_sampler
+  overload: aten.grid_sampler_2d.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 1
+        - 1
+        - 2
+        - 2
+        stride:
+        - 4
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.75
+              - -0.125
+            - - 0.5
+              - 1.25
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 1
+        - 2
+        - 2
+        - 2
+        stride:
+        - 8
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.75
+              - -0.25
+            - - 0.0
+              - 1.0
+          - - - 1.25
+              - -1.25
+            - - 0.375
+              - 0.625
+      - 0
+      - 0
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Observe native CPU coordinate and interpolation storage rounding, including
+    missing neighbors.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float32_bilinear
+  overload: aten.upsample_bilinear2d.vec
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id005
+        kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        - 1
+        - 3
+        - 3
+        stride:
+        - 9
+        - 9
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - kind: float
+                value: inf
+              - -1.0
+              - 0.0
+            - - 1.0
+              - 2.0
+              - kind: float
+                value: nan
+            - - 3.0
+              - 4.0
+              - 5.0
+      - - 5
+        - 7
+      - false
+      - null
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Gather only four source neighbors, retaining f32 interpolation and a single
+    half result rounding.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float32_nearest
+  overload: aten.upsample_nearest2d.vec
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id005
+      - - 5
+        - 7
+      - null
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Copy the selected source element, without products or reductions.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_bilinear
+  overload: aten.upsample_bilinear2d.vec
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id006
+        kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        - 1
+        - 3
+        - 3
+        stride:
+        - 9
+        - 9
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - kind: float
+                value: inf
+              - -1.0
+              - 0.0
+            - - 1.0
+              - 2.0
+              - kind: float
+                value: nan
+            - - 3.0
+              - 4.0
+              - 5.0
+      - - 5
+        - 7
+      - false
+      - null
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Gather only four source neighbors, retaining f32 interpolation and a single
+    half result rounding.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_nearest
+  overload: aten.upsample_nearest2d.vec
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id006
+      - - 5
+        - 7
+      - null
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Copy the selected source element, without products or reductions.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_bilinear
+  overload: aten.upsample_bilinear2d.vec
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id007
+        kind: tensor
+        dtype: bfloat16
+        shape:
+        - 1
+        - 1
+        - 3
+        - 3
+        stride:
+        - 9
+        - 9
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - kind: float
+                value: inf
+              - -1.0
+              - 0.0
+            - - 1.0
+              - 2.0
+              - kind: float
+                value: nan
+            - - 3.0
+              - 4.0
+              - 5.0
+      - - 5
+        - 7
+      - false
+      - null
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Gather only four source neighbors, retaining f32 interpolation and a single
+    half result rounding.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_nearest
+  overload: aten.upsample_nearest2d.vec
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id007
+      - - 5
+        - 7
+      - null
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Copy the selected source element, without products or reductions.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_grid_sampler_missing_neighbor
+  overload: aten.grid_sampler_2d.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        - 1
+        - 2
+        - 2
+        stride:
+        - 4
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - kind: float
+                value: nan
+              - -1.0
+            - - 0.0
+              - 1.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        - 2
+        - 2
+        - 2
+        stride:
+        - 8
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -0.75
+              - -0.25
+            - - 0.0
+              - 1.0
+          - - - 1.25
+              - -1.25
+            - - 0.375
+              - 0.625
+      - 0
+      - 0
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Mask absent neighbors before their substitute pixel can propagate NaN
+    into a finite output.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_layer_norm_backward_saved_stats
+  overload: aten.native_layer_norm_backward.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 3
+        stride:
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 1.0
+          - 1.0
+          - 1.0
+        - - 1.0
+          - 1.0
+          - 1.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 3
+        stride:
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - -0.5
+          - 0.0
+          - 0.5
+        - - 0.5
+          - 0.0
+          - -0.5
+      - - 3
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 1
+        stride:
+        - 1
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 0.0
+        - - 0.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 1
+        stride:
+        - 1
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 1.0
+        - - 1.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 3
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+        - 1.0
+        - 1.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 3
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.0
+        - 0.0
+        - 0.0
+      - - true
+        - true
+        - true
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: Use contiguous independent saved-stat inputs; native CPU assumes contiguous
+    statistic vectors, and strided saved-stat probes are documented separately.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_embedding_bag_auxiliary
+  overload: aten._embedding_bag.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 4
+        - 3
+        stride:
+        - 1
+        - 4
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 0.0
+          - 0.125
+          - 0.25
+        - - 0.375
+          - 0.5
+          - 0.625
+        - - 0.75
+          - 0.875
+          - 1.0
+        - - 1.125
+          - 1.25
+          - 1.375
+      - kind: tensor
+        dtype: int64
+        shape:
+        - 4
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0
+        - 2
+        - 1
+        - 3
+      - kind: tensor
+        dtype: int64
+        shape:
+        - 2
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0
+        - 2
+      - false
+      - 0
+      - false
+      - null
+      - false
+      - -1
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: Observe slow-path offset-to-bag mapping and the defined zero sum-mode
+    auxiliary tensors.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_irfft_nan
+  overload: aten._fft_c2r.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: complex64
+        shape:
+        - 1
+        - 3
+        stride:
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - kind: complex
+            real: 1.0
+            imag: 3.0
+          - kind: complex
+            real:
+              kind: float
+              value: nan
+            imag: 0.0
+          - kind: complex
+            real: -1.0
+            imag: 2.0
+      - - 1
+      - 0
+      - 4
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Exact quarter-turn zeros remove spectral dependencies; imaginary DC and
+    Nyquist components do not affect the real inverse.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_irfft_inf
+  overload: aten._fft_c2r.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: complex64
+        shape:
+        - 1
+        - 3
+        stride:
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - kind: complex
+            real: 1.0
+            imag: 3.0
+          - kind: complex
+            real:
+              kind: float
+              value: inf
+            imag: 0.0
+          - kind: complex
+            real: -1.0
+            imag: 2.0
+      - - 1
+      - 0
+      - 4
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Exact quarter-turn zeros remove spectral dependencies; imaginary DC and
+    Nyquist components do not affect the real inverse.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_softmax_tail_diagnostic
+  overload: aten._softmax.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 2
+        - 1
+        - 5
+        stride:
+        - 5
+        - 5
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - -1.0
+            - -0.5
+            - 0.0
+            - 0.25
+            - 0.5
+        - - - 0.0
+            - 0.75
+            - 1.5
+            - 2.0
+            - 2.5
+      - 0
+      - false
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: 'Diagnostic: native CPU scalar tails publish half exponentials before
+    normalization; vector lanes retain f32. Portable wide softmax cannot promise both
+    schedules without an explicit source CPU policy.'
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_float16_group_norm
+  overload: aten.native_group_norm.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        - 4
+        - 2
+        - 2
+        stride:
+        - 16
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+            - - 0.25
+              - 0.375
+          - - - 0.5
+              - 0.625
+            - - 0.75
+              - 0.875
+          - - - 1.0
+              - 1.125
+            - - 1.25
+              - 1.375
+          - - - 1.5
+              - 1.625
+            - - 1.75
+              - 1.875
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 4
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 4
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+      - 1
+      - 4
+      - 4
+      - 2
+      - 0.001
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: Check ordinary group-normalization values and saved statistics; extreme
+    Welford versus two-pass reduction differences are documented without tolerance
+    changes.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_softmax_tail_diagnostic
+  overload: aten._softmax.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 2
+        - 1
+        - 5
+        stride:
+        - 5
+        - 5
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - -1.0
+            - -0.5
+            - 0.0
+            - 0.25
+            - 0.5
+        - - - 0.0
+            - 0.75
+            - 1.5
+            - 2.0
+            - 2.5
+      - 0
+      - false
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: 'Diagnostic: native CPU scalar tails publish half exponentials before
+    normalization; vector lanes retain f32. Portable wide softmax cannot promise both
+    schedules without an explicit source CPU policy.'
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_bfloat16_group_norm
+  overload: aten.native_group_norm.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 1
+        - 4
+        - 2
+        - 2
+        stride:
+        - 16
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+            - - 0.25
+              - 0.375
+          - - - 0.5
+              - 0.625
+            - - 0.75
+              - 0.875
+          - - - 1.0
+              - 1.125
+            - - 1.25
+              - 1.375
+          - - - 1.5
+              - 1.625
+            - - 1.75
+              - 1.875
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 4
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 4
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+      - 1
+      - 4
+      - 4
+      - 2
+      - 0.001
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: Check ordinary group-normalization values and saved statistics; extreme
+    Welford versus two-pass reduction differences are documented without tolerance
+    changes.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_layer_norm
+  overload: aten.native_layer_norm.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 4
+        stride:
+        - 4
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 0.5
+          - -0.5
+          - 1.0
+          - -1.0
+        - - -0.25
+          - 0.25
+          - -0.5
+          - 0.5
+      - - 4
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 4
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 4
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+      - 0.001
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: Check ordinary native layer-normalization values and saved statistics;
+    extreme reduction-order differences remain explicit diagnostics.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_convolution
+  overload: aten.convolution.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        - 1
+        - 4
+        - 5
+        stride:
+        - 20
+        - 20
+        - 5
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+              - 0.5
+            - - 0.625
+              - 0.75
+              - 0.875
+              - 1.0
+              - 1.125
+            - - 1.25
+              - 1.375
+              - 1.5
+              - 1.625
+              - 1.75
+            - - 1.875
+              - 2.0
+              - 2.125
+              - 2.25
+              - 2.375
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 1
+        - 2
+        - 3
+        stride:
+        - 6
+        - 6
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+            - - 0.375
+              - 0.5
+              - 0.625
+        - - - - 0.75
+              - 0.875
+              - 1.0
+            - - 1.125
+              - 1.25
+              - 1.375
+      - null
+      - - 1
+        - 1
+      - - 0
+        - 0
+      - - 1
+        - 1
+      - false
+      - - 0
+        - 0
+      - 1
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: Check ordinary forward convolution; GEMM cancellation and overflow differences
+    remain documented at the suite comparator.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_rsqrt_tail_diagnostic
+  overload: aten.rsqrt.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 4
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.001
+        - 0.125
+        - 1.0
+        - 3.0
+    kwargs: {}
+  guards:
+  - 3d2613d
+  boundary: 'Diagnostic: the native CPU scalar tail rounds sqrt to half before reciprocal;
+    the vector rsqrt retains f32. Preserve the distinction without introducing a target-dependent
+    automatic arithmetic policy.'
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_batch_norm_running_stat
+  overload: aten._native_batch_norm_legit.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 2
+        - 1
+        - 2
+        - 2
+        stride:
+        - 4
+        - 4
+        - 2
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.470458984375
+              - 1.65625
+            - - 0.51513671875
+              - -0.2744140625
+        - - - - -2.259765625
+              - 1.2275390625
+            - - 0.79296875
+              - 0.623046875
+      - null
+      - null
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.35
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 1
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+      - true
+      - 0.1
+      - 1.0e-05
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Use unrounded contiguous f32 mean for the running-state update and half
+    storage for the independently published saved mean.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_batch_norm_noncontiguous_variance
+  overload: aten._native_batch_norm_legit.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 1
+        - 2
+        - 2
+        stride:
+        - 4
+        - 4
+        - 1
+        - 2
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - -3.4028234663852886e+38
+              - 3.4028234663852886e+38
+            - - 3.4028234663852886e+38
+              - -3.4028234663852886e+38
+        - - - - -1.0
+              - 1.0
+            - - 1.0
+              - -1.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.0
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 1.0
+      - true
+      - 0.0
+      - 1.0e-05
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Use the native CPU double variance accumulator for noncontiguous f32 input;
+    update running statistics before their storage rounding.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_sum_empty_dims
+  overload: aten.sum.dim_IntList
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id008
+        kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 3
+        stride:
+        - 3
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - -0.5
+          - 1.0
+          - 0.0
+        - - 2.0
+          - -1.0
+          - 0.5
+      - []
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: An empty dimension list reduces all axes, including each keepdim singleton.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_mean_empty_dims
+  overload: aten.mean.dim
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id008
+      - []
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: An empty dimension list reduces all axes, including each keepdim singleton.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_amax_empty_dims
+  overload: aten.amax.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id008
+      - []
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: An empty dimension list reduces all axes, including each keepdim singleton.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_amin_empty_dims
+  overload: aten.amin.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id008
+      - []
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: An empty dimension list reduces all axes, including each keepdim singleton.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_rfft_absent_basis
+  overload: aten._fft_r2c.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 1
+        - 4
+        stride:
+        - 4
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - 1.0
+          - kind: float
+            value: nan
+          - -1.0
+          - 2.0
+      - - 1
+      - 0
+      - true
+    kwargs: {}
+  guards:
+  - f8ed82443
+  boundary: Exact quarter-turn zero basis coefficients remove dependencies on nonfinite
+    inputs, including imaginary DC and Nyquist outputs.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_batch_norm_strided_affine_training
+  overload: aten._native_batch_norm_legit.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id009
+        kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        - 2
+        - 1
+        - 1
+        stride:
+        - 2
+        - 1
+        - 1
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 100000008.0
+          - - - 0.0
+        - - - - 99999992.0
+          - - - 1.0
+      - &id010
+        kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        stride:
+        - 2
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.3
+        - 1.0
+      - &id011
+        kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.0
+        - 0.0
+      - &id012
+        kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 100000000.0
+        - 0.5
+      - &id013
+        kind: tensor
+        dtype: float32
+        shape:
+        - 2
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 64.0
+        - 0.25
+      - true
+      - 0.1
+      - 1.0e-05
+    kwargs: {}
+  guards:
+  - "654987203"
+  boundary: Use the generic centered CPU formula when affine parameters are strided,
+    independently of the contiguous input statistics kernel.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_batch_norm_strided_affine_no_stats
+  overload: aten._native_batch_norm_legit.no_stats
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id009
+      - *id010
+      - *id011
+      - true
+      - 0.1
+      - 1.0e-05
+    kwargs: {}
+  guards:
+  - "654987203"
+  boundary: Use the generic centered CPU formula when affine parameters are strided,
+    independently of the contiguous input statistics kernel.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.
+- case_id: regression::numeric_batch_norm_strided_affine_inference
+  overload: aten._native_batch_norm_legit_no_training.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - *id009
+      - *id010
+      - *id011
+      - *id012
+      - *id013
+      - 0.1
+      - 1.0e-05
+    kwargs: {}
+  guards:
+  - "654987203"
+  boundary: Use the generic centered CPU formula when affine parameters are strided,
+    independently of the contiguous input statistics kernel.
+  origin:
+    design: Independent public inputs; eager CPU supplies answers at execution.

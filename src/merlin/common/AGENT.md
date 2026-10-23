@@ -32,7 +32,7 @@ The common access registry contains only target-neutral identities; the experime
 sandbox extends it with mandatory packaged historical target denials before launch.
 `frozen_imports` provides stdlib-only, process-local source import isolation for
 trusted bootstraps. Callers own snapshot seals, invocation records and grading.
-`source_membership` inventories ordinary Python source files for existing run
+`source_membership` inventories ordinary source/resource files and Python subsets for existing run
 receipts; it owns no seal, target policy or optional-distribution dependency.
 `ir_audit` owns opt-in exact-byte named-stage inspection records. Lowering callers
 own stage serialization and explicit destination and sidecar selection; these observations

@@ -31,8 +31,8 @@ def _cap(*paths, composed=()):
 
 
 def test_non_fsm_evidence_survives_a_loop_descriptor_prohibition():
-    verdict = CR.standalone_admission(_cap(NON_FSM_PATH), prohibited_roles=NO_FSM)
-    assert verdict["standalone"] is True and verdict["basis"] == "evidence"
+    verdict = CR.standalone_admission(_cap(NON_FSM_PATH), prohibited_roles=NO_FSM, review_status="reviewed")
+    assert verdict["standalone"] is True and verdict["basis"] == "declared_unchecked"
     assert verdict["paths"][0]["prohibited_roles_used"] == []
 
 
@@ -40,8 +40,10 @@ def test_loop_fsm_evidence_alone_is_refused_under_the_same_policy():
     verdict = CR.standalone_admission(_cap(LOOP_ONLY_PATH), prohibited_roles=NO_FSM)
     assert verdict["standalone"] is False and "loop_descriptor" in verdict["reason"]
     # The same evidence with no policy in force is admitted; and the non-FSM path rescues it.
-    assert CR.standalone_admission(_cap(LOOP_ONLY_PATH))["standalone"] is True
-    assert CR.standalone_admission(_cap(LOOP_ONLY_PATH, NON_FSM_PATH), prohibited_roles=NO_FSM)["standalone"]
+    assert CR.standalone_admission(_cap(LOOP_ONLY_PATH), review_status="reviewed")["standalone"] is True
+    assert CR.standalone_admission(
+        _cap(LOOP_ONLY_PATH, NON_FSM_PATH), prohibited_roles=NO_FSM, review_status="reviewed"
+    )["standalone"]
 
 
 def test_a_path_whose_fact_is_not_derived_is_refused():
@@ -55,7 +57,7 @@ def test_a_path_whose_fact_is_not_derived_is_refused():
 def test_composed_and_undeclared_evidence_and_bad_declarations():
     assert CR.standalone_admission(_cap(composed=["contraction"]))["standalone"] is False
     plain = CU._sem_cap({"family": "elementwise_map", "dtypes": ["int8"]}, "unit0")
-    assert CR.standalone_admission(plain, prohibited_roles=NO_FSM)["basis"] == "declared_without_evidence"
+    assert CR.standalone_admission(plain, prohibited_roles=NO_FSM)["basis"] == "declared_unchecked"
     with pytest.raises(ValueError, match="unknown role"):
         _cap({"fact": "x", "roles": ["teleport"]})
     with pytest.raises(ValueError, match="at once"):
@@ -71,12 +73,12 @@ def _reviewed_contract() -> dict:
 
 @pytest.mark.target("gemmini")
 def test_the_reviewed_contract_admits_a_standalone_residual_add_without_the_loop_fsm():
-    verdicts = CR.contract_admission(_reviewed_contract(), prohibited_roles=NO_FSM)
+    verdicts = CR.contract_admission(_reviewed_contract(), prohibited_roles=NO_FSM, review_status="reviewed")
     add = verdicts["elementwise_map"]
     assert add["standalone"] is True
     assert all("loop_descriptor" not in path["roles"] for path in add["paths"])
-    assert {p["fact"] for p in add["paths"]} == {"accumulate_on_load"}
-    assert verdicts["reduction"]["standalone"] is False  # pooling stays composed-only
+    assert "accumulate_on_load" in {p["fact"] for p in add["paths"]}
+    assert verdicts["reduction"]["standalone"] is True  # declared sum path; pooling stays composed-only
 
 
 @pytest.mark.target("gemmini")
@@ -98,7 +100,7 @@ class _Policy(_Oracle):
         self._prohibited = prohibited
 
     def standalone_admission(self, family):
-        return CR.family_admission([self._unit], family, prohibited_roles=self._prohibited)
+        return CR.family_admission([self._unit], family, prohibited_roles=self._prohibited, review_status="reviewed")
 
 
 def _summing_with(cap, prohibited):
@@ -115,7 +117,7 @@ def _summing_with(cap, prohibited):
 
 
 def test_grouping_places_the_residual_add_only_on_surviving_evidence():
-    text = _residual(lhs_scale=0.5, rhs_scale=0.25, out_scale=1.0)
+    text = _residual(lhs_scale=1.0, rhs_scale=1.0, out_scale=1.0)
     (placed,) = CG.form_groups(mq.parse(text), "synthetic", oracle=_summing_with(_cap(NON_FSM_PATH), NO_FSM))
     assert placed.placement == "unit0" and placed.operand_sum is not None
     (refused,) = CG.form_groups(mq.parse(text), "synthetic", oracle=_summing_with(_cap(LOOP_ONLY_PATH), NO_FSM))

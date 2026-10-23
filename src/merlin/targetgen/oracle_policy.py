@@ -81,6 +81,18 @@ def _chipyard_adapters(target: str) -> dict:
 
 def chipyard_tier_plan(target: str) -> OracleTierPlan:
     """The concrete simulator contribution; ARC fallback is merged by routing."""
+    from merlin.targetgen.target_experiment import load_capability_manifest
+    from merlin.targetgen.target_registry import TargetContractMissing
+
+    try:
+        runner = load_capability_manifest(target).contract.get("runner") or {}
+    except TargetContractMissing:
+        runner = {}  # Without a contract nothing narrows the tiers; engine selection decides as before.
+    enabled = runner.get("enabled_oracle_tiers")
+    if enabled == ["L2"]:
+        return OracleTierPlan(
+            ("L2",), unavailable_reason="RTL tier disabled by selected contract", requirements_inference_safe=True
+        )
     try:
         selection = select_chipyard_engine(target)
     except Exception as exc:  # matches the evaluator's existing absent-RTL policy
@@ -194,7 +206,14 @@ def chipyard_l3_selection(target: str) -> dict:
         selected = _pol.select(target, {required: probes[required]})
         selected["required_engine"] = required
         selected["selection_constraint"] = "MERLIN_REQUIRED_RTL_ENGINE"
+        from .rtl_simulator_pin import verify_selected
+
+        binding = verify_selected(backend, required, target)
+        if binding is not None:
+            selected["provenance"] = binding
         return selected
+    if os.environ.get("MERLIN_RTL_SIM_PIN", "").strip():
+        raise ValueError("MERLIN_RTL_SIM_PIN requires MERLIN_REQUIRED_RTL_ENGINE")
     return _pol.select(target, probes)
 
 
@@ -250,6 +269,23 @@ def _chipyard_available(target: str) -> tuple[bool, str]:
     return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
 
 
+def _spike_adapters(target: str) -> dict:
+    factory = _SIM_ADAPTER_FACTORIES.get("spike")
+    if factory is None:
+        raise OracleMetadataUnavailable(
+            "concrete simulator adapters require merlin-experiments; use oracle_tier_plan for core-only metadata"
+        )
+    return factory(target)
+
+
+def _spike_available(target: str) -> tuple[bool, str]:
+    from ..runtime.backends.spike import spike_path
+
+    if not spike_path().is_file():
+        return False, f"{target!r}: spike binary is absent: {spike_path()}"
+    return True, f"{target!r}: plain-ISA spike functional oracle"
+
+
 #: DECLARED bespoke-sim oracle registry, keyed by sim ENGINE (``sim_via``) — the seam that keeps oracle
 #: routing target-name-free (a new sim engine registers here; the dispatch below is untouched). The
 #: self-hosted SIMT oracle is discovered from an explicitly selected OOT support
@@ -264,6 +300,14 @@ _SIM_ORACLES: dict[str, _SimOracle] = {
         is_compile_based=True,
         requires_mlir_python=True,
         tier_plan=chipyard_tier_plan,
+    ),
+    # Plain-ISA Spike (no extension, no RTL): the functional tier only, and it REPLACES the arc default.
+    "spike": _SimOracle(
+        lambda t: _spike_adapters(t),
+        lambda t: _spike_available(t),
+        exclusive=True,
+        is_compile_based=True,
+        tier_plan=lambda t: OracleTierPlan(("L2",), requirements_inference_safe=True),
     ),
 }
 

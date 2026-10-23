@@ -155,3 +155,13 @@ def test_cross_target_sameness_shared_skeleton_is_identical(monkeypatch):
         pytest.skip(f"radiance not resolvable: {e}")
     # for a fixed (experiment, arm), the prompts differ ONLY in the derived slots
     assert _canonicalize(gp, gs) == _canonicalize(rp, rs)
+
+
+def test_prompt_includes_declared_full_call_backend_contract(monkeypatch):
+    te = load_target_experiment(_GEM)
+    manifest = load_capability_manifest(te.target)
+    monkeypatch.setitem(manifest.contract["runner"], "full_call_instructions", "PUBLIC_FULL_CALL_PROTOCOL")
+    assert render_prompt(te, manifest).endswith("PUBLIC_FULL_CALL_PROTOCOL")
+    monkeypatch.setitem(manifest.contract["runner"], "full_call_instructions", "")
+    with pytest.raises(ValueError, match="full_call_instructions"):
+        render_prompt(te, manifest)

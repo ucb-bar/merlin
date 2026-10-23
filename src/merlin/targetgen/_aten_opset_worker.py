@@ -14,11 +14,14 @@ The authority is ``torch.Tag.core``, which torch stamps on the overloads that su
 
 Registered ``FunctionSchema`` objects define the universe: ``dir(torch.ops.aten)`` is
 lazy and can omit overloads that have not yet been accessed. The catalog preserves
-the historical ``torch``, ``n_core``, ``ops`` and decomposition keys for callers.
+the historical ``torch``, ``n_core``, ``ops`` and decomposition keys for callers, plus the
+``sha256`` of the sorted core overload names (one per line, final newline) that the Core ATen
+corpus binds as its denominator.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from collections import Counter
@@ -109,13 +112,18 @@ def core_opset() -> dict:
     }
     if conflicts:
         registered_status["conflicting_identities"] = conflicts
+    sorted_ops = sorted(ops)
+    digest = hashlib.sha256(("\n".join(sorted_ops) + "\n").encode()).hexdigest()
     return {
         "schema": SCHEMA,
         "status": "available" if not conflicts else "partial",
         "scope": "registered ATen overloads in the selected interpreter; not all Python APIs or custom namespaces",
         "torch": str(torch.__version__),
         "n_core": core_status["count"],
-        "ops": sorted(ops),
+        "enumeration_source": "torch._C._jit_get_all_schemas filtered by torch.Tag.core",
+        "ops": sorted_ops,
+        "sha256": digest,
+        "digest_encoding": "UTF-8 sorted overload names, one per line, with final newline",
         "n_decomposed": decomposition_status["count"],
         "decomposed": sorted(decomposed),
         "n_all_aten": len(rows),

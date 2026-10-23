@@ -34,8 +34,10 @@ def test_explicit_target_engine_and_selection_are_preserved(monkeypatch, tmp_pat
     monkeypatch.setattr(CR.oot_compile, "run_on_oracle", run)
     selection = {"engine": sim, "reason": "explicit experiment policy"}
     result = CR.simulator_adapter(sim, target, selection=selection)({"fixture": True}, "ir", tmp_path, 13)
+    assert len(calls) == 1
+    assert 0 < calls[0][2].pop("timeout") <= 13
     assert calls == [
-        ({"fixture": True}, "ir", {"simulator": sim, "target": target, "workdir": tmp_path, "timeout": 13})
+        ({"fixture": True}, "ir", {"simulator": sim, "target": target, "workdir": tmp_path})
     ]
     assert result["outputs"] == {"result": 7}
     assert result["oracle"]["selection"] == selection

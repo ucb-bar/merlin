@@ -200,12 +200,13 @@ def probe(ws: Path, bundle: dict, sandbox: str, *, context: InvocationContext) -
     corpus = descriptor.capsule_corpus
     if corpus is None:
         raise RuntimeError("workspace mask probe requires a descriptor-selected corpus")
+    public_roots = descriptor.graded_roots()
     roots = {Path(corpus), context.repo / "merlin/contract/capsules"}
-    roots.update(descriptor.graded_roots())
+    roots.update(public_roots)
     if sandbox == "bwrap":
         # Host-side enumeration uses verified frozen bytes. Shell probes inspect both
         # live destination names and snapshot aliases; none grants candidate access.
-        frozen = BW.snapshot_input_paths(ws, bundle, [Path(corpus)], repo=context.repo)
+        frozen = BW.snapshot_input_paths(ws, bundle, public_roots, repo=context.repo)
         roots.update(frozen)
         if not any(p.is_file() for root in frozen for p in root.rglob("capsule.interface.mlir")):
             raise RuntimeError("workspace mask probe has no frozen public specification")
@@ -272,7 +273,7 @@ def probe(ws: Path, bundle: dict, sandbox: str, *, context: InvocationContext) -
                 for root in roots
             ):
                 bad_links.append(str(path))
-    specs = list(Path(corpus).rglob("capsule.interface.mlir"))
+    specs = [p for root in public_roots for p in root.rglob("capsule.interface.mlir") if p.is_file()]
     if not specs:
         raise RuntimeError("workspace mask probe has no descriptor-selected public specification")
     leak = bool(goldens or weights or hidden or bad_links)

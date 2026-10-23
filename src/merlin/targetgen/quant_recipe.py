@@ -63,6 +63,14 @@ WINDOW_MEAN = "window_mean"
 #: weight contraction, so it is a numerical CHOICE a recipe opts into (:func:`with_activation_contractions`),
 #: and a recipe that does not list it keeps every such contraction in floating point.
 ACTIVATION_CONTRACTION = "activation_contraction"
+#: An affine map of at most two int8 tensors (scalar add/sub/mul/div, neg, relu, a difference):
+#: integer weights and an int32 constant in the accumulator, then one readout. Quantized only where
+#: the unit declares a standalone elementwise path AND a standalone contraction (the exact integer
+#: weights are constant c*I contractions; merlin.targetgen.recipe_numerics).
+AFFINE_MAP = "affine_map"
+#: Data motion between int8 tensors (copy, permute, cat, pads, scatters, repeat, fills). Quantized
+#: where the unit declares a movement capability: a move needs no arithmetic, at most one load rounding.
+MOVEMENT = "movement"
 
 
 @dataclass(frozen=True)
@@ -96,6 +104,8 @@ class QuantRecipe:
     activation: TensorSpec | None = None
     bias_domain: str | None = None  # "accumulator" when the readout adds an integer bias
     families: tuple[str, ...] = (CONTRACTION,)
+    #: Accelerator capture keeps exact integer semantics and full-width int32 device readout.
+    readout_numerics: str = "integer_readout"
     unquantized: dict[str, str] = field(default_factory=dict)  # family -> why it stays float
     why: dict[str, str] = field(default_factory=dict)  # field -> the derivation behind it
     underivable: dict[str, str] = field(default_factory=dict)  # field -> why not
@@ -114,6 +124,7 @@ class QuantRecipe:
             "why": dict(sorted(self.why.items())),
             "underivable": dict(sorted(self.underivable.items())),
         }
+        body["readout_numerics"] = self.readout_numerics
         body["recipe_sha256"] = digest(body)
         return body
 
@@ -177,7 +188,46 @@ def _format_of(mlir_or_token: str | None) -> qf.QuantFormat | None:
     return None
 
 
-def derive(facet: Any, *, prefer_activation_mode: str | None = None) -> QuantRecipe:
+def _unit_families(recipe: QuantRecipe, capabilities: Sequence[Any] | None) -> None:
+    """The non-contraction families a unit's DECLARED capabilities license on a derived recipe.
+
+    Only under integer activations with one static scale per tensor, which is what one readout or
+    one load scale holds. Absent capabilities (a caller without the contract) license nothing.
+    """
+    if capabilities is None or recipe.status != DERIVED or recipe.activation is None:
+        return
+    activation = recipe.activation
+    fmt = _format_of(activation.dtype)
+    integer = fmt is not None and fmt.kind == "int_affine"
+    if not (integer and activation.granularity == "tensor" and activation.mode == "static"):
+        for family in (AFFINE_MAP, MOVEMENT):
+            recipe.unquantized[family] = (
+                "an exact integer form needs integer activations under one static scale per tensor; "
+                f"these are per {activation.granularity} ({activation.mode})"
+            )
+        return
+
+    def standalone(family: str) -> bool:
+        return any(cap.family == family and not cap.composed_with for cap in capabilities)
+
+    if standalone("elementwise_map") and standalone(CONTRACTION):
+        recipe.families = (*recipe.families, AFFINE_MAP)
+        recipe.why[AFFINE_MAP] = (
+            "the unit runs elementwise maps standalone and contracts, so integer weights apply as "
+            "constant contractions into the accumulator and the map reads out once"
+        )
+    else:
+        recipe.unquantized[AFFINE_MAP] = "the unit declares no standalone elementwise path beside a contraction"
+    if any(cap.family == "movement" for cap in capabilities):
+        recipe.families = (*recipe.families, MOVEMENT)
+        recipe.why[MOVEMENT] = "the unit declares data movement, which needs at most one load rounding"
+    else:
+        recipe.unquantized[MOVEMENT] = "the unit declares no movement capability"
+
+
+def derive(
+    facet: Any, *, prefer_activation_mode: str | None = None, capabilities: Sequence[Any] | None = None
+) -> QuantRecipe:
     """The recipe a unit's readout facet licenses.
 
     ``prefer_activation_mode`` is a workload's request ("dynamic" for a model whose activation
@@ -302,7 +352,18 @@ def derive(facet: Any, *, prefer_activation_mode: str | None = None) -> QuantRec
             if recipe.bias_domain
             else "no readout applies a bias, so a bias stays a host add"
         )
+    _unit_families(recipe, capabilities)
+    _readout_numerics(recipe, facet)
     return recipe
+
+
+def _readout_numerics(recipe: QuantRecipe, facet: Any) -> None:
+    """Capture semantics do not depend on a device's optional narrowing scale."""
+    if recipe.status == DERIVED:
+        recipe.readout_numerics = "integer_readout"
+        recipe.why["readout_numerics"] = (
+            "exact integer capture; full int32 device readout followed by exact rational host quantization"
+        )
 
 
 def _operand_sum(recipe: QuantRecipe, facet: Any, *, activation_granularity: str, mode: str) -> None:
@@ -1007,7 +1068,9 @@ def derive_candidates(
 
             recipe = None
             if not reasons and facet is not None:
-                derived = derive(facet, prefer_activation_mode=prefer_activation_mode)
+                derived = derive(
+                    facet, prefer_activation_mode=prefer_activation_mode, capabilities=unit.semantic_capabilities
+                )
                 if derived.status == DERIVED:
                     recipe = derived
                 else:

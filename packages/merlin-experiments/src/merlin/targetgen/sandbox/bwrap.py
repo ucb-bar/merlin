@@ -320,7 +320,7 @@ def _validate_host_sources(
 
     for _, source in grants:
         source = source.absolute()
-        if any(source == path or path in source.parents for path in private):
+        if private_index.contains(source):
             raise RuntimeError("allowed grant overlaps a host-only input")
         inspect(source, ())
 

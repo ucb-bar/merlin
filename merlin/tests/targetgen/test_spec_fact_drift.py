@@ -70,6 +70,7 @@ def _facts(**overrides):
         "readout_facets": _FACETS,
         "quantization_candidates": _QUANT,
         "taxonomy": {},
+        "semantic_facts": {"facts": {"accumulate_on_load": {"status": "derived"}}},
         **overrides,
     }
     return D.fact_capabilities(**views)
@@ -527,6 +528,7 @@ def test_the_gemmini_spec_derives_every_hardware_shaped_field_but_the_contractio
         "elementwise_map_standalone",
         "elementwise_map_after_operand_sum",
         "pooling_on_readout",
+        "reduction_standalone",
         "movement",
     }
     assert rows["elementwise_map_after_operand_sum"]["status"] == "reviewed"
@@ -542,3 +544,31 @@ def test_a_fused_form_reads_the_accumulator_its_readout_drains():
     assert rows["pooling"]["signature"]["dtypes"] == ["int32", "int8"]
     assert rows["residual_add"]["signature"]["dtypes"] == ["int8"]
     assert D.spec_fact_drift(resolved, _facts(readout_facets=facets))["n_blocking"] == 0
+
+
+def test_unchecked_semantic_paths_are_never_fact_derived():
+    facts = _facts(semantic_facts=None)
+    assert "standalone" not in facts["forms"]["elementwise_map"]
+    resolved, resolution = D.resolve_spec(_derived_spec(), facts)
+    row = _rows(resolved)["residual_add"]
+    assert row["placement"] == "unknown"
+    assert "derived_from_facts" not in row
+    assert resolution["unresolved"]
+
+
+@pytest.mark.parametrize("review", [None, "unreviewed", "reviewed"])
+def test_unchecked_form_admission_requires_an_explicitly_reviewed_spec_row(review):
+    spec = _derived_spec()
+    original = _rows(spec)["residual_add"]
+    if review is not None:
+        original["status"] = review
+    resolved, record = D.resolve_spec(spec, _facts(semantic_facts=None))
+    row = _rows(resolved)["residual_add"]
+    assert "derived_from_facts" not in row
+    if review == "reviewed":
+        assert row["placement"] == "accelerator"
+        assert row["admission_basis"] == "declared_unchecked"
+        declared = next(r for r in record["declarations"] if r["id"] == "residual_add")
+        assert declared["basis"] == "declared_unchecked" and declared["evidence"] == {}
+    else:
+        assert row["placement"] == "unknown"

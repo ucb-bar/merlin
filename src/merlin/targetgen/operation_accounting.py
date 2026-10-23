@@ -15,7 +15,7 @@ from collections import Counter
 from collections.abc import Mapping
 
 from merlin.common.digest import is_sha256
-from merlin.targetgen.software_spec import admit_operation
+from merlin.targetgen.software_spec import admit_operation, exact_declarations
 
 SCHEMA = "merlin.phase0.operation_accounting.v1"
 _DISPOSITIONS = frozenset(
@@ -116,8 +116,15 @@ def _observed_signature(row: dict) -> dict:
     from merlin.targetgen.semantic_families import operation_form
 
     observed = {"family": row.get("semantic_family")}
+    if row.get("reduction_kind") is not None:
+        observed["kind"] = row["reduction_kind"]
     carrier = row.get("mlir_operation") or ""
-    form = operation_form(carrier.rpartition(".")[2], carrier_op=carrier)
+    form = row.get("movement_form") or operation_form(
+        carrier.rpartition(".")[2],
+        carrier_op=carrier,
+        indexing_maps=row.get("indexing_maps"),
+        body_operations=row.get("body_operations"),
+    )
     if form is not None:
         observed["form"] = form
     for source, key in (
@@ -169,11 +176,9 @@ def _software_admissions(spec: dict | None, row: dict, signature: dict) -> list[
     if spec is None:
         return []
     declarations = spec.get("operations") or []
-    direct = [
-        entry
-        for entry in declarations
-        if row["operation"] in entry.get("ops", []) or (not entry.get("ops") and entry.get("id") == row["operation"])
-    ]
+    # The same exact-roster rule as admit_operation: a reviewed host row for a provably different
+    # typed instance of the operation does not hide the family declarations.
+    direct = exact_declarations(spec, row["operation"], signature)[0] if declarations else []
     decisions = []
     for declaration in direct or declarations:
         placement = declaration["placement"]
@@ -243,6 +248,7 @@ def _hardware_admission(row: dict, signature: dict, contract: dict | None, capab
             ),
             rank=signature.get("rank"),
             form=signature.get("form"),
+            kind=signature.get("kind"),
             layout=signature.get("layout"),
             m=dimensions.get("M"),
             k=dimensions.get("K"),

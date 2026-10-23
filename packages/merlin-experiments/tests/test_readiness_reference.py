@@ -279,7 +279,7 @@ def oracle_driver(tmp_path, monkeypatch, probe_inputs):
         subprocess=types.SimpleNamespace(run=run),
         ext_path=lambda name: None,
         _oracle_sim_via=lambda: "chipyard",
-        _kill_our_simulators=lambda: None,
+        _kill_our_simulators=lambda token="simulator-chipyard": None,
     )
     monkeypatch.setitem(sys.modules, "readiness_reference", reference)
     import merlin.targetgen as targetgen

@@ -142,8 +142,9 @@ else:
     raise AssertionError("missing interpreter accepted")
 isa_taxonomy._isa_def_path = lambda te: Path(__import__("json").__file__)
 engines.selected_model_venv_python = lambda name: Path(sys.executable)
-isa_taxonomy.subprocess.run = lambda *args, **kwargs: SimpleNamespace(returncode=1)
-assert isa_taxonomy.derive_isa_taxonomy(SimpleNamespace(target="fixture"), model_ext="fixture") == {}
+isa_taxonomy.subprocess.run = lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout="", stderr="")
+taxonomy = isa_taxonomy.derive_isa_taxonomy(SimpleNamespace(target="fixture"), model_ext="fixture")
+assert not taxonomy and isa_taxonomy.is_unknown(taxonomy)
 assert "merlin.targetgen.capsule_runner" not in sys.modules
 assert "merlin.targetgen.program_oracle" not in sys.modules
 from merlin.targetgen import tier_cache, oracle_policy

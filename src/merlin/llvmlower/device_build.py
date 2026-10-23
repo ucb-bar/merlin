@@ -134,6 +134,12 @@ class DeviceRouting:
     target_configuration: ConfigurationIRSelection | None = None
     #: Original current-source narrowing; never device eligibility or qualification.
     offload_selection: DeviceOffloadSelection | None = None
+    #: Provider-owned REGION offload: bind and compile every supported region of the prepared file and
+    #: rewrite it into calls, returning (rewritten model, C shim source, kernel object, manifest). Used
+    #: for programs whose device work is not a contraction catalog (elementwise maps, movements,
+    #: window sums); the build lowers the rewritten model and links the shim and the object. Exclusive
+    #: with the contraction routes above.
+    region_offload: Callable[[Path, Path], tuple[Path, Path, Path, Path]] | None = None
 
     def __post_init__(self):
         if type(self.require_complete_groups) is not bool:
@@ -378,6 +384,79 @@ def revalidate_device_elf_custody(device, selection, custody):
     _device_elf_report_bytes(custody.reports)
     if sha256_file(custody.elf) != custody.linked_sha256:
         raise ValueError("device linked ELF changed after original callback validation")
+
+
+REGION_OFFLOAD_SIDECAR = "region_offload.json"
+
+
+def apply_region_offload(routing, prepared: Path, workdir: Path) -> Path:
+    """Run a provider's region offload once and record what the link must add; returns the new model.
+
+    The sidecar names the shim, the object and every binding of the provider's manifest, so the link
+    step and the routing evidence read the SAME artifacts the rewrite produced.
+    """
+    import hashlib
+    import json
+
+    callback = getattr(routing, "region_offload", None)
+    if callback is None:
+        return Path(prepared)
+    for route in ("select", "exact_selection", "catalog_manifest", "catalog_object", "catalog_builder"):
+        if getattr(routing, route, None) is not None:
+            raise ValueError(f"region offload is exclusive with {route}")
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    rewritten, shim, obj, manifest = (Path(p) for p in callback(Path(prepared), workdir / "region_offload"))
+    for label, path in (("model", rewritten), ("shim", shim), ("object", obj), ("manifest", manifest)):
+        if not path.is_file():
+            raise ValueError(f"region offload returned no {label} file")
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    bindings = list(document.get("bindings") or ())
+    if not bindings:
+        raise ValueError("region offload bound no region")
+
+    def digest(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    (workdir / REGION_OFFLOAD_SIDECAR).write_text(
+        json.dumps(
+            {
+                "device": routing.device,
+                "model": str(rewritten),
+                "shim": str(shim),
+                "object": str(obj),
+                "manifest": str(manifest),
+                "artifact_sha256": {
+                    "model": digest(rewritten),
+                    "shim": digest(shim),
+                    "object": digest(obj),
+                    "manifest": digest(manifest),
+                },
+                "routed": bindings,
+                "declines": list(document.get("declines") or ()),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return rewritten
+
+
+def load_region_offload(workdir: Path) -> dict:
+    """The region-offload sidecar a build wrote, verified against its artifacts; {} when there is none."""
+    import hashlib
+    import json
+
+    path = Path(workdir) / REGION_OFFLOAD_SIDECAR
+    if not path.is_file():
+        return {}
+    document = json.loads(path.read_text(encoding="utf-8"))
+    for label, digest in document["artifact_sha256"].items():
+        if hashlib.sha256(Path(document[label]).read_bytes()).hexdigest() != digest:
+            raise ValueError(f"region offload {label} changed after the rewrite")
+    return document
 
 
 def routing_for_placement(

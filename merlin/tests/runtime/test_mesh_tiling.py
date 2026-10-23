@@ -33,6 +33,9 @@ def _clean_caches():
 
 def _fake_backend(monkeypatch, *, ceiling: int, seen: list | None = None):
     """A backend that computes A@W exactly, but refuses any extent whose working set exceeds `ceiling`."""
+    # MERLIN_RTL_FACTS selects one facts file for EVERY target name, so a suite run with it set
+    # would resolve this fake target to that target's RTL facts.
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
 
     # `layer_id` rides along so each layer gets its own artifact directory; the double accepts and
     # ignores it, the same as any other caller-side detail it does not model.

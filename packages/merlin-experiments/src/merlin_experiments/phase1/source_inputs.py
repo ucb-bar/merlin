@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 
 from merlin.common.digest import sha256_file as _sha
-from merlin.common.source_membership import SourceMembershipError, python_members
+from merlin.common.source_membership import SourceMembershipError, file_members, python_members
 
 from .. import access_policy
 from ..adapters import _relative_entrypoint, phase0_startup_inputs
@@ -81,6 +81,7 @@ def _selected_provider_inputs(target: object) -> dict[str, str]:
     """
     from merlin.runtime.backends.base import _assert_oot_plugin_ownership
     from merlin.targetgen.plugins import resolve_support
+    from merlin.targetgen.providers import support_source_dependencies
     from merlin.targetgen.target_registry import explicit_targets
 
     if not isinstance(target, str) or not target:
@@ -92,6 +93,9 @@ def _selected_provider_inputs(target: object) -> dict[str, str]:
         selected = resolve_support(target)
         root = selected.base.resolve()
         inputs = _python_members(root, "phase1:startup:provider:python:")
+        for name, directory in support_source_dependencies(root).items():
+            for relative, path in file_members(directory, label="phase-1 provider dependency").items():
+                inputs[f"phase1:startup:provider:dependency:{name}:{relative}"] = str(path)
         for name, path in (
             ("contract", selected.contract_path),
             ("identity", root / "provider.yaml"),
@@ -169,6 +173,13 @@ def paths(
         ("benchharness", "merlin.benchharness"),
         ("tree_hash", "merlin.common.tree_hash"),
         ("formal_grader", "merlin_experiments.phase1.feedback.formal"),
+        ("full_call_oracle", "merlin.targetgen.spike_full_call"),
+        ("full_call_capsules", "merlin.targetgen.core_aten_capsules"),
+        ("full_call_runner", "merlin.targetgen.capsule_runner"),
+        ("full_call_device", "merlin.targetgen.core_aten_device"),
+        ("full_call_isolated_build", "merlin.targetgen.full_call_build"),
+        ("full_call_numeric_admission", "merlin.targetgen.core_aten_spec_int8"),
+        ("full_call_lane_scores", "merlin.targetgen.capsule_common"),
         ("rtl_check_runner", "merlin.targetgen.rtl_check_runner"),
         ("rtl_check_compiler", "merlin.targetgen.rtl_check_compiler"),
         ("rtl_checks", "merlin.targetgen.rtl_checks"),

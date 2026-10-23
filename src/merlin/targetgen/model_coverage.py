@@ -362,7 +362,7 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
                 k=k,
                 n=n,
                 rank=rank,
-                form=sf.operation_form(_attr_str(op, "prov.op") or short, carrier_op=op.name),
+                form=sf.carrier_form(op) or sf.operation_form(_attr_str(op, "prov.op") or short, carrier_op=op.name),
                 config=_declared_config(op),
             )
         )

@@ -83,11 +83,14 @@ def _region_reply(*, drop_first_commit: bool = False) -> dict:
     commands = [
         {"opcode": "MATMUL", "operands": {"lhs": "A0", "rhs": "W", "dst": "acc0"}},
         {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "__region_out_0000"}},
+        # The residual add reads member 0's committed output back from memory. The contract obliges
+        # must_fence_dram_read_after_write, so the honest package fences the hand-off.
+        {"opcode": "FENCE", "operands": {}},
         {"opcode": "RESIDUAL_ADD", "operands": {"lhs": "__region_out_0000", "rhs": "X1", "dst": "__region_out_0001"}},
     ]
     if drop_first_commit:
         # A package that silently keeps member 0's result only on-chip: the commit never appears.
-        commands = [commands[0], commands[2]]
+        commands = [commands[0], commands[-1]]
     return {
         "abi_version": "0.1",
         "target": _TARGET,

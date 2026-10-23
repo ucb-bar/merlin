@@ -39,8 +39,11 @@ def test_the_obligation_matches_what_the_oracle_did(m, k, n, holds):
     assert v["holds"] is holds, v
 
 
-def test_an_undeclared_capacity_is_unknown_not_satisfied():
+def test_an_undeclared_capacity_is_unknown_not_satisfied(monkeypatch):
     """Fail closed: a target that declares no capacity must not have the obligation assumed true."""
+    # MERLIN_RTL_FACTS selects one facts file for EVERY target name, so a suite run with it set
+    # would resolve this unknown target to that target's RTL facts.
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
     v = capacity_fit("definitely_not_a_target", 16, 512, 512, "int8", 16)
     assert v["holds"] is None, "unknown capacity must be None, never True"
 

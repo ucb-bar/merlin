@@ -3,7 +3,7 @@ title: Tracking experiments — the dashboard and the watch view
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-09
+last_verified: 2026-10-10
 related: [storage, reproducibility, phase2_test_justification]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/tracking/records.py

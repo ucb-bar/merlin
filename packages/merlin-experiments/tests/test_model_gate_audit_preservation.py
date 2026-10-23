@@ -99,7 +99,7 @@ def test_model_only_selfcheck_reports_redacted_model_gate(tmp_path, monkeypatch,
     monkeypatch.setattr(selfcheck, "resolve_context", lambda *a: SimpleNamespace(repo=tmp_path, target="synthetic"))
     monkeypatch.setattr(selfcheck, "_target_sim_via", lambda *a: ("synthetic", "fixture"))
     monkeypatch.setattr(selfcheck, "_adapters", lambda *a, **k: ({"L2": object()}, "spike"))
-    monkeypatch.setattr(selfcheck, "readback_kwargs", lambda *a: {})
+    monkeypatch.setattr(selfcheck, "oracle_kwargs", lambda *a: {})
     monkeypatch.setattr(selfcheck, "_streaming_completion", lambda **k: None)
     monkeypatch.setattr(selfcheck, "_log_telemetry", lambda *a: None)
     result = selfcheck.main(

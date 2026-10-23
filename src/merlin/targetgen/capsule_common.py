@@ -521,6 +521,26 @@ def run_entrypoints(
     return pkg, cb, artifact
 
 
+def unfenced_memory_reads(cb: dict) -> list[dict]:
+    """Memory-chained commands with no FENCE between them, when the buffer's target obliges one.
+
+    Read from the target's selected capability contract (``hazard_resolution: explicit`` with
+    ``must_fence_dram_read_after_write``); a target whose contract is not selectable here obliges
+    nothing this check can state, and its buffers are left to the target's own oracle.
+    """
+    from merlin.runtime.fences import fence_violations, requires_fences
+    from merlin.targetgen.target_registry import load_contract
+
+    target = cb.get("target") if isinstance(cb, dict) else None
+    if not isinstance(target, str) or not target:
+        return []
+    try:
+        capability = load_contract(target)
+    except (KeyError, LookupError, FileNotFoundError):
+        return []  # no selected capability contract: no obligation is stated to enforce
+    return fence_violations(cb) if requires_fences(capability) else []
+
+
 @observe_emission
 def lower_interface(
     pkg,
@@ -721,6 +741,17 @@ def lower_interface(
         raise CertFailure(
             "command_buffer_schema", _cat("PROTOCOL_VIOLATION"), f"command_buffer.json invalid: {e}"
         ) from e
+    unfenced = unfenced_memory_reads(cb)
+    if unfenced:
+        first = unfenced[0]
+        raise CertFailure(
+            "command_buffer_schema",
+            _cat("PROTOCOL_VIOLATION"),
+            f"{len(unfenced)} command(s) read a tensor an earlier command of the same buffer wrote with no "
+            f"FENCE between them (first: command {first['reader_index']} {first['reader']} reads "
+            f"{first['tensor']!r} written by command {first['writer_index']} {first['writer']}); the "
+            "target's contract obliges must_fence_dram_read_after_write",
+        )
 
     # AN EXPLICIT DECLINE, READ BEFORE ANYTHING IS RUN. A backend states here that it does not handle
     # this capsule; the alternative it used to have was to emit a program that writes nothing, which
@@ -770,3 +801,146 @@ def lower_interface(
 
         memo[memo_key] = (cb_path.read_text(encoding="utf-8"), copy.deepcopy(cb), _artifact)
     return cb, _artifact
+
+
+#: Per-capsule result fields recording which execution lane and cohort a verdict rests on.
+LANE_FIELDS = ("lane", "executed_instructions", "cohort", "scored")
+
+_SPEC_DEVICE_SCHEMA = "merlin.spec_qualified_device.v1"
+_SPEC_DEVICE_BINDINGS = (
+    "case_sha256",
+    "source_sha256",
+    "software_spec_sha256",
+    "host_capabilities_sha256",
+    "catalog_sha256",
+    "target_ir_sha256",
+    "object_sha256",
+    "elf_sha256",
+    "trace_sha256",
+)
+_SPEC_DEVICE_CHECKS = (
+    "private_answers",
+    "selected_policy",
+    "admission",
+    "source",
+    "schedule",
+    "partial_sums",
+    "raw_i32",
+    "ordered_f32",
+    "full_call",
+    "device_binding",
+)
+_EXECUTION_IDENTITY = ("case_sha256", "source_sha256", "elf_sha256", "trace_sha256")
+
+
+def _sha256_identity(value) -> bool:
+    return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def spec_qualified_device_entry(result: dict) -> bool:
+    """Recognize a supported receipt on an already trusted, graded result.
+
+    This is a metadata join, not a proof verifier for arbitrary JSON. The private
+    evaluator issues both the receipt and execution identity after independently
+    checking the actual candidate, references and execution. Candidate claims
+    cannot supply either field at that boundary.
+    """
+    count = result.get("executed_instructions")
+    if result.get("status") != "pass" or result.get("lane") != "device" or type(count) is not int or count <= 0:
+        return False
+    receipt = result.get("spec_qualified_device")
+    identity = result.get("full_call_execution_identity")
+    if not isinstance(receipt, dict) or not isinstance(identity, dict):
+        return False
+    if set(receipt) != {"schema", "status", "policy", "scope", "reasons", "bindings", "checks"}:
+        return False
+    if (
+        receipt["schema"] != _SPEC_DEVICE_SCHEMA
+        or receipt["status"] != "qualified"
+        or receipt["policy"] != "spec_int8"
+        or receipt["scope"] != "selected_software_spec"
+        or type(receipt["reasons"]) is not list
+        or receipt["reasons"]
+    ):
+        return False
+    bindings, checks = receipt["bindings"], receipt["checks"]
+    if not isinstance(bindings, dict) or set(bindings) != set(_SPEC_DEVICE_BINDINGS):
+        return False
+    if not all(_sha256_identity(value) for value in bindings.values()):
+        return False
+    if not isinstance(checks, dict) or set(checks) != set(_SPEC_DEVICE_CHECKS):
+        return False
+    if not all(value is True for value in checks.values()):
+        return False
+    return set(identity) == set(_EXECUTION_IDENTITY) and all(
+        _sha256_identity(identity[key]) and identity[key] == bindings[key] for key in _EXECUTION_IDENTITY
+    )
+
+
+def score_lanes(graded: list[dict], score: dict) -> list[dict]:
+    """Split unscored host guards from scored rows and record lane evidence in ``score``.
+
+    A row marked ``scored: False`` is a host guard: it must pass on the host lane for the suite
+    to pass (:func:`host_guards_pass`), but never counts toward the scored capsule total. A device
+    lane count requires executed instructions as evidence, never the lane label alone.
+    """
+    guards = [r for r in graded if r.get("scored") is False]
+    score["host_guard_total"] = len(guards)
+    score["host_guard_pass"] = sum(r["status"] == "pass" and r.get("lane") == "host" for r in guards)
+    scored = [r for r in graded if r.get("scored") is not False]
+    device = [r for r in scored if r.get("lane") == "device" and r.get("executed_instructions", 0) > 0]
+    score["device_lane_scored_pass"] = sum(r["status"] == "pass" for r in device)
+    score["device_evidence_count"] = len(device)
+    score["spec_qualified_device_pass"] = sum(spec_qualified_device_entry(r) for r in device)
+    score["device_unqualified_pass"] = score["device_lane_scored_pass"] - score["spec_qualified_device_pass"]
+    score["host_lane_scored_pass"] = sum(r["status"] == "pass" and r.get("lane") == "host" for r in scored)
+    return scored
+
+
+def host_guards_pass(score: dict) -> bool:
+    """Every host guard recorded by :func:`score_lanes` passed on the host lane."""
+    return score["host_guard_pass"] == score["host_guard_total"]
+
+
+def lane_entry_fields(result: dict) -> dict:
+    """The lane/cohort qualifiers a roll-up entry must carry with its verdict."""
+    fields = {key: result[key] for key in LANE_FIELDS if key in result}
+    receipt = result.get("spec_qualified_device")
+    if isinstance(receipt, dict):
+        qualified = spec_qualified_device_entry(result)
+        policy = receipt.get("policy")
+        safe_policy = (
+            policy if type(policy) is str and policy in {"spec_int8", "int8_w8a8", "fp32", "original_host"} else None
+        )
+        fields["spec_qualified_device"] = {
+            "schema": _SPEC_DEVICE_SCHEMA,
+            "status": "qualified" if qualified else "unqualified",
+            "policy": safe_policy,
+            "scope": "selected_software_spec",
+            "reasons": []
+            if qualified
+            else [
+                "qualification_unavailable"
+                if receipt.get("status") == "unqualified"
+                else "invalid_qualification_receipt"
+            ],
+        }
+        for key, allowed in (("bindings", _SPEC_DEVICE_BINDINGS), ("checks", _SPEC_DEVICE_CHECKS)):
+            block = receipt.get(key)
+            if isinstance(block, dict):
+                fields["spec_qualified_device"][key] = {
+                    name: value
+                    for name, value in block.items()
+                    if name in allowed and (_sha256_identity(value) if key == "bindings" else type(value) is bool)
+                }
+    identity = result.get("full_call_execution_identity")
+    if isinstance(identity, dict):
+        fields["full_call_execution_identity"] = {
+            key: value for key, value in identity.items() if key in _EXECUTION_IDENTITY and _sha256_identity(value)
+        }
+    return fields
+
+
+def readback_kw(readback_policy) -> dict:
+    """Forward a selected readback policy only; an absent one keeps the callee's own default."""
+    return {} if readback_policy is None else {"readback_policy": readback_policy}

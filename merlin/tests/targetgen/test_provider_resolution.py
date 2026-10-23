@@ -102,9 +102,16 @@ def test_oot_capability_override_does_not_replace_provider_plugin(tmp_path, monk
     monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(selected))
     resolved = registry.resolve("synthetic")
     assert resolved.contract_path == provider / "contracts/target_contract.yaml"
-    assert registry.load_contract("synthetic")["compute_units"] == [{"name": "new"}]
+    with pytest.raises(ProviderError, match="drifts.*compute_units"):
+        registry.load_contract("synthetic")
+    with pytest.raises(ProviderError, match="drifts"):
+        resolved.plugin()
+    selected_doc = {"name": "synthetic", "compute_units": [{"name": "old"}], "plugin": {"backend": "untrusted.py"}}
+    write_yaml(selected, selected_doc)
     assert resolved.plugin()["backend"] == "provider.py"
-    assert resolved.plugin()["path"] == str(provider)
+    with registry.observed_contract("synthetic", {**selected_doc, "synchronization": {"fence": "required"}}):
+        with pytest.raises(ProviderError, match="drifts.*synchronization"):
+            resolved.plugin()
 
 
 def test_resolution_is_read_only_even_with_legacy_autofetch(tmp_path, monkeypatch):

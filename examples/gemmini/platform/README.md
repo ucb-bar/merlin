@@ -9,6 +9,7 @@ or host-compiler integrator; they do not add mathematical accelerator functional
 | --- | --- |
 | [hardware.yaml](hardware.yaml) | Hardware integrator: source-production policy and assertions checked against the selected RTL. Expected types are audit questions, not facts. |
 | [host-capabilities.yaml](host-capabilities.yaml) | Host-compiler owner: exact typed host-operation declarations bound to an immutable compiler package. Review is separate from execution qualification. |
+| [host-capabilities-core-aten.yaml](host-capabilities-core-aten.yaml) | Host-compiler owner: the Core ATen `spec_int8` lane's host declarations, which add exact readout and quantization rows (some pending operator review); selected explicitly with `--host-capabilities`. `host-capabilities.yaml` stays the frozen history. |
 | [board-catalog.yaml](board-catalog.yaml) | Platform integrator: selected board, DTS and host-ISA identities. Unknown loaders or capacities remain unknown. |
 | [scalar-host-recipe.yaml](scalar-host-recipe.yaml) | Host integrator: minimal ISA/codegen request for Merlin's generic scalar package minter. Minting does not qualify operation support. |
 

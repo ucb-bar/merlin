@@ -87,6 +87,31 @@ class RunOptions:
     author_max_subagents: int | None = None
     live_conformance_feedback: bool = False
     validation_scope: str = "full"
+    objective: str = "correctness"
+    candidate_policy: str = ""
+
+    def __post_init__(self) -> None:
+        validate_objective(self)
+
+
+def validate_objective(options: RunOptions | argparse.Namespace) -> None:
+    """One objective policy for CLI construction and programmatic admission."""
+    objective = getattr(options, "objective", "correctness")
+    if type(objective) is not str or objective not in {"correctness", "device-coverage"}:
+        raise ValueError("unknown authoring objective")
+    if objective == "device-coverage" and (
+        options.schedule != "continuous"
+        or type(options.max_wall_s) is not int
+        or options.max_wall_s <= 0
+        or options.continuous
+        or options.plateau_rounds
+        or options.qualify_submission
+        or options.seal_current
+    ):
+        raise ValueError(
+            "device-coverage requires --schedule continuous, a positive --max-wall-s, "
+            "and no legacy --continuous, --plateau-rounds, --qualify-submission or --seal-current"
+        )
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -154,6 +179,7 @@ def build_parser(
         default="",
         help="fresh isolated per-run client home root, shared selection policy for canary and authoring",
     )
+    ap.add_argument("--candidate-policy", default="", help="operator-owned frozen compiler sandbox selection")
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     # AGENT DRIVER (Claude-Code-like interfaces). auto (default) preserves today's behavior: route by model
@@ -222,6 +248,13 @@ def build_parser(
         "want for a run whose whole point is to finish the work, but say so on purpose.",
     )
     ap.add_argument("--max-rounds", type=int, default=12)
+    ap.add_argument(
+        "--objective",
+        choices=("correctness", "device-coverage"),
+        default="correctness",
+        help="device-coverage is opt-in: preserve correctness grades but optimize device coverage "
+        "through the active wall budget, without correctness/READY/plateau early completion",
+    )
     ap.add_argument(
         "--min-rounds",
         type=int,
@@ -473,4 +506,8 @@ def parse_options(
     default_arm: str = "raw_baseline",
     environ: Mapping[str, str] | None = None,
 ) -> RunOptions:
-    return RunOptions(**vars(build_parser(default_arm=default_arm, environ=environ).parse_args(argv)))
+    parser = build_parser(default_arm=default_arm, environ=environ)
+    try:
+        return RunOptions(**vars(parser.parse_args(argv)))
+    except ValueError as exc:
+        parser.error(str(exc))

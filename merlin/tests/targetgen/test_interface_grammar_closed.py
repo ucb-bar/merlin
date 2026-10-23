@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- interface fixtures keep each MLIR operation on one line
 """The canonical interface parser must fail CLOSED on an op it does not define.
 
 MEASURED, and the reason this file exists: ``parse_interface_mlir`` used to return only the commands
@@ -291,3 +292,35 @@ class TestContractDeclaresTheNewOps:
         for op in spec["dialect"]["required_ops"]:
             mnem = op["name"].split("merlin_iface.", 1)[-1]
             assert mnem in defined, f"contract requires {op['name']} but the parser does not define it"
+
+
+@pytest.mark.parametrize(
+    "opcode, operands",
+    [
+        ("AFFINE_MAP", {"x": "x"}),
+        ("AFFINE_MAP", {"x": "x", "y": "y"}),
+        ("CONCAT", {"src0": "x", "src1": "y", "src2": "z"}),
+        ("INSERT_SLICE", {"dest": "x", "src": "y"}),
+        ("FILL", {}),
+        ("WINDOW_SUM", {"src": "x"}),
+    ],
+)
+def test_integer_primitives_emit_parse_round_trip(opcode, operands):
+    cb = {
+        "abi_version": "0.1",
+        "target": "synthetic",
+        "tensors": {
+            **{name: {"shape": [2, 3, 4], "dtype": "i8", "role": "input"} for name in ("x", "y", "z")},
+            "out": {"shape": [2, 3, 4], "dtype": "i8", "role": "output"},
+        },
+        "commands": [
+            {
+                "opcode": opcode,
+                "operands": {**operands, "dst": "out"},
+                "attributes": {"relu": True, "ceil_mode": False, "mask": [True, False], "weights": [2, -3]},
+            }
+        ],
+    }
+    text = IE.emit_interface_mlir(cb)
+    assert IE.parse_interface_mlir(text) == cb
+    assert IE.parse_interface_mlir(IE.to_generic_form(text)) == cb
