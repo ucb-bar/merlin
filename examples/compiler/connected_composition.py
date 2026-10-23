@@ -4,9 +4,31 @@ This helper accepts a ConnectedProgram from compile_connected_region. It does
 not provide an instruction implementation, target pointer ABI or launch runtime.
 An automatic author and an offline compiler use the same returned products.
 The neutral byte-buffer execute() tests are separate from guest code generation.
+
+For caller-owned, synchronous buffers, prefer the shared
+merlin.compile.connected_host.emit_connected_host_c sequence builder below.
 """
 
 from __future__ import annotations
+
+
+def emit_borrowed_connected_c(program, *, emit_stage, symbol, backing_origins):
+    """Use shared checked binding and sequence generation.
+
+    emit_stage(invocation, symbol) returns ConnectedCStage. It implements the
+    documented byte-view ABI using the actual invocation.product (dense) or
+    invocation.images (pointwise), with explicit logical-window relocation and
+    completion. No target implementation is supplied by this example.
+
+    The returned receipt gives backing order, window offsets and every live
+    output. The C entrypoint preflights all bindings before calling any stage.
+    Its status is execution status, never an independent numerical verdict.
+    """
+    from merlin.compile.connected_host import emit_connected_host_c
+
+    return emit_connected_host_c(
+        program, emit_stage, symbol=symbol, backing_origins=backing_origins
+    )
 
 
 def emit_connected_c(program, *, instruction_set, emit_pointwise, emit_sequence):

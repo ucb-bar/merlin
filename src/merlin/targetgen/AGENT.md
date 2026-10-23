@@ -592,3 +592,9 @@ overflow and unavailable-API cases keep native evaluation. The context surrounds
 real calibration/site-check/candidate forwards only; source graphs, floating
 operations, independent goldens, selected recipes and acceptance bars stay
 unchanged. Its implementation is bound in capture-cache identity.
+
+`shared_pass_contract.validate_target_ir_consumer_declaration` is the public,
+stdlib-only owner of target-consumer transport declaration structure. The private
+`capsule_common` adapter translates its errors into the original contract failure
+category; manifest inspection imports no package runtime or grading owner.
+Declaration validity remains distinct from actual changed-IR consumption.

@@ -150,7 +150,8 @@ class CapsuleMetadata:
     Every package policy classifies each capsule of its live and frozen corpora, and parsing that
     metadata dominates the classification. Corpus membership may be reused only under the
     request-owned kernel roster guard; mutations invalidate it and unsupported trees are walked
-    afresh. Metadata bytes are read on every call; only their byte-identical parse is reused. The document is keyed by the SHA-256 of the bytes
+    afresh. Metadata bytes are read on every call; only their byte-identical parse
+    is reused. The document is keyed by the SHA-256 of the bytes
     actually read, parsed by the same loader :func:`capsule_answer_members` uses, and only read by it.
     A scope owns one instance; it is never process-global. An original execution may also attach a
     declaration path plan; that plan never retains filesystem membership or answer-surface rows.
@@ -666,6 +667,13 @@ def _backend_package_dirs(te: TargetExperiment) -> list[Path]:
     return sorted(roots)
 
 
+def _golden_origin(path: Path, example_roots: frozenset[Path]) -> str:
+    # The root roster is freshly declared for this policy. Walk each answer's
+    # lexical ancestors once, not once per root; no filesystem decision is
+    # retained, and aliases keep their original lexical spelling.
+    return "example" if any(parent in example_roots for parent in path.parents) else "golden"
+
+
 def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = None) -> list[AnswerSurface]:
     """The COMPLETE derived answer-surface set for one target — the single source the sandbox masks and
     the coverage guard checks. Only surfaces that actually exist on this host are returned (a masked
@@ -681,9 +689,9 @@ def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = 
     def shown_path(path: Path) -> Path:
         return path.relative_to(root) if path.is_relative_to(root) else path
 
-    examples_dirs = contract_resource_roots(root, "examples")
+    examples_dirs = frozenset(contract_resource_roots(root, "examples"))
     for g in golden_files(te, capsules=capsules):
-        origin = "example" if any(p in g.parents for p in examples_dirs) else "golden"
+        origin = _golden_origin(g, examples_dirs)
         out.append(AnswerSurface(f"{origin}:{shown_path(g)}", g, "file", origin))
     for weights in weight_files(te, capsules=capsules):
         out.append(AnswerSurface(f"weight:{shown_path(weights)}", weights, "file", "weight"))

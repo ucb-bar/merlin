@@ -38,6 +38,8 @@ views even after original aliases or selected providers change.
   subtree projection visits only matching members. The index confers no custody:
   canonical-root, live guard, symlink and final mask checks remain mandatory.
   A changed guard invalidates every derived view, including its lexical indexes.
+- Example/golden origin labels use a fresh declared-root set and strict lexical
+  ancestry. Classification neither resolves aliases nor retains a mask policy.
 - Capsule reference masks come from `capsule_privacy` roles as well as historical
   answer names. Reopen frozen declarations under the verified snapshot owner;
   removing the original capture cannot make a copied reference public. Operand

@@ -47,6 +47,7 @@ def implementation(
     left, right, sums = [arrays[v.backing] + "+8" for v in views]
     ct = dict(i8="int8_t", i16="int16_t", i32="int32_t")
     output_dtype = dtypes[2] if output_dtype is None else output_dtype
+    acc_bytes = int(dtypes[2][1:]) // 8
     preamble = f"""
 #include <stdint.h>
 {declarations}
@@ -80,20 +81,20 @@ static void do_preload(int64_t w,int64_t k,int64_t n,int64_t acc,int64_t cont,
 static void do_compute(int64_t lhs,int64_t m,int64_t k,int64_t rows,int64_t depth) {{
  command_count++;
  for(int i=0;i<rows;i++)for(int j=0;j<columns;j++){{
-  unsigned char *target=({sums})+(sum_row+i)*{storage.accumulator.unit_bytes}+j*4;
-  uint32_t value=continuation?(uint32_t)get(target,4):0;
+  unsigned char *target=({sums})+(sum_row+i)*{storage.accumulator.unit_bytes}+j*{acc_bytes};
+  uint32_t value=continuation?(uint32_t)get(target,{acc_bytes}):0;
   for(int t=0;t<depth;t++){{
    int32_t x=get(({left})+(lhs+i)*{storage.lhs.unit_bytes}+t*{problem.lhs_bytes},{problem.lhs_bytes});
    int32_t y=get(({right})+(weight_row+t)*{storage.rhs.unit_bytes}+j*{problem.rhs_bytes},{problem.rhs_bytes});
    value+=(uint32_t)x*(uint32_t)y;
   }}
-  put(target,value,4);
+  put(target,value,{acc_bytes});
  }}
 }}
-static void do_store(int64_t r,int64_t c,int64_t rows,int64_t cols,int64_t acc,int32_t *dst) {{
- command_count++;store_count+=rows*cols*4;
+static void do_store(int64_t r,int64_t c,int64_t rows,int64_t cols,int64_t acc,{ct[dtypes[2]]} *dst) {{
+ command_count++;store_count+=rows*cols*{acc_bytes};
  for(int i=0;i<rows;i++)for(int j=0;j<cols;j++)
-  dst[(r+i)*{problem.n}+c+j]=get(({sums})+(acc+i)*{storage.accumulator.unit_bytes}+j*4,4);
+  dst[(r+i)*{problem.n}+c+j]=get(({sums})+(acc+i)*{storage.accumulator.unit_bytes}+j*{acc_bytes},{acc_bytes});
 }}
 uint64_t {symbol}_count(int which) {{return which==0?command_count:which==1?load_count:store_count;}}
 void {symbol}_reset(void) {{command_count=load_count=store_count=0;}}
@@ -112,7 +113,7 @@ int {symbol}_guards(void) {{
 static void do_store_i8(int64_t r,int64_t c,int64_t rows,int64_t cols,int64_t acc,int8_t *dst) {{
  command_count++;store_count+=rows*cols;
  for(int i=0;i<rows;i++)for(int j=0;j<cols;j++){{
-  int32_t value=get(({sums})+(acc+i)*{storage.accumulator.unit_bytes}+j*4,4);
+  int32_t value=get(({sums})+(acc+i)*{storage.accumulator.unit_bytes}+j*{acc_bytes},{acc_bytes});
   {readout_body}
   dst[(r+i)*{problem.n}+c+j]=(int8_t)value;
  }}

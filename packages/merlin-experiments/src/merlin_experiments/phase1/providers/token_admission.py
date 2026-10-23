@@ -46,6 +46,7 @@ class ManagedTokens:
         self.key, self.phase = None, None
         self.active, self.owner = False, uuid.uuid4().hex
         self.started = self.next_poll = 0.0
+        self.missing_since = None
         self.last = None
         self.path = self.run_dir / "author_token_admission.json"
 
@@ -143,6 +144,7 @@ class ManagedTokens:
                 state["outstanding"][self.key] = {"allowance": allowance, "phase": self.phase, "owner": self.owner}
                 self.active = True
                 self.started = self.clock()
+                self.missing_since = None
                 self.next_poll = self.started + self.policy["admission"]["poll_s"]
             return self._record(
                 state,
@@ -163,12 +165,19 @@ class ManagedTokens:
         self.next_poll = self.clock() + self.policy["admission"]["poll_s"]
         with self._state() as state:
             total, pending, snapshot = self._measurement(state)
-            elapsed = self.clock() - self.started
+            now = self.clock()
+            elapsed = now - self.started
+            if total is None:
+                if self.missing_since is None:
+                    self.missing_since = now
+            else:
+                self.missing_since = None
+            missing_s = 0.0 if self.missing_since is None else now - self.missing_since
             selected = self.policy["admission"]
             threshold = self.policy["target"] - (self.policy["reserve"] if self.phase == "exploration" else 0)
             projected = None if total is None else total + pending
             reason = None
-            if total is None and elapsed >= selected["missing_usage_grace_s"]:
+            if total is None and missing_s >= selected["missing_usage_grace_s"]:
                 reason = "live all-author usage unavailable after grace; checkpoint required"
             elif projected is not None and projected >= threshold:
                 reason = "development boundary" if self.phase == "exploration" else "integration target boundary"
@@ -184,6 +193,7 @@ class ManagedTokens:
                     "observed_total": total,
                     "outstanding_allowance": pending,
                     "projected_total": projected,
+                    "missing_usage_duration_s": missing_s,
                 },
                 snapshot,
             )

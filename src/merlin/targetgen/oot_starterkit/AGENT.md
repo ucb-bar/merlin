@@ -34,3 +34,9 @@ is the declared no-argument completion shim containing exactly the contract's co
 assembly and a return, with a side effect/memory clobber and no source/task ownership.
 Without that explicit ABI, retain the historical single-function rule. This public check
 never proves numerical execution, offload placement or timing.
+
+`passes` reads bounded manifest/requirement files and delegates pure declaration
+validation to public `merlin.targetgen.shared_pass_contract`. Its selected source
+closure needs neither `capsule_common` nor `package_runtime`. Inspection never
+executes compiler commands or grants consumption, numerical or performance
+qualification; protected runners retain their independent execution checks.

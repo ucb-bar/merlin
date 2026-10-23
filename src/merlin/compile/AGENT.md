@@ -60,3 +60,9 @@ backings cannot alias through caller buffers; output reuse needs disjoint live
 ranges. This is unfused composition, not on-chip residency or runtime
 qualification. Target pointer ABI, image loading and instruction implementations
 remain caller-owned. Neutral host-buffer execution is not a compiled guest ABI.
+
+`connected_host.py` emits the synchronous caller-owned C byte-view sequence.
+Preflight every view before any stage executes; reject overlapping distinct
+physical backings and metadata aliases. Explicit stage effects include completion
+on failure as well as success. Preserve exact stage products and all source live
+outputs. Binding receipts and asserted effects do not certify target execution.

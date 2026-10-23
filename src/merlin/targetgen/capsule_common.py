@@ -30,35 +30,12 @@ def _target_consumer_record(pkg):
     """A package transport promise, never instruction or execution authority."""
     from .package_runtime import CertFailure
 
-    expected = {
-        "schema": "merlin.target_ir_consumer.v1",
-        "command": "emit_target_bundle",
-        "input": "selected_target_mlir",
-        "output": "command_buffer_and_target_artifact",
-    }
-    manifest = pkg.manifest
-    declaration = manifest.get("target_ir_consumer")
-    command = manifest.get("commands", {}).get("emit_target_bundle")
-    argv = command.get("argv") if type(command) is dict else None
-    if (
-        manifest.get("abi_version", "0.1") != "0.1"
-        or type(declaration) is not dict
-        or declaration != expected
-        or type(command) is not dict
-        or set(command) != {"argv"}
-        or type(argv) is not list
-        or not argv
-        or any(type(value) is not str or not value for value in argv)
-        or not all(any(placeholder in value for value in argv) for placeholder in ("{input_mlir}", "{output_json}"))
-    ):
-        raise CertFailure(
-            "contract",
-            _cat("STRUCTURAL_INVARIANT_VIOLATION"),
-            "selected target configuration requires ABI 0.1 and an explicit "
-            "merlin.target_ir_consumer.v1 emit_target_bundle consuming "
-            "{input_mlir} and producing {output_json} plus the target artifact",
-        )
-    return json.loads(json.dumps({"declaration": declaration, "command": command, "target": manifest.get("target")}))
+    from .shared_pass_contract import validate_target_ir_consumer_declaration
+
+    try:
+        return validate_target_ir_consumer_declaration(pkg.manifest)
+    except ValueError as error:
+        raise CertFailure("contract", _cat("STRUCTURAL_INVARIANT_VIOLATION"), str(error)) from error
 
 
 def _configuration_selection_record(selection):

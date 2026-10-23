@@ -47,11 +47,15 @@ Not all mechanisms are currently connected end to end. The source-bound LLVM
 bridge supports the selected synchronous integer dense domain. Finite copy
 pipelining and staged descriptor scheduling have their own effect/ownership
 contracts; they are not automatically legal asynchronous compact-loop schedules.
-Mixed-region products now preserve bindings, but a target guest launch adapter
-and complete-output execution still need to be demonstrated. These are concrete
+Mixed-region products preserve bindings. `compile.connected_host` now emits the
+caller-owned synchronous C sequence, with complete buffer preflight and explicit
+stage adapters. Native neutral-runtime tests execute counted dense loops and exact
+pointwise images with INT8 inputs/INT32 accumulation, relocation and all live
+outputs checked. A target guest launch adapter and complete-output target
+execution still need to be demonstrated. These are concrete
 compiler development tasks, not reasons to mark a hardware capability unsupported.
 
-### First asynchronous compact-loop extension to investigate
+### Bounded overlap prototype and remaining compact-loop work
 
 The existing C emitter already accepts explicit target `issue_on`, `on_await`
 and `on_produce` hooks; the LLVM index bridge deliberately refuses annotations
@@ -74,6 +78,18 @@ drains. Only then qualify the target adapter through ordinary numerical and
 physical checks. This extension is proposed, not implemented by the current
 synchronous dense emitter. Continuous pipelines with work pending across block
 boundaries require a further recurrence and lifetime representation.
+
+The first bounded storage/completion component is now implemented as
+[`periodic_effects.check_drained_period`](drained_period.md). It preserves one
+counted loop and checks every dynamic iteration within an explicit call budget,
+rather than extrapolating from a prefix. The emitted neutral C example executes
+with delayed completion and two outstanding operations; focused tests reject
+unsafe overwrite, missing waits/drains and a later-iteration bounds error.
+It does not prove affine recurrence, numerical equivalence, configuration
+invariants or complete output coverage. In particular it does not yet connect
+the synchronous dense emitter to an asynchronous target, and finite enumeration
+is unsuitable for unbounded large loops. This is a reusable mechanism to exercise
+through target authoring, not evidence that reference-level codegen was reached.
 
 ## Progression through the ordinary authoring workflow
 

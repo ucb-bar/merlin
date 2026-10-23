@@ -19,6 +19,10 @@ from pathlib import Path
 SCHEMA = "merlin.background_foreground_admission.v1"
 
 
+class SubmissionNotReady(RuntimeError):
+    """No grade was attempted because the initial package manifest is absent."""
+
+
 def _identity(pid):
     root = Path("/proc") / str(pid)
     stat = (root / "stat").read_text().rpartition(") ")[2].split()

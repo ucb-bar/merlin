@@ -45,7 +45,7 @@ def scalar_bodies(width):
         f"%v=arith.addi %a,%b:{dtype}",
         f"%lo=arith.constant {low}:{dtype}\n%hi=arith.constant {high}:{dtype}\n"
         f"%l=arith.maxsi %a,%lo:{dtype}\n%h=arith.minsi %l,%hi:{dtype}\n"
-        + ("%v=arith.trunci %h:i16 to i8" if width == 16 else f"%v=arith.addi %h,%lo:{dtype}"),
+        + (f"%v=arith.trunci %h:i{width} to i8" if width > 8 else f"%v=arith.addi %h,%lo:{dtype}"),
         f"%z=arith.constant 0:{dtype}\n%v=arith.maxsi %a,%z:{dtype}",
     )
 

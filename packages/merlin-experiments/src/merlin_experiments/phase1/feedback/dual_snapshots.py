@@ -10,6 +10,7 @@ from merlin.targetgen.capsule_scheduling import observe_admission
 from merlin.common.cpu_pool import GRADE, cpu_priority, preparation_cpus, selected_pool
 from ..compiler_library import library_thread, join_background
 from . import snapshot_publication
+from .background_admission import SubmissionNotReady
 
 
 def _completed_development_source(verdict, current_source):
@@ -41,7 +42,23 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
     active = []
     completed_source = None
     next_start = 0.0
-    serial = 0
+    first_pending = first_required
+    readiness_state = object()
+
+    def readiness(reason):
+        nonlocal readiness_state
+        if reason == readiness_state:
+            return
+        readiness_state = reason
+        document = dict(schema="merlin.background_snapshot_readiness.v1",
+                        status="waiting_for_manifest" if reason else "manifest_present",
+                        reason=reason, checked_at_epoch=time.time(),
+                        grade_attempted=False, all_pass=None,
+                        scope="admission observation only; no package or numerical qualification")
+        path = Path(run_dir) / "background_snapshot_readiness.json"
+        temporary = path.with_suffix(".next.json")
+        temporary.write_text(json.dumps(document, indent=2) + "\n")
+        temporary.replace(path)
 
     def persist(job):
         document = {key: job[key] for key in ('token', 'source', 'started_at_epoch', 'tick')}
@@ -50,7 +67,8 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
                         snapshot_dir=str(Path(run_dir) / '_qa_work' / f"fcand_{job['tick']}" / 'submission'),
                         runs_dir=str(Path(run_dir) / '_qa_work' / f"fruns_{job['tick']}"),
                         admission_reason=job.get('admission_reason'),
-                        state='complete' if job['done'].is_set() else 'draining' if job['closed'].is_set() else 'admitting',
+                        state='deferred' if job.get('deferred') else 'complete' if job['done'].is_set() else 'draining' if job['closed'].is_set() else 'admitting',
+                        deferred_reason=job.get('deferred'),
                         error=job.get('error'), source_scope='immutable grade owns its actual source/result pins')
         path = directory / (job['token'] + '.json')
         temporary = path.with_suffix('.next.json')
@@ -58,11 +76,11 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
         temporary.replace(path)
 
     def launch(source):
-        nonlocal serial, next_start
-        serial += 1
+        nonlocal next_start, first_pending
         tick = time.time_ns()
         job = dict(token=str(tick), tick=tick, source=source, started_at_epoch=time.time(),
-                   closed=threading.Event(), done=threading.Event(), first=serial == 1 and first_required)
+                   closed=threading.Event(), done=threading.Event(), first=first_pending)
+        first_pending = False
         snapshot_publication.claim(workspace, job['token'])
 
         def closed(reason):
@@ -75,9 +93,12 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
                         snapshot_publication.scope(workspace, job['token']), observe_admission(closed, stop_requested=stop.is_set):
                     callback = first_grade if job['first'] else grade
                     job['verdict'] = callback(tick)
+            except SubmissionNotReady as error:
+                job['deferred'] = str(error)[:500] or 'submission manifest not ready'
             except Exception as error:  # owned grade failure cannot strand the other owner
-                job['error'] = type(error).__name__
-                print(f"[snapshot {tick}] grade failed: {type(error).__name__}", flush=True)
+                detail = ''.join(char if char.isprintable() else ' ' for char in str(error)[:500])
+                job['error'] = f'{type(error).__name__}: {detail}'[:500]
+                print(f"[snapshot {tick}] grade failed: {job['error']}", flush=True)
             finally:
                 job['closed'].set()
                 job['done'].set()
@@ -96,6 +117,11 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
                     continue
                 join_background(job['thread'])
                 active.remove(job)
+                if job.get('deferred'):
+                    first_pending = first_pending or job['first']
+                    next_start = 0.0
+                    readiness(job['deferred'])
+                    continue  # neither a completed grade nor a grade-health failure
                 verdict = job.get('verdict') or {}
                 covered = _completed_development_source(verdict, source_identity())
                 if covered is not None:
@@ -105,6 +131,11 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
             # A second owner is eligible only after the first cannot admit more.
             can_launch = len(active) < 2 and all(job['closed'].is_set() for job in active)
             if can_launch and time.monotonic() >= next_start:
+                if not (Path(workspace) / 'submission/manifest.yaml').is_file():
+                    readiness('submission/manifest.yaml not present; author construction in progress')
+                    stop.wait(poll_s)
+                    continue
+                readiness(None)
                 source = source_identity()
                 if source is not None and source != completed_source and not stop.is_set():
                     launch(source)

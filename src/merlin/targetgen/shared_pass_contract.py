@@ -8,7 +8,6 @@ The ordinary runner must still verify the selected IR reaches its real consumer.
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 
 FAMILY_NEEDS = {
     "producer_packing": ("scalar_semantics", "layout_maps", "ownership"),
@@ -158,6 +157,43 @@ def _command(manifest, name):
     return command
 
 
+def validate_target_ir_consumer_declaration(manifest) -> dict:
+    """Inspect public ABI transport declarations, without package/runtime access.
+
+    This does not resolve or execute argv, verify changed-IR consumption, or grant
+    instruction, effect or numerical authority. Protected runners reuse this
+    pure structure check and retain their own enforcement and error categories.
+    """
+    expected = {
+        "schema": "merlin.target_ir_consumer.v1",
+        "command": "emit_target_bundle",
+        "input": "selected_target_mlir",
+        "output": "command_buffer_and_target_artifact",
+    }
+    manifest = manifest if type(manifest) is dict else {}
+    declaration = manifest.get("target_ir_consumer")
+    commands = manifest.get("commands")
+    command = commands.get("emit_target_bundle") if type(commands) is dict else None
+    argv = command.get("argv") if type(command) is dict else None
+    if (
+        manifest.get("abi_version", "0.1") != "0.1"
+        or type(declaration) is not dict
+        or declaration != expected
+        or type(command) is not dict
+        or set(command) != {"argv"}
+        or type(argv) is not list
+        or not argv
+        or any(type(value) is not str or not value for value in argv)
+        or not all(any(placeholder in value for value in argv) for placeholder in ("{input_mlir}", "{output_json}"))
+    ):
+        raise ValueError(
+            "selected target configuration requires ABI 0.1 and an explicit "
+            "merlin.target_ir_consumer.v1 emit_target_bundle consuming "
+            "{input_mlir} and producing {output_json} plus the target artifact"
+        )
+    return json.loads(json.dumps({"declaration": declaration, "command": command, "target": manifest.get("target")}))
+
+
 def validate_shared_pass_contract(manifest, *, requirement=None) -> dict | None:
     """Check declarations only, returning a detached record.
 
@@ -200,14 +236,7 @@ def validate_shared_pass_contract(manifest, *, requirement=None) -> dict | None:
     device = boundaries["device"]
     if device["ir"] != "selected_target_mlir" or device["command"] != "emit_target_bundle":
         raise ValueError("device boundary must reuse merlin.target_ir_consumer.v1")
-    # Reuse the existing target boundary and argv validator, not a second schema.
-    from .capsule_common import _target_consumer_record
-    from .package_runtime import CertFailure
-
-    try:
-        target_consumer = _target_consumer_record(SimpleNamespace(manifest=manifest))
-    except CertFailure as error:
-        raise ValueError(str(error)) from error
+    target_consumer = validate_target_ir_consumer_declaration(manifest)
     if type(value["pipeline"]) is not dict or json.dumps(value["pipeline"], sort_keys=True) != json.dumps(
         _PIPELINE, sort_keys=True
     ):

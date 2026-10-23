@@ -36,8 +36,8 @@ symbols or a broken shared ABI defer affected tests while other work proceeds.
 Use bounded fusion discovery and pass alternatives, retaining a correct unfused
 route. Inspect the realization receipt: logical schedules, encoded stage
 composition and physically measured fusion are different outcomes. The current
-connected helper emits pointwise stage compositions; dense/pointwise chains still
-need a multi-stage pointer and launch ABI. Develop reusable missing mechanisms in
+connected helper exposes ordered dense/pointwise products and buffer bindings;
+target guest launch and complete-output execution still need an adapter. Develop reusable missing mechanisms in
 the editable compiler instead of treating an unsupported helper as an instruction
 to drop layers, omit outputs or replace device work silently with CPU work.
 
@@ -59,6 +59,6 @@ work. Never branch on capsule IDs or encode fixed answers.
 
 Use compact capability and API queries rather than copying complete catalogs or
 logs into each agent. All 20 CPUs form one dynamically shared reservation; there
-are no permanent role-specific pools. The aggregate soft token target is 40M,
+are no permanent role-specific pools. The aggregate planning token target is 40M,
 including cached input and all helpers, with 8M reserved for integration/repairs.
 Keep detailed logs on disk and concise evidence-linked handoffs in context.

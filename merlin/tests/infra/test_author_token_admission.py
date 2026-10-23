@@ -102,6 +102,8 @@ def test_declining_total_retains_high_water_and_unknown_grace_is_bounded(tmp_pat
     now[0] = 1
     assert guard.poll() is None
     now[0] = 2
+    assert guard.poll() is None
+    now[0] = 3
     assert "unavailable after grace" in guard.poll()
 
 
@@ -210,3 +212,65 @@ def test_resume_checks_allowance_even_without_repeated_enable_flag():
         token_budget.verify_resume(SimpleNamespace(author_token_turn_allowance=200), {"author_token_budget": policy})
     token_budget.verify_resume(SimpleNamespace(author_token_turn_allowance=100), {"author_token_budget": policy})
     assert policy["admission"]["turn_allowance"] == 100
+
+
+def test_transient_missing_usage_after_long_healthy_turn_gets_full_continuous_grace(tmp_path):
+    setup(tmp_path, selected(poll_s=1, missing_usage_grace_s=60))
+    now = [0.0]
+    observed = [usage(20, active=("lead",))]
+    guard = ManagedTokens(tmp_path, 0, clock=lambda: now[0], observe=lambda: observed[0])
+    guard.admit(0)
+    now[0] = 180
+    assert guard.poll() is None
+    observed[0] = usage(None, available=False)
+    now[0] = 185
+    assert guard.poll() is None
+    assert guard.last["observed_total"] is None
+    assert guard.last["missing_usage_duration_s"] == 0
+    now[0] = 244
+    assert guard.poll() is None
+    observed[0] = usage(30, active=("lead",))
+    now[0] = 245
+    assert guard.poll() is None
+    assert guard.last["missing_usage_duration_s"] == 0
+    observed[0] = usage(None, available=False)
+    now[0] = 246
+    assert guard.poll() is None
+    now[0] = 305
+    assert guard.poll() is None
+    now[0] = 306
+    assert guard.poll() == PREFIX + "live all-author usage unavailable after grace; checkpoint required"
+    assert guard.last["missing_usage_duration_s"] == 60
+    # Missing samples never become measured zeros or release outstanding work.
+    import json
+
+    state = json.loads(guard.path.read_text())
+    assert state["observed_high_water"] == 30 and state["outstanding"]
+
+
+def test_new_helper_before_first_usage_does_not_end_long_healthy_turn(tmp_path):
+    from test_author_agents import _Rollout, _spawn
+
+    run, home, ws = tmp_path / "run", tmp_path / "home", tmp_path / "workspace"
+    setup(run, selected(poll_s=1, missing_usage_grace_s=60))
+    lead = _Rollout("lead").turn(0, None, "lead-turn").usage(1, "first-response", 100)
+    lead.write(home / "sessions", ws)
+    now = [0.0]
+    guard = ManagedTokens(run, 0, homes=(home,), clock=lambda: now[0])
+    assert guard.admit(0)["admitted"]
+    now[0] = 180
+    assert guard.poll() is None and guard.last["observed_total"] == 110
+    _spawn(lead, 181, "helper", "/root/helper")
+    lead.write(home / "sessions", ws)
+    child = _Rollout("helper", parent="lead", path="/root/helper").turn(181, None, "helper-turn")
+    child.write(home / "sessions", ws)
+    now[0] = 185
+    assert guard.poll() is None
+    snapshot = author_agents.usage_snapshot(run, codex_homes=(home,), reader=guard.reader)
+    assert snapshot["complete"] and not snapshot["available"]
+    assert snapshot["missing_leads"] == snapshot["missing_subagents"] == []
+    assert guard.last["observed_total"] is None and guard.last["missing_usage_duration_s"] == 0
+    child.usage(190, "helper-first-response", 20).write(home / "sessions", ws)
+    now[0] = 190
+    assert guard.poll() is None and guard.last["observed_total"] == 132
+    assert guard.last["missing_usage_duration_s"] == 0

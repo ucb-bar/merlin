@@ -97,6 +97,7 @@ LIBRARY_MODULES_V8 = (
     "merlin.compile.scheduling.shared_input_groups",
     "merlin.compile.scheduling.panel_transfers",
     "merlin.compile.scheduling.copy_pipeline",
+    "merlin.compile.scheduling.periodic_effects",
     "merlin.compile.scheduling.configuration_loops",
     "merlin.compile.scheduling.command_compaction",
     "merlin.compile.scheduling.compact_dense",

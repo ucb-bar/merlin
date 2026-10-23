@@ -526,3 +526,11 @@ through the same selected public intake as explicit selfchecks. Reopen the
 durable result, exact frozen compiler and selected capsule declaration first.
 It launches no observer or physical run, creates no timing estimate, expands no
 reviewed fit roster and grants no numerical or calibration qualification.
+
+`dual_snapshots` waits for a submission manifest before source hashing, claiming
+publication ownership or launching a background grade. Its operator-only
+`background_snapshot_readiness.json` records deferred construction, never a
+pass or completed grade. `SubmissionNotReady` covers the fast-grade admission
+race without updating grade health, and retains the required first-grade retry.
+Real grader errors retain bounded printable type/reason in their owned records;
+all snapshot custody, concurrent draining and numerical checks remain unchanged.

@@ -744,6 +744,8 @@ def test_superseded_grade_debounce_is_bounded_and_interruptible(
 
 
 def test_joint_churn_finishes_owned_grades_without_author_quiet(tmp_path, monkeypatch):
+    (tmp_path / "workspace/submission").mkdir(parents=True)
+    (tmp_path / "workspace/submission/manifest.yaml").write_text("{}")
     from merlin_experiments.phase1.feedback import joint_test_scope, dual_snapshots
 
     original_run = dual_snapshots.run
@@ -774,6 +776,8 @@ def test_joint_churn_finishes_owned_grades_without_author_quiet(tmp_path, monkey
 
 
 def test_unchanged_source_advances_pending_curriculum_then_deduplicates(tmp_path, monkeypatch):
+    (tmp_path / "workspace/submission").mkdir(parents=True)
+    (tmp_path / "workspace/submission/manifest.yaml").write_text("{}")
     from merlin_experiments.phase1.feedback import joint_test_scope, dual_snapshots
 
     original_run = dual_snapshots.run

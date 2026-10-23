@@ -15,7 +15,8 @@ def _guard():
 
 def test_new_snapshot_runs_while_old_drains_and_late_progress_cannot_clobber(tmp_path):
     ws, run = tmp_path / 'workspace', tmp_path / 'run'
-    ws.mkdir()
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("{}")
     stop, release_old = threading.Event(), threading.Event()
     old_started = threading.Event()
     source = 'a' * 64
@@ -54,7 +55,8 @@ def test_new_snapshot_runs_while_old_drains_and_late_progress_cannot_clobber(tmp
 
 def test_two_owner_limit_and_stop_joins_both_without_cancelling(tmp_path):
     ws, run = tmp_path / 'workspace', tmp_path / 'run'
-    ws.mkdir()
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("{}")
     stop, release, two_started = threading.Event(), threading.Event(), threading.Event()
     count, lock = [], threading.Lock()
 
@@ -151,7 +153,8 @@ def _cheap_covered(source):
 
 def test_unchanged_cheap_complete_source_stops_even_while_final_all_pass_unknown(tmp_path):
     ws, run = tmp_path / 'ws', tmp_path / 'run'
-    ws.mkdir()
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("{}")
     stop = threading.Event()
     calls = []
     source = 'a' * 64
@@ -172,7 +175,8 @@ def test_unchanged_cheap_complete_source_stops_even_while_final_all_pass_unknown
 
 def test_missing_curriculum_does_not_stop_and_launch_identity_is_not_result_identity(tmp_path):
     ws, run = tmp_path / 'ws', tmp_path / 'run'
-    ws.mkdir()
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("{}")
     stop = threading.Event()
     calls = []
 
@@ -190,3 +194,112 @@ def test_missing_curriculum_does_not_stop_and_launch_identity_is_not_result_iden
     invalid = _cheap_covered('a' * 64)
     invalid['joint_test_selection']['curriculum'].pop('pending')
     assert dual_snapshots._completed_development_source(invalid, 'a' * 64) is None
+
+
+def test_missing_manifest_defers_without_identity_scan_failure_or_pass_then_admits_first(tmp_path):
+    ws, run = tmp_path / 'ws', tmp_path / 'run'
+    ws.mkdir()
+    stop = threading.Event()
+    calls, finished, identities = [], [], []
+
+    def identity():
+        identities.append(True)
+        return 'a' * 64
+
+    def first(tick):
+        calls.append('first')
+        return {'all_pass': False}
+
+    manager = threading.Thread(target=lambda: dual_snapshots.run(
+        ws, run, stop, interval_s=60, first_grade=first,
+        grade=lambda tick: calls.append('later'), source_identity=identity,
+        on_finished=lambda *args: finished.append(args), poll_s=.002))
+    manager.start()
+    path = run / 'background_snapshot_readiness.json'
+    deadline = time.monotonic() + 2
+    while not path.exists() and time.monotonic() < deadline:
+        time.sleep(.002)
+    try:
+        record = json.loads(path.read_text())
+        assert record['status'] == 'waiting_for_manifest'
+        assert record['all_pass'] is None and not record['grade_attempted']
+        before = path.stat().st_mtime_ns
+        time.sleep(.02)
+        assert path.stat().st_mtime_ns == before  # no repeated record churn
+        assert calls == finished == identities == []
+        assert not (run / 'grade_health.json').exists()
+        assert not list((run / '_qa_work/background_snapshot_owners').glob('*.json'))
+        (ws / 'submission').mkdir()
+        (ws / 'submission/manifest.yaml').write_text('{}')
+        deadline = time.monotonic() + 2
+        while not finished and time.monotonic() < deadline:
+            time.sleep(.002)
+        assert calls == ['first'] and len(finished) == 1
+        assert finished[0][1]['all_pass'] is False and finished[0][2] is None
+    finally:
+        stop.set()
+        manager.join(2)
+    assert not manager.is_alive()
+
+
+def test_manifest_disappearing_before_fast_grade_is_deferred_and_first_retry_preserved(tmp_path):
+    from merlin_experiments.phase1.feedback.background_admission import SubmissionNotReady
+
+    ws, run = tmp_path / 'ws', tmp_path / 'run'
+    (ws / 'submission').mkdir(parents=True)
+    (ws / 'submission/manifest.yaml').write_text('{}')
+    stop = threading.Event()
+    calls, finished = [], []
+
+    def first(tick):
+        calls.append(tick)
+        if len(calls) == 1:
+            raise SubmissionNotReady('no submission/manifest.yaml to grade yet')
+        return {'all_pass': False}
+
+    def completed(*args):
+        finished.append(args)
+        stop.set()
+
+    dual_snapshots.run(ws, run, stop, interval_s=60, first_grade=first,
+                       grade=lambda tick: (_ for _ in ()).throw(AssertionError('lost initial grade')),
+                       source_identity=lambda: 'a' * 64, on_finished=completed, poll_s=.002)
+    assert len(calls) == 2 and len(finished) == 1
+    records = [json.loads(p.read_text()) for p in (run / '_qa_work/background_snapshot_owners').glob('*.json')]
+    assert sorted(row['state'] for row in records) == ['complete', 'deferred']
+    deferred = next(row for row in records if row['state'] == 'deferred')
+    assert deferred['error'] is None and 'manifest' in deferred['deferred_reason']
+
+
+def test_real_failure_retains_bounded_reason_and_reaches_health_callback(tmp_path):
+    ws, run = tmp_path / 'ws', tmp_path / 'run'
+    (ws / 'submission').mkdir(parents=True)
+    (ws / 'submission/manifest.yaml').write_text('{}')
+    stop = threading.Event()
+    finished = []
+
+    def grade(tick):
+        raise ValueError('missing selected tool\n' + 'x' * 700)
+
+    def completed(*args):
+        finished.append(args)
+        stop.set()
+
+    dual_snapshots.run(ws, run, stop, interval_s=60, first_grade=grade, grade=grade,
+                       source_identity=lambda: 'a' * 64, on_finished=completed, poll_s=.002)
+    error = finished[0][2]
+    assert error.startswith('ValueError: missing selected tool ')
+    assert len(error) <= 500 and '\n' not in error
+    records = list((run / '_qa_work/background_snapshot_owners').glob('*.json'))
+    assert len(records) == 1 and json.loads(records[0].read_text())['error'] == error
+
+
+def test_fast_grade_missing_manifest_is_explicit_readiness_not_generic_failure(tmp_path):
+    import pytest
+
+    from merlin_experiments.phase1.feedback.background_admission import SubmissionNotReady
+    from merlin_experiments.phase1.feedback.loop_grading import fast_grade
+
+    with pytest.raises(SubmissionNotReady, match='manifest.yaml'):
+        fast_grade(tmp_path / 'workspace', tmp_path / 'run', 0, 1, inputs=None)
+    assert not (tmp_path / 'run').exists()

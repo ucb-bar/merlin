@@ -810,6 +810,11 @@ def fast_grade(
     this costs seconds-to-minutes where the checkpoint ladder costs tens of minutes per capsule. Same
     snapshot-copy discipline as `qa_grade`, so it is safe to run while the agent is editing.
     """
+    from .background_admission import SubmissionNotReady
+
+    if not (ws / "submission" / "manifest.yaml").is_file():
+        raise SubmissionNotReady("no submission/manifest.yaml to grade yet")
+
     from merlin.targetgen import capsule_grade as _CG
     from merlin.targetgen import capsule_runner as _CR
     from merlin_experiments.phase1.feedback import qa as _qc
@@ -817,8 +822,6 @@ def fast_grade(
     from .background_admission import BackgroundGuard, source_digest
     from .grade_progress import SnapshotProgress
 
-    if not (ws / "submission" / "manifest.yaml").is_file():
-        raise RuntimeError("no submission/manifest.yaml to grade yet")
     cand = run_dir / "_qa_work" / f"fcand_{tick}" / "submission"
     public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
     background_guard = BackgroundGuard(ws, public_root, inputs, source_digest(ws),

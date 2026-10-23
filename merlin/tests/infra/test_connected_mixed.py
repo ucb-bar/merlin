@@ -15,38 +15,39 @@ from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.sched.ir import Const, Kernel, evaluate, instances
 
 
-def fixture(tmp_path):
+def fixture(tmp_path, widths=(2, 2, 2)):
+    left_type, right_type, acc_type = (f"i{w * 8}" for w in widths)
     dense_dir, point_dir = tmp_path / "dense", tmp_path / "point"
     dense_dir.mkdir()
     point_dir.mkdir()
-    dense = inputs(dense_dir, widths=(2, 2, 2), shape=(3, 7, 5))
-    _, _, selected = model(point_dir)
-    clip, rectify = scalar_bodies(16)[1:]
-    text = f"""module {{func.func @mixed(%a:tensor<3x7xi16>,%b:tensor<7x5xi16>)
-       ->(tensor<3x5xi16>,tensor<3x5xi8>,tensor<3x5xi16>) {{
-      {contraction((3, 7, 5), ("i16", "i16", "i16"))}
+    dense = inputs(dense_dir, widths=widths, shape=(3, 7, 5))
+    _, _, selected = model(point_dir, width=widths[2] * 8)
+    clip, rectify = scalar_bodies(widths[2] * 8)[1:]
+    text = f"""module {{func.func @mixed(%a:tensor<3x7x{left_type}>,%b:tensor<7x5x{right_type}>)
+       ->(tensor<3x5x{acc_type}>,tensor<3x5xi8>,tensor<3x5x{acc_type}>) {{
+      {contraction((3, 7, 5), (left_type, right_type, acc_type))}
       %ce=tensor.empty():tensor<3x5xi8>
-      %re=tensor.empty():tensor<3x5xi16>
+      %re=tensor.empty():tensor<3x5x{acc_type}>
     """
     import re
 
-    for name, init, dtype, body in [("c", "ce", "i8", clip), ("d", "re", "i16", rectify)]:
+    for name, init, dtype, body in [("c", "ce", "i8", clip), ("d", "re", acc_type, rectify)]:
         body = re.sub(r"%([a-z]+)", lambda m: "%" + name + "_" + m[1], body)
         text += f"""%{name}=linalg.generic {{indexing_maps=[affine_map<(m,n)->(m,n)>,
           affine_map<(m,n)->(m,n)>],iterator_types=["parallel","parallel"]}}
-          ins(%r:tensor<3x5xi16>) outs(%{init}:tensor<3x5x{dtype}>) {{
-          ^bb0(%{name}_a:i16,%{name}_init:{dtype}): {body}
+          ins(%r:tensor<3x5x{acc_type}>) outs(%{init}:tensor<3x5x{dtype}>) {{
+          ^bb0(%{name}_a:{acc_type},%{name}_init:{dtype}): {body}
           linalg.yield %{name}_v:{dtype} }} ->tensor<3x5x{dtype}>\n"""
-    text += "return %r,%c,%d:tensor<3x5xi16>,tensor<3x5xi8>,tensor<3x5xi16> } }"
+    text += f"return %r,%c,%d:tensor<3x5x{acc_type}>,tensor<3x5xi8>,tensor<3x5x{acc_type}> }} }}"
     module = parse_mlir_text(text)
     operations = tuple(op for op in module.walk() if op.name == "linalg.generic")
     region = plan_connected_region(module, operations)
     windows = (
-        AddressWindow("input0", 0, 42),
-        AddressWindow("input1", 0, 70),
-        AddressWindow("output1", 0, 30),
+        AddressWindow("input0", 0, 21 * widths[0]),
+        AddressWindow("input1", 0, 35 * widths[1]),
+        AddressWindow("output1", 0, 15 * widths[2]),
         AddressWindow("output0", 0, 15),
-        AddressWindow("output1", 64, 30),
+        AddressWindow("output1", 64, 15 * widths[2]),
     )
 
     def point_options(region, stage, bindings):
