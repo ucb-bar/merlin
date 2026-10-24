@@ -5,6 +5,8 @@ Do not edit by hand — run the generator (it's `--check`ed by `check_structure.
 
 ## Start here
 
+- **Atlas workloads:** [source capture and replay](../examples/atlas/comparisons/refresh/README.md), [Tiny partition](../examples/atlas/comparisons/tiny_workload_README.md), and [fixed-input block ELF reproduction](../examples/atlas/comparisons/BLOCK_REPRODUCTION.md).
+
 - **New to the repo?** Read [Architecture](reference/architecture.md) then
   [Repository structure](reference/repo_structure.md).
 - **Running something?** [Getting started](guides/getting_started.md) →

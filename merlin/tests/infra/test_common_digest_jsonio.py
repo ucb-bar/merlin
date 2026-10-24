@@ -109,3 +109,22 @@ def test_writers(tmp_path):
     with pytest.raises(FileNotFoundError):
         write_pretty_json(tmp_path / "missing" / "e.json", {})
     write_pretty_json(tmp_path / "made" / "e.json", {}, mkdir=True)
+
+
+@pytest.mark.parametrize("indent", [None, 2])
+@pytest.mark.parametrize("sort_keys", [False, True])
+@pytest.mark.parametrize("allow_nan", [False, True])
+def test_pretty_writer_preserves_explicit_wire_options(tmp_path, indent, sort_keys, allow_nan):
+    value = {"z": [1, "é", None], "a": 2}
+    options = dict(indent=indent, sort_keys=sort_keys, allow_nan=allow_nan)
+    path = tmp_path / "wire.json"
+    write_pretty_json(path, value, **options)
+    assert path.read_bytes() == (json.dumps(value, **options) + "\n").encode("utf-8")
+
+
+def test_pretty_writer_can_refuse_nonfinite_numbers(tmp_path):
+    path = tmp_path / "finite.json"
+    with pytest.raises(ValueError):
+        write_pretty_json(path, {"x": math.nan}, allow_nan=False)
+    write_pretty_json(path, {"x": math.nan})
+    assert "NaN" in path.read_text()

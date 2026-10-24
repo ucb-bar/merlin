@@ -1,0 +1,64 @@
+"""Pinned native CPU single-row BF16 QK halfway regression."""
+import ctypes as ct
+import _ctypes
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+import numpy as np
+
+LEFT = [15882, 16002, 16169, 16133, 48763, 49043, 48524, 48750, 49055, 48972, 16290, 48788, 16384, 15962, 48800, 49152, 48667, 48921, 48512, 16354, 16181, 48796, 47936, 16582, 48344, 48644, 16187, 16136, 15410, 49264, 16371, 16082, 16223, 16264, 15951, 49090, 48804, 48408, 16202, 49074, 16146, 48676, 16014, 16176, 48536, 15939, 49136, 16151, 48838, 48962, 16222, 16236, 16057, 16225, 48978, 16314, 16102, 48774, 48694, 48590, 15949, 48609, 48552, 48888]
+RIGHT = [49317, 49157, 49048, 49334, 16480, 48928, 49282, 49254, 16358, 16240, 16461, 48876, 16398, 16137, 16286, 16280, 49143, 16433, 16436, 48856, 16243, 48918, 49283, 16231, 48998, 49034, 16272, 48360, 49030, 16576, 49283, 16449, 16580, 48980, 49136, 49113, 16474, 16062, 16339, 49195, 16181, 16191, 49265, 16340, 48850, 49195, 16382, 16435, 16274, 49281, 48688, 49211, 16044, 48984, 48928, 49461, 49062, 16116, 16275, 16144, 48977, 16389, 49082, 15940]
+
+PV_LEFT = [15996, 14751, 14951, 14747, 14803, 14601, 14747, 14900, 14889, 15786, 14973, 14646, 14728, 14646, 14856, 14817, 14586, 14905, 15016, 15123, 14810, 14619, 15011, 14917, 14773, 14624, 14664, 15001, 15067, 15096, 15197, 14900, 14894, 14519, 14492, 14606, 14724, 15027, 14889, 14747, 14578, 14757, 14784, 14803, 14869, 14720, 14751, 14874, 14979, 14778, 14817, 14983, 14951, 14889, 15235, 14831, 14905, 14586, 14751, 14751, 14705, 14751, 14635, 14556, 14601, 14459, 14724, 14712, 14513, 14537, 14831, 15006, 14944, 14924, 15096, 14930, 14864, 15121, 14944, 15001, 14784, 14705, 14847, 14762, 14987, 14884, 14924, 14824, 14917, 14983, 14992, 15100, 14797, 14958, 15021, 15255, 15021, 15064, 14824, 14697, 14737, 14712, 14847, 14979, 15119, 15119, 15032, 15171, 15223, 14824, 14879, 15230, 15168, 15148, 15057, 15260, 15357, 14983, 15123, 15437, 15478, 15165, 15373, 15564, 15506, 15304, 15559, 15674, 16076]
+PV_RIGHT = [48171, 48543, 15919, 15587, 16065, 15806, 48698, 48510, 48729, 15301, 15934, 48858, 15780, 48384, 48911, 48954, 48936, 48699, 48796, 48565, 48862, 48922, 49000, 48833, 15961, 48833, 48917, 49009, 48907, 48918, 15854, 48723, 48648, 48521, 48792, 48858, 48906, 48924, 48724, 48554, 15844, 48567, 48874, 48938, 48739, 48715, 48930, 49007, 48718, 48844, 48677, 48689, 16157, 48897, 48796, 48805, 48911, 15804, 48687, 48699, 48791, 48755, 48867, 48931, 48749, 48764, 48802, 48901, 15760, 15777, 48724, 48706, 48773, 48969, 15803, 16099, 16025, 48647, 48733, 48528, 15439, 16062, 15909, 15819, 15801, 16008, 16124, 16022, 16144, 15991, 15882, 15482, 48661, 15891, 15787, 15974, 15756, 15646, 47104, 15919, 15825, 15312, 16042, 16105, 48506, 15968, 48248, 15944, 15684, 16067, 16037, 15910, 15801, 48357, 15813, 48320, 48776, 48706, 48619, 48611, 48399, 48878, 48907, 15936, 48948, 15720, 48857, 48730, 15855]
+
+class DecodeQKTest(unittest.TestCase):
+
+    def test_native_pv_blocked_halfway_witness(self):
+        source = Path(__file__).absolute().with_name("llama_host_bmm.c")
+        with tempfile.TemporaryDirectory() as directory:
+            library = Path(directory) / "pv.so"
+            subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic",
+                "-ffp-contract=off", "-fno-fast-math", "-shared", "-fPIC", str(source),
+                "-lm", "-o", str(library)], check=True, capture_output=True, timeout=120)
+            lib = ct.CDLL(str(library))
+            try:
+                fn = lib.llama_host_bmm_bf16_pair
+                fn.argtypes = [ct.c_void_p]*3 + [ct.c_size_t]*4 + [ct.c_int]
+                a = np.array(PV_LEFT, np.uint16).reshape(1, 1, 129)
+                b = np.zeros((1, 129, 64), np.uint16)
+                b[0, :, 50] = PV_RIGHT
+                output = np.full((1, 1, 64), 0x7fc0, np.uint16)
+                self.assertEqual(fn(a.ctypes.data, b.ctypes.data, output.ctypes.data, 1, 1, 129, 64, 0), 0)
+                # Native FP32 block result39e28000 is exact halfway, BF16ties-even39e2.
+                # Old single upper/lower accumulator39e28080 incorrectly rounds39e3.
+                self.assertEqual(int(output[0, 0, 50]), 0x39e2)
+                self.assertTrue(np.all(np.delete(output.reshape(-1), 50) == 0))
+            finally:
+                _ctypes.dlclose(lib._handle)
+
+    def test_native_halfway_witness_and_zero_columns(self):
+        source = Path(__file__).absolute().with_name("llama_host_bmm.c")
+        with tempfile.TemporaryDirectory() as directory:
+            library = Path(directory) / "bmm.so"
+            subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic",
+                "-ffp-contract=off", "-fno-fast-math", "-shared", "-fPIC", str(source),
+                "-lm", "-o", str(library)], check=True, capture_output=True, timeout=120)
+            lib = ct.CDLL(str(library))
+            try:
+                fn = lib.llama_host_bmm_bf16_pair
+                fn.argtypes = [ct.c_void_p]*3 + [ct.c_size_t]*4 + [ct.c_int]
+                a = np.array(LEFT, np.uint16).reshape(1, 1, 64)
+                b = np.zeros((1, 129, 64), np.uint16)
+                b[0, 121] = RIGHT
+                output = np.full((1, 1, 129), 0x7fc0, np.uint16)
+                self.assertEqual(fn(a.ctypes.data, b.ctypes.data, output.ctypes.data, 1, 1, 64, 129, 1), 0)
+                # Original native c20a; old ascending pair order gives c20b.
+                self.assertEqual(int(output[0, 0, 121]), 0xc20a)
+                self.assertTrue(np.all(np.delete(output.reshape(-1), 121) == 0))
+            finally:
+                _ctypes.dlclose(lib._handle)
+
+if __name__ == "__main__":
+    unittest.main()
