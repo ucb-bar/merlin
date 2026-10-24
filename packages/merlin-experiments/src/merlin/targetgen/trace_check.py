@@ -256,6 +256,43 @@ def _alternative_doer(instructions: list, forms: tuple) -> str | None:
     return None
 
 
+def declared_class_coverage(
+    expected: dict,
+    instructions: list,
+    *,
+    observed: set | None = None,
+    subsumes: dict | None = None,
+    alternatives: dict | None = None,
+) -> tuple[list[str], list[str]]:
+    """``(declared classes the instructions do not cover, notes on how others were covered)``.
+
+    THE one comparison of a capsule's declared classes against an emitted stream, shared by
+    :func:`check` and any test that compares the two directly. A declared class is covered when an
+    instruction of that class is emitted; when an emitted class the target says subsumes it is
+    (``subsumes``); or when its declared alternative form is emitted with the declared decoded values
+    (``alternatives``, :func:`alternatives_for`) -- except for a class the capsule lists in
+    ``expected.strict_classes``, which only its own form covers.
+    """
+    present = {str(row.get("class")) for row in instructions}
+    seen = present | set(observed or ())
+    strict = set(expected.get("strict_classes") or ())
+    missing: list[str] = []
+    notes: list[str] = []
+    for req in expected.get("instruction_classes", []):
+        if req in seen:
+            continue
+        doers = sorted(u for u in present if req in set((subsumes or {}).get(u) or ()))
+        if doers:
+            notes.append(f"{req} is performed here by {', '.join(doers)}")
+            continue
+        doer = None if req in strict else _alternative_doer(instructions, (alternatives or {}).get(req) or ())
+        if doer is not None:
+            notes.append(f"{req} is performed here by the declared alternative {doer}")
+            continue
+        missing.append(req)
+    return missing, notes
+
+
 def movement_bound_for(target: str | None) -> dict:
     """The widest payload ONE memory-movement instruction may carry on ``target`` — or ``{}``.
 
@@ -430,27 +467,16 @@ def check(
         violations.append(f"trace contains {n} UNKNOWN instruction(s) (fail-closed decode)")
 
     # 1. required classes present -- or performed by an instruction the target says does their work
-    covered: set[str] = set()
-    for used in present:
-        covered |= set((subsumes or {}).get(used) or ())
     # A class the target says another FORM also performs (``alternatives``, read from its contract when
     # not passed) is satisfied by that form -- unless the capsule demands the class in exactly its own
     # form (``expected.strict_classes``), which is how a capsule keeps a declared class requirable.
     if alternatives is None:
         alternatives = alternatives_for(target)
-    strict = set(expected.get("strict_classes") or ())
-    for req in expected.get("instruction_classes", []):
-        if req in observed_classes:
-            continue
-        if req in covered:
-            doers = sorted(u for u in present if req in set((subsumes or {}).get(u) or ()))
-            notes.append(f"{req} is performed here by {', '.join(doers)}")
-            continue
-        doer = None if req in strict else _alternative_doer(ins, (alternatives or {}).get(req) or ())
-        if doer is not None:
-            notes.append(f"{req} is performed here by the declared alternative {doer}")
-            continue
-        violations.append(f"required instruction class missing: {req}")
+    missing, satisfied = declared_class_coverage(
+        expected, ins, observed=observed_classes, subsumes=subsumes, alternatives=alternatives
+    )
+    notes.extend(satisfied)
+    violations.extend(f"required instruction class missing: {req}" for req in missing)
 
     # 2. forbidden classes absent
     for forb in expected.get("forbidden_classes", []):

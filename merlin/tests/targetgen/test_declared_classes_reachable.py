@@ -163,3 +163,32 @@ def test_the_seed_capsule_keeps_the_dedicated_form_requirable():
     assert alts <= strict, (
         f"classes with an alternative that no capsule demands in their own form: {sorted(alts - strict)}"
     )
+
+
+def test_a_regenerated_bias_capsule_is_covered_by_the_move_in_to_accumulator_seed():
+    """The declared-versus-emitted comparison, exercised directly. A bias capsule regenerated under the
+    current contract declares the dedicated seed class; a kernel that seeds with a move-in to an
+    accumulator address (the in-repo codegen's form) covers it, every emitted class is still declared,
+    and listing the seed class as strict -- or seeding nowhere -- leaves it uncovered."""
+    from types import SimpleNamespace
+
+    from merlin.targetgen import corpus_spec as CS
+    from merlin.targetgen import trace_check as TCK
+
+    contract = _contract("gemmini")
+    alternatives = TCK.parse_alternatives((contract.get("encoding") or {}).get("class_alternatives") or {})
+    classes = CS._classes_source(SimpleNamespace(target="gemmini"), contract, taxonomy={})
+    expected = {"instruction_classes": classes(op="matmul", output_dtype="i8", epilogue=("bias_add",))}
+    seeds = set(alternatives) & set(expected["instruction_classes"])
+    assert seeds, "a regenerated bias capsule declares no class the contract gives an alternative"
+    for seed in sorted(seeds):
+        (klass, fields), *_ = alternatives[seed]
+        instrs = _bias_trace(klass, seed_to_accumulator=bool(fields.get("is_acc_addr")))["instructions"]
+        emitted = {row["class"] for row in instrs}
+        missing, how = TCK.declared_class_coverage(expected, instrs, alternatives=alternatives)
+        assert not missing and any(seed in note for note in how), (missing, how)
+        assert emitted <= set(expected["instruction_classes"]) | {"FENCE"}
+        strict = {**expected, "strict_classes": [seed]}
+        assert TCK.declared_class_coverage(strict, instrs, alternatives=alternatives)[0] == [seed]
+        unseeded = _bias_trace(klass, seed_to_accumulator=False)["instructions"]
+        assert TCK.declared_class_coverage(expected, unseeded, alternatives=alternatives)[0] == [seed]
