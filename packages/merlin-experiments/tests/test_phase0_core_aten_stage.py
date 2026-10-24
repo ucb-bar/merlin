@@ -67,6 +67,7 @@ def fake_writer(corpus, captures, public, private, *, label, tiers):
                     "name": name,
                     "label": label,
                     "kind": "model_slice",
+                    "interface_mlir": "capsule.interface.mlir",
                     "required_oracle_tiers": list(tiers),
                     "full_call_golden": binding,
                 }
@@ -76,7 +77,7 @@ def fake_writer(corpus, captures, public, private, *, label, tiers):
         (member / "inputs.npz").write_bytes(case["case_id"].encode())
         (member / "capsule.pytorch.py").write_text(case["case_id"])
         (member / "call.json").write_text(case["case_id"])
-        rows.append({"id": name})
+        rows.append({"id": name, "overload": case["overload"]})
     manifest = {"capsules": rows}
     (public / "manifest.json").write_text(json.dumps(manifest))
     return manifest
@@ -127,6 +128,35 @@ def test_complete_manifest_and_independent_private_copy(tmp_path, monkeypatch):
     answer.write_text("tampered")
     with pytest.raises(SpecError, match="differ"):
         assemble(te, generated, tmp_path / "refused", generated_only=True)
+
+
+def test_stage_freezes_each_lane_decision_as_a_placement_record(tmp_path, monkeypatch):
+    from merlin_experiments.phase0.program_admission import accelerator_placement_refusal
+
+    recipe = fixture_recipe(tmp_path)
+    result = stage.derive(recipe, tmp_path / "derive", target="synthetic", descriptor=tmp_path / "descriptor.yaml")
+    install_writer(monkeypatch)
+    generated = tmp_path / "run/phase0/capsules"
+    stage.generate(Path(result["recipe"]), generated, target="synthetic")
+    screens = {}
+    for member in ("public/public", "host_guard/host_guard"):
+        capsule = yaml.safe_load((generated / member / "capsule.yaml").read_bytes())
+        screen = screens[member] = capsule["software_screen"]
+        assert (
+            screen["program_sha256"]
+            == hashlib.sha256((generated / member / "capsule.interface.mlir").read_bytes()).hexdigest()
+        )
+        assert [row["operation"] for row in screen["decisions"]] == ["aten.add.Tensor"]
+        assert screen["status"] == "admitted" and screen["constraints_status"] == "matched"
+    assert screens["public/public"]["placements"] == {"accelerator": 1}
+    assert accelerator_placement_refusal(screens["public/public"]) is None
+    assert screens["host_guard/host_guard"]["placements"] == {"host": 1}
+    assert "placed on the accelerator" in accelerator_placement_refusal(screens["host_guard/host_guard"])
+    program = generated / "public/public/capsule.interface.mlir"
+    row = {"overload": "aten.alias.default"}
+    assert stage.placement_screen(row, "no-work", program)["decisions"] == []
+    ambiguous = stage.placement_screen(row, "any", program)
+    assert ambiguous["status"] == "unknown" and ambiguous["placements"] == {}
 
 
 def test_writer_failure_never_promotes_partial_corpus(tmp_path, monkeypatch):
