@@ -803,6 +803,12 @@ def assemble(
     if capsule_scope == "accelerator":
         emitted, scope_record = select_members(emitted, fingerprint=fingerprint)
         declared = {key for key in emitted if not key.startswith("hidden/")}
+        # A deselected generated member is not released, so neither are its private answers.
+        answer_sources = {
+            key: source
+            for key, source in answer_sources.items()
+            if key in emitted or not source.is_relative_to(generated_answers)
+        }
     original = (
         {
             "generated": [],
@@ -1102,8 +1108,11 @@ def _stage_capability_contract(
         if gsim_readback_transport is not None:
             selected = rocc_selection.select_gsim_readback(selected, gsim_readback_transport)
         if operand_selection is not None:
-            select = (rocc_selection.relocate_operand_protocol if "rocc_operand_selection" in selected
-                      else rocc_selection.select_operand_protocol)
+            select = (
+                rocc_selection.relocate_operand_protocol
+                if "rocc_operand_selection" in selected
+                else rocc_selection.select_operand_protocol
+            )
             selected = select(selected, operand_selection)
     except (runtime.RoCCExecutionError, ValueError) as error:
         raise SpecError(str(error)) from error
@@ -1403,7 +1412,8 @@ def scaffold(
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
     if common_substrate is not None or python_source_root is not None:
         inputs["bundle_generation"]["compiler_source"] = {
-            "common_substrate": substrate, "python_source_root": str(compiler_root),
+            "common_substrate": substrate,
+            "python_source_root": str(compiler_root),
         }
     if selected_levels is not None or selected_variants is not None:
         inputs["bundle_generation"]["selection"] = {"arms": list(arms), "variants": list(variants)}
@@ -1462,6 +1472,7 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
 
     coverage_inputs = read_inputs(te.capsule_corpus.parent)
     from .accelerator_scope import has_accelerator_work, selected_scope
+
     completeness = observe_cohort(
         coverage_inputs,
         admitted_source_roots(te.graded_roots(), materialized),
