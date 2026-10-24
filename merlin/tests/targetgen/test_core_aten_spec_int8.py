@@ -29,7 +29,9 @@ def selection():
     resolved, record = resolve_spec(spec, {})
     return dict(
         spec=resolved,
-        host=validate_host_capabilities(load_yaml(repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml")),
+        host=validate_host_capabilities(
+            load_yaml(repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml")
+        ),
         resolution=record,
         identities=dict(
             software_spec={"path": str(base / "software-spec.yaml")},
@@ -271,6 +273,7 @@ from merlin.targetgen.core_aten_w8a8_reference import run_pt2e_reference
 from m2m.capture.pt2e_integerize import integerize_pt2e
 recipe = {
     "schema": "quant_recipe_v1", "status": "derived", "families": ["contraction"],
+    "runtime_weight_contractions": True,
     "weight": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
                "quant_min": -127, "quant_max": 127},
     "activation": {"dtype": "int8", "granularity": "tensor", "symmetric": True,

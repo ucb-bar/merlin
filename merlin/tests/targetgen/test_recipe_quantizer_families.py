@@ -212,7 +212,7 @@ def test_grouped_matmul_observer_and_integer_reference_use_output_axis():
     python = os.environ.get("MERLIN_M2M_PYTHON")
     if not python or not Path(python).is_file():
         pytest.skip("the model2MLIR torch interpreter is not configured")
-    script = r'''
+    script = r"""
 import json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(sys.argv[1]).parent))
@@ -240,7 +240,7 @@ assert axes == [1], axes
 assert receipt["matmul_integerized"] == 1, receipt
 assert torch.equal(integer(*inputs), reference.output)
 print(json.dumps({"axes":axes, "matmul_integerized":receipt["matmul_integerized"]}))
-'''
+"""
     completed = subprocess.run([python, "-c", script, str(_SOURCE)], capture_output=True, text=True, timeout=120)
     assert completed.returncode == 0, completed.stderr[-5000:]
 
@@ -260,8 +260,10 @@ import torch
 from merlin.targetgen import _recipe_quantizer as quant
 from merlin.targetgen.core_aten_w8a8_reference import run_pt2e_reference
 from merlin.capture.integerization import integerize_static_pt2e
+# Both contraction operands are run-time inputs, so the recipe declares run-time weights.
 recipe = {
     "schema": "quant_recipe_v1", "status": "derived", "families": ["contraction"],
+    "runtime_weight_contractions": True,
     "weight": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
                "quant_min": -127, "quant_max": 127},
     "activation": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
@@ -335,6 +337,7 @@ sentinel = object()
 before = getattr(legacy, "allow_exported_model_train_eval", sentinel)
 recipe = {
     "schema": "quant_recipe_v1", "status": "derived", "families": ["contraction"],
+    "runtime_weight_contractions": True,
     "weight": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
                "quant_min": -127, "quant_max": 127},
     "activation": {"dtype": "int8", "granularity": "tensor", "symmetric": True,

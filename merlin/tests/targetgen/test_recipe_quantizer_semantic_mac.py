@@ -31,7 +31,7 @@ if mode in {'restricted_rank','unreviewed'}:
   status='unreviewed' if mode=='unreviewed' else 'reviewed',
   signature=dict(ordered_operand_dtypes=['i8','i8','i32'],ordered_result_dtypes=['i32'],
                  ranks=[2] if mode=='restricted_rank' else [3])))
-recipe=dict(schema='quant_recipe_v1',status='derived',families=['contraction'],
+recipe=dict(schema='quant_recipe_v1',status='derived',families=['contraction'],runtime_weight_contractions=True,
  weight=dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-127,quant_max=127),
  activation=dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-128,quant_max=127,mode='static'),
  accumulator_dtype='i32',software_admission=spec)

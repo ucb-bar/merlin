@@ -42,6 +42,7 @@ from merlin.targetgen._m2m_capture_worker import _integerized_agreement
 from merlin.targetgen.quant_recipe import digest
 recipe=dict(schema='quant_recipe_v1',status='derived',target='synthetic',unit='matrix',
  families=['contraction'],bias_domain='accumulator',readout_numerics='integer_readout',
+ runtime_weight_contractions=True,
  weight=dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-127,quant_max=127,block=None,mode='static'),
  activation=dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-128,quant_max=127,block=None,mode='static'))
 recipe['recipe_sha256']=digest(recipe)
@@ -188,9 +189,10 @@ def test_pinned_cross_repo_bounded_device_results(tmp_path, record_property):
             }
             assert reference["engine"] in comparisons, (case, reference)
             assert reference["results"] and all(row["status"] == "pass" for row in reference["results"])
-            assert all(
-                row["comparison"] == comparisons[reference["engine"]] for row in reference["results"]
-            ), (case, reference)
+            assert all(row["comparison"] == comparisons[reference["engine"]] for row in reference["results"]), (
+                case,
+                reference,
+            )
             if reference["engine"] == "independent_source_quantized_exact_rational":
                 from merlin.llvmlower.quantized_native import parameters
 
