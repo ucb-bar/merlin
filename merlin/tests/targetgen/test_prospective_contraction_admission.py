@@ -5,7 +5,9 @@ import copy
 import pytest
 
 from merlin.common.paths import repo_root
+from merlin.common.yaml import load_yaml
 from merlin.targetgen.core_aten_spec_int8 import source_declaration_continuity
+from merlin.targetgen.host_capabilities import validate_host_capabilities
 from merlin.targetgen.software_spec import admit_contraction_operation, load_software_spec
 from merlin.targetgen.spec_fact_drift import resolve_spec
 
@@ -33,10 +35,18 @@ def signature():
 
 
 def test_only_disjoint_reviewed_host_f32_row_is_ignored(spec, signature):
+    # The accelerator spec declares no host rows; the reviewed f32 bmm row is the host
+    # capabilities'. Placed beside the accelerator families, it is set aside, never applied.
+    plain = admit_contraction_operation(spec, "aten.bmm.default", signature, "accelerator")
+    assert plain["status"] == "admitted" and plain["ignored_disjoint_host_precision_declarations"] == []
+    host = validate_host_capabilities(
+        load_yaml(repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml")
+    )
+    spec["operations"].extend(row for row in host["operations"] if "aten.bmm.default" in row.get("ops", ()))
     before = copy.deepcopy(spec)
     result = admit_contraction_operation(spec, "aten.bmm.default", signature, "accelerator")
     assert result["status"] == "admitted" and result["declaration"] == "contraction"
-    assert result["ignored_disjoint_host_precision_declarations"] == ["host_f32_bmm"]
+    assert result["ignored_disjoint_host_precision_declarations"] == ["host_f32_batched_contraction"]
     assert not result["applicable_exact_source_declaration"] and spec == before
 
 
