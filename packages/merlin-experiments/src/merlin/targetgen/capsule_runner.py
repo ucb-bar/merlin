@@ -445,20 +445,23 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
             if not exact:
                 raise OracleUnavailable(reason)
         from .oracle_readback import run_with_readback
+        from .rtl_simulator_execution import SimulatorExecution, run_verified
 
-        res = run_with_readback(
-            cb,
-            llvm_text,
-            sim=sim,
-            target=target,
-            backend=backend,
-            workdir=workdir,
-            timeout=timeout,
-            policy=readback_policy,
-            **(
-                {"before_execution": _PREPARED_EXECUTION_OBSERVER.get()}
-                if _PREPARED_EXECUTION_OBSERVER.get() is not None
-                else {}
+        observer = _PREPARED_EXECUTION_OBSERVER.get()
+        # Reopen the selected hardware pin around the readback call and spend only the budget left
+        # after slot admission and verification.
+        res = run_verified(
+            SimulatorExecution(backend, sim, target, timeout, unavailable=OracleUnavailable),
+            lambda remaining: run_with_readback(
+                cb,
+                llvm_text,
+                sim=sim,
+                target=target,
+                backend=backend,
+                workdir=workdir,
+                timeout=remaining,
+                policy=readback_policy,
+                **({"before_execution": observer} if observer is not None else {}),
             ),
         )
         if selection and isinstance(res.get("oracle"), dict):
