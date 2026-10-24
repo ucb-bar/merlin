@@ -45,18 +45,25 @@ _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
 
 
 def _original_cohort_complete(score: dict) -> bool:
-    """A measured denominator cannot discard an original required obligation."""
+    """A measured denominator cannot discard an original required obligation.
+
+    Unscored host guards are admitted capsules outside the scored denominator: they are counted
+    here against the admission and must each appear as a passing row, never silently dropped.
+    """
     from merlin.targetgen.expected_refusal import execution_denominator
 
     admission = score.get("cohort_admission")
     if not isinstance(admission, dict):
         return False
     admitted = admission.get("n_admitted_capsules")
-    if type(admitted) is not int or admitted <= 0 or score.get("n_capsules") != admitted:
+    guards = score.get("host_guard_total", 0)
+    if type(admitted) is not int or admitted <= 0 or type(guards) is not int or guards < 0:
         return False
     if type(score.get("n_capsules")) is not int or type(score.get("n_passed")) is not int:
         return False
-    if score["n_passed"] != admitted or execution_denominator(score)[1]:
+    if score["n_capsules"] + guards != admitted:
+        return False
+    if score["n_passed"] != score["n_capsules"] or execution_denominator(score)[1]:
         return False
     for field in (
         "n_not_measured",
