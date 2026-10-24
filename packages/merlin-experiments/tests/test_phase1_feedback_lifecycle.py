@@ -22,6 +22,21 @@ from merlin_experiments.phase1.feedback import lifecycle as L
 from merlin.common.paths import module_source_path, python_import_roots, repo_root
 
 
+@pytest.fixture(autouse=True)
+def _restore_selected_rtl_facts():
+    """Broker entrypoints clear or rebind MERLIN_RTL_FACTS for their own process (``frozen_facts.select``).
+
+    These tests run them in-process, so restore the caller's value (or its absence) afterwards rather
+    than leaving later tests in the same worker without the selected facts.
+    """
+    previous = os.environ.get("MERLIN_RTL_FACTS")
+    yield
+    if previous is None:
+        os.environ.pop("MERLIN_RTL_FACTS", None)
+    else:
+        os.environ["MERLIN_RTL_FACTS"] = previous
+
+
 def _config(root, *, tools=()):
     context = InvocationContext(root, root / "descriptor.yaml", root, "fixture", root, root, root, ())
     return L.BrokerConfig(context, tools, root / "timing.json")
@@ -94,10 +109,16 @@ def test_raw_selfcheck_selection_is_passed_only_to_host_execution_brokers(tmp_pa
     from merlin_experiments.phase1.feedback import raw_selfcheck_evidence as E
 
     names = ["selfcheck", "simjob", "qa"]
-    monkeypatch.setattr(L._TR, "COMMON_BROKERS", tuple(
-        SimpleNamespace(module=f"merlin_experiments.phase1.brokers.{name}",
-                        log="broker.log", channel=f".{name}_probe") for name in names
-    ))
+    monkeypatch.setattr(
+        L._TR,
+        "COMMON_BROKERS",
+        tuple(
+            SimpleNamespace(
+                module=f"merlin_experiments.phase1.brokers.{name}", log="broker.log", channel=f".{name}_probe"
+            )
+            for name in names
+        ),
+    )
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     root = tmp_path / "run" / "_qa_work" / "selfchecks"
@@ -661,8 +682,11 @@ def test_background_grade_pool_is_worker_base_and_nested_lease_restore(tmp_path,
     try:
         os.sched_setaffinity(0, manager)
         handle = L.start_background(
-            tmp_path / "workspace", tmp_path / "run", L.GradeCadence(60, False, 900),
-            interval_grades=False, grade_callback=lambda *a: pytest.fail("unexpected interval"),
+            tmp_path / "workspace",
+            tmp_path / "run",
+            L.GradeCadence(60, False, 900),
+            interval_grades=False,
+            grade_callback=lambda *a: pytest.fail("unexpected interval"),
             fast_grade_callback=fast,
         )
         assert completed.wait(5)
@@ -679,6 +703,7 @@ def test_background_grade_pool_is_worker_base_and_nested_lease_restore(tmp_path,
 
 def test_handoff_during_source_verification_does_not_start_another_grade(tmp_path, monkeypatch):
     """A stop arriving during pre-grade bookkeeping must precede scheduling."""
+
     class Event:
         done = False
 
@@ -710,8 +735,12 @@ def test_handoff_during_source_verification_does_not_start_another_grade(tmp_pat
         return "current-source"
 
     L.start_background(
-        ws, tmp_path / "run", L.GradeCadence(30, False, 30), interval_grades=True,
+        ws,
+        tmp_path / "run",
+        L.GradeCadence(30, False, 30),
+        interval_grades=True,
         grade_callback=lambda *a, **kw: pytest.fail("grade started after handoff"),
-        fast_grade_callback=lambda *a: pytest.fail("existing verdict"), source_identity=source,
+        fast_grade_callback=lambda *a: pytest.fail("existing verdict"),
+        source_identity=source,
     )
     assert event.done

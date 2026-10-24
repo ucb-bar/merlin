@@ -1,6 +1,7 @@
 """Async grading receives the same original host profile as synchronous grading."""
 
 import json
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -9,23 +10,46 @@ from merlin_experiments.phase1.context import InvocationContext
 from merlin_experiments.phase1.feedback import lifecycle as L
 
 
+@pytest.fixture(autouse=True)
+def _restore_selected_rtl_facts():
+    """Broker entrypoints clear or rebind MERLIN_RTL_FACTS for their own process (``frozen_facts.select``).
+
+    These tests run them in-process, so restore the caller's value (or its absence) afterwards rather
+    than leaving later tests in the same worker without the selected facts.
+    """
+    previous = os.environ.get("MERLIN_RTL_FACTS")
+    yield
+    if previous is None:
+        os.environ.pop("MERLIN_RTL_FACTS", None)
+    else:
+        os.environ["MERLIN_RTL_FACTS"] = previous
+
+
 def context(root):
     return InvocationContext(root, root / "descriptor.yaml", root, "fixture", root, root, root, ())
 
 
 @pytest.mark.parametrize("selected", [False, True])
 def test_parent_forwards_original_profile_to_both_grading_brokers_only(tmp_path, monkeypatch, selected):
-    names = ("merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob",
-             "merlin_experiments.phase1.brokers.isa_tools")
+    names = (
+        "merlin_experiments.phase1.brokers.selfcheck",
+        "merlin_experiments.phase1.brokers.simjob",
+        "merlin_experiments.phase1.brokers.isa_tools",
+    )
     monkeypatch.setattr(L._TR, "COMMON_CLIENTS", ())
-    monkeypatch.setattr(L._TR, "COMMON_BROKERS", tuple(
-        SimpleNamespace(module=name, log=f"{i}.log", channel=".qa_channel") for i, name in enumerate(names)))
+    monkeypatch.setattr(
+        L._TR,
+        "COMMON_BROKERS",
+        tuple(SimpleNamespace(module=name, log=f"{i}.log", channel=".qa_channel") for i, name in enumerate(names)),
+    )
     monkeypatch.setattr(L._TR, "brokers_for", lambda _: ())
     commands = []
     monkeypatch.setattr(L.subprocess, "Popen", lambda argv, **kw: commands.append(argv) or SimpleNamespace())
     manifest = tmp_path / "original-reviewed-bundle.yaml" if selected else None
-    L.start_brokers(tmp_path / "workspace", L.BrokerConfig(context(tmp_path), (), tmp_path / "timing.json",
-                                                          compiler_bundle_manifest=manifest))
+    L.start_brokers(
+        tmp_path / "workspace",
+        L.BrokerConfig(context(tmp_path), (), tmp_path / "timing.json", compiler_bundle_manifest=manifest),
+    )
     for name, argv in zip(names, commands, strict=True):
         assert ("--compiler-bundle-manifest" in argv) == (selected and name != names[2])
         if "--compiler-bundle-manifest" in argv:
@@ -41,8 +65,9 @@ def test_actual_async_dispatch_uses_parent_manifest_never_request_selection(tmp_
     (frozen / "submission/compiler.py").write_text("pass\n")
     # A caller-supplied lookalike field cannot select original compiler authority.
     evil = ws / "candidate-selected.yaml"
-    (channel / "simreq_probe.json").write_text(json.dumps(
-        {"sim": "gsim", "capsules": "case", "compiler_bundle_manifest": str(evil)}))
+    (channel / "simreq_probe.json").write_text(
+        json.dumps({"sim": "gsim", "capsules": "case", "compiler_bundle_manifest": str(evil)})
+    )
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setattr(simjob, "_resolve_tiers", lambda *a, **kw: ("L2", "L3", {"case"}))
     monkeypatch.setattr(simjob, "_per_capsule_timeout", lambda *a, **kw: (30, "test"))
@@ -83,6 +108,7 @@ def test_invalid_forwarded_profile_cannot_create_original_execution(tmp_path, mo
     forged.write_text("allowed: []\nhost_inputs: []\n")
     monkeypatch.chdir(ws)
     with pytest.raises((RuntimeError, ValueError, OSError)):
-        with selfcheck_execution(forged, context=context(tmp_path), submission=ws / "submission",
-                                 work_root=tmp_path / "work"):
+        with selfcheck_execution(
+            forged, context=context(tmp_path), submission=ws / "submission", work_root=tmp_path / "work"
+        ):
             pytest.fail("an unverified profile cannot restore original compiler authority")
