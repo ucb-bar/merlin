@@ -560,6 +560,18 @@ def _prepare_spec_int8(
                     code="exact_recipe_refused",
                     details={"integer_recipes": refused_recipes},
                 )
+            from merlin.targetgen.pt2e_reference_selection import EXACT_ENGINE
+
+            # Declared admission consumes the exact oracle's sites and post-call inputs; a graph
+            # whose golden reference had to be framework float has no such reference to consume.
+            golden_selection = (artifact.meta.get("integerization_receipt") or {}).get("reference_selection")
+            if golden_selection and golden_selection.get("engine") != EXACT_ENGINE:
+                raise NumericCaptureRefused(
+                    "declared software admission requires the exact-rational reference: "
+                    + str(golden_selection.get("reason")),
+                    code="exact_reference_unavailable",
+                    details={"reference_selection": golden_selection},
+                )
         except NumericCaptureRefused as exc:
             # Only explicit frontend refusals grant original host fallback.
             for site in selected:
