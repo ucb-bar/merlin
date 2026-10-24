@@ -7,7 +7,7 @@ source_reference: An int32 bias seeded into the accumulator before a two-K-tile 
   and declares a plain MVIN into an accumulator address as an alternative form of it (encoding.class_alternatives).
   This capsule keeps MVIN3 requirable by demanding that form itself (expected.strict_classes); a hardware loop that
   issues it is accepted (encoding.class_subsumes)
-label: public
+label: dev
 interface_mlir: capsule.interface.mlir
 stimulus_range:
 - -4
