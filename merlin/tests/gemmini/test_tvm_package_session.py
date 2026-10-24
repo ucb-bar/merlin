@@ -1,9 +1,10 @@
 """Execute the pointer-array session adapter against independent C stages."""
+
 import copy
 import importlib.util
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -24,20 +25,27 @@ def tensor(dtype="float32", size=8):
 
 
 def stage(inputs, outputs):
-    return {"inputs": inputs, "outputs": outputs, "workspace_bytes": 64,
-            "constants_bytes": 0, "alignment_bytes": 64,
-            "heap_required_by_orchestration": False,
-            "runtime_workspace_allocator_required": False}
+    return {
+        "inputs": inputs,
+        "outputs": outputs,
+        "workspace_bytes": 64,
+        "constants_bytes": 0,
+        "alignment_bytes": 64,
+        "heap_required_by_orchestration": False,
+        "runtime_workspace_allocator_required": False,
+    }
 
 
 def example():
-    stages = {"prefill": stage([tensor()], [tensor()]),
-              "decode": stage([tensor(), tensor()], [tensor(), tensor()])}
-    route = {"version": 1, "calls": [
-        {"stage": "prefill", "inputs": [{"fixture": 0}]},
-        {"stage": "decode", "inputs": [{"fixture": 1}, {"output": [0, 0]}]},
-        {"stage": "decode", "inputs": [{"fixture": 2}, {"output": [1, 1]}]},
-    ]}
+    stages = {"prefill": stage([tensor()], [tensor()]), "decode": stage([tensor(), tensor()], [tensor(), tensor()])}
+    route = {
+        "version": 1,
+        "calls": [
+            {"stage": "prefill", "inputs": [{"fixture": 0}]},
+            {"stage": "decode", "inputs": [{"fixture": 1}, {"output": [0, 0]}]},
+            {"stage": "decode", "inputs": [{"fixture": 2}, {"output": [1, 1]}]},
+        ],
+    }
     return stages, route
 
 
@@ -79,13 +87,21 @@ def test_compiled_session_recurrence_guards_negative_and_reset(bridge, tmp_path,
     # The byte blobs have the independent reference values. Return the cache
     # through output 1, which deliberately differs from the logits in output 0.
     import struct
-    values = {"input_0": [2., 4.], "input_1": [1., -2.], "input_2": [3., 1.],
-              "output_0": [3., 5.], "output_1": [5., 1.], "output_2": [4., 3.],
-              "output_3": [10., 5.], "output_4": [7., 4.]}
+
+    values = {
+        "input_0": [2.0, 4.0],
+        "input_1": [1.0, -2.0],
+        "input_2": [3.0, 1.0],
+        "output_0": [3.0, 5.0],
+        "output_1": [5.0, 1.0],
+        "output_2": [4.0, 3.0],
+        "output_3": [10.0, 5.0],
+        "output_4": [7.0, 4.0],
+    }
     for name, value in values.items():
         data = ",".join(str(byte) for byte in struct.pack("<2f", *value))
         source += f"\n_Alignas(64) const uint8_t session_{name}[]={{{data}}};\n"
-    source += r'''
+    source += r"""
 static int count;
 int32_t stage_0_model_run(const void *const *in,void *const *out,uint8_t *w,uint64_t n) {
   for(int i=0;i<2;i++) ((float *)out[0])[i]=((const float *)in[0])[i]+1;
@@ -108,12 +124,13 @@ int main(void) {
   }
   return count==6 ? 0:99;
 }
-'''
+"""
     path = tmp_path / "session.c"
     path.write_text(source)
     binary = tmp_path / "session"
-    subprocess.run([cc, "-std=c11", "-O2", f"-DFAULT={fault}", str(path), "-o", str(binary)],
-                   check=True, capture_output=True)
+    subprocess.run(
+        [cc, "-std=c11", "-O2", f"-DFAULT={fault}", str(path), "-o", str(binary)], check=True, capture_output=True
+    )
     result = subprocess.run([str(binary)], capture_output=True)
     assert result.returncode == expected, result.stdout
 
@@ -130,16 +147,20 @@ def test_boolean_route_and_nan_policy(bridge):
 
 def test_binary_readback_uses_actual_signed_words(bridge, monkeypatch, tmp_path):
     from merlin.runtime.out_bin import parse_binary_console_details
+
     cc = shutil.which("cc")
     if not cc:
         pytest.skip("Requires a host C compiler")
     root = repo_root()
     monkeypatch.syspath_prepend(str(root / "examples/gemmini/comparisons/tvm"))
     from build_package_session import readback_source
-    plan = bridge.plan_session({"one": stage([tensor("int32")], [tensor("int32")])},
-                               {"version": 1, "calls": [{"stage": "one", "inputs": [{"fixture": 0}]}]})
+
+    plan = bridge.plan_session(
+        {"one": stage([tensor("int32")], [tensor("int32")])},
+        {"version": 1, "calls": [{"stage": "one", "inputs": [{"fixture": 0}]}]},
+    )
     source = bridge.render_session(plan, rtol=0, atol=0)
-    source += r'''
+    source += r"""
 void htif_putc(char c) { putchar(c); }
 void htif_puts(const char *s) { fputs(s,stdout); }
 void htif_line_flush(int value) { (void)value;fflush(stdout); }
@@ -148,13 +169,16 @@ const uint8_t session_output_0[]={0,0,0,0,0,0,0,0};
 int32_t stage_0_model_run(const void *const *i,void *const *o,uint8_t *w,uint64_t n) {
   ((int32_t *)o[0])[0]=-1234567;((int32_t *)o[0])[1]=INT32_MIN;return 0;
 }
-'''
+"""
     source += readback_source(plan)
     source += 'int main(void){session_reset();session_run();int rc=session_readback();if(!rc)puts("DONE");return rc;}\n'
     path, binary = tmp_path / "readback.c", tmp_path / "readback"
     path.write_text(source)
-    subprocess.run([cc, "-std=c11", "-O2", "-I" + str(root / "merlin/runtime/baremetal"),
-                    str(path), "-o", str(binary)], check=True, capture_output=True)
+    subprocess.run(
+        [cc, "-std=c11", "-O2", "-I" + str(root / "merlin/runtime/baremetal"), str(path), "-o", str(binary)],
+        check=True,
+        capture_output=True,
+    )
     result = subprocess.run([str(binary)], check=True, capture_output=True)
     outputs, _, frames = parse_binary_console_details(result.stdout)
     assert outputs["out0"] == [[-1234567, -(1 << 31)]]
