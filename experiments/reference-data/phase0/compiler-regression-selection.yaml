@@ -1,0 +1,44 @@
+# Reviewed retained public calls, consumed by regression_capsules --selection.
+# A release still needs receipt-bound core_aten_stage derivation and review.
+schema: merlin.regression_selection.v1
+capsule_policy: derived_only
+target: gemmini
+calls:
+  - case_id: gemmini::mm_aligned_rhs_transposed::18ab0f4f61bdb3ff
+    capsule: case_d8b860767b8f921de3c70a2a4f5b7cf8cd16ee224df79e1c6191c8000140af80
+    overload: aten.mm.default
+    inputs:
+      - {dtype: int8, shape: [16, 32], stride: [32, 1], storage_offset: 0}
+      - {dtype: int8, shape: [32, 16], stride: [1, 32], storage_offset: 0}
+    result: {dtype: int8, shape: [16, 16]}
+    guards: [52eb603f, a9106b60, c7c4ea63]
+    boundary: >-
+      Wrapping int8 matmul returns through a private device callback and a
+      truncating host readout. Both caller tensors stay unchanged, including
+      the transposed RHS strides. Require source-bound executed device calls.
+    sealed_release: core-aten-seal-20261008-v2
+  - case_id: gemmini::mm_partial::c8781a7a432e4cf9
+    capsule: case_8c55f9386acd0e8954347fea3f19b6bb43e04add51a55425b98d2274f9ec2ab3
+    overload: aten.mm.default
+    inputs:
+      - {dtype: int8, shape: [16, 31], stride: [31, 1], storage_offset: 0}
+      - {dtype: int8, shape: [31, 15], stride: [15, 1], storage_offset: 0}
+    result: {dtype: int8, shape: [16, 15]}
+    guards: [52eb603f, a9106b60]
+    boundary: >-
+      Widen the closed reduction with zero initialization while preserving
+      modulo-256 output bits and partial dimensions through the private ABI.
+      Require source-bound executed device calls and unchanged caller inputs.
+    sealed_release: core-aten-seal-20261008-v2
+  - case_id: gemmini::mm_sub_tile::18ffba932e2b20e9
+    capsule: case_47da3260c604b05ce3008f11b48ed6b4eb4db5542fdec56789ba81e4338b4d05
+    overload: aten.mm.default
+    inputs:
+      - {dtype: int8, shape: [2, 4], stride: [4, 1], storage_offset: 0}
+      - {dtype: int8, shape: [4, 4], stride: [4, 1], storage_offset: 0}
+    result: {dtype: int8, shape: [2, 4]}
+    guards: [52eb603f, a9106b60]
+    boundary: >-
+      Sub-tile wrapping contraction retains the original int8 ABI after
+      accumulator widening, with unchanged caller inputs and device execution.
+    sealed_release: core-aten-seal-20261008-v2

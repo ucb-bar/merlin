@@ -90,7 +90,7 @@ def finalize_report(
     if snap.exists():
         shutil.rmtree(snap.parent)
     snap.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(ws / "submission", snap, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+    RI.copy_candidate_tree(ws / "submission", snap, ignore=RI.SUBMISSION_IGNORED)
 
     LG.write_verdict(ws / "qa" / "verdict.json", verdict)
     pass_line = _verified_status_line(verdict)
@@ -340,7 +340,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         st = yaml.safe_load(state_p.read_text()) or {}
         rounds_summary = st.get("rounds", []) or []
         rnd = int(st.get("next_round", 0))
-        verdict = {"all_pass": bool(st.get("converged", False))}
+        verdict = {"all_pass": bool(st.get("numeric_all_pass", st.get("converged", False)))}
         workflow_conformant = bool(st.get("workflow_conformant", False))
         # Rebuild the RUN-LEVEL accumulator the gates read. Without this a --resume starts it empty, so a
         # run that had already evidenced every mandated check is blocked by its own fresh accumulator --
@@ -402,7 +402,9 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
 
     def _authoring_complete() -> bool:
         """Pre-freeze gate: enough evidence to stop editing and begin the official grade."""
-        return False if joint else CERT._authoring_completion(bool(verdict.get("all_pass")), workflow_conformant)
+        return False if joint else CERT._authoring_completion(
+            bool(verdict.get("all_pass")), workflow_conformant, objective=getattr(a, "objective", "correctness")
+        )
 
     def _checkpoint(next_round: int) -> None:
         state_p.write_text(
@@ -571,6 +573,11 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
 
     cost_capped = False  # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
 
+    authoring_stop = {"reason": None, "active_wall_s": None}
+
+    def _record_authoring_stop(reason: str) -> None:
+        authoring_stop.update(reason=reason, active_wall_s=active_wall_s)
+
     def _keep_going() -> bool:
         """Should the loop run another agent invocation?
 
@@ -580,12 +587,17 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         if joint:
             return JC.stop_reason() is None
         if a.seal_current:
+            _record_authoring_stop("operator_seal")
             return False
         if _authoring_complete():
+            _record_authoring_stop("correctness")
             return False
         if a.schedule == "rounds":
+            if rnd >= a.max_rounds:
+                _record_authoring_stop("max_rounds")
             return rnd < a.max_rounds
         if a.max_wall_s and active_wall_s >= a.max_wall_s:
+            _record_authoring_stop("max_wall_s")
             print(
                 f"[continuous] wall budget reached ({active_wall_s:.0f}s >= {a.max_wall_s}s) — "
                 f"stopping honestly (not converged; reason=max_wall_s)"
@@ -647,6 +659,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # (the ccb2 waste). Abort the run early + honestly instead.
         if ROQ.daily_limit_hit(tpath):
             active_wall_s += time.time() - _rstart
+            _record_authoring_stop("daily_token_limit")
             print(
                 f"[round {rnd}] DAILY TOKEN LIMIT hit (429 'too many tokens per day') — the provider's "
                 f"daily quota is exhausted; aborting early (not converged) rather than burning the "
@@ -673,6 +686,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         if ROQ.round_rejected(tpath):
             active_wall_s += time.time() - _rstart  # the rejected attempt itself was active time
             if rl_waits_used >= a.max_rate_limit_waits:
+                _record_authoring_stop("rate_limit_waits_exhausted")
                 print(
                     f"[round {rnd}] rate-limited and --max-rate-limit-waits "
                     f"({a.max_rate_limit_waits}) exhausted — stopping honestly (not converged)"
@@ -699,6 +713,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         _dead, _why = ROQ.agent_turn_dead(tpath)
         if _dead:
             active_wall_s += time.time() - _rstart
+            _record_authoring_stop("agent_did_not_run")
             _checkpoint(rnd)  # next_round stays rnd: --resume retries THIS round once the cause is fixed
             print(
                 f"[round {rnd}] AGENT DID NOT RUN — {_why}. Not grading, and not reporting a "
@@ -817,6 +832,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # before starting the next (paid) round. Uses the authoritative subagent-inclusive per-round cost.
         _over, _spent, _cap = _spend_over_cap(rsum.get("estimated_cost_usd"))
         if _over:
+            _record_authoring_stop("cost_cap")
             print(
                 f"[round {rnd}] COST CAP: batch spend ${_spent:.2f} >= ${_cap:.2f} "
                 f"(MERLIN_MAX_SPEND_USD) — stopping before the next round; zero further spend."
@@ -837,6 +853,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             else:
                 _plateau_stall += 1
                 if _plateau_stall >= a.plateau_rounds:
+                    _record_authoring_stop("plateau")
                     print(
                         f"[plateau] no progress (pass count + mismatch) for {a.plateau_rounds} "
                         f"consecutive rounds; stopping early (not converged) at "
@@ -847,6 +864,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # realistic (abc2): the agent self-paces — it self-checks via the tool and drops READY_FOR_BARRIER
         # when it believes it's done. Break to the verilator barrier on that marker OR on spike all-pass.
         ready = not joint and a.experiment == "realistic" and (ws / "submission" / READY_MARKER).exists()
+        if ready and getattr(a, "objective", "correctness") == "device-coverage":
+            (ws / "submission" / READY_MARKER).unlink(missing_ok=True)
+            ready = False
+            print("[objective] correctness/READY does not end device-coverage optimization", flush=True)
         # A marker dropped at zero is a surrender, not a convergence, and it silently forfeits the rest
         # of the round budget. --min-rounds declines it: remove the marker so the next round must earn
         # it again, and hand the agent back the same failing verdict. An honest all_pass is never
@@ -873,6 +894,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             )
             ready = False
         if _authoring_complete() or ready:
+            _record_authoring_stop("ready_marker" if ready else "correctness")
             if ready:
                 print(f"[round {rnd - 1}] agent dropped {READY_MARKER} — proceeding to verilator barrier")
             break
@@ -946,7 +968,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                 "per_capsule": _rows,
                 "rtl_checks": None,
             }
-        shutil.copytree(ws / "submission", vcand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        RI.copy_candidate_tree(ws / "submission", vcand, ignore=RI.SUBMISSION_IGNORED)
         RI.strip_build_state(vcand)  # clean, relocatable build for the L3 cert (abc9 L3-0/20 'build' bug)
         vruns = run_dir / "_qa_work" / f"vruns_{attempt}"
         # Cycle-accurate checkpoint = the target's FULL oracle ladder, resolved from the descriptor's
@@ -1374,7 +1396,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         dst = run_dir / "submission"
         if dst.exists():
             shutil.rmtree(dst)
-        shutil.copytree(wsub, dst, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        RI.copy_candidate_tree(wsub, dst, ignore=RI.SUBMISSION_IGNORED)
     incomplete_operator_seal = bool(operator_seal)
     if wsub.exists() and (workflow_conformant or incomplete_operator_seal):
         # Last gate before the official process performs its public grade + freeze + hidden grade.  The
@@ -1451,6 +1473,41 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             checkpoint=incomplete_operator_seal,
         )
     )
+    if getattr(a, "objective", "correctness") != "correctness":
+        qa_summary["converged"] = False
+    if getattr(a, "objective", "correctness") == "device-coverage":
+        qa_summary["objective"] = {
+            "name": a.objective,
+            "early_stop_on_correctness": False,
+            "optimality_proved": False,
+            "authoring_stop": authoring_stop,
+            "final_active_wall_s": active_wall_s,
+            "post_authoring_active_wall_s": (
+                max(0.0, active_wall_s - authoring_stop["active_wall_s"])
+                if authoring_stop["active_wall_s"] is not None
+                else None
+            ),
+            "max_wall_s": a.max_wall_s,
+            "budget_exhausted": (
+                authoring_stop["active_wall_s"] is not None and authoring_stop["active_wall_s"] >= a.max_wall_s
+            ),
+            "budget_enforcement": "between_provider_rounds",
+            "termination": authoring_stop["reason"] or "unrecorded_authoring_stop",
+            "final_loop_observation": {
+                key: verdict[key]
+                for key in (
+                    "n_capsules",
+                    "n_passed",
+                    "all_pass",
+                    "device_lane_scored_pass",
+                    "device_evidence_count",
+                    "host_lane_scored_pass",
+                    "host_guard_pass",
+                    "host_guard_total",
+                )
+                if key in verdict
+            },
+        }
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(qa_summary, sort_keys=False))
     # The official grader wrote the manifest before process telemetry existed. Bind that final process
     # record into the same manifest and ensure its top-level completion claim cannot contradict the QA
@@ -1459,6 +1516,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     if _manifest_path.is_file():
         _manifest_doc = yaml.safe_load(_manifest_path.read_text(encoding="utf-8")) or {}
         _manifest_doc["telemetry"] = telemetry
+        if getattr(a, "objective", "correctness") == "device-coverage":
+            _manifest_doc["objective"] = qa_summary["objective"]
         _completion = _manifest_doc.setdefault("completion", {})
         _completion["telemetry_complete"] = telemetry["complete"]
         _completion["phase2_iteration_ready"] = qa_summary.get("phase2_iteration_ready", False)

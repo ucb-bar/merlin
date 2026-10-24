@@ -47,7 +47,12 @@ dialect:
     - name: merlin_iface.movement
       operands: ["tensor<MxNxDT>"]
       result: "tensor<MxNxDT2>"
-      attrs: {name: string, semantic: string, output_dtype: string}
+      attrs:
+        name: string
+        semantic: string
+        output_dtype: string
+        form: "identity (default) | permute {perm} | slice {offsets, sizes, strides} | pad {low, high, mode, value_code} | broadcast | repeat {repeats}"
+        scale: "f32 (optional; one load-path requantization)"
       maps_to: MOVEMENT
     - name: merlin_iface.attention_pv
       operands: ["tensor<MxSxDT>", "tensor<SxDxDT>"]
@@ -65,6 +70,57 @@ dialect:
         epilogue: "ordered subset of [relu]"
         output_dtype: "an integer dtype (i8/...)"
       maps_to: RESIDUAL_ADD
+    - name: merlin_iface.affine_map
+      operands: ["tensor<...xDT>", "tensor<...xDT> (optional; broadcasts along leading dims only)"]
+      result: "tensor<...xDT2>   # x's shape; DT2 i8 (one readout) or i32 (no readout)"
+      attrs:
+        name: string
+        weights: "[int] (required; one per operand, |w| <= 381, applied in the int32 accumulator)"
+        constant: "int (required; the int32 accumulator seed)"
+        activation: "none | relu (required; relu acts on the accumulator before the scale)"
+        readout_scale: "f32 (required; may be negative, never with relu; 1.0 for an i32 result)"
+        output_dtype: "i8 | i32 (required)"
+        quant_min: "int (optional)"
+        quant_max: "int (optional)"
+      maps_to: AFFINE_MAP
+    - name: merlin_iface.concat
+      operands: ["tensor<...xDT> (2 to 8 sources)"]
+      result: "tensor<...xDT2>"
+      attrs: {name: string, axis: "int (required)", output_dtype: string, scales: "[f32] (optional; one per source)"}
+      maps_to: CONCAT
+    - name: merlin_iface.insert_slice
+      operands: ["tensor<...xDT>", "tensor<...xDT>"]
+      result: "tensor<...xDT2>   # dest's shape"
+      attrs: {name: string, offsets: "[int] (required)", strides: "[int >= 1] (required)", output_dtype: string}
+      maps_to: INSERT_SLICE
+    - name: merlin_iface.fill
+      operands: []
+      result: "tensor<...xDT2>"
+      attrs: {name: string, value_code: "int (required; the quantized code)", output_dtype: "string (required)"}
+      maps_to: FILL
+    - name: merlin_iface.window_sum
+      operands: ["tensor<...xDT>"]
+      result: "tensor<...xDT2>"
+      attrs:
+        name: string
+        mode: "window | adaptive | reduce | window_transpose | adaptive_transpose | fold (required)"
+        readout_scale: "f32 > 0 (required)"
+        output_dtype: "i8 | i32 (required)"
+        kernel: "[int] (window, window_transpose, fold)"
+        stride: "[int] (window, window_transpose, fold)"
+        padding: "[int] (window, window_transpose, fold)"
+        count_include_pad: "bool (window, window_transpose)"
+        dims: "[int] (reduce)"
+        average: "bool (reduce)"
+        dilation: "[int] (fold)"
+        layout: "nhwc (default) | nchw"
+        ceil_mode: "bool (optional)"
+        divisor_override: "int (optional)"
+      maps_to: WINDOW_SUM
+    - name: merlin_iface.fence
+      operands: []
+      result: "()"
+      maps_to: FENCE
     - name: merlin_iface.conv2d
       operands: ["tensor<NxHxWxCixDT>", "!merlin_iface.resident"]
       result: "tensor<PxCoxDT2>   # P = N*Ho*Wo, the im2col row count"

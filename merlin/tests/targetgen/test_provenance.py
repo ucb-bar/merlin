@@ -72,6 +72,12 @@ class TestGitProvenance:
         rec = prov.git_provenance(tmp_path)
         assert rec["available"] is False and rec["reason"]
 
+    def test_nested_directory_does_not_borrow_ancestor_revision(self, tiny_repo):
+        nested = tiny_repo / "export"
+        nested.mkdir()
+        rec = prov.git_provenance(nested)
+        assert rec["available"] is False and "checkout root" in rec["reason"]
+
     def test_missing_path_is_unavailable_with_a_reason(self, tmp_path):
         rec = prov.git_provenance(tmp_path / "nope")
         assert rec["available"] is False and "not a directory" in rec["reason"]

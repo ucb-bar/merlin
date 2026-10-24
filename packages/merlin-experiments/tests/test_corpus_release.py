@@ -16,7 +16,7 @@ from merlin_experiments.adapters import ADAPTERS
 from merlin_experiments.cli import main
 from merlin_experiments.corpus import release as corpus_release
 from merlin_experiments.corpus.coverage import _public_category_roots
-from merlin_experiments.corpus.preparation import assemble, generation_lineage
+from merlin_experiments.corpus.preparation import assemble, generation_lineage, scaffold
 from merlin_experiments.runner import fingerprint
 from merlin_experiments.spec import SpecError
 
@@ -820,6 +820,76 @@ def test_default_release_cli_ignores_removed_legacy_public_corpus(release_fixtur
     assert (view.policy / "0/generated_member/capsule.yaml").is_file()
 
 
+def test_generated_sibling_release_materializes_empty_primary_root(release_fixture, capsys):
+    from merlin_experiments.corpus.preparation import source_run
+    from merlin_experiments.phase1.timing import requires_chipyard_timing
+
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    fixture = release_fixture
+    descriptor = fixture["root"] / "source-experiment/target_experiment.yaml"
+    document = yaml.safe_load(descriptor.read_text())
+    document["grading"]["expected_cohort"] = {"source_capsules": 1, "admitted_capsules": 1}
+    document["toolchain"] = {"sim_via": "chipyard"}
+    descriptor.write_text(yaml.safe_dump(document))
+    for capsule in fixture["baseline"].rglob("capsule.yaml"):
+        definition = yaml.safe_load(capsule.read_text())
+        definition["required_oracle_tiers"] = ["L2"]
+        capsule.write_text(yaml.safe_dump(definition))
+    derivation = fixture["root"] / "derive.py"
+    derivation.write_text(
+        derivation.read_text()
+        .replace("output/'isa/", "output/'public/")
+        .replace("'generated':['isa/generated_member']", "'generated':['public/generated_member']")
+    )
+    assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
+    capsys.readouterr()
+    # Use the completed run's recorded output rather than assuming a native layout.
+    _, _, generated = source_run(fixture["run"])
+    public_before = fingerprint(generated / "public/generated_member")
+    hidden_before = fingerprint(fixture["baseline"] / "hidden/private_member_identity")
+    assert (
+        main(
+            [
+                "corpus",
+                "prepare",
+                str(fixture["run"]),
+                "--output",
+                str(fixture["release"]),
+                "--generated-only",
+                "--private-baseline",
+                str(fixture["baseline"] / "hidden"),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(capsys.readouterr().out)
+    selected = load_target_experiment(Path(report["descriptor"]))
+    assert selected.capsule_corpus.is_dir() and not selected.capsule_corpus.is_symlink()
+    assert list(selected.capsule_corpus.iterdir()) == []
+    assert {p.name for p in selected.graded_roots()} == {"isa", "public"}
+    assert fingerprint(selected.capsule_corpus.parent / "public/generated_member") == public_before
+    assert fingerprint(selected.capsule_corpus.parent / "hidden/private_member_identity") == hidden_before
+    assert not requires_chipyard_timing(selected.path)
+    assert report["counts"]["public_source"] == report["counts"]["hidden_source"] == 1
+
+
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_scaffold_refuses_nonordinary_primary_category(release_fixture, tmp_path, kind):
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    te = load_target_experiment(release_fixture["root"] / "source-experiment/target_experiment.yaml")
+    corpus = tmp_path / "staged-corpus"
+    corpus.mkdir()
+    primary = corpus / te.capsule_corpus.name
+    if kind == "file":
+        primary.write_text("not a category\n")
+    else:
+        primary.symlink_to(te.capsule_corpus, target_is_directory=True)
+    with pytest.raises(SpecError, match="ordinary directory"):
+        scaffold(te, corpus, tmp_path / "staged-experiment", private=tmp_path / "private")
+
+
 def test_generated_only_release_refuses_implicit_legacy_hidden_corpus(release_fixture, capsys):
     fixture = release_fixture
     descriptor = fixture["root"] / "source-experiment/target_experiment.yaml"
@@ -1262,6 +1332,36 @@ def test_selected_capability_view_uses_verified_phase0_export(monkeypatch, tmp_p
     with pytest.raises(SpecError, match="differs from verified evidence"):
         copy_input(selected[0], tmp_path / "staged.yaml", expected_sha256=selected[1])
     with pytest.raises(SpecError, match="capability contract.*verified evidence"):
+        corpus_release._selected_capability_contract(plan, generated)
+
+
+def test_legacy_json_capability_view_recovers_pinned_typed_contract(tmp_path):
+    contract = {"name": "fixture-device", "encoding": {"classes": {0: "CONFIG", 7: "FLUSH"}}, "strings": {"12": "x"}}
+    pinned = tmp_path / "selected/target_contract.yaml"
+    pinned.parent.mkdir()
+    pinned.write_text(yaml.safe_dump(contract, sort_keys=False))
+    generated = tmp_path / "capsules"
+    exported = generated / "software/contract.json"
+    exported.parent.mkdir(parents=True)
+    exported.write_text(json.dumps(contract, sort_keys=True, indent=2) + "\n")
+    plan = {
+        "target": "fixture-device",
+        "phases": {"0": {"inputs": {"capability_contract": str(pinned)}}},
+        "inputs": {"phase0:operator:capability_contract": {"path": str(pinned), "sha256": fingerprint(pinned)}},
+    }
+    selected = corpus_release._selected_capability_contract(plan, generated)
+    assert selected == (pinned, fingerprint(pinned))
+    assert yaml.safe_load(selected[0].read_bytes()) == contract  # integer keys survive
+    typed = generated / "software/contract.yaml"
+    typed.write_bytes(pinned.read_bytes())
+    assert corpus_release._selected_capability_contract(plan, generated) == (typed, fingerprint(typed))
+    typed.unlink()
+    exported.write_text(json.dumps({**contract, "strings": {"12": "drifted"}}))
+    with pytest.raises(SpecError, match="frozen typed input"):
+        corpus_release._selected_capability_contract(plan, generated)
+    exported.write_text(json.dumps(contract))
+    pinned.write_text(yaml.safe_dump({**contract, "extra": 1}))
+    with pytest.raises(SpecError, match="frozen typed input"):
         corpus_release._selected_capability_contract(plan, generated)
 
 
@@ -2223,3 +2323,43 @@ def test_explicit_public_reference_release_grants(release_fixture, capsys):
         assert grant in bundle["allowed"]
     assert (fixture["release"] / "payload/experiment/reference-kernels/example.c").read_bytes() == leaf.read_bytes()
     assert not (fixture["release"] / "private/seal.json").exists()
+
+
+def test_selected_capability_preserves_typed_yaml_maps(monkeypatch, tmp_path):
+    from merlin_experiments.phase0 import evidence
+
+    bundle = tmp_path / "phase0"
+    member = bundle / "software/contract.yaml"
+    member.parent.mkdir(parents=True)
+    contract = {
+        "name": "fixture-device",
+        "encoding": {"classes": {0: "CONFIG", 7: "FLUSH"}},
+        "literal_strings": {"12": "keep string"},
+    }
+    raw = yaml.safe_dump(contract, sort_keys=False).encode()
+    member.write_bytes(raw)
+    views = json.dumps({"contract": contract}).encode()
+    selection = evidence.EvidenceSelection("fixture-device", (), views, None, contract_yaml=raw)
+    assert selection.contract == contract
+    selection.contract["encoding"]["classes"].clear()
+    assert selection.contract == contract
+    monkeypatch.setattr(
+        evidence,
+        "load_exported_evidence",
+        lambda _: SimpleNamespace(
+            archived_artifacts=(
+                ("software/contract.json", json.dumps(contract).encode()),
+                ("software/contract.yaml", raw),
+            )
+        ),
+    )
+    selected = corpus_release._selected_capability_contract(
+        {"phase0_evidence_bundle": str(bundle), "target": "fixture-device"}, tmp_path / "generated"
+    )
+    assert selected == (member, fingerprint(member))
+    assert yaml.safe_load(selected[0].read_bytes()) == contract
+    member.write_text("name: fixture-device\n")
+    with pytest.raises(SpecError, match="capability contract.*verified evidence"):
+        corpus_release._selected_capability_contract(
+            {"phase0_evidence_bundle": str(bundle), "target": "fixture-device"}, tmp_path / "generated"
+        )

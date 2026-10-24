@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import shlex
-import shutil
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from merlin.common import invocation_record
 from merlin.common.paths import module_source_path
 from merlin.targetgen.compiler_library import CompilerLibraryContract
 from merlin.targetgen.generalization_prompt import append_general_compiler_contract
+from merlin_experiments.phase1.run_inputs import copy_candidate_tree
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.component_experiment import (
     ComponentView,
@@ -443,7 +443,7 @@ def run_fresh_component_phase1(
     for relative, source in inert_scaffold(inputs.target_experiment.target).items():
         (inputs.candidate / relative).write_text(source, encoding="utf-8")
     initial = inputs.output / "initial_scaffold"
-    shutil.copytree(inputs.candidate, initial)
+    copy_candidate_tree(inputs.candidate, initial)
     _readonly(initial)
     initial_hash = _tree(initial)["sha256"]
     policy = strict_tool_policy(
@@ -521,7 +521,7 @@ def run_fresh_component_phase1(
     if _tree(inputs.candidate)["sha256"] == initial_hash:
         raise C.StageGateError("fresh Phase 1 produced no compiler changes")
     frozen = inputs.output / "compiler"
-    shutil.copytree(inputs.candidate, frozen)
+    copy_candidate_tree(inputs.candidate, frozen)
     _readonly(frozen)
     candidate_hash = _tree(frozen)["sha256"]
     pins = tuple((path, C.sha256_file(path)) for path in sorted(inputs.output.rglob("invocation.json")))

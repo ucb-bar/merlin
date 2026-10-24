@@ -1193,3 +1193,18 @@ def test_evidence_export_cannot_follow_parent_alias_into_private_source_snapshot
     with pytest.raises(ValueError, match="traverses a symlink"):
         evidence._materialize_evidence(root, {"software/capsule.yaml": b"changed"})
     assert not (snapshot / "capsule.yaml").exists()
+
+
+def test_export_replay_preserves_numeric_and_literal_string_keys(monkeypatch, tmp_path):
+    selected, raw, code = _selection(monkeypatch, tmp_path)
+    contract = code.parent / "contracts/target_contract.yaml"
+    contract.write_text(
+        "name: fixture\ncompute_units: []\nencoding:\n  classes: {0: CONFIG, 7: FLUSH}\nliteral_strings: {'12': keep-string}\n"
+    )
+    selected = evidence.select_evidence("fixture", facts_path=raw)
+    output = tmp_path / "export"
+    evidence.export_evidence(selected, output)
+    restored = evidence.load_exported_evidence(output)
+    assert restored.contract == selected.contract
+    assert restored.contract["encoding"]["classes"] == {0: "CONFIG", 7: "FLUSH"}
+    assert restored.contract["literal_strings"] == {"12": "keep-string"}

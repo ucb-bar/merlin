@@ -793,3 +793,53 @@ def test_dispatch_keeps_neutral_contract_selection_without_metadata_guess(tmp_pa
     context.descriptor.write_text("target: fixture\n")
     assert dispatch.allowed_sims(context) == ("contract",)
     assert dispatch.cert_sim("L3", context=context) == "contract"
+
+
+@pytest.mark.parametrize("guard_pass", [0, 1])
+def test_qa_preserves_device_score_and_separate_guard_counts(tmp_path, monkeypatch, guard_pass):
+    monkeypatch.setattr(qa, "_loop_target_sim_via", lambda context: ("fixture", ""))
+    monkeypatch.setattr(qa.CR, "qa_checkpoint_adapters", lambda *a: {"L2": object()})
+    rows = [
+        dict(
+            capsule="device",
+            label="public",
+            status="pass",
+            lane="device",
+            executed_instructions=7,
+            cohort="public",
+            scored=True,
+            tiers={"L2": "pass"},
+        ),
+        dict(
+            capsule="guard",
+            label="public",
+            status="pass" if guard_pass else "fail",
+            lane="host",
+            executed_instructions=0,
+            cohort="guard",
+            scored=False,
+            tiers={"L2": "pass"},
+        ),
+    ]
+    monkeypatch.setattr(
+        qa.CG,
+        "grade",
+        lambda *a, **k: dict(
+            n_capsules=1,
+            n_passed=1,
+            per_capsule=rows,
+            device_lane_scored_pass=1,
+            device_evidence_count=1,
+            host_guard_pass=guard_pass,
+            host_guard_total=1,
+        ),
+    )
+    verdict = qa.run("submission", str(tmp_path), tmp_path, {"public"}, False, 1, context=_context(tmp_path))
+    assert verdict["n_passed"] == 1 and verdict["n_capsules"] == 1
+    assert verdict["host_guard_pass"] == guard_pass and verdict["host_guard_total"] == 1
+    assert verdict["device_lane_scored_pass"] == 1
+    assert verdict["all_pass"] == bool(guard_pass)
+    assert [(r["lane"], r["executed_instructions"], r["cohort"]) for r in verdict["per_capsule"]] == [
+        ("device", 7, "public"),
+        ("host", 0, "guard"),
+    ]

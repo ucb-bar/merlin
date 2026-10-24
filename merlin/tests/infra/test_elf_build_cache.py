@@ -100,6 +100,10 @@ def key_of(recipe, monkeypatch, store, lowering):
     return make
 
 
+def _store(key, work, elf, metadata=None):
+    BC.store(key, work, BC.BuildProducts(elf, products=tuple(BC.contents(work))), metadata)
+
+
 def _build(work: Path, text: str = "elf-bytes") -> Path:
     """Stand in for a compile: leave an executable and the intermediates beside it."""
     work.mkdir(parents=True, exist_ok=True)
@@ -162,7 +166,7 @@ def test_explicit_zero_input_roster_does_not_reuse_an_absent_input_build(key_of,
     assert absent is not None and explicit is not None and absent != explicit
     work = tmp_path / "built"
     _build(work)
-    BC.store(absent, work, ELF)
+    _store(absent, work, ELF)
     assert BC.reuse(tmp_path / "zero_input", explicit, ELF) is None
     assert not (tmp_path / "zero_input" / ELF).exists()
     assert BC.reuse(tmp_path / "same_absent", absent, ELF) is not None
@@ -371,7 +375,7 @@ def test_unresolvable_toolchain_reports_none(monkeypatch):
 def test_round_trip_restores_every_file_the_build_produced(key_of, tmp_path):
     key, first = key_of(), tmp_path / "first"
     _build(first)
-    BC.store(key, first, ELF)
+    _store(key, first, ELF)
 
     second = tmp_path / "second"
     restored = BC.reuse(second, key, ELF)
@@ -384,7 +388,7 @@ def test_round_trip_restores_every_file_the_build_produced(key_of, tmp_path):
 
 def test_a_miss_is_a_miss(key_of, tmp_path):
     _build(tmp_path / "first")
-    BC.store(key_of(), tmp_path / "first", ELF)
+    _store(key_of(), tmp_path / "first", ELF)
     other = key_of(lowered_mlir_text="module { // different }")
     assert BC.reuse(tmp_path / "second", other, ELF) is None
 
@@ -392,7 +396,7 @@ def test_a_miss_is_a_miss(key_of, tmp_path):
 def test_a_corrupted_entry_is_a_miss_and_leaves_nothing_behind(key_of, tmp_path, store):
     key = key_of()
     _build(tmp_path / "first")
-    BC.store(key, tmp_path / "first", ELF)
+    _store(key, tmp_path / "first", ELF)
     stored = next(p for p in store.rglob(f"files/{ELF}"))
     stored.write_text("tampered")
 
@@ -404,7 +408,7 @@ def test_a_corrupted_entry_is_a_miss_and_leaves_nothing_behind(key_of, tmp_path,
 def test_a_truncated_entry_is_a_miss(key_of, tmp_path, store):
     key = key_of()
     _build(tmp_path / "first")
-    BC.store(key, tmp_path / "first", ELF)
+    _store(key, tmp_path / "first", ELF)
     next(p for p in store.rglob("files/kernel.ll")).unlink()
     assert BC.reuse(tmp_path / "second", key, ELF) is None
 
@@ -412,7 +416,7 @@ def test_a_truncated_entry_is_a_miss(key_of, tmp_path, store):
 def test_a_record_from_another_version_is_not_read(key_of, tmp_path, store):
     key = key_of()
     _build(tmp_path / "first")
-    BC.store(key, tmp_path / "first", ELF)
+    _store(key, tmp_path / "first", ELF)
     rec = next(store.rglob("record.json"))
     payload = json.loads(rec.read_text())
     payload["version"] = BC.RECORD_VERSION + 1
@@ -422,7 +426,7 @@ def test_a_record_from_another_version_is_not_read(key_of, tmp_path, store):
 
 def test_no_key_never_hits_and_never_writes(tmp_path, store):
     _build(tmp_path / "w")
-    BC.store(None, tmp_path / "w", ELF)
+    _store(None, tmp_path / "w", ELF)
     assert BC.reuse(tmp_path / "w2", None, ELF) is None
     assert not store.exists() or not any(store.rglob("record.json"))
 
@@ -435,7 +439,7 @@ def test_no_key_never_hits_and_never_writes(tmp_path, store):
 def test_the_marker_makes_a_second_tier_free(key_of, tmp_path, store, monkeypatch):
     key, work = key_of(), tmp_path / "w"
     _build(work)
-    BC.store(key, work, ELF)
+    _store(key, work, ELF)
     assert (work / BC.KEY_MARKER).read_text() == key
     # With the store made unreachable, only the marker can answer -- so a hit here proves the ladder's
     # second tier never touches it.
@@ -446,7 +450,7 @@ def test_the_marker_makes_a_second_tier_free(key_of, tmp_path, store, monkeypatc
 def test_the_marker_does_not_answer_for_a_different_key(key_of, tmp_path, monkeypatch):
     work = tmp_path / "w"
     _build(work)
-    BC.store(key_of(), work, ELF)
+    _store(key_of(), work, ELF)
     monkeypatch.setenv("MERLIN_ELF_BUILD_CACHE", str(tmp_path / "elsewhere"))
     assert BC.reuse(work, key_of(lowered_mlir_text="other"), ELF) is None
 
@@ -454,7 +458,7 @@ def test_the_marker_does_not_answer_for_a_different_key(key_of, tmp_path, monkey
 def test_forget_drops_the_claim(key_of, tmp_path, monkeypatch):
     work = tmp_path / "w"
     _build(work)
-    BC.store(key_of(), work, ELF)
+    _store(key_of(), work, ELF)
     BC.forget(work)
     assert not (work / BC.KEY_MARKER).exists()
     monkeypatch.setenv("MERLIN_ELF_BUILD_CACHE", str(tmp_path / "elsewhere"))
@@ -471,7 +475,7 @@ def test_the_whole_directory_is_stored_not_a_diff(key_of, tmp_path):
     (work / "command_buffer.json").write_text('{"commands": []}')  # written by the emit step
     _build(work)
     assert set(BC.contents(work)) == {"command_buffer.json", "kernel.ll", "harness.c", ELF}
-    BC.store(key_of(), work, ELF)
+    _store(key_of(), work, ELF)
     second = tmp_path / "second"
     assert BC.reuse(second, key_of(), ELF) is not None
     assert (second / "command_buffer.json").read_text() == '{"commands": []}'
@@ -481,7 +485,7 @@ def test_contents_never_stores_the_key_marker(key_of, tmp_path):
     """The marker names the key its directory holds; storing it would ship one key inside another."""
     work = tmp_path / "w"
     _build(work)
-    BC.store(key_of(), work, ELF)
+    _store(key_of(), work, ELF)
     assert (work / BC.KEY_MARKER).is_file()
     assert BC.KEY_MARKER not in BC.contents(work)
     second = tmp_path / "second"
@@ -497,7 +501,7 @@ def test_a_restore_skips_what_is_already_in_place(key_of, tmp_path, monkeypatch)
     work.mkdir()
     (work / "lowered.llvm.mlir").write_text("module { /* emitted */ }")
     _build(work)
-    BC.store(key_of(), work, ELF)
+    _store(key_of(), work, ELF)
 
     second = tmp_path / "second"
     second.mkdir()
@@ -519,7 +523,7 @@ def test_a_same_length_but_different_file_is_replaced(key_of, tmp_path):
     work.mkdir()
     (work / "kernel.ll").write_text("; ir")
     _build(work)
-    BC.store(key_of(), work, ELF)
+    _store(key_of(), work, ELF)
     second = tmp_path / "second"
     second.mkdir()
     (second / "kernel.ll").write_text("; XX")  # same length, different bytes
@@ -551,6 +555,136 @@ def test_the_store_stays_bounded(key_of, tmp_path, store, monkeypatch):
     for i in range(6):
         work = tmp_path / f"w{i}"
         _build(work, text=f"elf-{i}")
-        BC.store(key_of(lowered_mlir_text=f"module {i}"), work, ELF)
+        _store(key_of(lowered_mlir_text=f"module {i}"), work, ELF)
     entries = [d for shard in store.iterdir() if shard.is_dir() for d in shard.iterdir()]
     assert len(entries) <= 3
+
+
+def test_interface_input_changes_build_identity(key_of):
+    assert key_of(interface_mlir_text="module { // first }") != key_of(interface_mlir_text="module { // second }")
+    assert key_of() != key_of(interface_mlir_text="")
+
+
+def test_default_store_does_not_replace_caller_inputs_or_invocations(key_of, tmp_path):
+    first, second = tmp_path / "donor", tmp_path / "receiver"
+    _build(first)
+    second.mkdir()
+    for directory, content in ((first, "donor"), (second, "receiver")):
+        (directory / "input.interface.mlir").write_text(content)
+        (directory / "invocations").mkdir()
+        (directory / "invocations/invocation.json").write_text(content)
+    BC.store(key_of(), first, ELF)
+    assert BC.reuse(second, key_of(), ELF) == second / ELF
+    assert (second / "input.interface.mlir").read_text() == "receiver"
+    assert (second / "invocations/invocation.json").read_text() == "receiver"
+
+
+@pytest.mark.parametrize("product", ["input.interface.mlir", "invocations/invocation.json", "../outside"])
+def test_store_refuses_nonproduct_members(key_of, tmp_path, product):
+    first = tmp_path / "donor"
+    _build(first)
+    BC.store(key_of(), first, BC.BuildProducts(ELF, products=(product,)))
+    assert BC.reuse(tmp_path / "receiver", key_of(), ELF) is None
+
+
+def test_certification_attempts_have_separate_stores(tmp_path, monkeypatch):
+    monkeypatch.setenv("MERLIN_ELF_BUILD_CACHE", str(tmp_path / "shared"))
+    ambient = BC.cache_root()
+
+    @BC.certification_cache
+    def grade(*, runs_root):
+        return BC.cache_root()
+
+    first = grade(runs_root=tmp_path / "grade")
+    second = grade(runs_root=tmp_path / "grade")
+    assert first != second
+    assert first.is_relative_to(tmp_path / "grade")
+    assert second.is_relative_to(tmp_path / "grade")
+    assert BC.cache_root() == ambient
+
+
+def test_certification_rebuilds_previous_attempt_in_same_workdir(tmp_path, store):
+    work = tmp_path / "generated"
+    _build(work, "ambient")
+    BC.store("key", work, ELF)
+    builds = []
+
+    @BC.certification_cache
+    def grade(*, runs_root):
+        assert BC.reuse(work, "key", ELF) is None
+        builds.append(len(builds))
+        _build(work, str(builds[-1]))
+        BC.store("key", work, ELF)
+        assert BC.reuse(work, "key", ELF) == work / ELF
+
+    grade(runs_root=tmp_path / "grade")
+    grade(runs_root=tmp_path / "grade")
+    assert builds == [0, 1]
+    assert (work / ELF).read_text() == "1"
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_certification_removes_attempt_store_on_exit(tmp_path, store, fails):
+    roots = []
+
+    @BC.certification_cache
+    def grade(*, runs_root):
+        roots.append(BC.cache_root())
+        work = tmp_path / "generated"
+        _build(work)
+        BC.store("key", work, ELF)
+        assert list(roots[-1].rglob("record.json"))
+        if fails:
+            raise RuntimeError("failed attempt")
+
+    if fails:
+        with pytest.raises(RuntimeError, match="failed attempt"):
+            grade(runs_root=tmp_path / "grade")
+    else:
+        grade(runs_root=tmp_path / "grade")
+    assert not roots[0].exists()
+    assert BC.cache_root() == store
+    assert not list((tmp_path / "grade" / ".elf-build-cache").iterdir())
+
+
+def test_same_named_support_sources_both_change_identity(recipe, key_of, tmp_path):
+    first, second = tmp_path / "one/crt.S", tmp_path / "two/crt.S"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text("first")
+    second.write_text("second")
+    recipe.support_sources = (first, second)
+    before = key_of()
+    first.write_text("changed")
+    assert key_of() != before
+
+
+def test_compile_rebuilds_when_only_interface_changes(recipe, key_of, tmp_path, monkeypatch):
+    from merlin.runtime.backends import base
+    from merlin.targetgen.contract import compile as compiler
+
+    recipe.with_effective_abi = lambda: recipe
+    monkeypatch.setattr(base, "harness_build_recipe", lambda target: recipe)
+    builds = []
+
+    def object_file(text, work, **kwargs):
+        builds.append(text)
+        (work / "kernel.o").write_text(text)
+        return work / "kernel.o"
+
+    def link(cb, obj, work, **kwargs):
+        return _build(work)
+
+    monkeypatch.setattr(compiler, "llvm_mlir_to_object", object_file)
+    monkeypatch.setattr(compiler, "link_elf", link)
+    work = tmp_path / "compile"
+    work.mkdir()
+    interface = work / "input.interface.mlir"
+    interface.write_text("first")
+    compiler.compile_lowered_to_elf({}, "module {}", work, target="fixture", inputs={})
+    compiler.compile_lowered_to_elf({}, "module {}", work, target="fixture", inputs={})
+    assert len(builds) == 1
+    interface.write_text("other")
+    compiler.compile_lowered_to_elf({}, "module {}", work, target="fixture", inputs={})
+    assert len(builds) == 2
+    assert interface.read_text() == "other"

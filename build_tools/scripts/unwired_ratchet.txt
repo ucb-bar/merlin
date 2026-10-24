@@ -11,7 +11,6 @@ merlin/python/merlin/perf/physical_layout_capture.py
 merlin/python/merlin/perf/pipeline_projection.py
 merlin/python/merlin/perf/quantization_planner.py
 merlin/python/merlin/perf/structural_planner.py
-merlin/python/merlin/targetgen/_aten_opset_worker.py
 merlin/python/merlin/targetgen/_capsule_bundle_worker.py
 merlin/python/merlin/targetgen/_m2m_capture_worker.py
 merlin/python/merlin/targetgen/_pt2_capture_worker.py

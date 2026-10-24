@@ -62,7 +62,7 @@ opcodes:
       # The per-opcode lines further down are documented SUBSETS of this one, never extensions.
       epilogue: "ordered subset of [bias_add, bias, requant, acc_scale, relu, maxpool]"
       output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
-      acc_scale: "f32; applied as clamp_i8(round_near_even(acc * scale)); required iff acc_scale in epilogue"
+      acc_scale: "f32; applied as clamp_i8(round_near_even(acc * scale)) in binary32, the declared device readout; a command that also names scale_numerator/scale_denominator, zero_point, quant_min, quant_max or rounding gets the exact rational host RNE instead (the pair takes precedence and acc_scale is then optional). Device defaults to full i32"
       requant_shift: "int; the integer requant stage's round-half-up arithmetic shift; REQUIRED iff requant in epilogue, defaulted by nothing -- an omitted shift is not 4, it is a stage whose one parameter nobody stated, and every engine would then apply its own"
       # Pooling geometry -- REQUIRED iff "maxpool" is in epilogue, defaulted by nothing. These are the
       # store-path configuration fields (config_st's pool_size / pool_stride / orows / ocols / upad /
@@ -91,10 +91,107 @@ opcodes:
     attributes:
       output_dtype: "the container dtype the values land in (operand dtype in, accumulate dtype out)"
       semantic: "string; the movement form being exercised (e.g. mvin_mvout)"
+      form: >-
+        "identity (default) | permute | slice | pad | broadcast | repeat". Absent, the op is the identity
+        round-trip below. Each other form names its own REQUIRED attributes and no default is applied:
+        permute {perm}; slice {offsets, sizes, strides}; pad {low, high, mode: constant|reflect|replicate,
+        value_code (constant only: the already-quantized pad code)}; broadcast {} (to dst's declared
+        shape, LEADING dims only -- a stride-0 load replays whole rows); repeat {repeats}
+      scale: >-
+        "legacy binary scalar, optional: exact host clamp(RNE(x * scale)), never an approximate load-path multiply; paired scale_numerator/scale_denominator takes precedence"
     semantics: >-
       identity load->store round-trip through the accelerator: dst holds src's values UNCHANGED,
       only the container dtype widens. No clamp, no requantize -- the point of the capsule is that
-      the data survives the trip bit-for-bit.
+      the data survives the trip bit-for-bit. A `form` restates WHICH elements move where
+      (torch permute / extract_slice / pad / broadcast / repeat semantics, defined once in
+      merlin.runtime.integer_ops.move), still with no arithmetic unless `scale` is stated.
+  CONCAT:
+    operands: {src0: tensor, src1: tensor, "src2..src7": "tensor (optional)", dst: output_tensor}
+    attributes:
+      axis: "int -- REQUIRED, no default"
+      output_dtype: "the destination container dtype"
+      scales: "[f32, ...] -- optional, one per source: each source is requantized once (see MOVEMENT scale); absent, sources share qparams and move unchanged"
+    semantics: >-
+      dst = cat([requant(src_i, scales[i]) for i], axis): torch.cat over sources of equal rank whose
+      shapes agree off the axis. Defined in merlin.runtime.integer_ops.concat.
+  INSERT_SLICE:
+    operands: {dest: tensor, src: tensor, dst: output_tensor}
+    attributes:
+      offsets: "[int] -- REQUIRED, one per dim"
+      strides: "[int >= 1] -- REQUIRED, one per dim"
+      output_dtype: "the destination container dtype"
+    semantics: >-
+      dst = dest with dst[offsets[d] + i*strides[d] for each d] = src[i] -- slice_scatter, and
+      select_scatter with the selected dim kept at size 1 (src rank equals dest rank). The slice must lie
+      inside dest. Defined in merlin.runtime.integer_ops.insert_slice.
+  FILL:
+    operands: {dst: output_tensor}
+    attributes:
+      value_code: "int -- REQUIRED; the ALREADY-quantized code, sat(RNE(v / s_out)) (merlin.targetgen.recipe_numerics.constant_code)"
+      output_dtype: "an integer dtype -- REQUIRED"
+    semantics: >-
+      every element of dst's declared shape is value_code: fill, full, full_like, and zero_fill
+      (value_code 0). Defined in merlin.runtime.integer_ops.fill.
+  AFFINE_MAP:
+    operands: {x: tensor, y: "tensor (optional)", dst: output_tensor}
+    attributes:
+      weights: "[int] -- REQUIRED, one per operand, |w| <= 381; applied in the int32 accumulator, never on an int8 load path"
+      constant: "int -- REQUIRED (0 for none); the int32 accumulator seed"
+      activation: "none | relu -- REQUIRED; relu acts on the ACCUMULATOR, before the scale"
+      readout_scale: "legacy binary scalar; optional with exact scale_numerator/scale_denominator; host only"
+      scale_numerator: "decimal integer string -- exact rational numerator"
+      scale_denominator: "positive decimal integer string -- paired denominator"
+      zero_point: "int, optional (0); added after RNE"
+      rounding: "half_to_even (default)"
+      output_dtype: "i8 (one readout rounding) | i32 (no readout: readout_scale must be 1.0) -- REQUIRED"
+      quant_min: "int, optional; default the dtype minimum"
+      quant_max: "int, optional; default the dtype maximum"
+    semantics: >-
+      acc = weights[0]*x + weights[1]*y + constant (exact int32 integers; overflow refuses);
+      acc = max(acc, 0) iff activation is relu; dst = clamp(round_half_even(acc * exact_rational_scale) + zero_point,
+      quant_min, quant_max) for an i8 result, dst = acc for an i32 result. y has x's shape or broadcasts
+      along LEADING dims only. This is the exact single-rounding form of add/sub.Tensor (signed rational
+      integer weights), add/sub.Scalar (integer gain and int32 constant), mul/div.Scalar and neg
+      (readout scale, negative for neg), standalone relu and int8 -> int32 widening; parameters come from
+      merlin.targetgen.recipe_numerics and the definition is merlin.runtime.integer_ops.affine_map.
+  WINDOW_SUM:
+    operands: {src: tensor, dst: output_tensor}
+    attributes:
+      mode: >-
+        "REQUIRED. window {kernel, stride, padding, count_include_pad} | adaptive {} (output extents from
+        dst) | reduce {dims, average} | window_transpose / adaptive_transpose (the pool backwards; same
+        attributes as window / adaptive, dst is the pooled op's INPUT shape) | fold {kernel, stride,
+        padding, dilation} (col2im: src [N, C*prod(kernel), L] -> dst [N, C, *spatial])"
+      readout_scale: "legacy binary scalar > 0; optional with exact rational pair; host only"
+      scale_numerator: "decimal integer string -- exact numerator of s_in / s_out"
+      scale_denominator: "positive decimal integer string -- paired denominator"
+      zero_point: "int, optional (0); added after RNE"
+      rounding: "half_to_even (default)"
+      output_dtype: "i8 (one readout per output) | i32 (no readout: readout_scale 1.0 and no divisor) -- REQUIRED"
+      layout: "nhwc (default; spatial dims are dims[1:-1]) | nchw (spatial dims are the trailing ones) -- window/adaptive modes"
+      ceil_mode: "bool, optional (window modes); torch's ceil_mode output extent"
+      divisor_override: "int > 0, optional (window modes); replaces every window's count"
+      quant_min: "int, optional"
+      quant_max: "int, optional"
+    semantics: >-
+      Exact int32 sums, full-width readout, then ONE exact host quantization per output:
+      dst[o] = clamp(round_half_even(acc[o] * exact_rational_scale / count[o]) + zero_point,
+      quant_min, quant_max). No floating accumulator conversion, product rounding or scale division.
+      window: acc[o] = sum of src over o's window (torch avg-pool geometry with symmetric padding; padded
+      cells contribute nothing), count[o] = the window's in-bounds size, its padded size when
+      count_include_pad, or divisor_override. adaptive: torch adaptive windows [floor(o*In/Out),
+      ceil((o+1)*In/Out)). reduce: the sum over dims, count = their product when average else 1 (a mean or
+      a sum). window_transpose / adaptive_transpose: each window w spreads its value over the positions it
+      covers divided by its count, stated exactly as integer weights L/count[w] (L = the least common
+      multiple of every count) into one accumulator with the readout readout_scale / L. fold: the sum of
+      overlapping patches (torch col2im), count 1. Defined in merlin.runtime.integer_ops.window_sum.
+  FENCE:
+    operands: {}
+    semantics: >-
+      A completion barrier: every earlier command's loads, stores and computes are complete and their
+      memory effects visible before any later command issues. No numeric effect in any engine. A command
+      that reads a tensor an EARLIER command of the same buffer wrote needs a FENCE between them on a
+      target whose contract obliges must_fence_dram_read_after_write (merlin.runtime.fences).
   ATTENTION_QK:
     operands: {q: tensor, k: tensor, dst: output_tensor}
     attributes:
@@ -151,19 +248,12 @@ opcodes:
       epilogue: "ordered subset of [relu]"
       output_dtype: "an integer dtype; the sum is saturated into it before the activation"
     semantics: >-
-      dst[i, j] = relu?( sat( roundeven( f32(lhs[i, j]) * lhs_scale + f32(rhs[i, j]) * rhs_scale ) ) ),
-      every product and the sum in IEEE single precision, ties to even. Two tensors that are already
-      quantized, possibly at different scales, summed into one output domain: a residual connection.
-      THE REFERENCE ROUNDS ONCE. That is what a fake-quantized capture computes (dequantize both,
-      add in floating point, quantize), and it is not what every unit computes: a unit with a
-      scaled, rounding load rounds EACH operand into the output's domain and then adds integers,
-      which can differ from the reference by one output step per operand. The two are different
-      functions, so the op does not pretend otherwise. `bound_lsb` is the DECLARED number of output
-      steps a target's result may lie from the reference, and a capsule grades with exactly that
-      absolute tolerance (`numeric_policy.compare: bounded_int`). Zero demands the capture's
-      arithmetic; one admits per-operand rounding. It has no default because a tolerance chosen
-      after a result is seen is not a gate, and a model that uses the op owes an accuracy receipt
-      for the bound it declares.
+      dst[i, j] = relu?( sat( RNE( exact(lhs[i, j]) * lhs_scale + exact(rhs[i, j]) * rhs_scale ) ) ),
+      every product and the sum in exact rational arithmetic. The final RNE and saturation are
+      the only quantization. Exact device admission requires bound_lsb 0 and recorded product
+      proofs for any floating load implementation. A scaled load that rounds each operand before
+      addition is refused; integer weights with full int32 readout and exact host requantization
+      provide the general implementation. Identity loads and exact integer sums remain admissible.
   CONV2D:
     operands: {ifm: tensor, weight: resident_handle_or_tensor, dst: output_tensor}
     attributes:
@@ -225,3 +315,16 @@ opcodes:
 correctness_gate: >-
   Integer workloads => exact equality (==), never a tolerance. reference_outputs(cb) and
   simulate(cb)["outputs"] MUST be equal (L0), and equal to the oracle output (L1/L2).
+
+exact_int32_host_readout:
+  api: merlin.runtime.exact_readout.requantize_int32
+  device_output: full-width signed int32 accumulator tiles; no scaling or narrowing
+  parameters: [scale_numerator, scale_denominator, zero_point, quant_min, quant_max, rounding, axis]
+  scale: exact rational effective coefficient, already divided by output_scale; denominator positive
+  broadcast: scalar or one-element vector; channel vectors along axis (default last)
+  semantics: clamp(RNE(acc * scale_numerator / scale_denominator) + zero_point, quant_min, quant_max)
+  result: int64 logical storage codes with the accumulator shape; store as declared int8/uint8 without rounding
+  rounding: half_to_even only; one rounding after all exact source arithmetic
+  refusal: non-int32 or overflowed accumulators, invalid extents, bounds, zero points or denominators
+  provider_proof: schedule.readout=full_i32 and schedule.requantization=retained_source_exact_integer with matching rational arrays
+  fp32_exception: Merlin conservatively requires full_i32; final-code equivalence alone never proves product exactness

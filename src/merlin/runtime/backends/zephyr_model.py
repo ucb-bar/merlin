@@ -1174,9 +1174,18 @@ def prepare_for_lowering(
     # below must be derived from the IR that REMAINS. Inert unless a routing was supplied, and inert
     # again unless that routing carries a selector or source-bound catalog. The placement decision
     # is made elsewhere (merlin.system.place or the catalog's exact source binding), never here.
-    prepared = prepare_device_route(
-        device, prepared, work, early_complete_groups=_early_complete_groups, selection=offload_selection
-    )
+    if device is not None and getattr(device, "region_offload", None) is not None:
+        # A provider-owned region offload: the provider binds and rewrites its regions itself and the
+        # link step adds its shim and object (llvmlower.device_build.apply_region_offload). A build that
+        # already applied it to the captured program is not offloaded twice.
+        from ...llvmlower.device_build import REGION_OFFLOAD_SIDECAR, apply_region_offload
+
+        if not (Path(work) / REGION_OFFLOAD_SIDECAR).is_file():
+            prepared = apply_region_offload(device, Path(prepared), Path(work))
+    else:
+        prepared = prepare_device_route(
+            device, prepared, work, early_complete_groups=_early_complete_groups, selection=offload_selection
+        )
 
     # The register-group-width REQUEST, resolved for the same reason the per-op block table is: the
     # width is a property of the arithmetic this module actually contains, and the prepared IR is the

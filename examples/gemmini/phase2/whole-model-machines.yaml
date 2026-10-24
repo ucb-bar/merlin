@@ -15,7 +15,7 @@ machines:
   # FireSimGemminiRocketConfig bitstream pinned by content in hardware_pins.yaml.
   full_u250_board:
     kind: firesim
-    hw_config: alveo_u250_firesim_gemmini_rocket_30mhz
+    hw_config: alveo_u250_firesim_gemmini_rocket_default
     chipyard: {env: MERLIN_CHIPYARD_GEMMINI_ROCKET}
     workload: merlin-phase2-wholemodel
     bootbinary: wholemodel-baremetal

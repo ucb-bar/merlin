@@ -27,7 +27,7 @@ def test_the_scales_the_bias_rule_and_the_multiplier_come_from_the_group() -> No
     # %b is the fifth model argument; its accumulator-domain value is b / (s_x * s_w).
     assert (numerics.bias_arg_index, numerics.bias_divisor) == (4, 0.25)
     assert (numerics.activation, numerics.clamp, numerics.granularity) == ("relu", (-128, 127), "tensor")
-    assert GN.stages(numerics) == ("bias_i32", "scale_f32", "round_to_nearest_even", "clamp", "relu")
+    assert GN.stages(numerics) == ("bias_i32", "relu", "scale_f32", "round_to_nearest_even", "clamp")
 
 
 def test_the_integer_group_computes_what_the_captured_graph_computes() -> None:

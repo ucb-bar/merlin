@@ -32,6 +32,9 @@ import math
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from merlin.targetgen._recipe_integer import _per_tensor_scale as _per_tensor_scale
+from merlin.targetgen._recipe_integer import integer_recipes as integer_recipes
+
 RECIPE_SCHEMA = "quant_recipe_v1"
 DEFAULT_OBSERVER_EPSILON = 2**-12
 
@@ -51,6 +54,7 @@ MIN_ACTIVATION_REDUCTION = 16
 #: datapath.
 _TORCH_DTYPE = {
     "int8": "int8",
+    "uint8": "uint8",
     "int16": "int16",
     "int32": "int32",
     "fp8_e4m3": "float8_e4m3fn",
@@ -60,6 +64,69 @@ _TORCH_DTYPE = {
 
 class RecipeError(ValueError):
     """The recipe cannot be realised with this framework build; says which field and why."""
+
+
+class NoEligibleRecipeOperations(RecipeError):
+    """The frontend proved that no operation is eligible for this recipe."""
+
+
+class CalibrationRefused(RecipeError):
+    """The calibration sample cannot be observed by the declared static recipe."""
+
+    code = "nonfinite_calibration"
+
+    def __init__(self, reason, *, details=None):
+        super().__init__(reason)
+        self.details = details or {}
+
+
+def require_finite_observer_state(model, observer_base, histogram_observer, *, calibration_sample):
+    """Reject nonfinite statistics produced internally from finite observer inputs."""
+    import torch
+
+    for path, observer in model.named_modules():
+        if not isinstance(observer, observer_base):
+            continue
+        buffers = list(observer.named_buffers(recurse=False))
+        if isinstance(observer, histogram_observer):
+            # HistogramObserver searches over an affine range in the buffers'
+            # own precision. Finite endpoints can still overflow that span.
+            buffers.append(("max_val-min_val", observer.max_val - observer.min_val))
+        for name, buffer in buffers:
+            if buffer.is_floating_point() and not bool(torch.isfinite(buffer).all()):
+                location = path or "<root>"
+                raise CalibrationRefused(
+                    f"static int8 calibration observer {location} buffer {name} is nonfinite",
+                    details=dict(
+                        observer_path=location,
+                        observer_type=type(observer).__qualname__,
+                        observer_buffer=name,
+                        calibration_sample=calibration_sample,
+                        nonfinite_count=int((~torch.isfinite(buffer)).sum()),
+                    ),
+                )
+
+
+def require_finite_calibration(value):
+    import torch
+
+    if isinstance(value, torch.Tensor):
+        if value.is_complex():
+            error = CalibrationRefused("static int8 calibration does not admit complex tensors")
+            error.code = "complex_calibration"
+            raise error
+        if value.is_floating_point() and not bool(torch.isfinite(value).all()):
+            raise CalibrationRefused("static int8 calibration input or observer value is nonfinite")
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            require_finite_calibration(item)
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            require_finite_calibration(item)
+    elif isinstance(value, complex):
+        error = CalibrationRefused("static int8 calibration does not admit complex scalar arguments")
+        error.code = "complex_calibration"
+        raise error
 
 
 def _require(recipe: Mapping[str, Any]) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
@@ -89,10 +156,58 @@ def _observer_name(tensor: Mapping[str, Any], *, is_weight: bool) -> str:
     return str(tensor.get("observer") or default)
 
 
+def _tensor_observer_class(tensor, *, is_weight):
+    """One observer choice shared by PT2E annotations and static case calibration."""
+    try:
+        from torchao.quantization.pt2e import HistogramObserver, MinMaxObserver
+    except ImportError:
+        from torch.ao.quantization.observer import HistogramObserver, MinMaxObserver
+    name = _observer_name(tensor, is_weight=is_weight)
+    if str(tensor.get("dtype", "")).startswith("fp8_") and name == "histogram":
+        raise RecipeError("FP8 histogram observation is unavailable in TorchAO PT2E; use minmax")
+    observer = {"minmax": MinMaxObserver, "histogram": HistogramObserver}.get(name)
+    if observer is None:
+        raise RecipeError(f"recipe observer {tensor.get('observer')!r} is not one this quantizer builds")
+    return observer
+
+
+def observe_static_tensor(value, tensor_spec, *, eps=DEFAULT_OBSERVER_EPSILON):
+    """Reuse the static recipe observer rule for an explicitly observed tensor input.
+
+    ATen contraction operands are both activations; neither is asserted to be a
+    stored model weight. PyTorch's observer classes implement the same PT2E rule
+    in capture environments without the optional TorchAO package.
+    """
+    import torch
+
+    if (
+        tensor_spec.get("mode") != "static"
+        or tensor_spec.get("granularity") != "tensor"
+        or not tensor_spec.get("symmetric")
+    ):
+        raise RecipeError("requires static symmetric per-tensor recipe")
+    if not torch.isfinite(value).all():
+        raise CalibrationRefused("calibration input is nonfinite")
+    name = _observer_name(tensor_spec, is_weight=False)
+    observer_class = _tensor_observer_class(tensor_spec, is_weight=False)
+    observer = observer_class(
+        dtype=_torch_dtype(tensor_spec["dtype"]),
+        qscheme=torch.per_tensor_symmetric,
+        quant_min=tensor_spec["quant_min"],
+        quant_max=tensor_spec["quant_max"],
+        eps=eps,
+    )
+    observer(value)
+    scale, zero_point = observer.calculate_qparams()
+    if zero_point.item() != 0 or not torch.isfinite(scale).all() or scale.item() <= 0:
+        raise RecipeError("observer did not produce finite positive symmetric qparams")
+    return scale.to(torch.float32).reshape(()), name
+
+
 def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float, channel_axis: int = 0):
     """One ``QuantizationSpec`` from one recipe tensor spec."""
     import torch
-    from torchao.quantization.pt2e import HistogramObserver, MinMaxObserver, PerChannelMinMaxObserver
+    from torchao.quantization.pt2e import PerChannelMinMaxObserver
     from torchao.quantization.pt2e.quantizer import QuantizationSpec
 
     granularity, symmetric = tensor.get("granularity"), bool(tensor.get("symmetric"))
@@ -106,16 +221,13 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float, channel_axi
         # HistogramObserver uses torch.iinfo and cannot observe an FP8 dtype; its MinMaxObserver
         # explicitly supports float8. Never silently replace an explicitly requested observer.
         observer_name = _observer_name(tensor, is_weight=is_weight)
-        if floating_format and observer_name == "histogram":
-            raise RecipeError("FP8 histogram observation is unavailable in TorchAO PT2E; use minmax")
-        observer = {"minmax": MinMaxObserver, "histogram": HistogramObserver}.get(observer_name)
         import _recipe_observers as RO  # noqa: PLC0415 -- a sibling, by bare name
 
         percentile = RO.percentile_of(observer_name)
         if percentile is not None and not floating_format:
             observer, arguments["percentile"] = RO.percentile_observer(), percentile
-        if observer is None:
-            raise RecipeError(f"recipe observer {tensor.get('observer')!r} is not one this quantizer builds")
+        else:
+            observer = _tensor_observer_class(tensor, is_weight=is_weight)
         axis = None
     elif granularity == "channel" and is_weight:
         qscheme = torch.per_channel_symmetric if symmetric else torch.per_channel_affine
@@ -235,6 +347,11 @@ def _recipe_operators(torch: Any) -> dict[str, tuple[Any, ...]]:
             torch.ops.aten.matmul.default,
             torch.ops.aten.mm.default,
             torch.ops.aten.bmm.default,
+            torch.ops.aten.addmm.default,
+            torch.ops.aten.convolution.default,
+            # The backward of a convolution is three contractions over the same three int8 tensors
+            # (grad_input, grad_weight and the grad_bias sum); the frontend integerizes it as such.
+            torch.ops.aten.convolution_backward.default,
         ),
         # The same contraction spellings, between two run-time activations: annotated only when the
         # recipe lists this family, with the activation spec on BOTH operands.
@@ -247,7 +364,59 @@ def _recipe_operators(torch: Any) -> dict[str, tuple[Any, ...]]:
         "window_mean": (
             torch.ops.aten.adaptive_avg_pool2d.default,
             torch.ops.aten.avg_pool2d.default,
+            # Closed additive reductions use the same ones-vector primitive;
+            # their mean/sum divisor is a retained exact readout coefficient.
             torch.ops.aten.mean.dim,
+            torch.ops.aten.mean.default,
+            torch.ops.aten.sum.dim_IntList,
+            torch.ops.aten.sum.default,
+            torch.ops.aten.avg_pool1d.default,
+            torch.ops.aten.avg_pool3d.default,
+            torch.ops.aten.adaptive_avg_pool1d.default,
+            torch.ops.aten.adaptive_avg_pool3d.default,
+            torch.ops.aten._adaptive_avg_pool2d.default,
+            torch.ops.aten._adaptive_avg_pool3d.default,
+            # Their transposes spread each window's (or patch's) value over the positions it covers:
+            # the same sums, read out once (runtime.integer_ops.window_sum).
+            torch.ops.aten.avg_pool2d_backward.default,
+            torch.ops.aten._adaptive_avg_pool2d_backward.default,
+            torch.ops.aten.col2im.default,
+        ),
+        # An affine map of one or two int8 tensors: integer weights and an int32 constant applied in
+        # the accumulator, then ONE readout (merlin.targetgen.recipe_numerics). Its result has its
+        # own scale, so its output edge is quantized here.
+        "affine_map": (
+            torch.ops.aten.add.Scalar,
+            torch.ops.aten.sub.Scalar,
+            torch.ops.aten.mul.Scalar,
+            torch.ops.aten.div.Scalar,
+            torch.ops.aten.neg.default,
+            torch.ops.aten.sub.Tensor,
+            torch.ops.aten.relu.default,
+            # Export keeps a python scalar operand on the .Tensor overload until decomposition.
+            torch.ops.aten.add.Tensor,
+            torch.ops.aten.mul.Tensor,
+            torch.ops.aten.div.Tensor,
+        ),
+        # Data motion: no arithmetic, so (by default) its output shares its input's quantization
+        # parameters; a fill writes a constant code on its own output grid.
+        "movement": (
+            torch.ops.aten.clone.default,
+            torch.ops.aten.permute.default,
+            torch.ops.aten.cat.default,
+            torch.ops.aten.repeat.default,
+            torch.ops.aten.constant_pad_nd.default,
+            torch.ops.aten.pad.default,
+            torch.ops.aten.reflection_pad1d.default,
+            torch.ops.aten.reflection_pad2d.default,
+            torch.ops.aten.reflection_pad3d.default,
+            torch.ops.aten.replication_pad2d.default,
+            torch.ops.aten.replication_pad3d.default,
+            torch.ops.aten.slice_scatter.default,
+            torch.ops.aten.select_scatter.default,
+            torch.ops.aten.full_like.default,
+            torch.ops.aten.fill.Scalar,
+            torch.ops.aten.full.default,
         ),
     }
     return operators
@@ -382,6 +551,113 @@ def _dynamic_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+#: Movement operators whose output is a constant, not a copy of an input.
+_CONSTANT_MOVEMENT = ("full_like.default", "fill.Scalar", "full.default")
+
+
+#: Floating widths a quantized graph reads a result out at, other than the recipe's own float32 grid.
+_READOUT_WIDTHS = ("float64", "float16", "bfloat16")
+
+
+def read_out_floating_widths(graph_module: Any, moves: set[Any]) -> list[dict[str, Any]]:
+    """Move a float dtype conversion or a non-float32 fill to the readout of a quantized graph.
+
+    On the int8 grid a value is its code and its scale; its floating WIDTH is chosen only when it is
+    dequantized. So a ``_to_copy`` that changes nothing but the float dtype is, in the quantized
+    domain, a copy of the codes, and a ``full``/``full_like`` of a float64 constant is a constant fill
+    of codes on its output grid. PT2E quantizes float32 edges only, so each such operation is spelt
+    at float32 here -- a conversion as a ``clone`` (the copy it is on codes), a fill with
+    ``dtype=float32``. After PT2E conversion, the requested width is put on the final
+    dequantization itself; a float32 dequantization followed by widening would lose bits.
+
+    Only operations the recipe's movement family covers move, and only when every tensor input is
+    float32 (a float64 INPUT cannot be quantized). Returns one record per rewritten node, which the
+    quantization stats carry as the rewrite's provenance (a re-export drops node metadata).
+    """
+    import torch
+
+    aten = torch.ops.aten
+    widths = {getattr(torch, name) for name in _READOUT_WIDTHS}
+    graph = graph_module.graph
+    rewritten = []
+    for node in list(graph.nodes):
+        value = node.meta.get("val")
+        if node.op != "call_function" or not isinstance(value, torch.Tensor) or value.dtype not in widths:
+            continue
+        if node.target in (aten._to_copy.default, aten.to.dtype) and aten.clone.default in moves:
+            # _to_copy(x, *, dtype, ...) after decomposition; to.dtype(x, dtype, ...) before it.
+            source = node.args[0] if node.args else None
+            positional = node.args[2:] if node.target == aten.to.dtype else node.args[1:]
+            extra = [v for key, v in node.kwargs.items() if key != "dtype"]
+            if (
+                not isinstance(source, torch.fx.Node)
+                or not isinstance(source.meta.get("val"), torch.Tensor)
+                or source.meta["val"].dtype != torch.float32
+                or any(v not in (None, False, torch.preserve_format, torch.strided) for v in [*positional, *extra])
+            ):
+                continue
+            with graph.inserting_before(node):
+                computed = graph.call_function(aten.clone.default, args=(source,))
+            computed.meta = {**node.meta, "val": source.meta["val"].clone()}
+        elif node.target in moves and str(node.target).endswith(("full_like.default", "full.default")):
+            if node.kwargs.get("dtype") != value.dtype:
+                continue
+            kwargs = {**node.kwargs, "dtype": torch.float32}
+            with graph.inserting_before(node):
+                computed = graph.call_function(node.target, args=node.args, kwargs=kwargs)
+            args = torch.fx.map_arg(node.args, lambda n: n.meta["val"])
+            computed.meta = {**node.meta, "val": node.target(*args, **kwargs)}
+        else:
+            continue
+        computed.meta["_m2m_source_aten"] = str(node.target)
+        with graph.inserting_after(computed):
+            readout = graph.call_function(aten._to_copy.default, args=(computed,), kwargs={"dtype": value.dtype})
+        readout.meta = {**node.meta, "val": computed.meta["val"].to(value.dtype), "merlin_readout_width": True}
+        node.replace_all_uses_with(readout)
+        graph.erase_node(node)
+        rewritten.append(
+            {
+                "node": node.name,
+                "operator": str(node.target),
+                "quantized_as": str(computed.target),
+                "readout_dtype": str(value.dtype).removeprefix("torch."),
+            }
+        )
+    if rewritten:
+        graph.lint()
+        graph_module.recompile()
+    return rewritten
+
+
+def restore_floating_readout_widths(graph_module: Any) -> None:
+    """Dequantize directly at a requested result width, without an intermediate f32 rounding.
+
+    Clone the boundary for this reader: other users may still require the f32 grid.
+    This applies only to readout conversions introduced by this recipe.
+    """
+    import torch
+
+    graph = graph_module.graph
+    for node in list(graph.nodes):
+        if not node.meta.get("merlin_readout_width"):
+            continue
+        source = node.args[0]
+        if not isinstance(source, torch.fx.Node) or not str(source.target).startswith(
+            "quantized_decomposed.dequantize_per_"
+        ):
+            raise NoEligibleRecipeOperations("floating readout width requires a direct dequantization boundary")
+        kwargs = {**source.kwargs, "out_dtype": node.kwargs["dtype"]}
+        with graph.inserting_before(node):
+            readout = graph.call_function(source.target, args=source.args, kwargs=kwargs)
+        readout.meta = {**node.meta}
+        readout.meta.pop("tensor_meta", None)
+        node.replace_all_uses_with(readout)
+        graph.erase_node(node)
+    graph.eliminate_dead_code()
+    graph.lint()
+    graph_module.recompile()
+
+
 def _has_floating_recipe_work(exported: Any, recipe: Mapping[str, Any]) -> bool:
     """Whether an integral-input graph still computes a floating recipe operation inside."""
     import torch
@@ -509,6 +785,17 @@ def build_quantizer(
         raise RecipeError("the dynamic block rounds stored weights to nearest; GPTQ codes are set on the static path")
     # Linears whose activation takes the recipe's ``static_planes`` grid (_static_planes).
     planes_block = dict(recipe.get("static_planes") or {})
+    affine = set(operators["affine_map"]) if "affine_map" in listed else set()
+    moves = set(operators["movement"]) if "movement" in listed else set()
+    #: shared (default): a movement's output and every input share one scale, as PT2E does for cat;
+    #: independent: each input keeps its own scale and the output gets its own (one load rounding each).
+    movement_qparams = recipe.get("movement_qparams", "shared")
+    if movement_qparams not in {"shared", "independent"}:
+        raise RecipeError(f"movement_qparams must be shared or independent, got {movement_qparams!r}")
+    #: narrow: the input edge of a negation uses [-qmax, qmax] so -(-128) never occurs.
+    negation_range = recipe.get("negation_input_range", "full")
+    if negation_range not in {"full", "narrow"}:
+        raise RecipeError(f"negation_input_range must be full or narrow, got {negation_range!r}")
     if not targets and not pairs:
         raise RecipeError(f"the recipe quantizes {recipe.get('families')}, none of which this quantizer can annotate")
     #: What a value may pass through on its way to a reader without ceasing to be the same integers:
@@ -539,29 +826,54 @@ def build_quantizer(
     decisions = {str(d.get("fqn")): d for d in layer_plan.get("layers") or ()}
     software_decisions = []
 
+    def contraction_operands(node: Any):
+        if node.target == torch.ops.aten.convolution_backward.default:
+            return node.args[:3]  # grad_output, input, weight
+        start = 1 if node.target == torch.ops.aten.addmm.default else 0
+        return node.args[start : start + 2]
+
     def software_allows(node: Any, family: str) -> bool:
         selected = recipe.get("software_admission")
         if selected is None:
             return True  # Compatibility recipes retain their recorded policy.
-        from merlin.targetgen.software_spec import admit_operation
+        from merlin.targetgen.software_spec import admit_contraction_operation, admit_operation
 
-        value = node.args[0].meta.get("val") if node.args and isinstance(node.args[0], torch.fx.Node) else None
+        operands = contraction_operands(node) if family == "contraction" else node.args
+        value = operands[0].meta.get("val") if operands and isinstance(operands[0], torch.fx.Node) else None
         prospective = {
             "family": family,
+            "numerical_family": "F3",
             "operand_dtype": activation["dtype"],
             "accum_dtype": recipe["accumulator_dtype"],
             "rank": len(value.shape) if isinstance(value, torch.Tensor) else None,
             "layout": "row_major_contiguous" if isinstance(value, torch.Tensor) and value.is_contiguous() else None,
             "scale_granularity": activation["granularity"],
         }
-        decision = admit_operation(selected, str(node.target), prospective, "accelerator")
+        if family == "contraction":
+            prospective.update(
+                ordered_operand_dtypes=[
+                    activation["dtype"],
+                    weight["dtype"] if stored_floating_weight(operands[-1]) else activation["dtype"],
+                    recipe["accumulator_dtype"],
+                ],
+                ordered_result_dtypes=[recipe["accumulator_dtype"]],
+                readout_dtype=recipe["accumulator_dtype"],
+            )
+            decision = admit_contraction_operation(selected, str(node.target), prospective, "accelerator")
+        else:
+            decision = admit_operation(selected, str(node.target), prospective, "accelerator")
         software_decisions.append(
             {
                 "node": node.name,
+                "source_operator": str(node.target),
+                "prospective_operator": str(node.target),
+                "prospective_signature": prospective,
                 **decision,
                 "scope": "prospective quantization screen; not realized precision or target admission",
             }
         )
+        if decision.get("applicable_exact_source_declaration"):
+            return decision["status"] == "admitted"
         return decision["status"] != "unsupported"
 
     def owner(node: Any) -> str | None:
@@ -571,23 +883,26 @@ def build_quantizer(
         paths = [entry[0] for entry in stack.values() if isinstance(entry, (tuple, list)) and entry]
         return str(paths[-1]) if paths else None
 
-    def stored_floating_weight(value: Any) -> bool:
-        if not isinstance(value, torch.fx.Node):
-            return False
-        if value.op == "get_attr":
-            tensor = value.meta.get("val")
-            return isinstance(tensor, torch.Tensor) and tensor.is_floating_point()
-        return bool(
-            value.op == "call_function"
-            and value.target in weight_views
-            and value.args
-            and stored_floating_weight(value.args[0])
+    def stored_weight_view(node: Any) -> bool:
+        return node.target in weight_views or (
+            node.target == torch.ops.aten.select.int
+            and len(node.args) == 3
+            and all(type(index) is int for index in node.args[1:])
+            and not node.kwargs
         )
 
-    def stored_weight_shape(value: Any) -> list[int] | None:
-        while isinstance(value, torch.fx.Node) and value.op == "call_function" and value.target in weight_views:
+    def stored_weight_tensor(value: Any):
+        while isinstance(value, torch.fx.Node) and value.op == "call_function" and stored_weight_view(value):
             value = value.args[0] if value.args else None
         tensor = value.meta.get("val") if isinstance(value, torch.fx.Node) and value.op == "get_attr" else None
+        return tensor if isinstance(tensor, torch.Tensor) else None
+
+    def stored_floating_weight(value: Any) -> bool:
+        tensor = stored_weight_tensor(value)
+        return tensor is not None and tensor.is_floating_point()
+
+    def stored_weight_shape(value: Any) -> list[int] | None:
+        tensor = stored_weight_tensor(value)
         return list(tensor.shape) if isinstance(tensor, torch.Tensor) else None
 
     def runtime_pair(node: Any) -> bool:
@@ -601,6 +916,8 @@ def build_quantizer(
         return all(isinstance(v, torch.Tensor) and v.is_floating_point() and v.dim() >= 2 for v in values)
 
     def eligible(node: Any, family: str) -> bool:
+        if family == "operand_sum" and node.meta.get("merlin_contraction_epilogue"):
+            return False
         # An activation contraction is a contraction to the SW admission screen; the family only
         # decides which spec its second operand takes.
         if not software_allows(node, "contraction" if family == ACTIVATION_CONTRACTION else family):
@@ -608,19 +925,33 @@ def build_quantizer(
         if family == ACTIVATION_CONTRACTION and int(node.args[0].meta["val"].shape[-1]) <= MIN_ACTIVATION_REDUCTION:
             return False
         if family == "contraction":
-            if len(node.args) < 2 or not stored_floating_weight(node.args[1]):
+            operands = contraction_operands(node)
+            # Plain `contraction` takes a stored weight and run-time pairs need ACTIVATION_CONTRACTION,
+            # unless the recipe declares its contraction weights run-time (a single Core ATen call).
+            if not operands or (
+                not recipe.get("runtime_weight_contractions") and not stored_floating_weight(operands[-1])
+            ):
                 return False
-            operand = node.args[0]
-            value = operand.meta.get("val") if isinstance(operand, torch.fx.Node) else None
-            if not isinstance(value, torch.Tensor) or not value.is_floating_point():
+            if len(operands) not in (2, 3) or any(
+                not isinstance(operand, torch.fx.Node)
+                or not isinstance((value := operand.meta.get("val")), torch.Tensor)
+                or not value.is_floating_point()
+                for operand in operands
+            ):
                 return False
         path = owner(node)
         if path is None:
             return False
         if path:
             decision = decisions.get(path)
-            if source_layer_inventory is not None and family == "contraction":
-                if not _source_weight_geometry_matches(source_layer_inventory, path, stored_weight_shape(node.args[1])):
+            if (
+                source_layer_inventory is not None
+                and family == "contraction"
+                and stored_floating_weight(contraction_operands(node)[-1])
+            ):
+                if not _source_weight_geometry_matches(
+                    source_layer_inventory, path, stored_weight_shape(contraction_operands(node)[-1])
+                ):
                     return False
             if decision is not None:
                 return bool(decision.get("placement") == "device" and decision.get("family") == family)
@@ -629,12 +960,10 @@ def build_quantizer(
             # it is a container in this plan before using the root operation rule.
             if not any(fqn.startswith(path + ".") for fqn in decisions):
                 return False
-        # Root/container arithmetic has no leaf decision. Check the actual stored
-        # operand and its shape with the same rule as a module.
+        # Root/container arithmetic has no leaf decision. Check the actual
+        # operand geometry with the same functional placement rule.
         if family == "contraction":
-            kernel_node = node.args[1]
-            while kernel_node.op == "call_function":
-                kernel_node = kernel_node.args[0]
+            kernel_node = contraction_operands(node)[-1]
             kernel = kernel_node.meta.get("val")
             shape = list(kernel.shape) if kernel is not None and hasattr(kernel, "shape") else None
         else:
@@ -651,11 +980,48 @@ def build_quantizer(
             return ACTIVATION_CONTRACTION
         if node.target in targets:
             return "contraction"
-        if node.target in sums:
+        if node.target in sums and len(tensor_operands(node)) == 2:
             return "operand_sum"
         if node.target in means:
             return "window_mean"
+        if node.target in affine and affine_operands_ok(node):
+            return "affine_map"
+        if node.target in moves:
+            return "movement"
         return None
+
+    def tensor_operands(node: Any) -> list[Any]:
+        return [a for a in node.args[:2] if isinstance(a, torch.fx.Node) and a.op != "get_attr"]
+
+    def affine_operands_ok(node: Any) -> bool:
+        """One tensor and a python scalar, or (a difference) two tensors; a stored operand is not."""
+        tensors, scalars = tensor_operands(node), [a for a in node.args[1:2] if isinstance(a, (int, float))]
+        if node.target in (torch.ops.aten.neg.default, torch.ops.aten.relu.default):
+            return len(tensors) == 1
+        if node.target in (torch.ops.aten.sub.Tensor, torch.ops.aten.add.Tensor) and len(tensors) == 2:
+            # A two-tensor sum or difference in its exact form: signed rational integer weights in the
+            # accumulator and one readout (recipe_numerics.linear_combination).
+            return True
+        return len(tensors) == 1 and len(scalars) == 1
+
+    def tensor_inputs(node: Any) -> list[Any]:
+        """The activation tensors an affine map or movement reads, in argument order."""
+        from merlin.targetgen._recipe_integer import data_arguments
+
+        return [
+            value
+            for value in data_arguments(node)
+            if isinstance(value, torch.fx.Node)
+            and value.op != "get_attr"
+            and isinstance(value.meta.get("val"), torch.Tensor)
+            and value.meta["val"].is_floating_point()
+        ]
+
+    def fused_behind_contraction(node: Any) -> bool:
+        """An epilogue of a contraction is group formation's to absorb, not a standalone site."""
+        if node.meta.get("merlin_contraction_epilogue"):
+            return True
+        return any(isinstance(a, torch.fx.Node) and a.target in targets for a in node.args)
 
     def closable(nodes: Any) -> set[Any]:
         """The sums and means whose result only quantized readers ever see.
@@ -722,8 +1088,20 @@ def build_quantizer(
             self.pair_sites: list[dict[str, Any]] = []
             self.annotated_sums = 0
             self.annotated_means = 0
+            self.annotated_maps = 0
+            self.annotated_moves = 0
+            if negation_range == "narrow":
+                from merlin.targetgen.recipe_numerics import narrow_range
+
+                low, high = narrow_range(int(activation["quant_max"]))
+                self.negation_input = _spec(
+                    {**activation, "quant_min": low, "quant_max": high}, is_weight=False, eps=eps
+                )
+            else:
+                self.negation_input = self.activation
             self.left_in_float = 0
             self.refused_by_placement: list[dict[str, str | None]] = []
+            self.refused_rewrites: list[dict[str, Any]] = []
             self.software_decisions = software_decisions
             self.fold_candidates = fold_candidates or []
             self.dynamic_rows: list[dict[str, Any]] = []
@@ -735,6 +1113,7 @@ def build_quantizer(
             import _recipe_extensions as extensions
 
             self.extensions = extensions.Extensions(recipe, self.epilogue)
+            self.readout_widths: list[dict[str, Any]] = []
 
         def rewrite_dynamic(
             self, graph_module: Any, samples: Any = None, limit: int | None = None
@@ -828,6 +1207,51 @@ def build_quantizer(
                 self.epilogue.equalize(
                     graph_module, lambda n: family_of(n) == "contraction" and eligible(n, "contraction")
                 )
+            if moves:
+                self.readout_widths = read_out_floating_widths(graph_module, moves)
+            # Preserve addmm as one exact readout boundary: decomposing its alpha/beta
+            # epilogue would round the MAC and scaled bias before their final sum.
+            # Normalize only the convolution spelling required by the frontend.
+            graph = graph_module.graph
+            for node in list(graph.nodes):
+                if node.target != torch.ops.aten.convolution.default:
+                    continue
+                if not eligible(node, "contraction"):
+                    continue
+                previous = set(graph.nodes)
+                with graph.inserting_before(node):
+                    if node.target == torch.ops.aten.convolution.default:
+                        input_value = node.args[0].meta.get("val")
+                        if not isinstance(input_value, torch.Tensor) or input_value.dim() != 4:
+                            self.refused_rewrites.append(
+                                {
+                                    "node": node.name,
+                                    "operator": str(node.target),
+                                    "reason": "convolution to conv2d requires a rank-4 input",
+                                }
+                            )
+                            node.meta["quantization_refusal"] = self.refused_rewrites[-1]["reason"]
+                            continue
+                        if len(node.args) != 9 or node.args[6] or any(node.args[7]):
+                            continue  # Transposed/output-padding semantics lack this rewrite.
+                        value = graph.call_function(torch.ops.aten.conv2d.default, args=(*node.args[:6], node.args[8]))
+                    # Compute metadata from each operation's own operands. A
+                    # scaled bias keeps its broadcast shape and no module owner.
+                    for created in graph.nodes:
+                        if created in previous:
+                            continue
+                        if created.target in (torch.ops.aten.mm.default, torch.ops.aten.conv2d.default):
+                            created.meta = dict(node.meta)
+                        else:
+                            created.meta = {"merlin_contraction_epilogue": True}
+                        created.meta["merlin_normalized_from"] = node.name
+                        args = torch.fx.map_arg(created.args, lambda n: n.meta["val"])
+                        kwargs = torch.fx.map_arg(created.kwargs, lambda n: n.meta["val"])
+                        created.meta["val"] = created.target(*args, **kwargs)
+                node.replace_all_uses_with(value)
+                graph.erase_node(node)
+            graph.lint()
+            graph_module.recompile()
             return graph_module
 
         def annotate(self, graph_module: Any) -> Any:
@@ -846,6 +1270,8 @@ def build_quantizer(
             for node in nodes:
                 if self.extensions.owns(node):
                     continue  # the owning contraction annotates the residual and its skip edge
+                if node.meta.get("quantization_refusal"):
+                    continue
                 family = family_of(node)
                 if family in dynamic_families:
                     continue  # rewritten by rewrite_dynamic, or listed there as kept in floating point
@@ -855,6 +1281,10 @@ def build_quantizer(
                     )
                     continue
                 if (node.target in sums or node.target in means) and node not in kept:
+                    # No quantized reader closes it. Where the recipe licenses a standalone readout
+                    # (affine_map), the sum or mean reads itself out: its output edge is quantized.
+                    if "affine_map" in listed:
+                        self._annotate_standalone(node, "operand_sum" if node.target in sums else "window_mean")
                     continue
                 if node.target in sums:
                     if shared_sums is not None:
@@ -877,6 +1307,7 @@ def build_quantizer(
                         node.meta["quantization_annotation"] = QuantizationAnnotation(
                             input_qspec_map={node.args[0]: self.activation}, _annotated=True
                         )
+                        node.meta["merlin_recipe_family"] = "window_mean"
                         self.annotated_means += 1
                     continue
                 if family == ACTIVATION_CONTRACTION:
@@ -895,9 +1326,12 @@ def build_quantizer(
                         }
                     )
                     continue
+                if family in {"affine_map", "movement"}:
+                    self._annotate_map(node, family)
+                    continue
                 if node.target not in targets or len(node.args) < 2:
                     continue
-                operand, kernel = node.args[:2]
+                *operands, kernel = contraction_operands(node)
                 planes = self.planes is not None and _planes_site(planes_block, node, owner(node))
                 # Both inputs of the contraction; its result stays in floating point and the next
                 # contraction quantizes its own input edge. What follows a contraction is absorbed
@@ -921,7 +1355,10 @@ def build_quantizer(
                     self.annotated += 1
                     continue
                 node.meta["quantization_annotation"] = QuantizationAnnotation(
-                    input_qspec_map={operand: self.planes if planes else self.activation, kernel: stored},
+                    input_qspec_map={
+                        **{operand: self.planes if planes else self.activation for operand in operands},
+                        kernel: stored if stored_floating_weight(kernel) else self.activation,
+                    },
                     _annotated=True,
                 )
                 self.annotated_planes += int(planes)
@@ -936,6 +1373,65 @@ def build_quantizer(
             )
             return graph_module
 
+        def _annotate_standalone(self, node: Any, family: str) -> None:
+            """A sum or mean that reads itself out: its tensor inputs and its own output scale."""
+            if family == "operand_sum":
+                operands = [a for a in node.args[:2] if isinstance(a, torch.fx.Node) and a.op != "get_attr"]
+                if len(operands) != 2:
+                    return
+            else:
+                operands = [node.args[0]] if node.args and isinstance(node.args[0], torch.fx.Node) else []
+                if not operands:
+                    return
+            node.meta["quantization_annotation"] = QuantizationAnnotation(
+                input_qspec_map={operand: self.activation for operand in operands},
+                output_qspec=self.activation,
+                _annotated=True,
+            )
+            node.meta["merlin_recipe_family"] = family
+            if family == "operand_sum":
+                self.annotated_sums += 1
+            else:
+                self.annotated_means += 1
+            self.left_in_float -= 1
+
+        def _annotate_map(self, node: Any, family: str) -> None:
+            """Input and output edges of a standalone affine map or movement."""
+            from torchao.quantization.pt2e.quantizer import SharedQuantizationSpec
+
+            if fused_behind_contraction(node):
+                return
+            inputs = tensor_inputs(node)
+            constant = family == "movement" and str(node.target).endswith(_CONSTANT_MOVEMENT)
+            if not inputs and not constant:
+                return
+            value = node.meta.get("val")
+            if not isinstance(value, torch.Tensor) or value.dtype != torch.float32:
+                # PT2E quantizes float32 edges only; a float64 (or integer) result stays as declared.
+                return
+            if family == "affine_map":
+                spec = self.negation_input if node.target == torch.ops.aten.neg.default else self.activation
+                input_map = {operand: spec for operand in inputs}
+                output = self.activation
+            elif constant:
+                input_map, output = {}, self.activation
+            elif movement_qparams == "independent":
+                input_map = {operand: self.activation for operand in inputs}
+                output = self.activation
+            else:
+                first = inputs[0]
+                input_map = {first: self.activation}
+                input_map.update({operand: SharedQuantizationSpec((first, node)) for operand in inputs[1:]})
+                output = SharedQuantizationSpec((first, node))
+            node.meta["quantization_annotation"] = QuantizationAnnotation(
+                input_qspec_map=input_map, output_qspec=output, _annotated=True
+            )
+            node.meta["merlin_recipe_family"] = family
+            if family == "affine_map":
+                self.annotated_maps += 1
+            else:
+                self.annotated_moves += 1
+
         def validate(self, graph_module: Any) -> None:
             del graph_module
             # COUNT EVERY FAMILY THE RECIPE LISTS, not just contractions. Three counters are kept and
@@ -944,11 +1440,19 @@ def build_quantizer(
             # false, and pointed a reader at the model rather than at this table.
             rewritten = sum(r["status"] == "rewritten" for r in self.dynamic_rows)
             annotated = self.annotated + self.annotated_planes + self.annotated_pairs
-            if annotated + self.annotated_sums + self.annotated_means + rewritten == 0:
-                raise RecipeError(
+            if (
+                annotated
+                + self.annotated_sums
+                + self.annotated_means
+                + self.annotated_maps
+                + self.annotated_moves
+                + rewritten
+                == 0
+            ):
+                raise NoEligibleRecipeOperations(
                     f"the model has no operator the recipe's families cover "
                     f"(families={list(listed)}; annotated contractions=0, activation contractions=0, "
-                    f"sums=0, means=0)"
+                    f"sums=0, means=0, maps=0, moves=0)"
                 )
 
     return CapabilityQuantizer()
@@ -1190,6 +1694,31 @@ def _no_batch_norm_fold_needed(original_snapshot: Any, exported: Any) -> bool:
     return True
 
 
+def _normalize_conv_padding(exported, padding_operator) -> list[dict]:
+    """Require the frontend's optional rewrite only for a graph that needs it."""
+    if not any(node.op == "call_function" and node.target == padding_operator for node in exported.graph.nodes):
+        return []
+    try:
+        from m2m.capture.pt2e_padding import normalize_conv2d_padding
+    except ModuleNotFoundError as exc:
+        if exc.name != "m2m.capture.pt2e_padding":
+            raise
+        raise RecipeError("selected frontend cannot normalize Conv2d string padding") from exc
+    return normalize_conv2d_padding(exported)
+
+
+def _allow_exported_model_train_eval(quantized) -> None:
+    """Use the public framework helper when the selected frontend predates its shim."""
+    try:
+        from m2m.capture.pt2e_compat import allow_exported_model_train_eval
+    except (ImportError, AttributeError):
+        try:
+            from torchao.quantization.pt2e import allow_exported_model_train_eval
+        except (ImportError, AttributeError):
+            from torch.ao.quantization import allow_exported_model_train_eval
+    allow_exported_model_train_eval(quantized)
+
+
 def apply_recipe(
     model: Any,
     recipe: Mapping[str, Any],
@@ -1209,7 +1738,7 @@ def apply_recipe(
     # the operations covered by this recipe before skipping calibration. A graph with only integer
     # contractions (such as an authored integer seam) still needs no observer.
     tensors = [t for t in (example_inputs or ()) if isinstance(t, torch.Tensor)]
-    integral_inputs = bool(tensors) and not any(torch.is_floating_point(t) for t in tensors)
+    integral_inputs = bool(tensors) and not any(t.is_floating_point() or t.is_complex() for t in tensors)
 
     def skip_already_integer() -> Any:
         model._recipe_quantization_stats = {  # type: ignore[attr-defined]
@@ -1258,7 +1787,8 @@ def apply_recipe(
 
     from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
 
-    if not example_inputs:
+    if example_inputs is None:
+        # An empty tuple is a model with no inputs (a constant fill): it exports and calibrates.
         raise RecipeError("a static recipe needs example inputs to export the model")
     # An ExportedProgram.module() GraphModule may return None from eval(); the
     # owned module, not that method's return value, remains the export input.
@@ -1284,9 +1814,7 @@ def apply_recipe(
     # exported graph before either the integral-input check or PT2E folding:
     # the recipe's operator table must never misread an unnormalized floating
     # Conv as absent. This does not rewrite the source model or its recipe.
-    from m2m.capture.pt2e_padding import normalize_conv2d_padding
-
-    padding_normalizations = normalize_conv2d_padding(exported)
+    padding_normalizations = _normalize_conv_padding(exported, torch.ops.aten.conv2d.padding)
     if original_frontend_snapshot is not None:
         source_nodes = {row["id"]: row for row in original_frontend_snapshot.get("nodes", ())}
         source_padding_schema = torch.ops.aten.conv2d.padding._schema.arguments
@@ -1358,6 +1886,19 @@ def apply_recipe(
     if dynamic:
         _verify_dynamic_sites(exported, dynamic, example_inputs, calibration_inputs)
     prepared = prepare_pt2e(exported, quantizer)
+    # Validate observer inputs before HistogramObserver/MinMaxObserver perform
+    # reductions, including nonfinite intermediates from finite caller inputs.
+    try:
+        from torchao.quantization.pt2e.observer import HistogramObserver, ObserverBase
+    except ImportError:
+        from torch.ao.quantization.observer import HistogramObserver, ObserverBase
+
+    observer_checks = [
+        observer.register_forward_pre_hook(lambda _module, args: require_finite_calibration(args))
+        for observer in prepared.modules()
+        if isinstance(observer, ObserverBase)
+    ]
+    declared_domain = recipe.get("calibration_domain")
     samples = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
     sample_limit = calibration_limit(recipe, calibration_samples)
     # GPTQ weight rounding, when the recipe asks for it: Hessians accumulate during this same
@@ -1373,12 +1914,24 @@ def apply_recipe(
     except ImportError:
         from merlin.targetgen._capture_integer_mm import exact_integer_mm
 
-    with torch.no_grad(), _RepeatedObservationSkip(prepared), tracking, exact_integer_mm(torch):
-        for sample in samples:
-            if calibrated >= sample_limit:
-                break
-            prepared(*_as_tuple(sample))
-            calibrated += 1
+    try:
+        with torch.no_grad(), _RepeatedObservationSkip(prepared), tracking, exact_integer_mm(torch):
+            if declared_domain is not None:
+                from merlin.targetgen.declared_calibration import initialize_observers
+
+                initialize_observers(prepared, declared_domain, ObserverBase)
+                calibrated = 1
+            else:
+                for sample in samples:
+                    if calibrated >= sample_limit:
+                        break
+                    require_finite_calibration(sample)
+                    prepared(*_as_tuple(sample))
+                    calibrated += 1
+                    require_finite_observer_state(prepared, ObserverBase, HistogramObserver, calibration_sample=calibrated)
+    finally:
+        for check in observer_checks:
+            check.remove()
     if calibrated == 0:
         raise RecipeError("static calibration saw no input sample")
     weight_rounding_report = weight_rounding.apply() if weight_rounding is not None else None
@@ -1386,12 +1939,25 @@ def apply_recipe(
         epilogue.correct_biases(prepared)  # GPTQ chose the codes itself; its bias is left as calibrated
     quantizer.extensions.freeze(prepared)
     quantized = convert_pt2e(prepared, use_reference_representation=False, fold_quantize=True)
+    scale_changes = []
+    if recipe["activation"]["dtype"] in {"int8", "uint8"}:
+        # References and integerization must observe the same canonical graph.
+        # The frontend's idempotent owner retains every changed scale in its
+        # ledger, before either the independent oracle or recipe extraction.
+        # The accumulator step S = s_x * s_w below is formed from these binary32 scales.
+        from m2m.capture.quant_scales import canonicalize_pt2e_scales
+
+        scale_changes = canonicalize_pt2e_scales(quantized)
     if quantizer.shared_sums is not None:
         quantizer.shared_sums.rewrite(quantized)
     island = epilogue.finish(quantized, recipe.get("float_island")) if epilogue is not None else None
     extension_reports = quantizer.extensions.finish(quantized)
     snap = recipe.get("bias_domain") == "accumulator" and epilogue is None
     bias_grid = _bias_onto_accumulator_grid(quantized) if snap else None
+    restore_floating_readout_widths(quantized)
+    from merlin.targetgen.declared_calibration import declared_integer_recipes, normalize_quantizer_nans
+
+    normalize_quantizer_nans(quantized, recipe.get("quantization_nonfinite"))
     if original_frontend_snapshot is not None:
         from m2m.capture.trace import attach_quantization_boundaries
 
@@ -1406,18 +1972,14 @@ def apply_recipe(
         pruned = _drop_unused_graph_state(quantized)
     except Exception:  # noqa: BLE001 -- an optional tidy-up; the graph is correct without it
         pass
-    try:
-        from torch.ao.quantization import allow_exported_model_train_eval
-
-        allow_exported_model_train_eval(quantized)
-    except (ImportError, AttributeError):
-        pass
+    _allow_exported_model_train_eval(quantized)
     quantized._recipe_quantization_stats = {  # type: ignore[attr-defined]
         "api": "pt2e",
         "recipe_sha256": recipe.get("recipe_sha256"),
         "plan_sha256": layer_plan.get("plan_sha256"),
         "layers_on_host": [d for d in layer_plan.get("layers") or () if d.get("placement") == "host"],
         "operators_refused_by_placement": quantizer.refused_by_placement,
+        "rewrites_refused": quantizer.refused_rewrites,
         # Every annotated contraction, whatever its operands: the capture's census compares this with
         # the contractions the integer rewrite saw. The activation x activation share is broken out.
         "annotated_contractions": quantizer.extensions.physical_contractions(
@@ -1446,6 +2008,13 @@ def apply_recipe(
         "annotated_sums": quantizer.annotated_sums,
         **({"shared_grid_operand_sums": quantizer.shared_sums.census()} if quantizer.shared_sums is not None else {}),
         "annotated_means": quantizer.annotated_means,
+        "annotated_affine_maps": quantizer.annotated_maps,
+        "annotated_movements": quantizer.annotated_moves,
+        # Float dtype conversions and fills spelt at float32 and read out at their requested width.
+        "floating_readout_widths": quantizer.readout_widths,
+        # The exact integer form of every quantized affine map and movement, from its observed scales.
+        "integer_recipes": declared_integer_recipes(quantized, declared_domain),
+        "scale_canonicalization": {"dtype": "float32", "changes": scale_changes},
         # Sums and means the recipe's families cover and the graph does not requantize: left alone.
         "sums_and_means_left_in_float": quantizer.left_in_float,
         "calibration_samples": calibrated,
@@ -1460,7 +2029,11 @@ def apply_recipe(
             "activation_observer": _observer_name(recipe["activation"], is_weight=False),
             "weight_observer": _observer_name(recipe["weight"], is_weight=True),
             "observer_epsilon": epsilon,
-            "calibration_source": "explicit_calibration_stream" if calibration_inputs is not None else "example_inputs",
+            "calibration_source": "declared_observer_domain" if declared_domain is not None else "explicit_calibration_stream" if calibration_inputs is not None else "example_inputs",
+            "calibration_domain": declared_domain,
+            "quantization_nonfinite": recipe.get("quantization_nonfinite"),
+            "readout_specials": recipe.get("readout_specials"),
+            "f32_boundary_overflow": recipe.get("f32_boundary_overflow"),
             "calibration_count": calibrated,
             "calibration_sample_limit": sample_limit,
         },

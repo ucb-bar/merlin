@@ -18,6 +18,21 @@ Numerical falsifiability audits and answer-bearing RTL replay construction also 
 here (`numeric_falsifiability` and `rtl.gen_rocc_replay` under the stable targetgen
 namespace). Their output can contain private expected values and remains host-only.
 
+Source-bound full-call Phase 1 evaluation can explicitly select `--candidate-policy`
+with an operator JSON file containing `root`, `policy`, `bwrap` (`path`, `sha256`),
+and `workspace_root`. The resource root and policy must reopen through the existing
+frozen package sandbox owner. This selection is recorded at admission, propagated
+to host grading children, and rechecked on resume and formal grading.
+The selected support provider supplies fixed compiler commands and closed data
+product rosters. Candidate Python runs with the frozen tools, read-only copied
+source, explicit private denials, and bounded outputs in a networkless namespace.
+Trusted support code independently validates the retained source, catalog and
+compiled object. Compiler diagnostics supply no numerical or qualification credit.
+This mode requires exported full-call capsules and refuses submitted package build
+commands, other capsule entrypoints, and oracle-free evaluation. An absent selection
+preserves existing invocation behavior. No resource policy or compiler certificate
+is invented when a selection is missing.
+
 `merlin experiment list` starts at the checked-in experiment catalog. Inspect and
 preflight never launch agents. Run and resume invoke the existing phase engines;
 their scoring, AET records and certification policies remain authoritative.

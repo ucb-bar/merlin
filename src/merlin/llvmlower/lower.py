@@ -125,6 +125,7 @@ def lower_model(
     source_optimizations: SourceOptimizationSelection | None = None,
     descriptor_result_identities: tuple = (),
     source_recomputation: SourceRecomputationSelection | None = None,
+    preserve_result_descriptors: bool = False,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -599,6 +600,7 @@ def lower_model(
                     if borrowed_buffer_calls is not None
                     else None
                 ),
+                preserve_result_descriptors=preserve_result_descriptors,
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -732,6 +734,7 @@ def lower_model_file(
     source_optimizations: SourceOptimizationSelection | None = None,
     descriptor_result_identities: tuple = (),
     source_recomputation: SourceRecomputationSelection | None = None,
+    preserve_result_descriptors: bool = False,
 ) -> LowerResult:
     audit_mode(ir_audit)
     if type(descriptor_result_identities) is not tuple:
@@ -764,4 +767,5 @@ def lower_model_file(
         retain_llvm_dialect=retain_llvm_dialect,
         graph_optimizations=graph_optimizations,
         op_profile=op_profile,
+        preserve_result_descriptors=preserve_result_descriptors,
     )

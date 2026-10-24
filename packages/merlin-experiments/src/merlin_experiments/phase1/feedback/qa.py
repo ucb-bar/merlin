@@ -34,7 +34,9 @@ from merlin.common.artifacts import cache_dir  # noqa: E402 — purgeable work t
 from merlin.targetgen import capsule_grade as CG  # noqa: E402
 from merlin.targetgen import capsule_runner as CR  # noqa: E402
 from merlin.targetgen import tier_integrity as _TI  # noqa: E402
-from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, readback_kwargs, resolve_context
+from merlin.targetgen.capsule_common import host_guards_pass, lane_entry_fields  # noqa: E402
+from merlin.targetgen.tier_policy import raised_tiers  # noqa: E402
+from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, oracle_kwargs, resolve_context
 
 from .qualification_summary import summarize as qualification_summary
 
@@ -873,6 +875,8 @@ def run(
     on_capsule_complete=None,
     max_workers: int = 0,
 ) -> dict:
+    if no_oracle and getattr(context, "candidate_policy", None) is not None:
+        raise ValueError("candidate compilation selection requires oracle evaluation")
     # Loop gate = L0+L1+trace + the target's full reachable oracle ladder, screened cheapest-first. The
     # adapters are resolved from the descriptor's target+sim_via via the shared factory, so a non-chipyard
     # target (arc/cyclotron) grades on its own RTL-derived tier with NO target-specific path.
@@ -901,11 +905,14 @@ def run(
     # A screen may eliminate; it may never certify (see merlin.targetgen.tier_policy).
     from .. import joint_control
     _loop_adapters = {} if no_oracle else (
-        CR.qa_loop_adapters(_target, _sim_via, declared_tiers={"L2"}, **readback_kwargs(context))
-        if joint_control.selected() else CR.qa_checkpoint_adapters(_target, _sim_via, **readback_kwargs(context))
+        CR.qa_loop_adapters(_target, _sim_via, declared_tiers={"L2"}, **oracle_kwargs(context))
+        if joint_control.selected() else CR.qa_checkpoint_adapters(_target, _sim_via, **oracle_kwargs(context))
     )
     if joint_control.selected() and set(_loop_adapters) - {"L0", "L1", "L2"}:
         raise ValueError("joint background grade selected a physical tier")
+    # An operator tier floor is a certification requirement: certified at the checkpoint barrier, its fix
+    # rounds and the formal grades, never re-bought on every capsule in every 900 s feedback grade.
+    _loop_adapters = CR.defer_tiers(_loop_adapters, raised_tiers(_decl)) if _loop_adapters else _loop_adapters
     # Refuse ONLY when the endpoint exposes tiers but none of them is declared — substituting one there is
     # the defect. An endpoint that reaches nothing at all is an honestly ABSENT oracle: leave the adapter
     # set empty and let each capsule report its missing tier as unavailable, exactly as before.
@@ -983,6 +990,7 @@ def run(
                 "execution_digest": rich.get("execution_digest"),
             }
         )
+        per_capsule[-1].update(lane_entry_fields(pc))
         if rich.get("placement_coverage"):
             per_capsule[-1]["placement_coverage"] = rich["placement_coverage"]
         if rich.get("candidate_native_verification") is not None:
@@ -1099,6 +1107,20 @@ def run(
                 )
             ),
         }
+    for key in (
+        "device_lane_scored_pass",
+        "device_evidence_count",
+        "spec_qualified_device_pass",
+        "device_unqualified_pass",
+        "host_lane_scored_pass",
+        "host_guard_pass",
+        "host_guard_total",
+    ):
+        if key in score:
+            verdict[key] = score[key]
+    # Guards are recorded only by a grade that saw them; a failed host guard fails the round.
+    if "host_guard_total" in score and not host_guards_pass(score):
+        verdict["all_pass"] = False
     # AN INFRASTRUCTURE FAULT IS NOT A ROUND RESULT. `grade` already refuses to call such a run
     # gradeable, but this verdict is what gets ARCHIVED as qa_history/verdict_round_NN.json, fed to the
     # next round as the agent's own failure history by round_brief, and read back by every trajectory

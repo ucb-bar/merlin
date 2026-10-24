@@ -75,7 +75,6 @@ def make_context():
     """A permissive context for tensor sources and prepared bufferized writers."""
     from xdsl.context import Context
     from xdsl.dialects.arith import Arith
-    from xdsl.dialects.bufferization import Bufferization
     from xdsl.dialects.builtin import Builtin
     from xdsl.dialects.cf import Cf
     from xdsl.dialects.func import Func
@@ -95,7 +94,9 @@ def make_context():
     register_fp8_float_constraints()
 
     ctx = Context(allow_unregistered=True)
-    for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, MemRef, Bufferization):
+    from .bufferization_compat import dialect as bufferization_dialect
+
+    for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, MemRef, bufferization_dialect()):
         ctx.load_dialect(d)
     return ctx
 

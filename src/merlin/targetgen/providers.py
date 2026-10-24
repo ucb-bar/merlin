@@ -37,6 +37,7 @@ class Provider:
     root: Path
     contract_path: Path | None = None
     declared: bool = False
+    source_dependencies: tuple[tuple[str, Path], ...] = ()
 
 
 def _mapping(path: Path) -> dict[str, Any]:
@@ -72,6 +73,52 @@ def contained_resource(root: Path, value: str) -> Path:
     return resolved
 
 
+def _source_dependencies(root: Path, value: Any, metadata: Path) -> tuple[tuple[str, Path], ...]:
+    """Resolve explicitly declared sibling source owners, never infer a parent tree."""
+    if not isinstance(value, dict):
+        raise ProviderError(f"{metadata}: source_dependencies must be a mapping")
+    dependencies: list[tuple[str, Path]] = []
+    for name, relative in sorted(value.items(), key=lambda item: str(item[0])):
+        if type(name) is not str or not name.isascii() or not name.isidentifier():
+            raise ProviderError(f"{metadata}: source dependency name must be an ASCII identifier")
+        if type(relative) is not str or "\\" in relative:
+            raise ProviderError(f"{metadata}: source dependency requires canonical ../sibling spelling")
+        parts = relative.split("/")
+        if (
+            len(parts) != 2
+            or parts[0] != ".."
+            or parts[1] in {"", ".", ".."}
+            or not parts[1].isascii()
+            or any(not (char.isalnum() or char in "_.-") for char in parts[1])
+        ):
+            raise ProviderError(f"{metadata}: source dependency requires canonical ../sibling spelling")
+        path = root.parent / parts[1]
+        if any(member.is_symlink() for member in (path, *path.parents)):
+            raise ProviderError(f"{metadata}: source dependency path contains a symlink")
+        try:
+            resolved = path.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise ProviderError(f"{metadata}: source dependency is absent") from exc
+        if resolved != path or not path.is_dir():
+            raise ProviderError(f"{metadata}: source dependency must be an ordinary canonical directory")
+        if (
+            path.is_relative_to(root)
+            or root.is_relative_to(path)
+            or any(path.is_relative_to(other) or other.is_relative_to(path) for _, other in dependencies)
+        ):
+            raise ProviderError(f"{metadata}: source dependency ownership overlaps")
+        dependencies.append((name, path))
+    return tuple(dependencies)
+
+
+def support_source_dependencies(root: str | Path) -> dict[str, Path]:
+    """Read explicit support source ownership; this grants no executable or access authority."""
+    provider = read_provider(root)
+    if provider is None or provider.role != ProviderRole.SUPPORT:
+        raise ProviderError(f"{root}: source dependencies require a support provider")
+    return dict(provider.source_dependencies)
+
+
 def read_provider(root: str | Path) -> Provider | None:
     """Describe a package without importing it or qualifying any claimed capability.
 
@@ -79,13 +126,16 @@ def read_provider(root: str | Path) -> Provider | None:
     support providers. Legacy schedule payloads take precedence over ABI-looking wrappers, since
     such wrappers do not make schedules standalone compilers. Unrecognized directories return None.
     """
-    root = Path(root).resolve()
+    selected_root = Path(root).absolute()
+    root = selected_root.resolve()
     metadata = root / METADATA_FILE
-    if metadata.is_file():
+    if metadata.exists() or metadata.is_symlink():
+        if metadata.is_symlink() or not metadata.is_file():
+            raise ProviderError(f"{metadata}: provider metadata must be an ordinary file")
         doc = _mapping(metadata)
         if doc.get("schema") != SCHEMA:
             raise ProviderError(f"{metadata}: expected schema {SCHEMA!r}")
-        unknown = set(doc) - {"schema", "id", "target", "role", "contract"}
+        unknown = set(doc) - {"schema", "id", "target", "role", "contract", "source_dependencies"}
         if unknown:
             raise ProviderError(f"{metadata}: unknown fields {sorted(unknown)}")
         identity = _identity(doc.get("id"), field="id", path=metadata)
@@ -103,7 +153,14 @@ def read_provider(root: str | Path) -> Provider | None:
                 raise ProviderError(f"{metadata}: target {target!r} differs from contract name {name!r}")
         elif "contract" in doc:
             raise ProviderError(f"{metadata}: only support providers may declare a contract")
-        return Provider(identity, target, role, root, contract, declared=True)
+        if "source_dependencies" in doc and role != ProviderRole.SUPPORT:
+            raise ProviderError(f"{metadata}: only support providers may declare source dependencies")
+        if doc.get("source_dependencies") and (
+            selected_root != root or any(member.is_symlink() for member in (selected_root, *selected_root.parents))
+        ):
+            raise ProviderError(f"{metadata}: dependency provider root must be canonical and unlinked")
+        dependencies = _source_dependencies(root, doc.get("source_dependencies", {}), metadata)
+        return Provider(identity, target, role, root, contract, declared=True, source_dependencies=dependencies)
 
     contract = root / "contracts" / "target_contract.yaml"
     if contract.is_file():

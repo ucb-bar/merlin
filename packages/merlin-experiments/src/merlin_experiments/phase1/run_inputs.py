@@ -18,6 +18,39 @@ from pathlib import Path
 
 import yaml
 
+#: Build products and VCS metadata a graded copy of a submission never carries.
+SUBMISSION_IGNORED = shutil.ignore_patterns("build", "__pycache__", ".git")
+
+
+class IndirectSubmission(RuntimeError):
+    """A submitted tree held a symbolic link or special file (the message names no path)."""
+
+
+def copy_candidate_tree(source: Path, destination: Path, *, ignore=None) -> None:
+    """Copy candidate-controlled ``source`` to ``destination``, refusing symbolic links and special files.
+
+    A copy that followed a link would read host files (private answers, truth) into a tree the candidate's
+    code later reads in its sandbox; a copied link would resolve there to whatever that sandbox mounts; a
+    FIFO would block the copy. Members ``ignore`` drops are not copied and so are not inspected.
+    """
+    root = Path(source)
+    if root.is_symlink() or not root.is_dir():
+        raise IndirectSubmission("the submission must be an ordinary directory")
+    for directory, names, files in os.walk(root):
+        skipped = set(ignore(directory, [*names, *files])) if ignore else set()
+        names[:] = [name for name in names if name not in skipped]
+        for name in [*names, *(f for f in files if f not in skipped)]:
+            path = Path(directory) / name
+            if path.is_symlink() or not (path.is_dir() or path.is_file()):
+                raise IndirectSubmission(
+                    "the submission contains a symbolic link or special file; graded submissions may hold "
+                    "only ordinary files and directories"
+                )
+    shutil.copytree(root, destination, ignore=ignore, symlinks=True)
+    if any(path.is_symlink() for path in Path(destination).rglob("*")):  # a link added while copying
+        shutil.rmtree(destination)
+        raise IndirectSubmission("the submission changed to hold a symbolic link while it was copied")
+
 
 def strip_build_state(root: Path) -> None:
     """Delete all cmake/ninja build state under `root` so a graded copy builds from scratch in its OWN

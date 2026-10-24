@@ -1420,4 +1420,11 @@ def render_prompt(
         isa_dev_tools=isa_dev_tools,
         enforced_workflow=enforced_workflow,
     )
+    # A manifest without a capability contract (independent compiler tasks) selects no full-call text.
+    contract = getattr(manifest, "contract", None)
+    instructions = ((contract or {}).get("runner") or {}).get("full_call_instructions")
+    if instructions is not None:
+        if not isinstance(instructions, str) or not instructions.strip():
+            raise ValueError("runner.full_call_instructions must be nonempty text")
+        body += "\n\n" + instructions
     return body if selected is None else body + shared_pass_prompt_block(selected)

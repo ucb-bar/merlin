@@ -3,7 +3,7 @@ title: "Design: rules for citable agentic-compiler experiments"
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-08
+last_verified: 2026-10-10
 related: [derived_capsule_axes, capsule_phase_split, radiance_staged_evaluation]
 code_refs:
   - packages/merlin-experiments/src/merlin/targetgen/capsule_grade.py

@@ -47,7 +47,96 @@ COMPOSITES: dict[str, tuple[str, ...]] = {
 FAMILIES: frozenset[str] = frozenset(PRIMITIVES) | frozenset(COMPOSITES)
 
 
-def operation_form(op: str | None, *, carrier_op: str | None = None) -> str | None:
+#: Carriers whose work is a strided copy of a block of rows into or out of a larger tensor.
+_COPY_CARRIERS = frozenset(
+    {
+        "linalg.copy",
+        "memref.copy",
+        "merlin_iface.movement",
+        "tensor.concat",
+        "tensor.insert_slice",
+        "tensor.extract_slice",
+        "tensor.parallel_insert_slice",
+    }
+)
+_PERMUTATION_CARRIERS = frozenset({"linalg.transpose", "merlin_iface.transpose", "merlin_iface.permute"})
+#: Carriers that write one value (or one row, replayed) everywhere: no element is read twice per row.
+_CONSTANT_CARRIERS = frozenset({"linalg.fill", "tensor.splat"})
+#: Joined forms, e.g. ``copy+zero_fill`` for a pad: the work needs EVERY part.
+FORM_JOIN = "+"
+
+
+def form_parts(form: str | None) -> tuple[str, ...]:
+    """The forms a (possibly joined) form needs, e.g. ``copy+zero_fill`` -> ``(copy, zero_fill)``."""
+    return tuple(part for part in (form or "").split(FORM_JOIN) if part)
+
+
+def form_admitted(form: str | None, declared) -> bool:
+    """Is ``form`` within ``declared`` forms? A joined form needs every part; unknown never is."""
+    parts = form_parts(form)
+    return bool(parts) and all(part in tuple(declared or ()) for part in parts)
+
+
+def _join(*forms: str) -> str:
+    return FORM_JOIN.join(sorted(dict.fromkeys(forms)))
+
+
+def _affine_map(text: str) -> tuple[list[str], list[str]] | None:
+    """``affine_map<(d0, d1) -> (d1, 0)>`` -> (dims, results); None when it is not that shape."""
+    body = text.strip()
+    if body.startswith("affine_map<") and body.endswith(">"):
+        body = body[len("affine_map<") : -1]
+    domain, arrow, image = body.partition("->")
+    if not arrow:
+        return None
+    domain, image = domain.strip(), image.strip()
+    if "[" in domain or not (domain.startswith("(") and domain.endswith(")")):
+        return None  # symbols, or not a plain dimension list
+    if not (image.startswith("(") and image.endswith(")")):
+        return None
+    dims = [item.strip() for item in domain[1:-1].split(",") if item.strip()]
+    results = [item.strip() for item in image[1:-1].split(",") if item.strip()]
+    return dims, results
+
+
+def _map_form(source: str, output: str) -> str | None:
+    """How a yield-only generic's input map relates to its output map, as a movement form.
+
+    Each result must be a bare loop dimension or the constant 0 (a unit dimension). Every output
+    dimension read in the output's order is a copy; read in another order a permutation; a dimension
+    the input does not index (or indexes as 0) is replayed, a broadcast. Any other expression -- an
+    offset, a stride, a sum of dimensions, a reflected index -- is not a form this classifier states.
+    """
+    parsed_in, parsed_out = _affine_map(source), _affine_map(output)
+    if parsed_in is None or parsed_out is None:
+        return None
+    dims_in, results_in = parsed_in
+    dims_out, results_out = parsed_out
+    if dims_in != dims_out or sorted(results_out) != sorted(dims_out):
+        return None  # the output must be written once per element, in a permutation of the loop
+    if any(result not in dims_in and result != "0" for result in results_in):
+        return None
+    read = [result for result in results_in if result != "0"]
+    if len(set(read)) != len(read):
+        return None  # a diagonal read
+    forms = []
+    if len(read) < len(results_out):
+        forms.append("broadcast")
+    order_out = [dim for dim in results_out if dim in read]
+    if read != order_out:
+        forms.append("permutation")
+    return _join(*forms) if forms else "copy"
+
+
+def operation_form(
+    op: str | None,
+    *,
+    carrier_op: str | None = None,
+    indexing_maps: list[str] | tuple[str, ...] | None = None,
+    body_operations: list[str] | tuple[str, ...] | None = None,
+    yields_input: bool | None = None,
+    constant_zero: bool | None = None,
+) -> str | None:
     """Classify a movement operation's *work*, not its storage layout.
 
     A transfer/copy and an axis permutation share the ``movement`` family but
@@ -55,28 +144,112 @@ def operation_form(op: str | None, *, carrier_op: str | None = None) -> str | No
     available; a provenance label may describe a larger enclosing region.
     Unknown forms stay unknown so a form-constrained capability cannot claim
     them by family membership alone.
+
+    The form comes from the carrier and, for a ``linalg.generic``, its indexing maps
+    (``indexing_maps``: every map, inputs first and the output last) and body:
+
+    - ``linalg.copy``/``memref.copy``, ``tensor.concat``/``insert_slice``/``extract_slice``: ``copy``
+    - ``linalg.transpose``: ``permutation``
+    - ``linalg.broadcast``: ``broadcast``
+    - ``linalg.fill``/``tensor.splat``: ``zero_fill`` for a known zero (``constant_zero``), else
+      ``broadcast`` (a constant replayed into every row)
+    - ``tensor.pad``: ``copy`` joined with the pad value's form (``copy+zero_fill``/``copy+broadcast``)
+    - a yield-only ``linalg.generic`` with one input (``yields_input`` not False): its maps decide
+      copy / permutation / broadcast; one that yields a constant (or has no input) is a fill
     """
-    if carrier_op in ("linalg.transpose", "merlin_iface.transpose", "merlin_iface.permute"):
+    if carrier_op in _PERMUTATION_CARRIERS:
         return "permutation"
-    if carrier_op in ("linalg.copy", "memref.copy", "merlin_iface.movement"):
+    if carrier_op in _COPY_CARRIERS:
         return "copy"
-    # These typed tensor operations carry distinct transfer geometries. A
-    # declaration for a plain copy does not establish indexed extraction,
-    # insertion into a larger tensor, or concatenation of many inputs.
-    tensor_forms = {
-        "tensor.extract_slice": "slice_extract",
-        "tensor.insert_slice": "slice_insert",
-        "tensor.concat": "concatenation",
-    }
-    if carrier_op in tensor_forms:
-        return tensor_forms[carrier_op]
+    fill = "zero_fill" if constant_zero else "broadcast"
+    if carrier_op in _CONSTANT_CARRIERS:
+        return fill
+    if carrier_op == "linalg.broadcast":
+        return "broadcast"
+    if carrier_op == "tensor.pad":
+        return _join("copy", fill)
+    if carrier_op == "linalg.generic":
+        if indexing_maps is None or body_operations is None:
+            return None
+        if any(name != "linalg.yield" for name in body_operations):
+            return None  # arithmetic, or an indexed read (tensor.extract): not a movement form here
+        maps = list(indexing_maps)
+        if len(maps) == 1 or yields_input is False:
+            return fill  # nothing is read: every element is the same yielded value
+        if len(maps) != 2 or yields_input is None:
+            return None
+        return _map_form(maps[0], maps[-1])
     if carrier_op is not None:
         return None
     if op in ("transpose", "permute"):
         return "permutation"
     if op in ("movement", "copy"):
         return "copy"
+    if op == "broadcast":
+        return "broadcast"
     return None
+
+
+def carrier_form(op) -> str | None:
+    """:func:`operation_form` read off a parsed IR operation (xDSL), carrier and maps together.
+
+    Reads only structure: the op name, its ``indexing_maps``, its body, and whether a fill value is a
+    literal zero constant. Nothing here knows a target.
+    """
+    name = getattr(op, "name", None)
+    maps_attr = None
+    body, yields_input, constant_zero = None, None, None
+    properties = getattr(op, "properties", {}) or {}
+    attributes = getattr(op, "attributes", {}) or {}
+    if name == "linalg.generic":
+        maps_attr = properties.get("indexing_maps") or attributes.get("indexing_maps")
+        regions = getattr(op, "regions", ()) or ()
+        if regions and regions[0].blocks:
+            block = regions[0].blocks[0]
+            body = [child.name for child in block.ops]
+            terminator = next((child for child in block.ops if child.name == "linalg.yield"), None)
+            if terminator is not None and len(terminator.operands) == 1:
+                value = terminator.operands[0]
+                arguments = list(block.args)
+                n_inputs = len(getattr(op, "inputs", ()) or ())
+                if value in arguments:
+                    # Yielding an output's own init value is no motion at all: leave it unclassified.
+                    yields_input = True if arguments.index(value) < n_inputs else None
+                else:
+                    yields_input = False
+                    constant_zero = _is_zero_constant(value)
+    elif name in _CONSTANT_CARRIERS or name == "tensor.pad":
+        if name == "tensor.pad":
+            regions = getattr(op, "regions", ()) or ()
+            block = regions[0].blocks[0] if regions and regions[0].blocks else None
+            terminator = next((child for child in block.ops if child.name == "tensor.yield"), None) if block else None
+            value = terminator.operands[0] if terminator is not None and terminator.operands else None
+        else:
+            value = op.operands[0] if getattr(op, "operands", ()) else None
+        constant_zero = _is_zero_constant(value) if value is not None else None
+    return operation_form(
+        None,
+        carrier_op=name,
+        indexing_maps=[str(item) for item in maps_attr] if maps_attr is not None else None,
+        body_operations=body,
+        yields_input=yields_input,
+        constant_zero=constant_zero,
+    )
+
+
+def _is_zero_constant(value) -> bool | None:
+    """True for an ``arith.constant`` zero scalar, False for another constant, None if not constant."""
+    owner = getattr(value, "owner", None)
+    if getattr(owner, "name", None) != "arith.constant":
+        return None
+    # Not `a or b`: an attribute holding zero may be falsy, which is exactly the value asked about.
+    attribute = (getattr(owner, "properties", {}) or {}).get("value")
+    if attribute is None:
+        attribute = (getattr(owner, "attributes", {}) or {}).get("value")
+    literal = getattr(getattr(attribute, "value", None), "data", None)
+    if isinstance(literal, (int, float)):
+        return literal == 0
+    return False
 
 
 # --- capture prov.family -> canonical family ---------------------------------------------------
@@ -396,6 +569,8 @@ _OP_FAMILY: dict[str, str] = {
     "expand": "movement",
     "pack": "movement",
     "copy": "movement",
+    # A replay of one value or row along new dimensions (linalg.broadcast): motion, no arithmetic.
+    "broadcast": "movement",
     # ...captured-model movement spellings. A constant fill writes a value per element with no arithmetic
     # on an input, and a gather/embedding lookup moves rows by index -- motion, not compute. `fill` alone
     # was 1097 of those 1222 unclassified regions, i.e. the single largest hole in the vocabulary, and it

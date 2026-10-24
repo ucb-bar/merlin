@@ -1,0 +1,141 @@
+# Maintained regression obligations, not execution verdicts.
+schema: merlin.regression_fixes.v1
+specs:
+- experiments/reference-data/phase0/compiler-regression-overlap.yaml
+- experiments/reference-data/phase0/compiler-regression-input-layout.yaml
+- experiments/reference-data/phase0/compiler-regression-calls.yaml
+- experiments/reference-data/phase0/compiler-regression-selection.yaml
+- experiments/reference-data/phase0/compiler-regression-half-precision.yaml
+- experiments/reference-data/phase0/compiler-regression-numeric.yaml
+fixes:
+  6e6e37a60:
+    classification: CAPSULE-ABLE
+    bug: Half-precision ABI storage and scalar opmath require exact f16/bf16 execution.
+  52eb603f:
+    predecessor: 1bf1c4071
+    classification: CAPSULE-ABLE
+    bug: Closed int8 reductions need wider device accumulation with wrapping host
+      readout.
+  a9106b60:
+    predecessor: cc71013ff
+    classification: CAPSULE-ABLE
+    bug: Host preprocessing changed private callback symbol ABIs and broke mixed device
+      linking.
+  67fafa9d:
+    predecessor: c0487347f
+    classification: CAPSULE-ABLE
+    bug: Repeated result allocations crashed conversion and dynamic nonzero results
+      lost actual extents.
+  762e2ff8:
+    predecessor: 02aedc5ce
+    classification: CAPSULE-ABLE
+    bug: Batch extraction lost declarations and dynamic return types; complex and
+      nested IEEE values were corrupted.
+  6f60202b:
+    predecessor: 3fc463f57
+    classification: CAPSULE-ABLE
+    bug: Capture reference calls mutated inputs and buffers before compiler launch;
+      exported result roles were missing.
+  88241b20:
+    predecessor: 7789aa2b9
+    classification: CAPSULE-ABLE
+    bug: Mutation results and view storage/layout were lost at the compiled full-call
+      boundary.
+  28d7c59d:
+    predecessor: ceff3bfd1
+    classification: CAPSULE-ABLE
+    bug: Bounded admission unpacked an obsolete parser result and ignored exported
+      mutation result cardinality.
+  e4b40d31:
+    predecessor: 5b13deb96
+    classification: CAPSULE-ABLE
+    bug: Bounded grading discarded full-call observations and classified numerical
+      success as ungradable.
+  c7c4ea63:
+    predecessor: cc01910e3
+    classification: CAPSULE-ABLE
+    bug: Normalized placeholder metadata relabeled unchanged transposed caller inputs.
+  7d94a537:
+    predecessor: be91c7198
+    classification: INFRA-ONLY
+    reason: Consecutive package imports shared module state; execution refusal reporting
+      is a process/feedback boundary rather than a program input defect.
+    tests:
+    - merlin/tests/targetgen/test_core_aten_capsules.py
+  df06091e:
+    predecessor: 7a96788c9
+    classification: INFRA-ONLY
+    reason: Readiness wrongly required RTL discovery for the arm without RTL fact
+      tools; no compiled program or numerical result changed.
+    tests:
+    - packages/merlin-experiments/tests/test_phase1_tooling_readiness.py
+  abae247e:
+    predecessor: 8a8ee9bc2
+    classification: INFRA-ONLY
+    reason: Sandbox mounts omitted the selected venv external interpreter/library;
+      this is a launch environment defect.
+    tests:
+    - merlin/tests/infra/test_sandbox_toolchain_paths.py
+  f5e7c800:
+    predecessor: a480845ce
+    classification: INFRA-ONLY
+    reason: Scaffold import dependencies required withheld RTL tooling; this is source
+      grant/import availability rather than compiled semantics.
+    tests:
+    - merlin/tests/targetgen/test_generate_namespaced_imports.py
+  ba786b69:
+    predecessor: 06d1a7fa
+    classification: CAPSULE-ABLE
+    bug: Captured strided input ABI must preserve storage, views and mutation.
+external_audit:
+  support_provider:
+    subject: gemmini-worktrees/phase1-support-baseline
+    fixes:
+      c5b94f1: INFRA-ONLY; fact-grounded diagnostics and paired ISA trace tools; no
+        numerical program implementation.
+      7e7a883: INFRA-ONLY; retain plugin.backend in regenerated metadata; no numerical
+        program implementation.
+  model2mlir:
+    branch: core-aten-numeric
+    fixes:
+      3d2613d:
+        classification: CAPSULE-ABLE
+        bug: Exported result layouts and storage provenance.
+      f8ed82443:
+        classification: CAPSULE-ABLE
+        bug: Numeric opmath, storage rounding and absent-edge semantics.
+      "654987203":
+        classification: CAPSULE-ABLE
+        bug: Batch normalization must retain strided affine parameter semantics.
+    subject: lorenshung/model2MLIR; local model2MLIR and m2m-worktrees/stage5
+    capsule_obligations:
+      c147b57: Same-conversion result ordinals, mutation/alias boundaries and complete
+        lossless bundle goldens; training_batch_norm_mutation and view_alias.
+      f9d0997: Integer bmm, dtype promotion, optional/keyword tensor positions, complete
+        pool auxiliary results, metadata mutation and LayerNorm ABI; independent calls
+        needed for each family.
+      e4627a4: Drop-all native_dropout with NaN, infinities and signed zero must multiply
+        by masked scale.
+      526045b: PT2E linear keyword bias and convolution keyword stride/padding require
+        quantized retained capture capsules.
+      bf61901: Runtime full fill scalar position and both max-pool-with-indices results.
+      3c70681: Addmm beta=0 with nonfinite bias; empty/low-count variance; nonfinite
+        sign/sort; normalization with absent affine arguments.
+      eb30f01: Nondefault add/sub alpha, addmm alpha/beta and all layer/batch norm
+        tuple results.
+      33c0d72: Nondefault PT2E quantization scale and zero point.
+      06275ae: Ragged multi-result split, scalar-other where, and new_ones result
+        dtype.
+      482e016: BF16/float8 input bundle storage plus int64 input IDs without narrowing.
+      b3f2c3a: BF16 quantized inner inputs materialized as the captured f32 values.
+      '7317461': Integer abs including INT_MIN must legalize without math.absi.
+      a05fac0: Batch-one im2col output reshape and independent batch-greater-than-one
+        transpose correctness.
+    additional_lowering_obligations:
+      a1243ce: Runtime scalar extraction and data-dependent nonzero descriptors.
+      50233eb: Runtime scalar_tensor values rather than compile-time samples.
+      c3c5e5b: Training batch normalization including running-stat mutation.
+      0c3a02c: Literal and runtime fill scalar values.
+      d8f8cb0: Exact exported as_strided element mapping.
+      541f439: Bounded as_strided policy must preserve exact layout or refuse.
+      c083b3b: Explicit RNG state; source-eager RNG parity remains unqualified.

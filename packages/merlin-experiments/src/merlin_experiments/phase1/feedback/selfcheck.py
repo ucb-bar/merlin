@@ -35,11 +35,12 @@ from pathlib import Path
 
 from merlin.targetgen import capsule_grade as CG  # build+run+compare
 from merlin.targetgen import capsule_runner as CR  # tier adapters
+from merlin.targetgen.candidate_scope import functional_selfcheck
 from merlin_experiments.phase1.context import (
     InvocationContext,
     add_context_arguments,
     context_argv,
-    readback_kwargs,
+    oracle_kwargs,
     resolve_context,
 )
 from merlin_experiments.phase1.feedback import qa as _qc
@@ -279,10 +280,11 @@ def _target(context: InvocationContext) -> str:
     return _target_sim_via(context)[0]
 
 
-# gsim shares verilator's rung: both are elaborated-RTL, cycle-accurate engines over the SAME
+# gsim and vcs share verilator's rung: all are elaborated-RTL, cycle-accurate engines over the SAME
 # design (GemminiGsimMonitorsConfig is GemminiRocketConfig plus a harness-level clock
-# instantiator, so the DUT is identical). It is the tier that differs by ENGINE, never by name.
-SIM_TIER = {"spike": "L2", "verilator": "L3", "gsim": "L3", "vcs": "L4"}
+# instantiator, so the DUT is identical; the VCS simv compiles the same firtool Verilog the
+# Verilator harness does). It is the tier that differs by ENGINE, never by name.
+SIM_TIER = {"spike": "L2", "verilator": "L3", "gsim": "L3", "vcs": "L3"}
 
 
 def _required_rtl_engine() -> str | None:
@@ -379,35 +381,17 @@ def _adapters(sim: str, target: str, sim_via: str | None, *, readback_policy=Non
     policy_error = _sim_policy_error(sim, sim_via)
     if policy_error:
         raise ValueError(policy_error)
-    if sim == "vcs" and readback_policy is not None:
-        raise ValueError("VCS self-check does not support the selected invocation readback policy")
     if sim_via == "chipyard":
         ad = {"L2": CR.simulator_adapter("spike", target, **kwargs)}
-        if sim in ("verilator", "gsim"):
+        if sim in ("verilator", "gsim", "vcs"):
             # Build L3 from the engine the caller NAMED. This used to hardcode "verilator", which made
             # --sim gsim silently certify on verilator -- a result attributed to the wrong engine. The
             # adapter factory is engine-generic (it forwards simulator=sim and gates on
             # backend.available(sim)), so an absent engine fails closed here rather than substituting.
             selection = grade_l3_selection(target, sim)
             ad["L3"] = CR.simulator_adapter(sim, target, **kwargs, **({"selection": selection} if selection else {}))
-        if sim == "vcs":
-            # In the unpinned legacy ladder VCS is an L4 addition above Verilator L3.  An experiment-wide
-            # VCS pin, however, means *no other RTL engine may run*, so do not build that Verilator rung.
-            # If VCS is unavailable the pinned run must refuse instead of silently substituting.
-            required = _required_rtl_engine()
-            if required is None:
-                ad["L3"] = CR.simulator_adapter("verilator", target)
-            try:
-                from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
-
-                ad["L4"] = VA.adapter()
-            except Exception as exc:
-                if required is not None:
-                    raise ValueError(
-                        f"required RTL engine {required!r} is unavailable: {type(exc).__name__}: {exc}"
-                    ) from exc
-                print("  (vcs adapter unavailable in this environment — falling back to verilator L3)", file=sys.stderr)
-                sim = "verilator"
+            # VCS is the same L3 rung through the provider's own `run_elf(simulator="vcs")`; the old
+            # L4 branch imported a `merlin.targetgen.vcs_adapter` module that was never shipped.
         return ad, sim
     # non-chipyard target: its contract-resolved tiers (arc / program oracle); --sim does not apply.
     return CR.oracle_adapters(target, sim_via, **kwargs), sim
@@ -468,7 +452,7 @@ def _model_layers(
                 if member.is_file():
                     (narrowed / name / member.name).symlink_to(member.resolve())
         root = narrowed
-    adapters = CR.oracle_adapters(context.target, experiment.sim_via, **readback_kwargs(context)) or {}
+    adapters = CR.oracle_adapters(context.target, experiment.sim_via, **oracle_kwargs(context)) or {}
     # The functional tier only: an elaborated-RTL simulator spends about twenty minutes on ONE such
     # layer. Every row names the tiers withheld, so a pass here reads as the screen it is.
     ladder = tier_policy.tier_depth_order(adapters)
@@ -816,16 +800,20 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     # self-check would lie. EXCLUDE build/ exactly like the driver grade (a copied CMakeCache has absolute
     # paths to the original location and would break) -> a from-scratch build, same as the grade (fast: the
     # LLVM/MLIR is prebuilt, the OOT project is small).
-    import tempfile as _tf2
+    import tempfile
 
-    _isodir = Path(_tf2.mkdtemp(prefix="selfcheck_iso_"))
-    shutil.copytree(sub, _isodir / "submission", ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+    _isodir = Path(tempfile.mkdtemp(prefix="selfcheck_iso_"))
+    from merlin_experiments.phase1.run_inputs import SUBMISSION_IGNORED, copy_candidate_tree
+
+    copy_candidate_tree(sub, _isodir / "submission", ignore=SUBMISSION_IGNORED)
     sub = _isodir / "submission"
     _strip_build_state(sub)  # every grade builds from scratch in its OWN path — see helper
 
     _tgt, _sim_via = _target_sim_via(context)
     try:
-        adapters, sim = _adapters(a.sim, _tgt, _sim_via, **readback_kwargs(context))
+        adapters, sim = functional_selfcheck(
+            _adapters, CR.qa_loop_adapters, a.sim, _tgt, _sim_via, **oracle_kwargs(context)
+        )
     except ValueError as exc:
         out = {"error": str(exc), "all_pass": False, "sim": a.sim, "required_rtl_engine": _required_rtl_engine()}
         txt = json.dumps(out, indent=2)
@@ -839,7 +827,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         # Validate the REQUEST against everything the endpoint can reach, not against the cheap loop
         # ladder -- that conflation is exactly what select_tiers documents, and it is why a cert tier
         # (derived as oracle_adapters - qa_loop_adapters) could never be asked for.
-        _full = dict(CR.oracle_adapters(_tgt, _sim_via, **readback_kwargs(context)))
+        _full = dict(CR.oracle_adapters(_tgt, _sim_via, **oracle_kwargs(context)))
         _full.update(adapters)  # a --sim-selected tier is reachable by definition
         adapters, _tier_err = select_tiers(_full, adapters, a.tiers)
         if _tier_err:
@@ -859,6 +847,12 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     # barrier = the deepest resolved RTL tier: chipyard maps a named engine from --sim; the grade's own
     # selection and any other target's contract-derived tiers are read from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" and sim in SIM_TIER else max(adapters) if adapters else "L3"
+    if not a.tiers:  # the operator floor's tiers are certified by the operator grades, not this check
+        from merlin.targetgen.contract.materialize import declared_oracle_tiers
+        from merlin.targetgen.tier_policy import raised_tiers
+
+        floor = raised_tiers(declared_oracle_tiers(capsules_root))
+        adapters = CR.defer_tiers(adapters, [tier for tier in floor if tier not in adapters])
     # subset selection (operator-side capsule dirs)
     selection = select_capsules(a, sub, context, capsules_root, contract, adapters, combined, _tgt, barrier_tier)
     if selection.answered is not None:
@@ -870,18 +864,20 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
 
     runs_root = create_runs_root()
 
-    # Subset filtering that ACTUALLY limits the grade: CG.grade runs EVERY capsule under capsules_root, so
-    # the `want` output-filter below alone would still grade all 20 (a "1-capsule verilator" check = ~1hr).
-    # Build a temp capsules_root symlinking only the requested capsule dirs -> grade runs just the subset.
+    # Grade the selected original roots, not relocated copies: full-call capsules bind private answers
+    # through their original sibling layout. The grader's root-list API limits discovery without
+    # copying private data or changing that binding.
     caps_root = capsules_root
     if want:
-        caps_root = Path(tempfile.mkdtemp(prefix="selfcheck_caps_"))
-        missing = [n for n in sorted(want) if not (capsules_root / n / "capsule.yaml").exists()]
+        missing = [
+            n
+            for n in sorted(want)
+            if n in {".", ".."} or Path(n).name != n or not (capsules_root / n / "capsule.yaml").is_file()
+        ]
         if missing:
             print(json.dumps({"error": f"unknown capsule(s): {missing}"}))
             return 2
-        for n in sorted(want):  # copy (not symlink): rglob won't recurse symlinked dirs
-            shutil.copytree(capsules_root / n, caps_root / n)
+        caps_root = [capsules_root / n for n in sorted(want)]
 
     # build + run + compare (parallel); CG.grade handles the agent's 4 entrypoints + the tier ladder.
     # Publish completed rows independently of the final verdict: a few cycle-cap cases must not hide all
@@ -905,7 +901,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     try:
         completion = _streaming_completion(
             context=context,
-            capsules_root=caps_root,
+            capsules_root=capsules_root,
             contract=contract,
             source=sub,
             runs=runs_root,
@@ -936,7 +932,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         ):
             _score = CG.grade(
                 str(sub),
-                capsules_root=str(caps_root),
+                capsules_root=caps_root,
                 runs_root=str(runs_root),
                 labels={"public", "dev"},
                 contract=str(contract if contract is not None else context.repo / "merlin/contract"),

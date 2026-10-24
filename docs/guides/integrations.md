@@ -137,6 +137,35 @@ If another model2MLIR checkout is already imported, start a fresh process to sel
 checkout; Merlin does not unload framework modules. Missing optional quant support still falls
 back to the existing unregistered parsing path, not invented quantization semantics.
 
+Portable Core ATen host inputs use zero-initialized backing storage. Recorded
+logical elements overwrite that storage without changing their shape, strides,
+offset or bytes. Allocation covers both the logical address envelope and any
+native kernel pointer-read span. For CPU layer-norm backward, mean/rstd have one
+contiguous pointer read per input row, even when their declared strides contain
+holes or overlaps. The loader expresses these reads as a logical gather with
+zeros at unrecorded addresses so tracing does not depend on spare FakeTensor
+storage. Original inputs remain the caller's post-call observations. Capture
+records retain `input_storage_convention` with the access rule and required span;
+invalid or unknown geometry still refuses rather than reading unallocated bytes.
+
+The declared Core ATen numeric lane also admits native byte selectors and signed
+radix-256 component programs. Byte selectors preserve the complete element storage,
+including NaN payloads and signed zero. Component programs retain integer splitting,
+native wraparound, source integer-to-float conversion boundaries, and exact IEEE RNE
+in the host source. Only signed-byte producers with independently proved full-i32
+readout replace source arithmetic. Finite fixed-point packing needs a complete
+dyadic input grid; non-finite arithmetic without a separate representation proof
+retains the native host route. IEEE negation has a storage-bit proof and preserves
+all payloads without requiring finite values.
+
+Data-derived bounds bind the complete input payload digest and provider source
+digest. Both are checked before building and before executing the image. A native
+device result passes only its independent CPU eager storage-bit gate, or, for an
+order-dependent reduction, an exact rational comparison showing no greater error
+in every real and imaginary component. Neither gate changes sealed metadata,
+aliasing, or mutation requirements. Empty tensor boundaries use the explicit host
+reason `empty_tensor_no_device_work` and request no device kernel.
+
 ## Chia and AET
 
 Chia owns workflow scheduling, Ray task results, profiling and folding its LLM-call usage.

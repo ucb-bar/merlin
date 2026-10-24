@@ -202,6 +202,10 @@ def test_the_l3_policy_now_selects_gsim_for_this_target(monkeypatch, G, tmp_path
     """The end-to-end claim: with a GSIM emu present, the chipyard L3 tier resolves to it over Verilator,
     with no edit to the selection code."""
     from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen import gsim_emulator as GE
+
+    # This availability unit test assumes an independently qualified RTL build.
+    monkeypatch.setattr(GE, "selected_firrtl_status", lambda *a, **kw: (True, "fixture selected RTL"))
     from merlin.targetgen import rtl_engine_policy as POL
 
     emu = _executable(tmp_path / "emu")
@@ -222,6 +226,9 @@ def test_the_derived_home_registers_the_engine_with_no_env_var(monkeypatch, G, t
     changed is that it is no longer the only door."""
     from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import gsim_emulator as GE
+
+    # This availability unit test assumes an independently qualified RTL build.
+    monkeypatch.setattr(GE, "selected_firrtl_status", lambda *a, **kw: (True, "fixture selected RTL"))
 
     monkeypatch.delenv("MERLIN_GEMMINI_GSIM_EMU", raising=False)
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))

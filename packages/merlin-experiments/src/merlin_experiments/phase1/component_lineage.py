@@ -7,11 +7,11 @@ final membership. This proves neither correctness nor performance.
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from merlin.common import invocation_record
+from merlin_experiments.phase1.run_inputs import copy_candidate_tree
 from merlin_experiments.phase2 import contracts as C
 
 from .component_origin import FreshCompilerOrigin, _authority_identity, _plain, _readonly, _tree
@@ -145,7 +145,7 @@ def run_component_origin_round(
     digest = _tree(inputs.candidate)["sha256"]
     receipts = policy.verify_receipts(policy.receipt_path, policy.build_registry(), audit, candidate_sha256=digest)
     frozen = owner / "compiler"
-    shutil.copytree(inputs.candidate, frozen)
+    copy_candidate_tree(inputs.candidate, frozen)
     _readonly(frozen)
     if _tree(frozen)["sha256"] != digest:
         raise C.StageGateError("compiler descendant changed while freezing author output")

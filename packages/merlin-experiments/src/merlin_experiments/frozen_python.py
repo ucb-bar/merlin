@@ -243,7 +243,18 @@ def _execute(document: dict) -> None:
         if receipt["schema"] in {"merlin.performance-source-snapshot.v3", "merlin.performance-source-snapshot.v4"}
         else None
     )
-    provider_roots = {"auxiliary_roots": [root / provider["root"]]} if provider else {}
+    provider_roots = (
+        {
+            "auxiliary_roots": [
+                root / provider["root"],
+                *(root / row["snapshot"] for row in provider.get("source_dependencies", {}).values()),
+                # Verified sibling inventories own their private namespace container.
+                *([(root / provider["root"]).parent] if provider.get("source_dependencies") else []),
+            ]
+        }
+        if provider
+        else {}
+    )
     resolver.activate(
         snapshot_root=root,
         import_roots=[root / value for value in [*layout["python_roots"], *layout["legacy_roots"]]],

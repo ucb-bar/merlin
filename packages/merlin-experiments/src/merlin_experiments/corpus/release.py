@@ -308,12 +308,34 @@ def _selected_rtl_facts(plan: dict, generated: Path) -> Path | None:
     return path
 
 
+def _typed_legacy_contract(plan: dict, exported: Path) -> Path:
+    """Recover typed bytes for a JSON-only export, whose object keys are always strings.
+
+    Historical runs exported only JSON. Their frozen, digest-pinned operator input
+    is the typed authority when the export is exactly that input's JSON image.
+    """
+    pin = (plan.get("inputs") or {}).get("phase0:operator:capability_contract")
+    if not exported.exists() or pin is None:
+        return exported
+    selected = Path(pin["path"])
+    ordinary_tree(exported)
+    ordinary_tree(selected)
+    if (
+        hashlib.sha256(selected.read_bytes()).hexdigest() != pin["sha256"]
+        or json.loads(json.dumps(read_yaml(selected))) != json.loads(exported.read_bytes())
+    ):
+        raise SpecError("selected Phase 0 capability contract differs from its frozen typed input; freeze a new run")
+    return selected
+
+
 def _selected_capability_contract(plan: dict, generated: Path) -> tuple[Path, str] | None:
     """Carry the effective Phase 0 view, never re-resolve a live provider contract."""
     location = plan.get("phase0_evidence_bundle")
     relative = Path("software/contract.json")
     if location is None:
-        legacy = generated / relative
+        legacy = generated / "software/contract.yaml"
+        if not legacy.exists():
+            legacy = _typed_legacy_contract(plan, generated / relative)
         if not legacy.exists():
             if plan["phases"]["0"]["inputs"].get("capability_contract"):
                 raise SpecError("selected Phase 0 capability contract has no exported view; freeze a new run")
@@ -326,14 +348,17 @@ def _selected_capability_contract(plan: dict, generated: Path) -> tuple[Path, st
 
         bundle = Path(location).expanduser().absolute()
         evidence = load_exported_evidence(bundle)
-        raw = dict(evidence.archived_artifacts).get(relative.as_posix())
+        archived = dict(evidence.archived_artifacts)
+        if "software/contract.yaml" in archived:
+            relative = Path("software/contract.yaml")
+        raw = archived.get(relative.as_posix())
         path = bundle / relative
         if raw is None or path.is_symlink() or not path.is_file() or path.read_bytes() != raw:
             raise SpecError("selected Phase 0 capability contract is absent or differs from verified evidence")
     try:
-        document = json.loads(raw)
+        document = read_yaml(path)
     except (TypeError, ValueError) as error:
-        raise SpecError("selected Phase 0 capability contract is not JSON") from error
+        raise SpecError("selected Phase 0 capability contract is not a mapping") from error
     if not isinstance(document, dict) or document.get("name") != plan["target"]:
         raise SpecError("selected Phase 0 capability contract names a different target")
     return path, hashlib.sha256(raw).hexdigest()
@@ -419,8 +444,18 @@ def prepare(
     public_supplement: Path | None = None,
     public_scalability: Path | None = None,
     public_reference_manifest: Path | None = None,
+    preserved_corpus: bool = False,
+    rtl_facts: Path | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
+    if preserved_corpus:
+        from .preserved import prepare_preserved
+
+        if private_baseline or retirements or generated_only or phase1_policy_descriptor:
+            raise SpecError("preserved corpus preparation cannot select generated corpus options")
+        return prepare_preserved(run_dir, output, rtl_facts=rtl_facts)
+    if rtl_facts is not None:
+        raise SpecError("--rtl-facts requires --preserved-corpus")
     from merlin.common.paths import out_dir
     from merlin.common.storage_lifecycle import lease
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -626,8 +661,15 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
         # input fingerprint before these selected bytes are interpreted.
         from ..runner import _phase0_synthesis_status
 
-        plan, _, generated = source_run(Path(prepared["source_run"]))
-        if generation_lineage(plan, generated) != prepared.get("generation_lineage"):
+        if prepared.get("source_kind") == "preserved_corpus":
+            from .preserved import verify_preserved
+
+            verify_preserved(root, prepared)
+            plan = {"phases": {"0": {"inputs": {}}}}
+            generated = None
+        else:
+            plan, _, generated = source_run(Path(prepared["source_run"]))
+        if generated is not None and generation_lineage(plan, generated) != prepared.get("generation_lineage"):
             raise SpecError("Phase-0 generation lineage differs from the operator-reviewed preparation")
         supplement = (prepared.get("assembly") or {}).get("public_supplement")
         if supplement is not None:

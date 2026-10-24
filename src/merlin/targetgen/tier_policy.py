@@ -335,6 +335,40 @@ def tier_depth_order(tiers: Iterable[str]) -> list[str]:
     return sorted({str(t) for t in tiers if t is not None})
 
 
+#: An operator floor on the oracle depth a SCORED capsule must reach (e.g. ``L3``), set for a run rather
+#: than written into a sealed corpus. Unset, every capsule keeps exactly its declared ladder.
+TIER_FLOOR_ENV = "MERLIN_CAPSULE_TIER_FLOOR"
+
+
+def raised_tiers(declared) -> list[str]:
+    """The rungs :data:`TIER_FLOOR_ENV` adds above the deepest of ``declared``; empty when unset."""
+    import os
+
+    floor = os.environ.get(TIER_FLOOR_ENV, "").strip()
+    if not floor:
+        return []
+    if not (floor[:1] == "L" and floor[1:].isdigit()):
+        raise ValueError(f"{TIER_FLOOR_ENV}={floor!r} is not an oracle tier such as L3")
+    depth = int(floor[1:])
+    tiers = [str(t) for t in declared or ()]
+    deepest = max((int(t[1:]) for t in tiers if t[:1] == "L" and t[1:].isdigit()), default=depth - 1)
+    return [f"L{i}" for i in range(deepest + 1, depth + 1)]
+
+
+def required_tiers(capsule: Mapping):
+    """The capsule's mandatory tiers: ``required_oracle_tiers`` plus, under :data:`TIER_FLOOR_ENV`, every
+    rung deeper than its deepest declared one up to the floor.
+
+    Only scored capsules are raised: that is the population the formal grade counts. A host guard
+    (``scored: false``) is outside that denominator and must stay on the host, so it keeps its declared
+    ladder. A raised tier is mandatory like a declared one: without an adapter that can run it the
+    capsule is ``not_run_is_not_pass``, never skipped. Unset, this returns the declared value itself.
+    """
+    declared = capsule.get("required_oracle_tiers")
+    raised = [] if capsule.get("scored") is False else raised_tiers(declared)
+    return [*(str(t) for t in declared or ()), *raised] if raised else declared
+
+
 def _rank(tier: str, universe: Sequence[str]) -> int:
     """Depth rank of ``tier`` within ``universe``, or -1 when it is not part of the ladder."""
     order = tier_depth_order(list(universe) + [tier])

@@ -1,0 +1,379 @@
+# Reviewed public half-precision call inputs; no stored answers or verdicts.
+# Uses the shared merlin.regression_calls.v1 input convention.
+schema: merlin.regression_calls.v1
+calls:
+- case_id: regression::bfloat16_scalar_opmath
+  overload: aten.mul.Scalar
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 3
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.7
+        - 1.5
+        - -2.5
+      - 1.0039
+    kwargs: {}
+  guards:
+  - 6e6e37a60
+  boundary: Keep Python scalar coefficients in f32 opmath and round the result once
+    into the original 16-bit storage.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::bfloat16_storage_copy
+  overload: aten.clone.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 9
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -0.0
+        - 0.0
+        - 5.960464477539063e-08
+        - 6.103515625e-05
+        - 1.5
+        - -2.5
+        - &id001
+          kind: float
+          value: inf
+        - &id002
+          kind: float
+          value: -inf
+        - &id003
+          kind: float
+          value: nan
+    kwargs: {}
+  guards:
+  - 6e6e37a60
+  boundary: Preserve signed zero, subnormal/normal values, infinities and NaNs in
+    16-bit input/result storage; copying grants no arithmetic promotion.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::bfloat16_widen
+  overload: aten._to_copy.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 9
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -0.0
+        - 0.0
+        - 5.960464477539063e-08
+        - 6.103515625e-05
+        - 1.5
+        - -2.5
+        - *id001
+        - *id002
+        - *id003
+    kwargs:
+      dtype:
+        kind: dtype
+        value: float32
+  guards:
+  - 6e6e37a60
+  boundary: Widen every represented 16-bit value exactly to f32; preserve nonfinite
+    classes and the sign of zero.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::bfloat16_rne_narrow
+  overload: aten._to_copy.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 8
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -0.0
+        - 1.00390625
+        - 1.01171875
+        - 4.591774807899561e-41
+        - 1.3775324423698682e-40
+        - *id001
+        - *id002
+        - *id003
+    kwargs:
+      dtype:
+        kind: dtype
+        value: bfloat16
+  guards:
+  - 6e6e37a60
+  boundary: Narrow f32 with round-to-nearest-even at both normal and subnormal ties,
+    preserve infinities, and keep NaNs nonfinite; the suite supplies its unchanged
+    comparator.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::bfloat16_activation_opmath
+  overload: aten.silu.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: bfloat16
+        shape:
+        - 5
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -3.0
+        - -0.7
+        - -0.0
+        - 0.7
+        - 3.0
+    kwargs: {}
+  guards:
+  - 6e6e37a60
+  boundary: Compute the complete activation in eager CPU f32 opmath and narrow at
+    the tensor operation boundary, retaining 16-bit storage between calls.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::bfloat16_binary64_narrow
+  overload: aten._to_copy.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float64
+        shape:
+        - 7
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -0.0
+        - 1.00390625
+        - 1.00048828125
+        - 2.9802322387695312e-08
+        - *id001
+        - *id002
+        - *id003
+    kwargs:
+      dtype:
+        kind: dtype
+        value: bfloat16
+  guards:
+  - 6e6e37a60
+  boundary: Link the direct binary64-to-16-bit soft helper on hosts lacking the corresponding
+    native conversion, using RNE without an intermediate f32 rounding.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::float16_scalar_opmath
+  overload: aten.mul.Scalar
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 3
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - 0.7
+        - 1.5
+        - -2.5
+      - 1.0004
+    kwargs: {}
+  guards:
+  - 6e6e37a60
+  boundary: Keep Python scalar coefficients in f32 opmath and round the result once
+    into the original 16-bit storage.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::float16_storage_copy
+  overload: aten.clone.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 9
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -0.0
+        - 0.0
+        - 5.960464477539063e-08
+        - 6.103515625e-05
+        - 1.5
+        - -2.5
+        - *id001
+        - *id002
+        - *id003
+    kwargs: {}
+  guards:
+  - 6e6e37a60
+  boundary: Preserve signed zero, subnormal/normal values, infinities and NaNs in
+    16-bit input/result storage; copying grants no arithmetic promotion.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::float16_widen
+  overload: aten._to_copy.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 9
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -0.0
+        - 0.0
+        - 5.960464477539063e-08
+        - 6.103515625e-05
+        - 1.5
+        - -2.5
+        - *id001
+        - *id002
+        - *id003
+    kwargs:
+      dtype:
+        kind: dtype
+        value: float32
+  guards:
+  - 6e6e37a60
+  boundary: Widen every represented 16-bit value exactly to f32; preserve nonfinite
+    classes and the sign of zero.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::float16_rne_narrow
+  overload: aten._to_copy.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape:
+        - 9
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -0.0
+        - 1.00048828125
+        - 1.00146484375
+        - 2.9802322387695312e-08
+        - 8.940696716308594e-08
+        - 65520.0
+        - *id001
+        - *id002
+        - *id003
+    kwargs:
+      dtype:
+        kind: dtype
+        value: float16
+  guards:
+  - 6e6e37a60
+  boundary: Narrow f32 with round-to-nearest-even at both normal and subnormal ties,
+    preserve infinities, and keep NaNs nonfinite; the suite supplies its unchanged
+    comparator.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::float16_activation_opmath
+  overload: aten.silu.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float16
+        shape:
+        - 5
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -3.0
+        - -0.7
+        - -0.0
+        - 0.7
+        - 3.0
+    kwargs: {}
+  guards:
+  - 6e6e37a60
+  boundary: Compute the complete activation in eager CPU f32 opmath and narrow at
+    the tensor operation boundary, retaining 16-bit storage between calls.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.
+- case_id: regression::float16_binary64_narrow
+  overload: aten._to_copy.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float64
+        shape:
+        - 7
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - -0.0
+        - 1.00390625
+        - 1.00048828125
+        - 2.9802322387695312e-08
+        - *id001
+        - *id002
+        - *id003
+    kwargs:
+      dtype:
+        kind: dtype
+        value: float16
+  guards:
+  - 6e6e37a60
+  boundary: Link the direct binary64-to-16-bit soft helper on hosts lacking the corresponding
+    native conversion, using RNE without an intermediate f32 rounding.
+  origin:
+    design: Independent public IEEE inputs; eager CPU computes answers at execution.

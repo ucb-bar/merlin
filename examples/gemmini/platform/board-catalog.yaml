@@ -63,6 +63,27 @@ boards:
       HTIF execution, the provisional code reserve, and any ELF upload mechanism
       still need qualification; no loader/baud is claimed.
 
+  firesim_gemmini_rocket_u250_default:
+    target: gemmini
+    rtl_sim_config: FireSimGemminiRocketConfig
+    bitstream: alveo_u250_firesim_gemmini_rocket_default
+    host_dts_sha256: c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df
+    dram_bytes: 16 GiB
+    dram_base: 0x80000000
+    harts: 1
+    vector_harts: 0
+    console: htif
+    flow: baremetal
+    code_reserve: 64 MiB
+    notes: >-
+      FireSimGemminiRocketConfig DTS has one CPU with the same non-vector Rocket ISA
+      and a 16 GiB enabled memory node at 0x80000000. It declares an HTIF node and
+      SiFive UART as chosen stdout. This is a different build from
+      firesim_gemmini_rocket_u250_30mhz (see merlin/contract/hardware_pins.yaml), so
+      cycle numbers from one are not comparable with the other. HTIF execution, the
+      provisional code reserve, and any ELF upload mechanism still need qualification;
+      no loader/baud is claimed.
+
   gemmini_rocket_gsim_fire_aligned:
     target: gemmini
     rtl_sim_config: GemminiGsimFireSimAlignedConfig

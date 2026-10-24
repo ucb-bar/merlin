@@ -1,0 +1,637 @@
+schema_version: 1
+scope: Adjudication only; all 19 remain failing and included in the unchanged 10160-case denominator.
+owner_constraints:
+- No case, operation, or golden-dependent compiler dispatch
+- No host CPU kernel schedule emulation
+- No Gemmini spec edits
+- Existing quantization flow only
+runtime:
+  torch: 2.13.0+cu130
+  torch_commit: cf30153c4c131c8164ee7798e5022d810682e2cb
+  mkl: 2024.2 build 20240605
+  onednn: 3.12.0
+  cpu_capability: AVX512
+  threads: 1
+suite:
+  path: merlin-tests/PyTorchFullCoverageKernelSet/artifacts/bounded/bounded_core_aten_suite.json
+  sha256: 8db0a20d05a10bc7591a4d024f66826ed2100c84ebb21ee176114d2b29eb74fb
+symbols:
+  M: float32.max = 3.4028234663852886e38
+  B: bfloat16.max = 3.3895313892515355e38
+input_storage_policy: Logical values authorize only their physical addresses. Padded gaps and zero-stride
+  trailing reads have no recorded bytes; NaN masking in a particular sample does not authorize unrecorded
+  reads.
+storage_probe: Initialize larger actual allocations in bounds, retain every recorded statistic logical
+  value/stride/offset, and change only cells absent from the payload from 0 to 2. Five ordinary cases
+  change gradients; eight nonfinite cases mask that particular perturbation. Refuse all structurally missing
+  reads without value-specific dispatch.
+numerical_policy: Portable standard MLIR contractions retain their arithmetic. No compiler fix is justified
+  by the host-specific observations. Keep the sealed oracle and mismatch status.
+compiler_changes: None. Added source-independent storage-observability regression tests and portability
+  documentation in model2MLIR.
+model2mlir_change_commit: 9081ebd
+merlin_base_commit: b6e22ba4
+evidence_directory: out/artifacts/verification/core-aten/last19/
+evidence_files:
+- resolution.json
+- storage-evidence.json
+- arithmetic-evidence.json
+- probe.log
+- backend-default.log
+- backend-compatible.jsonl
+- verified/scalar/scalar/selected-report.json
+- verified/gemmini/gemmini/selected-report.json
+primary_sources:
+  layer_norm: https://github.com/pytorch/pytorch/blob/cf30153c4c131c8164ee7798e5022d810682e2cb/aten/src/ATen/native/cpu/layer_norm_kernel.cpp
+  convolution: https://github.com/pytorch/pytorch/blob/cf30153c4c131c8164ee7798e5022d810682e2cb/aten/src/ATen/native/ConvolutionMM2d.cpp
+generic_bfloat16_gemm_source: https://github.com/pytorch/pytorch/blob/cf30153c4c131c8164ee7798e5022d810682e2cb/aten/src/ATen/native/cpu/BlasKernel.cpp#L74
+bfloat16_nan_witness: >-
+  The generic reduced-type GEMM source uses four independent float32 partial sums.
+  For the width-2 dot, lane 0 receives 0+B+B and overflows positive; lane 1 receives
+  -1-B*B and overflows negative; the merge is inf + -inf = NaN. Ascending f32
+  accumulation instead reaches -inf before the final +B. This source schedule
+  explains the observed non-oneDNN result; the proprietary/backend microkernel
+  schedule is not reconstructed or claimed as a portable contract.
+cases:
+- case_id: aten.addmm.default::b7e4ce01d5295d2e
+  disposition: out_of_scope
+  reason: host_blas_alpha_and_overflow_schedule
+  result: '[1,1]'
+  sealed: -M/2
+  portable: -inf
+  fresh_mkl_default: -inf
+  fresh_mkl_compatible: -M/2
+  unscaled_products:
+  - -M
+  - -M
+  - M
+  - 0
+  alpha: 0.5
+  beta: 1
+  self_value: 1
+- case_id: aten.convolution.default::b7d0e499c51f977c
+  disposition: out_of_scope
+  reason: host_blas_position_dependent_overflow
+  result: '[0,1,0,1]'
+  sealed: inf
+  portable: M
+  fresh_mkl_default: M
+  fresh_mkl_compatible: M
+  identical_window_witness: Input patches at output [0,1,0,1] and [0,1,1,1] are identical, with the same
+    weight and bias, yet sealed outputs are inf and M.
+  products:
+  - -M
+  - 0
+  - -1
+  - 0
+  - 0
+  - M
+  - M
+  - 0
+  - 0
+- case_id: aten.convolution.default::bce62b101ea4f26c
+  disposition: out_of_scope
+  reason: host_backend_overflow_schedule
+  result: '[0,0,0,2] and each row/filter at width 2'
+  sealed: nan
+  portable: -inf
+  fresh_onednn: -inf
+  fresh_without_onednn: nan
+  accumulation_dtype: float32 (bfloat16 input/output)
+  products:
+  - 0
+  - -1
+  - 0
+  - 0
+  - B
+  - -B*B
+  - 0
+  - 0
+  - B
+  explanation: Separate f32 products overflow -B*B to -inf; later +B stays -inf. The non-oneDNN path returns
+    NaN, so a fixed algebraic accumulation rule cannot reproduce all eager backends.
+- case_id: aten.convolution_backward.default::4ee8c9d6bc52ba6f
+  disposition: out_of_scope
+  reason: host_blas_reduction_order
+  result: grad_weight[0,0,0,1] (also [0,0,1,1] and [0,0,2,1])
+  sealed: 1.0
+  portable: 2.0
+  fresh_mkl_default: 0.0
+  fresh_mkl_compatible: 1.0
+  products:
+  - M
+  - 0
+  - 0
+  - -1
+  - 0
+  - -M
+  - 1
+  - 0
+  - 1
+  exact_real: 1
+- case_id: aten.convolution_backward.default::862360a66eafe0aa
+  disposition: out_of_scope
+  reason: host_blas_reduction_order
+  result: grad_weight[0,0,0,1] (also [0,0,1,1] and [0,0,2,1])
+  sealed: 1.0
+  portable: 2.0
+  fresh_mkl_default: 0.0
+  fresh_mkl_compatible: 1.0
+  products:
+  - M
+  - 0
+  - 0
+  - -1
+  - 0
+  - -M
+  - 1
+  - 0
+  - 1
+  exact_real: 1
+- case_id: aten.convolution_backward.default::fcba96f3d34515e6
+  disposition: out_of_scope
+  reason: host_blas_reduction_order
+  result: grad_weight[0,0,0,1] (also [0,0,1,1] and [0,0,2,1])
+  sealed: 1.0
+  portable: 2.0
+  fresh_mkl_default: 0.0
+  fresh_mkl_compatible: 1.0
+  products:
+  - M
+  - 0
+  - 0
+  - -1
+  - 0
+  - -M
+  - 1
+  - 0
+  - 1
+  exact_real: 1
+- case_id: aten.native_layer_norm_backward.default::2aaf405642caa858
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  zero_vs_two_hidden_cells_changed_outputs: true
+- case_id: aten.native_layer_norm_backward.default::35ac68dfe10da816
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  zero_vs_two_hidden_cells_changed_outputs: false
+- case_id: aten.native_layer_norm_backward.default::47acd9e2b976c86a
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  zero_vs_two_hidden_cells_changed_outputs: true
+- case_id: aten.native_layer_norm_backward.default::48b25fecaa4f5389
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  zero_vs_two_hidden_cells_changed_outputs: false
+- case_id: aten.native_layer_norm_backward.default::52b57b225dd3a1c1
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  zero_vs_two_hidden_cells_changed_outputs: false
+- case_id: aten.native_layer_norm_backward.default::5d67c0f7c847d4eb
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  zero_vs_two_hidden_cells_changed_outputs: false
+- case_id: aten.native_layer_norm_backward.default::8589a5c5f2dddf34
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  zero_vs_two_hidden_cells_changed_outputs: false
+- case_id: aten.native_layer_norm_backward.default::85a33b5d5ee3f932
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  zero_vs_two_hidden_cells_changed_outputs: false
+- case_id: aten.native_layer_norm_backward.default::9eb5a4631a7d6239
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  zero_vs_two_hidden_cells_changed_outputs: true
+- case_id: aten.native_layer_norm_backward.default::a6adb2d4571784cf
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  zero_vs_two_hidden_cells_changed_outputs: false
+- case_id: aten.native_layer_norm_backward.default::acb466f1ef10dcf6
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 0
+    - 1
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 1
+    cause: raw_read_out_of_bounds
+  zero_vs_two_hidden_cells_changed_outputs: true
+- case_id: aten.native_layer_norm_backward.default::ee9222acd8fb286b
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  zero_vs_two_hidden_cells_changed_outputs: false
+- case_id: aten.native_layer_norm_backward.default::f8bb4acc4aa0c0ac
+  disposition: out_of_scope
+  reason: unrecorded_input_storage
+  row_count: 2
+  missing_statistics:
+  - argument: mean
+    argument_index: 3
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  - argument: rstd
+    argument_index: 4
+    shape:
+    - 2
+    - 1
+    stride:
+    - 2
+    - 2
+    storage_offset: 0
+    required_raw_range:
+    - 0
+    - 2
+    first_unrecorded_address: 1
+    recorded_storage_span: 3
+    cause: unrecorded_storage_hole
+  zero_vs_two_hidden_cells_changed_outputs: true

@@ -117,6 +117,17 @@ def test_verilator_caps_explicit_and_automatic_suite_parallelism(host):
     assert CG._bounded_grade_workers(CG.default_grade_workers(), adapters) == 4
 
 
+def test_an_operator_number_replaces_the_per_engine_defaults(host):
+    adapters = {
+        "L2": CR.simulator_adapter("spike", "synthetic"),
+        "L3": CR.simulator_adapter("vcs", "synthetic"),
+    }
+    assert CG._bounded_grade_workers(32, adapters) == 8
+    host.setenv("MERLIN_GRADE_WORKERS", "16")
+    assert CG._bounded_grade_workers(CG.default_grade_workers(), adapters) == 16
+    assert CG._bounded_grade_workers(4, adapters) == 4
+
+
 def test_gsim_and_unmarked_adapters_keep_useful_parallelism(host):
     assert CG._bounded_grade_workers(32, {"L3": CR.simulator_adapter("gsim", "synthetic")}) == 5
     assert CG._bounded_grade_workers(32, {"L3": lambda *args: None}) == 32

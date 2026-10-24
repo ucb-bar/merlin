@@ -3,7 +3,7 @@ title: Inspecting whole-model MLIR lowering
 kind: guide
 status: current
 owner: ir
-last_verified: 2026-10-08
+last_verified: 2026-10-10
 related: [llvm_toolchain, llvm_integration, triton_kernels]
 code_refs:
   - src/merlin/llvmlower/cli.py

@@ -387,7 +387,13 @@
               "MOVEMENT",
               "ATTENTION_PV",
               "K_CHAIN",
-              "DEPTHWISE_CONV2D"
+              "DEPTHWISE_CONV2D",
+              "AFFINE_MAP",
+              "CONCAT",
+              "INSERT_SLICE",
+              "FILL",
+              "FENCE",
+              "WINDOW_SUM"
             ]
           },
           "operands": {

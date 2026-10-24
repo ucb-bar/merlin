@@ -83,6 +83,21 @@ the software specification or runtime input package.
 4. Run the reviewed Phase 0 definition into a fresh owner, inspect its mandatory
    coverage and unresolved decisions, then review and seal the release.
 
+Rows whose evidence is still authored are marked `authored_pending_operator_review`, including
+new native component families, widened host signatures, the CPU special-value policy, and the
+native-unit declarations. They are not operator-reviewed facts.
+`MERLIN_ACCEPT_AUTHORED_PENDING_OPERATOR_REVIEW=1` explicitly accepts these pending declarations
+for screening; the default is `1` for compatibility with the existing placement policy. Set it
+to `0` to refuse pending declarations. Other values are errors. Unreviewed declarations are
+never promoted by this switch. Admission records retain the pending review status and report
+`operator_accepted` plus whether the compatibility default or an explicit environment selection
+was used. Numerical, source-coverage, compiler and execution gates remain mandatory.
+
+`execution_provider_revision` selects the provider revision used by the pinned E2E gate.
+The native-family specification and source-bound provider proof determine placement; performance is deferred to Phase 2.
+
+Run the reviewed definition:
+
 ```sh
 merlin experiment run "$REVIEWED_PHASE0_DEFINITION" --phase 0 --run-dir "$NEW_RUN"
 ```

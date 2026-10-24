@@ -54,6 +54,12 @@ _CAPSULE_FILES = (
     "frontend-evidence.json",
     "pytorch-opset.json",
     "source-capture-receipt.json",
+    # Portable compiler inputs for an exported full-call ABI. Answers remain
+    # in the separately frozen host-only full-call answer categories.
+    "call.json",
+    "inputs.npz",
+    "input_order.json",
+    "weights.safetensors.manifest.json",
 )
 _TIER_ORDER = ["L0", "L1", "L2", "L3", "L4", "L5"]
 _DEFAULT_CEILING = "L2"  # bwrap sandbox: numerics + spike, no VCS/FireSim (L3+).

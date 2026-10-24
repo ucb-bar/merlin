@@ -7,13 +7,13 @@ static obligations, which remain UNKNOWN without independent proof producers.
 
 from __future__ import annotations
 
-import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from merlin.targetgen.compile_only_execution import compile_source_only, verify_compile_only_report
 from merlin.targetgen.contract.build_service import BuildOnlyService
+from merlin_experiments.phase1.run_inputs import copy_candidate_tree
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.component_instruction_audit import IndependentLinkedInstructionCheck
 
@@ -247,7 +247,7 @@ def evaluate_component_compile_roles(
     implementation = E.component_sources()
     root.mkdir(parents=True, mode=0o700)
     clone = root / "compiler"
-    shutil.copytree(candidate, clone)
+    copy_candidate_tree(candidate, clone)
     if _tree(clone)["sha256"] != before:
         raise C.StageGateError("source-only private compiler snapshot changed during preparation")
     cases = root / "cases"

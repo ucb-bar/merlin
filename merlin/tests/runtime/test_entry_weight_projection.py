@@ -581,3 +581,33 @@ def test_quant_inner_and_projection_compose_without_source_index_drift(tmp_path)
     )
     assert info["n_args"] == 5 and info["n_qinner"] == 1
     assert (tmp_path / "cgen/weights.bin").read_bytes() == scale.tobytes()
+
+
+@pytest.mark.parametrize(
+    "cast,source_type", [("extsi", "i8"), ("extui", "i8"), ("trunci", "i64"), ("bitcast", "f32")]
+)
+@pytest.mark.parametrize("live", [False, True])
+def test_value_cast_traits_do_not_keep_dead_tensor_components(cast, source_type, live):
+    from merlin.llvmlower.entry_weight_projection import _pure_dce
+
+    result = "tensor<2xi32>" if live else f"tensor<2x{source_type}>"
+    returned = "%cast" if live else "%x"
+    source = f'''builtin.module {{
+      func.func @forward(%x: tensor<2x{source_type}>) -> {result} {{
+        %empty=tensor.empty() : tensor<2xi32>
+        %cast=linalg.generic {{
+          indexing_maps=[affine_map<(d0)->(d0)>,affine_map<(d0)->(d0)>], iterator_types=["parallel"]
+        }} ins(%x : tensor<2x{source_type}>) outs(%empty : tensor<2xi32>) {{
+        ^bb0(%a: {source_type},%unused: i32):
+          %v=arith.{cast} %a : {source_type} to i32
+          linalg.yield %v : i32
+        }} -> tensor<2xi32>
+        func.return {returned} : {result}
+      }}
+    }}'''
+    module = mlir_query.parse(source)
+    function = next(op for op in module.walk() if op.name == "func.func")
+    _pure_dce(function)
+    module.verify()
+    assert any(op.name == "linalg.generic" for op in module.walk()) is live
+    assert len(function.body.block.args) == 1

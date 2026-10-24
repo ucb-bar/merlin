@@ -49,7 +49,10 @@ def ensure_registered() -> str:
             ImprFeature(
                 name=FEATURE,
                 action_class="PASS",
-                description="Skip reductions only for fully source-discarded output tiles under an explicit nontrapping, unobserved-floating-flags contract.",
+                description=(
+                    "Skip reductions only for fully source-discarded output tiles under an "
+                    "explicit nontrapping, unobserved-floating-flags contract."
+                ),
                 edit_pipeline=_edit_pipeline,
                 requires_exactly_one_of=_OUTPUTS_FEATURES,
             )
@@ -211,7 +214,9 @@ def _mc_spec(op):
     body = list(consumer.regions[0].blocks[0].operations)
     if ([o.operation.name for o in body] != ["arith.mulf", "linalg.yield"]
             or any(not _mc_attrs(o.operation, {"fastmath"}) for o in body)
-            or any("fastmath" in o.attributes and str(o.attributes["fastmath"]) != "#arith.fastmath<none>" for o in body)
+            or any(
+                "fastmath" in o.attributes and str(o.attributes["fastmath"]) != "#arith.fastmath<none>"
+                for o in body)
             or list(body[1].operands) != [body[0].results[0]]):
         return None
     lane = next((i for i in range(2) if consumer.operands[i] == value), None)
@@ -285,11 +290,14 @@ def _scalarize_closed_mask_contractions(ctx, module, *, outputs=1, rows=1, reduc
             observed_indices = []
             for number, extent in enumerate(observed_shape):
                 stride = __import__("math").prod(observed_shape[number+1:])
-                coordinate = flat if stride == 1 else create("arith.divui", [flat, constant(stride)], [ir.IndexType.get()]).results[0]
+                coordinate = (flat if stride == 1 else
+                              create("arith.divui", [flat, constant(stride)], [ir.IndexType.get()]).results[0])
                 if number != 0:
                     coordinate = create("arith.remui", [coordinate, constant(extent)], [ir.IndexType.get()]).results[0]
                 observed_indices.append(coordinate)
-            coordinates = [constant(0) if kind == "zero" else observed_indices[position] for kind, position in mask_positions]
+            coordinates = [
+                constant(0) if kind == "zero" else observed_indices[position]
+                for kind, position in mask_positions]
             condition = create("tensor.extract", [raw, *coordinates], [ir.IntegerType.get_signless(1)]).results[0]
             if not true_observed:
                 one = create("arith.constant", results=[ir.IntegerType.get_signless(1)],
@@ -390,7 +398,11 @@ def require_report(stdout: str, workdir) -> int:
         "policy": FEATURE,
         "rewritten_contractions": count,
         "effect_permissions": {"nontrapping": True, "floating_flags_unobserved": True},
-        "scope": "Immediate typed all-use observation closure; partial/active tiles retain source arithmetic. Runtime omitted-work counts and performance are not inferred.",
+        "scope": (
+            "Immediate typed all-use observation closure; partial/active tiles reta"
+            "in source arithmetic. Runtime omitted-work counts and performance are "
+            "not inferred."
+        ),
     }
     (Path(workdir) / "masked_contraction_report.json").write_text(json.dumps(record, indent=2) + "\n")
     return count

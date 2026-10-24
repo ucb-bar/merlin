@@ -399,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
     operations = corpus.add_subparsers(dest="operation", required=True)
     derive = operations.add_parser("derive", help="deterministic requirements and complete census; no agent execution")
     derive.add_argument("definition", help="explicit experiment definition or catalog id")
-    derive.add_argument("--application-capture", action="append", required=True, metavar="LABEL=PATH")
+    derive.add_argument("--application-capture", action="append", default=[], metavar="LABEL=PATH")
     derive.add_argument(
         "--application-capture-selection",
         action="append",
@@ -444,9 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         metavar="LABEL=PATH",
         help="optional exact generated native-host qualification receipt; never grants RVV support",
     )
-    derive.add_argument(
-        "--rtl-facts", type=Path, required=True, help="exact extraction artifact; never re-extract implicitly"
-    )
+    derive.add_argument("--rtl-facts", type=Path, help="exact extraction artifact; required for model derivation")
     derive.add_argument("--output", type=Path, required=True, help="new immutable artifact root")
     capture = operations.add_parser("capture", help="preselect and issue one fresh sealed CPU capture")
     capture_ops = capture.add_subparsers(dest="capture_operation", required=True)
@@ -583,6 +581,12 @@ def main(argv: list[str] | None = None) -> int:
     prepare.add_argument("--public-supplement", type=Path, help="pinned operator-requested public test selection JSON")
     prepare.add_argument("--host-index-bits", type=int, help="reviewed index width of the selected host ABI")
     prepare.add_argument("run_dir", type=Path)
+    prepare.add_argument(
+        "--preserved-corpus",
+        action="store_true",
+        help="prepare an existing descriptor/corpus without Phase 0 derivation; run_dir names its descriptor",
+    )
+    prepare.add_argument("--rtl-facts", type=Path, help="selected facts for --preserved-corpus")
     prepare.add_argument(
         "--output",
         type=Path,
@@ -776,6 +780,8 @@ def main(argv: list[str] | None = None) -> int:
                     host_index_bits=args.host_index_bits,
                     **({"public_scalability": args.public_scalability} if args.public_scalability is not None else {}),
                     **({"public_supplement": args.public_supplement} if args.public_supplement is not None else {}),
+                    preserved_corpus=args.preserved_corpus,
+                    rtl_facts=args.rtl_facts,
                 )
             elif args.operation == "inspect":
                 result = corpus_release.inspect_release(args.release)

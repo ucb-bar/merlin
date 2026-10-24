@@ -261,6 +261,950 @@ pins:
       reports this pin's commit as a missing object. That reading is wrong and looks alarming; resolve the
       path the way the code does (`provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`).
 
+  gemmini_phase1_verilator:
+    description: Reproduced GemminiRocketConfig Verilator build used by the original ISA capsule diagnostics.
+      Generated RTL is the hardware identity; no fresh Chisel elaboration or upstream gitlink agreement
+      is claimed.
+    repo_canonical: https://github.com/ucb-bar/chipyard.git
+    commit: "eef2ef630adb2b16bacbc5436bdaac36e8670af4"
+    targets:
+    - gemmini
+    root_env: MERLIN_EXT_CHIPYARD
+    content_check: true
+    requires_paths:
+    - build.sbt
+    - sims/verilator/Makefile
+    build_products:
+      sims/verilator/simulator-chipyard.harness-GemminiRocketConfig: e3e6c6bab05de6a6c4656fd8e8a580d0b33eb36f2e263e51a3c9a4c3f4c92d0f
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.fir
+      : e325f5a87d936c35818b4bb95f72280a5742defe55fb409432ea5b7ad02e7e26
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig/VTestDriver__verFiles.dat
+      : cf222483def5912d381656904e44c42c8dbe64269ce246a80fb9c0609d717299
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.appended.anno.json
+      : 7077a316433fb012bb23b89f081f44d1006f42a24ac9fc88c69c84b51d056834
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/sim_files.common.f: b877a34b508b2ad6b147591030236f6ce65d9a22b41d4e3ba4bbd0e8b3a7b890
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AMOALU.sv: b90836735094fd059c127fa389c3112835f6579d1fc24d47ec6ac6792205b18f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AXI4IdIndexer.sv: 103b6953d78ebfe96370170858ec87121723445a9ffaf9bfca98b73eee12766e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AXI4UserYanker.sv: db3eafea653af9262c522674b8de453aacfd65efa81dd10399a743c5683cd64b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AccPipe.sv: 84ed55e4c33488fdadeb738572812f23e7a07e215659084e24d3070bc221cd89
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AccPipeShared.sv: a1fe0e5da710b49a3969f92d675269feb3246e1e783dda0c1fb89c32de19d030
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AccumulatorMem.sv: 1f7265997ca86624c1c2860685298d0fcf4522383e5d9dbc62948d0ba266f1a0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AccumulatorScale.sv: 82e6cf0f806e435348400797867da980a14ab3ae543acd647e9b2500b00d13e0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AlwaysOutTransposer.sv: b95b022bb3b8fd5745e53c09eb707e76955236f432cbc82a24a1086bd7f29509
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Arbiter2_HellaCacheReq.sv: 68f365b81ea6f2fcac1a3cd979a77e50be688eb85e521472ff48ffd6767d281f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Arbiter2_ScratchpadReadReq.sv: 5f0f6f8981522b0c881938377809129fe49a899dfc7495e0da0fc5f61c6e0d86
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Arbiter2_TLBundleAWithInfo.sv: 62dbd81d9da0963249dd846de46c3508e0319d376ca5fd98599a23d0a241520c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Arbiter3_LLWB.sv: f38f3029a8522e1c7c25ad15d20f30ba38abea993c2c0d3094ea8e6252292265
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Arbiter3_TLBundleAWithInfo.sv: b7ec98ebc3ca8530defbb45017a871ba56ba74c0958d2220e99a0ad633c8883b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Arbiter3_UInt6.sv: 3aa13193552ed9c970230b24709b3dead9beaf2b2db97a3e11d4f939be01fb28
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Arbiter3_Valid_PTWReq.sv: 3e2641044a8afe5e4b10a934e731dc779c0d1bf2a0800f336ac8bdbc3823f385
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Arbiter5_RoCCCommand.sv: a6a156013ee057c6b31d3d5cd201aea0e96558b9bf874b8c3a86ef3cd423eddb
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueue.sv: 4f3bc8f416596df8e59e839b7779392c632f77371972321027bad0126694756b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSink_DebugInternalBundle.sv
+      : a9f87feca48750917eb788c17d66e16063f5b65645f4b27f7319714b9d1d265d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSink_Phit.sv: ab8e11ba57ff53143b30de34d0555937aefb61c5cfe8041a12d8ce3f0808a275
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSink_Phit_TestHarness_UNIQUIFIED.sv
+      : 561f495622cd070a44e995df0348ab5ecfe0e6442e2c1cb10913b71308c5360c
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSink_TLBundleA_a9d32s1k1z2u.sv
+      : f08f6be387bbfaf1dfa9decdf7a35c8f21ebe157cc8b2425b517eaf0b252fac1
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSink_TLBundleD_a9d32s1k1z2u.sv
+      : d850019b9f46e18ad2e77eacb4b6bff9119f0c58c82af42dc30af9872ba1f84a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSource_DebugInternalBundle.sv
+      : 6f1f546056b638ff0794d2cfca108ab8565f0a34c03c7f34b6a5ee2894700e22
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSource_Phit.sv: 010e3c5a025ecaa350937883aad6c40be30e049b58fac1c7d2218fd680aaff02
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSource_Phit_TestHarness_UNIQUIFIED.sv
+      : 77bf30416c732a951bdc23f660a9f9545cfe97bed0c3b53799ba8ee9e2421940
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSource_TLBundleA_a9d32s1k1z2u.sv
+      : 9efd1d10132f3c250ee95a878e971efddfea9a41a1ffb47acf29b9a2bb2d9668
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueueSource_TLBundleD_a9d32s1k1z2u.sv
+      : 65fea198a9ff62103f93b610aed0d69cd423590435bff3988c104711835d50d7
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncQueue_TestHarness_UNIQUIFIED.sv
+      : 1f7745c917dab510e17fff1e6ee40ebfd9801ae74f1eca6131b1e1e346e966bb
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetRegVec_w1_i0.sv: 257607e192051bb1fa064d29d07a6ff869ffcdfbaa60c3f356d02fe70df11681
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetRegVec_w1_i1.sv: 72dc077146eafae38681afb9938bb4ee95399bfb4a16b206653471abd1cab6bd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetRegVec_w2_i0.sv: 4833358e799ce2a92d02b6152ab29fd36778df82c9efdd10592bc967eda2649d
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetSynchronizerPrimitiveShiftReg_d3_i0.sv
+      : 05c3f0eca3dcc0696bf95af33c71bdf4d224543bf698f2bfb3a67d16ab4aa0fb
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetSynchronizerPrimitiveShiftReg_d3_i0_TestHarness_UNIQUIFIED.sv
+      : 7c3611549239c5cbf5d7a4f76da3739491e97f02556110a2fcea1857a2da9bbd
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetSynchronizerShiftReg_w1_d3_i0.sv
+      : af379022202ba38bce2b4e6dd616d255b6aa3c9d9d41cc70a19b8f74b5b340cd
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetSynchronizerShiftReg_w1_d3_i0_1.sv
+      : 0fe356f3b64ab9c5d7608732a9bb8f680aca7e55cb57d5a848da4cb65aeef896
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetSynchronizerShiftReg_w1_d3_i0_1_TestHarness_UNIQUIFIED.sv
+      : 7507dea6e1270c84d1760eb320219345acf3395ff550773e4c0fe216fc1a1c30
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetSynchronizerShiftReg_w1_d3_i0_TestHarness_UNIQUIFIED.sv
+      : 34b6ac8eaa5e742aa17dbac95b2388520208cccb72829da9fdac70f74d860475
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetSynchronizerShiftReg_w4_d3_i0.sv
+      : 862f5b3c19ecc8cd1eb3ccdf104b835224d702657ee4647633128e7bbffa0073
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncResetSynchronizerShiftReg_w4_d3_i0_TestHarness_UNIQUIFIED.sv
+      : 077e5947316be625b3ab2af49a0a175a037035a68bdcfd9dc06dfefa7ea021f4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncValidSync.sv: e7e8b120d301a23ea2e6f7cbc40f3f1affb2f40801252084b80f4f3ed329451f
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/AsyncValidSync_TestHarness_UNIQUIFIED.sv
+      : f5c06cf3dda3a970bb49d8ff5745a4e9bccccf74b1bc0cd36ca9a9445197f782
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Atomics.sv: 55dd6941fa37807970154de03e80112547e21f40e5ccf05309d15c3fe1794520
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/BTB.sv: 25b086823cc2a70bb2a44d57249680866cea1072348b290111706179c74b7bc5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/BankBinder.sv: c8f308d61dec1c2eb9165b0dd39e2a383af7abb5aafc2e9112e3d42f8e217271
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/BankedStore.sv: a9edb350f66f501f5e4fb4128de1968e81907cf120fb68e99d825eec91dc53a8
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/BeatMerger.sv: 6a7bccd79aba212b7501286075156de4ae05fd7738571cd8c508c064fb5654b4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/BreakpointUnit.sv: 90f180b25a7fc9f12db6227ad6593665e1da66d24f875937ff5565bed1ac7062
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/BundleBridgeNexus_UInt1_1.sv: 524013de41ef25796f118b40932f9009db0ba229a7cab99085c79bb5d6c4b4e9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CLINT.sv: 071a3acdd049466298f02cdf0c5b654c0b64ee48aa4926204b7eeceaadb6ff19
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CLINTClockSinkDomain.sv: 62d72f8458b626853dfaf6234e655eb6215999aba8ca4ed8cabe36ff26209dd5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CSRFile.sv: 2998adc03a9db8b45c304460e1bddb52d8eafd428cdef99465225cce1257a0d7
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CaptureChain_JTAGIdcodeBundle.sv
+      : 6d466fede3930d9ccf02a58095806862db1baf5e7e4c62b5020b4e4d5dd568c0
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CaptureUpdateChain_DMIAccessCapture_To_DMIAccessUpdate.sv
+      : aca9fc5d2a6d38f84d6f3a46f069db3ad57d6966de18490bc2ebcd36169344d0
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CaptureUpdateChain_DTMInfo_To_DTMInfo.sv
+      : b85b06a8ef839784a491b715b9d036df50ce53acba13d94670ec7cbfb763ffd6
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CaptureUpdateChain_UInt5_To_UInt5.sv
+      : d923ef803faaef288a4b8efe8d01528c4836867cce474350c1bbd1bd24da49e9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ChipTop.sv: 585318e41fbbec359edce69b9deeeb3408eeecfb2a7c792dae6184ebccc2d41d
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ChipyardPRCICtrlClockSinkDomain.sv
+      : f7264b4c907abed9757a739c44cd913f1dd26edf489e8143d8906017c39c384b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockCrossingReg_w15.sv: daefb5f1fd34871f2384aba46ca91d8e2a92c6b1bff542e83fb6718b42c7deb0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockCrossingReg_w32.sv: d3a2c515789de2ae5ece8cbf18a28c96d2e562d1ed393c0986195dd8550ad941
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockCrossingReg_w32_TestHarness_UNIQUIFIED.sv
+      : 574d3f06d710c78b16b67dcdbd77b95c775fa7c4b3b943a7af71c0e9af2486fc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockCrossingReg_w43.sv: 8aa9b0f610ddd872e24e992f406fe37819b92e3585b4edd6c2115adc4539b213
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockCrossingReg_w55.sv: da666d110391f776fdb30f558c0befe1ffa1449f7c8efeb659008f9bd95d14ca
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockGroupAggregator_allClocks.sv
+      : 50e5343e3beeefc421dcd47a3add24eff402acf14c6e9580e1fe6f5cc429d579
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockGroupAsyncResetCoercer.sv
+      : fc21640d7d1011e7b943944c629c46639e099197dc3f2362b03930f421919905
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockGroupCombiner.sv: 879727fdde29421c41fc56cf8b1ba0f781f45b9bc84351c281653db245445442
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockGroupResetSynchronizer.sv
+      : 79fae7beb303c54c1d8463eb5a956b3a4be33d7ade8eadc831f1c8c9cac9be4b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CoherenceManagerWrapper.sv: 5975aa0392326abe720dc3702231ac4fc6e72cdc9727bd4cce1c0802631290d9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CompareRecFN.sv: fc603f716846a4916c9139bce5f0a4c77daa26e6c901c77bc4501557111bede9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CounterController.sv: b36f0aa544e5e0f571f860578786f1209569f7885256f6b601ecf12fb185dee0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/CounterFile.sv: a9ce803490007be842d504899a719776fa53e04cb716463b73e5b9d358f779e4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DCache.sv: 7c21030f9af211d406d438da3a9884329d08f9f18316816dbd8ecd9f81435e3d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DCacheDataArray.sv: d80ed3494e1fc763348cde323879b37b29303c62bc58489fa92d121ec2c3f04b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DMACommandTracker.sv: 25b4b2dfdddfdfc68535db855609d34a9e95bd0a5cf77a057379aeb4b3f7697d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DMACommandTracker_1.sv: 9863616a562e04574722c3cff63e5a78a93c3fde96fb484e26871022cdb1a0eb
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DMIToTL.sv: 804275ac4149ae8a75baca1658880fbb760e49af0e054afb037265765ad8badf
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DTLB_2.sv: 2890b9b6ff1ebe7e4371c2dd5938a1ebb720baad10587d3c08ee75a058f8e8fe
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DebugTransportModuleJTAG.sv: c6f0192f0cb0c08f4edcaa96dcb0f6e02bfc21565ace43efd2eb7cbcbbe839bc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DecoupledSerialPhy.sv: 0fdf9b4701bf1fd4c0232f234805babc8c36a9037c3073cfa55281fcb310fcc8
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DecoupledSerialPhy_TestHarness_UNIQUIFIED.sv
+      : c86e6e54da7b422f373f84a1f224c9345e766870588a590f028cd479e3adfb7e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DecoupledTLB.sv: 9acf3433791d2d65762d170f572cea0042cef58730ef55ba7e5f28e9b3e8c37a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DigitalTop.sv: f97d3191072ba69ce3ad1b17eeacf384fca48db18cf6eec29a7e86416ad32cf3
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Directory.sv: a65ee447c423b6267f2cbc7287fce070960eb6a68601214b025275ace754847e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRawFN_small_e11_s53.sv: 6c3b7043855d7e18e129ca89138075e0f320a911e69ecaf87ff7f523b84e1efd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRawFN_small_e5_s11.sv: 9773eb66758676852692e5797d4ba585c8c712a9be7c75c06c80ffec2cd6d137
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRawFN_small_e8_s24.sv: 161f8d5621cea6adc1d45943ebfa6babc1629fb7aa58169ceec4ca242c61e45d
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRecFMToRaw_small_e11_s53.sv
+      : 6c44ff0dccbb82f91f7235434fa0cb4dbd7c7a1372541615019cabb448d281ff
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRecFMToRaw_small_e5_s11.sv
+      : fb9418a576f65d4ce1c34035bc1fb7b02cbeb5d0b1a0a4af402f7c53cd2ba75e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRecFMToRaw_small_e8_s24.sv
+      : 7e70f7bd7a68dc3c4d30c3d25d439f33a1960a2fbbc68de264709ac8880a4269
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRecFM_small_e11_s53.sv: 47237720da52b3ef186870520fa19f3773038834571d1676feab3ca7e1b1508d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRecFM_small_e5_s11.sv: da7658ca5f1890b39e5648dd147884fbe574692e94859daa94e1ea2d9a6c5945
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/DivSqrtRecFM_small_e8_s24.sv: 7d83245978ef2c2d977d9266004461dee8a817a006884b9aa3150de7a431d871
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ErrorDeviceWrapper.sv: f972a7ce4729badacad6c27188b15fb070c2d46383ff79dc62324aa9048ce9a0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ExecuteController.sv: a939587b4dab33818d09b1134696d5f067d2be877720872b80fbe2e33736b79a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FPToFP.sv: 4d449728596b078353efe1b3942e11aecd90a0b85b8a68ff039b770001a05627
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FPToInt.sv: 56e5f243b1249357087574b2f679d6d9773534a1f631f254975c4b1a11913cba
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FPU.sv: 93525bdb15d2a93fa29ee899fd8abfe7e314a59ebf8e5f88c373ad55117d3e8c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FPUDecoder.sv: 6b92664ba5f2215ef411657a7dd411656621d024f2cae2e592d70e9b40b766b5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FPUFMAPipe_l3_f16.sv: 8a3f3f81d5663eb776639e4a4630f8812cc9d359193164ba502990da72bd3967
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FPUFMAPipe_l3_f32.sv: 49e664beb32746e067860eb1d51a1e86002ff0303040cc5a3b09b548423a2ff7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FPUFMAPipe_l4_f64.sv: 01a372b46d487f6949759f6659fa641023aeddd441de2e9e7435987457206492
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FixedClockBroadcast_2.sv: 93959dc2c3d2c1b34aec7da69d56256421b5ecc3ba11969198b9f32064f4665e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FixedClockBroadcast_3.sv: feda71578551e58a85150517ae17a5ba1593549abc634014047d85a12897036e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FixedClockBroadcast_4.sv: f45fcadb390446f778839312ecf13ce5af6a9d81a213f0280a686f7966fe744f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FixedClockBroadcast_7.sv: a807285b66122aa381c874bce1877053d787fa91b1e63363af35d4121ad17edd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FlitToPhit_f32_p32.sv: 49ae7895e6bc1af89558f4918ea4a1d27d28c52932be411bba21d6dc3dbb0464
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FlitToPhit_f32_p32_TestHarness_UNIQUIFIED.sv
+      : ae106ae4401019d2c45820c678e6c006f14924c08bfdb8a357e1d236c6ed9847
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FrontBus.sv: 04d747f7e49d55a6cc5e02a9956845fb72397b28d239dd33f3681bad29c8ee95
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Frontend.sv: 737bb7284ecdf127ebefd5a47c8f02b890c6622cabf7088bda89c9b5f503a3cc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/FrontendTLB.sv: b033bbd2cd2dca2abfd9137d05d94287656ae22bb9069199bc100a8b47fe4e99
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Gemmini.sv: b9f97fd2da3532951fe690b4dba214022a56d9733c13d0935773457bd60300a5
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDeserializer_TLBeatw10_f32.sv
+      : c06e57c04cc3cf1c65035567c73506971ddd3e1ae280e5c686ce3c8bb52bccd4
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDeserializer_TLBeatw10_f32_TestHarness_UNIQUIFIED.sv
+      : 294eed4286662a76d1606dc78274bd0b5c66562f17835aa89d5ff993bdae4602
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDeserializer_TLBeatw67_f32.sv
+      : 8e01d9019f715b147d49e5f67e6315164c2ca0d1448c7a731466748178bee312
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDeserializer_TLBeatw67_f32_TestHarness_UNIQUIFIED.sv
+      : 801e133571781c9bd7f22f8b27f434a800f70f77f6d1f18113238811cd94e98d
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDeserializer_TLBeatw87_f32.sv
+      : 60e1d98755d26ce39a04855f75af6418b099d191df66a38113d495eacc3bd47b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDeserializer_TLBeatw87_f32_TestHarness_UNIQUIFIED.sv
+      : 45ff2b8e15cc857737bb4f804f0e8361edde6cefc6cc763afe28282bd05fa432
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDeserializer_TLBeatw88_f32.sv
+      : ff35d254c44a103737dfffd9bf1c25aeaad3cc4767abe11d8b0c49372fe33853
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDeserializer_TLBeatw88_f32_TestHarness_UNIQUIFIED.sv
+      : cee96e5f0ca6353236533689f58be268ee6834fb441d177d19aeab00de60900a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericSerializer_TLBeatw10_f32.sv
+      : 4b89d1b449c9207be2d31c553f2d3a91b01dc9c1b7e857e14ae488d5daacc6b5
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericSerializer_TLBeatw67_f32.sv
+      : 19b0fdd27a94f4ceccc44b1b6ff16b99be6fa4e480f531112e17bc2e352c498a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericSerializer_TLBeatw87_f32.sv
+      : 425b696f02df06771408f78208b88c827ce99ef91882326bf27f24b56abfd90a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericSerializer_TLBeatw88_f32.sv
+      : c829773a651cb8438554f36d4d7a4680a83b2e460848d5b2993201dc48b754cb
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/HellaCacheArbiter.sv: 96d06dfacae00a91c74191d61004056784128ee8b869e28e7c63cb6cc91fbd62
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IBuf.sv: 8031a6d15c4528de67019f9c4429ca4bb86c27d250d236e780b51b27861ff77f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ICache.sv: 1a4283e81a959481f7f9a0299e8f05219ad29644e26978ff0b36ae4394a236cc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IDPool.sv: 87c2b25b3d763c8fcc3028215103604aab5c07ca077026f2099f1013c5514487
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/INToRecFN_i32_e8_s24.sv: b6e3788655a8777f3f35b5605f3906e0eaf2327758e86c27f94b89c37b702ef4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/INToRecFN_i64_e11_s53.sv: d1565bd47ceb61ff556ca34a0cba68c6c081663f7dbce42ddff94c3daa2bf6e7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/INToRecFN_i64_e5_s11.sv: 724e8c3cfaf4aef2c660b81f6b65a616dcc4557505cb686f27e92f8bda8767dd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/INToRecFN_i64_e8_s24.sv: ac2f1798433f388e41eab15b7e3eab9739a8aa207d07fddc4bbfba6c8178a2ca
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/INToRecFN_i8_e8_s24.sv: 4eee215686ac58d1ce827e83271519ae8d752ad6c850efe029d44510faa42794
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ITLB.sv: 7cf131cf3e27555dc1ff365c06bbe50d38f46c007bb5fdecdb85e79aa1e2c7cf
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Im2Col.sv: 850bf95674d0e42c676d84ab56bc9aa7af213996555e0d217aef6c4bae2ddfe6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/InclusiveCache.sv: 291ed9c5107af523cc365196d1e50a2064d4aca1ce3fe8fe2afe8c14eb4eccab
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/InclusiveCacheBankScheduler.sv
+      : 60ba2682ae648a09f611c818d75d0d56d9d75963aab18e17f5f52c65e01ec6ff
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/InclusiveCacheControl.sv: d9f6e0a612442987940c2cd9e08209b62e27b5909c76c3cacf83eab6932947ef
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/InferredResetSynchronizerPrimitiveShiftReg_d3_i0.sv
+      : c3a804c93927f35ca6d036e5fd3f142c41ab5519982590f9dbb5610632773c98
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IntSyncAsyncCrossingSink_n1x1.sv
+      : d9089a3de9e7690e244e880836f337cd4c58ddcf30d8fbab73fe9d0c529ba6c6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IntSyncCrossingSource_n1x1.sv: 20d49d17de43fc0731f44ac5640626db20d2a318712845b85bb7c8485c18d630
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IntSyncCrossingSource_n1x1_Registered.sv
+      : ea82d24480ae07d41f843ba205c277757481ec2d1f95dc4af2c6063fe24e0bd9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IntSyncCrossingSource_n1x2.sv: 7f15de973af8e94a412d5bf73aa03db32a1d05bbce189ac7185eeb8d41cc3d37
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IntSyncSyncCrossingSink_n1x1.sv
+      : d33700ebf214fbd0f9df65a44fd5c4f88061127372e6fbf588bca2c55e00bd55
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IntSyncSyncCrossingSink_n1x2.sv
+      : 80952ba32c4a58966474f1cb8ab7bbb60dbfb880db9ec99273b5124b8bfefa5a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IntToFP.sv: e54f94783888fa7494d320633db3dff95b5f15924736db9cd1aaf3eccda4ef23
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/IntXbar_i4_o1.sv: 7f3c839952c8ad8be30bc58910c8fea1ed9df9041b8f1b7ad8ee1e3fc9326de7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/JtagBypassChain.sv: f71239ed2c9900e82cf16e73045541b4a22fcbf235a4748f55cee9eba7dfc368
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/JtagStateMachine.sv: e630c5f0ca3ebc140583e8ce916d6b10e8577739074f1fc072a1080f73f32cf5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/JtagTapController.sv: 434626d715e445b29c8554338f5f1768fd4c8e52d983b3f393352b1aa175193c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LevelGateway.sv: 5b33b0ec1d57ac434fe601433797d6c931220874a026cc47714a5904d9f3bbfc
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ListBuffer_PutBufferAEntry_q40_e40.sv
+      : 3e87a96fafad048bfbd279cfac3e3e55bf261a61338a22aabec099072d8bbeb5
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ListBuffer_PutBufferCEntry_q2_e8.sv
+      : fed3c3410ed701161445a95d4ca6bc4d25e60294655d14bddc397219770dc98b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ListBuffer_QueuedRequest_q36_e28.sv
+      : 51b18e1059668f0e5703b71c8ebd9c2fda0035449c2ab1d842eac16f6b4c6a37
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoadController.sv: 5a050b894e50507f3ea0035417812d63591152f0024e78e3f41241fe95de947d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopConv.sv: f45c756b9638ab93f394dbb2ead98a718bfb6c6659579dbfef1f5df3225fcba6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopConvExecute.sv: 2134afcf2acb97126e7d507ea214890d2513a5f4ed180b158cf8e3e9dea2919a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopConvLdBias.sv: 54f6844d0056e79159e9c78eec7163d7d1ee5a2d2ddedadcd82af3bb09e9ae75
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopConvLdInput.sv: 71b78f952c078215056446cee08b77df7f8cadf326e6f6b80a650cb28cb9d925
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopConvLdWeight.sv: e223c13e303d303ab7e613895395a7c9e5f96abdf5a84851386610ce51813408
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopConvSt.sv: ab76808b8035cbdce87fd30c432d9ca585a1a2721c51be309ea5066c6c22e437
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopMatmul.sv: 6cf9f254ae577d91ba6145348a303dc9c3e0dad0331258f0a087f7500e5ee90f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopMatmulExecute.sv: 22c127b6d9439193885b8546e642d81e829ad32ab08e14ff5ac77472900bdf7a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopMatmulLdA.sv: a033851a2c96da720431429ead011dadaac65fabe6da7143734f24eb30690484
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopMatmulLdB.sv: 53df9a754ff65b0c4293633aa187c6c05480c7c3cc87b75ed689929656d0b550
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopMatmulLdD.sv: d126cb55a0bc0d3cad9d8b0efc566e85c33fca5897bd758b188e33cd8fbdb479
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopMatmulStC.sv: c8503089367c73a21d1576b7051acf3417eccfe75ed8c28b2410c9eca197db93
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/LoopMatmulStCSpad.sv: cf2df11e1627f5f1ce5f248f3af6469ba6eb3eae9a01497d012b2905e55b8aa2
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MSHR.sv: b1507980ef4873ef67f5b5247612b7eab2db6c942ead7d0d318042228fcac4c9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MacUnit.sv: 81d6d61bfd7d3b09e0083e8abcec8d70d85bd3fdc9682ac167ec289bf749a570
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MaxPeriodFibonacciLFSR.sv: 0333827da74646d97b57431c2fca3781705b0c3d19decb2eaaa3cd4dd60077a4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MemoryBus.sv: f8eca72c85bec02873741787230fda72d93b2ea6037936ce1a448ccee0293b56
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Mesh.sv: 6baeb4bd9bf9c4210fed90597bf6d6cd67a8c5c261bab8810d4a7edbb66df1d1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MeshWithDelays.sv: b37cba82443bf8ff6727fdd71c0cb5d2375fe748ef42f6655d57ce43407f1998
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNPipe_l2_e11_s53.sv: 02290cfb594d3d8902426d488dff80cacf4b32d706aa549f8934d26cae09097c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNPipe_l2_e5_s11.sv: c3896c2d8f349c58ee28a34a11afe91d11f76f1b2963950397f4af57710a47a5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNPipe_l2_e8_s24.sv: b2579150b5ab4d3359c828780759f93317b41f7513b1b5ceeae974629bd73184
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNToRaw_postMul_e11_s53.sv
+      : b8ad77bb65344df4d8f3c47285b23dc7b697cdaf2e77aa0f098fc186ea4c4042
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNToRaw_postMul_e5_s11.sv
+      : ae5403f8f0f6f926438ed8e11c806737b1c086bf23f30e77a836d88e21b092e2
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNToRaw_postMul_e8_s24.sv
+      : a6f86e56fd5f2f3435a1be82cbc92fdbc40fd590f29fcd1038200cb90625e791
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNToRaw_preMul_e11_s53.sv
+      : ec911a0a9369fdb418fb69488630d74fddf53346268d2922340db10fd5d1dbad
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNToRaw_preMul_e5_s11.sv
+      : a725641903a3cb8e1a7cb438f76cf3cecd6562238ab6b34a093c61b1bfef0e05
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFNToRaw_preMul_e8_s24.sv
+      : 6e80025804359d4da10530c9c0de2ea6794d6034c5558c7bd88dfb0b2e38d53a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulAddRecFN_e8_s24.sv: 7cf0a86987e98c13c6fd161bdb6f3aafde4de7f08bf60fa20b0cdc5444007635
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MulDiv.sv: 715faced0d0a39ef554ba2b7a409550fb12909602d2737513f3147a19fd0859e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MultiHeadedQueue.sv: 1d60d57e47eff6d7bbcd21c6c4b29db05b034759456488cf8cfdf8c1cdb05890
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/MultiHeadedQueue_1.sv: d4f5940a4c45073e658d339bd6c054420e31f0263faa6ab9cce8bc1e61d83287
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/NonSyncResetSynchronizerPrimitiveShiftReg_d3.sv
+      : e6b4d14e7ff7fd8ebc9581de9b74edb96a0fb310f86f0b79e0f9ef7b5cb763d2
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/OptimizationBarrier_PTE.sv: 18258de391c8717ba4cccf0ead4e479f0d7eae0321d71ebc05ce91db6a3fc12a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/OptimizationBarrier_TLBEntryData.sv
+      : 11ca5308269f25df090365fdde5d3672bd0ffefa2fccb8c2aaad4ebc9e7ef9f0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/OptimizationBarrier_UInt.sv: 0585674822abf32563b420860a60a731c6e8390c99ffa7583a82e0a4c247f5c1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PE.sv: e20b1a7b233ea63095612bfb1ed44f8c0e581a07689749b42b4d7a6914e6ed2c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PE_256.sv: 8702ed3a7fa09be930ae18803d992fa5106ecb0626ae140914afe2fd766ba925
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PLICClockSinkDomain.sv: bcf017c4e389ff4a372e82b96e27f71d6ad89d14ba3fd9b91a92551afc6cb2f2
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PLICFanIn.sv: 2a084a0488eb02af40ce9d8d0eed9759f5ebcf49a30407d64f119a5d9c5a6cf0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PMAChecker.sv: 5e26147a55fc84618b0df90141ae9b51406ad770c10d507f32ff83709531e30d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PMPChecker_s2.sv: 5213d464194fff6f101857453778fdc2b3b7c2f483e60e038d9b10670ed946ec
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PMPChecker_s3.sv: 4ec0e471c5daf8cf4bc7d226a6a516202935f1fa6c0a629b90662ec5d360e0dc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PMPChecker_s6.sv: d54e7b718b8875131e177928c3acad91e8c2b3e5413c64bf00b89a40de88af60
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PTW.sv: 71a38f8e9a62bfc3fb781ab9402a7f905dd55f0079ebdc479ab2a861bd7a8f3b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PeripheryBus_cbus.sv: 63c56544d21ebd8903561d782b6b17d0440b73415b7356c4484f51429197cbd1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PeripheryBus_pbus.sv: d1ccb5466a98968e1ea3bd883adc72f7b3170279eb6d2a7ef0b0afef4035a437
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PhitArbiter_p32_f32_n5.sv: f3f72e188252848fd996fc785b3614406ca96f81c6f263d6b072a141e6b3465a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PhitArbiter_p32_f32_n5_TestHarness_UNIQUIFIED.sv
+      : 6c4d6812871ea3682915f8d7c19ab2a71cf59fb37f99d6e1bcac662688e0bf4d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PhitDemux_p32_f32_n5.sv: eb0fb3df8fd8c389188c68530eaeb1e4806fb9981899b1fb29d79f78967df700
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PhitDemux_p32_f32_n5_TestHarness_UNIQUIFIED.sv
+      : d046ce07d41d1fbe8e600efe90bc422c8402ab70af25e76cfb4fc02297279539
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PhitToFlit_p32_f32.sv: 471345e7e0899e324ca750bb79f36f1d9d322326db214f09a5f2e736e78c79d1
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PhitToFlit_p32_f32_TestHarness_UNIQUIFIED.sv
+      : 3c31601cd9c1e19798e1bfc1459c8ad619d093af401e042e1119ca10bebdf168
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Pipeline.sv: 1e9fc823dee837ea67b823a9b33cfddba8f3857c3f39e098a2454ea172a16ef4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Pipeline_1.sv: 47277fec3541126237a77e6e2857c3c7dbebbb010ae06629ffa92511172e57d4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Pipeline_2.sv: 6b77006b7a47f53ea9cf8761e65103de96a401542e0793610afa05ca4c6215d1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Pipeline_3.sv: 91d7d4cf433ef99b216759c39926310cba6e67e1e0e2da602c30b19b23e8c1a5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Pipeline_4.sv: a20ed2f11176cad63d31f7fbf241f40c61edc7eb442d92e811b971b31c2fc3c7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Pipeline_5.sv: 2e7298ef0463d984649e0b419e633b56af4ade90f7c696bda00f4ef6650ba2fc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Pipeline_6.sv: b05ebb3786b8ca94880fdab369021009dbafbb7a0f881ad00879928bf85219d4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PixelRepeater.sv: 5ac4341cc0d6e4246fe5c1444698c269438eda38b78ead055dd3306a16e91402
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PixelRepeater_1.sv: 6be010bd5f6e59718b090ec7d116b8c70e36874737f3fe9ef8d5d833c5907bac
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/PlusArgTimeout.sv: 7e0f1636814d304aa4a59f49890063adac8ef14849f52341617af94e40ec8dc4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ProbePicker.sv: 23b5cca596e8546a12a1cd7aa7b348fac91987afa2562a9eaa32480f798bf687
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue12_TLBundleC_a32d64s4k3z3c.sv
+      : 956576ee59e18976e7573564194b242bcb58310c6ddf11352df4a37a8b9963a7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_AXI4BundleARW.sv: 5a2db8ccdd3f6102b2d90e32e3750a86c5250ab97b73d71c5b88ae97a8c26088
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_AXI4BundleW.sv: e025c7767adc27853957c9f0cefaf2b14ca462cb44f61295bff73eb1117b076c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_AccumulatorReadResp.sv: a30c561536cc4008732102cd208378d95e1a2cdebbcb530313fa3ceda7b1faa5
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_BankedStoreInnerAddress.sv
+      : dbfaf5a55a851dfb99d2e0b3216618cdd5b2552df85dae4aeb137acc0e824f60
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_BundleMap.sv: 14ee3b03a439b803594ef4932f0d30f0f5e92f1eb300e12e12356f656845c603
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_DirectoryWrite.sv: 38150bbf3db76dcc3caa2633916a365a8a75c4905393039cc5ef71368088b40c
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_RegMapperInput_i23_m8.sv
+      : 0364ae578523c604171d79d6ce3c715a1487de9d9d55ea197c254d8b87d5007f
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_RegMapperInput_i9_m8.sv
+      : 41d20039322e17846ff02827e88d3dcf6379d736f24b17e8adc8bd89b566e901
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_ScratchpadReadResp.sv: 754c792606257a2573fed03dbe508e6aedf76a4aea87fd651e01b34d5636ab14
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_SinkXRequest.sv: 5754d5aaa994eb1bb75c883575b9cba87d7adec5ad7218828113739c20f2975d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_SourceXRequest.sv: 12e51820bd6da744fdb2fb2bfab38476aac1ec70c61542491c7c4f197694efff
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleAWithInfo.sv: 7a47b3679104e4d88f4f0f17d5646c1fc6ab469534e9d6ad8048a5ec22a94fc5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleAWithInfo_2.sv: 10130be36244562d7861d26e3151c600d1fc649c3c47595a9cb341a4d47c75c0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleAWithInfo_3.sv: 1fb89cdc7a92832f2c87c81a9f8e5ac4687efe6d461fb072d79dc296c24d21d6
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleA_a14d64s8k1z4u.sv
+      : 4c1f94bd779b760a0fdf4f38c229aa12ea305026da71ac6da47924d4b16e2604
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleA_a26d64s12k1z2u.sv
+      : f29ce2c96d47a880181e54238b42a06b5774e8ecfa89c46fe8e93706435b5e4b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleA_a32d128s7k4z3c.sv
+      : 4d251efd5f81cdeaa937220598c944c4cd6f6e36429b499d5fb2603ffb21c181
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleA_a64d64s8k8z8c.sv
+      : 6243910da47460fe00d40efe5ffafc6d3ebab72cfd77f7a6803a4c6ed797d2dc
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleD_a26d64s12k1z2u.sv
+      : 6fa21aa065863602b2db072b19bbd157ae6dca6f45a20513ae31f833df8e6285
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleD_a32d128s7k4z3c.sv
+      : e43b6e789b5d23200614eca8444f4db62de9a87ee39e856cac2982a279cd476e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue1_TLBundleD_a64d64s8k8z8c.sv
+      : 2b32bd47393f0e32fee38c360816d70aa3fa969822d66f07e817661adef11a2c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_BundleMap.sv: ef7aa8e259e9247c3957a67f801053a4f64e8c96312778b3818c0848ae866d49
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_GemminiCmd.sv: a0808aa052546e9c179d16e90c17490a0bdedd75e44a22ff78b54c44ecf0f410
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_NormalizedInput.sv: a9e1a32dce2b1806f5c41871a59fb810053f6bdffed2d6eb3cf9cca4fa790f52
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_RoCCCommand.sv: ba10f8405cc6838a8289f262cbacc31c99d40b251a3d0361668ffd29f12e5a21
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_RoCCResponse.sv: 04433a53661f7acd3e512d7750aa831b198f0084b98b59e7b7830487d858d45e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_ScratchpadMemWriteRequest.sv
+      : ae363db220d3307871c520152aae2a4aca1bb60b95fb02535a091a501c89116d
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a14d64s8k1z4u.sv
+      : e35ae9089e7f32f41d18447af7dde2eba47962c55b7cddc389d65970a801f349
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a21d64s8k1z3u.sv
+      : 6fbfc070556e656bc0a3cf2f2ee7fed9b900c4cbcacb20c55ffa0f37c2cc1e80
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a28d64s5k1z3u.sv
+      : 6a8f94280e5a0d27cb1fd432f8afcec7426ed79524d1b197d76b33f94227644b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a29d64s8k1z3u.sv
+      : e1bc6b2fae69d00fbd8a5e836bbd09f11cbb0a88fce2ebbb3d12312c4dbd5f6f
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a29d64s8k1z4u.sv
+      : 5711306e8cf61b806da949cbfe45cd7cd195b905021105ca8f9a4d4a748d2581
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a32d128s2k4z4c.sv
+      : 1b539b04ba84a7cd5e6c8e129df33c7fc2081c08c7fd75b50ab2f80ff795a997
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a32d128s4k4z4u.sv
+      : c8eb2108e00c8d469a70cc9113d7b306d6bde2f63ac03a85b2c461c6a0c04a52
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a32d128s5k4z4u.sv
+      : 1666cffb7f6fcde07331736cf14c4407c31a1bb10e4109d058badd07a1792eb0
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a32d64s1k4z4u.sv
+      : ae8f418b838ef93bdb2f5cc05ca3b1c23ce747b10b84850a6957bdeb94febacd
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a32d64s4k3z3c.sv
+      : 94509cc883d598b53932f48d3143d62de3803db9b434c8ddc02c57c0eabb2b1b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a32d64s4k4z4u.sv
+      : 014ae7ac2cbc45fdb88e3d664acfde3017ca881bfa85afe23b2a3e875086ca16
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleA_a32d64s5k4z4u.sv
+      : 357e93cc8cb6690c6dc87a52c70a8c6a78589e853afabd9751672bfde612b6a6
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleB_a32d128s2k4z4c.sv
+      : ee9bb1dc571d9f754107adb002e37b2851ddfeb478033f4e1344118644dea388
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleC_a32d128s2k4z4c.sv
+      : 7323a0006b4d6be0e091b7f5f6fe1bc60ca69c230f698e343e8f937df130a65e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleC_a32d128s7k4z3c.sv
+      : a20a7094ac65fd45c0dc292191df9c5b1fbbdccfd5a2f4d2367c4a5847d7685f
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a14d64s8k1z4u.sv
+      : ce6c5c62422c600568441b3be42554db0f12dbb5910d58c19ebe4ea2641489cf
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a21d64s8k1z3u.sv
+      : 1fc6f20c47d235acd7ac9f739ea59778cd35d867f2dd192579b4eb372b05f489
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a28d64s5k1z3u.sv
+      : 9513e3138a08113a86fc4b27ede9a01b8dba6d2eb379a890f227624957342e96
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a29d64s8k1z3u.sv
+      : 9cff4b6b55926142e0dbcea1e9aafdf985c5991e6ce86829cfbc69f0c203ed96
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a29d64s8k1z4u.sv
+      : 533a6281c309cdb32a4d10a98d36e6553bdb07f6bcac4b56c0cff66fb85e8787
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a32d128s2k4z4c.sv
+      : 627c0bf59258fda86cbddd1745a84edbfdc4e68e39cf8bbd821952199ca52aad
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a32d128s4k4z4u.sv
+      : b893f09b971016588e4fbb9456941014841c0e757af54caa4fe80012040b3b7d
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a32d128s5k4z4u.sv
+      : 10708be7f5b3aaea56982f455b463208c7f7fcf800da05fa0187331ac43c5bc9
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a32d64s1k4z4u.sv
+      : 109f06b0c1c75dc214f7673e1b52ba2dffd7245475e73abb7bea75c86053a8c7
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a32d64s4k3z3c.sv
+      : abc1244a29a9e81877b1ce913b6496a0c7e149884e97a7581d3aa71f01e58d6d
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a32d64s4k4z4u.sv
+      : ec55bbdee63ac4e81b88f2e9f8074bf02b40a11090d658b6e146fd2689906e59
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a32d64s5k4z4u.sv
+      : 2752e7041bb712ea5712ef2cabf6a5cb0ac86eaa93f8be9b0f029ff7ed8b2acc
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleD_a32d8s1k4z4u.sv
+      : e1de6bb39e6d1e3e77c2a9b3b1f85bf5db2fadb37bb76155572d8a44161bb8fb
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleE_a32d128s2k4z4c.sv
+      : 23364e99ee97fec86e43524d500e92ddb7ac025b7352f0f125056587419c1f43
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_TLBundleE_a32d64s4k3z3c.sv
+      : 3382a064ba84f8de1885cc453c48b4c5de9f866718c7ea4351635a6eeef4304e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_VectorScalarMultiplierReq.sv
+      : c9a9a9e362978cc0d54064994b1bae548829ae0c1cd6a5ef2f32532b1214c807
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue2_VectorScalarMultiplierReq_1.sv
+      : 5da18b80d8e9ea4f1f4299b07f8a10b1cb9e546a109cebec0518dda50456f9f0
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue3_BankedStoreInnerDecoded.sv
+      : cd1d02b683b9750d488d5bb24361d49ae8593f667fdb9b30da90e9934bb89700
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue3_UInt2.sv: 2496e47d58658c743c0f52c47d00adf5d83f3ab071a9dbbbcb9c864f464d9fcd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue4_ScratchpadReadResp.sv: 59dd8e818e60bdd08cbeae3c7f47f4f05f3fa77a7600cd01a6ab22ce273a0702
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue5_ComputeCntlSignals.sv: fd15c87ba097b6234b059c4df6a3b8394193fd0f8181a47dfa2c21daa04027c2
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue5_ScratchpadMemReadRequest.sv
+      : 621b8174ebe0b810425a513562b345214cdee4436e36ebac3bbcaabcb0d4ef43
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue5_ScratchpadMemWriteRequest.sv
+      : f53b9003422ab5936e6ab66b9c797a164dfd50d0b07a2c5ad3a5b56b9f3f6812
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue5_im2colRowSignals.sv: df6ac353e461d8695ba7caaef239642683f8a01a45260f1cd6b98ac28de502e6
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue6_ScratchpadMemWriteRequest.sv
+      : ff7de82f1269286ce2e8c38a2cefc34e6ad8a04ce83c445a13232251f7951ce7
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue6_TagWithIdAndTotalRows.sv
+      : 7e0323f0338cba1a9d4626f9e18ffc6a60511bad31f601212e5a569eab3a792c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue8_Flit.sv: 5246ee75b90bec229706dae2df363f7b5491716a941e04b26b592eacbba0c890
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue8_Flit_TestHarness_UNIQUIFIED.sv
+      : 4eb6b32eed779c529ca7a2be81dde504f359e6cc6cce38014050aa5879ce6b54
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue8_GemminiCmd.sv: a42acf77401ebbb4917f7c0bdb55a6f5a0c0f12be290b74b660e63fb5535e390
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue8_UInt8.sv: abfdb17440edd16a49b630829462e7ca91dac767d53b60a6a993b460d80f88c0
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Queue8_UInt8_TestHarness_UNIQUIFIED.sv
+      : 7491f4550e35d75d7351db15f4249b1558bf6742b1a4be73f838ba4dac02cba5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RRArbiter.sv: 9b9033334e0fdbd47068d255ef7b7ab74c131e6ac8338b6e8fe1c5403b15f71c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RRArbiter_4.sv: 5e84a0aec158dd169cf3667f3da6fee3c2c25a95b4f418c4892db459b647e31a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RRArbiter_5.sv: 677d163abd455e69e5ecf1eca60e9c05926ec26ab5475a5319598c9fb349917b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RVCExpander.sv: 3e2292de9b9237099cc0fc0cb7f5c317d4fcf09580b26058c9c9ea10f7c0efaf
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RecFNToIN_e11_s53_i32.sv: 8f62a933331a1f031b4c004c87cfa489d83c6a2010d28faa0d3809cc6477ae31
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RecFNToIN_e11_s53_i64.sv: 485221bb3e83df517740e51e4d37b2b6fcb6576c4325c965ff82c3076253a3e9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RecFNToIN_e8_s24_i32.sv: e0ea8ba217a5e5e5be4714e0cde208cc8b8713bd8b7ae8456da281441470dae2
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RecFNToIN_e8_s24_i8.sv: 5c5bfe94357e5dc9f1040fa289525c204166ca630f5a5084bf97719bd0805add
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RecFNToRecFN.sv: ce9ec9a9b86007ecbba9e9cdf92a37a9e021a326ec0e300bf5aeb3b89c85e75f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RecFNToRecFN_1.sv: 98eb5c40852ea2d1de1e648d3667d214a50099a9576382bf19f1bb363cf4bf5e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a12d64s8k1z3u.sv
+      : 28740b86333109c827967bc1faae9ae726dabadce99983631e548d6c807045da
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a13d64s8k1z3u.sv
+      : bad0d5ffffc0990db52bb1353c29f3f52728b0bcf38d5511ce6abf6d0a5ed5fd
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a17d64s8k1z3u.sv
+      : 24b26e4a4e7b87d4ea6831e48cc7938cf5b7f67cd31ab6e09824788da33303b5
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a21d64s8k1z3u.sv
+      : 778d2d70c5901bf914076ad70b933ebeca1b923c1aa87539063c5244e6a8adc8
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a26d64s8k1z3u.sv
+      : 42d05438a46e67f62c0ba57ce5fd8210e05fcc0e9afaee16d6cc5781c6ea0703
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a28d64s5k1z3u.sv
+      : 575b8b828f7d03da8793f1b9e55d22684a8521f9532e5dc3ee2b36ab8e210e02
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a28d64s8k1z3u.sv
+      : 2a4eca9a7a7a5d819e54d6d1c39729aeb6f10f28c27ba2616bd7bab5df90bdcd
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a29d128s7k1z4u.sv
+      : 923bd31dd8764d5939d05c2571c7311375f889595e0baef05c976194530cb76c
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleA_a29d64s8k1z3u.sv
+      : d50d9a630a8768472192ec64e3d09a3381188fd0395e6bf87d3ac221fcfb2d99
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleD_a32d128s5k4z4u.sv
+      : 2144550f76d728ec327f157aef5707781a049518c98af029cee7b4435f03888e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Repeater_TLBundleD_a32d64s1k4z4u.sv
+      : 8bd1cf323e68f45176ad9ea6787cfe2bf7cdb9c43d4af42cf53c3862e8a1f4c2
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ReservationStation.sv: 90dc243ddb50a1f6c24dba47338c65c2a3b7ca8a60c8bb36b416f00e86a214e8
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ResetCatchAndSync_d3.sv: e308c33385feaaedd775a6775f04d47501f5c7820a150694e7e8a686337830ec
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ResetCatchAndSync_d3_TestHarness_UNIQUIFIED.sv
+      : 1b32d6cb5724c39f5d682cbeccf4e3a5c3dedbfcfa9231234dd7e107ad9d2811
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ResetSynchronizerShiftReg_w1_d3_i0.sv
+      : 83e7fe04f5ef50404d2c901cc80381e724b162f8e1be92edcdf1a9c3e9412458
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoccCommandRouter.sv: 54db136e35e7e4398f5f579c7caff7d52bdf95c5af0e06d31a5d9735ad78008c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Rocket.sv: 3a73207c1038b5c68b058a2050cf5047066ffdebbb6049dadb8ee6e74af2e0ef
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RocketALU.sv: ac28ea39a41be7cf4887b4b7f76649240edabe0f2efc6438a50e076c9ae83b9d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RocketTile.sv: 73a0856d8731018d6760f69acd7a8bc9fdd0fdcf9f84698f4c28bd44c6189af8
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie11_is53_oe5_os11.sv
+      : 5b441ffd1651f2fff8a78fe9e2c669bb614722dd9601c9ccb1cf636394b0c437
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie11_is53_oe8_os24.sv
+      : 7be01ed4ee27a9cf47882624c0c8af1b75238cc03a7354db321b6e66f20fdce9
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie11_is55_oe11_os53.sv
+      : ae8861f39f0ec1415b8f6f3c3bf7c9713ec5a91426f4aeafaf90446b84786899
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie4_is8_oe8_os24.sv
+      : 37ad60952a63a505629dbc6f560835e2e0107c1bba22b0b343e35ad36f8a3316
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie5_is13_oe5_os11.sv
+      : 3ed88a40c281990287dfa75b44374afff56ba491dbe462a1249239acdbfa27a5
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie6_is32_oe8_os24.sv
+      : 21705791c6bc18295e6e84f0bb524b50dbace85b90fd0a6ce9488b9316d69af4
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie7_is64_oe11_os53.sv
+      : bc4a7cfde3628c95b3809209725e0286367429318db58e3d2a984b25ad924804
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie7_is64_oe5_os11.sv
+      : ff280e9470cf62e0c2536503948c113301dc891d00710a8fa2a593c72e03ccec
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie7_is64_oe8_os24.sv
+      : e78f727d023f0aad331f57ef4c6ae6cc0762376ce2214be3bb12268f745e6ec3
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundAnyRawFNToRecFN_ie8_is26_oe8_os24.sv
+      : d62d15fd318667956aa3e16987c72148f2a16e32164126d4f59cd81974aab4b6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundRawFNToRecFN_e11_s53.sv: 0deaf69406d3fa9245b2324b12303d6a7cce6394f67d4483db1b8202cb2fb64e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundRawFNToRecFN_e5_s11.sv: e7a17edb2b3f0f96a0f8e09e258f6e923bcaa3def143c791ca6f0ed75590e6e3
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/RoundRawFNToRecFN_e8_s24.sv: ec0b1499263fac9e29f773a1a8c2c242999632fe8af42ab296029f3774a18d94
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SBToTL.sv: e8f19f557ab541eac70632a81f948a42152be28cd923c05b854b0afec929c572
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ScalePipe.sv: 49993846dce865f1d77cca9e3a5d09bc4dad572dd186c28740456cb8913ff76a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Scratchpad.sv: 8ff437bdcba5e027eed126a6f078bf052f68cc65e6bc2583f555a1ef62692f78
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ScratchpadBank.sv: 5e72d789e8768e699ac7ba9ad88e78a68da2ef0bbecd5003b3b2b3a76e5c93e1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ScratchpadBank_4.sv: 3c8680e54a780d2e86a07b6353340a630d4ce510ea6dcaf8e5537cdb6a44244b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SerialRAM.sv: 2fda754dd7ffa33408a816e250517531f9eed44ee6c41b0546bbd1cddf6e0831
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SerialTL0ClockSinkDomain.sv: 9da08460c7b2a9ac239680da88e747d80615e418a4c2a78ee08dcd6b1f400d12
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ShiftQueue.sv: 828e2aada8e063685815a8288807721d312e0be5090e1ff21006dc7d9aec4475
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SimpleHellaCacheIF.sv: 424adb74fcd525b754f6f5953a39bf5f4f162f18de756d6dc99ea62a9d8166bc
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SimpleHellaCacheIFReplayQueue.sv
+      : 959548c2984822e4bf40c36682b070321dc01b9e0e8feab8f91d2defe74e155c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SinkA.sv: 66b2f508bcb7a87012d3d7528703c430e93beff66d6683287374e54a252dbf3e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SinkC.sv: f1988a15869a1d66a60871b1d0050a15372e19b660d1c1d9b511a6aeaa626b44
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SinkD.sv: 7a4939e37a9c582de9f1e26fe175ef0dd075a14052494bc7a2b61be04bcac2fd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SinkE.sv: af305f098cdb24468b77ee3ecb2ede609c12098347c45feb48fac48cf3d96a04
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SinkX.sv: 26a54a810dbd978077bd9b5a7e2f44f26f9028261a10ddc975e3cea32c4d631e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SourceA.sv: 38dbb4ff3e9b0417bda2293c2e0380c95c8c0944d41d5678f662a61557ab659b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SourceB.sv: 19c652f4af12976c013dd88b571e25ad66b193d75971a13ea2623c2a7d41ecde
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SourceC.sv: d11616c4e6ee71165920c97614bad88af8c9b4360d3dbfec1af7ca01f21d7f2d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SourceD.sv: 76736702a3e135638151f97429e940ae97cf22ac50c2d441410398a77c33bda6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SourceE.sv: 2ab544a63962a040fc38201e6648788736469fd92f4dcf60147e76ab405f0498
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SourceX.sv: 4069d758b82e8dea7253720841858a3fd2632a9a705a64273fb241bfa7b3d354
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/StoreController.sv: 08ae57e53e914ed30f73d1aa16eca85b4ee3e5b6035b4fdd293166891e87917a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/StreamReader.sv: 4ba6a963c1238d76c5fd5f1e35b80e4c520730e8251136b3442e6d375f5d7ed7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/StreamReaderCore.sv: 41d108fe8a3978f51ced024ec469bcacc038decf6a039e194fa945cf68cd4d88
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/StreamWriter.sv: 780774047dce08e29145082ef53f10e3335bfc652db82a2aec17957c5235ac5a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SynchronizerShiftReg_w1_d3.sv: 30c9b4ad2ec9d6445f40ea33637c8639c90b5fbf4020ac25cb035390a840e4bb
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SystemBus.sv: 8796686a717522b0fc2f51c3558b86650e9b3a585b9bb60c11d4dd6909793a93
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLAFromBeat_SerialRAM_a64d64s8k8z8c.sv
+      : efb806389f346af66d4ce29282248537fd532c1a30b9a04d4f788fb16d9e1bd9
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLAFromBeat_serial_tl_0_a64d64s8k8z8c.sv
+      : 9e64aa8c3ca83bae616d2f51ee33908b64ce9bebfd808ec30d289b037e85e4b3
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLAToBeat_SerialRAM_a64d64s8k8z8c.sv
+      : 52947207632eb18d7822ed15b526e47e9b58510e614fdc48d3bf4be174bfa892
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLAsyncCrossingSink_a9d32s1k1z2u.sv
+      : b2a0dc0670ebdfb7f6b31e98804018710c22bd11322f0b1463349bb03e889103
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLAsyncCrossingSource_a9d32s1k1z2u.sv
+      : 3b60aaf7302832e55fdd4fefca45c6043cd886b9054bf59fde22a50a072f8969
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLAtomicAutomata_cbus.sv: baa255cf023ec291e5a875a7bb1fc5e2bcee70af1b09ba7677839af9eec912f7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLAtomicAutomata_pbus.sv: 96d1a446e649b4783466f5d8e0bd6b516756b3ca4da9063575d4bf2410698d7e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBFromBeat_SerialRAM_a64d64s8k8z8c.sv
+      : ba9b63bd03181980b46ec59b73a0a794cf8bedb1ef58e937f8d7099d1cfe02b0
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBFromBeat_serial_tl_0_a64d64s8k8z8c.sv
+      : d40d8c57ec7fc4680ff1e2cb07d0a221537f4f59e5c6762f2e2dca581e08f9af
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBToBeat_serial_tl_0_a64d64s8k8z8c.sv
+      : e024aeb2590b63fe7335d4a3569525ad921fb7ba365a96b1cec250170b0da619
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a14d64s8k1z4u.sv: fabe0578daf398897610d61be77966621da9a8be88389e7a9191b81b5b6e3635
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a21d64s8k1z3u.sv: 11bbc6918027cf016a2db3386681ce36fb0829dcdef84f4d445d6cb881f02166
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a26d64s12k1z2u.sv: 3850ec56660bd75a6fd6205cdf584cff3b1e419a26ac116519ed05a96be4cdc3
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a28d64s5k1z3u.sv: 7accdb1ec2b991af8bd376dd8314f65a137e9367fad9af0c4339c09bbb12d7bc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a28d64s5k1z3u_1.sv: 8a4215be375544039e0f4f0ef236ad12fe2f1cb067c22dde3e546f8205d1ce60
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a29d64s8k1z3u.sv: 02624658e4cd5b09e492545cb4c885d747b532c2c5dd0bd45bad3f3f0852a444
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a29d64s8k1z3u_1.sv: 981bc0dbee4cfd1ffb7763e7c5262250c89e89f884fe5d7cb449989f675957f6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a29d64s8k1z4u.sv: 7e79ec6222de2b59845f1451e655a287fea0ee79aaacd8f0637841820ea8f504
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a32d128s4k4z4u.sv: 3cf54d622fa6dd2feefed902ead848381661a21614fd0307fc6d5b279e41e38b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a32d128s4k4z4u_1.sv: 89dbebb7870490d27e0ca6fd6dc83a9884eb7e347a0510666b5f719bbadbf8f2
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a32d128s5k4z4u.sv: 33fe200dbce7d0e696b3726766bc9d4e2165d6896a4909bb1837e5097973d722
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a32d128s5k4z4u_2.sv: 802d6bfd789f92729664b2ee1bece0b5637722aabf5783dc9e0c4352609a2cb0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a32d128s7k4z3c.sv: e4af0f91f39903c535fd590f762da3004de1891cc45bcdb8247b66020008e7cf
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a32d64s1k4z4u.sv: 3cf40a39651b5072d8dd3986b1c303ae7ba1d5b0eb69ceef219f03dbbe5ea5c0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a32d64s4k4z4u.sv: cdcac6cdae01fdc890b84ff5350bd32101e9ab1de3bd2c365141a766dc4cd4dd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBuffer_a32d64s5k4z4u.sv: 24453edd8cdccd0c0e3faf873d113238c73f721c95525d77e059c290ba8750b1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBusBypass.sv: 691424b14cf95f99e8c9088f82aced345beb83720fc0e5d67f50d29420dfbe20
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLBusBypassBar.sv: 00ac17d08eb94b19928d3ce8c902825701fd2e5b7471651d255d96c41cdfe6c9
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLCFromBeat_SerialRAM_a64d64s8k8z8c.sv
+      : cdea8ad7ac6c140369a144bfa5d9203887c0b4477a826816f41a2cb2e115d390
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLCFromBeat_serial_tl_0_a64d64s8k8z8c.sv
+      : d888f2750021e20e58b5482f7ea528e8bc67619999cce777489ffce7c5048871
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLCToBeat_SerialRAM_a64d64s8k8z8c.sv
+      : 0813bad4ea3d30ed2061bf81cd26e53971871226f0ac9319dc0919981260ac09
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLCacheCork.sv: 036426ec7c1fed0632030dfe8bc147aff44b826d67038e5622d20541811eac26
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLDFromBeat_SerialRAM_a64d64s8k8z8c.sv
+      : 570a4801ff76c74f64184e562f768629e3064b392c434c2630a274f70700e2c5
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLDFromBeat_serial_tl_0_a64d64s8k8z8c.sv
+      : d1489c8993d8fcf1ab677bca3013cd297904e3aff182e3bab70e8f699ebe0f90
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLDToBeat_serial_tl_0_a64d64s8k8z8c.sv
+      : 5eb923b7bb496fc461b8f2048244d513103a3d6fcbb6fa7d5075fed6a0fae464
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLDebugModule.sv: d82c17c07793509e5036e4a842a3d67cafeadc519921d2e0293ffb05bd534e83
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLDebugModuleInner.sv: dc7ca99855a594a4d6cd92e9732986f23df133218d9fd42f7026bb0ad50522e5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLDebugModuleInnerAsync.sv: 0a834e047c9642a50bbf3b850807d1e3f2c7f327c8bdfdf5886b05ddc07c406b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLDebugModuleOuter.sv: bbf8ae30e1c517411d0c5e9e8df16f2eb46f7045f947ee4be4f55745427d8d9d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLDebugModuleOuterAsync.sv: a09ca34cc4c1049745d3a4c223eddb7f1f45351ba9607b9ae7e0068e0bd81fb6
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLEFromBeat_SerialRAM_a64d64s8k8z8c.sv
+      : 1374dd4273233e7e45184d9c9325d2315503f94014309dcf3c942f52217b9e3f
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLEFromBeat_serial_tl_0_a64d64s8k8z8c.sv
+      : 03d9b892bc4dc993aca64013fd4895ef228f691f4404b87e047bc98cc7730cd8
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLEToBeat_SerialRAM_a64d64s8k8z8c.sv
+      : 9ef501966ec9ea5ff050bb98a7e16832652cdd3440f1bbc24f58725fb6cfd912
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLError.sv: c925f1d4ab99dcc5e56511f33acce15a12bde1b6570e68dfb953485d2145b76f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLError_1.sv: 6cb8a9aec6ac052046bfa512a00ab5d3482aa73f4122a72bf2fb6d8bab380ba8
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_BootAddrReg.sv: c002bc1acc4b3fe805f3a400537940f40bfe6998a8ba0a85a4dde9e83bfab27b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_CLINT.sv: ce62fbf4b21483ecb2eda059a2f9d88e3592699c4965e7c98ec6a80bc295c23f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_Debug.sv: 593de2f3e703c285f130d0a11dab82048387368354a3be9bb815d349bed0b1a6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_LLCCtrl.sv: 807d42e39909004825824afd451bcb07b44b119a81f5da08c0f5cccebf679faa
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_PLIC.sv: f126528ca33d97f48c920160f413640ecf9f4056dd228b7aa9a699e9102ec91b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_ScratchpadBank.sv
+      : 3254a3143d154346de2f04196187f4b38b2ef07120cb87444c1c7cf01366c68c
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_TileClockGater.sv
+      : aace2548ae36fa86397798777d50e3bd4eabd155e5cd2feea45a656317217ef4
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_TileResetSetter.sv
+      : 82588bd8f9a3ca4de2007899335cd20c9e8dc302dd3f6d99a7fe835201618b56
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_UART.sv: 13d0c9dd1c10391a3a5438e777541a2c11ce41f496d95c40e5e04de139e75440
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLFragmenter_bootrom.sv: ba456c7a5bec097366800483281c1b5a77a4b6c13986c549c6d87e482892cec7
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_cbus_to_bootrom.sv
+      : ee4a38789395f78cb9c040771812f98e2ae45b23cb5627097ab2b87715943b55
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_cbus_to_clint.sv
+      : 012f77784945f5460342aab40568f19b9ca4d5f534de6b82ebc6861060f893df
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_cbus_to_debug.sv
+      : fde3673bfb50c41cd59b690573b3e251e776fd21bbaba5f742ca496d07690b17
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_cbus_to_l2_ctrl.sv
+      : 8698fbcb218210249752443146eb42b4e96ae512db9f99c97f2dc65b8c613009
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_cbus_to_plic.sv
+      : d71c71d09a5b3eda772f97470d331491ea5a52945d627a8f482ee608f873db68
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_cbus_to_prci_ctrl.sv
+      : 83d25340245ca19d5b9d8f340e0f5f506f177684aa343b00dc5cd483409d3be9
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_fbus_from_debug_sb.sv
+      : a02187c681dcb0ce5ae3db6a63e88d648860a1902dea33a040b7e970ea5fd567
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_fbus_from_port_named_serial_tl_0_in.sv
+      : 063659a127147b228afe22bd139169d69c84c35fa05ce59cec7a7b3e6fa95062
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_mbus_to_memory_controller_port_named_axi4.sv
+      : 6d319b6d11bb5ab9e1e2c512c1fb0be625f0e9002806322ed1c68185724b734a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_pbus_to_bootaddressreg.sv
+      : 88552c2a749094a14831a7293d1989ec370cf0d788056fcaad6e3cbb89fa4adf
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_pbus_to_device_named_uart_0.sv
+      : d3938ef47d155634751b86706ee66b34cbb43f1d77d43e4f0c2eb16afe7e3c3b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_sbus_from_bus_named_fbus.sv
+      : dc5c5516525f788fc46020914cbc73a3c77ee5b481ec8115c02dc62e3cd417ba
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLInterconnectCoupler_sbus_to_bus_named_cbus.sv
+      : 084bb9e192c3e0d0133877765bc50b70be08d6e7b40655e0dab054fc3c4fd0a3
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor.sv: 441922f85ff80a55edc1aa43a6aba3f989e34628a92902bdffa75d3648218444
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_1.sv: 93bd7d87e11489ad6beaae821497e37fcad3e8d918fd72c391471fb14e4ffcd4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_10.sv: f218b1be23c68c376249bb4325e8482efce12bcc08dccb74c02c6c7ba92a8551
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_11.sv: afea0c8f740fd1c264c832d786babd66bbc2a2eeec0fcca547485cf8778a9c4a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_12.sv: 3101208c4ce6bd39cdc5fab327883178dc93ed0fbe6824e604b3bb8ec7798ba6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_13.sv: 3d579d5c0fd7ad3cb67adbe2f2221c36468f0301061659ad91fc53ba55d6f9c1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_14.sv: 5cfa3f9ce408b49f9680ac36ad544e0f622495c36bb81491f1112af4113a5c93
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_15.sv: 1d7647b6b7d1cbebc5aeb6d6f5991bd31ffc37611c0f0bc2b4f2f8e29ecde32d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_16.sv: 09b645e4180f9c5e9465ad835b75fb6592df971b3df353309da3282a2d08ff19
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_17.sv: 310e23a4ef4b3ab56e93734633a09392a7a945887abfe08bd932f1d45b822b51
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_18.sv: 4b0eeb461529ab65953dab7f793058ac28534de5e6738c4e6a1abae4cabc4c90
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_19.sv: d40b8e422679f95a1d61b687819fab29762a9c6d1fd3775d07d9f162a549ca1f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_2.sv: 2adf966e113e29bb2a83831cc4f4fefc6860f39541eac30d7d880e04c12a7915
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_20.sv: 7c8baa9cdc6e1039308aa5d5f0cf8634b9ce5ca2bf3f92332656c81fe5355c38
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_21.sv: 5bd19a9e7c3a901368be2de931a1f42384c4912879378f7989d7c9f17520850f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_22.sv: 403efe7af7690bf417e8c31353bf6ec8ca733b9c2303611757d1aad1f63228f6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_23.sv: c742b8f13b7257c2cca13d36287a492a7fe17d22fb78ab00972731e417dd892d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_24.sv: a0c1ba4e46a18d62f80357dc428897cc8cbc92114d50a0475669aaafe485daf3
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_25.sv: 70397397acca395bb5222a5e7df86db50f1f69577269c8fea27f08d846067b3f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_26.sv: e226cb58e313ae53d983e4b0a930b54d5b2f562b412cf516e69f9bc1fd444501
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_27.sv: a7172f9c9ce95f91d08bbb164a38e9a3541691dd5ac977eff4bb12c34b35747e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_28.sv: ad6a65abe94fbbbeac3d39016ec909fd63b980cd47b80af33da3a34fe1039a26
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_29.sv: 8686f2e29a46075b573b6ec2b670256fa3eb7160eeb6f06a7d4867287e0fbe9e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_3.sv: c8734c7818c116ef02ba17d71d9fdd07819902e095a231fd960ecf8f428efafc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_30.sv: d96428f16fdd8880e3b2597264c46b4dd38e680cf5af58595e1b8c1ffb299a14
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_31.sv: 509c8cb1dcde8683457c8a71c352c13896789dc3cb45dd41cc7a41947d29b326
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_32.sv: 65001727e8a3ed167694771a58c2ffa7560427bef0c9d865d1e3d3104b9f9781
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_33.sv: eb3fdc3cec548e96ab025e138127345274b787dece865f8368d987bda8b38606
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_34.sv: 02822d7db38a9308fa3a4e00a774bf02ee4014210a78ed1e30d203dab3483025
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_35.sv: be70db5b45bd75326caa61e3a064d4f39a8c6fd137e8df5550492e36249ec790
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_36.sv: 6213090253458f8bf8198f11f7ffae5c2732e2e049129a993fb807ef89493827
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_37.sv: a3774b1b4b4ea4ad4953200fbd2f58c0ff112148ee652934c652ac4e768f5282
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_38.sv: 1aaca201b72cc6e9bbf39a790a43123784be30e6d3e6d8b0e2740b53b1913760
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_39.sv: d4c75c74efe926531af7764f5866330078d5323ae28ca5410bdb5dbb474a91af
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_4.sv: 2b3eac644825eadebb0b6911240fd3ec69f844d51402db9d8f1a33bc8fac7218
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_40.sv: 45289dc201ce48661d02bf6d3b680fb3d6a8bda525ac7813497a8ad96d1dac09
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_41.sv: 26243a23c0f09a23d8a302d6ac990081c61f1f04effcde86613801518facad1a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_42.sv: 05d31babd7e2cec7664e2c051ced64459b182863a32cba06a486017a9fa5532a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_43.sv: f4ef899e26bd5788e036f7427966cdadf408d3f37d755cbde0f674885247638b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_44.sv: c71f96894d4b5a552ed68c15d0c4e4e3f0d3abd14c59528de21779f6e194fdb3
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_45.sv: 1b92b9427bae9041816e514ea1bfc9a524aab99f731518931a541e529cba0570
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_46.sv: f8d587d53e04eeb95c348a75ea5074777ae481ad88024904697ecb621cf028ee
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_47.sv: 82e0307cbe30dfb44c2825cab92c071bd0a82c6028fc6defe319809d0c40d383
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_48.sv: 8b165366f98245c422b72c1956bebb5a5fe40c962bd8f87baf0509e324887825
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_49.sv: 12fcbf4a9b22d6b38939d9d5c5f7be76c6cd6cc3d61fd87d7485c91c66e0b6c9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_5.sv: b11a6532faa9881cdf1ce47ea517ee62d75b8750fe7edddac59121b7373d151e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_50.sv: 51855889da6c42978400a1419879388681c6b61e2b407c210388db5b4319d3f6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_51.sv: 1d103034fcff06e2855a8cd22d053002490cd23b9cd7f45b36b795935a17089b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_52.sv: aea564c5c668c5d4fc6c2955d2289a1ac524f813cf08bd7faad055186f047b17
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_53.sv: cf245a06cd0db4172b29d121662e02c74fa48cf282b4700b9dd2e867fa478ca7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_54.sv: c334aa17d05226d0ec20e8fefa3491cc0700ea8fe97d0a6dceb5622abdc08e6d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_55.sv: df24ac5e00699d6668d90615fadb35400ad8df87b6bf05f8ff7a907258f8422f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_56.sv: 41ed7ec02a1d18e5275762f610c2b5c9b3081774b847cfdd39ca4da0866ff412
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_57.sv: ca9d954c666de60cd5484488228f4be92ef03880cfd3896ae76ca0d80364b186
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_58.sv: a4cb46cb58b6c014baa68a06ab27c6e579addf6b8eabf718d023daaaef3a39f5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_59.sv: abfd4c486c498959ad413c552b8d5e7bcad9c337bca8477ac548500bdb75cc74
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_6.sv: 8c3c5737316458c3f42945755f4281d5bc861cb930cec7d467da3ab9d899a2ea
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_60.sv: c21f54d21a3c5370b6bc4c6f09da6876dc1eaaf4c985d216472e9fee26fa6ff7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_61.sv: 6be4835bfa2f2c037e8cfa705345c4f85af40c7b883192242cf875c2913b9d18
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_62.sv: 789f3ea9ddcfd00d65262d2c8281f05f6e6fa0aceb0ec5b8fc072de278b3c17e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_63.sv: b19e5637067d19895f79b692a8b000f8d10c89dd775e89225ec23e121190f36f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_64.sv: 11047ed6edad8a466be216803eac543013ee09230c7f4acb28befda0ea444af0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_65.sv: 379d233c3405b92307ca15da309be5864908a4d459bf7fe210dd0c4258104ca1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_66.sv: 30f8a7f61ea2c99d83ef0b23abb74f38df88d0e0e5ca270ad7a15c53f1635347
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_67.sv: a441e5c8dce6108b6e95086a3d4b1c2bf101af0d7b761189e4f8f39879792598
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_68.sv: 855197cd0549fa8ebdf23b1a1d839e4c07672f346625e7c32f87250e4e363da1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_69.sv: 7377f85decc9fb9a609e27db69da33a1f9cc61f7236ed320b06e80a1b37b153d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_7.sv: 57f16cc2f3f2505bc6cfc5728a26d20372a70fc93e960ef46b0ced2734437500
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_70.sv: 0c7b0a26295b50500c0ebd18e90215b66fe7ab9aaaff02580fb6ddabc12f8c07
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_8.sv: 1c94398ac37daadfe86be91558da01a5b0e2f55673039ddb8300ed3057b1687a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLMonitor_9.sv: adb1876735f2bb5c28e4a03c28a8102120e823f8c6644d561e901e07242c5700
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLPLIC.sv: 5c1007795a014daf8c00afe997d8613bd227d33a9fd6742d532996fbecf246e8
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLRAM_ScratchpadBank.sv: 6943d545cbe5f0c9b945dcdfcfa6416b519dd138f003974edf2b4e969bdebe67
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLROM.sv: 0ad7cd7c23eec2963a736de1299da59af86de657cb6549c5c9500a0524d8712b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLSerdesser_SerialRAM.sv: a567994768acb8db7005027b4b68f8555dbb7c0fd72003cc8031cc6beff93636
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLSerdesser_serial_tl_0.sv: e6886d6c6285a85630c29ece9f5c8f9cc138026963524d48bda7e95094384b98
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLToAXI4.sv: 95c08a024aca08985d5460685037836d5a8868d3f3042aca830cc9a7d3cd4d07
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLUART.sv: 93c164821f1a20b37d3b7001d556896a5abf5fbb079a0211334529625b665f34
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLUARTClockSinkDomain.sv: dd267493d0131d572d0f626ca26a130215d1cbef40deaae892444acddc7c17e6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLWidthWidget1.sv: f073e050f916bccc355deb9bb55a3218da6159ee0f2352f08b02689349832fd6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLWidthWidget16.sv: ca84162ac39c6f18df45f4ba36efd0e63acd8f315757382d225680fcf65f5f84
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLWidthWidget8.sv: ad1420bce9d8c47292738d13235f8abbd564c102f75ed71d63ee2fc3e958403a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_MasterXbar_RocketTile_i2_o1_a32d128s2k4z4c.sv
+      : bdecada54d4759d7cd30adb98c79bdba1a4bc680b4841022879bf7c8a36caa1c
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_cbus_in_i2_o1_a29d64s8k1z4u.sv
+      : 133859da70d9c2ae4ad13772858411d6f03aa57c77d53a3322e8b16f6acb2694
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_cbus_out_i1_o8_a29d64s8k1z4u.sv
+      : 767a4acdcf4ebddc9a64edeb76867b7482f95fd0e972b1b8df455a2fd104dea0
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_dmixbar_i1_o2_a9d32s1k1z2u.sv
+      : 51195bc39ac42acb824917c00dd40f015be647ca7e7b9c3a5fcb82dbb860f7b4
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_fbus_i2_o1_a32d64s5k4z4u.sv
+      : 1d695e8ece26dd79e22464579f7f387716cff630519ed3f89be52daeb17b8dfd
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_i2_o1_a32d128s5k4z4u.sv
+      : cf8df4033f7479b308ccdd7a2c90c40246a93afa3d213b871ae33c185d712ba6
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_mbus_i1_o2_a32d64s5k1z3u.sv
+      : d6e405445887e907440a1dfa19a7688e836ccaf6590faff073a6a61a88a862e1
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_pbus_out_i1_o2_a29d64s8k1z3u.sv
+      : f20a7e75410415eee69b916681ff3a2dc8bddb0d11396e57dab229d08d6d9c0e
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_prcibus_i1_o2_a21d64s8k1z3u.sv
+      : 0f43425420777b00179a194e1a5f8e1add1aeed1d4a239f78b0a8a32a4f8d4f4
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TLXbar_sbus_i3_o2_a32d128s7k4z4c.sv
+      : 6611762fa42263b0f1a56a7065503da6aa20fa3431c1396b19806e5045237127
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TSIToTileLink.sv: fbe45e9f3a5037c1b17666ad94386fabb5b24adba13b957000dc8bef9473eb81
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TagQueue.sv: 397fb926f32f57fc52cbf42a87e4a5fbc9ba0b4b523666dc44b6ef403789b6aa
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TestHarness.sv: a3467343dc26bc510251122755bef9493c174661efb80022ebbf9e4fb2b563be
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/Tile.sv: 24fae0343dd02a7bf164aa136bbe18a672222040b2b32f7c9e135853f70a6001
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TileClockGater.sv: 678c6ba2ffb4eccab6318cc7a9734b301a611adb1a6e607828da84158cd9fc49
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TilePRCIDomain.sv: bf829942aae3770e9a801c8c040ddb129dc81491eb30a3c6aafb9fff91b75170
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TileResetSetter.sv: c7a6a5886b4584c0b348c7db9bab6e9fb89b2eab274f7884b39cfc75fc644958
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TransposePreloadUnroller.sv: 5da08614302ae12df98ea36a21b334ef67c6ba105e96ef8af7e6cb4998a00abd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TwoPortSyncMem.sv: cd0a488490ad62e648ac9d335ced98930ada307f9dc466545c4c3f32f00da679
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/UARTAdapter.sv: a9deb6d791344645a86cefc8fd8db16aef2ef102e378c46af239d8e30ac41c9d
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/UARTRx.sv: 7008dc123fdb4ff7b211b6fef11d9ff00353c6effeb97baa53dc607d92c44b0c
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/UARTRx_TestHarness_UNIQUIFIED.sv
+      : b1f884daa0bc1b88a184cd101728c1a2b22eed4865d313b659032ad619f79640
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/UARTTx.sv: 79f1899208f93a93d749b670de8891e4f4793bda310d68d67092f54f1c90201a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/UARTTx_TestHarness_UNIQUIFIED.sv
+      : e3b8b23b68d57b8673d48eaa97cfa4dddba3c83d5a4caec37375896734b99461
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/VectorScalarMultiplier.sv: b3026c28d7abfae5044eed6058363dc2728c8a20411a87f7b0fa96f2928b036f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/VectorScalarMultiplier_1.sv: ddba87b828154f7c7a49de66227fee6168139358df7ba32df41ee097e528403b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/WeightedArbiter.sv: aa7ac5794d64462a6f3d641c67731444feed1f067c169e29edd3e6134ce911e8
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/XactTracker.sv: 1f9d8d35d66f10ac995c08d0014161d3dc18cf65de75b1a83ba602b7b979a61c
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ZeroWriter.sv: bca68cf285cb2bfb8099b79719485c694e637f6d807be6b6370a5ab134635fea
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/bootromClockSinkDomain.sv: 250d8201a5aa8e2b138cb4ee35ffe5d401b4425804646e35fa582c01b34f889f
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_banks_0.sv: 8c386e1266f71e4fe5154a273a457bad88081c6feb47a2390575f5599890d772
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_banks_1.sv: d3765fde2fa065319aa7c267bd9fc2f9116f99c60e16fccb3d120140d05ef3fc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_banks_2.sv: ed13d011216c67470a790ca5bc91980208690a32c7a416e6df07e0a4e2681a41
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_banks_3.sv: 5fff2a19fe5d1a55a117038ff20a6fafabdd9b75bf89c8ea7be05f6dff387d27
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_banks_4.sv: 91d0e7c19a4affc34b71ac8c7c4da90e12634450b539ea22e7b07ce206d9592b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_banks_5.sv: d99f6bf535f10685d305db7e8a846f27ed13d7c08c788ac94ac99e39f16480af
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_banks_6.sv: 0e04a2fe0a37679a02bbe80fd0051494ae69f9b92b3baf0ee17398aae9c2d567
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_banks_7.sv: ec19ed947cbaacae2712aad83c80c860127f69f0eb6540b1400b94c2126ceec8
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/cc_dir.sv: 1807906b6fa34e2ae9f50628042a65d6c3491e4a440086eb083f21fce4c6061a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/data_28x45.sv: 4df988cd35649250863bcb4df9c6dd72e22c2b29fd9f139da2448a2238b96517
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/data_40x145.sv: 9de6a6d99df6fe43672616dcfcc18fd3e5d244d3b087401298c760ed9e67f4ca
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/data_8x129.sv: 9b7d09151e7ed83c1535a5170f4dfc884cfbf6c3bf4b8f582f4f4982c88eb59a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/extern_modules.sv: b0f7334ae578c1114aa16be9356ed3995e560fdc4bef42d1caa49fe151ca8a22
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/head_2x3.sv: 2679c3ff04f3a0917680c17b47a90e2ce4a1f2f73f2f9278ef4a1ea57756cd34
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/head_36x5.sv: 7b662f2c878980f83f561390cfb5cec16596dcf87fc545883c0ea5ef0aa927fa
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/head_40x6.sv: e5b7145ac4fffe3a5f0a883891d8c12f03125c150dfdcf2cc30dee6cc0a7230a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/mem.sv: 5659903ebcd6c78dd0265fc0766369db6eabb11077f273283f8e93fbf346f19e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/mem_0.sv: 1e71f482e3b74788df8aa8b36b2826055e9e8741623a8e1085af2d335fafe581
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/mem_1.sv: 0a839ecd2a53056435709d8c51bb23d7d72cacbbff6fb6ce835b0c6bc3e8a7c6
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/next_28x5.sv: c5d9dbac2c00c9a33f1721606364462180e85fbe58a7339ac46942a296f350bf
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/next_40x6.sv: 711eed4078258aa6e1fbc1453cda854ba5025c2bd76cca4589cb2006657b7d7b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/next_8x3.sv: cc72759e846c9010e39d6e14e2526c5a28c1064a8b1dae8df558d30f3c70b026
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_12x110.sv: b7adae933ec85199aa91500592696ded4fa78a16654ef585fc3335a1c041b2ab
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x10.sv: f848036aa8da494592c0184b6db6978b5af6cd4d0a74b53f562d0950e3e86106
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x105.sv: 0e27e4b0f72ca1365dca6b58d115eae6658addba3bef5b57fd00a9e29b9af313
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x111.sv: 38fd1ed19bbad586e7cdfe2fa505e1783510d86c7bd5a940139bc0d600382c11
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x115.sv: d3b5e8c1d4dca687520188d4ab46a79985b342c1e935cdc937b2f80154d510b7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x116.sv: 2487d4cafca5132d53f1c2be75dda9bf428fa890a869488e585b2772553ba2e5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x118.sv: 75f3a320185fabaad5cf9c242d399ea63caca56196d47b0bed741c563673eda0
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x119.sv: e56e4f471ddc62197be9637d81da08f4adf4989e23f21d24f75c40e0e5f18dcb
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x120.sv: cfbf76e6a836d9a2150f074705d5e3c4d3fc569ce49464c01c4e194154ba8d79
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x145.sv: 7a61e4d54ef5f2fdd156d3df2f9ede8c619bfeae9221e941a47306e3389e1c27
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x147.sv: d564f3900c8c135685bdd43c12d81acabed8f476b8dac1922b9d912c25c322f1
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x148.sv: 17cdbec054e12f6166bec7687d3bf422a74509a785a34cb4588baaf2de4b2f0b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x173.sv: aed3bb0fc48f4e6d1afd59012f7451728976a3e46f36b0a8ebca228fcba48572
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x177.sv: 9e289bfc174c285eda4730e1d80c8acfb971fae0d30c3133c9bf92e7eba991a7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x189.sv: 2f9050c628a555c410d2dea685ec882f0d84b5c8671fabd648f12878f3238749
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x191.sv: a606e4ab2e1fa827c7e9c28fddd045938d1bdcebf57ab8ab435a9659f346ef1b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x192.sv: de37fe705f73cdc6520f6adcc85ac7667ec3984ccc8a10e3b02bb048731e5218
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x257.sv: e470e2b800dcca6ba8cabc15370d8d8bff57c66ae87c9170189e20f5cfc95441
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x265.sv: 384faddeb3d4551904056f5a778c3c59f72e82bfccfb8caba8ec5108cf4f21ba
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x274.sv: ccffe254e249ecd382922768ee054a37d1fca343c3acedc3eb0165301867033b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x383.sv: d0b2a9281f0785c9a9dd5ef3f8d33af23018674331d5e42ffa12ad5ea2541dc5
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x550.sv: 5c98b42b217e238e95e7ae0f8b97919d0401a966044802825791bb7c1af4f8a2
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x60.sv: 16196b16627de87ce501eac8931adb94d4f583c0a5fa678be6324e05031eb442
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x625.sv: 315c172c7e59d83c8cccf7134ea233faaad6e7263b04a5a91a4c466b33a40d7a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x69.sv: d77e3910cf5ad03536332a7d864ea8cfab6ff2a855421a51c1044d822e140b62
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x80.sv: ef2f76635b158172781db3a1decabfd5e2934093a62c68dbcef3064d858dfd96
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x80_TestHarness_UNIQUIFIED.sv
+      : 7100919154b3a13575b5d9c257390ff55ab5860b7368b327b443a319655c01dc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x81.sv: 8ed8982bf1158134bd1167651a199275a391b57b8b0a64e7b9819594df028f99
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x83.sv: a8f9c0c680c8da9c8e1d030dffa47457cbfabe28d997ee9f4c91dc33ae1a3c9b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_2x84.sv: 2b9f60febded2937d36a748015529efc84ac4858a40c8aafba3bb36ab27df921
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_4x129.sv: 23c18864e2d14e1361cecf4fc20f7ad1bc3cdae0f829a61e052fb30fece8b03b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_5x190.sv: 7f1f681576ad80839eef5b629d3809e1f7d8fac2014f101eab70659aa89d43b7
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_5x258.sv: 9b88020a65bfc6281347ec55a5192932060183c311bcc9c6501a511dcfade682
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_5x88.sv: 05379d63bf8c579c771285953df15d7055b93eb878d4b5c7e279a6023c15f595
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_6x383.sv: 856725cdc525d177da7f84b32f95bef602b595a667bab35500e4fa6e17d4a45e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_6x8.sv: 87ae783817977c76b16ce7ad6049cd1e844a2c24c264345ce919255946d333ae
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_8x246.sv: dbd315306b2f23f7b453a3e9a9c035018958ef27b352bfebdb1f2a74f743140a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_8x8.sv: 506cf00cc849706ff1a39429d875c725b5426cbb09bbe7c3c88456031ea12900
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_8x8_TestHarness_UNIQUIFIED.sv
+      : b3873944b9b417b167f872f8459dea5739f64a52a981ba5e5b0777dd84c191f4
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_data_3x128.sv: 0b205b4b6d37c25258726974cdb8d27d88005fdedcff8195da45b4e30a6d5308
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_flit_8x32.sv: f6c8bd39baf680abf31d5786ff1ca772e98ce57c791286caf93834a2814e99f6
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_flit_8x32_TestHarness_UNIQUIFIED.sv
+      : f5c771dee67b3e54c893344453451fb0e638cc027cf28540217955787fbba582
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_sink_2x3.sv: 88d1182d3733f40a926810ef144689b2d41608226e93b91b76165d3b01230518
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ram_sink_2x4.sv: 89aa527789415ff4fb26e2be4699182031207e87e5fedd19328c8cb02760bbe9
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/regfile_32x65.sv: cea2db08fbf360a07d3ef50872c7671030af55772fe6082d99cc34436544915b
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rf_31x64.sv: 9762fa2eb644e1ef963aa8da17fc3dd22d3a646fed58e6c807a5b5918ce5f5e3
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rockettile_dcache_data_arrays_0.sv
+      : 5e552d682b57e67c4e0fa4fdfcc8553f19fb299d4006f2f094bb891c1ca82199
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rockettile_dcache_data_arrays_1.sv
+      : 0609cc13d0d670b950f54dd57a22998fb4db40b88a4302c4d4d7f8c594889cbe
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rockettile_dcache_tag_array.sv
+      : 8687c70dfa060e25f97267d8784dd132c88bdef8396c061916588f2be0f7336a
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rockettile_icache_data_arrays_0.sv
+      : db22d19c8da57b5340e9328fcca15ce4fd0e50a9e640a53000bdbbb341fa1a5b
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rockettile_icache_data_arrays_1.sv
+      : 3f4893d233017ff3634b5a1785d27defdd707d2fc0709b19d888d588bfa6e0d7
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rockettile_icache_data_arrays_2.sv
+      : 08de0a346c92f5c0192c318cef91a91e8d4bf1af4cf1ed0f8dd73268f4fb7be5
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rockettile_icache_data_arrays_3.sv
+      : 8ed4dec73e42f945d42093a3c2cf01a6192e65160b1d64a1502f88247e14eeb1
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/rockettile_icache_tag_array.sv
+      : 77528c96ebb92e63e5116e17877211784fecfc4db2dd54479ebb2c189ab821fe
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/table_512x1.sv: c210674f5ef756020c356d8a8b927d9afe44c5126df337918a161df5f68e217e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/tail_2x3.sv: 42754c7b898a6d73e4044fa3b844b2a96f27fbe7e4ca37f2dc1c2823e404e208
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/tail_36x5.sv: d58ac03d2f67dba54998071fc63af908cb21579f09a49de45e205263d34d8030
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/tail_40x6.sv: 4a745765763164f63b38db22f5ee0c188cd8d42db91e53caabd8ce37bf3f6072
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/ClockSourceAtFreqMHz.v: 68a955457acc37669f6cc2712960eee3ba149b15ce1c4f9fa84dea0201149642
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/EICG_wrapper.v: 3d66cf9dc6062f27cfe73ff9a926d187c9d40c9c35125a151978bdd6fcdfefbd
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDigitalInIOCell.v: 53a8e044bbb3bf282120750e4f06341c8d147607db862855966718dc3f19bf3a
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/GenericDigitalOutIOCell.v: d780b882a217a23649d490101d5848e47b4da3ad6416845045dce1b51f5202bc
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SimDRAM.v: bd5bd9f7a44f5281ed7073b04029c15a824a04f395fd0443431e5b83436feaee
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SimJTAG.v: 43bfbb8d2763c496b4866886d0e2e81f6eac0b33b60c9065547e7882107fa321
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SimTSI.v: a497948e6c442bb8a077ce5f5dc9bc458d657c00cd2ae35e67851328db3df11e
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/SimUART.v: a8ce40f94a9f10f70316ba7e9e89381dd5bc44363c677c9d76f20e03bd0ab1bf
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TestDriver.v: 5a58ee72cf693b0dfcfcbe5903cf7d7a4c77bc81e065457f7f90e26a4035d088
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/chipyard.harness.TestHarness.GemminiRocketConfig.model.mems.v
+      : e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/chipyard.harness.TestHarness.GemminiRocketConfig.top.mems.v
+      : 1f51990015d1c2f6c3c1ae286da74ac865f51c33ea9ac626ba933c3e009fe543
+      sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/plusarg_reader.v: 08de6a683d07eb22091e793d97fdcfa74b14ec35cac33ad0e2efce0a8e0337bc
+      ? sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/plusarg_reader_TestHarness_UNIQUIFIED.v
+      : 234b1b4030da968f163feccb72edb2c24ba1567129c559c94594f31afda09dd5
+    covers:
+    - gemmini_phase1_rtl
+    - gemmini_phase1_isa_headers
+    notes: The superproject records generator gitlink 6ad65b90b1eb270c20ce4f04109e3dde0180b36f; this build
+      uses the separately verified 8c3f9923 generator checkout. The retained build attestation reproduces
+      the exact binary from these generated RTL bytes. External dependency tree status is unreadable because
+      of the unrelated radiance/vortex submodule wiring; the declared source read set is verified by content.
+  gemmini_phase1_rtl:
+    description: Observed clean generator sources alongside the reproduced Phase 1 RTL build. Independent
+      of the historical gemmini_rtl pin and its declared assertion edit.
+    repo_canonical: https://github.com/ucb-bar/gemmini
+    commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    targets:
+    - gemmini
+    root_env: MERLIN_EXT_CHIPYARD
+    path: generators/gemmini
+    content_check: true
+    requires_paths:
+    - build.sbt
+    - chipyard/GemminiConfigs.scala
+    - chipyard/WithMultiRoCCGemmini.scala
+    - src/main/scala/gemmini/AccumulatorMem.scala
+    - src/main/scala/gemmini/AccumulatorScale.scala
+    - src/main/scala/gemmini/Activation.scala
+    - src/main/scala/gemmini/Arithmetic.scala
+    - src/main/scala/gemmini/BeatMerger.scala
+    - src/main/scala/gemmini/CmdFSM.scala
+    - src/main/scala/gemmini/Configs.scala
+    - src/main/scala/gemmini/ConfigsFP.scala
+    - src/main/scala/gemmini/Controller.scala
+    - src/main/scala/gemmini/CounterFile.scala
+    - src/main/scala/gemmini/CustomCPUConfigs.scala
+    - src/main/scala/gemmini/CustomConfigs.scala
+    - src/main/scala/gemmini/CustomSoCConfigs.scala
+    - src/main/scala/gemmini/DMA.scala
+    - src/main/scala/gemmini/DMACommandTracker.scala
+    - src/main/scala/gemmini/DSEConfigs.scala
+    - src/main/scala/gemmini/Dataflow.scala
+    - src/main/scala/gemmini/ExecuteController.scala
+    - src/main/scala/gemmini/FrontendTLB.scala
+    - src/main/scala/gemmini/GemminiConfigs.scala
+    - src/main/scala/gemmini/GemminiISA.scala
+    - src/main/scala/gemmini/Im2Col.scala
+    - src/main/scala/gemmini/InstructionCompression.scala
+    - src/main/scala/gemmini/LoadController.scala
+    - src/main/scala/gemmini/LocalAddr.scala
+    - src/main/scala/gemmini/LoopConv.scala
+    - src/main/scala/gemmini/LoopMatmul.scala
+    - src/main/scala/gemmini/LoopUnroller.scala
+    - src/main/scala/gemmini/Mesh.scala
+    - src/main/scala/gemmini/MeshWithDelays.scala
+    - src/main/scala/gemmini/MultiHeadedQueue.scala
+    - src/main/scala/gemmini/MultiTailedQueue.scala
+    - src/main/scala/gemmini/NormCmd.scala
+    - src/main/scala/gemmini/Normalizer.scala
+    - src/main/scala/gemmini/PE.scala
+    - src/main/scala/gemmini/Pipeline.scala
+    - src/main/scala/gemmini/PixelRepeater.scala
+    - src/main/scala/gemmini/ReservationStation.scala
+    - src/main/scala/gemmini/Scratchpad.scala
+    - src/main/scala/gemmini/SharedExtMem.scala
+    - src/main/scala/gemmini/Shifter.scala
+    - src/main/scala/gemmini/StoreController.scala
+    - src/main/scala/gemmini/SyncMem.scala
+    - src/main/scala/gemmini/TagQueue.scala
+    - src/main/scala/gemmini/Tile.scala
+    - src/main/scala/gemmini/TilerController.scala
+    - src/main/scala/gemmini/TilerFSM.scala
+    - src/main/scala/gemmini/TilerScheduler.scala
+    - src/main/scala/gemmini/TransposePreloadUnroller.scala
+    - src/main/scala/gemmini/Transposer.scala
+    - src/main/scala/gemmini/Util.scala
+    - src/main/scala/gemmini/VectorScalarMultiplier.scala
+    - src/main/scala/gemmini/WeightedArbiter.scala
+    - src/main/scala/gemmini/XactTracker.scala
+    - src/main/scala/gemmini/ZeroWriter.scala
+  gemmini_phase1_isa_headers:
+    description: Unmodified int8 software ABI headers for the Phase 1 reference harness.
+    repo_canonical: https://github.com/ucb-bar/gemmini-rocc-tests.git
+    commit: "7c540b3adf1b86ad93d07f893abe3a73489b568e"
+    targets:
+    - gemmini
+    root_env: MERLIN_EXT_CHIPYARD
+    path: generators/gemmini/software/gemmini-rocc-tests
+    nested_in: gemmini_phase1_rtl
+    nested_path: software/gemmini-rocc-tests
+    content_check: true
+    requires_paths:
+    - include/gemmini.h
+    - include/gemmini_params.h
+
   gemmini_rtl:
     description: >-
       The Gemmini generator revision a systolic result is measured against. The mesh dimension the
@@ -269,8 +1213,8 @@ pins:
       verdict without changing anything in merlin. Pinned separately from the chipyard root because it
       is a submodule with its own revision: the outer tree can move while this one does not, and vice
       versa, so recording only one of the two leaves the result ambiguous.
-    repo_canonical: https://github.com/ucb-bar/gemmini
-    commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    repo_canonical: https://github.com/ucb-bar/gemmini.git
+    commit: "6ad65b90b1eb270c20ce4f04109e3dde0180b36f"
     targets: [gemmini]
     branch: HEAD
     root_env: MERLIN_CHIPYARD
@@ -279,13 +1223,7 @@ pins:
       - src/main/scala/gemmini/Configs.scala
       - src/main/scala/gemmini/GemminiISA.scala
       - src/main/scala/gemmini/Mesh.scala
-      # ELABORATED, NOT PARSED — and that is why it is in the read set. The three files above are read
-      # by fact extraction; this one is read by the Verilator ELABORATION that produces the counters a
-      # timing verdict is computed from. It carries an uncommitted edit, and because it was in no read
-      # set, `verify` reported "8 uncommitted change(s), none of them a source this reads" over a file
-      # that is compiled straight into the simulator. That sentence was true of the pin's declaration
-      # and false of the machine. A read set that omits what the RTL build consumes cannot answer the
-      # only question a performance claim asks of this pin.
+      # Selected FIRRTL includes the upstream load-stride assertion.
       - src/main/scala/gemmini/LoadController.scala
       # THE NORMALIZATION EXCLUSION rests on these two. The contract (examples/gemmini/target/contracts/
       # target_contract.yaml) leaves `normalization` and `softmax` undeclared because AccumulatorScale's
@@ -301,32 +1239,6 @@ pins:
     # bytes are declared here from an unreviewed one. With this on, each read path gets a per-file
     # PINNED / OFF_PIN / UNDETERMINABLE verdict that `check_provenance.py` surfaces by name.
     content_check: true
-    # DECLARED LOCAL EDIT, with the digest of the bytes actually elaborated.
-    #
-    # WHAT THE EDIT IS: `assert(block_stride >= rows)` in the mvin row counter is commented out (4 added
-    # lines, 1 removed; nothing else). A Chisel `assert` lowers to a verification statement only — in the
-    # emitted LoadController.sv it is an `$error` inside the simulation-only guard — so removing one
-    # changes no datapath, no FSM, and no counter increment condition. It changes exactly one thing: the
-    # simulator no longer $fatals on a workload the assertion rejects.
-    #
-    # WHICH LoadController THE COUNTER BUILD ELABORATED — measured 2026-09-02, not assumed. Chisel embeds
-    # the asserting SOURCE LINE in the message it emits, and that is a fingerprint of the file that was
-    # elaborated:
-    #   generated-src/.../gen-collateral/LoadController.sv and the linked
-    #   simulator-chipyard.harness-GemminiRocketConfig binary both carry
-    #     "at LoadController.scala:192 assert(... must load more than 0 bytes)"
-    #   working tree : that assert is at line 192, `block_stride >= rows` commented at 139
-    #   at 8c3f9923  : that assert is at line 189, `block_stride >= rows` live at 136
-    # 192 is the WORKING-TREE numbering, and `block_stride` appears nowhere in the emitted Verilog or in
-    # the binary. So the build elaborated THESE bytes, not the pinned revision's. (mtimes agree and are
-    # the weaker witness: the edit is 2026-08-11 12:47, the simulator 12:53, the collateral 16:01.)
-    #
-    # CONSEQUENCE FOR THE NUMBERS: the eta values in out/artifacts/perf-calibration/gemmini/ were counted
-    # on RTL built from these bytes. Because the delta is an assertion and nothing else, the LD/EX/ST
-    # busy counters are unaffected — but that is an argument, not a licence to call them pinned. They are
-    # "8c3f9923 plus these bytes", and `provenance.citation()` is what spells that.
-    local_edits:
-      src/main/scala/gemmini/LoadController.scala: "780ee0a292d8653fa8a822aee28e2fb2cffbc25301431b4332182008d34fcf6a"
     # The ISA HEADERS this generator ships are a SEPARATE nested repository with its own revision, and
     # every dtype claim about this target is read out of them. This pin cannot describe them (see the
     # sibling below), so it declares that verifying it INCLUDES verifying them: a caller that verified
@@ -347,12 +1259,8 @@ pins:
       header repository, and the whole point of `covers` is that that no longer hides behind this pin's
       clean verdict.
 
-      EXPECT A SECOND, LOCAL OFF-PIN FINDING: `src/main/scala/gemmini/LoadController.scala`. Its bytes
-      are declared in `local_edits` above, so it is a REVIEWED off-pin file — the finding is the citation
-      form doing its job, not a fault to chase. This pin's other three Scala files ARE clean at 8c3f9923
-      and `source_status` reports them PINNED by content. Do not re-pin this commit to make the finding
-      go away: the edit is uncommitted and belongs to nobody's revision, so there is no sha to move to.
-      Land it upstream and delete the `local_edits` entry, or revert it in the checkout and rebuild.
+      The selected source bundle uses the clean 6ad65b90 generator, including the live
+      LoadController stride assertion. Historical assertion-edited builds are separate artifacts.
 
   gemmini_isa_headers:
     description: >-
@@ -985,6 +1893,31 @@ pins:
 
 # Consumed by `merlin.common.provenance.load_artifacts` / `verify_artifact`.
 artifacts:
+
+  gemmini_phase1_verilator_reproduction:
+    description: Exact regeneration of 235 Verilator C++/header files and byte-identical relink of the selected
+      GemminiRocketConfig simulator. No new Chisel elaboration is claimed.
+    path: /scratch2/lorenhung/merlin/out/artifacts/verification/gemmini/phase1-l3tier/build-attestation/receipt.json
+    digest: 44e1f9a1fd540913349322479cd0af4e693a71cb4c5ea7e9af4b5ea3483abb04
+    built_from:
+    - gemmini_phase1_verilator
+    config: GemminiRocketConfig
+  gemmini_phase1_rtl_lowering:
+    description: Fresh FIRRTL lowering reproduces every generated SystemVerilog file in the 116-member selected
+      Gemmini core closure.
+    path: /scratch2/lorenhung/merlin/out/artifacts/verification/gemmini/phase1-l3tier/rtl-lowering/receipt.json
+    digest: bce9e6bf2d8bf8162dba3008b460ab0d2c676901b9e55855cd360336ed3bc0b8
+    built_from:
+    - gemmini_phase1_verilator
+    config: GemminiRocketConfig
+  gemmini_phase1_rtl_facts:
+    description: Facts freshly derived from the same FIRRTL as the reproduced simulator, with exact HW-module
+      closure and hierarchy correspondence. Optional mlc-only discovery remains unavailable.
+    path: /scratch2/lorenhung/merlin/out/artifacts/verification/gemmini/phase1-l3tier/facts.json
+    digest: f3d45d607097ca88b86aadd9be61eeb0d17a47509b602f9499ad331ab636953b
+    built_from:
+    - gemmini_phase1_verilator
+    config: GemminiRocketConfig
 
   gemmini_gsim_model:
     description: >-
@@ -1677,6 +2610,23 @@ artifacts:
         while the configuration contract declares `isa: rv64gc_zicntr`. Those disagree in both
         directions: zicntr is not in the elaborated string, and zfh/zba/zbb/zbs are not in the declared
         one. The elaboration is the fact; the declaration is UNRELIABLE for the host ISA.
+
+  firesim_gemmini_rocket_u250_default:
+    description: Selected run6/run8/run10/run13/run14 U250 FireSim board; distinct from historical 30mhz builds.
+    path: /scratch2/loren/gemmini-coverage/sim/firesim/pinned/gemmini_rocket_default.firesim.tar.gz
+    digest: "a40ce107d340715abf6632b309d2cb6a0f9d4f6ac21843d777a29ce767aa3057"
+    built_from: [gemmini_rtl]
+    config: FireSimGemminiRocketConfig
+    target: gemmini
+    role: firesim_bitstream
+    hw_configs: [alveo_u250_firesim_gemmini_rocket_default]
+    kind: file
+    notes: >-
+      Content-bound build 2026-10-16--04-44-44. The matching FIRRTL is
+      6a53c8466b859647873d0783a66bc8c94d079c5f3d69cda8b4b8c1ed251662da.
+      Gemmini parameters match the Phase 0 source selection; physical addresses are
+      35 bits and TileLink monitors are stripped. Arithmetic equivalence does not
+      assert equal SoC topology or timing. Build-time source closure is not attested.
 
   firesim_gemmini_rocket_u250_30mhz:
     description: >-

@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from merlin.common.paths import repo_root
 from merlin.targetgen import capture_cache
 
 
@@ -44,6 +45,7 @@ def test_cache_owner_import_does_not_load_capture_or_frameworks():
             "-c",
             (
                 "import sys\n"
+                f"sys.path.insert(0, {str(repo_root() / 'src')!r})\n"
                 "from merlin.targetgen import capture_cache\n"
                 "assert not {'torch', 'xdsl', 'merlin.targetgen.capsule_source', "
                 "'merlin.frontends.capture_normalization'} & sys.modules.keys()\n"

@@ -1477,6 +1477,7 @@ def test_oracles_endtoend(reference_backend: str | None = None, *, probes: dict 
         )
     finally:
         _kill_our_simulators()
+        _kill_our_simulators("simv")  # VCS L3 engine; ancestry-restricted like the Verilator token
 
 
 # ---- K. semantic coverage is MEASURABLE (not: is the score good) ----------------------------------

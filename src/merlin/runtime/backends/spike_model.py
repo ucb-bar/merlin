@@ -38,6 +38,7 @@ from ...llvmlower.masked_contraction import MaskEffectContract
 from ...llvmlower.source_expression_interval import IntervalEffectContract
 from ...llvmlower.source_scalar_carrier_binding import host_admitted
 from ..boards import CONSOLE_HTIF, CONSOLE_UART
+from ..byte_readback import parse_all_output_bytes, parse_bytes_console  # noqa: F401 -- public re-export
 from ..execution_memory import ExecutionMemoryError, MemoryMapBinding, MemoryReservation, admit_execution_memory
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
 from ._model_console import parse_model_console
@@ -380,6 +381,7 @@ def build(
     weights_source: str | Path | None = None,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
+    dump_all_outputs: bool = False,
 ) -> dict:
     """Build a whole-model bare-metal ELF and return its paths, memory and identity.
 
@@ -399,6 +401,9 @@ def build(
     ``full_readback`` selects the complete typed multi-output transport.
     ``op_profile`` emits top-level operation IDs/ticks/hits using ``mcycle``;
     compare its instrumentation separately from unprofiled execution.
+
+    ``dump_all_outputs`` emits every result as lossless storage bytes in result order.
+    It replaces the bounded prefix protocol and is opt-in.
 
     ``execution_memory_map`` binds a provider-decoded map to execution identity.
     Actual ELF, stack, allocator and declared absolute external buffers must fit.
@@ -569,6 +574,10 @@ def build(
     validate_selection(readonly_input_indices, max_readonly_input_bytes)
     if readonly_input_indices and not full_readback:
         raise ValueError("readonly input observation requires full readback")
+    if not isinstance(dump_all_outputs, bool):
+        raise ValueError("dump_all_outputs must be a bool")
+    if dump_all_outputs and output_sha256:
+        raise ValueError("dump_all_outputs conflicts with output_sha256")
     if not isinstance(output_sha256, bool):
         raise ValueError("output_sha256 must be a bool")
     from ..host_math import build_host_math, host_math_recipe, record_math_suppliers
@@ -619,6 +628,12 @@ def build(
     h, rt = _harness_dir(), _c_runtime_dir()
     arena_bytes = arena_mb * 1024 * 1024
     prepared_path = model_dir / "model.mlir"
+    if device is not None and getattr(device, "region_offload", None) is not None:
+        # The provider binds its regions on the CAPTURED program (the quantization sandwiches it
+        # matches), before any host preparation rewrites them; the rewritten model is what lowers.
+        from ...llvmlower.device_build import apply_region_offload
+
+        prepared_path = apply_region_offload(device, prepared_path, work)
     if backend not in {"rvv", "scalar"}:
         raise SpikeModelError(f"unknown whole-model backend {backend!r}")
     if backend == "scalar" and rvv_schedule is not None:
@@ -730,6 +745,8 @@ def build(
         model_cflags = compiler_plan["model_cflags"]
         selected_clang = index_observation["compiler_resolved"]
         clang = Path(selected_clang)
+        # The runtime helpers share the model object's ISA and ABI through gcc_cflags; performance
+        # features and override optimization flags stay on the model object only.
         runtime_compiler = _mlir_runtime_compiler(clang, gcc, gcc_cflags)
 
         def build_routed_objects():
@@ -769,6 +786,7 @@ def build(
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
                 borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
+                preserve_result_descriptors=dump_all_outputs,
                 **descriptor_results.options(),
                 **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
                 **({"op_profile": True} if op_profile else {}),
@@ -876,6 +894,8 @@ def build(
             "entry_projection": entry_projection_plan,
             "entry_projection_source": entry_projection_source,
         }
+    if dump_all_outputs:
+        projection_options["dump_all_outputs"] = True
     # The bare-metal driver executes merlin_prepare_step(0) exactly once. Embed
     # only that step of a captured session: later stream inputs and trajectory
     # references cannot be observed by this ELF, and rendering them as C
@@ -958,6 +978,40 @@ def build(
     _dev_sigs = _dev_args["signatures"]
     if _dev_build is not None:
         supplemental_objects.extend(_dev_build.objects)
+
+    from ...llvmlower.device_build import load_region_offload
+
+    region = load_region_offload(work)
+    if (device is not None and getattr(device, "region_offload", None) is not None) != bool(region):
+        raise RuntimeError("region offload was requested but bound nothing, or bound without a request")
+    if region:
+        if region["device"] != device.device:
+            raise RuntimeError("region offload sidecar does not match selected device")
+        # The shim is hosted C (it may include the C library headers), so it is built by the GCC that
+        # owns this bare-metal environment. Its one host hook, ca_abort, reports and exits through the
+        # harness console: a shape mismatch at a kernel boundary must stop the run, not be skipped.
+        abort_source = work / "region_offload_abort.c"
+        abort_source.write_text(
+            '#include "htif.h"\n'
+            "void ca_abort(const char *why) {\n"
+            '  htif_puts("FATAL: region offload: ");\n'
+            "  htif_puts(why);\n"
+            '  htif_puts("\\n");\n'
+            "  htif_exit(0x902);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        region_objects = []
+        for source, obj in ((Path(region["shim"]), "region_offload_shim.o"), (abort_source, "region_offload_abort.o")):
+            compilation.run(
+                [gcc, *gcc_cflags, f"-I{h}", "-c", source, "-o", work / obj],
+                runner=_run,
+                inputs=[source],
+                output=work / obj,
+            )
+            region_objects.append(work / obj)
+        supplemental_objects.extend([*region_objects, Path(region["object"])])
+        print(f"[device] linked region offload for {device.device}: {len(region['routed'])} binding(s)")
 
     matrix_build = None
     from .zephyr_model import load_matrix_signatures
@@ -1044,6 +1098,9 @@ def build(
     _hh.update(descriptor_results.identity())
     for _f in (work / "model.o", cgen / "weights.bin"):
         _hh.update(_f.read_bytes())
+    semantic_header = cgen / "semantic_io.h"
+    if semantic_header.is_file():
+        _hh.update(semantic_header.read_bytes())
     quantization_policy = None
     if int8_compute:
         raw_policy = (work / "quantization-policy.json").read_bytes()
@@ -1104,6 +1161,8 @@ def build(
     _hh.update(profile_flags.encode())
     if op_profile:
         _hh.update(f"op_profile_capacity={profile_capacity}".encode())
+    if dump_all_outputs:
+        _hh.update(b"dump_all_outputs=True")
     if output_sha256:
         _hh.update(b"output_sha256=True")
     # Observability switches change the emitted image (merlin.runtime.whole_model_readback).
@@ -1354,8 +1413,21 @@ def run(
     isa: str = "rv64gcv_zfh_zvfh",
     timeout: int = 3600,
     vlen: int | None = None,
+    extension: str | None = None,
+    extlib: str | Path | None = None,
+    path_prepend: Sequence[str | Path] = (),
+    spike_binary: str | Path | None = None,
+    trace_path: str | Path | None = None,
+    command_prefix: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Run the ELF on spike; parse the HTIF output. Returns {outputs, metrics, console}.
+    """Run the ELF on spike; parse the HTIF output.
+
+    ``command_prefix`` wraps the Spike command (e.g. a sandbox that hides the host filesystem from the
+    guest's HTIF syscalls); the console and trace still stream to this process.
+
+    Providers may select ``extension``, ``extlib``, ``spike_binary`` and tool
+    ``path_prepend`` (for dtc). ``trace_path`` streams Spike's instruction log to
+    disk. The byte-readback protocol returns ``output_bytes`` in result order.
 
     ``mem_bytes`` must cover 0x80000000 .. weights_base + weights size (use the value
     returned by :func:`build`).
@@ -1375,15 +1447,43 @@ def run(
         want = f"zvl{int(vlen)}b"
         if want not in isa:
             isa = f"{isa}_{want}"
-    cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}", f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}", str(elf)]
+    cmd = [
+        spike_binary or _spike.spike_path(),
+        f"--isa={isa}",
+        f"-p{harts}",
+        f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}",
+        str(elf),
+    ]
+    options = []
+    if extlib is not None:
+        options.append(f"--extlib={extlib}")
+    if extension is not None:
+        options.append(f"--extension={extension}")
+    if trace_path is not None:
+        options.append("-l")
+    cmd[1:1] = options
+    cmd[:0] = list(command_prefix)
+    env = None
+    if path_prepend:
+        env = dict(os.environ)
+        env["PATH"] = os.pathsep.join([*(str(path) for path in path_prepend), env.get("PATH", "")])
     # Capture BYTES and decode leniently. `text=True` raises UnicodeDecodeError on the first invalid byte
     # and takes the WHOLE console with it -- and an image that is failing is exactly the one that emits
     # stray bytes, so the log was being destroyed precisely when it was needed. A replacement character in
     # a garbled region is strictly better than losing every OUT/METRIC/DONE line that preceded it.
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
-    console = (proc.stdout or b"").decode("utf-8", errors="replace") + (proc.stderr or b"").decode(
-        "utf-8", errors="replace"
-    )
+    if trace_path is None:
+        proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout, env=env)
+        stderr = proc.stderr or b""
+    else:
+        # Stream instruction logs to disk: a scalar fallback can execute millions of instructions.
+        with Path(trace_path).open("wb") as trace:
+            proc = subprocess.run([str(c) for c in cmd], stdout=subprocess.PIPE, stderr=trace, timeout=timeout, env=env)
+        stderr = b""
+        if proc.returncode:
+            with Path(trace_path).open("rb") as trace:
+                trace.seek(max(0, trace.seek(0, os.SEEK_END) - 2000))
+                stderr = trace.read()
+    console = (proc.stdout or b"").decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")
     if proc.returncode != 0:
         raise SpikeModelError(
             f"spike exited {proc.returncode} even though it may have printed OUT/DONE:\n{console[-2000:]}"
@@ -1420,7 +1520,12 @@ def run_raw(
 
 
 def parse_console(console: str) -> dict[str, Any]:
-    """Parse a bounded output prefix; caller owns process and hardware provenance."""
+    """Parse a bounded output prefix; caller owns process and hardware provenance.
+
+    A console carrying the ``OUT_BYTES`` byte-readback protocol is parsed losslessly instead.
+    """
+    if any(line.split()[:1] == ["OUT_BYTES"] for line in console.splitlines()):
+        return parse_bytes_console(console)
     return parse_model_console(console, error_type=SpikeModelError)
 
 

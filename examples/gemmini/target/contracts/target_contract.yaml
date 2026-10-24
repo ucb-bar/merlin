@@ -166,12 +166,14 @@ encoding:
     6: PRELOAD             # compiler alias LOOP_CONV (the _WS dataflow suffix is implicit); all others exact.
     7: FLUSH
     8: LOOP_WS
+    14: MVIN3              # LOAD3_CMD (GemminiISA.scala:24): load state 2, emitted for int32 accumulator seeds.
     15: LOOP_CONV
   # config_subtype: CONFIG (funct 0) refined by rs1 & 0x3. NAMES are HEADER-DERIVED (gemmini.h
   # `#define CONFIG_EX 0` / `CONFIG_LD 1` / `CONFIG_ST 2`); the CODES are the rs1[1:0] sub-field the RTL
   # decoder fans out on (comb.icmp-eq over a width-2 comb.extract — ExecuteController rs1[1:0]==0 -> EX,
   # StoreController rs1[1:0]==2 -> ST). Cross-checked by mlc_bridge.crosscheck_config_subtype. Kept here as
-  # the reviewed cache of the 3 subtypes the compiler emits (the 4th decoded value, 3=CONFIG_BERT, is unused).
+  # the reviewed cache of the 3 subtypes the compiler emits. The 4th decoded value, 3=CONFIG_BERT
+  # (CONFIG_NORM in the RTL), is PROHIBITED, not merely unused: see compiler_obligations.
   config_subtype: {0: CONFIG_EX, 1: CONFIG_LD, 2: CONFIG_ST}
   # Phase-0 baseline obligation, in this implementation's issue order. This is target-authored
   # compiler input, not a property Merlin may infer from RoCC transport. Other declared classes
@@ -371,7 +373,7 @@ runtime:
   # constant, so it is onboardable from the contract and read from ONE place (not overfit in code). This
   # is the SAME config the ISA facts are introspected from (targetgen.rtl.introspect), so sim and codegen
   # stay coherent: it is the pure chipyard GemminiConfigs.defaultConfig Gemmini on a Rocket host — the
-  # certified 16x16 int8 mesh above (byte-identical Gemmini core to the prior gemmini+OPU Shuttle config;
+  # uncertified 16x16 int8 mesh above (byte-identical Gemmini core to the prior gemmini+OPU Shuttle config;
   # dropping the OPU/Shuttle changes only host cycle counts, not the mesh or the ISA facts, and makes the
   # Verilator path coherent with the FireSim path). Change here + re-derive facts + re-cert to move.
   rtl_sim_config: GemminiRocketConfig
@@ -390,10 +392,13 @@ compute_units:
     # scaling, not an independent scale for each output channel.
     scaling: per_tensor
     requant: {ref: gemmini.accumulator_scale}
-    # Semantic-family capability (ARR denominator): a GEMM accelerator — int8 contraction on the mesh
-    # (matmul + conv2d via im2col), fused relu/acc-scale on readout, bias seeded
-    # into the accumulator before contraction,
-    # mvin/mvout DMA (movement), and max pooling fused on the store path (reduction).
+    # Semantic-family capability (ARR denominator), four families stated as hardware primitives:
+    # int8 contraction on the mesh (matmul; convolution as direct per-tap matmuls, no im2col unit)
+    # with an int32 accumulator seed (bias) and a fused readout (ReLU, then one per-tensor
+    # acc_scale, then saturation); a standalone affine elementwise map on the load/accumulate/
+    # readout path; sum reductions by accumulate-on-load, plus max pooling fused on the store path;
+    # and mvin/mvout DMA movement. Mapping operations onto them is the compiler's job; the shared
+    # hardware constraints are listed once under `compiler_obligations`.
     #
     # ⚠️ WHAT IS ENCODABLE IS NOT WHAT IS BUILT, and this is the one place that distinction bites.
     # The shipped ISA header defines five activation modes -- `NO_ACTIVATION 0, RELU 1, LAYERNORM 2,
@@ -406,10 +411,17 @@ compute_units:
     # build that sets `has_normalizations = true` is pinned, at which point this is a one-line change.
     # No attention hardware in any configuration.
     semantic_capabilities:
-      # rank 4 is the im2col convolution path, not an assumption: the RTL funct table carries a
-      # dedicated LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1/2/3 (16-18), so a rank-4 conv
-      # region IS acceleratable. Declaring ranks [2] alone made the shipped conv2d capsules score
-      # ineligible and silently left them out of the ARR denominator.
+      # rank 4 is the convolution path, and like rank 3 its evidence class is LOWERING: a conv (and
+      # a conv backward) is planned as direct rank-2 matmuls, one per kernel tap, over strided /
+      # shifted operand rows. No im2col unit is built (hasIm2Col = false, GemminiConfigs.scala:180).
+      # The decoder also carries LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1..6 (functs
+      # 16-21, GemminiISA.scala:28-33), but those are loop_descriptor commands, so they are not the
+      # evidence. Declaring ranks [2] alone made the shipped conv2d capsules score ineligible and
+      # silently left them out of the ARR denominator.
+      # A bias is the accumulator preload at full int32 width (MVIN3 through a shrink = 0 load
+      # state; the int32 load path has no scale unit, Configs.scala:114); its crossing is
+      # `accumulator_seed_load` in software-spec.yaml. `transpose` (default true) is ONE operand per
+      # compute: the mesh has a single transposer (ExecuteController.scala:129-133).
       # rank 3 is the BATCHED contraction path. Unlike rank 4 this is not a distinct hardware
       # sequence: `linalg_lower` lowers a single batched matmul (batch,m,k)@(batch,k,n) by looping
       # the batch and calling the same (M,N,K) kernel per independent slice, so the region IS
@@ -440,15 +452,38 @@ compute_units:
       #     (merlin.targetgen.capability_roles).
       # Family-granular: other elementwise_map members still need a device form of their own, which
       # compute_groups decides per region (the operand sum is one); none is placed on admission alone.
+      # The standalone form, stated once for the family (no per-op list):
+      #   out = sat_int8( RNE( s_o * act( sum_i w_i * x_i + c ) ) )
+      # with at most two int8 tensor operands x_i, one broadcast constant c (an int32 accumulator
+      # seed or a stride-0 int8 row), per-tensor scales only, act in {none, relu}, and the ReLU
+      # applied BEFORE s_o (AccumulatorScale.scala:118-138). A weight applied on the load path is
+      # rounded and saturated to int8 before it accumulates (load_scale_saturation), so an exact
+      # weight is an integer applied in the int32 domain (a constant c*I contraction on the mesh)
+      # with the fraction folded into s_o. The identity map read out at accumulator width is the
+      # int8 -> int32 widening, hence the int32 result format.
       - family: elementwise_map
         dtypes: [int8]
+        result_dtypes: [int8, int32]
         standalone_evidence:
           - fact: accumulate_on_load
             roles: [operand_load, config, readout, commit]
-      # MVIN/MVOUT transfer bytes; they do not establish a standalone tensor
-      # permutation. Operand transpose is a contraction variant (CONFIG_EX),
-      # not a separate movement kernel. An agent may fuse it with that consumer.
-      - {family: movement, dtypes: [int8], forms: [copy]}
+          - fact: load_scale_saturation
+            roles: [operand_load, config, readout, commit]
+      # DMA movement primitives. For every form: the row stride is arbitrary (LoadController.scala:102),
+      # a row's elements are contiguous (there is no column stride), one command moves at most
+      # memory_model.dma.max_transfer_bytes per row, and an int32 full-width readout is one 16-column
+      # block (StoreController.scala:224).
+      #   copy         strided rows, either direction, to any row offset
+      #   broadcast    stride 0 replays one row (LoadController.scala:76,105): OUTER dims only; with
+      #                the load scale it also writes a constant
+      #   zero_fill    a load from DRAM address 0 (no DRAM read)
+      #   permutation  a 16x16 tile through the single transposer (a pass against the identity),
+      #                written back by a strided MVOUT; a permutation that keeps the innermost dim
+      #                is a plain strided copy
+      # Pads, concatenation, repeat, scatter-into-copy and fills are compositions of these forms.
+      # merlin's operation_form classifies only `copy` and `permutation` today; the other two
+      # names restrict nothing until it classifies them.
+      - {family: movement, dtypes: [int8], forms: [copy, permutation, broadcast, zero_fill]}
       # Max pooling, fused on the readout/store path -- NOT a standalone reduction unit, which is why
       # it composes with the two families that can produce the values it pools. Derived, and derived
       # from the ELABORATED design rather than from the ISA: the fact bundle records
@@ -459,6 +494,19 @@ compute_units:
       # both rungs evidence it. Undeclared until now, which excluded every pooling region in every
       # captured model from the requirement as "the hardware declares no capability for it".
       - {family: reduction, dtypes: [int8], composed_with: [contraction, movement]}
+      # Sum reductions, standalone: accumulate-on-load of the rows (or shifted window views) being
+      # summed into one int32 accumulator tile, then one readout (acc_scale = 1/count for a mean).
+      # Overlapping writes add, so a scatter-add (fold) is the same primitive. The summed axis must
+      # be an OUTER (row) axis of the layout; a sum across the lanes of one row is a contraction
+      # against a constant ones operand instead. SUM KIND ONLY: `kinds` restricts this row, and
+      # eligibility checks one unit's rows of a family any-of, so a standalone max is refused while
+      # a max fused behind the composed row above stays eligible.
+      - family: reduction
+        dtypes: [int8]
+        kinds: [sum]
+        standalone_evidence:
+          - fact: accumulate_on_load
+            roles: [operand_load, config, readout, commit]
 # capabilities is intentionally empty: op/layout support is not pre-declared here. Mesh geometry +
 # scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories), read from the fact
 # bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified
@@ -498,15 +546,19 @@ memory_model:
   # its ABSENCE is not evidence for `interlocked` -- a machine may interlock and still expose a delay.
   # It inverts the performance lever (reorder to overlap here; remove over-conservative separation
   # there) and it decides which gate is able to fail at all, so it is never defaulted.
-  hazard_resolution: interlocked
+  hazard_resolution: explicit
   hazard_evidence:
     kind: target_rtl
     sources:
       - "elaborated design hierarchy: rockettile.gemmini.reservation_station (io_busy)"
+      - "derived semantic fact load_completion_ordering: a load waits for an earlier load only until it issues (ReservationStation.scala:329)"
+      - "ReservationStation.scala:242-252: a pooling store is given an accumulator-bank range; entries hold local addresses only, no DRAM address"
     note: >-
-      The accelerator tracks its own command dependencies, so a reordering of a legal command stream
-      cannot change the answer. A correctness falsifier therefore cannot fire on a scheduling change
-      here, and the falsifier must be measured occupancy instead.
+      The reservation station orders most local-address dependencies between its load, execute and
+      store queues, but not an overlapping load after a load, a scratchpad-source pooling store, or a
+      DRAM read after a write. Reordering a legal command stream CAN change the answer: five tests
+      passed on Spike and failed on RTL until a fence was added, and FireSim job 2835 failed
+      layer_norm for the same reason. The fences are listed under compiler_obligations.
 prototype_scope:
   workload: repeated_rhs_matmul
   conformance_level: C0
@@ -559,6 +611,21 @@ compiler_obligations:
   - must_tile_to_mesh_shape
   - must_commit_accumulator_before_reuse
   - must_respect_scratchpad_capacity
+  # Hardware constraints shared by every family, stated once (evidence: analysis/SPEC_MINIMAL.md).
+  # Hazards that need an explicit fence:
+  - must_fence_overlapping_load_after_load        # HW3; not needed if both accumulate or an EX/MVOUT on those rows intervenes
+  - must_fence_dram_read_after_write              # no DRAM address is tracked; includes every host/accelerator handoff
+  - must_fence_before_scratchpad_source_pooling_store   # HW4
+  # Prohibited:
+  - must_not_read_ex_operands_from_accumulator    # HW1: the read is never answered (deadlock)
+  - must_not_emit_config_norm                     # CONFIG subtype 3 executes as a store here
+  - must_not_emit_mvout_spad                      # funct 23 completes and writes nothing
+  - must_zero_fill_accumulator_through_unshrunk_load_state   # HW2: a shrink = 1 zero-fill asserts
+  # Numeric:
+  - must_bound_each_mesh_pass_to_mac_result_bits  # 20-bit partial sums: 16-deep K per WS pass; OS only for K <= 31
+  - must_not_negate_int8_minimum_on_load          # a -1 load scale maps -128 to +127: quantize to [-127, 127] or negate at readout
+  - must_not_pair_readout_relu_with_negative_scale  # ReLU runs before acc_scale
+  - must_prescale_int32_accumulator_seeds         # the int32 load path has no scale unit
 hardware_promises:
   - weight_stationary_resident_array
   - widening_integer_accumulate

@@ -70,6 +70,9 @@ derivation input.
 The small hand-authored g0–g2 interface samples in [reference/](reference/)
 exercise the historical OOT contract; they are not a generated Phase 0 release.
 Generated capsules, weights and goldens are artifacts, never committed examples.
+
+Compiler-fix regression inputs are described in [the Gemmini regression guide](../../../docs/guides/gemmini_core_aten_regressions.md#compiler-fix-regression-inputs).
+
 Read [the shared specification guide](../../../docs/guides/phase0_specification.md)
 for what belongs in a SW spec versus extracted evidence.
 
@@ -511,3 +514,5 @@ small source-derived capsule to exercise RTL, and keep large model-derived
 shapes as separate functional-model checks when their RTL cost exceeds the
 budget; neither result substitutes for the other's coverage obligation. This
 check does not qualify a complete model or the Phase 0 corpus.
+
+The Core ATen overlay and device batches are described in [the Gemmini regression guide](../../../docs/guides/gemmini_core_aten_regressions.md#the-core-aten-overlay-on-gemmini).

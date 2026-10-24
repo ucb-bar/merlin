@@ -85,9 +85,9 @@ def grade_selection_for(sim: str | None) -> str | None:
     default, so an unflagged author request arrives naming it. That engine's single-engine ladder is
     the same tiers (the functional screen plus the engine at L3), so serving it with the grade's own
     adapters changes no tier: the request certifies exactly as the grade does, under the grade's
-    certificate instrument. ``spike``, any other name, and an engine whose legacy ladder has another
-    shape (VCS's historical L4 rung) keep their own meaning. Promotion jobs are not author requests
-    and are never passed through here.
+    certificate instrument. ``spike``, any other name, and any engine whose ladder is not the L3 rung
+    in ``selfcheck.SIM_TIER`` keep their own meaning. Promotion jobs are not author requests and are
+    never passed through here.
     """
     from .. import joint_control
     if joint_control.selected() is not None:

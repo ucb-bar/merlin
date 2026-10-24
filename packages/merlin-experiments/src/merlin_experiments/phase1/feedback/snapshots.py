@@ -13,6 +13,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from merlin_experiments.phase1.run_inputs import copy_candidate_tree
+
 
 def promotion_snapshot_path(ws, token: str, *, create_store: bool = False) -> Path | None:
     """Resolve a promotion snapshot token inside the driver-private, per-workspace store.
@@ -57,7 +59,7 @@ def create_promotion_snapshot(
     stage = final.with_name(f".{token}.{os.getpid()}.{time.time_ns()}.tmp")
     try:
         submission = stage / "submission"
-        shutil.copytree(Path(source_ws) / "submission", submission, ignore=shutil.ignore_patterns("__pycache__"))
+        copy_candidate_tree(Path(source_ws) / "submission", submission, ignore=shutil.ignore_patterns("__pycache__"))
         actual = submission_digest(stage)
         if actual != expected_digest:
             return None, (f"promotion source moved while snapshotting: requested {expected_digest}, copied {actual}")
@@ -118,7 +120,7 @@ def recover_promotion_snapshot(
         root = Path(tempfile.mkdtemp(prefix="merlin_promotion_"))
         submission = root / "submission"
         try:
-            shutil.copytree(frozen_submission, submission, ignore=shutil.ignore_patterns("__pycache__"))
+            copy_candidate_tree(frozen_submission, submission, ignore=shutil.ignore_patterns("__pycache__"))
             copied = submission_digest(root)
             if copied != expected_digest:
                 shutil.rmtree(root, ignore_errors=True)
@@ -137,7 +139,7 @@ def recover_promotion_snapshot(
     root = Path(tempfile.mkdtemp(prefix="merlin_promotion_"))
     try:
         submission = root / "submission"
-        shutil.copytree(
+        copy_candidate_tree(
             Path(ws) / "submission",
             submission,
             # Match ``submission_digests`` exactly: only Python bytecode caches are outside

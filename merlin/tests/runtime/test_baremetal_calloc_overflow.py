@@ -55,6 +55,12 @@ int main(int argc,char **argv) {
   for(size_t i=0;i<14;i++)assert(p[i]==0);
   unsigned char *z0=checked_calloc(0,SIZE_MAX), *z1=checked_calloc(SIZE_MAX,0);
   assert(z0 && z1 && z0!=z1 && z0!=p && z1!=p);
+  /* Empty requests keep distinct allocation identities, as does the next real one. */
+  void *z2=checked_malloc(0);
+  void *z3=checked_aligned_alloc(64,0);
+  void *next=checked_malloc(1);
+  assert(z2 && z3 && next);
+  assert((void *)z1!=z2 && z2!=z3 && z3!=next && (void *)z0!=z2 && (void *)z0!=z3);
   for(size_t i=0;i<14;i++)assert(p[i]==0);
   return 0;
  }

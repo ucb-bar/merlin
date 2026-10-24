@@ -231,24 +231,29 @@ def test_setup_body_failure_reaps_original_guardian_without_native_start(service
 
 @pytest.mark.parametrize("use_python_api", [False, True])
 def test_pidfd_capability_paths_have_close_on_exec_identity(monkeypatch, use_python_api):
-    open_function = protocol._libc_function("pidfd_open", [ctypes.c_int, ctypes.c_uint])
-    signal_function = protocol._libc_function(
-        "pidfd_send_signal", [ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint]
-    )
     calls = []
-
-    def stdlib_open(pid):
-        calls.append("open")
-        return open_function(pid, 0)
-
-    def stdlib_signal(fd, signum):
-        calls.append("signal")
-        assert signal_function(fd, signum, None, 0) == 0
-
     if use_python_api:
+        if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
+            pytest.skip("Python does not expose both native pidfd APIs")
+        open_function = os.pidfd_open
+        signal_function = signal.pidfd_send_signal
+
+        def stdlib_open(pid):
+            calls.append("open")
+            return open_function(pid)
+
+        def stdlib_signal(fd, signum):
+            calls.append("signal")
+            return signal_function(fd, signum)
+
         monkeypatch.setattr(os, "pidfd_open", stdlib_open, raising=False)
         monkeypatch.setattr(signal, "pidfd_send_signal", stdlib_signal, raising=False)
     else:
+        try:
+            protocol._libc_function("pidfd_open", [ctypes.c_int, ctypes.c_uint])
+            protocol._libc_function("pidfd_send_signal", [ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint])
+        except RuntimeError as exc:
+            pytest.skip(f"Native libc pidfd wrappers unavailable: {exc}")
         monkeypatch.delattr(os, "pidfd_open", raising=False)
         monkeypatch.delattr(signal, "pidfd_send_signal", raising=False)
     descriptor = protocol.self_pidfd()

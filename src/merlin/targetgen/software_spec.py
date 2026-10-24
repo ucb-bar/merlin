@@ -14,6 +14,8 @@ from pathlib import Path
 
 import yaml
 
+from merlin.targetgen.operator_review import STATUSES as REVIEW_STATUSES
+from merlin.targetgen.operator_review import review_accepted, review_record
 from merlin.targetgen.transfer_contracts import screen_transfer_contract as screen_transfer_contract
 from merlin.targetgen.transfer_contracts import validate_transfer_contracts
 
@@ -45,6 +47,10 @@ _SIGNATURE_FIELDS = frozenset(
         "ordered_result_dtypes",
         "compute_dtypes",
         "quantization_parameters",
+        "kinds",
+        "max_tensor_operands",
+        "expressions",
+        "numerical_family",
     }
 )
 
@@ -121,6 +127,10 @@ def validate_numerical_semantics(document: dict) -> dict:
             or domain["nonfinite"] not in {"allow", "forbid"}
         ):
             raise ValueError(f"numerical_semantics.{field} requires an explicit allow/forbid nonfinite policy")
+    readout = document.get("readout")
+    if isinstance(readout, dict) and readout.get("strategy") == "exact_rational_host":
+        if readout.get("requant_rounding") != "half_even":
+            raise ValueError("exact_rational_host requires readout.requant_rounding: half_even (RNE)")
     if model["engine"] == "specir_fp_reduce":
         if document.get("rounding") not in _IEEE_ROUNDING:
             raise ValueError("numerical_semantics.rounding must select a supported IEEE mode")
@@ -175,7 +185,7 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
     name = document.get("target")
     if not isinstance(name, str) or not name.strip() or (target is not None and name != target):
         raise ValueError(f"{source}: software spec target differs from selected target {target!r}")
-    if document.get("status") not in {"unreviewed", "reviewed"}:
+    if document.get("status") not in REVIEW_STATUSES:
         raise ValueError(f"{source}: software spec has an invalid review status")
     contract = document.get("capability_contract")
     if contract is not None and (not isinstance(contract, dict) or contract.get("name") != name):
@@ -209,7 +219,7 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
         if row["id"] in seen:
             raise ValueError(f"{source}: duplicate operation id {row['id']!r}")
         seen.add(row["id"])
-        if row.get("status", "reviewed") not in {"reviewed", "unreviewed"}:
+        if row.get("status", "reviewed") not in REVIEW_STATUSES:
             raise ValueError(f"{source}: operation {row['id']!r} has an invalid review status")
         if "numerical_contract" in row and (
             not isinstance(row["numerical_contract"], (str, dict))
@@ -284,11 +294,32 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                 or any(not isinstance(value, str) or not value for value in signature[field])
             ):
                 raise ValueError(f"{source}: operation {row['id']!r} {field} must be a string list")
+        if "kinds" in signature:
+            from merlin.targetgen.compute_units import REDUCTION_KINDS
+
+            if (
+                not isinstance(signature["kinds"], list)
+                or not signature["kinds"]
+                or any(kind not in REDUCTION_KINDS for kind in signature["kinds"])
+            ):
+                raise ValueError(
+                    f"{source}: operation {row['id']!r} kinds must be reduction kinds from {sorted(REDUCTION_KINDS)}"
+                )
+        if "max_tensor_operands" in signature and (
+            type(signature["max_tensor_operands"]) is not int or signature["max_tensor_operands"] < 0
+        ):
+            raise ValueError(f"{source}: max_tensor_operands must be a nonnegative integer")
+        if "expressions" in signature and (
+            not isinstance(signature["expressions"], list)
+            or not signature["expressions"]
+            or any(value not in {"affine"} for value in signature["expressions"])
+        ):
+            raise ValueError(f"{source}: expressions must list supported expression classes (affine)")
         if "ranks" in signature and (
             not isinstance(signature["ranks"], list)
-            or any(type(value) is not int or value < 1 for value in signature["ranks"])
+            or any(type(value) is not int or value < 0 for value in signature["ranks"])
         ):
-            raise ValueError(f"{source}: operation {row['id']!r} ranks must be positive integers")
+            raise ValueError(f"{source}: operation {row['id']!r} ranks must be nonnegative integers")
         if "quantization_parameters" in signature:
             validate_quantization_parameters(
                 signature["quantization_parameters"], source=f"{source}: operation {row['id']!r}"
@@ -376,6 +407,109 @@ def software_spec_references(path: str | Path, document: dict | None = None) -> 
     return {"numerical_model": root.resolve()}
 
 
+#: The operand/result types that identify WHICH typed instance of an operation a row declares, each
+#: paired with the observed key it is compared to. An ordered list is compared element-wise; a
+#: choice list against one observed format. Accumulator, readout and compute precision are not
+#: here: they are how one typed instance is computed, so a mismatch there is that row's refusal.
+_ORDERED_PRECISION_FIELDS = ("ordered_operand_dtypes", "ordered_result_dtypes")
+_CHOICE_PRECISION_FIELDS = (("operand_dtypes", "operand_dtype"), ("dtypes", "operand_dtype"))
+
+
+def _precision(value):
+    """The registered format name, or the spelling itself (as ``admit_operation`` compares them)."""
+    from merlin.common.quant_formats import get as quant_format
+
+    try:
+        return quant_format(value).name
+    except (KeyError, ValueError, TypeError):
+        return value
+
+
+def _executable(value) -> bool:
+    return isinstance(value, str) and bool(value) and value != "unknown" and " " not in value
+
+
+def precision_disjoint(row: dict, signature: dict) -> list[str]:
+    """Why ``row``'s declared precision provably excludes the observed ``signature`` (empty if it may not).
+
+    Exactly the precision comparisons :func:`admit_operation` itself refuses on, restricted to
+    observed values: an absent observation, prose or ``unknown`` never proves disjointness, so the
+    row then keeps its exact-roster priority and screens the signature itself.
+    """
+    declared = row.get("signature") or {}
+    reasons = []
+    for key in _ORDERED_PRECISION_FIELDS:
+        expected, actual = declared.get(key), signature.get(key)
+        if not isinstance(expected, list) or not isinstance(actual, list):
+            continue
+        if not all(_executable(value) for value in [*expected, *actual]):
+            continue
+        expected_formats, actual_formats = [_precision(v) for v in expected], [_precision(v) for v in actual]
+        if expected_formats != actual_formats:
+            reasons.append(f"{key} {actual_formats} differs from declared {expected_formats}")
+    observed_operand = signature.get("operand_dtype")
+    expected = declared.get("ordered_operand_dtypes")
+    if (
+        _executable(observed_operand)
+        and isinstance(expected, list)
+        and expected
+        and all(_executable(value) for value in expected)
+        and _precision(observed_operand) not in [_precision(v) for v in expected]
+    ):
+        reasons.append(f"operand_dtype {_precision(observed_operand)!r} is no declared ordered operand format")
+    for key, observed_key in _CHOICE_PRECISION_FIELDS:
+        if key not in declared:
+            continue
+        choices = declared[key] if isinstance(declared[key], list) else [declared[key]]
+        observed = signature.get(observed_key)
+        if not choices or not _executable(observed) or not all(_executable(choice) for choice in choices):
+            continue
+        if _precision(observed) not in [_precision(choice) for choice in choices]:
+            reasons.append(f"{observed_key} {_precision(observed)!r} not in declared {key}")
+    return reasons
+
+
+def _names_operation(row: dict, op: str) -> bool:
+    """A row's explicit frontend roster names ``op``; a family-name query never matches an id."""
+    from merlin.targetgen.semantic_families import FAMILIES
+
+    if op in row.get("ops", []):
+        return True
+    # A list-form row without a roster may still be identified by the op it declares. A family
+    # name is not such an op: a row whose id merely equals a family name is a family declaration
+    # and is selected with that family's other rows, never in place of them.
+    return not row.get("ops") and row.get("id") == op and op not in FAMILIES
+
+
+def exact_declarations(spec: dict, op: str, signature: dict) -> tuple[list[dict], list[str]]:
+    """The exact-op rows that narrow admission of ``op`` at ``signature``, and the ids set aside.
+
+    A row is set aside only when it is a reviewed, fully executable HOST declaration (in a reviewed
+    spec) whose declared precision provably excludes the observed signature. Such a row describes a
+    different typed instance of the operation and cannot admit this one, so it must not shadow the
+    family declarations. Every other exact row -- an accelerator restriction, an unreviewed or
+    prose-qualified row, a row whose precision is unobserved or matches -- keeps its priority.
+    """
+    retained, ignored = [], []
+    for row in spec.get("operations") or []:
+        if not _names_operation(row, op):
+            continue
+        declared = row.get("signature") or {}
+        if (
+            row.get("placement") == "host"
+            and review_accepted(spec, default="unreviewed")
+            and review_accepted(row)
+            and "hardware" not in row
+            and not (set(declared) - _SIGNATURE_FIELDS)
+            and not ({"restriction", "semantics"} & set(declared))
+            and precision_disjoint(row, signature)
+        ):
+            ignored.append(row["id"])
+        else:
+            retained.append(row)
+    return retained, ignored
+
+
 def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dict:
     """Screen a concrete signature against authored constraints, never against target names.
 
@@ -390,9 +524,11 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
         raise ValueError("operation admission requires an observed signature and explicit placement")
     family = signature.get("family") or from_op(op)
     rows = spec.get("operations") or []
-    # An explicit frontend roster narrows this declaration, even when it also
-    # names a semantic family or its identifier happens to equal the observed op.
-    direct = [row for row in rows if op in row.get("ops", []) or (not row.get("ops") and row.get("id") == op)]
+    # An explicit frontend roster narrows this declaration, even when it also names a semantic
+    # family. A roster written for a provably different typed instance of the operation (for
+    # example the reviewed f32 host form of an op observed at int8) does not: it cannot admit this
+    # signature, so the operation falls through to its family declarations.
+    direct, ignored = exact_declarations(spec, op, signature)
     candidates = direct or [
         row
         for row in rows
@@ -405,7 +541,10 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
         )
     ]
     if not candidates:
-        return {"status": "unsupported", "reason": f"no SW operation declaration admits {op!r}", "op": op}
+        decision = {"status": "unsupported", "reason": f"no SW operation declaration admits {op!r}", "op": op}
+        if ignored:
+            decision["ignored_disjoint_declarations"] = ignored
+        return decision
     unresolved = sorted(row["id"] for row in candidates if "hardware" in row)
     if unresolved:
         raise ValueError(
@@ -423,6 +562,8 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
     for row in candidates:
         constraints = row["signature"]
         missing, refused = [], []
+        if row.get("admission_basis") == "declared_unchecked" and not review_accepted(row, default="unreviewed"):
+            missing.append("unchecked declaration requires explicit operation review")
         missing.extend(sorted(set(constraints) - _SIGNATURE_FIELDS))
         for declaration_key in ("restriction", "semantics"):
             if declaration_key in constraints:
@@ -456,6 +597,12 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                         missing.append(f"quantization_parameters.{key}")
                     elif observed != expected:
                         refused.append(f"quantization_parameters.{key}={observed} differs from {expected}")
+        if "max_tensor_operands" in constraints:
+            count = signature.get("tensor_operands")
+            if type(count) is not int:
+                missing.append("tensor_operands")
+            elif count > constraints["max_tensor_operands"]:
+                refused.append(f"tensor_operands {count} exceeds {constraints['max_tensor_operands']}")
         declared_placement = row["placement"]
         if declared_placement == "unknown" or placement == "unknown":
             missing.append("placement")
@@ -477,10 +624,19 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
             ("broadcasting", "broadcasting"),
             ("aliasing", "aliasing"),
             ("scale_granularity", "scale_granularity"),
+            ("kinds", "kind"),
+            ("expressions", "expression"),
+            ("numerical_family", "numerical_family"),
         ):
             if key not in constraints:
                 continue
             expected, actual = constraints[key], signature.get(observed_key)
+            if key == "numerical_family" and actual is None:
+                # Representation-only rows cannot relax the source primitive constraints.
+                # Their family is established by an exact construction proof, never inferred
+                # from a missing observation in an untransformed source operation.
+                refused.append("numerical_family requires an explicit representation proof")
+                continue
             if actual is None or expected == "unknown":
                 missing.append(key)
                 continue
@@ -566,29 +722,53 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                     or (comparison == "multiple_of" and observed % bound)
                 ):
                     refused.append(f"dimension {axis}={observed} violates {comparison}={bound}")
+        review = review_record(
+            {"status": spec.get("status", "unreviewed"), "evidence": spec.get("evidence", {})}, row
+        )
         if refused:
             status, reason = "unsupported", "; ".join(refused)
-        elif missing or spec.get("status") != "reviewed" or row.get("status", "reviewed") != "reviewed":
+        elif missing or not review["operator_accepted"]:
             status = "unknown"
             reason = "unresolved SW constraints: " + ", ".join(missing or ["operation review"])
         else:
-            status, reason = "admitted", "reviewed SW constraints match the observed signature"
+            status = "admitted"
+            reason = (
+                "reviewed SW constraints match the observed signature"
+                if review["review_status"] == "reviewed"
+                else "authored SW constraints match under explicit operator-acceptance policy"
+            )
         decisions.append(
             {
                 "status": status,
                 "reason": reason,
                 "op": op,
                 "declaration": row["id"],
+                "admission_basis": row.get("admission_basis", "authored"),
                 "constraints_status": "refused" if refused else "unknown" if missing else "matched",
                 "unresolved_constraints": missing,
-                "review_status": (
-                    "reviewed"
-                    if spec.get("status") == "reviewed" and row.get("status", "reviewed") == "reviewed"
-                    else "unreviewed"
-                ),
+                **review,
             }
         )
-    return next(
+    decision = next(
         (row for row in decisions if row["status"] == "admitted"),
         next((row for row in decisions if row["status"] == "unknown"), decisions[0]),
     )
+    if ignored:
+        decision = {**decision, "ignored_disjoint_declarations": ignored}
+    return decision
+
+
+def admit_contraction_operation(spec: dict, op: str, signature: dict, placement: str) -> dict:
+    """Exact source-op priority for a separately typed integer MAC, as a view of :func:`admit_operation`.
+
+    The disjoint-precision rule now lives in :func:`exact_declarations` and applies to every family;
+    this wrapper keeps the contraction callers' record of which host rows were set aside and whether
+    an exact source declaration still governs the decision. The authored specification is unchanged.
+    """
+    decision = admit_operation(spec, op, signature, placement)
+    retained, ignored = exact_declarations(spec, op, signature)
+    return {
+        **decision,
+        "ignored_disjoint_host_precision_declarations": ignored,
+        "applicable_exact_source_declaration": op != signature.get("family") and bool(retained),
+    }

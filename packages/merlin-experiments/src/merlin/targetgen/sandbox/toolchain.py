@@ -293,6 +293,36 @@ def curated_harness_dir(te: TargetExperiment) -> str:
     return ""
 
 
+def _venv_runtime_paths(venv: str) -> tuple[str, ...]:
+    """Include the runtime behind a venv, whose executable may be external.
+
+    Binding the venv alone preserves its symlinks, but not their referents or
+    the base interpreter's standard/shared libraries over the scratch masks.
+    Read its own pyvenv.cfg rather than borrowing the controller's interpreter.
+    """
+    root = Path(venv).resolve()
+    executable = root / "bin/python"
+    runtimes = set()
+    if executable.is_file():
+        runtimes.add(executable.resolve().parent.parent)
+    config = root / "pyvenv.cfg"
+    if config.is_file():
+        for line in config.read_text(encoding="utf-8").splitlines():
+            key, separator, value = line.partition("=")
+            if separator and key.strip() == "home":
+                home = Path(value.strip())
+                if not home.is_absolute():
+                    raise ValueError("venv interpreter home must be absolute")
+                runtimes.add(home.resolve().parent)
+    return tuple(
+        str(path)
+        for runtime in sorted(runtimes)
+        if runtime != root
+        for member in ("bin", "lib", "lib64")
+        if (path := runtime / member).exists()
+    )
+
+
 def toolchain_binds(
     te: TargetExperiment,
     *,
@@ -313,6 +343,7 @@ def toolchain_binds(
     binds: list[str] = []
     universal = (
         paths.uv_python,
+        *_venv_runtime_paths(paths.venv),
         paths.venv,
         paths.llvm,
         paths.clang_bin,

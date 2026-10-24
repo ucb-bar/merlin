@@ -109,8 +109,11 @@ def test_selfcheck_selection_reaches_both_native_tiers(tmp_path, monkeypatch):
         ("spike", "neutral", {"readback_policy": policy}),
         ("gsim", "neutral", {"readback_policy": policy}),
     ]
-    with pytest.raises(ValueError, match="does not support"):
-        selfcheck._adapters("vcs", "neutral", "chipyard", readback_policy=policy)
+    # VCS is an L3 engine through the same generic adapter, so it carries the readback policy too.
+    calls.clear()
+    adapters, sim = selfcheck._adapters("vcs", "neutral", "chipyard", readback_policy=policy)
+    assert sim == "vcs" and set(adapters) == {"L2", "L3"}
+    assert calls[-1] == ("vcs", "neutral", {"readback_policy": policy})
 
 
 def test_explicit_transport_failure_cannot_remove_certification_tiers(tmp_path, monkeypatch):

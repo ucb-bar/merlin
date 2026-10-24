@@ -1085,6 +1085,24 @@ def build_facts(
     return record
 
 
+def _add_selected_address_space(facts: dict, memory: dict, *, source: str) -> None:
+    """Retain a logical role view without replacing or summing the physical census."""
+    if not isinstance(memory.get("bytes"), int) or memory["bytes"] <= 0:
+        return
+    view = {
+        **memory,
+        "source": source,
+        "view_kind": "address_space",
+        "physical_aliases_status": "unknown",
+        "accounting_note": "logical address-space view; do not sum with physical census stores",
+    }
+    views = facts.setdefault("memory_address_spaces", [])
+    if any(row["name"] == view["name"] for row in views):
+        raise ValueError(f"duplicate selected memory address space {view['name']!r}")
+    views.append(view)
+    facts.setdefault("memories", []).append(view)
+
+
 def _build_facts(
     hw_path: Path | str | None = None,
     isa_path: Path | str | None = None,

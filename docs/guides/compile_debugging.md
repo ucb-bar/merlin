@@ -3,7 +3,7 @@ title: Compile debugging — stop at a stage, dump its IR, trace a build, inspec
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-08
+last_verified: 2026-10-10
 related: [optional_passes, model_lowering, whole_model_on_accelerator]
 code_refs: [src/merlin/common/compile_trace.py,
             src/merlin/perf/debug_companion.py,

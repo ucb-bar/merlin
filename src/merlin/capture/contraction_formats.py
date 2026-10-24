@@ -478,7 +478,7 @@ def _program(row, limits):
             ):
                 geometry = _typed_geometry(op)
                 form = "UNKNOWN"
-                if exact_int_mm_generic_operation(op):
+                if exact_int_mm_generic_operation(op, require_zero_init=False):
                     form = "INTEGER"
                 elif _float_reduction(op):
                     form = "FLOAT"

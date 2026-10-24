@@ -378,6 +378,14 @@ def test_phase1_and_phase2_real_adapter_contract(tmp_path, monkeypatch):
     clang.chmod(0o755)
     monkeypatch.setenv("MERLIN_CLANG", str(clang))
     monkeypatch.setenv("MERLIN_TARGET_PATH", str(tmp_path / "unselected-support"))
+    monkeypatch.setenv("MERLIN_CAPSULE_TIER_FLOOR", "L3")
+    monkeypatch.setenv("MERLIN_GRADE_WORKERS", "16")
+    monkeypatch.setenv("MERLIN_ORACLE_JAIL_ROOTS", str(tmp_path / "toolchain"))
+    (tmp_path / "toolchain").mkdir()
+    (tmp_path / "toolchain" / "spike").write_text("frozen")
+    monkeypatch.setenv("MERLIN_ORACLE_TOOLCHAIN", str(tmp_path / "toolchain"))
+    target_simulator = f"MERLIN_{load_spec(spec_path).target.upper()}_SIMV"
+    monkeypatch.setenv(target_simulator, str(tmp_path / "toolchain" / "simv"))
     plan = resolve_plan(load_spec(spec_path), run_dir=tmp_path / "run")
     functional = plan["phases"]["1"]
     assert functional["argv"][1:3] == ["-m", "merlin_experiments.phase1"]
@@ -387,6 +395,14 @@ def test_phase1_and_phase2_real_adapter_contract(tmp_path, monkeypatch):
     assert functional["env"]["MERLIN_TARGET_EXPERIMENT"] == str(descriptor)
     assert functional["env"]["MERLIN_CLANG"] == str(clang)
     assert functional["env"]["MERLIN_TARGET_PATH"] == str(tmp_path / "unselected-support")
+    assert functional["env"]["MERLIN_CAPSULE_TIER_FLOOR"] == "L3"  # a resume cannot drop the floor
+    assert functional["env"]["MERLIN_GRADE_WORKERS"] == "16"  # nor the selected grade parallelism
+    assert functional["env"]["MERLIN_ORACLE_JAIL_ROOTS"] == str(tmp_path / "toolchain")  # nor the simulator jail
+    assert functional["env"][target_simulator] == str(tmp_path / "toolchain" / "simv")  # nor the target's tools
+    assert plan["input_paths"]["phase1:oracle_toolchain"] == str(tmp_path / "toolchain")  # bytes re-verified on resume
+    monkeypatch.setenv("MERLIN_CAPSULE_TIER_FLOOR", "RTL")
+    with pytest.raises(SpecError, match="MERLIN_CAPSULE_TIER_FLOOR"):
+        resolve_plan(load_spec(spec_path), run_dir=tmp_path / "run-invalid-floor")
     assert plan["input_paths"]["phase1:operator:clang"] == str(clang)
     assert plan["phases"]["2"]["resume_policy"] == "checkpoint_segment"
     assert plan["phases"]["2"]["mode"] == "model_portfolio"

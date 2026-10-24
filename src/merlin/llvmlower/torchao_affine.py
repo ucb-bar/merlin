@@ -226,7 +226,7 @@ def _maps(rank: int, kept: int, block_size, *, in_map_first: bool = True):
     return identity, scale_map
 
 
-def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> int:
+def lower_torchao_affine_quant(module, *, report_out: dict | None = None) -> int:
     """Rewrite every opaque torchao affine activation-quant call into linalg; returns the count.
 
     A module carrying none of these calls is left untouched (and returns 0), so adding this to a
@@ -277,9 +277,6 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
         )
 
     f32 = Float32Type()
-    # torchao: scale = max_abs / (float(quant_max - quant_min) / 2), then clamp(min=eps).
-    half_range = float(spec.quant_max - spec.quant_min) / 2.0
-
     n = 0
     for call in choose_calls:
         (src,) = call.operands
@@ -299,63 +296,13 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
                 f"{layout.block_size} ({layout.granularity}) but scheme {scheme!r} quantizes "
                 f"activations {spec.granularity} ({spec.source})"
             )
-        rank, kept = len(layout.in_shape), len(layout.scale_shape)
-        identity, scale_map = _maps(rank, kept, layout.block_size)
-        red_iters = [L.IteratorTypeAttr(L.IteratorType.PARALLEL) for _ in range(rank)]
-        if kept < rank:
-            for i in range(kept, rank):
-                red_iters[i] = L.IteratorTypeAttr(L.IteratorType.REDUCTION)
-        else:
-            for i in range(rank):
-                if layout.block_size[i] != 1:
-                    red_iters[i] = L.IteratorTypeAttr(L.IteratorType.REDUCTION)
-
         parent = call.parent_block()
-        # max(|x|) over the block. Seeded with 0.0, which cannot change the result: |x| >= 0, so
-        # max(0, max|x|) == max|x| (and a NaN input still propagates through arith.maximumf).
-        acc_t = TensorType(f32, list(layout.scale_shape))
-        empty_acc = tensor.EmptyOp((), acc_t)
-        zero = _f32_const(0.0)
-        seed = L.FillOp(inputs=[zero.result], outputs=[empty_acc.tensor], res=[acc_t])
-        rbody = Block(arg_types=[f32, f32])
-        xv, accv = rbody.args
-        absf = math.AbsFOp(xv)
-        mx = arith.MaximumfOp(accv, absf.result)
-        rbody.add_ops([absf, mx, L.YieldOp(mx.result)])
-        reduce_gen = L.GenericOp(
-            inputs=(src,),
-            outputs=(seed.results[0],),
-            body=Region(rbody),
-            indexing_maps=ArrayAttr([AffineMapAttr(identity), AffineMapAttr(scale_map)]),
-            iterator_types=ArrayAttr(red_iters),
-            result_types=(acc_t,),
-        )
-
-        # scale = clamp(max_abs / half_range, min=eps) — divide first, clamp second.
-        empty_scale = tensor.EmptyOp((), scale_t)
-        sbody = Block(arg_types=[f32, f32])
-        mval, _ = sbody.args
-        denom = _f32_const(half_range)
-        epsc = _f32_const(spec.eps)
-        div = arith.DivfOp(mval, denom.result)
-        clamped = arith.MaximumfOp(div.result, epsc.result)
-        sbody.add_ops([denom, epsc, div, clamped, L.YieldOp(clamped.result)])
-        par_iters = ArrayAttr([L.IteratorTypeAttr(L.IteratorType.PARALLEL) for _ in range(kept)])
-        sid = _maps(kept, kept, (1,) * kept)[0]
-        scale_gen = L.GenericOp(
-            inputs=(reduce_gen.results[0],),
-            outputs=(empty_scale.tensor,),
-            body=Region(sbody),
-            indexing_maps=ArrayAttr([AffineMapAttr(sid), AffineMapAttr(sid)]),
-            iterator_types=par_iters,
-            result_types=(scale_t,),
-        )
-
-        for new in (reduce_gen, scale_gen):
-            carry_provenance(new, call, "torchao_choose_qparams_affine")
-        for new in (empty_acc, zero, seed, reduce_gen, empty_scale, scale_gen):
+        emitted, scale_value = emit_symmetric_qparams(src, scale_t, spec)
+        for new in emitted:
+            if new.name == "linalg.generic":
+                carry_provenance(new, call, "torchao_choose_qparams_affine")
             parent.insert_op_before(new, call)
-        call.results[0].replace_all_uses_with(scale_gen.results[0])
+        call.results[0].replace_all_uses_with(scale_value)
         parent.detach_op(call)
         n += 1
 
@@ -431,3 +378,68 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
         if base in (CHOOSE_QPARAMS_SYMBOL, QUANTIZE_SYMBOL) and not op.body.blocks:
             op.parent_block().detach_op(op)
     return n
+
+
+def emit_symmetric_qparams(src, scale_t, spec):
+    """Reuse the affine lowering's symmetric scale expression for an explicit block spec."""
+    from xdsl.dialects import arith, math, tensor
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, Float32Type, TensorType
+    from xdsl.dialects.linalg import ops as L
+    from xdsl.ir import Block, Region
+
+    f32 = Float32Type()
+    if src.type.element_type != f32 or scale_t.element_type != f32 or spec.mapping != "SYMMETRIC":
+        raise TorchAOAffineError("symmetric qparams emitter requires f32 and symmetric mapping")
+    layout = derive_block_layout(src.type.get_shape(), scale_t.get_shape())
+    half_range = float(spec.quant_max - spec.quant_min) / 2.0
+    rank, kept = len(layout.in_shape), len(layout.scale_shape)
+    identity, scale_map = _maps(rank, kept, layout.block_size)
+    red_iters = [L.IteratorTypeAttr(L.IteratorType.PARALLEL) for _ in range(rank)]
+    if kept < rank:
+        for i in range(kept, rank):
+            red_iters[i] = L.IteratorTypeAttr(L.IteratorType.REDUCTION)
+    else:
+        for i in range(rank):
+            if layout.block_size[i] != 1:
+                red_iters[i] = L.IteratorTypeAttr(L.IteratorType.REDUCTION)
+
+    # max(|x|) over the block. Seeded with 0.0, which cannot change the result: |x| >= 0, so
+    # max(0, max|x|) == max|x| (and a NaN input still propagates through arith.maximumf).
+    acc_t = TensorType(f32, list(layout.scale_shape))
+    empty_acc = tensor.EmptyOp((), acc_t)
+    zero = _f32_const(0.0)
+    seed = L.FillOp(inputs=[zero.result], outputs=[empty_acc.tensor], res=[acc_t])
+    rbody = Block(arg_types=[f32, f32])
+    xv, accv = rbody.args
+    absf = math.AbsFOp(xv)
+    mx = arith.MaximumfOp(accv, absf.result)
+    rbody.add_ops([absf, mx, L.YieldOp(mx.result)])
+    reduce_gen = L.GenericOp(
+        inputs=(src,),
+        outputs=(seed.results[0],),
+        body=Region(rbody),
+        indexing_maps=ArrayAttr([AffineMapAttr(identity), AffineMapAttr(scale_map)]),
+        iterator_types=ArrayAttr(red_iters),
+        result_types=(acc_t,),
+    )
+
+    # scale = clamp(max_abs / half_range, min=eps) — divide first, clamp second.
+    empty_scale = tensor.EmptyOp((), scale_t)
+    sbody = Block(arg_types=[f32, f32])
+    mval, _ = sbody.args
+    denom = _f32_const(half_range)
+    epsc = _f32_const(spec.eps)
+    div = arith.DivfOp(mval, denom.result)
+    clamped = arith.MaximumfOp(div.result, epsc.result)
+    sbody.add_ops([denom, epsc, div, clamped, L.YieldOp(clamped.result)])
+    par_iters = ArrayAttr([L.IteratorTypeAttr(L.IteratorType.PARALLEL) for _ in range(kept)])
+    sid = _maps(kept, kept, (1,) * kept)[0]
+    scale_gen = L.GenericOp(
+        inputs=(reduce_gen.results[0],),
+        outputs=(empty_scale.tensor,),
+        body=Region(sbody),
+        indexing_maps=ArrayAttr([AffineMapAttr(sid), AffineMapAttr(sid)]),
+        iterator_types=par_iters,
+        result_types=(scale_t,),
+    )
+    return [empty_acc, zero, seed, reduce_gen, empty_scale, scale_gen], scale_gen.results[0]

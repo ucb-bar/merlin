@@ -247,7 +247,11 @@ def _sandbox_probe(
             "from merlin.targetgen import rtl_backend as RB",
             "from merlin.kernels import cca_contract, action_catalog",
             f"profile = RB.target_profile({target!r})",
-            "assert not profile.discovered_nothing",
+            # EL3 grants the abstract CCA spine, but intentionally withholds
+            # RTL readers/facts. Requiring RTL discovery here imposed EL4's
+            # contract on EL3. Both still exercise CCA and the live brokers;
+            # only a selected RTL-facts tool promises a populated RTL profile.
+            *(["assert not profile.discovered_nothing"] if "rtl_facts" in has else []),
             "axes = sorted(cca_contract.leverable_axes(profile.target))",
             "report = cca_contract.check_bijection(profile.target)",
             "assert not (report.orphan_fields or report.orphan_routes or report.ladder_errors), report",

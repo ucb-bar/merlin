@@ -433,13 +433,15 @@ def test_controller_canary_dispatch_stops_before_ordinary_authoring(tmp_path, mo
     from merlin_experiments.phase1 import authoring, controller, runtime_environment, task_staging, timing
 
     options = _options(tmp_path)
-    context = SimpleNamespace(readback_policy=None, descriptor=tmp_path / "descriptor", target="synthetic")
+    context = SimpleNamespace(
+        readback_policy=None, candidate_policy=None, descriptor=tmp_path / "descriptor", target="synthetic"
+    )
     marker = SimpleNamespace(
         request=SimpleNamespace(compiler_library_selection=None), environment={}, compiler_library_binding=None
     )
     calls = []
     monkeypatch.setattr(S, "validate_options", lambda options: None)
-    monkeypatch.setattr(timing, "requires_chipyard_timing", lambda *a: False)
+    monkeypatch.setattr(timing, "requires_chipyard_timing", lambda *a, **kw: False)
     monkeypatch.setattr(
         task_staging, "callbacks", lambda config: SimpleNamespace(resolved_tools=lambda: (), stage_task=lambda *a: None)
     )

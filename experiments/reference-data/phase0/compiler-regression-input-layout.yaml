@@ -1,0 +1,803 @@
+# Reviewed public strided input calls; no stored answers or verdicts.
+schema: merlin.regression_calls.v1
+calls:
+- case_id: regression::strided_input_elementwise_padded
+  overload: aten.sin.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: &id001
+        - 1
+        - 2
+        - 3
+        - 4
+        stride: &id002
+        - 48
+        - 24
+        - 8
+        - 2
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+            - - 0.5
+              - 0.625
+              - 0.75
+              - 0.875
+            - - 1.0
+              - 1.125
+              - 1.25
+              - 1.375
+          - - - 1.5
+              - 1.625
+              - 1.75
+              - 1.875
+            - - 2.0
+              - 2.125
+              - 2.25
+              - 2.375
+            - - 2.5
+              - 2.625
+              - 2.75
+              - 2.875
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: numerical result and unchanged caller allocation, strides and offset
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_elementwise_sliced_offset
+  overload: aten.sin.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: &id003
+        - 1
+        - 2
+        - 3
+        - 4
+        stride: &id004
+        - 24
+        - 12
+        - 4
+        - 1
+        storage_offset: 7
+        requires_grad: false
+        values:
+        - - - - 0.4375
+              - 0.5
+              - 0.5625
+              - 0.625
+            - - 0.6875
+              - 0.75
+              - 0.8125
+              - 0.875
+            - - 0.9375
+              - 1.0
+              - 1.0625
+              - 1.125
+          - - - 1.1875
+              - 1.25
+              - 1.3125
+              - 1.375
+            - - 1.4375
+              - 1.5
+              - 1.5625
+              - 1.625
+            - - 1.6875
+              - 1.75
+              - 1.8125
+              - 1.875
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: numerical result and unchanged caller allocation, strides and offset
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_elementwise_zero_stride
+  overload: aten.sin.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: &id005
+        - 1
+        - 2
+        - 3
+        - 4
+        stride: &id006
+        - 24
+        - 0
+        - 4
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.0625
+              - 0.125
+              - 0.1875
+            - - 0.25
+              - 0.3125
+              - 0.375
+              - 0.4375
+            - - 0.5
+              - 0.5625
+              - 0.625
+              - 0.6875
+          - - - 0.0
+              - 0.0625
+              - 0.125
+              - 0.1875
+            - - 0.25
+              - 0.3125
+              - 0.375
+              - 0.4375
+            - - 0.5
+              - 0.5625
+              - 0.625
+              - 0.6875
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: numerical result and unchanged caller allocation, strides and offset
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_elementwise_channels_last
+  overload: aten.sin.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: &id007
+        - 1
+        - 2
+        - 3
+        - 4
+        stride: &id008
+        - 24
+        - 1
+        - 8
+        - 2
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+            - - 0.5
+              - 0.625
+              - 0.75
+              - 0.875
+            - - 1.0
+              - 1.125
+              - 1.25
+              - 1.375
+          - - - 0.0625
+              - 0.1875
+              - 0.3125
+              - 0.4375
+            - - 0.5625
+              - 0.6875
+              - 0.8125
+              - 0.9375
+            - - 1.0625
+              - 1.1875
+              - 1.3125
+              - 1.4375
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: numerical result and unchanged caller allocation, strides and offset
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_reduction_padded
+  overload: aten.sum.dim_IntList
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id001
+        stride: *id002
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+            - - 0.5
+              - 0.625
+              - 0.75
+              - 0.875
+            - - 1.0
+              - 1.125
+              - 1.25
+              - 1.375
+          - - - 1.5
+              - 1.625
+              - 1.75
+              - 1.875
+            - - 2.0
+              - 2.125
+              - 2.25
+              - 2.375
+            - - 2.5
+              - 2.625
+              - 2.75
+              - 2.875
+      - - 2
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: reads logical elements through input strides and offset
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_reduction_sliced_offset
+  overload: aten.sum.dim_IntList
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id003
+        stride: *id004
+        storage_offset: 7
+        requires_grad: false
+        values:
+        - - - - 0.4375
+              - 0.5
+              - 0.5625
+              - 0.625
+            - - 0.6875
+              - 0.75
+              - 0.8125
+              - 0.875
+            - - 0.9375
+              - 1.0
+              - 1.0625
+              - 1.125
+          - - - 1.1875
+              - 1.25
+              - 1.3125
+              - 1.375
+            - - 1.4375
+              - 1.5
+              - 1.5625
+              - 1.625
+            - - 1.6875
+              - 1.75
+              - 1.8125
+              - 1.875
+      - - 2
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: reads logical elements through input strides and offset
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_reduction_zero_stride
+  overload: aten.sum.dim_IntList
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id005
+        stride: *id006
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.0625
+              - 0.125
+              - 0.1875
+            - - 0.25
+              - 0.3125
+              - 0.375
+              - 0.4375
+            - - 0.5
+              - 0.5625
+              - 0.625
+              - 0.6875
+          - - - 0.0
+              - 0.0625
+              - 0.125
+              - 0.1875
+            - - 0.25
+              - 0.3125
+              - 0.375
+              - 0.4375
+            - - 0.5
+              - 0.5625
+              - 0.625
+              - 0.6875
+      - - 2
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: reads logical elements through input strides and offset
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_reduction_channels_last
+  overload: aten.sum.dim_IntList
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id007
+        stride: *id008
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+            - - 0.5
+              - 0.625
+              - 0.75
+              - 0.875
+            - - 1.0
+              - 1.125
+              - 1.25
+              - 1.375
+          - - - 0.0625
+              - 0.1875
+              - 0.3125
+              - 0.4375
+            - - 0.5625
+              - 0.6875
+              - 0.8125
+              - 0.9375
+            - - 1.0625
+              - 1.1875
+              - 1.3125
+              - 1.4375
+      - - 2
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: reads logical elements through input strides and offset
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_view_padded
+  overload: aten.transpose.int
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id001
+        stride: *id002
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+            - - 0.5
+              - 0.625
+              - 0.75
+              - 0.875
+            - - 1.0
+              - 1.125
+              - 1.25
+              - 1.375
+          - - - 1.5
+              - 1.625
+              - 1.75
+              - 1.875
+            - - 2.0
+              - 2.125
+              - 2.25
+              - 2.375
+            - - 2.5
+              - 2.625
+              - 2.75
+              - 2.875
+      - 1
+      - 3
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: returned strides and offset, allocation identity and write-through
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_view_sliced_offset
+  overload: aten.transpose.int
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id003
+        stride: *id004
+        storage_offset: 7
+        requires_grad: false
+        values:
+        - - - - 0.4375
+              - 0.5
+              - 0.5625
+              - 0.625
+            - - 0.6875
+              - 0.75
+              - 0.8125
+              - 0.875
+            - - 0.9375
+              - 1.0
+              - 1.0625
+              - 1.125
+          - - - 1.1875
+              - 1.25
+              - 1.3125
+              - 1.375
+            - - 1.4375
+              - 1.5
+              - 1.5625
+              - 1.625
+            - - 1.6875
+              - 1.75
+              - 1.8125
+              - 1.875
+      - 1
+      - 3
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: returned strides and offset, allocation identity and write-through
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_view_zero_stride
+  overload: aten.transpose.int
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id005
+        stride: *id006
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.0625
+              - 0.125
+              - 0.1875
+            - - 0.25
+              - 0.3125
+              - 0.375
+              - 0.4375
+            - - 0.5
+              - 0.5625
+              - 0.625
+              - 0.6875
+          - - - 0.0
+              - 0.0625
+              - 0.125
+              - 0.1875
+            - - 0.25
+              - 0.3125
+              - 0.375
+              - 0.4375
+            - - 0.5
+              - 0.5625
+              - 0.625
+              - 0.6875
+      - 1
+      - 3
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: returned strides and offset, allocation identity and write-through
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_view_channels_last
+  overload: aten.transpose.int
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id007
+        stride: *id008
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+            - - 0.5
+              - 0.625
+              - 0.75
+              - 0.875
+            - - 1.0
+              - 1.125
+              - 1.25
+              - 1.375
+          - - - 0.0625
+              - 0.1875
+              - 0.3125
+              - 0.4375
+            - - 0.5625
+              - 0.6875
+              - 0.8125
+              - 0.9375
+            - - 1.0625
+              - 1.1875
+              - 1.3125
+              - 1.4375
+      - 1
+      - 3
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: returned strides and offset, allocation identity and write-through
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_mutation_padded
+  overload: aten.fill_.Scalar
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id001
+        stride: *id002
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+            - - 0.5
+              - 0.625
+              - 0.75
+              - 0.875
+            - - 1.0
+              - 1.125
+              - 1.25
+              - 1.375
+          - - - 1.5
+              - 1.625
+              - 1.75
+              - 1.875
+            - - 2.0
+              - 2.125
+              - 2.25
+              - 2.375
+            - - 2.5
+              - 2.625
+              - 2.75
+              - 2.875
+      - 3.25
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: caller logical values change, views alias caller, storage holes stay untouched
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_mutation_sliced_offset
+  overload: aten.fill_.Scalar
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id003
+        stride: *id004
+        storage_offset: 7
+        requires_grad: false
+        values:
+        - - - - 0.4375
+              - 0.5
+              - 0.5625
+              - 0.625
+            - - 0.6875
+              - 0.75
+              - 0.8125
+              - 0.875
+            - - 0.9375
+              - 1.0
+              - 1.0625
+              - 1.125
+          - - - 1.1875
+              - 1.25
+              - 1.3125
+              - 1.375
+            - - 1.4375
+              - 1.5
+              - 1.5625
+              - 1.625
+            - - 1.6875
+              - 1.75
+              - 1.8125
+              - 1.875
+      - 3.25
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: caller logical values change, views alias caller, storage holes stay untouched
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_mutation_zero_stride
+  overload: aten.fill_.Scalar
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id005
+        stride: *id006
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.0625
+              - 0.125
+              - 0.1875
+            - - 0.25
+              - 0.3125
+              - 0.375
+              - 0.4375
+            - - 0.5
+              - 0.5625
+              - 0.625
+              - 0.6875
+          - - - 0.0
+              - 0.0625
+              - 0.125
+              - 0.1875
+            - - 0.25
+              - 0.3125
+              - 0.375
+              - 0.4375
+            - - 0.5
+              - 0.5625
+              - 0.625
+              - 0.6875
+      - 3.25
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: caller logical values change, views alias caller, storage holes stay untouched
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch
+- case_id: regression::strided_input_mutation_channels_last
+  overload: aten.fill_.Scalar
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float32
+        shape: *id007
+        stride: *id008
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - - - 0.0
+              - 0.125
+              - 0.25
+              - 0.375
+            - - 0.5
+              - 0.625
+              - 0.75
+              - 0.875
+            - - 1.0
+              - 1.125
+              - 1.25
+              - 1.375
+          - - - 0.0625
+              - 0.1875
+              - 0.3125
+              - 0.4375
+            - - 0.5625
+              - 0.6875
+              - 0.8125
+              - 0.9375
+            - - 1.0625
+              - 1.1875
+              - 1.3125
+              - 1.4375
+      - 3.25
+    kwargs: {}
+  guards:
+  - ba786b69
+  boundary: caller logical values change, views alias caller, storage holes stay untouched
+  origin:
+    design: Independent public strided inputs; eager CPU supplies answers at execution.
+    contract: captured strided input descriptors, specialized from the same exported
+      graph
+    refusal: negative or symbolic input layouts, inconsistent overlapping values,
+      ABI mismatch

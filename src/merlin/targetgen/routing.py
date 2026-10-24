@@ -28,6 +28,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from merlin.targetgen import compute_units as _cu
+from merlin.targetgen import semantic_families as sf
 
 
 @dataclass(frozen=True)
@@ -199,13 +200,21 @@ def _shape_envelope_ok(unit: _cu.ComputeUnit, demand: OpDemand) -> bool:
     """
     if demand.rank is None:
         return True
-    caps = [c for c in (unit.semantic_capabilities or ()) if c.dtypes or c.ranks or not c.batch]
-    for cap in caps:
+
+    def fits(cap) -> bool:
         if cap.ranks and demand.rank not in cap.ranks:
             return False
-        if cap.batch is False and demand.is_batched:
-            return False
-    return True
+        return not (cap.batch is False and demand.is_batched)
+
+    declared = [c for c in (unit.semantic_capabilities or ()) if c.dtypes or c.ranks or not c.batch]
+    if demand.family is None:
+        # No family to select an envelope by: every declared envelope must admit the shape.
+        return all(fits(cap) for cap in declared)
+    # The envelope is the demand's OWN family's. Another family's rank list says nothing about this
+    # one (a contraction's ranks [2, 3, 4] must not refuse a rank-5 movement or pool); a family with
+    # several declared rows (fused and standalone forms) fits when any one of them does.
+    own = [cap for cap in declared if cap.family == demand.family]
+    return not own or any(fits(cap) for cap in own)
 
 
 def _legal_on(unit: _cu.ComputeUnit, demand: OpDemand) -> tuple[bool, str | None]:
@@ -215,7 +224,7 @@ def _legal_on(unit: _cu.ComputeUnit, demand: OpDemand) -> tuple[bool, str | None
     if not unit.supports_op(demand.op, family=demand.family):
         return False, None
     form_caps = [c for c in unit.semantic_capabilities if c.family == demand.family]
-    if form_caps and not any(not c.forms or demand.form in c.forms for c in form_caps):
+    if form_caps and not any(not c.forms or sf.form_admitted(demand.form, c.forms) for c in form_caps):
         return False, None
     if not _shape_envelope_ok(unit, demand):
         return False, None

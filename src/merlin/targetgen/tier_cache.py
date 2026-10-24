@@ -316,7 +316,7 @@ def _digest_of(payload: dict) -> str:
 # WHICH JUDGE
 # ---------------------------------------------------------------------------------------------
 
-#: Module identities whose source bytes decide what a tier verdict MEANS. Not a list of facts about
+#: Seed modules whose package trees decide what a tier verdict MEANS. Not a list of facts about
 #: any target -- these are merlin's own grading modules, and the target's contribution is derived from
 #: the backend registry in :func:`grading_path`. See the module docstring for what is deliberately
 #: absent (the ELF build path and the RTL revision, both already inside the execution identity).
@@ -349,28 +349,47 @@ _GRADING_MODULES = (
 )
 
 
+def _grading_sources() -> tuple[Path, ...] | None:
+    """Inventory grading packages so extracted and newly added helpers stay attributed.
+
+    Package membership deliberately overapproximates imports, including lazy and
+    dynamic sibling imports without executing graders or guessing import reachability.
+    Unrelated Python edits in these packages may conservatively invalidate a cert.
+    """
+    from merlin.common.paths import module_source_path
+    from merlin.common.source_membership import python_members
+
+    try:
+        seeds = [module_source_path(module) for module in _GRADING_MODULES]
+        if any(not source.is_file() or source.is_symlink() for source in seeds):
+            return None
+        homes = sorted({source.parent for source in seeds})
+        roots = [home for home in homes if not any(parent in homes for parent in home.parents)]
+        files = {path for root in roots for path in python_members(root, label="grading").values()}
+        if not set(seeds) <= files:
+            return None
+        return tuple(sorted(files))
+    except (ImportError, ValueError, OSError):
+        return None
+
+
 def grading_path(target: str | None = None) -> tuple[Path, ...] | None:
     """Every file whose bytes decide a verdict, or ``None`` when one of them cannot be located.
 
     ``None`` is not "no instrument" -- it is "the instrument cannot be established", and the caller must
     then re-run. A grading path silently missing a member would key certificates on a partial judge.
 
-    A provider-owned backend contributes the selected provider's Python source tree,
-    including sibling build helpers. Built-in backends retain their implementation
+    Grading seed modules contribute their Python package trees, so helper extraction
+    cannot silently remove source attribution. A provider-owned backend contributes
+    the selected provider's Python source tree, including sibling build helpers.
+    Built-in backends retain their implementation
     package closure. This is conservative Python membership, not a transitive seal
     of external tools or non-Python resources. Uninventoryable trees disable reuse.
     """
-    from merlin.common.paths import module_source_path
-
-    files = []
-    for module in _GRADING_MODULES:
-        try:
-            p = module_source_path(module)
-        except (ImportError, ValueError, OSError):
-            return None
-        if not p.is_file():
-            return None
-        files.append(p)
+    sources = _grading_sources()
+    if sources is None:
+        return None
+    files = list(sources)
     if target:
         try:
             from merlin.common.source_membership import python_members

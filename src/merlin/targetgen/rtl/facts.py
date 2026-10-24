@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.digest import sha256_file
-from merlin.common.paths import artifacts_dir, is_external_path_unset
+from merlin.common.paths import artifacts_dir, is_external_path_unset, rtl_cache_dir, rtl_facts_path
 
 # Re-entrancy guard: ``ensure_facts`` regenerates by importing ``circt_introspect`` (which imports
 # this module) — the guard makes a regeneration that transitively re-asks for the same target fail
@@ -91,21 +91,6 @@ def _selected_external_facts(target: str) -> tuple[bool, Path | None]:
     if declared is not None and declared != selected.name:
         raise ValueError(f"{path}: facts target {declared!r} differs from selected target {selected.name!r}")
     return True, path
-
-
-def rtl_facts_path(target: str, *, explicit: str | Path | None = None) -> Path:
-    """Resolve the RTL facts artifact PATH (pure — no I/O, no regeneration): explicit >
-    ``$MERLIN_RTL_FACTS`` > the purgeable cache ``out/artifacts/cache/rtl_introspect/<t>/facts.json``.
-
-    This resolves to the GENERATED artifact's location; it never points at ``merlin/targets/<t>``.
-    Use :func:`ensure_facts` / :func:`load_facts` when you need the file to actually exist (they
-    regenerate the cache when it is cold)."""
-    if explicit:
-        return Path(explicit)
-    env = os.environ.get("MERLIN_RTL_FACTS")
-    if env:
-        return Path(env)
-    return rtl_cache_dir(target) / "facts.json"
 
 
 def _facts_declares(path: Path) -> str | None:
@@ -1483,15 +1468,3 @@ def decode_body(facts: dict[str, Any], target: str, *, needs: str) -> dict[str, 
         f"The artifact holds {shape}. A command-buffer or otherwise ISA-less target has no decode table "
         f"by construction -- it needs a generator for ITS endpoint, not this one."
     )
-
-
-def rtl_cache_dir(target: str, *, ensure: bool = False) -> Path:
-    """Purgeable introspect scratch (hw.mlir input, ``*.ll``/``*.o``, arcilator bins, per-run
-    facts.json) under ``artifacts/cache/rtl_introspect/<target>/`` — never inside ``merlin/``.
-
-    Mirrors :func:`merlin.common.artifacts.cache_dir` (``artifacts/cache/<ns>/``, PURGEABLE) without
-    forcing directory creation at import time; pass ``ensure=True`` when about to write."""
-    d = artifacts_dir() / "cache" / "rtl_introspect" / target
-    if ensure:
-        d.mkdir(parents=True, exist_ok=True)
-    return d

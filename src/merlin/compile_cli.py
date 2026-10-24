@@ -439,6 +439,7 @@ def compile_rvv(
             mesh_package=mesh_package,
             numeric_policy=numeric_policy,
             transform_audit=transform_audit,
+            **({"mesh_timeout": timeout} if kernel_backend == "mesh" else {}),
         )
         if kernel_backend == "mesh":
             # THIS MODEL's own layers: how many of its matmuls reached the accelerator and how many

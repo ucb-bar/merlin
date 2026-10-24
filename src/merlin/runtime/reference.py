@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import integer_ops
 from .commandbuffer import (
     BIAS_STAGES,
     apply_declared_acc_scale,
@@ -44,6 +45,11 @@ MODELED_OPCODES = frozenset(
         "CONV2D",
         "MOVEMENT",
         "BATCHED_MATMUL",
+        "AFFINE_MAP",
+        "CONCAT",
+        "INSERT_SLICE",
+        "FILL",
+        "WINDOW_SUM",
     }
 )
 
@@ -51,7 +57,7 @@ MODELED_OPCODES = frozenset(
 #: frees a resident-store handle and counts an eviction — residency is a performance optimization that by
 #: definition does not change results, and this naive path keeps no resident store to free. Listing them
 #: explicitly is what lets an opcode the engine genuinely cannot evaluate raise instead of being dropped.
-NO_NUMERIC_EFFECT = frozenset({"EVICT"})
+NO_NUMERIC_EFFECT = frozenset({"EVICT", "FENCE"})
 
 
 class UnmodeledOp(ValueError):
@@ -84,6 +90,12 @@ _CONV2D_ATTRS = frozenset(
         "output_dtype",
         "acc_scale",
         "acc_scale_by_column",
+        "scale_numerator",
+        "scale_denominator",
+        "zero_point",
+        "quant_min",
+        "quant_max",
+        "rounding",
         "requant_shift",
         "semantic",
         "pool_in_dims",
@@ -96,7 +108,20 @@ _CONV2D_ATTRS = frozenset(
 )
 
 _ATTENTION_ATTRS = frozenset(
-    {"epilogue", "output_dtype", "acc_scale", "acc_scale_by_column", "requant_shift", "semantic"}
+    {
+        "epilogue",
+        "output_dtype",
+        "acc_scale",
+        "acc_scale_by_column",
+        "requant_shift",
+        "semantic",
+        "scale_numerator",
+        "scale_denominator",
+        "zero_point",
+        "quant_min",
+        "quant_max",
+        "rounding",
+    }
 )
 
 
@@ -387,7 +412,7 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             # could only be graded by abandoning the opcode the interface grammar defines for it.
             q, k, dst = ops["q"], ops["k"], ops["dst"]
             qt, kt = env[q], env[k]
-            (m, d), (n, d2) = qt.shape, kt.shape
+            (_, d), (n, d2) = qt.shape, kt.shape
             if d != d2:
                 raise ValueError(f"ATTENTION_QK head-dim mismatch: {q}{qt.shape} vs {k}{kt.shape}")
             k_t = Tensor((d, n), [kt.data[i * d + j] for j in range(d) for i in range(n)], kt.dtype)
@@ -399,7 +424,7 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             # right operand; that distinction is the native ABI, not an optional attribute.
             p, v, dst = ops["p"], ops["v"], ops["dst"]
             pt, vt = env[p], env[v]
-            (m, s), (s2, _) = pt.shape, vt.shape
+            (_, s), (s2, _) = pt.shape, vt.shape
             if s != s2:
                 raise ValueError(f"ATTENTION_PV key-count mismatch: {p}{pt.shape} vs {v}{vt.shape}")
             t = _attention_epilogue(pt.matmul(vt), attrs, default_shift, f"ATTENTION_PV {dst!r}")
@@ -453,9 +478,19 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
                 raise ValueError("MOVEMENT needs operands src/dst")
             src, dst = ops["src"], ops["dst"]
             value = env[src]
-            moved = Tensor(value.shape, list(value.data), str(attrs.get("output_dtype", value.dtype)))
+            if attrs.get("form", "identity") != "identity" or "scale" in attrs:
+                # The movement forms are defined once (runtime.integer_ops) for every engine.
+                moved = integer_ops.move(value, attrs, integer_ops.declared_shape(cb, dst), op=f"MOVEMENT {dst!r}")
+            else:
+                moved = Tensor(value.shape, list(value.data), str(attrs.get("output_dtype", value.dtype)))
             env[dst] = moved
             outputs[dst] = moved.to_list()
+        elif op in integer_ops.OPCODES:
+            dst = ops["dst"]
+            env[dst] = integer_ops.execute(op, ops, attrs, env, integer_ops.declared_shape(cb, dst))
+            outputs[dst] = env[dst].to_list()
+        elif op == "FENCE":
+            pass  # a completion barrier orders memory effects; it changes no value
     for name, spec in cb.get("tensors", {}).items():
         if spec.get("role") == "output" and name in env and name not in outputs:
             outputs[name] = env[name].to_list()

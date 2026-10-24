@@ -35,8 +35,11 @@ from . import oot_history as _oot_history
 from . import run_inputs as RI
 from . import source_inputs as SI
 from . import treatments as T
+from .candidate_execution import functional_codegen_scope
+from .candidate_execution import selection_record as candidate_selection_record
+from .candidate_execution import verify_selection as verify_candidate_selection
 from .context import InvocationContext, readback_record, verify_readback_record
-from .options import RunOptions
+from .options import RunOptions, validate_objective
 from .workspaces import select_workspace_root
 
 if TYPE_CHECKING:
@@ -82,6 +85,13 @@ def _verify_client_selection(options, environment: dict) -> None:
     recorded = (environment.get("run_config") or {}).get("codex_runtime")
     if recorded != _client_selection(options):
         raise RuntimeError("explicit client selection changed")
+
+
+def _verify_objective(options: RunOptions, environment: dict) -> None:
+    recorded = environment.get("run_config") or {}
+    prior = recorded.get("objective", "correctness") if type(recorded) is dict else None
+    if prior != getattr(options, "objective", "correctness"):
+        raise RuntimeError("resume refused: authoring objective changed")
 
 
 def _verify_phase0_handoff(corpus_review: dict | None, workload_coverage: dict | None) -> None:
@@ -162,6 +172,7 @@ class RunRequest:
             "launcher_argv": list(self.launcher_argv),
             **({"construction_study": study} if (study := study_selection(a)) is not None else {}),
             **({"live_conformance_feedback": True} if a.live_conformance_feedback else {}),
+            **({"objective": a.objective} if getattr(a, "objective", "correctness") != "correctness" else {}),
             **(
                 {"public_object_build_budget_s": a.public_object_build_budget_s}
                 if a.public_object_build_budget_s
@@ -275,10 +286,12 @@ class PreparedRun:
             self.environment.get("hidden_capsule_validation"),
         )
         verify_readback_record(self.request.context, self.environment.get("readback_policy"))
+        verify_candidate_selection(self.request.context, self.environment.get("candidate_compilation"))
         _verify_public_build_budget(self.request.options, self.environment)
         AC.verify_live_selection(self.request.options, self.environment)
         _verify_client_selection(self.request.options, self.environment)
         self.selected_codex_runtime
+        _verify_objective(self.request.options, self.environment)
         if self.environment.get("public_object_build_selection") != _public_build_selection(
             self.request.context.target, self.request.options.public_object_build_budget_s
         ):
@@ -490,6 +503,7 @@ def validate_options(a: RunOptions) -> int | None:
     validate_client(a)
     if a.codex_canary and not 0 < a.round_timeout <= 600:
         raise ValueError("Codex canary requires an explicit 1..600 second round timeout")
+    validate_objective(a)
     if a.qualify_submission:
         if a.resume or a.seed_submission or a.seal_current or a.continuous:
             raise RuntimeError("unpaid qualification requires a fresh run and one selected submission")
@@ -562,6 +576,8 @@ def _prepare(
     from merlin.compile.model_execution_inputs import file_sha256
 
     a, context, treatment = request.options, request.context, request.treatment
+    if a.no_oracle and getattr(context, "candidate_policy", None) is not None:
+        raise ValueError("candidate compilation selection requires oracle evaluation")
     refusal = validate_options(a)
     if refusal is not None:
         return refusal
@@ -613,9 +629,11 @@ def _prepare(
             _hidden_capsule_policy,
             _environment_record.get("hidden_capsule_validation"),
         )
+        verify_candidate_selection(context, _environment_record.get("candidate_compilation"))
         _verify_public_build_budget(a, _environment_record)
         AC.verify_live_selection(a, _environment_record)
         _verify_client_selection(a, _environment_record)
+        _verify_objective(a, _environment_record)
         _implementation_sources = _environment_record.get("implementation_sources")
         SI.verify(_implementation_sources, **_source_context)
     else:
@@ -819,7 +837,12 @@ def _prepare(
             )
         _hidden_dir = RI.hidden_snapshot_dir(_snapshot_root, _te_setup, context.repo)
         _hidden_snapshot_record = RI.subtree_snapshot_record(_hidden_dir)
-        if _hidden_snapshot_record["n_capsules"] <= 0:
+        _public_only = (
+            _te_setup.hidden_expected_source_capsules == 0
+            and _te_setup.hidden_expected_admitted_capsules == 0
+            and a.skip_hidden
+        )
+        if _hidden_snapshot_record["n_capsules"] <= 0 and not _public_only:
             raise RuntimeError(f"hidden capsule snapshot contains no capsules: {_hidden_snapshot_record['path']}")
         if _corpus_seal and not _resuming:
             from ..phase0.coverage_commitment import admitted_source_roots
@@ -1083,6 +1106,11 @@ def _prepare(
                 else {}
             ),
             **({"readback_policy": readback_record(context)} if context.readback_policy is not None else {}),
+            **(
+                {"candidate_compilation": candidate_selection_record(context)}
+                if getattr(context, "candidate_policy", None) is not None
+                else {}
+            ),
             "task_scope": _task_scope_record,
             **({"model_python_selection": _model_python_selection} if _model_python_selection is not None else {}),
             "workspace_path": str(ws),
@@ -1245,12 +1273,29 @@ def _prepare(
     print(f"[preflight] tooling readiness: {_tooling['status']}")
 
     # Oracle availability and code production are separate admission evidence. The
-    # selected backend owns its production probe; resource paths never select it.
+    # selected backend owns its production probe. The source-product full-call
+    # path does not use the legacy command-buffer ABI; its functional roster is
+    # checked against the actual frozen public AND hidden grading inputs.
     # An absent optional probe returns None (not run), not a successful qualification.
     # Explicit selection failures and failed probes refuse before authoring spends tokens.
     if not a.no_oracle:
         _cg_backend = _te_pf.preflight_codegen_backend
-        if _cg_backend is None:
+        _cg_scope = (
+            functional_codegen_scope(context, public_root=_policy_root, hidden_root=_hidden_dir)
+            if _cg_backend is None
+            else None
+        )
+        if _cg_scope is not None:
+            if _cg_scope["candidate_compilation"] != _environment_record.get("candidate_compilation"):
+                raise RuntimeError("candidate compilation selection changed during codegen admission")
+            _cg_ok, _cg_why = (
+                None,
+                (
+                    "legacy command-buffer production smoke not run: selected full-call source-product path "
+                    "declares functional tiers only; per-candidate production grading remains required"
+                ),
+            )
+        elif _cg_backend is None:
             _cg_ok, _cg_why = _CRpf.codegen_smoke(_te_pf.target)
         else:
             _cg_ok, _cg_why = _CRpf.codegen_smoke(_te_pf.target, backend_target=_cg_backend)
@@ -1261,6 +1306,7 @@ def _prepare(
                     "backend_target": _cg_backend,
                     "codegen_ok": _cg_ok,
                     "reason": _cg_why,
+                    **({"scope": _cg_scope} if _cg_scope is not None else {}),
                 },
                 sort_keys=False,
             )

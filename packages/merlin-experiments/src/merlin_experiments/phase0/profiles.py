@@ -209,6 +209,16 @@ def verify_selected_synthesis(
     spec_doc = yaml.safe_load(Path(conformance_spec).read_text(encoding="utf-8")) or {}
     if not isinstance(spec_doc, dict):
         raise ValueError(f"{conformance_spec}: conformance spec must be a mapping")
+    from .core_aten_stage import declaration as core_declaration
+    from .core_aten_stage import verify_synthesis
+
+    if core_declaration(Path(recipe)) is not None:
+        if applications:
+            raise ValueError("retained Core ATen selection cannot satisfy whole-application requirements")
+        if spec_doc.get("target") != descriptor_doc.get("target"):
+            raise ValueError("Core ATen conformance names a different descriptor target")
+        binding = verify_synthesis(Path(recipe), spec_doc, profile_document)
+        return {"status": "verified", "selected_inputs": dict(identity), **binding}
     demands = spec_doc.get("application_demands") or {}
     if not isinstance(demands, dict):
         raise ValueError(f"{conformance_spec}: application_demands must be a mapping")

@@ -958,19 +958,17 @@ def compile_lowered_to_elf(
             cb=cb,
             inputs=inputs,
             recipe=_backends.harness_build_recipe(target).with_effective_abi(),
+            interface_mlir_text=_bc.interface_text(work),
         )
-        # The paired ABI check is new build semantics. Do not restore an older cache entry that
-        # predates it, even when an explicitly declared -mabi made the old recipe token identical.
-        if key is not None:
-            key = hashlib.sha256(("paired-kernel-abi-v1:" + key).encode("ascii")).hexdigest()
     except Exception:  # noqa: BLE001 -- an unkeyable build is an ordinary build
         key = None
     cached = _bc.reuse(work, key, PACKAGE_ELF_NAME)
     if cached is not None:
         return cached
+    before = _bc.product_snapshot(work)
     obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
     elf = link_elf(cb, obj, work, target=target, inputs=inputs)
-    _bc.store(key, work, PACKAGE_ELF_NAME)
+    _bc.store(key, work, _bc.BuildProducts(PACKAGE_ELF_NAME, products=_bc.changed_products(work, before)))
     return elf
 
 

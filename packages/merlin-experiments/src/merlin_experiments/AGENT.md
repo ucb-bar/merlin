@@ -45,6 +45,10 @@ stays at the caller. V4 binds explicit ownership and full file/directory members
 Verification/bootstrap is standard-library-only and never discovers a live checkout.
 Old seals remain inspectable but require a fresh freeze for this verifier's execution;
 never rewrite an archive or substitute current code for its historical verifier.
+`frozen_python.py` admits selected support and declared sibling dependencies only
+from that verified snapshot. Their verified private container permits nested
+plugin namespace lookup without joining top-level import roots or `sys.path`.
+This does not admit an external evaluated compiler candidate.
 
 `runner_process` owns bounded process/group inspection and shutdown; `runner`
 retains its existing imports and overrides at plan execution boundaries.

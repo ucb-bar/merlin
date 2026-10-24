@@ -24,7 +24,7 @@ from merlin.targetgen import capsule_runner as CR
 from merlin_experiments.phase1.context import (
     InvocationContext,
     add_context_arguments,
-    readback_kwargs,
+    oracle_kwargs,
     resolve_context,
     verify_readback_record,
 )
@@ -196,6 +196,18 @@ def _install_formal_model_simulator(target: str) -> tuple[dict, str | None]:
     return selected, inherited
 
 
+def private_gate_completion(required, record, *, deferred_reason=None):
+    """An explicit operator deferral is separate from a private-model pass."""
+    if deferred_reason is not None:
+        if not isinstance(deferred_reason, str) or not deferred_reason.strip():
+            raise ValueError("private gate deferral requires an operator reason")
+        if record.get("models"):
+            raise ValueError("cannot defer a private gate after executing models")
+        record.update(status="deferred", deferred=True, reason=deferred_reason, passed=False)
+        return True
+    return bool(required) and record.get("passed") is True
+
+
 def phase_completion(
     score: Mapping | None, *, required_tier: str = FORMAL_REQUIRED_TIER, functional_hidden: bool = False
 ) -> tuple[bool, list[str]]:
@@ -355,6 +367,19 @@ def _phase_manifest(score: Mapping, *, required_tier: str, functional_hidden: bo
         "functional_pass": score.get("functional_pass"),
         "n_passed": score.get("n_passed"),
         "n_capsules": score.get("n_capsules"),
+        **{
+            key: score[key]
+            for key in (
+                "device_lane_scored_pass",
+                "device_evidence_count",
+                "spec_qualified_device_pass",
+                "device_unqualified_pass",
+                "host_lane_scored_pass",
+                "host_guard_pass",
+                "host_guard_total",
+            )
+            if key in score
+        },
         "gradeable": score.get("gradeable"),
         "integrity_status": score.get("integrity_status"),
         "numeric_all_exact": score.get("numeric_all_exact"),
@@ -414,11 +439,13 @@ def _score(
     step_timeout_s=900,
     hidden_capsule_mode="rtl",
 ):
+    if no_oracle and getattr(context, "candidate_policy", None) is not None:
+        raise ValueError("candidate compilation selection requires oracle evaluation")
     # Resolve the TARGET'S OWN oracle ladder from its contract (external_backend->program_oracle,
     # chipyard->spike/verilator, else arc) — never pass None here, which historically fell back to the
     # gemmini spike/verilator MLIR-lowering oracle and mis-graded atlas (torch-mlir run_lowering.py crash).
     # `{}` = honest no-oracle (L0/L1/trace only). sim_via is self-resolved from the contract.
-    adapters = {} if no_oracle else CR.oracle_adapters(context.target, **readback_kwargs(context))
+    adapters = {} if no_oracle else CR.oracle_adapters(context.target, **oracle_kwargs(context))
     functional_hidden = hidden_capsule_mode == "functional_spike"
     if functional_hidden:
         cfg = CR._config_for_target(context.target, None, "i8xi8_i32")
@@ -462,16 +489,20 @@ def _cost_phrase(proc: dict) -> str:
 
 def _verify_formal_readback_policy(run_dir: Path, context: InvocationContext) -> None:
     """Formal grading cannot select a different transport from the admitted run."""
+    from merlin_experiments.phase1.candidate_execution import verify_selection
+
     path = run_dir / "environment.yaml"
     if path.is_symlink():
         raise RuntimeError("formal run environment must not be indirect")
     if not path.is_file():
         verify_readback_record(context, None)
+        verify_selection(context, None)
         return
     record = yaml.safe_load(path.read_bytes())
     if not isinstance(record, dict):
         raise RuntimeError("formal run environment is malformed")
     verify_readback_record(context, record.get("readback_policy"))
+    verify_selection(context, record.get("candidate_compilation"))
 
 
 @selected_child
@@ -577,9 +608,16 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         type=Path,
         help="operator-only reviewed public instruction source/tool/policy declaration; no saved authority",
     )
+    ap.add_argument(
+        "--defer-private-full-models",
+        metavar="REASON",
+        help="operator deferral; records the gate as deferred, never passed",
+    )
     a = ap.parse_args(argv)
     if a.instruction_selection is not None and a.private_full_model_spec is None:
         ap.error("--instruction-selection requires --private-full-model-spec")
+    if a.defer_private_full_models is not None and a.private_full_model_spec is not None:
+        ap.error("private models cannot be supplied and deferred together")
     if a.qa_timeout < 1:
         ap.error("--qa-timeout must be positive")
     if a.rtl_facts is not None:

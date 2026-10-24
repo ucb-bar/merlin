@@ -82,6 +82,17 @@ def run(
         if context.readback_policy is not None and context.readback_policy != options.readback_policy:
             raise ValueError("context and invocation readback policies differ")
         context = replace(context, readback_policy=options.readback_policy)
+    if getattr(options, "candidate_policy", ""):
+        selected = Path(options.candidate_policy).absolute()
+        if context.candidate_policy is not None and context.candidate_policy != selected:
+            raise ValueError("context and invocation candidate compilation selections differ")
+        context = replace(context, candidate_policy=selected)
+    if context.candidate_policy is not None:
+        if options.no_oracle:
+            raise ValueError("candidate compilation selection requires oracle evaluation")
+        from .candidate_execution import selection_record
+
+        selection_record(context)
 
     from . import authoring, compiler_library, runtime_environment, session, task_staging, treatments
 
@@ -93,7 +104,7 @@ def run(
         from .timing import read_verified_timing, requires_chipyard_timing
 
         try:
-            if requires_chipyard_timing(context.descriptor):
+            if requires_chipyard_timing(context.descriptor, public_root=public_root):
                 read_verified_timing(oracle_timing, descriptor=context.descriptor, target=context.target)
         except ValueError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
@@ -112,6 +123,7 @@ def run(
         drop_tools=tuple(options.without_tool),
         shared_pass_requirement=requirement,
         shared_pass_library=compiler_library_selection,
+        objective=getattr(options, "objective", "correctness"),
     )
     callbacks = task_staging.callbacks(task_config)
     if options.with_tool or options.without_tool:

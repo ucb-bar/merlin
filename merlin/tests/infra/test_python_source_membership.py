@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from merlin.common.source_membership import SourceMembershipError, python_members
+from merlin.common.source_membership import SourceMembershipError, file_members, python_members
 
 
 def test_membership_is_sorted_recursive_and_ignores_only_generated_bytecode(tmp_path):
@@ -17,6 +17,11 @@ def test_membership_is_sorted_recursive_and_ignores_only_generated_bytecode(tmp_
     assert python_members(tmp_path) == {
         "a.py": (tmp_path / "a.py").resolve(),
         "nested/b.py": (tmp_path / "nested/b.py").resolve(),
+    }
+    assert file_members(tmp_path) == {
+        "a.py": (tmp_path / "a.py").resolve(),
+        "nested/b.py": (tmp_path / "nested/b.py").resolve(),
+        "notes.md": (tmp_path / "notes.md").resolve(),
     }
 
 
@@ -34,6 +39,8 @@ def test_unsafe_nonpython_entries_are_not_silently_omitted(tmp_path, kind):
         entry.symlink_to(tmp_path / "target")
     with pytest.raises(SourceMembershipError, match="symlinked or nonregular"):
         python_members(tmp_path)
+    with pytest.raises(SourceMembershipError, match="symlinked or nonregular"):
+        file_members(tmp_path)
 
 
 def test_phase1_delegates_with_existing_error_and_source_receipt_identity(tmp_path, monkeypatch):

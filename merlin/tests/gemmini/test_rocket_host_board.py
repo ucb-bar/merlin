@@ -25,9 +25,17 @@ def test_selected_board_facts_and_unknown_upload_fail_closed(monkeypatch):
     assert set(entries) == {
         "gemmini_rocket_verilator",
         "firesim_gemmini_rocket_u250_30mhz",
+        "firesim_gemmini_rocket_u250_default",
+        "gemmini_rocket_gsim_fire_aligned",
         "gemmini_rocket_spike_functional",
     }
-    assert [entries[name].dram_bytes for name in sorted(entries)] == [16 << 30, 16 << 30, 256 << 20]
+    assert [entries[name].dram_bytes for name in sorted(entries)] == [
+        16 << 30,
+        16 << 30,
+        16 << 30,
+        16 << 30,
+        256 << 20,
+    ]
     # The functional model's declared span shares the RTL board's host CPU roster (same DTS).
     assert (
         entries["gemmini_rocket_spike_functional"].host_dts_sha256
@@ -72,6 +80,12 @@ def test_selected_board_facts_and_unknown_upload_fail_closed(monkeypatch):
         ),
         (
             "firesim_gemmini_rocket_u250_30mhz",
+            "sims/firesim-staging/generated-src/"
+            "firechip.chip.FireSim.FireSimGemminiRocketConfig/"
+            "firechip.chip.FireSim.FireSimGemminiRocketConfig.dts",
+        ),
+        (
+            "firesim_gemmini_rocket_u250_default",
             "sims/firesim-staging/generated-src/"
             "firechip.chip.FireSim.FireSimGemminiRocketConfig/"
             "firechip.chip.FireSim.FireSimGemminiRocketConfig.dts",

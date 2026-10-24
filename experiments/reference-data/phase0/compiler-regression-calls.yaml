@@ -1,0 +1,387 @@
+# Reviewed public call inputs. Answers are computed eagerly beneath out/.
+schema: merlin.regression_calls.v1
+calls:
+- case_id: regression::nonzero_dynamic
+  overload: aten.nonzero.default
+  arguments:
+    args:
+      items:
+      - dtype: bool
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 2
+        - 3
+        storage_offset: 0
+        stride:
+        - 3
+        - 1
+        values:
+        - - false
+          - false
+          - true
+        - - true
+          - true
+          - true
+      kind: tuple
+    kwargs: {}
+  guards:
+  - 67fafa9d
+  - 762e2ff8
+  boundary: Return a runtime-ranked descriptor with actual [4,2] extents, not a fixed
+    maximum allocation.
+  origin:
+    corpus: PyTorchFullCoverageKernelSet/cases/core_aten_test_cases.json
+    source_case: aten.nonzero.default
+- case_id: regression::batch_norm_empty_alias_results
+  overload: aten._native_batch_norm_legit_no_training.default
+  arguments:
+    args:
+      items:
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 2
+        - 4
+        - 2
+        - 2
+        storage_offset: 0
+        stride:
+        - 16
+        - 4
+        - 2
+        - 1
+        values:
+        - - - - -0.75
+              - -0.6854838728904724
+            - - -0.6209677457809448
+              - -0.5564516186714172
+          - - - -0.49193549156188965
+              - -0.42741936445236206
+            - - -0.3629032373428345
+              - -0.2983871102333069
+          - - - -0.2338709831237793
+              - -0.1693548560142517
+            - - -0.10483872890472412
+              - -0.04032260179519653
+          - - - 0.024193525314331055
+              - 0.08870965242385864
+            - - 0.15322577953338623
+              - 0.21774190664291382
+        - - - - 0.2822580933570862
+              - 0.34677422046661377
+            - - 0.41129034757614136
+              - 0.47580647468566895
+          - - - 0.5403226017951965
+              - 0.6048387289047241
+            - - 0.6693548560142517
+              - 0.7338709831237793
+          - - - 0.7983871102333069
+              - 0.8629032373428345
+            - - 0.9274193644523621
+              - 0.9919354915618896
+          - - - 1.0564515590667725
+              - 1.1209677457809448
+            - - 1.1854839324951172
+              - 1.25
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 4
+        storage_offset: 0
+        stride:
+        - 1
+        values:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 4
+        storage_offset: 0
+        stride:
+        - 1
+        values:
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 4
+        storage_offset: 0
+        stride:
+        - 1
+        values:
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 4
+        storage_offset: 0
+        stride:
+        - 1
+        values:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+      - 0.1
+      - 1.0e-05
+      kind: tuple
+    kwargs: {}
+  guards:
+  - 67fafa9d
+  boundary: Return both zero-length saved statistics without erasing their shared
+    allocation twice.
+  origin:
+    corpus: PyTorchFullCoverageKernelSet/cases/core_aten_test_cases.json
+    source_case: aten._native_batch_norm_legit_no_training.default
+- case_id: regression::training_batch_norm_mutation
+  overload: aten._native_batch_norm_legit.default
+  arguments:
+    args:
+      items:
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 2
+        - 4
+        - 2
+        - 2
+        storage_offset: 0
+        stride:
+        - 16
+        - 4
+        - 2
+        - 1
+        values:
+        - - - - -0.75
+              - -0.6854838728904724
+            - - -0.6209677457809448
+              - -0.5564516186714172
+          - - - -0.49193549156188965
+              - -0.42741936445236206
+            - - -0.3629032373428345
+              - -0.2983871102333069
+          - - - -0.2338709831237793
+              - -0.1693548560142517
+            - - -0.10483872890472412
+              - -0.04032260179519653
+          - - - 0.024193525314331055
+              - 0.08870965242385864
+            - - 0.15322577953338623
+              - 0.21774190664291382
+        - - - - 0.2822580933570862
+              - 0.34677422046661377
+            - - 0.41129034757614136
+              - 0.47580647468566895
+          - - - 0.5403226017951965
+              - 0.6048387289047241
+            - - 0.6693548560142517
+              - 0.7338709831237793
+          - - - 0.7983871102333069
+              - 0.8629032373428345
+            - - 0.9274193644523621
+              - 0.9919354915618896
+          - - - 1.0564515590667725
+              - 1.1209677457809448
+            - - 1.1854839324951172
+              - 1.25
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 4
+        storage_offset: 0
+        stride:
+        - 1
+        values:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 4
+        storage_offset: 0
+        stride:
+        - 1
+        values:
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 4
+        storage_offset: 0
+        stride:
+        - 1
+        values:
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 4
+        storage_offset: 0
+        stride:
+        - 1
+        values:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+      - true
+      - 0.1
+      - 1.0e-05
+      kind: tuple
+    kwargs: {}
+  guards:
+  - 6f60202b
+  - 88241b20
+  - 28d7c59d
+  - e4b40d31
+  boundary: Snapshot running mean/variance before the call; route exported mutation
+    results into post-call arguments, preserving all three user results.
+  origin:
+    corpus: PyTorchFullCoverageKernelSet/cases/core_aten_test_cases.json
+    source_case: aten._native_batch_norm_legit.default
+- case_id: regression::view_alias
+  overload: aten.view.default
+  arguments:
+    args:
+      items:
+      - dtype: float32
+        kind: tensor
+        requires_grad: false
+        shape:
+        - 2
+        - 3
+        - 4
+        storage_offset: 0
+        stride:
+        - 12
+        - 4
+        - 1
+        values:
+        - - - -0.75
+            - -0.6630434989929199
+            - -0.5760869383811951
+            - -0.489130437374115
+          - - -0.4021739065647125
+            - -0.31521737575531006
+            - -0.2282608598470688
+            - -0.14130434393882751
+          - - -0.05434781312942505
+            - 0.03260871022939682
+            - 0.11956523358821869
+            - 0.20652174949645996
+        - - - 0.29347825050354004
+            - 0.3804347515106201
+            - 0.4673912823200226
+            - 0.554347813129425
+          - - 0.6413043141365051
+            - 0.72826087474823
+            - 0.8152173757553101
+            - 0.9021738767623901
+          - - 0.989130437374115
+            - 1.0760869979858398
+            - 1.16304349899292
+            - 1.25
+      - - 4
+        - 6
+      kind: tuple
+    kwargs: {}
+  guards:
+  - 88241b20
+  - e4b40d31
+  boundary: Restore output view strides and pointer alias to the unchanged caller
+    input; preserve pre-call bytes.
+  origin:
+    corpus: PyTorchFullCoverageKernelSet/cases/core_aten_test_cases.json
+    source_case: aten.view.default
+- case_id: regression::complex_add
+  overload: aten.add.Tensor
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - &id001
+        kind: tensor
+        dtype: complex64
+        shape:
+        - 2
+        stride:
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - kind: complex
+          real: 1.0
+          imag: 2.0
+        - kind: complex
+          real: -3.0
+          imag: -4.0
+      - *id001
+    kwargs: {}
+  guards:
+  - 762e2ff8
+  boundary: Preserve both real and imaginary storage components of inputs, output
+    and post-call arguments.
+  origin:
+    test: merlin/tests/targetgen/test_core_aten_complex_capture.py
+    source_case: aten.add.Tensor; complex64 variant
+- case_id: regression::neg_ieee
+  overload: aten.neg.default
+  arguments:
+    args:
+      kind: tuple
+      items:
+      - kind: tensor
+        dtype: float64
+        shape:
+        - 1
+        - 4
+        stride:
+        - 4
+        - 1
+        storage_offset: 0
+        requires_grad: false
+        values:
+        - - kind: float
+            value: nan
+          - kind: float
+            value: inf
+          - kind: float
+            value: -inf
+          - kind: float
+            value: '-0.0'
+    kwargs: {}
+  guards:
+  - 762e2ff8
+  boundary: Decode nested IEEE documents for NaN, infinities and signed zero; retain
+    f64 bytes.
+  origin:
+    test: merlin/tests/targetgen/test_core_aten_batch.py
+    source_case: aten.neg.default; nested IEEE variant

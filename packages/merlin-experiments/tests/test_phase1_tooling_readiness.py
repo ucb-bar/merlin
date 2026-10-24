@@ -177,6 +177,18 @@ def test_full_authoring_probe_is_valid_python():
     assert "AUTHORING_AND_BROKER_ROUNDTRIPS_OK" in script
 
 
+def test_rtl_discovery_is_required_only_by_the_selected_rtl_fact_tool():
+    base = R._sandbox_probe("synthetic", R.TR.ARM_TOOLS["merlin_assisted"], "FENCE")
+    rtl = R._sandbox_probe("synthetic", R.TR.ARM_TOOLS["merlin_rtlchecks"], "FENCE")
+    assert "assert not profile.discovered_nothing" not in base
+    assert "assert not profile.discovered_nothing" in rtl
+    for script in (base, rtl):
+        compile(script, "<selected readiness>", "exec")
+        assert "cca_contract.check_bijection(profile.target)" in script
+        assert "check_bijection('synthetic')" in script
+        assert "assert r.returncode == 0" in script
+
+
 def test_probe_sibling_mounts_the_candidates_frozen_snapshot(tmp_path):
     repo = tmp_path / "repo"
     source = repo / "tool.py"

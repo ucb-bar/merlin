@@ -1212,3 +1212,13 @@ and IEEE flags in every rounding mode, including underflow/overflow. Positive-on
 rows retain word-copy; other powers, unknown sums and nonfinite rows keep the
 literal original divide. No reciprocal approximation, reassociation, fast-math,
 new environment or physical alias permission is introduced.
+
+## Closed integer contraction widening
+
+- `modular_contractions.py` widens only closed unflagged integer multiply/add
+  reductions from a proven zero initializer, using caller-supplied wider datapaths.
+  A retained truncating host readout preserves every original wrapping result bit,
+  including wider-accumulator overflow. Nonzero initialization, overflow promises,
+  extra arithmetic, ambiguous precision and floating point refuse. This is an
+  explicit preparation step with original/source hashes; it changes no default
+  scalar or quantization policy and grants no backend or execution qualification.

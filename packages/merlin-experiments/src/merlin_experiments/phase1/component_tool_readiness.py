@@ -4,13 +4,13 @@ Tool readiness does not qualify compiler semantics, author isolation or runtime.
 The fresh input owner supplies its already admitted exact transport and policy.
 """
 
-import shutil
 import subprocess
 from pathlib import Path
 
 from merlin.common import invocation_record
 from merlin.common.paths import module_source_path
 from merlin_experiments.execution.container_transport import PreparedContainerTransport, mounts_from_strict_policy
+from merlin_experiments.phase1.run_inputs import copy_candidate_tree
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.component_experiment import strict_tool_policy, verify_component_view
 
@@ -41,7 +41,7 @@ def probe_native_author_tools(inputs):
     original_directories = tuple(
         sorted(path.relative_to(inputs.candidate).as_posix() for path in inputs.candidate.rglob("*") if path.is_dir())
     )
-    shutil.copytree(inputs.candidate, workspace)
+    copy_candidate_tree(inputs.candidate, workspace)
     policy = list(
         strict_tool_policy(
             inputs.view,

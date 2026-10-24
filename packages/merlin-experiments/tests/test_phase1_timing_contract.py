@@ -33,6 +33,7 @@ def test_neutral_oracle_identity_survives_tier_telemetry(engine, tmp_path):
 
 
 def test_selected_timing_is_bound_to_target_config_and_simulator_bytes(tmp_path, monkeypatch):
+    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
     target = "synthetic_device"
     config = "SyntheticConfig"
     descriptor = tmp_path / "descriptor.yaml"
@@ -129,6 +130,66 @@ def test_selected_timing_is_bound_to_target_config_and_simulator_bytes(tmp_path,
         timing.read_verified_timing(selected, descriptor=descriptor, target=target)
     assert certification._verilator_per_capsule_timeout(context, timing_file=selected) == 2400
     assert simjob._per_capsule_timeout(0, context=context, timing_file=selected)[0] == simjob._CERT_TIMEOUT_FALLBACK_S
+
+
+def test_vcs_timing_is_bound_to_simv_and_daidir_bytes(tmp_path, monkeypatch):
+    target = "synthetic_device"
+    config = "SyntheticConfig"
+    descriptor = tmp_path / "descriptor.yaml"
+    descriptor.write_text("target: synthetic_device\n")
+    simv = tmp_path / "vcs" / "simv"
+    (tmp_path / "vcs" / "simv.daidir").mkdir(parents=True)
+    simv.write_bytes(b"observed simv loader")
+    (tmp_path / "vcs" / "simv.daidir" / "_1_archive_1.so").write_bytes(b"compiled design")
+    monkeypatch.setenv("MERLIN_SYNTHETIC_DEVICE_SIMV", str(simv))
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "vcs")
+    selected = timing.timing_path(tmp_path, target)
+    record = {
+        "target": target,
+        "config": config,
+        "engine": "vcs",
+        "per_capsule_s": 600.0,
+        **timing.simulator_identity("vcs", simv),
+        "measured_by": "fixture observation",
+    }
+    selected.write_text(json.dumps(record))
+    import merlin.common.paths as paths
+    import merlin.targetgen.target_experiment as experiments
+
+    monkeypatch.setattr(paths, "ext_path", lambda name: tmp_path / "chipyard")
+    monkeypatch.setattr(
+        experiments, "load_target_experiment", lambda path: SimpleNamespace(target=target, sim_via="chipyard")
+    )
+    monkeypatch.setattr(
+        experiments, "declared_vs_resolved_contract", lambda selected: (None, tmp_path / "contract.yaml", "agree")
+    )
+    monkeypatch.setattr(
+        experiments,
+        "load_capability_manifest",
+        lambda name, **kw: SimpleNamespace(contract={"runtime": {"rtl_sim_config": config}}),
+    )
+    context = SimpleNamespace(target=target, descriptor=descriptor, experiment=tmp_path)
+    assert timing.read_verified_timing(selected, descriptor=descriptor, target=target)["per_capsule_s"] == 600
+    assert certification._verilator_per_capsule_timeout(context, timing_file=selected) == 1200
+    monkeypatch.setattr(simjob, "_cert_budget_s", lambda target: (None, "no fit"))
+    assert simjob._per_capsule_timeout(0, context=context, timing_file=selected)[0] == max(
+        simjob._CERT_TIMEOUT_FLOOR_S, 1200
+    )
+
+    # A VCS-pinned run refuses a Verilator observation, and a VCS record without a daidir identity.
+    legacy = dict(record, engine=None, verilator_per_capsule_s=600.0)
+    del legacy["engine"]
+    selected.write_text(json.dumps(legacy))
+    with pytest.raises(ValueError):
+        timing.read_verified_timing(selected, descriptor=descriptor, target=target)
+    selected.write_text(json.dumps({k: v for k, v in record.items() if k != "simulator_daidir_sha256"}))
+    with pytest.raises(ValueError, match="daidir identity"):
+        timing.read_verified_timing(selected, descriptor=descriptor, target=target)
+    # The design lives in the daidir: changing it (not the loader) must invalidate the observation.
+    selected.write_text(json.dumps(record))
+    (tmp_path / "vcs" / "simv.daidir" / "_1_archive_1.so").write_bytes(b"another design")
+    with pytest.raises(ValueError, match="daidir bytes changed"):
+        timing.read_verified_timing(selected, descriptor=descriptor, target=target)
 
 
 def test_non_chipyard_simulator_keeps_legacy_timeout_without_chipyard_claim(tmp_path, monkeypatch):
@@ -636,3 +697,73 @@ def test_ordinary_timing_uses_bound_backend_without_legacy_engine_discovery(sele
     backend.gsim_selected_firrtl_status = lambda: (False, "selected receipt changed")
     with pytest.raises(ValueError, match="strict gSIM receipt"):
         timing.selected_engine_binding(descriptor=selected_engine.descriptor, target=selected_engine.target)
+
+
+@pytest.fixture
+def functional_corpus(tmp_path, monkeypatch):
+    import merlin.targetgen.target_experiment as experiments
+
+    public = tmp_path / "corpus/public"
+    public.mkdir(parents=True)
+    (public / "capsule.yaml").write_text("required_oracle_tiers: [L2]\n")
+    selected = SimpleNamespace(sim_via="chipyard", capsule_corpus=public, graded_roots=lambda: [public])
+    monkeypatch.setattr(experiments, "load_target_experiment", lambda path: selected)
+    return tmp_path / "descriptor.yaml", public
+
+
+def test_functional_corpus_does_not_require_an_unexecuted_rtl_measurement(functional_corpus):
+    descriptor, public = functional_corpus
+    assert not timing.requires_chipyard_timing(descriptor)
+    (public / "capsule.yaml").write_text("required_oracle_tiers: [L0, L1, L2]\n")
+    assert not timing.requires_chipyard_timing(descriptor)
+
+
+def test_operator_tier_floor_requires_timing_only_for_scored_capsules(functional_corpus, monkeypatch):
+    descriptor, public = functional_corpus
+    monkeypatch.setenv("MERLIN_CAPSULE_TIER_FLOOR", "L3")
+    assert timing.requires_chipyard_timing(descriptor)
+    (public / "capsule.yaml").write_text("required_oracle_tiers: [L2]\nscored: false\n")
+    assert not timing.requires_chipyard_timing(descriptor)
+    (public / "capsule.yaml").write_text("required_oracle_tiers: [L2]\n")
+    monkeypatch.setenv("MERLIN_CAPSULE_TIER_FLOOR", "L3-ish")
+    assert timing.requires_chipyard_timing(descriptor)  # an invalid floor fails closed
+
+
+@pytest.mark.parametrize("location", ["public", "hidden", "override"])
+def test_rtl_requirement_anywhere_retains_measured_timing_gate(functional_corpus, location):
+    descriptor, public = functional_corpus
+    root = public if location == "public" else public.parent / location
+    root.mkdir(exist_ok=True)
+    (root / "capsule.yaml").write_text("required_oracle_tiers: [L2, L3]\n")
+    kwargs = {"public_root": root} if location == "override" else {}
+    assert timing.requires_chipyard_timing(descriptor, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "{}",
+        "[]",
+        "required_oracle_tiers: []",
+        "required_oracle_tiers: L2",
+        "required_oracle_tiers: [unknown]",
+        "required_oracle_tiers: [true]",
+        "broken: [",
+    ],
+)
+def test_unknown_or_malformed_corpus_still_requires_timing(functional_corpus, document):
+    descriptor, public = functional_corpus
+    (public / "capsule.yaml").write_text(document)
+    assert timing.requires_chipyard_timing(descriptor)
+
+
+def test_absent_or_indirect_corpus_retains_timing_requirement(functional_corpus):
+    descriptor, public = functional_corpus
+    capsule = public / "capsule.yaml"
+    contents = capsule.read_text()
+    capsule.unlink()
+    assert timing.requires_chipyard_timing(descriptor)
+    alternate = public.parent / "external.yaml"
+    alternate.write_text(contents)
+    capsule.symlink_to(alternate)
+    assert timing.requires_chipyard_timing(descriptor)

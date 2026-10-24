@@ -11,7 +11,7 @@ whether the capability survives it is a set intersection, decided per path:
 * the capability is admitted standalone when at least one path is neither.
 
 A capability declared only fused (``composed_with``) is never standalone, and one declared standalone
-without any evidence (a declaration that predates this field) is admitted as declared and reported so.
+without checked evidence requires explicit operation review and is reported as declared_unchecked.
 Nothing here names a target, a fact or a role: all three are data.
 """
 
@@ -33,7 +33,11 @@ def fact_status(semantic_facts: Mapping[str, Any] | None, fact: str) -> str:
 
 
 def standalone_admission(
-    capability, *, prohibited_roles: Iterable[str] = (), semantic_facts: Mapping[str, Any] | None = None
+    capability,
+    *,
+    prohibited_roles: Iterable[str] = (),
+    semantic_facts: Mapping[str, Any] | None = None,
+    review_status: str | None = None,
 ) -> dict[str, Any]:
     """``{"standalone": bool, "basis": str, "paths": [...], "reason": str}`` for one capability."""
     if capability.composed_with:
@@ -45,8 +49,8 @@ def standalone_admission(
         }
     if not capability.standalone_evidence:
         return {
-            "standalone": True,
-            "basis": "declared_without_evidence",
+            "standalone": review_status == "reviewed",
+            "basis": "declared_unchecked",
             "paths": [],
             "reason": f"{capability.family} is declared standalone with no evidence paths to check",
         }
@@ -55,7 +59,7 @@ def standalone_admission(
     for path in capability.standalone_evidence:
         blocked = sorted(set(path.roles) & prohibited)
         status = fact_status(semantic_facts, path.fact)
-        admitted = not blocked and status in (DERIVED, NOT_CHECKED)
+        admitted = not blocked and (status == DERIVED or (status == NOT_CHECKED and review_status == "reviewed"))
         paths.append(
             {
                 "fact": path.fact,
@@ -67,12 +71,15 @@ def standalone_admission(
         )
     admitted = [p for p in paths if p["admitted"]]
     if admitted:
+        checked = [p for p in admitted if p["fact_status"] == DERIVED]
+        selected = (checked or admitted)[0]
         return {
             "standalone": True,
-            "basis": "evidence",
+            "basis": "evidence" if checked else "declared_unchecked",
             "paths": paths,
-            "reason": f"{capability.family} runs standalone through {admitted[0]['fact']} "
-            f"using roles {admitted[0]['roles']}",
+            "reason": f"{capability.family} {'runs' if checked else 'is declared'} standalone "
+            f"through {selected['fact']} "
+            f"using roles {selected['roles']}" + ("" if checked else "; semantic fact not checked"),
         }
     why = "; ".join(
         f"{p['fact']}: "
@@ -86,14 +93,24 @@ def standalone_admission(
     )
     return {
         "standalone": False,
-        "basis": "evidence_refused",
+        "basis": "declared_unchecked"
+        if any(p["fact_status"] == NOT_CHECKED and not p["prohibited_roles_used"] for p in paths)
+        else "evidence_refused",
         "paths": paths,
-        "reason": f"no standalone path for {capability.family} survives: {why}",
+        "reason": (
+            f"no standalone path for {capability.family} survives: {why}; "
+            "unchecked declarations require status: reviewed on the selected spec row"
+        ),
     }
 
 
 def family_admission(
-    units, family: str, *, prohibited_roles: Iterable[str] = (), semantic_facts: Mapping[str, Any] | None = None
+    units,
+    family: str,
+    *,
+    prohibited_roles: Iterable[str] = (),
+    semantic_facts: Mapping[str, Any] | None = None,
+    review_status: str | None = None,
 ) -> dict[str, Any]:
     """The first unit whose ``family`` capability is admitted standalone, else every unit's refusal."""
     refusals = []
@@ -101,7 +118,9 @@ def family_admission(
         for cap in unit.semantic_capabilities:
             if cap.family != family:
                 continue
-            verdict = standalone_admission(cap, prohibited_roles=prohibited_roles, semantic_facts=semantic_facts)
+            verdict = standalone_admission(
+                cap, prohibited_roles=prohibited_roles, semantic_facts=semantic_facts, review_status=review_status
+            )
             if verdict["standalone"]:
                 return {**verdict, "unit": unit.name}
             refusals.append({**verdict, "unit": unit.name})
@@ -111,7 +130,7 @@ def family_admission(
 
 
 def contract_admission(
-    contract: Mapping[str, Any], *, prohibited_roles: Iterable[str] = (), semantic_facts=None
+    contract: Mapping[str, Any], *, prohibited_roles: Iterable[str] = (), semantic_facts=None, review_status=None
 ) -> dict[str, dict[str, Any]]:
     """``{family: verdict}`` for every family a contract's units declare, under ``prohibited_roles``."""
     from merlin.targetgen import compute_units as CU
@@ -119,4 +138,9 @@ def contract_admission(
     units = list(CU.compute_units(contract))
     families = sorted({cap.family for unit in units for cap in unit.semantic_capabilities})
     roles = list(prohibited_roles)
-    return {f: family_admission(units, f, prohibited_roles=roles, semantic_facts=semantic_facts) for f in families}
+    return {
+        f: family_admission(
+            units, f, prohibited_roles=roles, semantic_facts=semantic_facts, review_status=review_status
+        )
+        for f in families
+    }

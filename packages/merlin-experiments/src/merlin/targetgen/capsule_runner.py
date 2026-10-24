@@ -39,6 +39,8 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from merlin.targetgen.build_cache import certification_cache
+
 from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
 from .capsule_lane_evidence import lane_report as _lane_report
 from .capsule_lane_evidence import oracle_source_scope
@@ -64,10 +66,17 @@ from merlin.targetgen.tier_integrity import CERT_NOT_MEASURED
 from ..runtime import commandbuffer as _CB
 from ..runtime.backends import base as _backends_mod
 from . import capsule_golden as CG
+from . import core_aten_capsules as _full_call
 from . import oracle_policy as _oracle_policy
 from . import partial_console as _partial_console
+from . import spike_full_call as _spike_oracles  # also binds the plain-ISA spike engine
 from . import tier_policy as _tier_policy
 from . import trace_check as TCK
+from .candidate_scope import adapter_options as _adapter_options
+from .candidate_scope import checkpoint_adapters as _checkpoint_adapters
+from .candidate_scope import require_candidate_product_scope
+from .candidate_scope import with_candidate_transport as _with_candidate_transport
+from .candidate_scope import with_readback_policy as _with_readback_policy
 
 # shared, target-agnostic capsule I/O (also re-exported: callers use CR.discover_capsules/load_capsule)
 from .capsule_common import (  # noqa: F401
@@ -381,24 +390,6 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
 
     register_adapter(run, engine=sim, target=target, selection=selection, readback_policy=readback_policy)
     return run
-
-
-def _with_readback_policy(adapters: dict[str, Callable], readback_policy) -> dict[str, Callable]:
-    """Retarget only declared native simulator adapters; never silently ignore policy."""
-    from merlin.targetgen.contract.readback_policy import selected
-
-    policy = selected(readback_policy)
-    if policy is None:
-        return adapters
-    if not adapters:
-        raise NotImplementedError("no oracle can consume explicit full-value readback policy")
-    bound = {}
-    for tier, adapter in adapters.items():
-        factory = getattr(adapter, "_merlin_with_readback_policy", None)
-        if not callable(factory):
-            raise NotImplementedError(f"{tier} oracle cannot consume explicit full-value readback policy")
-        bound[tier] = factory(policy)
-    return bound
 
 
 def _adapter_readback_policy(adapters: dict[str, Callable]):
@@ -944,7 +935,10 @@ def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
     tier still carries the grade). A new bespoke sim registers one branch here — the engine name is
     DERIVED from the target's contract, never assumed."""
     if sim_via == "chipyard":
-        adapters: dict[str, Callable] = {"L2": simulator_adapter("spike", target)}
+        # A full-call L2 (and its board-linked L3) serves only full_call_v1 capsules; a corpus that also
+        # holds command-buffer capsules must not select an execution provider for this target.
+        functional = _spike_oracles.declared(target) or _spike_oracles.selected(target)
+        adapters: dict[str, Callable] = {"L2": functional or simulator_adapter("spike", target)}
         plan = _oracle_policy.chipyard_tier_plan(target)
         if plan.selection is None:
             # Reported, not substituted. A tier that cannot run must come back absent; resolving it to
@@ -958,12 +952,16 @@ def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
         from . import rtl_engine_policy as _pol
 
         print(f"[oracle] {target} L3 engine: {_pol.describe(sel)}", flush=True)
-        adapters["L3"] = simulator_adapter(sel["engine"], target, selection=sel)
+        # A full-call oracle certifies the same boundary on the RTL with its image linked for the board.
+        rtl = functional and _spike_oracles.on_rtl_board(functional, sel["engine"], target)
+        adapters["L3"] = rtl or simulator_adapter(sel["engine"], target, selection=sel)
         return adapters
     return {}
 
 
-def oracle_adapters(target: str, sim_via: str | None = None, *, readback_policy=None) -> dict[str, Callable]:
+def oracle_adapters(
+    target: str, sim_via: str | None = None, *, readback_policy=None, candidate_transport=None
+) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
     its higher-fidelity sim tiers (chipyard -> spike L2 / verilator L3), preserving that declared sim's path.
@@ -986,7 +984,9 @@ def oracle_adapters(target: str, sim_via: str | None = None, *, readback_policy=
         sim_via = _bespoke_sim_via(target)
     so = _SIM_ORACLES.get(sim_via)
     if so is not None and so.exclusive:  # self-hosted SIMT: replaces arc/program default
-        return _with_readback_policy(so.adapters(target), readback_policy)
+        return _with_candidate_transport(
+            _with_readback_policy(so.adapters(target), readback_policy), candidate_transport
+        )
     endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
         # Self-hosted-ISA program oracle. ``model_ext`` (the model project that lays out operands + owns
@@ -1012,11 +1012,11 @@ def oracle_adapters(target: str, sim_via: str | None = None, *, readback_policy=
         if "L3" in plan.tiers:
             rtl = program_verilator_adapter(target, model_ext=model_ext, selection=plan.selection)
             adapters["L3"] = rtl
-        return _with_readback_policy(adapters, readback_policy)
+        return _with_candidate_transport(_with_readback_policy(adapters, readback_policy), candidate_transport)
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}  # arc default (RTL-derived)
     if so is not None:  # optional ADDITIVE bespoke sim (chipyard)
         adapters.update(so.adapters(target))
-    return _with_readback_policy(adapters, readback_policy)
+    return _with_candidate_transport(_with_readback_policy(adapters, readback_policy), candidate_transport)
 
 
 def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str]:
@@ -1202,12 +1202,26 @@ def _resolve_oracle_adapters(target: str) -> dict[str, Callable]:
     return oracle_adapters(target)
 
 
+def _deferred_tier(cb, llvm_text, workdir, timeout):
+    raise OracleUnavailable("tier deferred to certification; this feedback grade does not run it")
+
+
+_deferred_tier._merlin_deferred = True
+
+
+def defer_tiers(adapters: dict[str, Callable], tiers) -> dict[str, Callable]:
+    """``adapters`` with ``tiers`` deferred: a FEEDBACK grade records them as not run (``skipped``),
+    leaving them to the certification grades (checkpoint barrier, fix rounds, formal) that hold them."""
+    return {**adapters, **dict.fromkeys(tiers, _deferred_tier)}
+
+
 def qa_loop_adapters(
     target: str,
     sim_via: str | None = None,
     *,
     declared_tiers: set[str] | None = None,
     readback_policy=None,
+    candidate_transport=None,
 ) -> dict[str, Callable]:
     """The FAST per-round QA-loop oracle set for ``target`` — resolved from :func:`oracle_adapters`, never
     hardwired. It keeps ONE tier (the fastest) and reserves the slower cycle-accurate tiers for the bounded
@@ -1224,11 +1238,7 @@ def qa_loop_adapters(
 
     Omitting ``declared_tiers`` keeps the legacy "fastest available tier" behavior for callers that have
     no corpus in hand."""
-    full = (
-        oracle_adapters(target, sim_via)
-        if readback_policy is None
-        else oracle_adapters(target, sim_via, readback_policy=readback_policy)
-    )
+    full = oracle_adapters(target, sim_via, **_adapter_options(readback_policy, candidate_transport))
     if not full:
         return {}
     if declared_tiers:
@@ -1240,14 +1250,14 @@ def qa_loop_adapters(
     return {lowest: full[lowest]}
 
 
-def qa_checkpoint_adapters(target: str, sim_via: str | None = None, *, readback_policy=None) -> dict[str, Callable]:
+def qa_checkpoint_adapters(
+    target: str, sim_via: str | None = None, *, readback_policy=None, candidate_transport=None
+) -> dict[str, Callable]:
     """The cycle-accurate QA CHECKPOINT oracle set for ``target`` = its full oracle ladder from
     :func:`oracle_adapters` (chipyard: spike L2 + verilator L3; arc/mlc: the RTL-derived arc model). This
     is the higher-fidelity barrier run once the fast loop (:func:`qa_loop_adapters`) has converged — not
     every round. Kept as a named seam so the loop driver never re-hardwires ``{L2: spike, L3: verilator}``."""
-    if readback_policy is None:
-        return oracle_adapters(target, sim_via)
-    return oracle_adapters(target, sim_via, readback_policy=readback_policy)
+    return _checkpoint_adapters(oracle_adapters, target, sim_via, readback_policy, candidate_transport)
 
 
 def _exact_match(a: dict, b: dict) -> bool:
@@ -4633,6 +4643,7 @@ def _finalize_capsule_result(
     return result
 
 
+@certification_cache
 def run_capsule(
     capsule: dict,
     package_dir: str | Path,
@@ -4687,12 +4698,15 @@ def run_capsule(
     # An unrouted grade (oracle_adapters=None) resolves to the TARGET'S OWN endpoint oracle from the
     # contract — never a fixed experiment's simulator pair. `{}` stays honest no-oracle (L0/L1/trace only).
     adapters = oracle_adapters if oracle_adapters is not None else _resolve_oracle_adapters(eff_target)
+    require_candidate_product_scope(pkg, adapters, capsule=capsule, package_dir=package_dir, contract=contract)
     if set(adapter_managed_tiers) - set(adapters or {}):
         raise ValueError("adapter-managed tiers require supplied oracle adapters")
-    required = set(capsule.get("required_oracle_tiers", []))
+    required = set(_tier_policy.required_tiers(capsule) or [])
 
     paths = make_run_paths(runs_root, run_id, suite=cfg.suite, target=cfg.target, dtype=cfg.dtype, benchmark=name)
 
+    if _full_call.is_full_call(capsule):  # exported call boundary, graded by its own adapter ABI
+        return _full_call.run_capsule(capsule, package_dir, paths, cfg, adapters, pkg, contract, timeout, no_oracle)
     # Whole-model capsule: graded end to end by compiling the captured model through the merlin
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
@@ -6479,6 +6493,7 @@ def _run_suite(
         _operator_child.validate(target=target, adapters=oracle_adapters, config=config, perf_extractor=perf_extractor)
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
+    require_candidate_product_scope(pkg, oracle_adapters)
     build_package(pkg)
     boundary_readiness = _candidate_boundary_readiness(capsules, pkg, oracle_adapters=oracle_adapters)
 

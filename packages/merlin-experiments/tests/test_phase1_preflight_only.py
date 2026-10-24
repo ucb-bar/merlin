@@ -226,12 +226,14 @@ def test_actual_controller_stops_after_normal_prepare_without_authoring(tmp_path
     from merlin_experiments.phase1 import authoring, controller, runtime_environment, task_staging
 
     options = _options(tmp_path)
-    context = SimpleNamespace(readback_policy=None, descriptor=tmp_path / "descriptor", target="owned")
+    context = SimpleNamespace(
+        readback_policy=None, candidate_policy=None, descriptor=tmp_path / "descriptor", target="owned"
+    )
     calls = []
     monkeypatch.setattr(S, "validate_options", lambda selected: None)
     from merlin_experiments.phase1 import timing
 
-    monkeypatch.setattr(timing, "requires_chipyard_timing", lambda path: False)
+    monkeypatch.setattr(timing, "requires_chipyard_timing", lambda path, **kw: False)
     monkeypatch.setattr(
         task_staging,
         "callbacks",

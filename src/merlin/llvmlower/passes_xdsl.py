@@ -198,12 +198,32 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
 
         elem = out_t.element_type
         scale_elem = scale.type.element_type
-        # PT2E may request a BF16/FP16 result while retaining an f32 scale. MLIR arithmetic
-        # requires same-type operands. Keep same-type captures unchanged; for mixed precision,
-        # compute at the wider precision and round exactly once to the result element type.
-        # In particular, truncating the scale *before* multiplication would add a rounding
-        # absent from the captured quantization expression.
-        if elem == scale_elem:
+        storage = getattr(op.attributes.get("prov.quant.storage_dtype"), "data", None)
+        declared_input = getattr(op.properties.get("input_dtype", op.attributes.get("input_dtype")), "data", None)
+        unsigned_codes = storage == "uint8" or declared_input in {"u8", "uint8"}
+        # A half-width readout needs one rounding of the exact dyadic product.
+        # For byte codes, a bounded centered integer times a <=24-bit scale is
+        # exactly representable in binary64 (including all f32 subnormals).
+        # A binary32 intermediate would introduce a second rounding at ties.
+        if str(elem) in {"f16", "bf16"}:
+            from merlin.xdsl_dialects.lowering.group_numerics import _constant_of
+
+            zero_point = _constant_of(zp)
+            zero_width = zp.type.element_type.width.data
+            centered_bound = (
+                (255 if unsigned_codes else 128) + abs(int(zero_point))
+                if isinstance(zero_point, int)
+                else (255 if unsigned_codes else 128) + (1 << (zero_width - 1))
+            )
+            scale_precision = {"f16": 11, "bf16": 8, "f32": 24}.get(str(scale_elem))
+            if (
+                str(w.type.element_type) != "i8"
+                or scale_precision is None
+                or centered_bound.bit_length() + scale_precision > 53
+            ):
+                raise ValueError("exact half dequantization lacks a binary64 exact-product proof")
+            compute_elem = f64
+        elif elem == scale_elem:
             compute_elem = elem
         elif isinstance(elem, Float64Type) or isinstance(scale_elem, Float64Type):
             compute_elem = f64
@@ -218,15 +238,16 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
             and elem == f32
             and scale_elem == f32
         ):
-            # PyTorch's signed-i8/i32 per-channel contract subtracts after integer promotion.
+            # PyTorch's i8/i32 per-channel contract subtracts after integer promotion.
             # Converting both operands first changes results for large zero points.
-            promoted = arith.ExtSIOp(wv, i32)
+            # Signless i8 storage may hold uint8 codes, which promote by zero extension.
+            promoted = (arith.ExtUIOp if unsigned_codes else arith.ExtSIOp)(wv, i32)
             difference = arith.SubiOp(promoted.result, zv)
             converted = arith.SIToFPOp(difference.result, compute_elem)
             arithmetic = [promoted, difference, converted]
             unscaled = converted.result
         else:
-            wf = arith.SIToFPOp(wv, compute_elem)
+            wf = (arith.UIToFPOp if unsigned_codes else arith.SIToFPOp)(wv, compute_elem)
             zf = arith.SIToFPOp(zv, compute_elem)
             sub = arith.SubfOp(wf.result, zf.result)
             arithmetic = [wf, zf, sub]
@@ -261,6 +282,18 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
 
     for op, kind in quant_rewrites:
         if kind != "per_tensor":  # pragma: no cover - table is exhaustive
+            continue
+        if getattr(op.attributes.get("prov.aten"), "data", None) == "m2m_q.quantize.default":
+            from merlin.llvmlower.exact_quantize import lower
+
+            replacements, generic = lower(op)
+            carry_provenance(generic, op, "quant_exact_rational")
+            for replacement in replacements:
+                op.parent_block().insert_op_before(replacement, op)
+            if on_rewrite is not None:
+                on_rewrite(op, replacements, generic)
+            op.results[0].replace_all_uses_with(generic.results[0])
+            op.detach()
             continue
         value, scale, zp = op.operands
         out_t = op.results[0].type
@@ -653,19 +686,19 @@ def fix_bool_fptosi(module) -> int:
 
 
 def add_c_interface(module) -> int:
-    """Keep the host descriptor route, preserving private scalar callback ABIs.
+    """Mark function definitions with ``llvm.emit_c_interface``, preserving callback ABIs.
 
-    Existing shaped functions retain their descriptor-interface selection.
-    Private scalar functions need no descriptor adaptation; adding an implicit
-    interface to their declarations would request a different runtime symbol.
-    Explicit interfaces remain untouched, including on private callbacks.
+    On a definition the attribute only adds a ``_mlir_ciface_<name>`` wrapper, so every definition is
+    marked except a private all-scalar one, which needs no descriptor adaptation. On a declaration the
+    attribute redirects calls to ``_mlir_ciface_<name>``, so a declaration keeps the ABI its producer
+    selected: an explicit interface stays, and an unmarked private or external callback stays flattened.
     """
     from xdsl.dialects.builtin import AnyFloat, IndexType, IntegerType, UnitAttr
     from xdsl.dialects.func import FuncOp
 
     n = 0
     for op in module.walk():
-        if isinstance(op, FuncOp):
+        if isinstance(op, FuncOp) and op.body.blocks:
             private_scalar = (
                 op.sym_visibility is not None and op.sym_visibility.data == "private"
                 and all(isinstance(t, IntegerType | IndexType | AnyFloat)

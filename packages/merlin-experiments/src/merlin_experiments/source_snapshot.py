@@ -27,12 +27,19 @@ class SnapshotError(RuntimeError):
 
 def selected_provider(target: str) -> dict:
     """Resolve source ownership once, in the trusted creating process."""
+    from merlin.targetgen.providers import support_source_dependencies
     from merlin.targetgen.target_registry import resolve
 
     info = resolve(target)
     if info.kind not in {"reference", "external"} or not info.base.is_dir():
         raise SnapshotError(f"selected target has no freezable support provider: {target}")
-    return {"target": target, "resolved_target": info.name, "kind": info.kind, "source": str(info.base.resolve())}
+    result = {"target": target, "resolved_target": info.name, "kind": info.kind, "source": str(info.base.resolve())}
+    dependencies = support_source_dependencies(info.base)
+    if dependencies and info.kind != "external":
+        raise SnapshotError("reference provider sibling dependencies require external source ownership")
+    if dependencies:
+        result["source_dependencies"] = {name: str(path) for name, path in dependencies.items()}
+    return result
 
 
 def provider_environment(root: Path, receipt: dict) -> dict[str, str]:
@@ -70,10 +77,15 @@ def remap_input(root: Path, receipt: dict, path: Path, *, name: str | None = Non
     elif provider and path.is_relative_to(Path(provider["source"])):
         relative = Path(provider["root"]) / path.relative_to(provider["source"])
     else:
-        try:
-            relative = path.relative_to(receipt["source_root"])
-        except ValueError as exc:
-            raise SnapshotError(f"input is outside frozen source ownership: {path}") from exc
+        for row in (provider or {}).get("source_dependencies", {}).values():
+            if path.is_relative_to(Path(row["source"])):
+                relative = Path(row["snapshot"]) / path.relative_to(row["source"])
+                break
+        else:
+            try:
+                relative = path.relative_to(receipt["source_root"])
+            except ValueError as exc:
+                raise SnapshotError(f"input is outside frozen source ownership: {path}") from exc
     if relative.as_posix() not in receipt["files"]:
         raise SnapshotError(f"input is absent from frozen source inventory: {path}")
     return root / relative
@@ -94,6 +106,43 @@ def _relative(value: str) -> str:
     ):
         raise SnapshotError(f"unsafe snapshot-relative path: {value!r}")
     return value
+
+
+def _dependency_sources(provider_source: Path, dependencies: object) -> dict[str, Path]:
+    """Validate declared sibling ownership without importing a live provider."""
+    if not isinstance(dependencies, dict) or not dependencies:
+        raise SnapshotError("provider source dependencies must be a nonempty mapping")
+    if not provider_source.is_absolute() or ".." in provider_source.parts:
+        raise SnapshotError("provider source dependency owner is not canonical")
+    result = {}
+    for name, value in dependencies.items():
+        if not isinstance(name, str) or not name.isascii() or not name.isidentifier() or not isinstance(value, str):
+            raise SnapshotError("invalid provider source dependency")
+        path = Path(value)
+        if (
+            not path.is_absolute()
+            or str(path) != value
+            or ".." in path.parts
+            or path.parent != provider_source.parent
+            or path == provider_source
+            or path.name in {".", ".."}
+            or not path.name.isascii()
+            or any(not (char.isalnum() or char in "_.-") for char in path.name)
+            or _relative(path.name) != path.name
+            or path in result.values()
+        ):
+            raise SnapshotError("provider source dependencies require distinct canonical siblings")
+        result[name] = path
+    return result
+
+
+def _ordinary_directory(path: Path) -> None:
+    if (
+        not path.is_dir()
+        or any(parent.is_symlink() for parent in (path, *path.parents))
+        or path != path.resolve(strict=True)
+    ):
+        raise SnapshotError(f"provider dependency is not a canonical ordinary directory: {path}")
 
 
 def _import_metadata(python_roots, legacy_roots, files, directories) -> dict:
@@ -283,8 +332,14 @@ def create(
         if PurePosixPath(_relative(relative)).parts[0] != INPUT_ROOT:
             raise SnapshotError("declared input layout must stay inside its private input root")
     provider_record = None
+    provider_trees = {}
+    dependency_sources = {}
     if provider is not None:
-        if set(provider) != {"target", "resolved_target", "kind", "source"} or provider["target"] != target_name:
+        required_provider = {"target", "resolved_target", "kind", "source"}
+        if (
+            set(provider) not in (required_provider, required_provider | {"source_dependencies"})
+            or provider["target"] != target_name
+        ):
             raise SnapshotError("provider selection does not match snapshot target")
         provider_source = Path(provider["source"]).resolve(strict=True)
         if not provider_source.is_dir() or provider["kind"] not in {"reference", "external"}:
@@ -294,12 +349,32 @@ def create(
         ):
             raise SnapshotError("snapshot destination overlaps selected provider")
         provider_record = {**provider, "source": str(provider_source)}
+        if "source_dependencies" in provider:
+            if provider["kind"] != "external":
+                raise SnapshotError("only external support providers declare sibling dependencies")
+            _ordinary_directory(Path(provider["source"]))
+            dependency_sources = _dependency_sources(provider_source, provider["source_dependencies"])
+            for path in dependency_sources.values():
+                _ordinary_directory(path)
+                if destination.resolve().is_relative_to(path) or path.is_relative_to(destination.resolve()):
+                    raise SnapshotError("snapshot destination overlaps provider dependency")
         if provider["kind"] == "reference":
             provider_record["root"] = provider_source.relative_to(source).as_posix()
             if not any(provider_source.is_relative_to(source / relative) for relative in source_roots):
                 raise SnapshotError("reference provider is outside copied source roots")
         else:
-            provider_record["root"] = PROVIDER_ROOT
+            provider_record["root"] = (
+                (Path(PROVIDER_ROOT) / provider_source.name).as_posix() if dependency_sources else PROVIDER_ROOT
+            )
+            provider_trees[provider_record["root"]] = provider_source
+            if dependency_sources:
+                provider_record["source_dependencies"] = {
+                    name: {"source": str(path), "snapshot": (Path(PROVIDER_ROOT) / path.name).as_posix()}
+                    for name, path in dependency_sources.items()
+                }
+                provider_trees.update(
+                    {row["snapshot"]: Path(row["source"]) for row in provider_record["source_dependencies"].values()}
+                )
     if destination.resolve().is_relative_to(source) and any(
         destination.resolve().is_relative_to((source / relative).resolve()) for relative in source_roots
     ):
@@ -329,20 +404,27 @@ def create(
     external_provider = provider_record is not None and provider_record["kind"] == "external"
     if external_provider:
 
-        def provider_ignore(directory, names):
-            current = Path(directory)
-            omitted = set(names) & {"__pycache__", ".git"}
-            omitted.update(name for name in names if name == ".env" or name.startswith(".env."))
-            for name in names:
-                if name in omitted:
-                    continue
-                path = current / name
-                if not path.resolve(strict=True).is_relative_to(provider_source):
-                    raise SnapshotError(f"selected provider resource escapes its root: {path}")
-            return omitted
+        def provider_ignore_for(tree):
+            def provider_ignore(directory, names):
+                current = Path(directory)
+                omitted = set(names) & {"__pycache__", ".git"}
+                omitted.update(name for name in names if name == ".env" or name.startswith(".env."))
+                for name in names:
+                    if name in omitted:
+                        continue
+                    path = current / name
+                    if (dependency_sources and path.is_symlink()) or not path.resolve(strict=True).is_relative_to(tree):
+                        raise SnapshotError(f"selected provider resource escapes its root or is indirect: {path}")
+                return omitted
 
-        provider_members = _tree_members(provider_source, provider_ignore)
-        _copy_tree(provider_source, destination / PROVIDER_ROOT, provider_ignore)
+            return provider_ignore
+
+        provider_members = {}
+        for relative, tree in provider_trees.items():
+            ignore = provider_ignore_for(tree)
+            provider_members[relative] = _tree_members(tree, ignore)
+            (destination / relative).parent.mkdir(parents=True, exist_ok=True)
+            _copy_tree(tree, destination / relative, ignore)
     input_records = {}
     copied_inputs = {}
     for name, path in input_sources.items():
@@ -350,6 +432,13 @@ def create(
         relative = None
         if provider_record and canonical.is_relative_to(provider_source):
             relative = Path(provider_record["root"]) / canonical.relative_to(provider_source)
+        elif dependency_sources and any(canonical.is_relative_to(path) for path in dependency_sources.values()):
+            row = next(
+                row
+                for row in provider_record["source_dependencies"].values()
+                if canonical.is_relative_to(Path(row["source"]))
+            )
+            relative = Path(row["snapshot"]) / canonical.relative_to(row["source"])
         elif canonical.is_relative_to(source):
             relative = canonical.relative_to(source)
         if relative is None or not (destination / relative).is_file():
@@ -373,11 +462,16 @@ def create(
         if path.is_file():
             relative = path.relative_to(destination).as_posix()
             digest = sha_file(path)
-            original = copied_inputs.get(relative) or (
-                provider_source / path.relative_to(destination / PROVIDER_ROOT)
-                if external_provider and path.is_relative_to(destination / PROVIDER_ROOT)
-                else source / relative
-            )
+            original = copied_inputs.get(relative)
+            if original is None:
+                original = next(
+                    (
+                        tree / path.relative_to(destination / owner)
+                        for owner, tree in provider_trees.items()
+                        if path.is_relative_to(destination / owner)
+                    ),
+                    source / relative,
+                )
             if digest != sha_file(original):
                 raise SnapshotError(f"source changed during snapshot: {relative}")
             files[relative] = digest
@@ -385,8 +479,11 @@ def create(
     if any(_tree_members(source / relative, ignored) != members[relative] for relative in source_roots):
         raise SnapshotError("source membership changed during snapshot")
     if external_provider:
-        if _tree_members(provider_source, provider_ignore) != provider_members:
-            raise SnapshotError("provider membership changed during snapshot")
+        for relative, tree in provider_trees.items():
+            if dependency_sources:
+                _ordinary_directory(tree)
+            if _tree_members(tree, provider_ignore_for(tree)) != provider_members[relative]:
+                raise SnapshotError("provider membership changed during snapshot")
         source_roots = (*source_roots, PROVIDER_ROOT)
     if copied_inputs:
         source_roots = (*source_roots, INPUT_ROOT)
@@ -576,14 +673,23 @@ def _validate_layout(receipt: dict) -> None:
                 raise SnapshotError("invalid copied input mapping")
         provider = receipt.get("selected_provider")
         if provider is not None:
+            required_provider = {"target", "resolved_target", "kind", "source", "root"}
             if (
                 not isinstance(provider, dict)
-                or set(provider) != {"target", "resolved_target", "kind", "source", "root"}
-                or any(not isinstance(provider[key], str) or not provider[key] for key in provider)
+                or set(provider) not in (required_provider, required_provider | {"source_dependencies"})
+                or any(not isinstance(provider[key], str) or not provider[key] for key in required_provider)
                 or provider["kind"] not in {"reference", "external"}
                 or not Path(provider["source"]).is_absolute()
                 or _relative(provider["root"]) not in directories
-                or (provider["kind"] == "external" and provider["root"] != PROVIDER_ROOT)
+                or (
+                    provider["kind"] == "external"
+                    and provider["root"]
+                    != (
+                        (PurePosixPath(PROVIDER_ROOT) / Path(provider["source"]).name).as_posix()
+                        if "source_dependencies" in provider
+                        else PROVIDER_ROOT
+                    )
+                )
                 or (
                     provider["kind"] == "reference"
                     and (
@@ -593,10 +699,36 @@ def _validate_layout(receipt: dict) -> None:
                 )
             ):
                 raise SnapshotError("invalid sealed provider ownership")
+            owned_provider_roots = {provider["root"]}
+            if "source_dependencies" in provider:
+                dependencies = provider["source_dependencies"]
+                if provider["kind"] != "external" or not isinstance(dependencies, dict) or not dependencies:
+                    raise SnapshotError("invalid sealed provider source dependencies")
+                sources = {}
+                for name, row in dependencies.items():
+                    if not isinstance(row, dict) or set(row) != {"source", "snapshot"}:
+                        raise SnapshotError("invalid sealed dependency ownership")
+                    sources[name] = row["source"]
+                checked = _dependency_sources(Path(provider["source"]), sources)
+                for name, path in checked.items():
+                    expected_root = (PurePosixPath(PROVIDER_ROOT) / path.name).as_posix()
+                    if dependencies[name]["snapshot"] != expected_root or expected_root not in directories:
+                        raise SnapshotError("invalid sealed dependency snapshot root")
+                    owned_provider_roots.add(expected_root)
+                actual_provider_roots = {
+                    relative
+                    for relative in directories
+                    if PurePosixPath(relative).parent == PurePosixPath(PROVIDER_ROOT)
+                }
+                if actual_provider_roots != owned_provider_roots or any(
+                    PurePosixPath(relative).parent == PurePosixPath(PROVIDER_ROOT) for relative in files
+                ):
+                    raise SnapshotError("provider dependency inventory disagrees with ownership")
             if any(
-                PurePosixPath(relative).is_relative_to(PurePosixPath(provider["root"]))
-                or PurePosixPath(provider["root"]).is_relative_to(PurePosixPath(relative))
+                PurePosixPath(relative).is_relative_to(PurePosixPath(owner))
+                or PurePosixPath(owner).is_relative_to(PurePosixPath(relative))
                 for relative in (*receipt["python_roots"], *receipt["legacy_roots"])
+                for owner in owned_provider_roots
             ):
                 raise SnapshotError("provider directories cannot be general Python import roots")
         if (PROVIDER_ROOT in roots) != bool(provider and provider["kind"] == "external"):

@@ -93,7 +93,11 @@ class TestValidateCountsEveryFamilyItAnnotates:
             ast.unparse(node.test)
             for node in ast.walk(tree)
             if isinstance(node, ast.If)
-            and any(isinstance(raise_, ast.Raise) and "RecipeError" in ast.unparse(raise_) for raise_ in ast.walk(node))
+            and any(
+                isinstance(raise_, ast.Raise)
+                and any(name in ast.unparse(raise_) for name in ("RecipeError", "NoEligibleRecipeOperations"))
+                for raise_ in ast.walk(node)
+            )
             and "annotated" in ast.unparse(node.test)
         ]
         assert guards, "no RecipeError guard reading an annotation counter was found"
@@ -239,3 +243,109 @@ print(json.dumps({"axes":axes, "matmul_integerized":receipt["matmul_integerized"
 '''
     completed = subprocess.run([python, "-c", script, str(_SOURCE)], capture_output=True, text=True, timeout=120)
     assert completed.returncode == 0, completed.stderr[-5000:]
+
+
+@pytest.mark.parametrize("operation", ["mm", "attention", "addmm", "convolution", "host_glue"])
+def test_functional_contractions_observe_both_activations(operation):
+    """External RHS inputs use activation observers through actual PT2E conversion."""
+    import os
+    import subprocess
+
+    python = os.environ.get("MERLIN_M2M_PYTHON")
+    if not python:
+        pytest.skip("TorchAO capture interpreter is not configured")
+    script = r"""
+import sys
+import torch
+from merlin.targetgen import _recipe_quantizer as quant
+from merlin.targetgen.core_aten_w8a8_reference import run_pt2e_reference
+from merlin.capture.integerization import integerize_static_pt2e
+recipe = {
+    "schema": "quant_recipe_v1", "status": "derived", "families": ["contraction"],
+    "weight": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
+               "quant_min": -127, "quant_max": 127},
+    "activation": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
+                   "quant_min": -128, "quant_max": 127, "mode": "static"},
+}
+operation = sys.argv[1]
+class Attention(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.relu = torch.nn.ReLU()
+    def forward(self, x, y):
+        return self.relu(x @ y) @ y
+class Model(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.attention = Attention()
+    def forward(self, x, y):
+        if operation == "convolution":
+            return torch.ops.aten.convolution.default(x, y, None, [1,1], [1,1], [1,1], False, [0,0], 1)
+        if operation == "addmm":
+            return torch.addmm(x, x, y, alpha=0.5, beta=2)
+        if operation == "attention":
+            return self.attention(x, y)
+        if operation == "host_glue":
+            host = y.to(torch.int32).reshape(4,4).to(torch.float32) * .5 * .3
+            return (x @ y) + host
+        return x @ y
+inputs = ((torch.randn(1,2,4,4), torch.randn(3,2,3,3))
+          if operation == "convolution" else (torch.randn(4,4), torch.randn(4,4)))
+model = Model().eval()
+graph = torch.export.export(model, inputs).module()
+q = quant.build_quantizer(recipe, layer_plan=quant._plan_layers(recipe, model),
+                          source_layer_inventory=quant.layer_inventory(model))
+graph = q.transform_for_annotation(graph)
+q.annotate(graph)
+annotations = [n.meta["quantization_annotation"] for n in graph.graph.nodes if "quantization_annotation" in n.meta]
+assert annotations
+for annotation in annotations:
+    assert all(spec is q.activation for spec in annotation.input_qspec_map.values())
+    assert all(spec.quant_min == -128 for spec in annotation.input_qspec_map.values())
+    assert all("HistogramObserver" in str(spec.observer_or_fake_quant_ctr)
+               for spec in annotation.input_qspec_map.values())
+converted = quant.apply_recipe(model, recipe, example_inputs=inputs,
+                               source_layer_inventory=quant.layer_inventory(model))
+reference = run_pt2e_reference(converted, inputs)
+integer, receipt = integerize_static_pt2e(converted, inputs, numerics="integer_readout")
+expected_count = 2 if operation == "attention" else 1
+assert receipt["quantized_contractions_integerized"] == reference.contraction_count == expected_count
+actual = integer(*inputs)
+assert actual.dtype == reference.output.dtype == torch.float32
+assert actual.stride() == model(*inputs).stride()
+from merlin.targetgen._capture_integer_agreement import integerized_agreement
+from merlin.targetgen._m2m_capture_worker import _output_abi
+agreement=integerized_agreement(reference.output,actual,atol=0,rtol=0,output_abi=_output_abi)
+if not torch.equal(actual.contiguous().view(torch.int32), reference.output.contiguous().view(torch.int32)):
+ assert agreement["status"]=="failed"  # exactness mismatch must refuse device capture
+else:
+ assert agreement["status"]=="passed"
+"""
+    result = subprocess.run([python, "-c", script, operation], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr[-5000:]
+
+
+def test_pt2e_helper_does_not_mutate_torch_globals():
+    python = os.environ["MERLIN_M2M_PYTHON"]
+    script = r"""
+import torch
+from merlin.targetgen._recipe_quantizer import apply_recipe
+legacy = torch.ao.quantization
+sentinel = object()
+before = getattr(legacy, "allow_exported_model_train_eval", sentinel)
+recipe = {
+    "schema": "quant_recipe_v1", "status": "derived", "families": ["contraction"],
+    "weight": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
+               "quant_min": -127, "quant_max": 127},
+    "activation": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
+                   "quant_min": -128, "quant_max": 127, "mode": "static"},
+}
+class Model(torch.nn.Module):
+    def forward(self, a, b):
+        return a @ b
+model = apply_recipe(Model().eval(), recipe, example_inputs=(torch.ones(2, 3), torch.ones(3, 2)))
+assert getattr(legacy, "allow_exported_model_train_eval", sentinel) is before
+model.eval()
+"""
+    result = subprocess.run([python, "-c", script], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr

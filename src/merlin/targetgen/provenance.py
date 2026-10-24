@@ -89,6 +89,9 @@ def _git_provenance_now(root: str | Path) -> dict[str, Any]:
     p = Path(root)
     if not p.is_dir():
         return {"available": False, "reason": f"not a directory: {p}"}
+    checkout = _git(p, "rev-parse", "--show-toplevel")
+    if checkout is None or Path(checkout).resolve() != p.resolve():
+        return {"available": False, "reason": f"not a git checkout root: {p}"}
     head = _git(p, "rev-parse", "HEAD")
     if head is None:
         return {"available": False, "reason": f"not a git checkout: {p}"}
@@ -97,8 +100,9 @@ def _git_provenance_now(root: str | Path) -> dict[str, Any]:
         "available": True,
         "path": str(p),
         "head": head,
+        "source_label": head + ("+unverified" if status is None else "+dirty" if status else ""),
         "branch": _git(p, "rev-parse", "--abbrev-ref", "HEAD"),
-        "dirty": bool(status),
+        "dirty": None if status is None else bool(status),
     }
 
 

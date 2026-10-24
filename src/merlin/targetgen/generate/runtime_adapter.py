@@ -33,7 +33,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...common.artifacts import Artifact, yaml_artifact
+from merlin.common.artifacts import Artifact, yaml_artifact
+
 from . import oot_package as _pkg
 
 

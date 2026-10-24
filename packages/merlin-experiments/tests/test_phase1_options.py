@@ -104,3 +104,43 @@ assert 'merlin_experiments.phase1.context' not in sys.modules
     assert result.returncode == 0, result.stderr
     assert "--schedule" in result.stdout
     assert "--seal-current" in result.stdout
+
+
+def test_device_coverage_objective_requires_explicit_bounded_schedule():
+    assert parse_options(["--run-id", "probe"], environ={}).objective == "correctness"
+    good = [
+        "--run-id",
+        "probe",
+        "--objective",
+        "device-coverage",
+        "--schedule",
+        "continuous",
+        "--max-wall-s",
+        "30",
+        "--plateau-rounds",
+        "0",
+    ]
+    assert parse_options(good, environ={}).objective == "device-coverage"
+    for args in (
+        ["--run-id", "probe", "--objective", "device-coverage"],
+        good + ["--continuous"],
+        good + ["--plateau-rounds", "2"],
+        good + ["--max-wall-s", "0"],
+        good + ["--objective", "unknown"],
+    ):
+        with pytest.raises(SystemExit):
+            parse_options(args, environ={})
+
+
+def test_correctness_truth_and_coverage_termination_are_independent():
+    from merlin_experiments.phase1.feedback.certification import _authoring_completion, _formal_completion
+
+    assert _authoring_completion(True, True)
+    assert not _authoring_completion(False, True)
+    assert not _authoring_completion(True, False)
+    for correct in (False, True):
+        for conformant in (False, True):
+            assert not _authoring_completion(correct, conformant, objective="device-coverage")
+    assert _formal_completion(True, True, True, True)
+    with pytest.raises(ValueError):
+        _authoring_completion(True, True, objective="unknown")

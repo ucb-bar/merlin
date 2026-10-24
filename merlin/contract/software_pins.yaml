@@ -16,11 +16,17 @@ pins:
       The model2MLIR revision whole-model captures are made with. It carries exact signed integer
       shift and floor-division decompositions, PT2E integer-contraction capture, and literal
       quantization-parameter lowering; missing any of these leaves supported operations opaque.
-    repo_canonical: https://github.com/ucb-bar/model2MLIR.git
-    commit: "905d2c918f839596c9d1198cbdeb42d4c12a325b"
+    repo_canonical: git@github.com:ucb-bar/model2mlir.git
+    commit: "26e0373f4cee2a6ac2a5741631494916f33e46ea"
     root_env: MERLIN_M2M_DIR
     requires_paths:
       - m2m/ir/decompositions.py
+      - m2m/ir/quant_schema.json
+      - m2m/ir/quant_schema.py
+      - m2m/ir/quant_attrs.py
+      - m2m/ir/integer_readout.py
+      - m2m/capture/integer_readout.py
+      - m2m/capture/quant_scales.py
       - m2m/ir/import_fx.py
       - m2m/capture/pt2e_integer_reference.py
       - m2m/capture/pt2e_integerize.py
@@ -29,11 +35,42 @@ pins:
       - m2m/capture/provenance.py
       - m2m/capture/torchao_pipeline.py
       - m2m/capture/torch_mlir_bridge.py
+      - m2m/capture/fft_pt2e.py
+      - m2m/capture/fake_metadata.py
+      - m2m/ir/result_layout.py
+      - m2m/ir/structural.py
+      - m2m/ir/fft.py
+      - m2m/capture/static_aten.py
+      - m2m/capture/torch_export.py
+      - m2m/capture/trace.py
+      - m2m/ir/complex_factories.py
+      - m2m/ir/torch_cpu_rng.py
       - tests/test_integer_shift_floordiv.py
+      - m2m/ir/embedding_bag_cpu.py
+      - m2m/ir/cpu_gemm.py
+      - m2m/ir/cpu_batch_norm.py
+      - m2m/ir/cpu_reductions.py
+      - m2m/ir/cpu_pointwise.py
+      - m2m/ir/cpu_arithmetic.py
+      - m2m/ir/cpu_moments.py
+      - m2m/ir/cpu_group_norm.py
+      - m2m/ir/cpu_layer_norm_backward.py
+      - m2m/ir/grid_sample.py
+      - m2m/ir/torchmlir_decomps.py
+      - m2m/ir/storage_resize.py
     content_check: true
     notes: >-
-      Published model2MLIR main selected for fresh, source-closed Phase 0 captures.
-      Includes same-conversion bundle receipts and frontend traces, integer contraction
-      capture, signed-integer lowering, direct f32 conversion of clamp scalars,
-      causal prefill/decode masks and current Transformers static-cache handling.
+      Reviewed model2MLIR frontend with versioned quant schema v1, fp32 source-scale canonicalization,
+      host-only approximate readouts, and exact rational integer readout. Includes signed-integer lowering, portable per-tensor
+      static quantization, caller layouts, exported full-call result storage contracts,
+      pre-PT2E FFT candidates, upstream integer constant rounding fixes, and complete
+      direct/nested complex dropout result structures, complete traced tuple selection,
+      exact global CPU RNG provenance, full real FFT spectra, shared native embedding
+      dispatch, CPU storage rounding, statistics and traversal semantics, and upstream static-cache
+      compatibility with post-export eager execution, native CPU add/subtract
+      storage bits, and exact asymmetric and unsigned byte contractions. Descends from the
+      published main (905d2c9) selected for fresh, source-closed Phase 0 captures, so it also
+      includes same-conversion bundle receipts and frontend traces, integer contraction
+      capture, direct f32 conversion of clamp scalars, causal prefill/decode masks and
+      current Transformers static-cache handling.
       Historical capture receipts retain their original source identities.

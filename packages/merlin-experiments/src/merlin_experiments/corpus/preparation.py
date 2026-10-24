@@ -65,7 +65,14 @@ def retain_deferred_performance(generated: Path, destination: Path, provenance: 
     copy_input(source, destination / "phase2-deferred.json", expected_sha256=digest)
 
 
-def copy_input(source: Path, destination: Path, *, private: bool = False, expected_sha256: str | None = None) -> str:
+def copy_input(
+    source: Path,
+    destination: Path,
+    *,
+    private: bool = False,
+    expected_sha256: str | None = None,
+    preserve_permissions: bool = False,
+) -> str:
     from merlin.common import content_store
 
     from ..runner import fingerprint
@@ -78,11 +85,13 @@ def copy_input(source: Path, destination: Path, *, private: bool = False, expect
     # Private and public inputs may independently contain identical bytes. Do
     # not merge their storage identities: an inode alias is an answer surface,
     # while byte equality alone does not make a declared public input private.
+    # ``preserve_permissions`` keeps a host-only answer's owner-only access instead of the
+    # frozen 0444 default; it also drops write bits, so only final answer copies select it.
     store = None if private else content_store.store_root()
     if source.is_dir():
-        content_store.place_tree(source, destination, store)
+        content_store.place_tree(source, destination, store, preserve_permissions=preserve_permissions)
     else:
-        content_store.place_file(source, destination, store)
+        content_store.place_file(source, destination, store, preserve_permissions=preserve_permissions)
     if fingerprint(source) != before or fingerprint(destination) != before:
         raise SpecError("corpus release source changed while copying; prepare a new release")
     return before
@@ -413,6 +422,27 @@ def generation_lineage(plan: dict, generated: Path) -> dict | None:
     """
     from ..runner import fingerprint
 
+    provenance = read_yaml(generated / "MANIFEST.yaml")
+    core_stage = provenance.get("core_aten_stage")
+    if core_stage is not None:
+        ledger_path = generated / "_private" / "stage.json"
+        ordinary_tree(ledger_path)
+        if fingerprint(ledger_path) != core_stage.get("private_ledger_sha256"):
+            raise SpecError("Core ATen private generation ledger differs from its manifest commitment")
+        ledger = json.loads(ledger_path.read_bytes())
+        receipt = ledger.get("receipt") or {}
+        if receipt.get("target") != plan.get("target") or receipt.get("schema") != core_stage.get("schema"):
+            raise SpecError("Core ATen generation lineage names a different selection")
+        return {
+            "schema": core_stage["schema"],
+            "scope": core_stage["scope"],
+            "status": "byte_bound_diagnostic",
+            "selection_sha256": receipt["selection_sha256"],
+            "generated_manifest_sha256": fingerprint(generated / "MANIFEST.yaml"),
+            "private_ledger_sha256": fingerprint(ledger_path),
+            "input_provenance": receipt["inputs"],
+            "packaging": ledger["packaging"],
+        }
     bundle_name = plan.get("phase0_evidence_bundle")
     if bundle_name is None:
         return None  # Historical runs have no selected evidence or generation receipt.
@@ -630,6 +660,27 @@ def publish_loader_profile(source: Path, target: Path, document: dict, *, profil
     }
 
 
+def _full_call_answers(members: dict) -> dict[str, Path]:
+    """Resolve only digest-bound writer answers, never an ambient grader override."""
+    from merlin.targetgen.golden_store import FILES
+
+    answers = {}
+    for key, (member, document) in members.items():
+        binding = document.get("full_call_golden")
+        if binding is None:
+            continue
+        if not isinstance(binding, dict) or "golden.yaml" not in binding or set(binding) - set(FILES):
+            raise SpecError("full-call capsule lacks a valid private answer commitment")
+        source = member.parent.parent / "_private" / member.parent.name / member.name
+        ordinary_tree(source)
+        for filename, digest in binding.items():
+            path = source / filename
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                raise SpecError("full-call private answer bytes differ from capsule commitment")
+        answers[key] = source
+    return answers
+
+
 def assemble(
     te,
     generated: Path,
@@ -670,13 +721,30 @@ def assemble(
     # Copying private files into independent inodes must not launder an existing
     # public alias. Reuse the native snapshot's authoritative privacy admission.
     generated_private = generated / "hidden"
+    generated_answers = generated / "_private"
+    emitted = _members(generated)
+    answer_sources = _full_call_answers(emitted)
+    for root in roots:
+        if list(root.glob("*/capsule.yaml")):
+            # Reuse category member identity checking without reading unrelated siblings.
+            baseline_members = {
+                ("hidden" if root == private_baseline else root.name) + "/" + path.parent.name: (
+                    path.parent,
+                    read_yaml(path),
+                )
+                for path in root.glob("*/capsule.yaml")
+            }
+            for key, value in _full_call_answers(baseline_members).items():
+                answer_sources.setdefault(key, value)
     # Check all source surfaces together. A private external baseline aliased to
     # a generated public file is just as unsafe as an alias inside either tree.
     _validate_host_sources(
         [(str(root), root) for root in roots if root not in private_roots]
-        + [(str(root), root) for root in generated.iterdir() if root != generated_private],
+        + [(str(root), root) for root in generated.iterdir() if root not in (generated_private, generated_answers)],
         [(str(root), root) for root in private_roots]
-        + ([(str(generated_private), generated_private)] if generated_private.exists() else []),
+        + ([(str(generated_private), generated_private)] if generated_private.exists() else [])
+        + [(str(path), path) for path in answer_sources.values()]
+        + ([(str(generated_answers), generated_answers)] if generated_answers.exists() else []),
     )
     from .publication import require_public_capsules
 
@@ -778,6 +846,11 @@ def assemble(
                 profile_dependencies.append({"member": key, **dependency})
                 digest = fingerprint(target)
         replacements.append({"member": key, "previous_sha256": previous_sha, "sha256": digest})
+    answer_copies = {}
+    for key, source in sorted(answer_sources.items()):
+        answer_copies[key] = copy_input(source, destination / "_private" / key, private=True, preserve_permissions=True)
+    if (generated_answers / "stage.json").is_file():
+        copy_input(generated_answers / "stage.json", destination / "_private" / "stage.json", private=True)
     final_members = _members(destination)
     from .publication import require_accelerator_placement
 
@@ -847,6 +920,7 @@ def assemble(
         "replacements": replacements,
         **({"capsule_scope": scope_record} if scope_record is not None else {}),
         **({"loader_profile_dependencies": profile_dependencies} if loader_profile_sources is not None else {}),
+        "full_call_answers": answer_copies,
     }
 
 
@@ -1128,6 +1202,12 @@ def scaffold(
 
     substrate, compiler_root = compiler_source_selection(common_substrate, python_source_root)
     arms, variants = _bundle_selection(optional_levels, selected_levels, selected_variants)
+    primary = corpus / te.capsule_corpus.name
+    if primary.is_symlink() or (primary.exists() and not primary.is_dir()):
+        raise SpecError("release primary corpus category must be an ordinary directory")
+    # Generated-only corpora may put every case in a sibling category. The
+    # descriptor and bundle still declare this primary root as a grading input.
+    primary.mkdir(exist_ok=True)
     experiment.mkdir(parents=True)
     inputs = {}
     for relative in ("task",):
@@ -1353,6 +1433,7 @@ def scaffold(
                 str(private),
                 *checker_inputs,
                 *([str(corpus / "_phase0")] if (corpus / "_phase0").is_dir() else []),
+                *([str(corpus / "_private")] if (corpus / "_private").is_dir() else []),
             ),
             python_source_root=compiler_root,
             llvm_toolchain_root=llvm_root if llvm_root != checkout_llvm else None,
@@ -1456,7 +1537,8 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     excluded = {row["capsule"] for row in withheld}
     count = len(hidden)
     admitted = sum(cap["name"] not in excluded for cap in hidden)
-    if public["n_admitted_capsules"] <= 0 or count <= 0 or admitted <= 0:
+    public_only = te.hidden_expected_source_capsules == 0 and te.hidden_expected_admitted_capsules == 0
+    if public["n_admitted_capsules"] <= 0 or (not public_only and (count <= 0 or admitted <= 0)):
         raise SpecError("reviewable corpus must have nonempty public and hidden grading cohorts")
     if (te.hidden_expected_source_capsules is not None and count != te.hidden_expected_source_capsules) or (
         te.hidden_expected_admitted_capsules is not None and admitted != te.hidden_expected_admitted_capsules

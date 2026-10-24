@@ -336,24 +336,19 @@ def _summing(*, readout_scale: bool = True, standalone=()):
 
 
 def test_a_quantized_residual_is_an_integer_sum_on_a_unit_whose_load_multiplies() -> None:
-    (group,) = _groups(_residual(lhs_scale=0.5, rhs_scale=0.25, out_scale=1.0), _summing())
+    (group,) = _groups(_residual(lhs_scale=1.0, rhs_scale=1.0, out_scale=1.0), _summing())
     assert group.placement == "unit0" and group.root is not None
     assert group.stages == ["dequantize", "dequantize", "residual_add", "relu", "quantize"]
-    assert group.operand_sum == {
-        "lhs_scale": 0.5,
-        "rhs_scale": 0.25,
-        "bound_lsb": 1,
-        "readout_factor": 1.0,
-        "relu": True,
-    }
-    assert group.key()["operand_sum"]["bound_lsb"] == 1
+    assert group.operand_sum["bound_lsb"] == 0
+    assert group.operand_sum["lhs_scale"] == group.operand_sum["rhs_scale"] == 1
+    assert all(proof["status"] == "proven" for proof in group.operand_sum["product_proofs"])
     # The same capture where no unit's load multiplies is what it always was.
     (host,) = _groups(_residual())
     assert (host.placement, host.refusal, host.operand_sum) == (CG.HOST, "fused_only", None)
 
 
 def test_quantized_sum_closes_before_downstream_integer_layout() -> None:
-    text = _residual(lhs_scale=0.5, rhs_scale=0.25, out_scale=1.0)
+    text = _residual(lhs_scale=1.0, rhs_scale=1.0, out_scale=1.0)
     text = text.replace("-> tensor<4x16xi8> {", "-> tensor<16x4xi8> {", 1)
     text = text.replace(
         "    func.return %out : tensor<4x16xi8>",
@@ -369,16 +364,11 @@ def test_quantized_sum_closes_before_downstream_integer_layout() -> None:
     assert any("movement" in group.stages for group in groups if group is not summed)
 
 
-def test_a_multiplier_above_one_goes_to_the_readout_and_the_bound_says_what_that_costs() -> None:
-    # 1.5 through a saturating load would clip an operand the other could have cancelled. The
-    # common factor is divided out and the readout's scale carries it, at a wider bound.
-    (group,) = _groups(_residual(lhs_scale=1.5, rhs_scale=0.75, out_scale=1.0), _summing())
-    assert group.placement == "unit0"
-    assert (group.operand_sum["readout_factor"], group.operand_sum["bound_lsb"]) == (1.5, 2)
-    # With no readout scale derived there is nowhere to put the factor: a hardware gap, by name.
-    (host,) = _groups(_residual(lhs_scale=1.5, rhs_scale=0.75), _summing(readout_scale=False))
-    assert (host.placement, host.refusal, host.gap) == (CG.HOST, CG.OPERAND_SUM, "OG0")
-    assert "exceed one" in host.reason
+def test_a_scaled_load_cannot_round_before_the_sum():
+    for lhs, rhs in ((1.5, 0.75), (0.5, 0.25)):
+        (group,) = _groups(_residual(lhs_scale=lhs, rhs_scale=rhs, out_scale=1.0), _summing())
+        assert group.placement == CG.HOST and group.operand_sum is None
+        assert "round before" in group.reason
 
 
 def test_a_sum_whose_numbers_cannot_be_an_integer_form_stays_on_the_host_with_its_reason() -> None:
@@ -389,20 +379,10 @@ def test_a_sum_whose_numbers_cannot_be_an_integer_form_stays_on_the_host_with_it
     assert report["summary"]["unexplained_host_groups"] == []
 
 
-def test_a_mean_over_a_trailing_window_is_a_contraction_against_a_constant_one() -> None:
+def test_a_float_mean_requires_a_bound_exact_host_quantization():
     (group,) = _groups(_mean(in_scale=0.5, out_scale=0.25, count=12.0))
-    assert group.placement == "unit0" and mq.op_name(group.root) == "linalg.reduce"
-    assert group.window_mean == {
-        "rows": 16,
-        "window": 12,
-        "multiplier": 0.5 / (12.0 * 0.25),
-        "bound_lsb": 1,
-        "exactness": "float_reassociation",
-    }
-    entry = CG.capsule_entry(group)
-    assert (entry["op"], entry["M"], entry["K"], entry["N"], entry["epilogue"]) == ("matmul", 16, 12, 1, ["acc_scale"])
-    assert entry["acc_scale"] == group.window_mean["multiplier"]
-    assert CG.demand([group])["unstated"] == {}
+    assert group.placement == CG.HOST and group.window_mean is None
+    assert "exact rational host" in group.reason
 
 
 def test_a_mean_a_unit_cannot_hold_stays_on_the_host_and_says_which_limit() -> None:
@@ -418,35 +398,25 @@ def test_a_mean_a_unit_cannot_hold_stays_on_the_host_and_says_which_limit() -> N
 
     narrow = RF.ReadoutFacet(target="synthetic", unit="unit0", element_dtype="i8", accumulator_dtype="i8")
     (overflowing,) = _groups(_mean(), _Oracle(readout=RF.TargetReadout((narrow,))))
-    assert overflowing.placement == CG.HOST and "can exceed the i8 accumulator" in overflowing.reason
+    assert overflowing.placement == CG.HOST and "exact rational host" in overflowing.reason
     # Where nothing contracts, the region is what it always was: no new refusal is invented for it.
     (plain,) = _groups(_mean(), _Oracle(families=("elementwise_map",)))
     assert (plain.placement, plain.window_mean) == (CG.HOST, None) and plain.refusal != CG.WINDOW_MEAN
 
 
-def test_the_integer_form_of_a_mean_is_within_its_declared_bound_of_the_capture() -> None:
-    np = pytest.importorskip("numpy")
-    rng = np.random.default_rng(7)
+def test_a_float_mean_is_never_admitted_with_an_lsb_tolerance():
     (group,) = _groups(_mean(in_scale=0.0371, out_scale=0.0189, count=49.0))
-    multiplier = np.float32(group.window_mean["multiplier"])
-    x = rng.integers(-128, 128, size=(4096, 49), dtype=np.int64)
-    capture = np.rint(
-        (x.astype(np.float32) * np.float32(0.0371)).sum(axis=1, dtype=np.float32)
-        / np.float32(49.0)
-        / np.float32(0.0189)
-    )
-    device = np.rint(x.sum(axis=1).astype(np.float32) * multiplier)
-    worst = int(np.abs(np.clip(capture, -128, 127) - np.clip(device, -128, 127)).max())
-    assert worst <= group.window_mean["bound_lsb"]
+    assert group.placement == CG.HOST and group.window_mean is None
+    assert "exact rational host" in group.reason
 
 
 def test_a_quantized_value_handed_on_is_where_two_integer_regions_part() -> None:
     # residual -> quantize -> dequantize -> mean. Joined along the single-use value this would be
     # one region no unit takes; cut at the integers it is two, and each is placed whole.
     summed, pooled = _groups(_residual_then_mean(), _summing())
-    assert (summed.placement, pooled.placement) == ("unit0", "unit0")
-    assert summed.operand_sum is not None and summed.stages[-1] == "quantize"
-    assert pooled.window_mean["window"] == 16 and pooled.stages[0] == "dequantize"
+    assert (summed.placement, pooled.placement) == (CG.HOST, CG.HOST)
+    assert summed.operand_sum is None and summed.stages[-1] == "quantize"
+    assert pooled.window_mean is None and pooled.stages[0] == "dequantize"
 
 
 # --- what a group may carry out is the TARGET's declaration, not a constant in the pass -----------
@@ -555,7 +525,7 @@ def test_a_region_a_target_admits_and_no_device_form_states_stays_on_the_host_by
     assert (product.placement, product.root, product.refusal) == (CG.HOST, None, CG.NO_DEVICE_FORM)
     assert product.gap == "OG6" and "no contraction, operand sum or window mean" in product.reason
     # The add the same declaration exists for is placed, so this refuses a FORM and not the family.
-    (add,) = _groups(_residual(), target)
+    (add,) = _groups(_residual(lhs_scale=1.0, rhs_scale=1.0, out_scale=1.0), target)
     assert add.placement == "unit0" and add.operand_sum is not None
     # And nothing downstream is left to discover it: every placed group has something to demand.
     assert CG.demand([product, add])["unstated"] == {}
@@ -671,7 +641,8 @@ def test_a_row_sum_binds_through_form_groups_and_is_exact_vs_the_oracle() -> Non
     text = _int_sum_module(narrow="i8")
     (group,) = _sum_group(CG.form_groups(mq.parse(text), "synthetic", oracle=_Oracle()))
     assert group.placement == "unit0" and group.refusal is None
-    assert group.window_mean == {
+    assert group.window_mean["product_proof"]["status"] == "proven"
+    assert {k: v for k, v in group.window_mean.items() if k != "product_proof"} == {
         "rows": 4,
         "window": 16,
         "multiplier": 1.0,
@@ -733,3 +704,32 @@ def test_a_widening_that_also_scales_is_not_seen_through() -> None:
     )
     group = next(g for g in _groups(_widened_weight(scaled)) if "contraction" in g.stages)
     assert group.weight_dtype is None
+
+
+def test_frontend_compare_select_relu_retains_closed_sum_group():
+    source = """builtin.module {
+      func.func @forward(%x: tensor<2x3xf32>) -> tensor<2x3xf32> {
+        %e = tensor.empty() : tensor<2x3xf32>
+        %r = linalg.generic {
+          indexing_maps = [affine_map<(i,j)->(i,j)>, affine_map<(i,j)->(i,j)>],
+          iterator_types = ["parallel", "parallel"]
+        } ins(%x : tensor<2x3xf32>) outs(%e : tensor<2x3xf32>) {
+          ^bb0(%a: f32, %out: f32):
+            %zero = arith.constant 0 : i64
+            %fzero = arith.sitofp %zero : i64 to f32
+            %test = arith.cmpf olt, %a, %fzero : f32
+            %value = arith.select %test, %fzero, %a : f32
+            linalg.yield %value : f32
+        } -> tensor<2x3xf32>
+        func.return %r : tensor<2x3xf32>
+      }
+    }"""
+    for text, expected in (
+        (source, CG.RELU),
+        (source.replace("constant 0", "constant 1"), CG.ELEMENTWISE),
+        (source.replace("cmpf olt", "cmpf ogt"), CG.ELEMENTWISE),
+        (source.replace("select %test, %fzero, %a", "select %test, %a, %fzero"), CG.ELEMENTWISE),
+    ):
+        module = mq.parse(text)
+        operation = next(op for op in module.walk() if op.name == "linalg.generic")
+        assert CG.classify(operation).kind == expected

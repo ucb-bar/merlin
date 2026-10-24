@@ -39,6 +39,8 @@
     "merlin/contract/perf_exchange_rates.yaml",
     "merlin/contract/perf_reference_targets.yaml",
     "merlin/contract/phase2_exchange_rate_windows.yaml",
+    "merlin/contract/quant_schema.json",
+    "merlin/contract/quant_schema_source.json",
     "merlin/contract/schedule_ir_coverage.yaml",
     "merlin/contract/schemas/artifact_bundle.schema.json",
     "merlin/contract/schemas/capsule.schema.json",

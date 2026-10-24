@@ -210,8 +210,12 @@ def _l3_fix_verdict(vv: dict, attempt: int) -> dict:
     return out
 
 
-def _authoring_completion(numeric_all_pass: bool, workflow_conformant: bool) -> bool:
+def _authoring_completion(numeric_all_pass: bool, workflow_conformant: bool, *, objective: str = "correctness") -> bool:
     """The agent may leave the authoring loop only when both in-sandbox gates are evidenced."""
+    if objective == "device-coverage":
+        return False  # Correctness is required evidence, not proof of maximum device coverage.
+    if objective != "correctness":
+        raise ValueError("unknown authoring objective")
     return bool(numeric_all_pass and workflow_conformant)
 
 

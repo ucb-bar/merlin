@@ -136,6 +136,14 @@ def test_captured_bf16_dequant_contraction_reaches_integer_path():
 
 def test_captured_bf16_host_reference_matches_compiled_preparation(tmp_path):
     source = _per_tensor_ir(0)
+    # A half-width dequantization rounds once from an exact binary64 product, which needs a bounded
+    # zero point: a constant, not a run-time i64 argument.
+    source = source.replace(
+        '    %a = "quant_ext.dequantize_per_tensor"(%aq, %as, %az)',
+        "    %azv = arith.constant 0 : i64\n"
+        "    %azt = tensor.splat %azv : tensor<i64>\n"
+        '    %a = "quant_ext.dequantize_per_tensor"(%aq, %as, %azt)',
+    )
     for shape in ("1x8", "4x8", "8x4", "1x4"):
         source = source.replace(f"tensor<{shape}xf32>", f"tensor<{shape}xbf16>")
     source = source.replace("%z = arith.constant 0.0 : f32", "%z = arith.constant 0.0 : bf16")

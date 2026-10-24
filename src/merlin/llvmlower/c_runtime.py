@@ -148,12 +148,15 @@ def _bf16_bits(f32: np.ndarray) -> np.ndarray:
     """Round float32 to bfloat16 (round-to-nearest-even) and return the raw uint16 bit patterns.
 
     numpy has no native bf16, so do it by hand: bf16 is the top 16 bits of the f32 encoding; RNE
-    adds the round bias 0x7FFF + (lsb of the kept mantissa) before truncating. NaNs are preserved
-    (their exponent is all-ones and mantissa nonzero, which survives the shift)."""
+    adds the round bias 0x7FFF + (lsb of the kept mantissa) before truncating.
+    Nonfinite encodings bypass that bias; NaNs retain a nonzero quiet payload."""
     u = f32.astype(np.float32).view(np.uint32)
     lsb = (u >> 16) & np.uint32(1)
     rounded = (u + np.uint32(0x7FFF) + lsb) >> np.uint32(16)
-    return rounded.astype(np.uint16)
+    nonfinite = (u & np.uint32(0x7F800000)) == np.uint32(0x7F800000)
+    nan = (u & np.uint32(0x007FFFFF)) != 0
+    special = (u >> np.uint32(16)) | np.where(nan, np.uint32(0x40), np.uint32(0))
+    return np.where(nonfinite, special, rounded).astype(np.uint16)
 
 
 def _embed_array(arr: np.ndarray, dt: str) -> str:
@@ -231,6 +234,7 @@ def generate(
     weights_source: str | Path | None = None,
     readonly_input_indices: tuple[int, ...] = (),
     max_readonly_input_bytes: int = 1 << 20,
+    dump_all_outputs: bool = False,
 ) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
@@ -305,6 +309,15 @@ def generate(
     sig = parse_forward_signature(model_dir / "model.mlir")
     if any(i >= len(sig) for i in readonly_input_indices):
         raise ValueError("readonly input index is outside the original capture arguments")
+    from .input_layout import descriptor_lines, is_identity_layout, storage_array
+    from .result_layout import read_layout
+
+    input_layout = read_layout((model_dir / "model.mlir").read_text())
+    if input_layout and any(record is not None for record in input_layout.get("inputs", [])) and not dump_all_outputs:
+        raise ValueError("captured input-layout contract requires dump_all_outputs=True")
+    input_layouts = input_layout["inputs"] if input_layout else [None] * len(sig)
+    if len(input_layouts) != len(sig):
+        raise ValueError("captured input layout count differs from runtime ABI")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
     weights_path = model_dir / "weights.safetensors"
     if manifest_requires_weight_blob(man):
@@ -359,6 +372,9 @@ def generate(
     stub_zero_offsets: dict[int, int] = {}  # byte length -> offset of a shared zero region
 
     out_specs = _out_specs(model_dir / "model.mlir")
+    returned_descriptors = dump_all_outputs or any(dim < 0 for shape, _ in out_specs for dim in shape)
+    if returned_descriptors and not dump_all_outputs:
+        raise ValueError("dynamic results require descriptor byte readback")
     out_shape, out_dt = out_specs[0]
 
     # manifest input name -> inputs.npz tuple order. Prefer the per-model
@@ -419,9 +435,14 @@ def generate(
         else:
             arr = np.ascontiguousarray(inputs[f"in{n_in}"])
             n_in += 1
-        io_decls.append(f"static {C_OF[dt]} merlin_in_{i}[] = {{{_embed_array(arr, dt)}}};")
+        physical = storage_array(arr.reshape(shape), input_layouts[i]) if input_layouts[i] else arr
+        # Empty logical tensors still own distinct caller storage. Zero-length
+        # C arrays can share an address and falsely alias independent arguments.
+        if physical.size == 0:
+            physical = np.zeros(1, dtype=physical.dtype)
+        io_decls.append(f"static {C_OF[dt]} merlin_in_{i}[] = {{{_embed_array(physical, dt)}}};")
         embedded_arrays[i] = (arr, dt)
-        static_io_bytes += _storage_nbytes(arr, dt)
+        static_io_bytes += _storage_nbytes(physical, dt)
         embedded.add(i)
         rows.append(("MERLIN_INPUT", i, len(shape), shape, elem, dt))
     # QUANT-INNER ARGUMENTS. A torchao subclass's int8 `int_data`/`scale` are not `@forward`
@@ -497,7 +518,7 @@ def generate(
     # lets a captured decoder/LSTM expose its updated state instead of the runtime silently dropping
     # all but result zero.
     for output_index, (shape, dt) in enumerate(out_specs):
-        rows.append(("MERLIN_OUTPUT", output_index, len(shape), shape, DT_BYTES[dt], dt))
+        rows.append(("MERLIN_OUTPUT", output_index, len(shape), [max(0, d) for d in shape], DT_BYTES[dt], dt))
 
     # Optional capture-owned state map. Numeric ABI indices are intentional: symbolic state names
     # are provenance for humans, while the captured signature is the executable contract. Each pair
@@ -532,6 +553,12 @@ def generate(
                 )
             state_pairs.append((input_arg, output_index))
 
+    if any(not is_identity_layout(layout) for layout in input_layouts) and (state_pairs or session.get("streams")):
+        raise ValueError("captured strided input ABI does not support packed session updates")
+    if input_layout and any(
+        i not in embedded and not is_identity_layout(layout) for i, layout in enumerate(input_layouts)
+    ):
+        raise ValueError("captured input layouts require embedded runtime input storage")
     state_input_args = {pair[0] for pair in state_pairs}
     stream_specs: list[tuple[int, np.ndarray, str]] = []
     streams = session.get("streams", ()) or ()
@@ -714,6 +741,22 @@ def generate(
         dimstr = ",".join(str(d) for d in dims) or "0"
         h.append(f"  {{{kind}, {off}L, {rank}, {{{dimstr}}}, {elem}}},")
     h += ["};"]
+    if dump_all_outputs:
+        h.append("#define MERLIN_DUMP_ALL_OUTPUTS 1")
+        if returned_descriptors:
+            h.extend(
+                [
+                    "#define MERLIN_RETURNED_DESCRIPTORS 1",
+                    "extern size_t MERLIN_OUTPUT_NBYTES[MERLIN_N_OUTPUTS];",
+                    "extern long merlin_result_extent(int output, int axis);",
+                    "static const int MERLIN_OUTPUT_RANKS[MERLIN_N_OUTPUTS] = {"
+                    + ",".join(str(len(shape)) for shape, _ in out_specs)
+                    + "};",
+                ]
+            )
+        else:
+            sizes = ",".join(str(int(np.prod(shape)) * DT_BYTES[dt]) for shape, dt in out_specs)
+            h.append(f"static const size_t MERLIN_OUTPUT_NBYTES[MERLIN_N_OUTPUTS] = {{{sizes}}};")
     h.append("#endif")
 
     io = [
@@ -738,7 +781,7 @@ def generate(
         io.append("static const float merlin_quality_golden[] = {" + _embed_array(quality_values, "f32") + "};")
         static_io_bytes += int(quality_values.nbytes)
     for i, (shape, dt) in enumerate(out_specs):
-        nbytes = int(np.prod(shape)) * DT_BYTES[dt]
+        nbytes = 0 if returned_descriptors else int(np.prod(shape)) * DT_BYTES[dt]
         io.append(f"static _Alignas(64) unsigned char merlin_out_{i}[{max(1, nbytes)}];")
     # Pointer table, indexed by arg position: the address of the embedded array, or NULL for an arg
     # the runtime reads from the weights blob. Keyed off ``embedded`` -- what the loop ABOVE
@@ -757,6 +800,13 @@ def generate(
         + ",".join(f"(void*)merlin_out_{i}" for i in range(len(out_specs)))
         + "};"
     )
+    if returned_descriptors:
+        io.extend(
+            [
+                "extern void **merlin_result_ptrs(void);",
+                "#define MERLIN_OUTPUT_PTR merlin_result_ptrs()",
+            ]
+        )
     pair_len = max(1, len(state_pairs))
     io.append(
         f"static const int MERLIN_STATE_INPUT_ARGS[{pair_len}] = {{"
@@ -857,6 +907,86 @@ def generate(
         f"extern void _mlir_ciface_{ciface_name}({decl});",
         f"void {invoke_name}(void **d) {{ _mlir_ciface_{ciface_name}({call}); }}",
     ]
+    if returned_descriptors:
+        # A ranked memref C result is returned through the first pointer. Multiple
+        # results use a struct of rank-exact descriptors, never max-rank storage.
+        call_c = ["#include <stddef.h>", "#include <stdint.h>", "#include <stdlib.h>", "#include <string.h>"]
+        for i, (shape, _) in enumerate(out_specs):
+            rank = len(shape)
+            arrays = f"int64_t sizes[{rank}], strides[{rank}];" if rank else ""
+            call_c.append(f"typedef struct {{ void *allocated, *aligned; int64_t offset; {arrays} }} result_{i};")
+        call_c.extend(
+            [
+                "typedef struct {" + "".join(f"result_{i} r{i};" for i in range(len(out_specs))) + "} results_t;",
+                "static results_t results;",
+                f"static void *result_ptrs[{len(out_specs)}];",
+                f"size_t MERLIN_OUTPUT_NBYTES[{len(out_specs)}];",
+                "void **merlin_result_ptrs(void) { return result_ptrs; }",
+                "const void *merlin_result_descriptor(int output) { switch(output) {",
+            ]
+        )
+        for i in range(len(out_specs)):
+            call_c.append(f"case {i}: return &results.r{i};")
+        call_c.extend(
+            [
+                "default: abort(); } }",
+                "long merlin_result_extent(int output, int axis) {",
+                "const int64_t *words = (const int64_t *)merlin_result_descriptor(output);",
+                "return words[3+axis]; }",
+                f"extern void _mlir_ciface_{ciface_name}({','.join(['void*'] * (n_sig_args + 1))});",
+                f"void {invoke_name}(void **d) {{",
+                *descriptor_lines([input_layouts[i] if i < len(input_layouts) else None for i in runtime_indices]),
+                f"_mlir_ciface_{ciface_name}(&results{''.join(f',d[{i}]' for i in range(n_sig_args))});",
+            ]
+        )
+        for i, (shape, dt) in enumerate(out_specs):
+            call_c.append(f"size_t count_{i} = 1;")
+            for axis in reversed(range(len(shape))):
+                call_c.extend(
+                    [
+                        f"if (results.r{i}.sizes[{axis}] < 0 || results.r{i}.strides[{axis}] < 0) abort();",
+                        f"if (results.r{i}.sizes[{axis}] && count_{i} > SIZE_MAX / (size_t)results.r{i}.sizes[{axis}]) abort();",
+                        f"count_{i} *= results.r{i}.sizes[{axis}];",
+                    ]
+                )
+            call_c.extend(
+                [
+                    f"if (count_{i} > SIZE_MAX / {DT_BYTES[dt]}) abort();",
+                    f"MERLIN_OUTPUT_NBYTES[{i}] = count_{i} * {DT_BYTES[dt]};",
+                    f"if (results.r{i}.offset < 0 || (uint64_t)results.r{i}.offset > SIZE_MAX / {DT_BYTES[dt]}) abort();",
+                    f"if (MERLIN_OUTPUT_NBYTES[{i}] == SIZE_MAX) abort();",
+                    f"unsigned char *packed_{i} = malloc(MERLIN_OUTPUT_NBYTES[{i}]+1);",
+                    f"if (!packed_{i}) abort();",
+                    f"for (size_t n=0; n<count_{i}; n++) {{",
+                    f"size_t linear=n, at=(size_t)results.r{i}.offset;",
+                ]
+            )
+            for axis in reversed(range(len(shape))):
+                call_c.extend(
+                    [
+                        f"size_t coord_{i}_{axis}=linear % results.r{i}.sizes[{axis}];",
+                        f"linear /= results.r{i}.sizes[{axis}];",
+                        f"if (results.r{i}.strides[{axis}] && coord_{i}_{axis} > (SIZE_MAX-at)/(size_t)results.r{i}.strides[{axis}]) abort();",
+                        f"at += coord_{i}_{axis} * results.r{i}.strides[{axis}];",
+                    ]
+                )
+            call_c.extend(
+                [
+                    f"if (at > SIZE_MAX / {DT_BYTES[dt]}) abort();",
+                    f"memcpy(packed_{i}+n*{DT_BYTES[dt]}, (char *)results.r{i}.aligned+at*{DT_BYTES[dt]}, {DT_BYTES[dt]});",
+                    "}",
+                    f"result_ptrs[{i}] = packed_{i};",
+                ]
+            )
+        call_c.append("}")
+
+    semantic_path = model_dir / "semantic_io.json"
+    if dump_all_outputs and semantic_path.is_file():
+        from .semantic_io import generate_observer
+
+        generate_observer(semantic_path, out_dir / "semantic_io.h", out_specs, embedded_arrays, DT_BYTES, input_layouts)
+    else:
+        (out_dir / "semantic_io.h").unlink(missing_ok=True)
 
     weight_digest = hashlib.sha256()
     sources = (blob, appended) if weight_storage == "streamed" else (bytes(blob), bytes(appended))
@@ -902,7 +1032,7 @@ def generate(
     # a 256000-wide logits vector at sequence length 128 is 125 MiB of .bss on its own, and a
     # code-region reserve chosen without it puts the weights blob inside .bss, which surfaces only as
     # a linker "section .weights VMA overlaps section .bss" and reads as anything but a sizing error.
-    output_bytes = sum(int(np.prod(shape)) * DT_BYTES[dt] for shape, dt in out_specs)
+    output_bytes = 0 if returned_descriptors else sum(int(np.prod(shape)) * DT_BYTES[dt] for shape, dt in out_specs)
     info = {
         "n_args": len(rows),
         "n_outputs": len(out_specs),

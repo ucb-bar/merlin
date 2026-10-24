@@ -3,7 +3,7 @@ title: Defining and inspecting Phase 0 inputs
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-12
+last_verified: 2026-10-17
 related: [generating_capsules, adding_a_target, software_instruction_semantics, component_phase0_diagnostics]
 code_refs:
   - src/merlin/targetgen/corpus_instruction_roles.py
@@ -89,7 +89,15 @@ When a row names nonempty `ops`, only those exact frontend operations can match 
 `families` do not add other operations. Put an observed-family constraint in
 `signature.family` when needed. Rows without an explicit `ops` roster can match
 by semantic family. A direct operation match that fails its signature constraints
-does not fall back to a broader family row.
+does not fall back to a broader family row, with one exception: a reviewed, fully
+executable **host** row whose declared operand/result types provably exclude the observed
+ones (an f32 host row for an operation observed at int8) declares a different typed
+instance of the operation, so it is set aside and the family rows decide. The decision
+lists such rows as `ignored_disjoint_declarations`. An accelerator restriction, an
+unreviewed or prose-qualified row, or a row whose precision was not observed always keeps
+its priority. A row whose id is a family name is a family row, never an exact match.
+`admit_operation`, `admit_contraction_operation` and Phase-0 operation accounting share
+this one rule (`software_spec.exact_declarations`).
 A standalone declaration admits only that standalone use: it does not admit the same
 family composed into another operation (`composed_with`) or, for an elementwise map,
 applied as a fused epilogue. Declare and review such a composition explicitly.
@@ -391,6 +399,17 @@ silently selects historical corpora or headline workloads. The generated plan
 remains diagnostic until actual writers, oracles, placement and independent
 numerical checks satisfy the obligations. Repeating the same selection into its
 immutable output root must preserve bytes; changed inputs need a new root.
+
+Retained Core ATen recipes instead declare explicit public, hidden and host-guard
+case selections and capture owners. Their derivation emits `recipe.yaml`,
+`requirements.yaml` and `synth.yaml`; select all three as the fresh run's
+`recipe`, `conformance_spec` and `synth_profile`. The requirement declares finite
+full-call obligations and aggregate cohort commitments. Selected synthesis binds
+the exact recipe, requirement, descriptor workload declaration, selection receipt
+and complete selected capture bytes. Verification recomputes the selection and
+refuses changed inputs. This verifies packaging identity; numerical agreement,
+compiler support and lane execution remain Phase 1 obligations. It does not
+satisfy a whole-application demand inventory or upgrade hardware evidence.
 
 ## Inspect exactly what the generator used
 

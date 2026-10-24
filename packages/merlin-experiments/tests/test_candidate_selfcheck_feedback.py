@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +15,103 @@ from merlin_experiments.phase1.feedback import qa, selfcheck
 from merlin.common.paths import data_path
 
 SENTINEL = "PRIVATE_OR_LEGACY_PROGRAM_SENTINEL"
+
+
+@pytest.mark.parametrize("fault", [None, "missing", "private_symlink", "private_tamper", "public_tamper"])
+def test_focused_full_call_reaches_real_grade_with_original_private_binding(tmp_path, monkeypatch, capsys, fault):
+    """Exercise real discovery and answer verification; stop before any target execution."""
+    from merlin.targetgen import core_aten_capsules as full_call
+
+    class ExecutionBoundary(BaseException):
+        pass
+
+    monkeypatch.delenv("MERLIN_CORE_ATEN_PRIVATE_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("{}")
+    corpus = tmp_path / "public"
+    _write_public_capsule(corpus, kind="isa")
+    capsule = corpus / "model_case"
+    interface = capsule / "capsule.interface.mlir"
+    interface.write_text("module {}")
+    private = tmp_path / "_private" / "public" / "model_case"
+    private.mkdir(parents=True)
+    golden = private / "golden.yaml"
+    golden.write_text(
+        json.dumps(
+            {
+                "schema": "merlin.core_aten_capsule.v1",
+                "public_files": {interface.name: hashlib.sha256(interface.read_bytes()).hexdigest()},
+                "batch_map": {"cases": [{"overload": "aten.alias.default"}]},
+            }
+        )
+    )
+    declaration = json.loads((capsule / "capsule.yaml").read_text())
+    declaration["operation"]["attributes"] = {"core_aten_contract": "full_call_v1", "overload": "aten.alias.default"}
+    declaration["full_call_golden"] = {"golden.yaml": hashlib.sha256(golden.read_bytes()).hexdigest()}
+    (capsule / "capsule.yaml").write_text(json.dumps(declaration))
+    # An unselected sibling must never enter the grade's discovered cohort.
+    other = corpus / "unselected"
+    other.mkdir()
+    other_declaration = {**declaration, "name": "unselected"}
+    (other / "capsule.yaml").write_text(json.dumps(other_declaration))
+    if fault == "missing":
+        private.rename(private.with_name("retained"))
+    elif fault == "private_symlink":
+        private.rename(private.with_name("retained"))
+        private.symlink_to(private.with_name("retained"), target_is_directory=True)
+    elif fault == "private_tamper":
+        golden.write_text("{}")
+    elif fault == "public_tamper":
+        interface.write_text("module { /* changed */ }")
+
+    monkeypatch.setattr(selfcheck, "_adapters", lambda *a: ({"L2": object()}, "spike"))
+    monkeypatch.setattr(selfcheck, "_target_sim_via", lambda *a: ("fixture", "chipyard"))
+    monkeypatch.setattr(selfcheck.CR, "suite_for", lambda *a: "fixture-suite")
+    # Package/tool execution is outside this root-selection regression. CG.grade itself, capsule
+    # schema/discovery, and the authenticated private/public byte checks remain real.
+    monkeypatch.setattr(selfcheck.CG, "source_experiment_env", lambda *a: {})
+    monkeypatch.setattr(selfcheck.CG, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False))
+    monkeypatch.setattr(selfcheck.CG, "integrity_scan", lambda *a, **k: None)
+    monkeypatch.setattr(selfcheck.CG, "build_package", lambda *a, **k: None)
+    monkeypatch.setattr(selfcheck.CR, "require_candidate_product_scope", lambda *a, **k: None)
+    seen = []
+
+    def execution_boundary(caps, *args, **kwargs):
+        assert [cap["name"] for cap in caps] == ["model_case"]
+        assert Path(caps[0]["__dir__"]) == capsule
+        full_call.load_private(caps[0])
+        seen.append(caps[0]["name"])
+        raise ExecutionBoundary
+
+    monkeypatch.setattr(selfcheck.CR, "run_suite", execution_boundary)
+
+    def invoke():
+        return selfcheck.main(
+            ["--sim", "spike", "--submission", str(submission), "--capsules", "model_case"],
+            context=_context(tmp_path),
+            capsules_root=corpus,
+            contract=data_path("contract"),
+        )
+
+    if fault is None:
+        with pytest.raises(ExecutionBoundary):
+            invoke()
+        assert seen == ["model_case"]
+    else:
+        assert invoke() == 1
+        report = json.loads(capsys.readouterr().out)
+        reason = {
+            "missing": "private full-call answer directory is absent or indirect",
+            "private_symlink": "private full-call answer directory is absent or indirect",
+            "private_tamper": "private full-call answer digest changed",
+            "public_tamper": "public full-call input changed: capsule.interface.mlir",
+        }[fault]
+        assert report["error"] == f"grade failed: {reason}"
+        assert not seen
+    assert "MERLIN_CORE_ATEN_PRIVATE_ROOT" not in os.environ
+    assert not list(tmp_path.glob("selfcheck_caps_*"))
 
 
 def test_oracle_timeout_reason_does_not_exculpate_or_blame_emitted_program():

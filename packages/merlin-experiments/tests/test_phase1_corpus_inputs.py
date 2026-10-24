@@ -1,5 +1,6 @@
 """Run-owned corpus inputs survive live-source changes without changing the grading policy."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -499,3 +500,33 @@ def test_prepared_resources_are_private_before_and_after_freeze(corpus_fixture, 
     BW.materialize_bundle_inputs(ws, prepared.bundle, repo=tmp_path)
     assert BW._snapshot_grants(ws, prepared.bundle, tmp_path)[1] == []
     assert not BW.bundle_snapshot_root(ws).stat().st_mode & 0o077
+
+
+def test_relocated_full_call_answers_are_private_independent_copies(corpus_fixture, tmp_path, monkeypatch):
+    from merlin_experiments.phase1 import corpus_inputs as CI
+
+    from merlin.targetgen import core_aten_capsules
+
+    te, member, run, bundle, contract = corpus_fixture
+    answers = member.parent.parent / "_private" / member.parent.name / member.name
+    answers.mkdir(parents=True)
+    (answers / "golden.yaml").write_text("private-answer-binding")
+    (member / "call.json").write_text("public-call-abi")
+    (member / "input_order.json").write_text("[]")
+    monkeypatch.delenv("MERLIN_CORE_ATEN_PRIVATE_ROOT", raising=False)
+    monkeypatch.setattr(core_aten_capsules, "is_full_call", lambda cap: True)
+
+    def verify(capsule):
+        root = Path(capsule["__dir__"])
+        private = root.parent.parent / "_private" / root.parent.name / root.name
+        assert (private / "golden.yaml").read_text() == "private-answer-binding"
+        assert (root / "call.json").read_text() == "public-call-abi"
+
+    monkeypatch.setattr(core_aten_capsules, "load_private", verify)
+    effective, record = CI.stage(run, te, bundle, contract=contract)
+    frozen = run / "private_corpus_input/_private/public/member/golden.yaml"
+    assert frozen.read_bytes() == (answers / "golden.yaml").read_bytes()
+    assert frozen.stat().st_ino != (answers / "golden.yaml").stat().st_ino
+    assert not frozen.stat().st_mode & 0o077
+    assert effective["allowed"] == bundle["allowed"]
+    assert record["content_sha256"]

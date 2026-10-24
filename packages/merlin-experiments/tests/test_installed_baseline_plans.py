@@ -474,3 +474,18 @@ def test_older_baseline_without_treatment_selection_retains_default(baseline):
         assert argv[index + 1] == "baseline"
         del argv[index : index + 2]
     assert preflight(plan)["configuration_ready"]
+
+
+def test_phase1_seed_is_a_frozen_operator_input_and_reaches_native_cli(baseline):
+    seed = baseline.parent / "seed"
+    seed.mkdir()
+    (seed / "manifest.yaml").write_text("target: fixture\n")
+    (seed / "compiler.py").write_text("# original operator seed\n")
+    document = yaml.safe_load(baseline.read_text())
+    document["phases"]["1"]["config"]["seed_submission"] = "seed"
+    baseline.write_text(yaml.safe_dump(document))
+    plan = resolve_plan(load_spec(baseline), run_dir=baseline.parent / "run")
+    command = plan["phases"]["1"]
+    assert command["argv"][command["argv"].index("--seed-submission") + 1] == str(seed)
+    assert command["inputs"]["seed_submission"] == str(seed)
+    assert str(seed) in plan["input_paths"].values()

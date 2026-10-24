@@ -1425,9 +1425,14 @@ def record(
 
     merlin_commit = _git(Path(repo_root()), "rev-parse", "HEAD") or UNKNOWN
     merlin_dirty = _git(Path(repo_root()), "status", "--porcelain")
+    source_label = merlin_commit + (
+        "+unverified" if merlin_dirty is None else "+dirty" if merlin_dirty else ""
+    )
     out: dict[str, Any] = {
+        "merlin_source_label": source_label,
         "merlin": {
             "commit": merlin_commit,
+            "source_label": source_label,
             "dirty_files": (
                 len([line for line in merlin_dirty.splitlines() if line.strip()]) if merlin_dirty is not None else -1
             ),

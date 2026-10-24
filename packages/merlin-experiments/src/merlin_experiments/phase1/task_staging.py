@@ -39,6 +39,112 @@ class TaskStagingConfig:
     drop_tools: tuple[str, ...] = ()
     shared_pass_requirement: dict | None = None
     shared_pass_library: object | None = None
+    objective: str = "correctness"
+
+
+def task_objective_block(config: TaskStagingConfig) -> str:
+    if config.objective == "correctness":
+        return ""
+    if config.objective != "device-coverage":
+        raise ValueError("unknown authoring objective")
+    return (
+        "\n\n## Device coverage objective\n\n"
+        "Full-call correctness remains required for every scored capsule. Capsules explicitly admitting either lane "
+        "may pass through correct host fallback. Device coverage is counted separately and requires source-bound "
+        "admitted calls and actual executed instruction evidence. Maximize spec_qualified_device_pass within the fixed "
+        "wall budget; all-host correctness and READY do not end this run early. Functional pass remains a correctness "
+        "result, not a claim of maximal device coverage. Preserve the frozen software specification, numeric policy, "
+        "and oracle; this objective grants no additional device routes or formats.\n"
+        "In source-bound provider mode, host fallback uses trusted Merlin host lowering; submitted host LLVM text "
+        "is not executed or qualified. The submitted device catalog remains source-bound. The harness grades the "
+        "final current workspace package, without selecting or restoring an earlier best snapshot. Retain your "
+        "best fully correct device-coverage implementation in the final workspace.\n"
+        "The device_lane_scored_pass counter measures ordinary full-call correctness plus executed device evidence; "
+        "it does not certify software-spec numerical qualification. The separate spec_qualified_device_pass counter "
+        "counts only trusted, source-bound selected-policy qualification; device_unqualified_pass records correct "
+        "device executions without that qualification. Missing proof earns no qualified credit. Qualification requires "
+        "source-selected numeric admission, the checked emitted schedule, the selected contract's declared internal "
+        "MAC precision and partial-sum bounds, accumulator bounds, and contract-required intermediate/readout "
+        "references. A wrapping widening/truncation proof preserves final modulo bytes but does not discharge "
+        "those internal arithmetic/readout obligations.\n"
+        "If the selected numeric policy is spec_int8: require its existing exact raw i32 accumulator and readout "
+        "references; for native contractions retain the caveat when host int8 narrowing is not declared. "
+        "If the selected numeric policy is int8_w8a8: that existing path remains diagnostic. "
+        "Explicitly numeric-prepared capsules retain their mandatory reference checks; "
+        "host fallback does not waive them. Correct host fallback cannot supply attributed device evidence "
+        "or qualified device credit. Selected-policy qualification "
+        "is not original-FP32 equivalence, full-operation "
+        "qualification of undeclared host narrowing, or launch readiness.\n"
+    )
+
+
+def task_full_call_interface_block(config: TaskStagingConfig) -> str:
+    """The submission ABI full-call grading calls: the modules and members the operator-selected
+    execution provider loads from the submitted package, read from its source, plus the harness's
+    own route and evidence rules. Names only: no provider logic, path, golden or case."""
+    import os
+
+    from merlin.targetgen.core_aten_device import submission_interface
+
+    selected = os.environ.get("MERLIN_CORE_ATEN_EXECUTION_PROVIDER")
+    rows = submission_interface(Path(selected)) if selected and Path(selected).is_file() else []
+    if not rows:
+        return ""
+    members: dict = {}
+    for row in rows:
+        entry = members.setdefault((row["module"], row["member"]), {"hooks": set(), "calls": [], "fields": []})
+        entry["hooks"].add(row["hook"])
+        entry["calls"] += [call for call in row["calls"] if call not in entry["calls"]]
+        entry["fields"] += [field for field in row["fields"] if field not in entry["fields"]]
+    reads = {row["hook"]: row["reads"] for row in rows if row["reads"]}
+
+    def shape(member, calls):
+        if not calls:
+            return f"`{member}` (read as an attribute; must be callable)"
+        forms = []
+        for call in calls:
+            args = ", ".join(
+                [f"arg{i + 1}" for i in range(call["positional"])] + [f"{k}=..." for k in call["keywords"]]
+            )
+            result = f" -> unpacked into {call['unpacks']} values" if call["unpacks"] else ""
+            forms.append(f"`{member}({args})`{result}")
+        return "; ".join(forms)
+
+    lines = [
+        "\n\n## Full-call capsule interface (what grading calls in your submission)\n",
+        "Full-call capsules (`operation.attributes.core_aten_contract: full_call_v1`) are not compiled through "
+        "the four manifest commands. The harness lowers the host side itself and asks the selected target "
+        "support to bind device calls from Python modules INSIDE your submission, imported from the "
+        "submission root (module `a.b.c` is the file `submission/a/b/c.py`). The support calls exactly these "
+        "members (derived from the selected support, so this is the complete call surface):\n",
+        "| module | member, as called | result fields the support reads | support step |",
+        "|---|---|---|---|",
+    ]
+    for (module, member), entry in sorted(members.items()):
+        fields = ", ".join(f"`{field}`" for field in entry["fields"]) or "-"
+        hooks = ", ".join(sorted(entry["hooks"]))
+        lines.append(f"| `{module}` | {shape(member, entry['calls'])} | {fields} | {hooks} |")
+    lines.append("\n`[i]key` is a key of the i-th unpacked value (0-based).")
+    for hook, files in sorted(reads.items()):
+        lines.append(
+            f"After step `{hook}` the support reads {', '.join(f'`{f}`' for f in files)} from its work directory."
+        )
+    lines.append(
+        "\nRoute selection (harness rule): a `spec_int8` capsule whose trusted numeric admission has no "
+        "quantized or native contraction but admits exact non-contraction sites is offered to the support's "
+        "region offload (`core_aten_offload` step); every other device capsule goes to the support's "
+        "contraction `routing` step. A region offload must return (rewritten model, C shim source, kernel "
+        "object, manifest) whose manifest JSON lists a nonempty `bindings` array (recorded as "
+        "`region_offload.json`); a contraction catalog builder returns (manifest path, object path) and the "
+        "build records `device_signatures.json`. A device capsule passes only if one of those records binds "
+        "calls and the run retires at least one device instruction; a declined route is a failure for a "
+        "capsule whose lane is `device`. These modules run in an isolated build sandbox with no network: it "
+        "holds your submission, the prepared program's public inputs and, read-only, the support, Merlin and "
+        "the toolchains, but no capsule answers or truth. They must not import `merlin`; grading runs the "
+        "linked image the sandbox returns, and a failure there reaches feedback as one short line without "
+        "paths.\n"
+    )
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -592,6 +698,8 @@ def _build_task(
             body += "\n\n---\n\n# Starter plan / approach for THIS arm (read this)\n\n" + starter
         body += task_runtime_scope_block(_te(), sandbox, context=context, scope=task_scope)
         body += task_tool_inventory_block(config)
+        body += task_objective_block(config)
+        body += task_full_call_interface_block(config)
         body = append_general_compiler_contract(body)
         if arm == "merlin_assisted":
             add = (bdir / "TASK_ADDENDUM.md").read_text() if (bdir / "TASK_ADDENDUM.md").exists() else ""
@@ -659,6 +767,8 @@ def _build_task(
     _ckpt = max(CR.qa_checkpoint_adapters(_te().target, _te().sim_via) or {"L3": 1})
     pilot += task_runtime_scope_block(_te(), sandbox, context=context, scope=task_scope)
     pilot += task_tool_inventory_block(config)
+    pilot += task_objective_block(config)
+    pilot += task_full_call_interface_block(config)
     pilot = append_general_compiler_contract(pilot)
     pilot += (
         "\n\n## Grading tiers (READ THIS)\n"

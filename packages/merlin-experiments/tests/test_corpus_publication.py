@@ -54,6 +54,8 @@ def test_explicit_historical_overlay_rejects_held_out_before_copying(tmp_path, m
     baseline.mkdir(parents=True)
     generated.mkdir()
     _capsule(baseline if source == "baseline" else generated / "isa", {"model": _HELD_OUT})
+    if source == "baseline":  # a release always carries generated members; only the overlay is held out
+        _capsule(generated / "isa", {"operation": {"op": "matmul"}})
     target = SimpleNamespace(
         capsule_corpus=baseline, workload_spec={"models": [_HELD_OUT]},
         graded_roots=lambda: [baseline], hidden_roots=lambda: [], perf_roots=lambda: [],

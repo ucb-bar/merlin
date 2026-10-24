@@ -8,12 +8,24 @@ message; nothing here ever silently accepts a malformed artifact.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 
 class ContractViolation(ValueError):
     """A contract artifact failed schema validation (fail-closed)."""
+
+
+@lru_cache(maxsize=256)
+def _checked_validator(schema_text: str):
+    """Check each exact schema once; keep per-artifact validators independent."""
+    import jsonschema
+
+    schema = json.loads(schema_text)
+    cls = jsonschema.validators.validator_for(schema)
+    cls.check_schema(schema)
+    return cls
 
 
 def contract_dir(override: str | Path | None = None) -> Path:
@@ -64,7 +76,12 @@ def validate(obj: Any, name: str, *, contract: str | Path | None = None) -> None
     # ENABLES the operand-level checks that previously crashed; it does not weaken validation.
     schema.pop("$id", None)
     try:
-        jsonschema.validate(obj, schema)
+        cls = _checked_validator(json.dumps(schema, sort_keys=True))
+        # Match jsonschema.validate's error selection, without repeating the
+        # metaschema check for every capsule of an unchanged contract.
+        error = jsonschema.exceptions.best_match(cls(schema).iter_errors(obj))
+        if error is not None:
+            raise error
     except jsonschema.ValidationError as e:
         loc = "/".join(str(p) for p in e.absolute_path) or "<root>"
         raise ContractViolation(f"{name} schema violation at {loc}: {e.message}") from e

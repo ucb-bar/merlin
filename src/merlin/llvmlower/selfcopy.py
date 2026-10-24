@@ -107,6 +107,8 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
 
     passes = [p for p in pipeline.split(',') if p]
     if not passes:
+        if erase or mid or late or post_openmp or pre_generalize:
+            raise RuntimeError('rewrites requested but the pipeline is empty')
         return
     if pre_generalize:
         marker = '__merlin_targeted_named_broadcast_fold__'
@@ -122,6 +124,8 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
     want_split = bool(erase) or bool(mid)
     k = next((i for i, p in enumerate(passes) if 'buffer-loop-hoisting' in p), -1) if want_split else -1
     if k < 0:
+        if want_split:
+            raise RuntimeError('erase/mid rewrite requested but buffer-loop-hoisting anchor is absent')
         _late_split(passes)
         return
     # ...hoisting, canonicalize, cse -- but NEVER past the pass that lowers linalg to loops. A mid

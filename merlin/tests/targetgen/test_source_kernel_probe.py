@@ -598,7 +598,11 @@ def test_outline_requires_selected_same_target_resident_class_and_sw_declaration
                                            capability_contract=no_command_buffer)
     assert no_interface["candidates"] == []
     assert "command_buffer" in no_interface["refused"][0]["reason"]
-    host_only = gemmini_spec.replace(b"placement: accelerator", b"placement: host", 1)
+    import yaml
+
+    host_document = yaml.safe_load(gemmini_spec)
+    host_document["operations"]["contraction"]["placement"] = "host"
+    host_only = yaml.safe_dump(host_document, sort_keys=False).encode()
     refused = outline_integer_matmuls(model, target="gemmini", software_spec=host_only,
                                       capability_contract=gemmini_contract)
     assert refused["candidates"] == []

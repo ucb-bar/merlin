@@ -60,7 +60,7 @@ def test_the_targets_machine_registry_is_valid_data():
     assert machines["batched_board"]["kind"] == "batched" and machines["batched_board"]["timing"] in machines
     assert machines["batched_board"]["timing"] == "full_u250_board"
     board = machines[machines["batched_board"]["timing"]]
-    assert board["hw_config"] == "alveo_u250_firesim_gemmini_rocket_30mhz"
+    assert board["hw_config"] == "alveo_u250_firesim_gemmini_rocket_default"
     assert board["program_header_sha256"] == "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
     assert machines["lean_u250_board"]["hw_config"] != board["hw_config"]
     assert board["queue_command"][:7] == ["env", "-u", "HOME", "-u", "USER", "-u", "LOGNAME"]

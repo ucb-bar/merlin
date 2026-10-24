@@ -22,10 +22,11 @@ import yaml
 from merlin.common.cpu_pool import AUXILIARY, shared_compute_pool, with_priority
 from merlin.common.tree_hash import hash_tree
 from merlin.targetgen.target_experiment import load_target_experiment
+from merlin.targetgen.tier_policy import required_tiers
 from merlin_experiments.phase1 import oot_history as OH
 from merlin_experiments.phase1 import run_inputs as RI
 from merlin_experiments.phase1 import treatments as T
-from merlin_experiments.phase1.context import InvocationContext, readback_kwargs
+from merlin_experiments.phase1.context import InvocationContext, oracle_kwargs, readback_kwargs
 from merlin_experiments.phase1.feedback import lifecycle as FL
 from merlin_experiments.phase1.feedback import joint_test_scope as JTS
 
@@ -154,9 +155,9 @@ def cert_tiers_beyond_loop(
 
     try:
         te = load_target_experiment(context.descriptor)
-        ck = _CR.qa_checkpoint_adapters(te.target, te.sim_via, **readback_kwargs(context))
+        ck = _CR.qa_checkpoint_adapters(te.target, te.sim_via, **oracle_kwargs(context))
         loop = _CR.qa_loop_adapters(
-            te.target, te.sim_via, declared_tiers=declared_loop_tiers(policy_roots), **readback_kwargs(context)
+            te.target, te.sim_via, declared_tiers=declared_loop_tiers(policy_roots), **oracle_kwargs(context)
         )
     except Exception:  # noqa: BLE001 — no resolvable checkpoint oracle -> nothing to gate on
         if context.readback_policy is not None:
@@ -174,7 +175,7 @@ def cert_tiers_beyond_loop(
                 doc = yaml.safe_load(cf.read_text()) or {}
             except Exception:  # noqa: BLE001
                 continue
-            mandatory |= set(doc.get("required_oracle_tiers") or [])
+            mandatory |= set(required_tiers(doc) or [])
     return cert_tiers, cert_tiers & mandatory
 
 
@@ -337,7 +338,23 @@ def grade(
     if cand.exists():
         shutil.rmtree(cand.parent)
     _lok, _lwhy = _language_ok(ws / "submission", inputs.arm)
-    if not (ws / "submission" / "manifest.yaml").exists():
+    _indirect = None
+    if (ws / "submission" / "manifest.yaml").exists() and _lok:
+        try:
+            with shared_compute_pool(timeout_s=timeout):
+                RI.copy_candidate_tree(ws / "submission", cand, ignore=RI.SUBMISSION_IGNORED)
+        except RI.IndirectSubmission as exc:
+            _indirect = str(exc)
+    if _indirect is not None:
+        verdict = {
+            "all_pass": False,
+            "n_passed": 0,
+            "n_capsules": 0,
+            "package_failure": {"plane": "schema", "detail": _indirect},
+            "per_capsule": [],
+            "note": "replace every symbolic link or special file in submission/ with an ordinary file.",
+        }
+    elif not (ws / "submission" / "manifest.yaml").exists():
         # ZERO, NOT A PLACEHOLDER. These two stubs are "nothing was graded", and they used to say
         # `n_capsules: 4`, which reads as a real cohort of four: `0/4` appears in the round log
         # identically to a genuine grade, and `per_capsule: []` is the only thing distinguishing them.
@@ -365,7 +382,6 @@ def grade(
         }
     else:
         with shared_compute_pool(timeout_s=timeout):
-            shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
             RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
             snapshot_digest = hash_tree(cand)["sha256"]
         # The harness commits exactly the bytes about to be graded; the agent never touches the repo.
@@ -829,7 +845,7 @@ def fast_grade(
     with shared_compute_pool(timeout_s=timeout):
         if cand.parent.exists():
             shutil.rmtree(cand.parent)
-        shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        RI.copy_candidate_tree(ws / "submission", cand, ignore=RI.SUBMISSION_IGNORED)
         RI.strip_build_state(cand)
     snapshot_digest = hash_tree(cand)["sha256"]
     fruns = run_dir / "_qa_work" / f"fruns_{tick}"
@@ -839,7 +855,7 @@ def fast_grade(
         te.target,
         te.sim_via,
         declared_tiers={"L2"} if joint_control.selected() else declared_loop_tiers(inputs.policy_roots),
-        **readback_kwargs(inputs.context),
+        **oracle_kwargs(inputs.context),
     )
     _, _withheld = cert_tiers_beyond_loop(
         context=inputs.context,
