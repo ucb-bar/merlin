@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from merlin.llvmlower import int_softmax_table, pipeline, toolchain
+from merlin.llvmlower import int_softmax_table, masked_contraction, pipeline, toolchain
 
 SOURCE = """module {
   func.func @add(%a: f32, %b: f32) -> f32 {
@@ -13,6 +13,22 @@ SOURCE = """module {
   }
 }"""
 LAYOUT = "e-p:64:64-i64:64-f64:64-n8:16:32:64-S128"
+
+
+def test_actual_runner_layout_slot(tmp_path):
+    """Default lowering: layout, both copy gates off, the softmax gate last, the masked slot after it."""
+    if not toolchain.m2m_python().is_file():
+        pytest.skip("selected upstream lowering toolchain unavailable")
+    llvm = pipeline.lower_to_llvm_ir(SOURCE, workdir=tmp_path, vectorize=False, data_layout=LAYOUT)
+    record = json.loads((tmp_path / "lowering_recipe.json").read_text())
+    # argv[0] is the Python executable; the runner's sys.argv starts at argv[1].
+    runner_argv = record["commands"][0]["argv"][1:]
+    assert runner_argv[17:] == [LAYOUT, "0", "0", "0"]
+    assert len(runner_argv) == int_softmax_table.ARGV_INDEX + 1 and runner_argv[int_softmax_table.ARGV_INDEX] == "0"
+    # The closed-mask contraction gate is appended only when selected, directly after the softmax gate.
+    assert masked_contraction.ARGV_INDEX == int_softmax_table.ARGV_INDEX + 1
+    assert f'target datalayout = "{LAYOUT}"' in llvm
+    assert record["status"] == "returned"
 
 
 @pytest.mark.parametrize("uniform,contiguous", [(False, False), (True, False), (False, True), (True, True)])

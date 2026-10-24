@@ -72,7 +72,11 @@ def test_focused_full_call_reaches_real_grade_with_original_private_binding(tmp_
     # Package/tool execution is outside this root-selection regression. CG.grade itself, capsule
     # schema/discovery, and the authenticated private/public byte checks remain real.
     monkeypatch.setattr(selfcheck.CG, "source_experiment_env", lambda *a: {})
-    monkeypatch.setattr(selfcheck.CG, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False))
+    tool = submission / "tool"
+    tool.write_text("")
+    monkeypatch.setattr(
+        selfcheck.CG, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False, tool=tool)
+    )
     monkeypatch.setattr(selfcheck.CG, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(selfcheck.CG, "build_package", lambda *a, **k: None)
     monkeypatch.setattr(selfcheck.CR, "require_candidate_product_scope", lambda *a, **k: None)
