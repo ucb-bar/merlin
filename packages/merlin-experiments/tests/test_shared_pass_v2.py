@@ -240,7 +240,9 @@ def test_controller_builds_original_v2_requirement_before_admission(tmp_path, mo
     )
     monkeypatch.setattr(runtime_environment, "applied_environment", lambda *a: nullcontext())
     options = parse_options(["--run-id", "neutral", "--model", "explicit", "--no-oracle"])
-    context = SimpleNamespace(readback_policy=None, descriptor=tmp_path / "descriptor", target="neutral")
+    context = SimpleNamespace(
+        readback_policy=None, candidate_policy=None, descriptor=tmp_path / "descriptor", target="neutral"
+    )
     required = ("multi_output_fusion", "buffering_pipelining")
     assert (
         controller.run(
