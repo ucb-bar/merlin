@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: runtime
 last_verified: 2026-10-10
-related: [phase0_specification, target_resolution, whole_model_on_accelerator]
+related: [phase0_specification, target_resolution, whole_model_on_accelerator, fased_memory_timing]
 code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/targetgen/program_engine_policy.py, src/merlin/targetgen/program_oracle.py, src/merlin/targetgen/mem_perturb.py, src/merlin/targetgen/load_order.py]
 ---
 
@@ -212,4 +212,27 @@ The result carries an `order_check` record whose `status` is `static_clear`, `or
 (the target derives no accumulator layout) or `error`. `order_stable` is evidence, not proof: the seeds
 sample the schedule space, they do not cover it. `order_sensitive` is a statement about the program
 under the ordering freedom AXI4 grants, not a claim that a particular chip reorders those requests.
+
+## Time memory the way a FireSim board does (opt-in)
+
+The same engines differ from a FireSim board in memory TIMING too. `mm_magic_t` answers an L2 miss in
+about 1 cycle. A bitstream elaborated with FASED's default memory model answers in a fixed
+`read_latency`, 30 on the pinned Gemmini board, with at most 16 reads outstanding. So latency-exposed
+schedules look cheaper on the simulator than on the board. The variant built above also carries a
+cycle-faithful copy of that FASED pipe (`mm_latency_pipe_t`), off unless asked for:
+
+1. Build the variant exactly as in step 1 above. Its receipt's `models` table lists `latency_pipe`. An
+   engine built before the pipe existed does not, and it ignores the pipe's knobs.
+2. Run under a pinned bitstream's memory timing, and in order for the A/B:
+   `merlin-target-tools mem-model-run --emulator FRESH_DIR/emulator --elf PROG --firesim-artifact BITSTREAM_PIN`
+   `merlin-target-tools mem-model-run --emulator FRESH_DIR/emulator --elf PROG --in-order`
+   The timing comes from the bitstream pin's `memory_model` in `merlin/contract/hardware_pins.yaml`.
+   A bitstream without one is refused, never defaulted.
+3. Read cycles only from a record whose `model_confirmed` is true. That means the console's factory line
+   names the model the run asked for. `mem-model-run` exits 2 when it does not.
+
+This makes the simulator agree with the board's memory MODEL. It is not a DRAM model, and the board's
+other differences remain, for example its narrower host link. Keep host calls outside timed regions. See
+[fased_memory_timing](../design/fased_memory_timing.md) for what is reproduced, the evidence for the
+pinned values, and how agreement with FASED's Chisel is tested.
 
