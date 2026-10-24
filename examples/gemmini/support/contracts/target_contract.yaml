@@ -186,7 +186,21 @@ encoding:
   # compiler input, not a property Merlin may infer from RoCC transport. Other declared classes
   # (accumulate and hardware-loop alternatives) require separate operation-specific capsules before
   # they can be claimed as covered; adding them to every matmul would falsely reject valid kernels.
-  corpus_issue_order: [FLUSH, CONFIG_EX, CONFIG_LD, MVIN, CONFIG_ST, PRELOAD, COMPUTE_PRELOADED, MVOUT]
+  corpus_issue_order: [FLUSH, CONFIG_EX, CONFIG_LD, MVIN, MVIN3, CONFIG_ST, PRELOAD, COMPUTE_PRELOADED, MVOUT]
+  # A class in the issue order that only SOME operations owe. MVIN3 is the int32 accumulator-seed
+  # load (load state 2 at shrink = 0, the full-width path with no scale unit; `accumulator_seed_load`
+  # in software-spec.yaml), so it is owed by a contraction whose readout adds a bias, and by no
+  # other operation: demanding it of every matmul would reject valid bias-free kernels.
+  stage_scoped_classes:
+    MVIN3: [bias_add, bias]
+  # OTHER FORMS THAT DO A REQUIRED CLASS'S WORK. Either form seeds a bias: the full-width MVIN3, or a
+  # plain MVIN whose local address selects the accumulator (the decoded `is_acc_addr` flag below),
+  # which writes the bias row into the accumulator before the contraction accumulates onto it. Both are
+  # RTL-legal, so a bias capsule's MVIN3 requirement is met by either; a capsule that must exercise the
+  # MVIN3 form itself says so with `expected.strict_classes`.
+  class_alternatives:
+    MVIN3:
+      - {class: MVIN, decoded: {is_acc_addr: true}}
   # WHICH CLASSES A HARDWARE LOOP DOES THE WORK OF. A capsule declares the instruction classes its
   # operation needs; a design with a loop FSM performs several of them with ONE instruction, so a
   # program that uses the loop is not missing them. Without this a convolution lowered the way this
@@ -197,10 +211,12 @@ encoding:
   # 16-21 then 15, carrying the DRAM pointers for input, weights, bias and output plus the loop
   # bounds, so the movement and the multiply-accumulate are the loop's own work; the vendor's
   # `tiled_conv_auto` emits exactly this and no per-element host gather. `gemmini_loop_ws` (funct 8)
-  # is the same statement for a matmul. Codes are the RTL-derived ones named above.
+  # is the same statement for a matmul. Both loops also issue the bias load themselves, as MVIN3
+  # (LOAD3_CMD: LoopMatmul.scala:292 for D, LoopConv.scala:159 for the bias). Codes are the RTL-derived
+  # ones named above.
   class_subsumes:
-    LOOP_CONV: [MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT]
-    LOOP_WS: [MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT]
+    LOOP_CONV: [MVIN, MVIN3, PRELOAD, COMPUTE_PRELOADED, MVOUT]
+    LOOP_WS: [MVIN, MVIN3, PRELOAD, COMPUTE_PRELOADED, MVOUT]
 # RoCC OPERAND ROLES — what each decoded field of each instruction class MEANS, consumed by the generic
 # RoCC semantics (merlin.targetgen.rocc.semantics). Bit POSITIONS and WIDTHS are never written here: a
 # field names a bundle + field of the CIRCT-extracted `register_bundle_layouts` fact (this target's own

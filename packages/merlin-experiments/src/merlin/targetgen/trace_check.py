@@ -41,8 +41,11 @@ def requirements_complete(observation) -> bool:
     qualification just because the separately observed trace status is passing.
     Applicability and original capsule/source ownership remain caller-owned.
     """
-    return (isinstance(observation, dict) and observation.get("status") == "pass"
-            and observation.get("trace_requirement_status") in (None, "pass"))
+    return (
+        isinstance(observation, dict)
+        and observation.get("status") == "pass"
+        and observation.get("trace_requirement_status") in (None, "pass")
+    )
 
 
 def _bound_trace_view(trace, target):
@@ -66,7 +69,7 @@ def _bound_trace_view(trace, target):
     if trace.get("abi") != {"custom_opcode": hex(isa["CUSTOM_OPCODE"]), "funct3": hex(isa["FUNCT3"])}:
         raise ValueError("structural trace transport differs from the original selected ISA")
     contract = backend._data()["contract"]
-    roles = ((contract.get("corpus_instruction_roles") or {}).get("by_role") or {})
+    roles = (contract.get("corpus_instruction_roles") or {}).get("by_role") or {}
     if type(roles) is not dict:
         raise ValueError("selected corpus instruction roles are malformed")
     roster = set(isa["FUNCT_CLASS"].values())
@@ -188,6 +191,106 @@ def _subsumption(target: str) -> dict:
         if isinstance(covered, (list, tuple)) and covered:
             out[str(name)] = frozenset(str(c) for c in covered)
     return out
+
+
+def alternatives_for(target: str | None) -> dict:
+    """``{class: ((class, {decoded field: value}), ...)}``: other forms that do a class's work.
+
+    Read from the target's own ``encoding.class_alternatives``. Where an RTL-legal alternative performs
+    a required class's work -- an accumulator seed issued as a plain load into an accumulator address
+    instead of the dedicated full-width seed load, say -- the target names the alternative instruction
+    class and the decoded field values that identify it. Nothing here names a class or a field; a
+    target that declares none gets exactly the old behaviour.
+    """
+    if not target:
+        return {}
+    return _alternatives(str(target))
+
+
+@functools.cache
+def _alternatives(target: str) -> dict:
+    try:
+        from .target_registry import load_contract
+
+        declared = ((load_contract(target) or {}).get("encoding") or {}).get("class_alternatives") or {}
+    except Exception:  # noqa: BLE001 -- a target whose contract cannot be read declares nothing
+        return {}
+    return parse_alternatives(declared)
+
+
+def parse_alternatives(declared) -> dict:
+    """Normalize a ``class_alternatives`` declaration; a malformed one is refused, never half-read."""
+    if not isinstance(declared, dict):
+        raise ValueError("encoding.class_alternatives must map a class to a list of alternative forms")
+    out: dict[str, tuple] = {}
+    for name, forms in declared.items():
+        if not isinstance(forms, list) or not forms:
+            raise ValueError(f"encoding.class_alternatives.{name} must be a non-empty list")
+        parsed = []
+        for form in forms:
+            if (
+                not isinstance(form, dict)
+                or set(form) - {"class", "decoded"}
+                or not isinstance(form.get("class"), str)
+                or not form["class"]
+                or not isinstance(form.get("decoded") or {}, dict)
+            ):
+                raise ValueError(f"encoding.class_alternatives.{name}: each form is {{class, decoded}}")
+            parsed.append((form["class"], dict(form.get("decoded") or {})))
+        out[str(name)] = tuple(parsed)
+    return out
+
+
+def _alternative_doer(instructions: list, forms: tuple) -> str | None:
+    """The first alternative form an instruction in the trace matches, as text, or ``None``.
+
+    A decoded field is compared as data and must be PRESENT with the declared value: an instruction
+    whose field did not decode does not satisfy the alternative (fail closed).
+    """
+    for klass, fields in forms:
+        for row in instructions:
+            decoded = row.get("decoded") or {}
+            if row.get("class") == klass and all(k in decoded and decoded[k] == v for k, v in fields.items()):
+                detail = ", ".join(f"{k}={v}" for k, v in sorted(fields.items()))
+                return f"{klass}" + (f" ({detail})" if detail else "")
+    return None
+
+
+def declared_class_coverage(
+    expected: dict,
+    instructions: list,
+    *,
+    observed: set | None = None,
+    subsumes: dict | None = None,
+    alternatives: dict | None = None,
+) -> tuple[list[str], list[str]]:
+    """``(declared classes the instructions do not cover, notes on how others were covered)``.
+
+    THE one comparison of a capsule's declared classes against an emitted stream, shared by
+    :func:`check` and any test that compares the two directly. A declared class is covered when an
+    instruction of that class is emitted; when an emitted class the target says subsumes it is
+    (``subsumes``); or when its declared alternative form is emitted with the declared decoded values
+    (``alternatives``, :func:`alternatives_for`) -- except for a class the capsule lists in
+    ``expected.strict_classes``, which only its own form covers.
+    """
+    present = {str(row.get("class")) for row in instructions}
+    seen = present | set(observed or ())
+    strict = set(expected.get("strict_classes") or ())
+    missing: list[str] = []
+    notes: list[str] = []
+    for req in expected.get("instruction_classes", []):
+        if req in seen:
+            continue
+        doers = sorted(u for u in present if req in set((subsumes or {}).get(u) or ()))
+        if doers:
+            notes.append(f"{req} is performed here by {', '.join(doers)}")
+            continue
+        doer = None if req in strict else _alternative_doer(instructions, (alternatives or {}).get(req) or ())
+        if doer is not None:
+            notes.append(f"{req} is performed here by the declared alternative {doer}")
+            continue
+        missing.append(req)
+    return missing, notes
 
 
 def movement_bound_for(target: str | None) -> dict:
@@ -332,6 +435,7 @@ def check(
     subsumes: dict | None = None,
     target: str | None = None,
     lowered_module=None,
+    alternatives: dict | None = None,
 ) -> dict:
     """Validate ``trace`` against capsule ``expected`` (+ optional command buffer).
 
@@ -363,17 +467,16 @@ def check(
         violations.append(f"trace contains {n} UNKNOWN instruction(s) (fail-closed decode)")
 
     # 1. required classes present -- or performed by an instruction the target says does their work
-    covered: set[str] = set()
-    for used in present:
-        covered |= set((subsumes or {}).get(used) or ())
-    for req in expected.get("instruction_classes", []):
-        if req in observed_classes:
-            continue
-        if req in covered:
-            doers = sorted(u for u in present if req in set((subsumes or {}).get(u) or ()))
-            notes.append(f"{req} is performed here by {', '.join(doers)}")
-            continue
-        violations.append(f"required instruction class missing: {req}")
+    # A class the target says another FORM also performs (``alternatives``, read from its contract when
+    # not passed) is satisfied by that form -- unless the capsule demands the class in exactly its own
+    # form (``expected.strict_classes``), which is how a capsule keeps a declared class requirable.
+    if alternatives is None:
+        alternatives = alternatives_for(target)
+    missing, satisfied = declared_class_coverage(
+        expected, ins, observed=observed_classes, subsumes=subsumes, alternatives=alternatives
+    )
+    notes.extend(satisfied)
+    violations.extend(f"required instruction class missing: {req}" for req in missing)
 
     # 2. forbidden classes absent
     for forb in expected.get("forbidden_classes", []):
@@ -429,8 +532,10 @@ def check(
             violations.append(f"mode {mode} requires an unavailable selected operand protocol")
     elif binding is not None:
         for mode, classes_needed, field in (
-            ("i8", {"MVOUT"}, "readout"), ("relu", {"CONFIG_ST"}, "relu"),
-            ("acc_scale", {"CONFIG_ST"}, "acc_scale"), ("k_accumulate", {"PRELOAD"}, "accumulate"),
+            ("i8", {"MVOUT"}, "readout"),
+            ("relu", {"CONFIG_ST"}, "relu"),
+            ("acc_scale", {"CONFIG_ST"}, "acc_scale"),
+            ("k_accumulate", {"PRELOAD"}, "accumulate"),
         ):
             if not modes.get(mode):
                 continue
@@ -449,6 +554,7 @@ def check(
             ):
                 unresolved_fields.append("resident_reuse")
                 violations.append("mode resident_reuse has unresolved original load identity/extent fields")
+
     def _any(pred) -> bool:
         return any(pred(i) for i in ins)
 
@@ -459,10 +565,16 @@ def check(
         if not _any(lambda i: i["class"] == "CONFIG_ST" and i.get("decoded", {}).get("relu") is True):
             violations.append("mode relu declared but no CONFIG_ST sets relu activation")
     if modes.get("acc_scale"):
+
         def _scale_update(instruction):
             value = instruction.get("decoded", {}).get("acc_scale")
-            return (instruction["class"] == "CONFIG_ST" and type(value) in (int, float)
-                    and (binding is None or type(value) is float) and math.isfinite(value) and value != 1.0)
+            return (
+                instruction["class"] == "CONFIG_ST"
+                and type(value) in (int, float)
+                and (binding is None or type(value) is float)
+                and math.isfinite(value)
+                and value != 1.0
+            )
 
         # All-ones can be a keep-state sentinel whose f32 view is NaN. It is
         # not an observed scale update, nor is any nonfinite bit pattern.
@@ -530,8 +642,10 @@ def check(
             except Exception as error:
                 findings.append(f"legacy tile-strategy observation unavailable: {error}")
         tile_advisory = {
-            "required": False, "strategy": "legacy_16wide_resident_matmul",
-            "status": "observed" if available else "unavailable_projection", "findings": findings,
+            "required": False,
+            "strategy": "legacy_16wide_resident_matmul",
+            "status": "observed" if available else "unavailable_projection",
+            "findings": findings,
         }
 
     # advisory DRAM-address provenance (parameterized by the harness address model; no-op if unknown)
@@ -550,8 +664,13 @@ def check(
         out["tile_schedule_advisory"] = tile_advisory
     if binding is not None:
         out["trace_requirement_status"] = (
-            "unavailable_protocol" if unresolved_modes else "unavailable_fields" if unresolved_fields
-            else "failed" if violations else "pass"
+            "unavailable_protocol"
+            if unresolved_modes
+            else "unavailable_fields"
+            if unresolved_fields
+            else "failed"
+            if violations
+            else "pass"
         )
         out["unavailable_requirements"] = sorted(set(unresolved_modes + unresolved_fields))
     if notes:
@@ -590,11 +709,19 @@ def _operand_identity(value) -> tuple | None:
     if isinstance(value, dict):
         if value.get("kind") == "const" and type(value.get("raw")) is int:
             return ("lit", value["raw"])
-        if (value.get("kind") == "argbase" and type(value.get("arg_index")) is int
-                and value["arg_index"] >= 0 and type(value.get("offset")) is int):
+        if (
+            value.get("kind") == "argbase"
+            and type(value.get("arg_index")) is int
+            and value["arg_index"] >= 0
+            and type(value.get("offset")) is int
+        ):
             return ("argbase", value["arg_index"], value["offset"])
-        if (value.get("kind") == "global" and type(value.get("symbol")) is str
-                and value["symbol"] and type(value.get("offset")) is int):
+        if (
+            value.get("kind") == "global"
+            and type(value.get("symbol")) is str
+            and value["symbol"]
+            and type(value.get("offset")) is int
+        ):
             return ("global", value["symbol"], value["offset"])
         return None
     return ("lit", value) if type(value) in (int, str) else None

@@ -22,6 +22,7 @@ from typing import Any
 from merlin.targetgen.capsule_dram import dtype_bits
 
 from .capsule_intent import _semantic_block as _semantic_block
+from .column_sum_capsule import build_column_sum, column_sum_program
 
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
 # on a target — a target selects its dtypes via its compute-unit contract.
@@ -453,6 +454,19 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
     if missing:
         raise ValueError(f"encoding.corpus_issue_order names undeclared instruction classes: {sorted(missing)}")
     classes = list(sequence)
+    # A class the target scopes to EPILOGUE STAGES is owed only by a capsule carrying one of them (an
+    # accumulator-seed load by a contraction whose readout adds a bias). Which class and which stages are
+    # the target's own declaration; nothing here names either.
+    scoped = enc.get("stage_scoped_classes") or {}
+    if not isinstance(scoped, dict) or any(
+        not isinstance(stages, list) or not stages or any(not isinstance(s, str) or not s for s in stages)
+        for stages in scoped.values()
+    ):
+        raise ValueError("encoding.stage_scoped_classes must map classes to non-empty lists of stage names")
+    unordered = set(scoped) - set(classes)
+    if unordered:
+        raise ValueError(f"encoding.stage_scoped_classes names classes outside corpus_issue_order: {sorted(unordered)}")
+    scoped = {cls: frozenset(stages) for cls, stages in scoped.items()}
 
     def _from_encoding(*, op="matmul", output_dtype=None, epilogue=(), movement=False):
         # ⚠️ NOT `list(classes)` unconditionally. This deriver was written for the matmul family and is
@@ -473,9 +487,11 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
         from merlin.targetgen import semantic_families as _sf
 
         prims = _sf.primitives_of(_sf.from_op(op) or "")
+        carried = {str(stage) for stage in epilogue or ()}
+        owed = [c for c in classes if c not in scoped or scoped[c] & carried]
         if movement or (prims and "contraction" not in prims):
-            return [c for c in classes if _sf.from_isa_class(c) != "contraction"]
-        return list(classes)
+            return [c for c in owed if _sf.from_isa_class(c) != "contraction"]
+        return owed
 
     return _from_encoding
 
@@ -2454,10 +2470,14 @@ def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 
 
 BUILDERS["activation_matmul"] = build_activation_matmul
+BUILDERS["column_sum"] = build_column_sum  # an integer standalone sum reduction (column_sum_capsule)
 
 #: Builders whose capsule is a generic component program derived from the entry's own extents.
+#: A component program is signed-integer only (``component_program._integer_dtype``), so these ops are
+#: gradeable only in the integer regime.
 COMPONENT_PROGRAM_SOURCES: dict[str, Callable[[dict, CorpusBinding], dict]] = {
     "activation_matmul": activation_matmul_program,
+    "column_sum": column_sum_program,
 }
 
 
@@ -2498,8 +2518,12 @@ def _fused_families(entry: dict, family: str | None, binding: CorpusBinding) -> 
         if sfam is None:
             unresolved.add(stage)
             continue
-        cap = cap_map.get(sfam)
-        if cap is not None and family in (getattr(cap, "composed_with", ()) or ()):
+        # Any declared row fused behind this capsule's family counts: a family declared both fused and
+        # standalone (for a narrower reduction kind) folds its `composed_with` away, yet the fused row is
+        # still the capability this epilogue exercises.
+        from merlin.targetgen.compute_units import fused_producers
+
+        if family in fused_producers(cap_map.get(sfam)):
             fused.add(sfam)
     return fused, unresolved
 

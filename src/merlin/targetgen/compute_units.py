@@ -150,6 +150,21 @@ class SemanticCapability:
         return self.alternatives or (self,)
 
 
+def fused_producers(cap: Any) -> tuple[str, ...]:
+    """The producers ANY declared row of ``cap`` runs its family fused behind, in declaration order.
+
+    Read per row rather than from the fold. The fold INTERSECTS ``composed_with``, so a family one unit
+    declares both fused (behind a contraction) and standalone for a narrower reduction kind folds to
+    ``()`` -- correct for "can it run standalone at all", wrong for "does the device have a fused-only
+    form of it", which is what a fused-only coverage or requirement question asks. Empty when no row is
+    fused-only. Accepts any object with ``composed_with`` (and optionally ``rows()``).
+    """
+    if cap is None:
+        return ()
+    rows = cap.rows() if callable(getattr(cap, "rows", None)) else (cap,)
+    return tuple(dict.fromkeys(p for row in rows for p in (getattr(row, "composed_with", ()) or ())))
+
+
 #: The closed vocabulary of reduction kinds, the structural classes ``classify_generic`` separates.
 REDUCTION_KINDS: frozenset[str] = frozenset({"sum", "max", "absmax", "other"})
 

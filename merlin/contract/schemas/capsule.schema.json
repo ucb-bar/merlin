@@ -175,6 +175,7 @@
             "scope_chain",
             "component_program",
             "activation_matmul",
+            "column_sum",
             "model"
           ],
           "description": "The workload the capsule asks the backend to compile. Unlike dtype this IS a closed set, because an op is only expressible if the tooling can build its interface MLIR and produce its golden -- the vocabulary is code, not data. Its sources are merlin.targetgen.corpus_spec.BUILDERS (capsule + interface MLIR) and capsule_golden._recompute_golden (integer goldens; float ops carry an independent golden.yaml instead). Adding a builder without adding it here rejects the whole corpus at load, which is why merlin/tests/targetgen/test_capsule_vocabulary.py pins this list against BUILDERS."
@@ -231,6 +232,13 @@
         "instruction_classes": {
           "type": "array",
           "description": "Required instruction classes, DERIVED per-target from the target's own ISA (e.g. gemmini RoCC classes, or a self-hosted ISA's semantic op patterns like MXUMatMul/TensorBaseOffset). Not a fixed enum: the class vocabulary is the target's, so validity is enforced by the per-target derivation (isa_taxonomy) + its coverage checker, not a hardcoded list here.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "strict_classes": {
+          "type": "array",
+          "description": "Required instruction classes this capsule demands in exactly their own form: an alternative form the target declares (encoding.class_alternatives) does not satisfy them. How a capsule keeps a declared class requirable when another RTL-legal form may do its work elsewhere.",
           "items": {
             "type": "string"
           }
