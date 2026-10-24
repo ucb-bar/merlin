@@ -521,6 +521,44 @@ def test_generation_removes_and_records_a_written_member_without_accelerator_pla
     assert mixed.is_dir()
 
 
+_GUARD = {"scored": False, "cohort": "guard", "semantic": {"must_accelerate": False}}
+
+
+def test_unscored_host_guards_are_published_but_other_host_capsules_are_not(tmp_path):
+    import yaml
+    from merlin_experiments.corpus.publication import require_accelerator_placement
+    from merlin_experiments.phase0.generation import withhold_unaccelerated
+    from merlin_experiments.spec import SpecError
+
+    from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
+
+    host = {"status": "admitted", "decisions": [{"placement": "host", "status": "admitted"}], "placements": {"host": 1}}
+    root = tmp_path / "public"
+    for name, extra in (("guard", _GUARD), ("scored", {"scored": True, "cohort": "public"})):
+        (root / name).mkdir(parents=True)
+        document = {"name": name, "label": "public", "kind": "model_slice", "software_screen": host, **extra}
+        (root / name / "capsule.yaml").write_text(yaml.safe_dump(document))
+    with pytest.raises(SpecError, match=r"^1 public capsule\(s\).*scored: no operation"):
+        require_accelerator_placement([root])
+    (root / "scored" / "capsule.yaml").unlink()
+    (root / "scored").rmdir()
+    assert require_accelerator_placement([root]) == 1
+    # A guard declaring required accelerator work is not a host guard.
+    accelerated = {**_GUARD, "semantic": {"must_accelerate": True}}
+    (root / "guard" / "capsule.yaml").write_text(
+        yaml.safe_dump({"name": "guard", "label": "public", "software_screen": host, **accelerated})
+    )
+    with pytest.raises(SpecError):
+        require_accelerator_placement([root])
+
+    written = tmp_path / "model_slices" / "guard"
+    written.mkdir(parents=True)
+    assert withhold_unaccelerated("guard", host, written, capsule=_GUARD) is None and written.is_dir()
+    # A guard keeps its own host grading instead of the provided-host-infrastructure route.
+    assert selected_host_leaf({"kind": "model_slice", "software_screen": host})
+    assert not selected_host_leaf({"kind": "model_slice", "software_screen": host, **_GUARD})
+
+
 _ACT_ACT = ("aligned", "decode", "k_tail")
 
 

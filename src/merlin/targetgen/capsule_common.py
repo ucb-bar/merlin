@@ -897,6 +897,21 @@ def score_lanes(graded: list[dict], score: dict) -> list[dict]:
     return scored
 
 
+def is_unscored_host_guard(capsule: dict | None) -> bool:
+    """Whether a capsule declares itself an unscored host guard (see :func:`score_lanes`).
+
+    A host guard stays on the host by design: it never counts toward the scored total and must pass
+    on the host lane. It grades no accelerator work and owns its own host grading. Read from the
+    capsule's own declaration, never its name.
+    """
+    return (
+        isinstance(capsule, dict)
+        and capsule.get("scored") is False
+        and capsule.get("cohort") == "guard"
+        and (capsule.get("semantic") or {}).get("must_accelerate") is not True
+    )
+
+
 def host_guards_pass(score: dict) -> bool:
     """Every host guard recorded by :func:`score_lanes` passed on the host lane."""
     return score["host_guard_pass"] == score["host_guard_total"]

@@ -52,8 +52,11 @@ def require_accelerator_placement(roots) -> int:
     Host placement is compiled by Merlin's own generic host codegen, so such a capsule would grade none
     of the author's work. The placement read is the one Phase 0 froze into ``software_screen``; a
     capsule without that record is refused as well, because its absence is not evidence of accelerator
+    work. An unscored host guard is admitted: it is host-placed by design and grades no accelerator
     work. Returns the number of public capsules checked.
     """
+    from merlin.targetgen.capsule_common import is_unscored_host_guard
+
     from ..phase0.program_admission import accelerator_placement_refusal
 
     refused, checked = [], 0
@@ -65,6 +68,8 @@ def require_accelerator_placement(roots) -> int:
             if document.get("label") not in PUBLIC_LABELS:
                 continue
             checked += 1
+            if is_unscored_host_guard(document):
+                continue
             reason = accelerator_placement_refusal(document.get("software_screen"))
             if reason is not None:
                 refused.append(f"{document.get('name') or path.parent.name}: {reason}")
