@@ -54,6 +54,7 @@ import torch
 from merlin.targetgen._recipe_quantizer import apply_recipe, CalibrationRefused
 recipe = {
     'schema':'quant_recipe_v1', 'status':'derived', 'families':['contraction'],
+    'runtime_weight_contractions':True,
     'weight':dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-127,quant_max=127),
     'activation':dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-128,quant_max=127,mode='static'),
 }
@@ -193,6 +194,7 @@ require_finite_observer_state(torch.nn.Sequential(minimum_maximum), ObserverBase
 
 recipe = {
     "schema":"quant_recipe_v1", "status":"derived", "families":["contraction"],
+    "runtime_weight_contractions":True,
     "weight":dict(dtype="int8",granularity="tensor",symmetric=True,quant_min=-127,quant_max=127),
     "activation":dict(dtype="int8",granularity="tensor",symmetric=True,quant_min=-128,quant_max=127,mode="static"),
 }

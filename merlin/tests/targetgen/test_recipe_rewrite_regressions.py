@@ -12,6 +12,8 @@ from merlin.targetgen._recipe_quantizer import build_quantizer
 recipe = {
     "schema": "quant_recipe_v1", "status": "derived",
     "families": ["contraction", "operand_sum"],
+    # The contractions below take run-time operands, not stored parameters.
+    "runtime_weight_contractions": True,
     "weight": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
                "quant_min": -127, "quant_max": 127},
     "activation": {"dtype": "int8", "granularity": "tensor", "symmetric": True,

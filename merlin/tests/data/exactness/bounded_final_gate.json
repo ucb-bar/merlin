@@ -1,6 +1,6 @@
 {
   "schema": "merlin.exactness_final_gate.v1",
-  "model2mlir_revision": "26e0373f4cee2a6ac2a5741631494916f33e46ea",
+  "model2mlir_revision": "31fd3989fe44a0cd1cadd24e1aa66b7936d96233",
   "gemmini_mlir_revision": "b78bbca9b5b0e302ecd4fdf499e4d19e83bccd2c",
   "selected_cases": [
     {
@@ -8153,8 +8153,8 @@
   ],
   "source_exports": {
     "model2mlir": {
-      "revision": "26e0373f4cee2a6ac2a5741631494916f33e46ea",
-      "sha256": "647c745a8baf208a7b2556cf7dcab81c4f8d327167e92598435e2160e90e29dc"
+      "revision": "31fd3989fe44a0cd1cadd24e1aa66b7936d96233",
+      "sha256": "9ee32b00b75e3259bd9fc8273187dd799aa8ef4db63a2636de67fcd96e260397"
     },
     "gemmini_mlir": {
       "revision": "b78bbca9b5b0e302ecd4fdf499e4d19e83bccd2c",

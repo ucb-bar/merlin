@@ -29,7 +29,9 @@ def selection():
     resolved, record = resolve_spec(spec, {})
     return dict(
         spec=resolved,
-        host=validate_host_capabilities(load_yaml(repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml")),
+        host=validate_host_capabilities(
+            load_yaml(repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml")
+        ),
         resolution=record,
         identities=dict(
             software_spec={"path": str(base / "software-spec.yaml")},
@@ -271,6 +273,7 @@ from merlin.targetgen.core_aten_w8a8_reference import run_pt2e_reference
 from m2m.capture.pt2e_integerize import integerize_pt2e
 recipe = {
     "schema": "quant_recipe_v1", "status": "derived", "families": ["contraction"],
+    "runtime_weight_contractions": True,
     "weight": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
                "quant_min": -127, "quant_max": 127},
     "activation": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
@@ -301,14 +304,28 @@ open(sys.argv[1], "w").write(text)
     # Exact readout placement requires source-bound provider coverage (tested on real captures).
 
 
-@pytest.mark.parametrize("authority,key", [("spec", "host_f32_elementwise"), ("host", "host_f32_elementwise_exact")])
-def test_readout_requires_authored_multiply_declaration(selection, authority, key):
+def test_readout_requires_authored_multiply_declaration(selection):
     changed = copy.deepcopy(selection)
-    row = next(r for r in changed[authority]["operations"] if r["id"] == key)
+    row = next(r for r in changed["host"]["operations"] if r["id"] == "host_f32_elementwise_exact")
     row["ops"].remove("aten.mul.Tensor")
     site = admission_plan(rank2_module(), changed)["sites"][0]
     assert site["status"] == "refused"
     assert any("step 6" in reason for reason in site["reasons"])
+
+
+def test_host_steps_are_declared_by_host_capabilities_only(selection):
+    # The accelerator software spec does not own host support: the host-placed quantize, cast and
+    # readout multiply are screened against the selected host capabilities alone.
+    (site,) = admission_plan(rank2_module(), selection)["sites"]
+    host_steps = [row for row in site["steps"] if row["step"] in {1, 5, 6} and "host" in row]
+    assert {row["step"] for row in host_steps} == {1, 5, 6}
+    assert all("software" not in row for row in host_steps)
+    accelerator_only = copy.deepcopy(selection)
+    accelerator_only["spec"]["operations"] = [
+        row for row in accelerator_only["spec"]["operations"] if row.get("placement") != "host"
+    ]
+    (site,) = admission_plan(rank2_module(), accelerator_only)["sites"]
+    assert site["status"] == "admitted", site["reasons"]
 
 
 def test_readout_requires_declared_binary32_rounding(selection):
