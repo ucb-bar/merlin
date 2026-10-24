@@ -31,6 +31,19 @@ WHAT A VERDICT MEANS. ``sweep`` runs one ELF under the in-order model and under 
 about the PROGRAM under the ordering freedom the bus protocol grants; it is not a statement that any
 particular chip will reorder those two requests. A clean sweep is evidence, not proof: N seeds sample
 the schedule space, they do not cover it.
+
+THE SAME ENGINE ALSO TIMES MEMORY THE WAY A FIRESIM BOARD DOES. The factory the harness is patched to
+call can build a second opt-in model, ``mm_latency_pipe_t`` (``+mem_latency_pipe=1``): a cycle-faithful
+copy of FASED's latency-bandwidth pipe, the target DRAM model a FireSim bitstream elaborated with
+FASED's default memory model runs. The stock model answers a read one cycle after accepting it; that
+pipe answers a fixed number of cycles later with a bounded number outstanding, so the two disagree on
+every cycle count that reaches DRAM. The pipe's settings are a property of the BITSTREAM, so they are
+read from that bitstream's pinned ``memory_model`` (:func:`pinned_latency_pipe`), never defaulted here.
+A run under it is a TIMING statement about the simulator agreeing with that board's memory model; it is
+not a statement about DRAM, and the board's other differences (its host interface, its clocks) remain.
+The variant still answers in order unless a run asks for a model, and a run that asked for one is
+believed only when the console says the factory built it (:func:`reported_models`): an engine built
+before the pipe existed ignores its knobs and answers in order.
 """
 
 from __future__ import annotations
@@ -41,7 +54,7 @@ import os
 import shlex
 import subprocess
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,16 +65,38 @@ MAGIC_CTOR = "new mm_magic_t("
 FACTORY = "mm_perturb_make"
 MODEL_HEADER = "mm_perturb.h"
 MODEL_SOURCE = "mm_perturb.cc"
+LATENCY_PIPE_HEADER = "mm_latency_pipe.h"
+LATENCY_PIPE_SOURCE = "mm_latency_pipe.cc"
+#: Every model source a variant compiles and links (the factory's own first), and every file it reads.
+MODEL_SOURCES = (MODEL_SOURCE, LATENCY_PIPE_SOURCE)
+MODEL_FILES = (MODEL_HEADER, MODEL_SOURCE, LATENCY_PIPE_HEADER, LATENCY_PIPE_SOURCE)
 RECEIPT_NAME = "build_receipt.json"
 BINARY_NAME = "emulator"
 SCHEMA = "merlin.mem-perturb-engine.v1"
 #: The environment spelling of the knobs (the model reads MERLIN_MEM_PERTURB_<KNOB> when no plusarg names it).
 ENV_PREFIX = "MERLIN_MEM_PERTURB_"
+#: The latency pipe's knobs, in the order they are passed. Plusargs ``+mem_latency_pipe=1`` and
+#: ``+mem_latency_pipe_<knob>=<n>``; environment ``MERLIN_MEM_LATENCY_PIPE`` and ``..._<KNOB>``.
+LATENCY_PIPE_KNOBS = ("read_latency", "write_latency", "max_reads", "max_writes")
+LATENCY_PIPE_PLUSARG = "+mem_latency_pipe"
+LATENCY_PIPE_ENV = "MERLIN_MEM_LATENCY_PIPE"
+#: The ``memory_model.kind`` a pinned artifact declares when it runs FASED's latency-bandwidth pipe -- the
+#: one kind :func:`latency_pipe_knobs` can reproduce exactly. FASED's DRAM models (FCFS, FR-FCFS) and its
+#: LLC model are not this pipe, and a declaration naming one is refused rather than approximated by it.
+FASED_LATENCY_PIPE = "fased_latency_bandwidth_pipe"
+#: The one line the factory logs per memory channel, naming the model it built (mm_perturb.cc).
+MODEL_LINE = "[mem-perturb] model="
 
 
 class PerturbBuildError(RuntimeError):
     """The variant cannot be built as specified. Raised rather than approximated: a variant that
     silently kept the stock memory model would certify nothing while reporting that it had."""
+
+
+class MemoryModelError(ValueError):
+    """A declared memory model this engine cannot reproduce exactly, or a run that did not run under the
+    model it asked for. Raised rather than approximated: a FASED-timed cycle count from an engine that
+    answered in order is a stock count wearing a board's name."""
 
 
 def model_sources_dir() -> Path:
@@ -75,7 +110,7 @@ def _model_sources() -> Path:
     """The model sources, or a refusal naming the one that is absent (an installed wheel does not ship
     them; building a variant needs the source checkout and the simulator's own build tree anyway)."""
     sources = model_sources_dir()
-    for name in (MODEL_HEADER, MODEL_SOURCE):
+    for name in MODEL_FILES:
         if not (sources / name).is_file():
             raise PerturbBuildError(f"the memory model source {sources / name} is absent")
     return sources
@@ -359,17 +394,21 @@ def build_verilator_variant(
     harness_argv = [t if t != str(src) else str(patched) for t in base_compile]
     harness_argv = _relocate(harness_argv, obj_dir, out_dir, {}) + [f"-I{msrc}"]
     _run(harness_argv, out_dir, log)
-    model_argv = [
-        t if t != str(src) else str(msrc / MODEL_SOURCE) for t in _relocate(base_compile, obj_dir, out_dir, {})
-    ]
-    model_obj = out_dir / "mm_perturb.o"
-    model_argv[model_argv.index(str(out_dir / Path(obj).name))] = str(model_obj)
-    model_argv.append(f"-I{msrc}")
-    _run(model_argv, out_dir, log)
+    # Each model source is compiled with the memory harness's own recorded flags, so the models see
+    # exactly the mm.h and the compiler options the harness that constructs them was built with.
+    model_objs: list[Path] = []
+    for name in MODEL_SOURCES:
+        model_argv = [t if t != str(src) else str(msrc / name) for t in _relocate(base_compile, obj_dir, out_dir, {})]
+        model_obj = out_dir / f"{Path(name).stem}.o"
+        model_argv[model_argv.index(str(out_dir / Path(obj).name))] = str(model_obj)
+        model_argv.append(f"-I{msrc}")
+        _run(model_argv, out_dir, log)
+        model_objs.append(model_obj)
 
     link = _relocate(plan.link_line, obj_dir, out_dir, {obj: out_dir / Path(obj).name})
     link[link.index(str(out_dir / plan.output.name))] = str(out_dir / BINARY_NAME)
-    link.insert(link.index(str(out_dir / Path(obj).name)) + 1, str(model_obj))
+    at = link.index(str(out_dir / Path(obj).name)) + 1
+    link[at:at] = [str(o) for o in model_objs]
     _run(link, out_dir, log)
 
     control_rec: dict = {"performed": False}
@@ -393,14 +432,110 @@ def build_verilator_variant(
         "base_simulator": {"path": str(plan.output), "makefile": str(plan.makefile)},
         "memory_harness": {"object": obj, "source": str(src), "source_sha256": _sha(src)},
         "patched_harness_sha256": _sha(patched),
-        "model_sources": {n: _sha(msrc / n) for n in (MODEL_HEADER, MODEL_SOURCE)},
+        "model_sources": {n: _sha(msrc / n) for n in MODEL_FILES},
         "control_relink": control_rec,
         "commands": log,
-        "default_behaviour": "stock mm_magic_t unless +mem_perturb_seed is given",
+        "default_behaviour": "stock mm_magic_t unless +mem_perturb_seed or +mem_latency_pipe=1 is given",
+        # What each opt-in model is selected by. A consumer that needs one checks it is listed here before
+        # spending a run: an engine built before a model existed silently ignores that model's knobs.
+        "models": {
+            "in_order": "default (testchipip mm_magic_t)",
+            "perturbed": "+mem_perturb_seed=<u64> (mm_perturb_t)",
+            "latency_pipe": f"{LATENCY_PIPE_PLUSARG}=1 (mm_latency_pipe_t, FASED latency-bandwidth pipe)",
+        },
         "invocation": derive_invocation(plan, src),
     }
     (out_dir / RECEIPT_NAME).write_text(json.dumps(receipt, indent=1, sort_keys=True))
     return receipt
+
+
+# ---------------------------------------------------------------------------------------------------
+# the FASED latency pipe: a board's memory timing, as data
+# ---------------------------------------------------------------------------------------------------
+
+
+def latency_pipe_knobs(memory_model: Mapping) -> dict[str, int]:
+    """The latency pipe's knobs for a declared ``memory_model``, in :data:`LATENCY_PIPE_KNOBS` order.
+
+    Refuses a declaration of any other ``kind`` and one missing a knob or carrying a value below 1 (the
+    floor FASED's runtime settings declare). There is no default to fall back to: a bitstream whose
+    settings are not declared has no timing this engine can claim to reproduce.
+    """
+    kind = memory_model.get("kind")
+    if kind != FASED_LATENCY_PIPE:
+        raise MemoryModelError(
+            f"memory_model kind {kind!r} is not {FASED_LATENCY_PIPE!r}, the only model this engine reproduces"
+        )
+    out: dict[str, int] = {}
+    for k in LATENCY_PIPE_KNOBS:
+        v = memory_model.get(k)
+        if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+            raise MemoryModelError(f"memory_model {k!r} must be an integer >= 1, got {v!r}")
+        out[k] = v
+    return out
+
+
+def pinned_latency_pipe(artifact: str, *, registry: str | Path | None = None) -> dict[str, int]:
+    """The latency pipe's knobs for the FireSim bitstream pinned as ``artifact`` (its ``memory_model``)."""
+    from merlin.common import provenance
+
+    artifacts = provenance.load_artifacts(registry)
+    if artifact not in artifacts:
+        raise MemoryModelError(f"no artifact named {artifact!r} in the pin registry")
+    declared = artifacts[artifact].memory_model_dict()
+    if not declared:
+        raise MemoryModelError(
+            f"{artifact!r} declares no memory_model, so there is no memory timing to reproduce for it"
+        )
+    return latency_pipe_knobs(declared)
+
+
+def reported_models(console: str) -> tuple[str, ...]:
+    """The model each memory channel's factory line in ``console`` names (``in_order``, ``perturbed``,
+    ``latency_pipe``), in order. Empty when the console carries no such line -- an engine without the
+    factory, or a run that never reached it."""
+    found = []
+    for ln in console.splitlines():
+        _, sep, rest = ln.partition(MODEL_LINE)
+        if sep and rest.split():
+            found.append(rest.split()[0])
+    return tuple(found)
+
+
+def run_under(
+    emulator: str | Path,
+    elf: str | Path,
+    *,
+    latency_pipe: Mapping[str, int] | None = None,
+    timeout: float = 3600,
+    console: str | Path | None = None,
+) -> dict:
+    """One run of ``elf`` with the engine's recorded invocation, under the latency pipe when
+    ``latency_pipe`` is given and under the stock in-order model otherwise. Returns its record.
+
+    The knobs go through the environment, so the command line is the one the engine's receipt records.
+    ``model_confirmed`` is the field a caller must check before reading any cycle count out of the
+    console: it holds only when every memory channel's factory line names the model the run asked for.
+    """
+    extra = [a.replace("{elf}", str(elf)) for a in invocation_for(emulator)]
+    rc, text, wall = run_once(
+        emulator, elf, seed=None, latency_pipe=latency_pipe, via="env", extra_args=extra, timeout=timeout,
+        console=console,
+    )  # fmt: skip
+    want = "latency_pipe" if latency_pipe is not None else "in_order"
+    seen = reported_models(text)
+    return {
+        "rc": rc,
+        "wall_s": round(wall, 2),
+        "model_requested": want,
+        "models_reported": list(seen),
+        "model_confirmed": bool(seen) and set(seen) == {want},
+        "latency_pipe": dict(latency_pipe) if latency_pipe is not None else None,
+        "invocation": extra,
+        "emulator_sha256": _sha(emulator),
+        "elf_sha256": _sha(elf),
+        "console_sha256": hashlib.sha256(text.encode()).hexdigest(),
+    }
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -431,6 +566,7 @@ def run_once(
     plusarg_wrap: tuple[str, str] | None = None,
     timeout: float = 3600,
     console: str | Path | None = None,
+    latency_pipe: Mapping[str, int] | None = None,
 ) -> tuple[int, str, float]:
     """One run. Returns (rc, console text, wall seconds).
 
@@ -438,20 +574,32 @@ def run_once(
     (``via="env"``). The environment form leaves the simulator's command line exactly what its own
     backend would run, which is what a grade wants. ``plusarg_wrap`` brackets plusargs for a front end
     that rejects ones it does not know; the caller names the spelling, since it belongs to the simulator.
+
+    ``latency_pipe`` (the four :data:`LATENCY_PIPE_KNOBS`, e.g. from :func:`pinned_latency_pipe`) runs
+    under the FASED latency pipe instead; it and ``seed`` select different models, so both is refused.
+    Either way, inherited knobs of either model are cleared first, so a run is under exactly the model
+    its arguments name.
     """
     if via not in ("plusarg", "env"):
         raise ValueError(f"via must be 'plusarg' or 'env', got {via!r}")
+    if seed is not None and latency_pipe is not None:
+        raise ValueError("a run is under ONE memory model: give a perturbation seed or latency_pipe, not both")
     knobs: dict[str, int] = {}
     if seed is not None:
         knobs = {"seed": seed, "max_latency": max_latency, "tail_permille": tail_permille}
         if region_log2:
             knobs.update({"region_log2": region_log2, "slow_permille": slow_permille})
+    pipe = latency_pipe_knobs({"kind": FASED_LATENCY_PIPE, **latency_pipe}) if latency_pipe is not None else {}
     plus = list(extra_args)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(ENV_PREFIX)}
+    env = {k: v for k, v in os.environ.items() if not k.startswith((ENV_PREFIX, LATENCY_PIPE_ENV))}
     if via == "plusarg":
         plus += [f"+mem_perturb_{k}={v}" for k, v in knobs.items()]
+        if pipe:
+            plus += [f"{LATENCY_PIPE_PLUSARG}=1", *(f"{LATENCY_PIPE_PLUSARG}_{k}={v}" for k, v in pipe.items())]
     else:
         env.update({f"{ENV_PREFIX}{k.upper()}": str(v) for k, v in knobs.items()})
+        if pipe:
+            env.update({LATENCY_PIPE_ENV: "1", **{f"{LATENCY_PIPE_ENV}_{k.upper()}": str(v) for k, v in pipe.items()}})
     if plusarg_wrap and plus:
         plus = [plusarg_wrap[0], *plus, plusarg_wrap[1]]
     argv = [str(emulator), *plus, str(elf)]

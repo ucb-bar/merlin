@@ -2209,6 +2209,26 @@ artifacts:
       - gemmini_rocket_chipyard
       - gemmini_rocket_rtl
     config: FireSimGemminiRocketConfig
+    # The target DRAM timing this board answers its memory port with, as data: what an RTL simulator
+    # runs to time memory the way this board does (merlin.targetgen.mem_perturb.pinned_latency_pipe;
+    # docs/design/fased_memory_timing.md). The same declaration as firesim_gemmini_rocket_u250_30mhz,
+    # which names the same bytes.
+    memory_model:
+      kind: fased_latency_bandwidth_pipe
+      read_latency: 30
+      write_latency: 30
+      max_reads: 16
+      max_writes: 16
+      evidence: >-
+        Read from source at FireSim b084672c, the revision this build records. The platform config
+        BaseXilinxAlveoU250Config, named in the bitstream path, is WithDefaultMemModel ++ ...
+        (sim/midas/src/main/scala/configs/CompilerConfigs.scala); WithDefaultMemModel sets MemModelKey
+        to LatencyPipeConfig(BaseParams(maxReads = 16, maxWrites = 16)) with no LLC model
+        (configs/FASEDTargetConfigs.scala); the pipe's read and write latencies are runtime settings
+        whose defaults are 30 and 30 (models/dram/LatencyBandwidthPipe.scala), and maxReqs default to
+        the elaborated maxima. A run's runtime.conf can override the latencies; this registry records no
+        custom runtime configuration for any run on this bitstream, and the runtime.conf inside the tar
+        is the byte-level check still to make.
     notes: >-
       BUILT IN AN OVERLAY of the chipyard checkout ($MERLIN_CHIPYARD_GEMMINI_ROCKET, made by
       `build_tools/firesim/make_chipyard_overlay.py`): reads are links to the base checkout, every
@@ -2655,6 +2675,19 @@ artifacts:
     # FireSimGemminiRocketConfig.
     hw_configs:
       - alveo_u250_firesim_gemmini_rocket_30mhz
+    # The target DRAM timing this board answers its memory port with (see the same declaration, and
+    # its evidence, on firesim_gemmini_rocket_30mhz, which names these bytes).
+    memory_model:
+      kind: fased_latency_bandwidth_pipe
+      read_latency: 30
+      write_latency: 30
+      max_reads: 16
+      max_writes: 16
+      evidence: >-
+        As declared on firesim_gemmini_rocket_30mhz: BaseXilinxAlveoU250Config -> WithDefaultMemModel ->
+        LatencyPipeConfig(maxReads = 16, maxWrites = 16), read/write latency runtime defaults 30/30, at
+        FireSim b084672c; no custom runtime configuration recorded for any run; the runtime.conf inside
+        the tar is the byte-level check still to make.
     notes: >-
       ELABORATION IDENTITY, measured not asserted: the build's own
       design/FireSim-generated.sv is sha256

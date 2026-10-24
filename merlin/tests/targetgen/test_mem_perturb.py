@@ -7,7 +7,6 @@ read as a certificate.
 
 from __future__ import annotations
 
-import shutil
 import stat
 import subprocess
 import sys
@@ -111,44 +110,6 @@ int main(int argc, char **argv) {
 """
 
 
-def _chipyard_mm_dir() -> Path | None:
-    from merlin.common.paths import env
-
-    root = env("MERLIN_CHIPYARD")
-    if not root:
-        return None
-    for mk in sorted(Path(root).glob("sims/verilator/generated-src/*/gen-collateral/mm.h")):
-        if (mk.parent / "mm.cc").is_file():
-            return mk.parent
-    return None
-
-
-@pytest.fixture(scope="module")
-def cxx_env():
-    mm_dir = _chipyard_mm_dir()
-    cxx = shutil.which("g++") or shutil.which("c++")
-    if mm_dir is None or cxx is None:
-        pytest.skip("needs MERLIN_CHIPYARD with a generated testchipip mm.h/mm.cc and a host C++ compiler")
-    from merlin.common.paths import env
-
-    fesvr = Path(env("MERLIN_CHIPYARD")) / ".conda-env" / "riscv-tools" / "include"
-    if not (fesvr / "fesvr" / "memif.h").is_file():
-        pytest.skip("needs the fesvr headers beside the chipyard toolchain")
-    return cxx, mm_dir, fesvr
-
-
-def _build(cxx_env, model_cc: Path, out: Path) -> Path:
-    cxx, mm_dir, fesvr = cxx_env
-    (out / "driver.cc").write_text(DRIVER)
-    exe = out / "driver"
-    subprocess.run(
-        [cxx, "-std=c++17", "-O1", f"-I{MP.model_sources_dir()}", f"-I{mm_dir}", f"-I{fesvr}",
-         str(out / "driver.cc"), str(model_cc), str(mm_dir / "mm.cc"), "-o", str(exe)],
-        check=True, capture_output=True, text=True,
-    )  # fmt: skip
-    return exe
-
-
 def _order(exe: Path, *plusargs: str, env: dict | None = None) -> list[tuple[int, int]]:
     p = subprocess.run([str(exe), *plusargs], capture_output=True, text=True, check=True, env=env)
     return [(int(a), int(b)) for _, a, b in (ln.split() for ln in p.stdout.splitlines() if ln.startswith("R "))]
@@ -164,8 +125,8 @@ def _same_id_order_kept(seq) -> bool:
 
 
 @pytest.fixture(scope="module")
-def model_exe(cxx_env, tmp_path_factory):
-    return _build(cxx_env, MP.model_sources_dir() / MP.MODEL_SOURCE, tmp_path_factory.mktemp("mm"))
+def model_exe(mm_build, tmp_path_factory):
+    return mm_build(DRIVER, tmp_path_factory.mktemp("mm"))
 
 
 def test_without_a_seed_the_stock_in_order_model_answers(model_exe):
@@ -188,7 +149,7 @@ def test_a_schedule_is_a_function_of_its_seed(model_exe):
     assert a != _order(model_exe, "+mem_perturb_seed=12")
 
 
-def test_the_same_id_check_catches_a_model_that_breaks_axi_order(cxx_env, tmp_path):
+def test_the_same_id_check_catches_a_model_that_breaks_axi_order(mm_build, tmp_path):
     """MUTATION: a model that lets a response overtake an older one with the SAME id violates AXI4 and
     would manufacture failures real hardware cannot produce. Build that model and show the check fails."""
     src = (MP.model_sources_dir() / MP.MODEL_SOURCE).read_text()
@@ -196,7 +157,7 @@ def test_the_same_id_check_catches_a_model_that_breaks_axi_order(cxx_env, tmp_pa
     assert src.count(anchor) == 1
     mutant = tmp_path / "mm_perturb_mutant.cc"
     mutant.write_text(src.replace(anchor, "blocked = false;"))
-    exe = _build(cxx_env, mutant, tmp_path)
+    exe = mm_build(DRIVER, tmp_path, replace={MP.MODEL_SOURCE: mutant})
     broken = [
         _same_id_order_kept(_order(exe, f"+mem_perturb_seed={s}", "+mem_perturb_max_latency=32")) for s in range(1, 9)
     ]

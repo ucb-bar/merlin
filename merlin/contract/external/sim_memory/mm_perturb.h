@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "mm.h"
+#include "mm_latency_pipe.h"
 
 struct mm_perturb_cfg_t {
   bool enabled = false;
@@ -46,13 +47,18 @@ struct mm_perturb_cfg_t {
   uint64_t tail_permille = 0;
   uint64_t region_log2 = 0;  // 0: per-request latency; k: per-2^k-byte-region latency class
   uint64_t slow_permille = 500;
+  // The other opt-in model the same factory can build: FireSim's FASED latency pipe (mm_latency_pipe.h).
+  // Parsed here so the harness rewrite stays one call, whichever model a run asks for.
+  mm_latency_pipe_cfg_t latency_pipe;
 };
 
 // Parse the knobs out of an argv (plusargs). Unknown arguments are ignored; a malformed value is a hard
 // error, since a perturbation run that silently fell back to the in-order model would certify nothing.
 mm_perturb_cfg_t mm_perturb_parse(int argc, const char *const *argv);
 
-// The stock model when `cfg.enabled` is false, the perturbing one otherwise. Logs one line to stderr
+// The stock model when neither opt-in model is enabled, the perturbing one under +mem_perturb_seed, the
+// FASED latency pipe under +mem_latency_pipe=1; both at once is a hard error, because they answer
+// different questions and a run under one cannot be read as a run under the other. Logs one line to stderr
 // saying which, so a console records the memory model it ran under.
 mm_t *mm_perturb_make(const mm_perturb_cfg_t &cfg, size_t mem_base, size_t mem_size, size_t word_size,
                       size_t line_size, backing_data_t &dat);

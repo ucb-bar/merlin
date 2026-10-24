@@ -418,8 +418,21 @@ class Artifact:
     #: resolves relative to the CURRENT DIRECTORY, so the same declaration verifies from the repo root
     #: and reports "no file" from anywhere else -- a pin that passes in CI and fails on a laptop.
     repo_relative: bool = False
+    #: The TARGET-SIDE MEMORY TIMING MODEL these bytes run, when they are a board that runs one -- for a
+    #: FireSim bitstream, the FASED model its platform config elaborated and the runtime settings it
+    #: loads, as ``(key, value)`` pairs: ``kind`` plus that kind's parameters and an ``evidence`` line.
+    #: Declared here because it is a property of the BUILT IMAGE (its platform config and runtime
+    #: configuration), not of the RTL it was elaborated from: two bitstreams of one config may run
+    #: different memory models. An RTL simulator reproduces a board's memory timing by reading this
+    #: (``merlin.targetgen.mem_perturb.pinned_latency_pipe``), never by assuming one. Empty means the
+    #: model was never declared, and timing against this board then has nothing to reproduce.
+    memory_model: tuple[tuple[str, str | int], ...] = ()
 
     KINDS = ("file", "tree")
+
+    def memory_model_dict(self) -> dict[str, str | int]:
+        """``memory_model`` as a mapping (empty when undeclared)."""
+        return dict(self.memory_model)
 
     def resolve(self) -> Path | None:
         from .paths import env as _env
@@ -461,6 +474,30 @@ class ArtifactCheck:
         }
 
 
+def _memory_model(p: Path, name: str, raw: object) -> tuple[tuple[str, str | int], ...]:
+    """An artifact's ``memory_model`` declaration as sorted pairs, or a refusal.
+
+    The shape is checked here and the MEANING by whoever reproduces the model: a mapping carrying a string
+    ``kind``, whose other values are integers or strings. A float, list or nested mapping is refused,
+    since a timing parameter that arrived as ``30.0`` or ``[30]`` would be quietly coerced or dropped by
+    every reader that expected an integer.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict) or not raw:
+        raise PinsError(f"{p}: artifact {name!r} memory_model must be a non-empty mapping")
+    if not isinstance(raw.get("kind"), str) or not raw["kind"]:
+        raise PinsError(f"{p}: artifact {name!r} memory_model must name its model in a string `kind`")
+    pairs: list[tuple[str, str | int]] = []
+    for key, value in raw.items():
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise PinsError(
+                f"{p}: artifact {name!r} memory_model.{key} must be an integer or a string, got {type(value).__name__}"
+            )
+        pairs.append((str(key), value))
+    return tuple(sorted(pairs))
+
+
 def load_artifacts(path: str | Path | None = None) -> dict[str, Artifact]:
     """Every declared built artifact. An empty mapping when the registry declares none."""
     import yaml
@@ -487,6 +524,7 @@ def load_artifacts(path: str | Path | None = None) -> dict[str, Artifact]:
         kind = str(body.get("kind") or "file")
         if kind not in Artifact.KINDS:
             raise PinsError(f"{p}: artifact {name!r} kind must be one of {list(Artifact.KINDS)}, got {kind!r}")
+        memory_model = _memory_model(p, str(name), body.get("memory_model"))
         out[str(name)] = Artifact(
             name=str(name),
             path=str(body["path"]),
@@ -503,6 +541,7 @@ def load_artifacts(path: str | Path | None = None) -> dict[str, Artifact]:
             hw_configs=tuple(str(c) for c in (body.get("hw_configs") or ())),
             abi_header_sha256=str(body.get("abi_header_sha256") or ""),
             hwdb_digest=str(hwdb_digest),
+            memory_model=memory_model,
         )
     # An artifact may not re-declare bytes the registry records as UNRECOVERABLE: repointing a live
     # declaration at dead bytes is exactly the move a loss record forbids.
@@ -1425,9 +1464,7 @@ def record(
 
     merlin_commit = _git(Path(repo_root()), "rev-parse", "HEAD") or UNKNOWN
     merlin_dirty = _git(Path(repo_root()), "status", "--porcelain")
-    source_label = merlin_commit + (
-        "+unverified" if merlin_dirty is None else "+dirty" if merlin_dirty else ""
-    )
+    source_label = merlin_commit + ("+unverified" if merlin_dirty is None else "+dirty" if merlin_dirty else "")
     out: dict[str, Any] = {
         "merlin_source_label": source_label,
         "merlin": {

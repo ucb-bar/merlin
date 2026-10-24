@@ -591,6 +591,33 @@ def _mem_perturb_variant(args: argparse.Namespace) -> int:
     return 0 if args.no_control or control.get("matches_declared_base") is not False else 1
 
 
+def _mem_model_run(args: argparse.Namespace) -> int:
+    """Run one executable on a variant engine under a FireSim bitstream's pinned memory timing, or in order.
+
+    The timing comes from the bitstream's ``memory_model`` in the pin registry, never from a default, and
+    the record names that artifact and its digest beside the result. Exit 0 only when the simulator
+    exited 0 AND its console says it ran under the model asked for; 2 when it did not, because a cycle
+    count from an engine that ignored the knobs is a stock count under a board's name.
+    """
+    from merlin.common import provenance
+
+    from . import mem_perturb
+
+    pipe = None
+    rec: dict = {"timing_of": None}
+    if args.firesim_artifact:
+        pipe = mem_perturb.pinned_latency_pipe(args.firesim_artifact)
+        art = provenance.load_artifacts()[args.firesim_artifact]
+        rec["timing_of"] = {"artifact": art.name, "digest": art.digest or None, "memory_model": art.memory_model_dict()}
+    rec.update(
+        mem_perturb.run_under(args.emulator, args.elf, latency_pipe=pipe, timeout=args.timeout, console=args.console)
+    )
+    print(json.dumps(rec, sort_keys=True))
+    if not rec["model_confirmed"]:
+        return 2
+    return 0 if rec["rc"] == 0 else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="merlin-target-tools", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -733,6 +760,19 @@ def build_parser() -> argparse.ArgumentParser:
     perturb.add_argument("--base-artifact", help="pin-registry artifact the stock simulator is declared as")
     perturb.add_argument("--no-control", action="store_true", help="skip the control relink of unmodified objects")
     perturb.set_defaults(func=_mem_perturb_variant)
+
+    timed = sub.add_parser(
+        "mem-model-run",
+        help="run an executable on a variant engine under a FireSim bitstream's pinned memory timing",
+    )
+    timed.add_argument("--emulator", required=True, help="a variant built by mem-perturb-variant")
+    timed.add_argument("--elf", required=True, help="the executable to run")
+    which = timed.add_mutually_exclusive_group(required=True)
+    which.add_argument("--firesim-artifact", help="pin-registry bitstream whose memory_model to reproduce")
+    which.add_argument("--in-order", action="store_true", help="the stock in-order model, for the A/B baseline")
+    timed.add_argument("--console", help="write the run's console here")
+    timed.add_argument("--timeout", type=float, default=3600, help="seconds before the run is abandoned")
+    timed.set_defaults(func=_mem_model_run)
     return parser
 
 

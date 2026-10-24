@@ -44,11 +44,23 @@ mm_perturb_cfg_t mm_perturb_parse(int argc, const char *const *argv) {
     fprintf(stderr, "[mem-perturb] tail_permille %llu > 1000\n", (unsigned long long)cfg.tail_permille);
     abort();
   }
+  cfg.latency_pipe = mm_latency_pipe_parse(argc, argv);
   return cfg;
 }
 
 mm_t *mm_perturb_make(const mm_perturb_cfg_t &cfg, size_t mem_base, size_t mem_size, size_t word_size,
                       size_t line_size, backing_data_t &dat) {
+  if (cfg.enabled && cfg.latency_pipe.enabled) {
+    fprintf(stderr, "[mem-perturb] +mem_perturb_seed and +mem_latency_pipe select different models; give one\n");
+    abort();
+  }
+  if (cfg.latency_pipe.enabled) {
+    const mm_latency_pipe_cfg_t &lp = cfg.latency_pipe;
+    fprintf(stderr, "[mem-perturb] model=latency_pipe read_latency=%llu write_latency=%llu max_reads=%llu max_writes=%llu\n",
+            (unsigned long long)lp.read_latency, (unsigned long long)lp.write_latency,
+            (unsigned long long)lp.max_reads, (unsigned long long)lp.max_writes);
+    return new mm_latency_pipe_t(lp, mem_base, mem_size, word_size, line_size, dat);
+  }
   if (!cfg.enabled) {
     fprintf(stderr, "[mem-perturb] model=in_order (mm_magic_t)\n");
     return new mm_magic_t(mem_base, mem_size, word_size, line_size, dat);
