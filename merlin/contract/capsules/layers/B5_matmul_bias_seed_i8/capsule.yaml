@@ -1,0 +1,70 @@
+name: B5_matmul_bias_seed_i8
+kind: layer
+source_role: handauthored_compiler_test
+source_reference: An int32 bias seeded into the accumulator before a two-K-tile contraction that accumulates
+  onto it, over two output row panels. The target's contract scopes MVIN3 -- its full-width int32 accumulator-seed
+  load (load state 2 at shrink = 0) -- to a contraction whose readout adds a bias (encoding.stage_scoped_classes),
+  so this capsule demands that load, or a hardware loop that issues it itself (encoding.class_subsumes)
+label: public
+interface_mlir: capsule.interface.mlir
+stimulus_range:
+- -4
+- 3
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: i8
+- name: B
+  role: bias
+  shape:
+  - 16
+  dtype: i32
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue:
+    - bias_add
+    output_dtype: i8
+    bias: B
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - MVIN3
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    relu: false
+    acc_scale: false
+    i8: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

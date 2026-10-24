@@ -39,6 +39,7 @@ def test_fixed_array_geometry_requires_a_fact(monkeypatch):
 
 def test_source_bound_structural_grid_supplies_geometry_only(monkeypatch):
     from copy import deepcopy
+
     from merlin.targetgen import capability_derive, conformance, target_registry
     from merlin.targetgen.rtl import facts
 
@@ -49,9 +50,17 @@ def test_source_bound_structural_grid_supplies_geometry_only(monkeypatch):
         "facts": {
             "source": {"fir_sha256": sha},
             "arrays": [],
-            "structural_observations": [{"kind": "mesh_tile_grid", "source": "selected_firrtl",
-                                         "firrtl_sha256": sha, "rows": 12, "cols": 8, "instances": 96,
-                                         "compute_engine_established": False}],
+            "structural_observations": [
+                {
+                    "kind": "mesh_tile_grid",
+                    "source": "selected_firrtl",
+                    "firrtl_sha256": sha,
+                    "rows": 12,
+                    "cols": 8,
+                    "instances": 96,
+                    "compute_engine_established": False,
+                }
+            ],
         },
     }
     contract = {"compute_units": [{"name": "array", "kind": "systolic", "dtypes": ["int8"]}]}
@@ -103,8 +112,16 @@ def test_binding_refuses_missing_and_unsupported_datapath(monkeypatch):
 
 
 def test_diagnostic_binding_defers_but_does_not_admit_missing_instruction_classes():
-    contract = {"compute_units": [{"name": "array", "kind": "systolic", "dtypes": ["int8"],
-                                  "accumulate": [{"in": "int8", "weight": "int8", "acc": "i32"}]}]}
+    contract = {
+        "compute_units": [
+            {
+                "name": "array",
+                "kind": "systolic",
+                "dtypes": ["int8"],
+                "accumulate": [{"in": "int8", "weight": "int8", "acc": "i32"}],
+            }
+        ]
+    }
     facts = {"facts": {"arrays": [{"name": "mesh", "rows": 8, "cols": 8}]}}
     te = SimpleNamespace(target="synthetic", sim_via="sim")
     selected = {"contract": contract, "facts": facts, "taxonomy": {}}
@@ -124,9 +141,13 @@ def test_explicit_effect_classes_accept_equivalent_selectors_without_discovery(m
         raise AssertionError("explicit effect declarations must not discover an ISA provider")
 
     monkeypatch.setattr(isa_taxonomy, "derive_isa_taxonomy", forbidden)
-    contract = {"encoding": {"semantic_class": {"17": "Execute", "29": "Execute"},
-                             "corpus_required_classes": ["Execute"],
-                             "class_family": {"Execute": "contraction"}}}
+    contract = {
+        "encoding": {
+            "semantic_class": {"17": "Execute", "29": "Execute"},
+            "corpus_required_classes": ["Execute"],
+            "class_family": {"Execute": "contraction"},
+        }
+    }
     classes = CS._classes_source(SimpleNamespace(target="synthetic"), contract)
     assert classes(op="matmul") == ["Execute"]
     assert classes(op="conv2d") == ["Execute"]
@@ -142,19 +163,33 @@ def test_selected_readout_data_drives_commits_without_backend_discovery(monkeypa
 
     monkeypatch.setattr(readout_facet, "_backend_hook", forbidden)
     contract = {
-        "compute_units": [{"kind": "systolic", "dtypes": ["int8"],
-                           "accumulate": [{"in": "int8", "weight": "int8", "acc": "i32"}]}],
-        "encoding": {"semantic_class": {"17": "Execute"}, "corpus_required_classes": ["Execute"],
-                     "class_family": {"Execute": "contraction"}},
-        "runner": {"backend": "chipyard_rocc", "chipyard_rocc": {"readout": {
-            "epilogue_capability": [{"selector": "i8", "applies": ["relu", "acc_scale"]},
-                                   {"selector": "i32", "applies": []}],
-            "stage_routes": [],
-        }}},
+        "compute_units": [
+            {"kind": "systolic", "dtypes": ["int8"], "accumulate": [{"in": "int8", "weight": "int8", "acc": "i32"}]}
+        ],
+        "encoding": {
+            "semantic_class": {"17": "Execute"},
+            "corpus_required_classes": ["Execute"],
+            "class_family": {"Execute": "contraction"},
+        },
+        "runner": {
+            "backend": "chipyard_rocc",
+            "chipyard_rocc": {
+                "readout": {
+                    "epilogue_capability": [
+                        {"selector": "i8", "applies": ["relu", "acc_scale"]},
+                        {"selector": "i32", "applies": []},
+                    ],
+                    "stage_routes": [],
+                }
+            },
+        },
     }
     binding = CS.derive_binding(
-        SimpleNamespace(target="synthetic", sim_via="sim"), {"required_oracle_tiers": ["L0"]},
-        contract=contract, facts={"facts": {"arrays": [{"name": "mesh", "rows": 8, "cols": 8}]}}, taxonomy={},
+        SimpleNamespace(target="synthetic", sim_via="sim"),
+        {"required_oracle_tiers": ["L0"]},
+        contract=contract,
+        facts={"facts": {"arrays": [{"name": "mesh", "rows": 8, "cols": 8}]}},
+        taxonomy={},
     )
     assert CS._resolve_output_dtype(binding, ["relu"]) == "i8"
     assert CS._resolve_output_dtype(binding, []) == "i32"
@@ -162,24 +197,75 @@ def test_selected_readout_data_drives_commits_without_backend_discovery(monkeypa
         CS._resolve_output_dtype(binding, ["relu"], {"output_dtype": "i32"})
     with pytest.raises(ValueError, match="no readout or contraction route"):
         CS._resolve_output_dtype(binding, ["bias_add"])
-    entry = {"name": "reuse", "kind": "layer", "source_role": "synthesized",
-             "source_reference": "independent readout declaration", "K": 8, "N": 8,
-             "matmuls": [{"lhs": "A0", "out": "Y0", "M": 8, "epilogue": ["relu"]},
-                         {"lhs": "A1", "out": "Y1", "M": 8, "epilogue": []}]}
+    entry = {
+        "name": "reuse",
+        "kind": "layer",
+        "source_role": "synthesized",
+        "source_reference": "independent readout declaration",
+        "K": 8,
+        "N": 8,
+        "matmuls": [
+            {"lhs": "A0", "out": "Y0", "M": 8, "epilogue": ["relu"]},
+            {"lhs": "A1", "out": "Y1", "M": 8, "epilogue": []},
+        ],
+    }
     cap, mlir = CS.build_resident_reuse(entry, binding)
     assert [row["output_dtype"] for row in cap["operation"]["attributes"]["matmuls"]] == ["i8", "i32"]
-    assert 'tensor<8x8xi8>' in mlir and 'tensor<8x8xi32>' in mlir
+    assert "tensor<8x8xi8>" in mlir and "tensor<8x8xi32>" in mlir
 
 
-@pytest.mark.parametrize("change", [
-    {"corpus_required_classes": []},
-    {"corpus_required_classes": ["Execute", "Execute"]},
-    {"class_family": {"Execute": "undeclared"}},
-    {"semantic_class": {"17": "Different"}},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"corpus_required_classes": []},
+        {"corpus_required_classes": ["Execute", "Execute"]},
+        {"class_family": {"Execute": "undeclared"}},
+        {"semantic_class": {"17": "Different"}},
+    ],
+)
 def test_malformed_effect_declaration_cannot_fall_back_to_issue_order(change):
-    encoding = {"semantic_class": {"17": "Execute"}, "corpus_required_classes": ["Execute"],
-                "class_family": {"Execute": "contraction"}, "corpus_issue_order": ["Execute"]}
+    encoding = {
+        "semantic_class": {"17": "Execute"},
+        "corpus_required_classes": ["Execute"],
+        "class_family": {"Execute": "contraction"},
+        "corpus_issue_order": ["Execute"],
+    }
     encoding.update(change)
     with pytest.raises(ValueError):
         CS._classes_source(SimpleNamespace(target="synthetic"), {"encoding": encoding})
+
+
+def _scoped_encoding(**over):
+    encoding = {
+        "semantic_class": {"0": "LOAD", "1": "SEED", "2": "COMPUTE", "3": "STORE"},
+        "corpus_issue_order": ["LOAD", "SEED", "COMPUTE", "STORE"],
+        "stage_scoped_classes": {"SEED": ["bias_add"]},
+    }
+    encoding.update(over)
+    return {"encoding": encoding}
+
+
+def test_a_stage_scoped_class_is_owed_only_by_a_capsule_carrying_the_stage():
+    """A class the target scopes to an epilogue stage (an accumulator-seed load, owed where a readout adds
+    a bias) is demanded of exactly those capsules. Demanding it of every contraction would reject valid
+    kernels that have nothing to seed; never demanding it would leave the declared class unrequirable."""
+    classes = CS._classes_source(SimpleNamespace(target="synthetic"), _scoped_encoding(), taxonomy={})
+    assert classes(op="matmul") == ["LOAD", "COMPUTE", "STORE"]
+    assert classes(op="matmul", epilogue=("relu",)) == ["LOAD", "COMPUTE", "STORE"]
+    assert classes(op="matmul", epilogue=("bias_add", "relu")) == ["LOAD", "SEED", "COMPUTE", "STORE"]
+
+
+@pytest.mark.parametrize(
+    "scoped",
+    [
+        {"NOT_ORDERED": ["bias_add"]},
+        {"SEED": []},
+        {"SEED": "bias_add"},
+        ["SEED"],
+    ],
+)
+def test_a_malformed_stage_scope_is_refused(scoped):
+    with pytest.raises(ValueError, match="stage_scoped_classes"):
+        CS._classes_source(
+            SimpleNamespace(target="synthetic"), _scoped_encoding(stage_scoped_classes=scoped), taxonomy={}
+        )

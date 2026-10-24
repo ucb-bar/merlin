@@ -72,3 +72,26 @@ def test_every_class_the_contract_requires_is_actually_declared():
     pool = _declared_pool("gemmini")
     order = _issue_order("gemmini")
     assert order <= pool, f"the issue order lists classes gemmini does not declare: {sorted(order - pool)}"
+
+
+def test_a_stage_scoped_class_is_demanded_by_a_capsule_carrying_its_stage():
+    """A class the contract scopes to epilogue stages (``encoding.stage_scoped_classes``) is reachable
+    only if some capsule carries one of those stages and therefore owes it. Listing it in the issue order
+    without such a capsule would make it requirable in name and demanded by nothing."""
+    from merlin.common.paths import merlin_dir
+
+    scoped = (_contract("gemmini").get("encoding") or {}).get("stage_scoped_classes") or {}
+    assert scoped, "the reviewed contract scopes no class to a stage"
+    assert set(scoped) <= _issue_order("gemmini")
+    demanded: dict[str, list[str]] = {}
+    for path in sorted((merlin_dir() / "contract" / "capsules").glob("*/*/capsule.yaml")):
+        cap = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        owed = set((cap.get("expected") or {}).get("instruction_classes") or ())
+        stages = set(((cap.get("operation") or {}).get("attributes") or {}).get("epilogue") or ())
+        for cls, scope in scoped.items():
+            if cls in owed:
+                assert stages & set(scope), f"{cap.get('name')} owes {cls} without carrying any of {scope}"
+                demanded.setdefault(cls, []).append(str(cap.get("name")))
+    assert set(demanded) == set(scoped), (
+        f"stage-scoped classes no capsule demands: {sorted(set(scoped) - set(demanded))}"
+    )

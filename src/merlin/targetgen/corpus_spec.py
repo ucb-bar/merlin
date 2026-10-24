@@ -453,6 +453,19 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
     if missing:
         raise ValueError(f"encoding.corpus_issue_order names undeclared instruction classes: {sorted(missing)}")
     classes = list(sequence)
+    # A class the target scopes to EPILOGUE STAGES is owed only by a capsule carrying one of them (an
+    # accumulator-seed load by a contraction whose readout adds a bias). Which class and which stages are
+    # the target's own declaration; nothing here names either.
+    scoped = enc.get("stage_scoped_classes") or {}
+    if not isinstance(scoped, dict) or any(
+        not isinstance(stages, list) or not stages or any(not isinstance(s, str) or not s for s in stages)
+        for stages in scoped.values()
+    ):
+        raise ValueError("encoding.stage_scoped_classes must map classes to non-empty lists of stage names")
+    unordered = set(scoped) - set(classes)
+    if unordered:
+        raise ValueError(f"encoding.stage_scoped_classes names classes outside corpus_issue_order: {sorted(unordered)}")
+    scoped = {cls: frozenset(stages) for cls, stages in scoped.items()}
 
     def _from_encoding(*, op="matmul", output_dtype=None, epilogue=(), movement=False):
         # ⚠️ NOT `list(classes)` unconditionally. This deriver was written for the matmul family and is
@@ -473,9 +486,11 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
         from merlin.targetgen import semantic_families as _sf
 
         prims = _sf.primitives_of(_sf.from_op(op) or "")
+        carried = {str(stage) for stage in epilogue or ()}
+        owed = [c for c in classes if c not in scoped or scoped[c] & carried]
         if movement or (prims and "contraction" not in prims):
-            return [c for c in classes if _sf.from_isa_class(c) != "contraction"]
-        return list(classes)
+            return [c for c in owed if _sf.from_isa_class(c) != "contraction"]
+        return owed
 
     return _from_encoding
 

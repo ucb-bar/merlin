@@ -203,6 +203,7 @@ hand_authored:
 - layers/B1s_linear_relu_signed_i8
 - layers/B3_conv2d_i8
 - layers/B4_conv2d_relu_i8
+- layers/B5_matmul_bias_seed_i8
 - model/SY_model_smolvla
 held_out:
   n_generated: 10
