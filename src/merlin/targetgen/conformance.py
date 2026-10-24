@@ -1384,6 +1384,7 @@ def _epilogue_axis(target: str) -> dict:
     """
     from merlin.targetgen import isa_taxonomy as IT
     from merlin.targetgen import semantic_families as sf
+    from merlin.targetgen.compute_units import fused_producers
 
     try:
         from merlin.targetgen.eligibility import capability_map_for_target
@@ -1391,11 +1392,7 @@ def _epilogue_axis(target: str) -> dict:
         cap_map = capability_map_for_target(target) or {}
     except Exception:  # noqa: BLE001 -- unreadable manifest evidences nothing
         cap_map = {}
-    # Per declared row: a family with a fused-only row keeps that evidence even when another row of it
-    # runs standalone for a narrower reduction kind (which the fold's intersection would erase).
-    from merlin.targetgen.compute_units import fused_producers
-
-    fused_families = {f for f, c in cap_map.items() if fused_producers(c)}
+    fused_families = {f for f, c in cap_map.items() if fused_producers(c)}  # any fused-only declared row
 
     base: set = set()
     taxonomy = None
