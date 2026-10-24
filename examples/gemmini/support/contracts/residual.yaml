@@ -169,6 +169,10 @@ rocc_operand_roles:
     MVIN: &rocc_mvin
       fields:
         - {name: dram, operand: rs1, as: operand}
+        # LoadController: vaddr==0 selects all_zeros, not a host memory access.
+        # Selection recipe pins this controller source; stores have no such role.
+        - {name: dram_raw, operand: rs1, as: raw}
+        - {name: dram_source, all: [{from: dram_raw, equals: 0}], set: zero_fill, clear: memory}
         - {name: rows, operand: rs2, bundle: MvinRs2, field: num_rows}
         - {name: cols, operand: rs2, bundle: MvinRs2, field: num_cols}
         - {name: addr, operand: rs2, bundle: MvinRs2, field: local_addr}
