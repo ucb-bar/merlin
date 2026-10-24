@@ -372,40 +372,51 @@ def test_model_layers_uses_candidate_projection_not_legacy_functional_pass(tmp_p
 
 
 def test_candidate_emission_string_becomes_actionable_bounded_failure():
-    failure = selfcheck._public_candidate_emission_failure({
-        'candidate_emission_failure': 'eligible source operation lacks unavoidable attributed contraction work; '
-                                      'fused transforms need independent evidence',
-    })
-    assert failure['plane'] == 'candidate_compilation'
-    assert failure['category'] == 'CANDIDATE_EMISSION_FAILED'
-    assert 'unavoidable attributed contraction work' in failure['detail']
-    assert len(failure['detail']) <= 800
+    failure = selfcheck._public_candidate_emission_failure(
+        {
+            "candidate_emission_failure": "eligible source operation lacks unavoidable attributed contraction work; "
+            "fused transforms need independent evidence",
+        }
+    )
+    assert failure["plane"] == "candidate_compilation"
+    assert failure["category"] == "CANDIDATE_EMISSION_FAILED"
+    assert "unavoidable attributed contraction work" in failure["detail"]
+    assert len(failure["detail"]) <= 800
 
 
 def test_candidate_emission_feedback_cannot_copy_reference_payload():
-    result = {'candidate_emission_failure': {
-        'detail': 'compiler mismatch expected=123456.75 observed=98765.25',
-        'reference': SENTINEL, 'golden': [SENTINEL], 'capture': {'weights': SENTINEL},
-    }, 'numeric': {'first_mismatch': {'expected': SENTINEL}}, 'status': 'incomplete'}
-    row, certified = selfcheck._candidate_selfcheck_row(result, None, name='public_model', barrier_tier='L2')
+    result = {
+        "candidate_emission_failure": {
+            "detail": "compiler mismatch expected=123456.75 observed=98765.25",
+            "reference": SENTINEL,
+            "golden": [SENTINEL],
+            "capture": {"weights": SENTINEL},
+        },
+        "numeric": {"first_mismatch": {"expected": SENTINEL}},
+        "status": "incomplete",
+    }
+    row, certified = selfcheck._candidate_selfcheck_row(result, None, name="public_model", barrier_tier="L2")
     serialized = json.dumps(row)
     assert not certified
-    assert row['failure']['category'] == 'CANDIDATE_EMISSION_FAILED'
+    assert row["failure"]["category"] == "CANDIDATE_EMISSION_FAILED"
     assert SENTINEL not in serialized
-    assert '123456.75' not in serialized and '98765.25' not in serialized
-    assert row['numeric'] == {}
+    assert "123456.75" not in serialized and "98765.25" not in serialized
+    assert row["numeric"] == {}
 
 
 def test_public_model_linker_symbol_survives_long_argv_without_copying_private_payload():
     from merlin_experiments.phase1.feedback import selfcheck_results
 
     original = {
-        "type": "SpikeModelError", "stage": "owned_host_execution",
-        "detail": "command failed (rc 1): " + "/public/build/object.o " * 50
+        "type": "SpikeModelError",
+        "stage": "owned_host_execution",
+        "detail": "command failed (rc 1): "
+        + "/public/build/object.o " * 50
         + "\nSTDOUT:\nSTDERR:/private/build/device_shim.o: in function `device_call':\n"
         + "device_shim.c:(.text+0x124): undefined reference to `logical_kernel_0'\n"
         + "expected 123456.75 observed 98765.25\ncollect2: error: ld returned 1 exit status\n",
-        "reference": SENTINEL, "golden": [SENTINEL],
+        "reference": SENTINEL,
+        "golden": [SENTINEL],
         "recipe": {"path": "/operator/private/compilation_recipe.json", "sha256": "a" * 64},
     }
     before = json.dumps(original, sort_keys=True)
@@ -419,8 +430,14 @@ def test_public_model_linker_symbol_survives_long_argv_without_copying_private_p
 
 
 def test_nonpublic_model_stage_does_not_promote_a_linker_tail():
-    failure = selfcheck._public_candidate_emission_failure({"candidate_emission_failure": {
-        "stage": "prepare_runtime_bundle", "detail": "command failed: " + "x" * 1000
-        + "\nSTDERR:undefined reference to `private_reference_symbol'\n",
-    }})
+    failure = selfcheck._public_candidate_emission_failure(
+        {
+            "candidate_emission_failure": {
+                "stage": "prepare_runtime_bundle",
+                "detail": "command failed: "
+                + "x" * 1000
+                + "\nSTDERR:undefined reference to `private_reference_symbol'\n",
+            }
+        }
+    )
     assert "private_reference_symbol" not in failure["detail"]
