@@ -81,9 +81,12 @@ def _operator_table() -> dict[str, list[str]]:
     tree = ast.parse(_SOURCE.read_text(encoding="utf-8"))
     function = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_recipe_operators")
     table = next(n.value for n in ast.walk(function) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Dict))
+    # A family key is a string literal or a module constant naming one (``ACTIVATION_CONTRACTION``);
+    # only the literal keys are the families these tests read.
     return {
         key.value: [ast.unparse(element) for element in value.elts]
         for key, value in zip(table.keys, table.values, strict=True)
+        if isinstance(key, ast.Constant)
     }
 
 
@@ -111,7 +114,9 @@ recipe = {
                    "quant_min": -128, "quant_max": 127, "mode": "static"},
 }
 """
-_SCRIPT = _RECIPE + r"""
+_SCRIPT = (
+    _RECIPE
+    + r"""
 import numpy as np
 from merlin.targetgen import recipe_numerics as RN
 class Model(torch.nn.Module):
@@ -163,6 +168,7 @@ print(json.dumps({
     "refused": {row["operator"]:row["refused"] for row in rows.values() if "refused" in row},
 }))
 """
+)
 
 
 def _capture_report(script):
@@ -207,7 +213,9 @@ def test_backward_and_constant_ops_are_named():
     assert "add.Tensor" in " ".join(table["affine_map"])
 
 
-_STANDALONE = _RECIPE + r"""
+_STANDALONE = (
+    _RECIPE
+    + r"""
 class Sum(torch.nn.Module):
     def forward(self, x, y):
         return torch.add(x, y)
@@ -231,6 +239,7 @@ for name, model, inputs in (("sum", Sum(), (torch.randn(8, 16), torch.randn(8, 1
     report[name]["refused"] = {row["operator"]:row["refused"] for row in stats["integer_recipes"] if "refused" in row}
 print(json.dumps(report))
 """
+)
 
 
 def test_a_sum_a_mean_and_a_constant_read_themselves_out():
