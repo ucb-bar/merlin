@@ -88,20 +88,28 @@ def window_mean_refusal(mean: dict[str, Any], oracle: Any, dtype: str | None) ->
         mean["asked"], mean["refusal"] = False, contraction.refusal
         return contraction.reason or "no unit contracts these operands"
     mean["asked"] = True
-    if mean.get("exactness") != "exact" or mean.get("multiplier") != 1:
+    # The recipe's integer-sum policy (readout_facet.integer_sum_policy): under ``exact`` only an
+    # exact integer sum is admitted; under ``bounded`` a float mean is admitted at its ``bound_lsb``.
+    from merlin.targetgen.readout_facet import INTEGER_SUM_EXACT, integer_sum_policy
+
+    exact_only = integer_sum_policy(getattr(oracle, "integer_sum_policy", None)) == INTEGER_SUM_EXACT
+    exact_sum = mean.get("exactness") == "exact" and mean.get("multiplier") == 1
+    if exact_only and not exact_sum:
         mean["refusal"] = "exact_arithmetic"
         return "floating mean reassociation requires full int32 readout and an exact rational host quantization binding"
-    from merlin.common.quant_formats import get
-    from merlin.runtime.exact_readout import prove_fp32_products
+    if exact_sum:
+        from merlin.common.quant_formats import get
+        from merlin.runtime.exact_readout import prove_fp32_products
 
-    try:
-        fmt = get(dtype)
-        bits = fmt.element_bits
-        low, high = (-(2 ** (bits - 1)), 2 ** (bits - 1) - 1) if fmt.signed else (0, 2**bits - 1)
-        mean["product_proof"] = prove_fp32_products(1, low * mean["window"], high * mean["window"])
-    except (KeyError, ValueError) as exc:
-        mean["refusal"] = "exact_arithmetic"
-        return str(exc)
+        try:
+            fmt = get(dtype)
+            bits = fmt.element_bits
+            low, high = (-(2 ** (bits - 1)), 2 ** (bits - 1) - 1) if fmt.signed else (0, 2**bits - 1)
+            mean["product_proof"] = prove_fp32_products(1, low * mean["window"], high * mean["window"])
+        except (KeyError, ValueError) as exc:
+            if exact_only:
+                mean["refusal"] = "exact_arithmetic"
+                return str(exc)
     scaled = oracle.ask(
         op=QUANTIZE, family=FAMILY_OF_STAGE[QUANTIZE], in_dtype=dtype, attached=True, granularity="tensor"
     )

@@ -170,11 +170,14 @@ def test_legacy_scaled_load_and_mean_paths_cannot_round_before_quantization():
         accumulator_kind="addressable",
         operand_sum={"operands": 2, "operand_dtype": "int8"},
     )
-    assert "round before" in facet.operand_sum_refusal((0.5, 0.25))
-    assert facet.operand_sum_refusal((1, 1)) is None
+    # The exact-only integer-sum policy a Core ATen spec_int8 recipe declares.
+    assert "round before" in facet.operand_sum_refusal((0.5, 0.25), policy="exact")
+    assert facet.operand_sum_refusal((1, 1), policy="exact") is None
     assert all(p["status"] == "proven" for p in facet.operand_sum_product_proofs((1, 1)))
 
     class Oracle:
+        integer_sum_policy = "exact"
+
         def ask(self, **kwargs):
             return Admission(admitted=True, units=("u",))
 

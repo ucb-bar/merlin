@@ -57,6 +57,34 @@ SCALAR_ABI_SCHEMA = "scalar_narrow_readout_contract_v1"
 HANDOFF_SCHEMA = "readout_numerics_handoff_v1"
 OPERAND_SUM_SCHEMA = "operand_sum_contract_v1"
 
+#: How an integer sum whose terms are rounded before they meet may stand for the capture's float sum
+#: (a scaled operand sum, a window mean). A numeric POLICY a recipe declares, never a hardware fact:
+#:
+#: * ``bounded`` -- admitted with the computed number of output steps it may lie from the
+#:   single-rounding reference (``bound_lsb``); the default, and what an undeclared recipe means.
+#: * ``exact`` -- only a sum with no intermediate rounding is admitted (unit multipliers, an exact
+#:   integer window sum); anything else stays on the host behind a full readout and an exact host
+#:   requantization.
+INTEGER_SUM_BOUNDED = "bounded"
+INTEGER_SUM_EXACT = "exact"
+INTEGER_SUM_POLICIES = (INTEGER_SUM_BOUNDED, INTEGER_SUM_EXACT)
+#: The recipe key that declares the policy.
+INTEGER_SUM_POLICY_KEY = "integer_sum_policy"
+
+
+def integer_sum_policy(value: str | None = None) -> str:
+    """``value`` checked against :data:`INTEGER_SUM_POLICIES`; ``None`` is the default, ``bounded``."""
+    policy = INTEGER_SUM_BOUNDED if value is None else str(value)
+    if policy not in INTEGER_SUM_POLICIES:
+        raise ValueError(f"integer sum policy {value!r} is not one of {INTEGER_SUM_POLICIES}")
+    return policy
+
+
+def integer_sum_policy_of(recipe: Mapping[str, Any] | None) -> str:
+    """The policy a recipe declares under :data:`INTEGER_SUM_POLICY_KEY` (``bounded`` when it declares none)."""
+    return integer_sum_policy((recipe or {}).get(INTEGER_SUM_POLICY_KEY))
+
+
 #: How a scale varies over the accumulator tile. ``row`` / ``column`` are one scale per tile row /
 #: column, ``rank1`` their outer product, ``block`` one per fixed-length run of elements.
 GRANULARITIES = ("tensor", "row", "column", "rank1", "block")
@@ -149,7 +177,8 @@ class ReadoutFacet:
     def rungs_for(self, name: str) -> tuple[str, ...]:
         return tuple(dict.fromkeys(e.rung for e in self.evidence if e.field == name))
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, integer_sum: str | None = None) -> dict[str, Any]:
+        """The facet as data; ``integer_sum`` is the policy its ``operand_sum.bound_lsb`` is computed under."""
         return {
             "schema": SCHEMA,
             "target": self.target,
@@ -170,7 +199,11 @@ class ReadoutFacet:
             "zero_point_carried": self.zero_point_carried,
             "readouts": [dict(readout) for readout in self.readouts],
             "stage_routes": [dict(route) for route in self.stage_routes],
-            "operand_sum": ({**self.operand_sum, "bound_lsb": self.operand_sum_bound()} if self.operand_sum else None),
+            "operand_sum": (
+                {**self.operand_sum, "bound_lsb": self.operand_sum_bound(policy=integer_sum)}
+                if self.operand_sum
+                else None
+            ),
             "operand_sum_absent": self.operand_sum_absent,
             "derived_stages": list(self.derived_stages),
             "accumulates": self.accumulates,
@@ -224,11 +257,31 @@ class ReadoutFacet:
             widths.append(int(digits))
         return int(count) * (1 << (widths[0] - 1)) <= (1 << (widths[1] - 1)) - 1
 
-    def operand_sum_bound(self, multipliers: Sequence[float] = ()) -> int | None:
-        """An exact integer sum has zero error; scaled loads need another implementation."""
-        if not self.operand_sum or any(float(value) != 1 for value in multipliers):
+    def operand_sum_bound(self, multipliers: Sequence[float] = (), *, policy: str | None = None) -> int | None:
+        """How many output steps this unit's sum may lie from the single-rounding reference.
+
+        Computed, never declared, and under the recipe's :func:`integer_sum_policy`.
+
+        ``exact``: only unit multipliers are admitted, the integer sum is the reference's, and the
+        bound is zero; any other multiplier has no bound (``None``).
+
+        ``bounded``: each of ``n`` operands is rounded on its way in, so the integer sum carries up
+        to ``n/2`` of error, and the reference rounds its own sum by up to a half: with every
+        multiplier at or below one the two integers differ by at most ``(n+1)//2``. A multiplier
+        above one cannot go through the load (see :meth:`operand_sum_refusal`), so the common factor
+        ``m`` is divided out of every operand and applied by the readout's own scale instead. The
+        operands' rounding error is then multiplied by ``m`` and the readout rounds once more, which
+        gives ``floor(m*n/2 + 1)``.
+        """
+        if not self.operand_sum:
             return None
-        return 0
+        if integer_sum_policy(policy) == INTEGER_SUM_EXACT:
+            return None if any(float(value) != 1 for value in multipliers) else 0
+        import math
+
+        n = int(self.operand_sum["operands"])
+        m = max([1.0, *(float(value) for value in multipliers)])
+        return (n + 1) // 2 if m == 1.0 else math.floor(m * n / 2 + 1)
 
     def operand_sum_product_proofs(self, multipliers: Sequence[float]) -> list[dict]:
         """Record full-storage-domain conversion/product proofs for identity loads."""
@@ -242,14 +295,32 @@ class ReadoutFacet:
         low, high = (-(2 ** (bits - 1)), 2 ** (bits - 1) - 1) if fmt.signed else (0, 2**bits - 1)
         return [prove_fp32_products(1, low, high) for _ in multipliers]
 
-    def operand_sum_refusal(self, multipliers: Sequence[float]) -> str | None:
-        """Why this unit cannot sum operands under these multipliers, or ``None`` when it can."""
+    def operand_sum_refusal(self, multipliers: Sequence[float], *, policy: str | None = None) -> str | None:
+        """Why this unit cannot sum operands under these multipliers, or ``None`` when it can.
+
+        Under the ``exact`` :func:`integer_sum_policy` a multiplier other than one is refused (the
+        load would round before the sum); under ``bounded`` it is admitted with its bound, unless it
+        exceeds one where no readout scale is derived to carry the common factor.
+        """
         if not self.operand_sum:
             return self.operand_sum_absent or "the unit's load applies no scale"
         if len(multipliers) > int(self.operand_sum["operands"]):
             return f"the unit sums {self.operand_sum['operands']} operands, not {len(multipliers)}"
         if any(float(m) < 0.0 for m in multipliers):
             return f"multiplier(s) {[m for m in multipliers if float(m) < 0.0]} are negative"
+        if integer_sum_policy(policy) == INTEGER_SUM_BOUNDED:
+            wide = [m for m in multipliers if float(m) > 1.0]
+            if wide and self.operand_sum.get("operand_saturates") and not self.scale_granularities:
+                # A scaled operand is saturated to the element type BEFORE it is added, so a multiplier
+                # above one can clip an operand whose share of the sum the other would have cancelled:
+                # an error no bound covers. The way out is to divide the common factor out of the
+                # loads and give it to the readout's scale, and this readout is not derived to have one.
+                return (
+                    f"multiplier(s) {wide} exceed one: each operand saturates to "
+                    f"{self.operand_sum.get('operand_dtype')} before the add, and no readout scale is "
+                    f"derived to carry the common factor instead"
+                )
+            return None
         try:
             self.operand_sum_product_proofs(multipliers)
         except (KeyError, ValueError) as exc:
@@ -948,8 +1019,12 @@ class TargetReadout:
     facets: tuple[ReadoutFacet, ...]
 
     def applies_composition(
-        self, stages: Sequence[str], *, unit: str | None = None,
-        selector: str | None = None, routes=(),
+        self,
+        stages: Sequence[str],
+        *,
+        unit: str | None = None,
+        selector: str | None = None,
+        routes=(),
     ) -> bool | None:
         """Whether one selected unit/readout carries the complete stage set.
 
@@ -990,12 +1065,14 @@ class TargetReadout:
         """Whether some unit's derived output path adds an operand into the accumulator on load."""
         return any(f.accumulates for f in self.facets)
 
-    def operand_sum(self, multipliers: Sequence[float]) -> tuple[ReadoutFacet | None, str | None]:
-        """``(facet, None)`` for the first unit that can sum operands under ``multipliers``, else
-        ``(None, why)`` with the first refusal."""
+    def operand_sum(
+        self, multipliers: Sequence[float], *, policy: str | None = None
+    ) -> tuple[ReadoutFacet | None, str | None]:
+        """``(facet, None)`` for the first unit that can sum operands under ``multipliers`` (and the
+        recipe's :func:`integer_sum_policy`), else ``(None, why)`` with the first refusal."""
         refusals = []
         for facet in self.facets:
-            refusal = facet.operand_sum_refusal(multipliers)
+            refusal = facet.operand_sum_refusal(multipliers, policy=policy)
             if refusal is None:
                 return facet, None
             refusals.append(refusal)

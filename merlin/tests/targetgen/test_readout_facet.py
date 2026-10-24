@@ -43,19 +43,23 @@ _READOUTS = [{"selector": "i8", "applies": ["acc_scale", "relu", "bias_add"]}, {
 
 
 def test_composition_requires_one_unit_and_one_readout():
-    split = RF.ReadoutFacet(target="t", unit="u", readouts=(
-        {"selector": "scaled", "applies": ["acc_scale"]},
-        {"selector": "activated", "applies": ["relu"]},
-    ))
+    split = RF.ReadoutFacet(
+        target="t",
+        unit="u",
+        readouts=(
+            {"selector": "scaled", "applies": ["acc_scale"]},
+            {"selector": "activated", "applies": ["relu"]},
+        ),
+    )
     target = RF.TargetReadout((split,))
     assert target.applies_stage("acc_scale") and target.applies_stage("relu")
     assert target.applies_composition(["acc_scale", "relu"], unit="u") is False
     assert target.applies_composition(["acc_scale"], unit="u", selector="activated") is False
     assert target.applies_composition(["acc_scale"], unit="missing") is None
 
-    other = RF.ReadoutFacet(target="t", unit="v", readouts=(
-        {"selector": "combined", "applies": ["acc_scale", "relu"]},
-    ))
+    other = RF.ReadoutFacet(
+        target="t", unit="v", readouts=({"selector": "combined", "applies": ["acc_scale", "relu"]},)
+    )
     target = RF.TargetReadout((split, other))
     assert target.applies_composition(["acc_scale", "relu"], unit="u") is False
     assert target.applies_composition(["acc_scale", "relu"], unit="v") is True
@@ -132,7 +136,7 @@ def test_selected_data_readout_does_not_require_native_runtime(monkeypatch, expl
         "runner": {"backend": "chipyard_rocc", "chipyard_rocc": {"readout": declared}},
     }
     selected = {"scalar_abi": _ABI, "readouts": [{"selector": "i32", "applies": []}]} if explicit else None
-    facet, = RF.for_target("synthetic", contract=contract, facts=_facts(), readout_inputs=selected)
+    (facet,) = RF.for_target("synthetic", contract=contract, facts=_facts(), readout_inputs=selected)
     assert facet.rounding == "half_even"
     assert list(facet.readouts) == (selected["readouts"] if explicit else _READOUTS)
     assert facet.scale_granularities == ("tensor",)
@@ -301,14 +305,27 @@ def test_a_scaled_load_into_an_addressable_accumulator_licenses_an_operand_sum()
     facet = RF.derive("t", facts=_facts(), unit={"name": "u"}, scalar_abi=_ABI, operand_sum=_SUM)
     assert facet.operand_sum["operands"] == 2 and facet.rungs_for("operand_sum") == ("scalar_abi",)
     assert not facet.unknown  # a licence, or its absence, is never an unknown of the readout
-    # The bound is computed: two per-operand roundings against one, then a factor the readout carries.
-    assert facet.operand_sum_bound() == 0 and facet.operand_sum_bound((0.4, 1.0)) is None
-    assert facet.operand_sum_bound((1.5, 0.5)) is None and facet.operand_sum_bound((2.5, 0.5)) is None
-    assert "round before" in facet.operand_sum_refusal((0.5, 0.25))
-    assert "round before" in facet.operand_sum_refusal((1.5, 0.25))
+    # Bounded (the default policy): the bound is computed, two per-operand roundings against one,
+    # then a factor the readout carries.
+    assert facet.operand_sum_bound() == 1 and facet.operand_sum_bound((0.4, 1.0)) == 1
+    assert facet.operand_sum_bound((1.5, 0.5)) == 2 and facet.operand_sum_bound((2.5, 0.5)) == 3
+    assert facet.operand_sum_refusal((0.5, 0.25)) is None
+    assert facet.operand_sum_refusal((1.5, 0.25)) is None  # the readout's derived scale carries 1.5
     assert "negative" in facet.operand_sum_refusal((-0.5, 0.25))
     assert "sums 2 operands" in facet.operand_sum_refusal((0.5, 0.25, 0.1))
-    assert facet.to_dict()["operand_sum"]["bound_lsb"] == 0
+    assert facet.to_dict()["operand_sum"]["bound_lsb"] == 1
+    # Exact-only: unit multipliers alone, at a zero bound; a scaled load would round before the sum.
+    exact = RF.INTEGER_SUM_EXACT
+    assert facet.operand_sum_bound(policy=exact) == 0 and facet.operand_sum_bound((0.4, 1.0), policy=exact) is None
+    assert facet.operand_sum_bound((1.5, 0.5), policy=exact) is None
+    assert facet.operand_sum_bound((2.5, 0.5), policy=exact) is None
+    assert "round before" in facet.operand_sum_refusal((0.5, 0.25), policy=exact)
+    assert "round before" in facet.operand_sum_refusal((1.5, 0.25), policy=exact)
+    assert "negative" in facet.operand_sum_refusal((-0.5, 0.25), policy=exact)
+    assert "sums 2 operands" in facet.operand_sum_refusal((0.5, 0.25, 0.1), policy=exact)
+    assert facet.to_dict(integer_sum=exact)["operand_sum"]["bound_lsb"] == 0
+    with pytest.raises(ValueError, match="integer sum policy"):
+        facet.operand_sum_bound(policy="approximately")
 
 
 def test_a_scaled_load_with_nowhere_to_meet_is_not_an_operand_sum() -> None:
@@ -326,9 +343,12 @@ def test_a_scaled_load_with_nowhere_to_meet_is_not_an_operand_sum() -> None:
 
 def test_a_multiplier_above_one_needs_a_readout_scale_to_carry_it() -> None:
     bare = RF.ReadoutFacet(target="t", unit="u", accumulator_kind="addressable", operand_sum=dict(_SUM))
-    assert "round before" in bare.operand_sum_refusal((1.5, 0.5))
-    assert "round before" in bare.operand_sum_refusal((1.0, 0.5))
-    assert bare.operand_sum_refusal((1.0, 1.0)) is None
+    assert "exceed one" in bare.operand_sum_refusal((1.5, 0.5))
+    assert bare.operand_sum_refusal((1.0, 0.5)) is None
+    exact = RF.INTEGER_SUM_EXACT
+    assert "round before" in bare.operand_sum_refusal((1.5, 0.5), policy=exact)
+    assert "round before" in bare.operand_sum_refusal((1.0, 0.5), policy=exact)
+    assert bare.operand_sum_refusal((1.0, 1.0), policy=exact) is None
     assert all(p["status"] == "proven" for p in bare.operand_sum_product_proofs((1.0, 1.0)))
 
 
