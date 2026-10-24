@@ -109,12 +109,20 @@ establishes the requested three-model FireSim result.
    leave `model_validation_complete` false pending the independent source,
    placement, exact-kernel, instruction and hardware gates. Report complete
    target-cycle windows, cold/warm policy, stage counts, host/transfer work, memory
-   and simulator wall time. Add per-stage TVM counters without dropping aggregate
-   timing; native stage counters exclude transfers and cannot be summed as E2E.
+   and simulator wall time. Use the opt-in `--profile-stages` TVM counters alongside aggregate
+   timing; account for instrumentation overhead. Native stage counters exclude
+   transfers and cannot be summed as E2E.
    The bridge currently fixes one warm and one measured invocation. Do not
    substitute summed operator minima for E2E time.
 
 ## Testing and known environment constraints
+
+For the workload-tuning follow-up, read `FASED_SWEEPS.md` and companion
+`WORKLOAD_TUNING.md`. New cycles bind the opt-in FASED memory variant and fixed
+warm timing; old `rtl-v1` costs remain historical. Keep compiler graph choices
+per phase and reuse operator records only through structural matching and fresh
+evidence validation. Synthetic chunk fixtures do not replace the selected EL4
+numerical release. Preserve failures/caps and all active worker evidence.
 
 Create outputs with `merlin.common.artifacts.new_product/new_measurement`.
 Comparison tests live in `merlin/tests/gemmini`; use the selected Torch/ONNX/TVM
