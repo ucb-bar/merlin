@@ -1,18 +1,145 @@
 # TVM comparison: ResNet50, TinyLlama and SmolVLA FireSim handoff
 
-The goal is repeatable complete inference runs of **all three EL4 workloads**.
+This directory compiles the three EL4 workloads with the companion TVM Gemmini
+backend and runs each as one complete guest session on FireSim. To run the next
+FireSim job, follow [FireSim handoff: next run](#firesim-handoff-next-run). The
+rest of this README is the reference for each step.
+
+## Status (2026-10-24)
+
+| Workload | Last FireSim run (F2 `f2_gemmini_rocket_latpipe_60mhz`) | Tuning since then | Next run |
+| --- | --- | --- | --- |
+| ResNet50 | Strict `valid.elf`: bit-exact vs PyTorch and bit-identical to Spike; 3,230,479,164 target cycles. `bad-oracle.elf` rejected (rc=22). | `fased-v1` has a passing record for a cropped layer4 3×3 convolution region (its geometry may not match the full 7×7 layer); the 1×1 reduction found no admitted winner. | Recompile with `fased-v1`, rerun strict and bad-oracle, compare cycles on the same F2 image. |
+| TinyLlama | 16+1 diagnostic-loose ELF: both calls bit-identical to Spike; 3,407,588,407 target cycles. Strict session fails the EL4 tolerance (logits max_abs 0.78 / 0.66, top-1/top-5 identical). | `--graph-cse` cut a connected decode K/V region from 622,531 to 460,958 warm cycles (−25.95%). Decode/prefill K/V records in `fased-v1`. | Compile with `--graph-cse` and `fased-v1`, link with full readback, compare every call against the `portable_exp_trig` reference. |
+| SmolVLA | Not run. | Action-output record −6.62% warm cycles; time-concatenation record. | First complete run once its processed-observation gate passes. |
+
+FireSim numbers come from the `tvm-el4-prelim` host worklog (per-run evidence in
+`fpga/<runId>/`, mirrored to `s3://fsim-artifacts-599243103974/firesim-runs/`).
+Tuning numbers are Verilator chunk measurements with the FASED latency-pipe
+memory model ([FASED_SWEEPS.md](FASED_SWEEPS.md)), not full-model speedups.
+[GENERATION.md](GENERATION.md) explains the PyTorch-to-ELF flow and which choices
+are compiler knobs; [PERFORMANCE_AUDIT.md](PERFORMANCE_AUDIT.md) audits SRAM use
+and the cycle gap; [NUMERICAL_DIAGNOSTICS.md](NUMERICAL_DIAGNOSTICS.md) covers
+TinyLlama first-divergence tracing.
+
+## FireSim handoff: next run
+
+These steps reuse the environment, model caches and launch tools already set up
+on the `tvm-el4-prelim` FireSim host (`source /work/exp/tvm-el4-prelim/env.sh`,
+`exp-run`, `fpga-run-elf`). `$PY`, `$TVM`, `$GCC`, `$RUN` and the receipt variables
+follow [First session](#first-session-establish-an-isolated-environment).
+
+1. **Update both checkouts, fast-forward only.** Merlin
+   `comparisons/tvm-el4-handoff` and TVM `grammy117/tvm` `gemmini/curated-handoff`
+   (`f1e411b1fe57f9fb5983d6cdef45877a6c211485` or later). Record both hashes.
+   The TVM commits since `5b4c36da` change only Python, presets and tests, so the
+   host's existing `build/tvm` library remains valid.
+
+   ```bash
+   git -C "$MERLIN" pull --ff-only origin comparisons/tvm-el4-handoff
+   git -C "$TVM" pull --ff-only https://github.com/grammy117/tvm.git gemmini/curated-handoff
+   ```
+
+2. **Export the stages** exactly as in the previous run: the capture worker with
+   `--save-exported-program` writes one `program.pt2` per stage. TinyLlama's EL4
+   chain is 32-token prefill plus 32 decode calls with cache capacity 64; the
+   previous preliminary run used 16+1, so record which one this run uses.
+
+3. **Compile every stage with the tuned settings.** `fased-v1` is applied first;
+   `rtl-v1` supplies traces only where `fased-v1` has no structural match:
+
+   ```bash
+   "$PY" "$TVM/apps/gemmini/compile_package.py" \
+     --program "$RUN/<model>-capture/stages/<stage>/program.pt2" \
+     --tuning-preset fased-v1 --fallback-tuning-preset rtl-v1 \
+     --tensor-memory-bytes 8589934592 \
+     --adapter-receipt "$ADAPTER_RECEIPT" --riscv-gcc "$GCC" \
+     --output-dir "$RUN/<model>-<stage>-package"
+   # TinyLlama prefill and decode: add --graph-cse
+   ```
+
+   Keep the other graph defaults (fusion, weight packing, bias preload). Each
+   package's `database-selection.json` and `placement.json` list which functions
+   got a tuned record. Misses compile with defaults, and CPU-only tasks
+   (quantize, reduce, scale) are untuned; both are expected, not errors. An
+   optional A/B for ResNet and SmolVLA is the same build with `--graph-cse`,
+   chosen by complete-session cycles.
+
+4. **Link the session ELFs with stage counters and full readback.** Use
+   `build_package_session.py` as in [Build the full session](#build-the-full-session-and-functional-controls),
+   with the same absolute `--weights-base/--arena-base/--memory-bytes` layout as
+   the previous run, and add:
+
+   ```bash
+     --profile-stages --readback --rtol 1e-5 --atol 2e-6
+   ```
+
+   `--readback` prints every output of every call after the measured interval,
+   so FireSim returns the full numerical result. `--profile-stages` adds
+   `TVM_SESSION_STAGE_CYCLES` lines per call. Run the positive and wrong-oracle
+   ELFs on Spike first. If TinyLlama still fails the strict tolerance on Spike,
+   also build the diagnostic-loose ELF, as in the previous run, for timing.
+
+5. **Run on FireSim**, one complete model at a time, positive ELF then
+   wrong-oracle ELF:
+
+   ```bash
+   fpga-run-elf --run-id <id> "$RUN/linked-session/valid.elf"
+   ```
+
+   Keep `fpga/<runId>/` (`meta.json` with ELF sha256, AGFI and commits, `run.log`,
+   `uartlog`, `uartlog.unpty`, `readback/`). The TinyLlama ELF took about 1 h 52 min
+   last time, almost all of it loading 2.65 GB over TSI.
+
+6. **Get the numerics back.** Decode the UART with `read_package_session.py`
+   (see [After execution](#build-the-full-session-and-functional-controls)) into one
+   NPZ per call. Check all outputs with `merlin.model_check.baseline_numerics`. For
+   TinyLlama, also run per call:
+
+   ```bash
+   "$PY" examples/gemmini/comparisons/tvm/compare_tinyllama_outputs.py \
+     --reference reference-step.npz \
+     --actual "$RUN/readback/call_<NNNN>_<stage>_<NNNN>.npz"
+   ```
+
+   Compare against the prepared quantized reference generated with
+   `portable_exp_trig`. The previous run compared against eager PT2E, which uses
+   different host arithmetic. Because F2 matched Spike bit-for-bit, debug any
+   remaining mismatch on Spike/host with
+   [NUMERICAL_DIAGNOSTICS.md](NUMERICAL_DIAGNOSTICS.md); it needs no FPGA time.
+
+7. **Report** per workload: the measured session's total target cycles, the
+   stage-cycle lines, ELF sha256, AGFI, Merlin/TVM/model2MLIR hashes, export
+   settings (token counts, stages) and the numerical verdict. Compare cycles only
+   against runs on the same F2 image and workload settings.
+
+### Known gaps (not blockers for this run)
+
+- Verilator tuning used the U250 pin's FASED settings (30/30-cycle latency,
+  16/16 outstanding). The F2 latency-pipe image's `runtime.conf` has not been
+  checked; if it differs, the tuned rankings may shift.
+- No same-ELF Verilator vs FireSim cycle correlation yet.
+- Tuned chunks used synthetic surrogate fixtures; records apply only by exact
+  structural match, so coverage of the real stages will be partial.
+- CPU-only tasks are not tuned. Intermediates return to host memory between
+  functions; there is no cross-function SRAM residency.
+- The TinyLlama strict-tolerance failure is not root-caused.
+- SmolVLA's processed-observation hash gate is open.
+- The TVM session is not yet adapted to EL4's compact chain transport; the
+  full-array readback path above works without it.
+- FireSim fast loadmem has not been tried for large ELFs.
+
+## Background and sources
+
 The workload authority is Merlin EL4 at
 [`0cc289de52a10bed256f32c90cfbb54a21b3c81f`](https://github.com/ucb-bar/merlin/tree/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol).
 Its protocol already specifies model revisions, quantization recipes, calibration,
 input shapes, token counts, recurrence and output checks. The repo also includes
-stored visible inputs. The remaining task is to bind these definitions to a
-shared numerical release, complete compiled sessions and verified FireSim runs.
-This handoff supersedes the earlier two-model 16+1 preliminary selection.
+stored visible inputs. This handoff supersedes the earlier two-model 16+1
+preliminary selection.
 
 The 2026-10-23 fetch and pull found `origin/feat/el4-experiment` still at `0cc289de5`;
-this handoff already contains it, with no merge conflicts. The selected protocol,
-three base recipes and committed input definitions are unchanged from the user's
-earlier `db2f52415fe9f7d2cd7f028e122f8c9b039a925c` reference. Runtime tooling has
+this handoff already contains it, with no merge conflicts. Runtime tooling has
 advanced: EL4 now has a complete-chain image builder, compact all-element
 comparison, and strict or lightweight boot-file provenance. The TVM session
 bridge still needs an adapter to those newer manifest/transport contracts.
@@ -113,7 +240,7 @@ different milestones:
 | EL4 now builds complete native guest chains from finished `baremetal_model.json` program builds. It can compare every output element in the guest and send compact results. | Reuse its contracts and checks. This is implemented for Merlin's native program ABI; TVM's `model_run` packages and `tvm_merlin_package_session_v1` manifest are not accepted as native build evidence. The remaining work is a TVM adapter, not inventing a complete-chain runtime. [Chain-image guide](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/docs/reference/chain_images.md). |
 | The FireSim selection is a template with `manager_contract: null` and empty model asset lists. | Bind actual compiler freeze, complete-chain ELFs, inputs/references and manager identity, then prepare the request. [Selection template](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/firesim_workhorse.yaml). |
 | Strict version-pinned upload/manager helpers and lightweight boot-file verification are implemented. The checked-in template selects strict version fields; the installed legacy helper has different behavior. | Choose one documented mode and supply its actual evidence. Strict helper installation is a separate deployment step; lightweight mode avoids that upgrade but still requires a compact complete-chain guest. Neither mode currently accepts the TVM session unchanged. [Strict integration](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/manager-provenance.md), [lightweight mode](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/validation/booted-elf-provenance.md). |
-| TVM imports prepared `.pt2` programs, but its importer does not automatically apply Merlin's selected portable host-math policy. The session bridge records an aggregate warm/measured interval, without per-stage counters. | Check full-model agreement with the independent portable references; implement any required arithmetic compatibility without widening tolerances. Add stage counters while retaining the complete-chain interval, including CPU work, transfers and recurrence. [TVM intake](https://github.com/grammy117/tvm/blob/5b4c36da713234e48a0deb35365b42a26c196707/apps/gemmini/program_io.py), [session runtime](package_session.py). |
+| TVM imports prepared `.pt2` programs, but its importer does not automatically apply Merlin's selected portable host-math policy. The session bridge records an aggregate warm/measured interval and offers opt-in buffered per-stage counters. | Check full-model agreement with the independent portable references; implement any required arithmetic compatibility without widening tolerances. Use `--profile-stages` for attribution while retaining the complete-chain interval, including CPU work, transfers and recurrence. [TVM intake](https://github.com/grammy117/tvm/blob/5b4c36da713234e48a0deb35365b42a26c196707/apps/gemmini/program_io.py), [session runtime](package_session.py). |
 
 **Current stage:** workload definitions and input/reference tooling exist;
 portable numerical-release assembly and complete-model integration/qualification
@@ -154,22 +281,30 @@ through Merlin's artifact helper; `RUN` is that fresh directory.
 
 ## Apply the learned TVM settings
 
-The companion branch ships `apps/gemmini/presets/rtl-v1/`: all **nine measured
-operator winners** as stock MetaSchedule workload/trace records, plus capability,
-payload and original measurement hashes. Use this preset for each prepared stage:
+The companion branch ships two presets in `apps/gemmini/presets/`, both stock
+MetaSchedule workload/trace records with capability, payload and measurement hashes:
+
+| Preset | Records | Measured on |
+| --- | --- | --- |
+| `fased-v1` | 16 operator records (TinyLlama decode/prefill K/V, SmolVLA action output and time concatenation, a ResNet layer4 3×3 region) | Verilator with the FASED latency-pipe memory model (30/30 cycles, 16/16 outstanding), one warmup then one measured call |
+| `rtl-v1` | Nine historical operator winners | Verilator with the stock one-cycle magic memory |
+
+Use `fased-v1` with `rtl-v1` as the fallback for each prepared stage, and add
+`--graph-cse` for TinyLlama stages:
 
 ```bash
 "$PY" "$TVM/apps/gemmini/compile_package.py" \
   --program "$RUN/resnet-capture/program.pt2" \
-  --tuning-preset rtl-v1 --tensor-memory-bytes 8589934592 \
+  --tuning-preset fased-v1 --fallback-tuning-preset rtl-v1 \
+  --tensor-memory-bytes 8589934592 \
   --adapter-receipt "$ADAPTER_RECEIPT" --riscv-gcc "$GCC" \
   --output-dir "$RUN/resnet-package"
 
-# After the full EL4 TinyLlama capture has passed its numerical checks:
 for stage in prefill decode; do
   "$PY" "$TVM/apps/gemmini/compile_package.py" \
     --program "$RUN/tinyllama-capture/stages/$stage/program.pt2" \
-    --tuning-preset rtl-v1 --tensor-memory-bytes 8589934592 \
+    --tuning-preset fased-v1 --fallback-tuning-preset rtl-v1 --graph-cse \
+    --tensor-memory-bytes 8589934592 \
     --adapter-receipt "$ADAPTER_RECEIPT" --riscv-gcc "$GCC" \
     --output-dir "$RUN/tinyllama-$stage-package"
 done
@@ -186,10 +321,11 @@ required.
 Stock structural matching applies only compatible records. A 32-row prefill
 winner does not prove coverage of the selected full program: EL4 epilogues and
 other graph differences can change matches. `placement.json` and `package.json` identify
-matched functions and unmeasured defaults; a preset permits zero matches and
-reports that truthfully. `--tuning-database` retains its stricter zero-match error.
-Do not call all full-model operators tuned merely because the preset is installed.
-The nine RTL measurements are not FireSim or E2E timing; remeasure the full chain.
+matched functions and unmeasured defaults, and `database-selection.json` names
+the preset (primary or fallback) behind each match. A preset permits zero matches
+and reports that truthfully. `--tuning-database` retains its stricter zero-match
+error. Do not call all full-model operators tuned merely because the preset is
+installed. Preset measurements are not FireSim or E2E timing; remeasure the full chain.
 
 Compile SmolVLA's `prefix_encode`, `flow_denoise` and `action_decode` archives in
 the same way after their capture/reference gates pass. Finish the independent
@@ -232,8 +368,9 @@ now preserves the exact prepared Torch program for external compiler intake.
 
 TVM's pullable delivery is
 [`grammy117/tvm:gemmini/curated-handoff`](https://github.com/grammy117/tvm/tree/gemmini/curated-handoff)
-with tested compiler/runtime source at `5b4c36da713234e48a0deb35365b42a26c196707`;
-this re-audit updates its handoff documentation without changing those sources.
+at `f1e411b1fe57f9fb5983d6cdef45877a6c211485`. Its C++ compiler/runtime source is
+unchanged since the tested `5b4c36da713234e48a0deb35365b42a26c196707`; later commits
+add the FASED workload-tuning tools, the `fased-v1` preset and their documentation.
 It is based on Apache v0.19.0
 `c4dc0c29ff81ddae688da24625a603da3b4a2c0e`. Its historical measured source is
 `87f07883b65ee55dbd1b93f665aaab87cd8a1e50` on `gemmini/metaschedule-dse`.
@@ -644,8 +781,9 @@ KV readback through UART a prerequisite for each benchmark pass.
 
 The session must execute the entire chain in one guest run, carrying its own
 computed state. The TVM bridge currently supplies one warm and one measured
-complete-session invocation with reset and aggregate counters; add per-stage
-counters and explicit repetition support for any different selected run policy.
+complete-session invocation with reset and aggregate counters. `--profile-stages`
+adds buffered stage counters; explicit repetition support is still needed for any
+different selected run policy.
 Conversely, native `CHAIN_STEP` windows exclude input transfers and descriptor
 preparation: summing them is not a full-chain E2E measurement. Preserve both
 whole-chain and stage windows, separating initialization and output publication.
