@@ -1,6 +1,6 @@
 {
   "upstream": "https://github.com/ucb-bar/model2MLIR.git",
-  "revision": "26e0373f4cee2a6ac2a5741631494916f33e46ea",
+  "revision": "31fd3989fe44a0cd1cadd24e1aa66b7936d96233",
   "path": "m2m/ir/quant_schema.json",
   "sha256": "af385e278adb4f16eed416114b1d3f24e0ab8ea2406e74248ca976790b402214",
   "status": "pinned"
