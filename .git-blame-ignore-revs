@@ -13,3 +13,5 @@ a18391c2a5faffe9941736b73dd169c6bc658ee4
 4abc71c41cbb649a950e6853334032f03fffa404
 # style(merlin): format insight_mining.py and setup.py
 adcb46d97a5db0f01fd8574c43d9bffabb75cf56
+# chore(gemmini): ruff-format the TVM package-session sources
+1ae53d07222249a39b60e487dd442aa9e55f7d21
