@@ -344,7 +344,9 @@ def build_verilator_variant(
     ``control`` the UNMODIFIED objects are relinked too and compared to it, which is what lets the
     receipt say the variant differs from the certified engine in its memory model and nothing else.
     """
-    obj_dir, out_dir = Path(obj_dir), Path(out_dir)
+    # Absolute, because every command runs with ``out_dir`` as its working directory: a relative one
+    # would name the patched source relative to itself and the compile would find nothing.
+    obj_dir, out_dir = Path(obj_dir), Path(out_dir).absolute()
     out_dir.mkdir(parents=True, exist_ok=True)
     msrc = _model_sources()
     plan = link_plan(obj_dir, makefile)
