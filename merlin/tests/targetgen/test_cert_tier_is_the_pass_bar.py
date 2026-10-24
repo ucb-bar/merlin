@@ -15,6 +15,7 @@ The ceiling exists to avoid REQUIRING a tier the endpoint cannot reach. These pi
 
 from __future__ import annotations
 
+import os
 import sys
 
 import pytest
@@ -43,8 +44,22 @@ def test_capping_never_substitutes_a_cheaper_tier():
     assert kept == [] and unreachable == ["L4", "L5"]
 
 
+@pytest.fixture
+def _restore_context_environment():
+    """Loading a run context exports the descriptor's repo root and contract into the process; restore
+    the caller's values (or their absence) so later tests in the same worker resolve their own."""
+    names = ("MERLIN_REPO_ROOT", "MERLIN_TARGET_CONTRACT")
+    previous = {name: os.environ.get(name) for name in names}
+    yield
+    for name, value in previous.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
+
+
 @pytest.mark.parametrize("target", ["gemmini", "atlas"])
-def test_the_pilot_corpus_demands_a_cycle_accurate_tier(target, monkeypatch):
+def test_the_pilot_corpus_demands_a_cycle_accurate_tier(target, monkeypatch, _restore_context_environment):
     """End-to-end on the real descriptors: the materialized pilot set each run grades must still ask for
     a tier above the screen, and the RTL barrier must therefore arm."""
     desc = repo_root() / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml"

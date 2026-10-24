@@ -17,10 +17,27 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
 from merlin_experiments.phase1.feedback import lifecycle as FL
 from phase1_feedback import MODULES, feedback_context, feedback_source
 
 from merlin.common.paths import merlin_dir, module_source_path
+
+
+@pytest.fixture(autouse=True)
+def _restore_selected_rtl_facts():
+    """Broker entrypoints clear or rebind MERLIN_RTL_FACTS for their own process (``frozen_facts.select``).
+
+    These tests run them in-process, so restore the caller's value (or its absence) afterwards rather
+    than leaving later tests in the same worker without the selected facts.
+    """
+    previous = os.environ.get("MERLIN_RTL_FACTS")
+    yield
+    if previous is None:
+        os.environ.pop("MERLIN_RTL_FACTS", None)
+    else:
+        os.environ["MERLIN_RTL_FACTS"] = previous
+
 
 HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 

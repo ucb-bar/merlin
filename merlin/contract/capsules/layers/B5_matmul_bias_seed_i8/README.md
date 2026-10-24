@@ -4,4 +4,6 @@ B5_matmul_bias_seed_i8: matmul over W[32, 16]:i8, A0[32, 32]:i8, B[16]:i32 with 
 
 Written with `merlin.targetgen.corpus_spec.build` from the gemmini corpus binding; its required instruction classes are the contract's own derivation, not hand-listed; `strict_classes` is the one hand-authored demand.
 
-kind=layer label=public op=matmul
+Labelled `dev`, not `public`: it is a conformance demand on the contract, kept out of the public source pool so it does not move the frozen source cardinality of a sealed experiment (`grading.expected_cohort`). The declared-class reachability checks read every tracked capsule regardless of label.
+
+kind=layer label=dev op=matmul
