@@ -132,3 +132,71 @@ def test_this_target_declares_the_loop_its_own_library_uses() -> None:
     declared = TCK.subsumption_for("gemmini")
     assert declared["LOOP_CONV"] >= {"MVIN", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"}
     assert TCK.subsumption_for(None) == {}
+
+
+# --- declared alternative forms of a required class ------------------------------------------------
+#: A synthetic declaration: SEED's work may also be done by a LOAD whose decoded `to_acc` flag is set.
+_ALTERNATIVES = TCK.parse_alternatives({"SEED": [{"class": "LOAD", "decoded": {"to_acc": True}}]})
+_SEED_EXPECTED = {"instruction_classes": ["LOAD", "SEED", "COMPUTE"]}
+
+
+def _decoded_trace(*rows):
+    return {"instructions": [{"index": i, "class": c, "decoded": d} for i, (c, d) in enumerate(rows)]}
+
+
+def test_either_declared_form_satisfies_a_class_with_an_alternative() -> None:
+    """A required class whose work the target says another RTL-legal form also performs is met by that
+    form, and the trace check says which form it was rather than accepting it silently."""
+    dedicated = _decoded_trace(("LOAD", {"to_acc": False}), ("SEED", {}), ("COMPUTE", {}))
+    assert not [
+        v for v in TCK.check(dedicated, _SEED_EXPECTED, alternatives=_ALTERNATIVES)["violations"] if "missing" in v
+    ]
+    alternative = _decoded_trace(("LOAD", {"to_acc": True}), ("LOAD", {"to_acc": False}), ("COMPUTE", {}))
+    res = TCK.check(alternative, _SEED_EXPECTED, alternatives=_ALTERNATIVES)
+    assert not [v for v in res["violations"] if "missing" in v]
+    assert any(
+        "SEED is performed here by the declared alternative LOAD (to_acc=True)" in n for n in res["satisfied_otherwise"]
+    )
+
+
+def test_neither_form_is_refused_and_an_undecoded_field_does_not_count() -> None:
+    neither = _decoded_trace(("LOAD", {"to_acc": False}), ("COMPUTE", {}))
+    assert (
+        "required instruction class missing: SEED"
+        in TCK.check(neither, _SEED_EXPECTED, alternatives=_ALTERNATIVES)["violations"]
+    )
+    # FAIL CLOSED: a LOAD whose flag did not decode is not evidence that it seeded anything.
+    undecoded = _decoded_trace(("LOAD", {}), ("COMPUTE", {}))
+    assert (
+        "required instruction class missing: SEED"
+        in TCK.check(undecoded, _SEED_EXPECTED, alternatives=_ALTERNATIVES)["violations"]
+    )
+    # ...and a target that declares no alternative is exactly the old check.
+    alternative = _decoded_trace(("LOAD", {"to_acc": True}), ("COMPUTE", {}))
+    assert "required instruction class missing: SEED" in TCK.check(alternative, _SEED_EXPECTED)["violations"]
+
+
+def test_a_strict_class_is_satisfied_only_by_its_own_form() -> None:
+    """A capsule that exists to exercise the dedicated form (so the declared class stays requirable)
+    demands it with `strict_classes`; the alternative does not stand in for it there."""
+    strict = {**_SEED_EXPECTED, "strict_classes": ["SEED"]}
+    alternative = _decoded_trace(("LOAD", {"to_acc": True}), ("COMPUTE", {}))
+    assert (
+        "required instruction class missing: SEED"
+        in TCK.check(alternative, strict, alternatives=_ALTERNATIVES)["violations"]
+    )
+    dedicated = _decoded_trace(("LOAD", {"to_acc": False}), ("SEED", {}), ("COMPUTE", {}))
+    assert not [v for v in TCK.check(dedicated, strict, alternatives=_ALTERNATIVES)["violations"] if "missing" in v]
+
+
+def test_a_malformed_alternative_declaration_is_refused() -> None:
+    import pytest
+
+    for bad in (
+        {"SEED": []},
+        {"SEED": [{"decoded": {"to_acc": True}}]},
+        {"SEED": [{"class": "LOAD", "when": 1}]},
+        ["SEED"],
+    ):
+        with pytest.raises(ValueError, match="class_alternatives"):
+            TCK.parse_alternatives(bad)

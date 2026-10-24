@@ -236,6 +236,13 @@
             "type": "string"
           }
         },
+        "strict_classes": {
+          "type": "array",
+          "description": "Required instruction classes this capsule demands in exactly their own form: an alternative form the target declares (encoding.class_alternatives) does not satisfy them. How a capsule keeps a declared class requirable when another RTL-legal form may do its work elsewhere.",
+          "items": {
+            "type": "string"
+          }
+        },
         "forbidden_classes": {
           "type": "array",
           "items": {

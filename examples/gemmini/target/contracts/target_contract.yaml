@@ -186,6 +186,14 @@ encoding:
   # other operation: demanding it of every matmul would reject valid bias-free kernels.
   stage_scoped_classes:
     MVIN3: [bias_add, bias]
+  # OTHER FORMS THAT DO A REQUIRED CLASS'S WORK. Either form seeds a bias: the full-width MVIN3, or a
+  # plain MVIN whose local address selects the accumulator (the decoded `is_acc_addr` flag below),
+  # which writes the bias row into the accumulator before the contraction accumulates onto it. Both are
+  # RTL-legal, so a bias capsule's MVIN3 requirement is met by either; a capsule that must exercise the
+  # MVIN3 form itself says so with `expected.strict_classes`.
+  class_alternatives:
+    MVIN3:
+      - {class: MVIN, decoded: {is_acc_addr: true}}
   # WHICH CLASSES A HARDWARE LOOP DOES THE WORK OF. A capsule declares the instruction classes its
   # operation needs; a design with a loop FSM performs several of them with ONE instruction, so a
   # program that uses the loop is not missing them. Without this a convolution lowered the way this

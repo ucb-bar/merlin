@@ -95,3 +95,71 @@ def test_a_stage_scoped_class_is_demanded_by_a_capsule_carrying_its_stage():
     assert set(demanded) == set(scoped), (
         f"stage-scoped classes no capsule demands: {sorted(set(scoped) - set(demanded))}"
     )
+
+
+def _bias_trace(seed_class: str, *, seed_to_accumulator: bool) -> dict:
+    """A well-formed bias kernel whose seed is issued as ``seed_class`` (decoded flags as RTL would)."""
+    rows = [
+        ("FENCE", {}), ("FLUSH", {}), ("CONFIG_EX", {}), ("CONFIG_LD", {}),
+        (seed_class, {"is_acc_addr": seed_to_accumulator}),
+        ("MVIN", {"is_acc_addr": False}), ("MVIN", {"is_acc_addr": False}),
+        ("CONFIG_ST", {}), ("PRELOAD", {}), ("COMPUTE_PRELOADED", {}), ("MVOUT", {}), ("FENCE", {}),
+    ]  # fmt: skip
+    return {"instructions": [{"index": i, "class": c, "decoded": d} for i, (c, d) in enumerate(rows)]}
+
+
+@pytest.mark.parametrize("op", ["matmul", "fused_matmul_bias"])
+def test_either_seed_form_satisfies_a_derived_bias_capsule(op):
+    """What a REGENERATED bias capsule (the epilogue-axis bias capsule, or a fused-bias perf capsule)
+    would owe, checked against both RTL-legal seeds: the full-width seed load, and a plain load into an
+    accumulator address (the in-repo codegen's form). A kernel with neither is refused."""
+    from types import SimpleNamespace
+
+    from merlin.targetgen import corpus_spec as CS
+    from merlin.targetgen import trace_check as TCK
+
+    contract = _contract("gemmini")
+    enc = contract["encoding"]
+    classes = CS._classes_source(SimpleNamespace(target="gemmini"), contract, taxonomy={})
+    expected = {"instruction_classes": classes(op=op, output_dtype="i8", epilogue=("bias_add",))}
+    alternatives = TCK.parse_alternatives(enc.get("class_alternatives") or {})
+    scoped = set(enc.get("stage_scoped_classes") or ())
+    assert scoped and scoped <= set(expected["instruction_classes"]) and scoped <= set(alternatives)
+    for seed in sorted(scoped):
+        for klass, fields in alternatives[seed]:
+            alt = _bias_trace(klass, seed_to_accumulator=bool(fields.get("is_acc_addr")))
+            dedicated = _bias_trace(seed, seed_to_accumulator=True)
+            for trace in (dedicated, alt):
+                res = TCK.check(trace, expected, alternatives=alternatives)
+                assert not [v for v in res["violations"] if "missing" in v], res["violations"]
+            neither = _bias_trace(klass, seed_to_accumulator=False)
+            res = TCK.check(neither, expected, alternatives=alternatives)
+            assert f"required instruction class missing: {seed}" in res["violations"]
+
+
+def test_the_declared_alternative_names_a_field_the_contract_decodes():
+    """An alternative is identified by a decoded field; one the contract never decodes could never match,
+    so a typo would silently turn the alternative off."""
+    contract = _contract("gemmini")
+    alts = (contract.get("encoding") or {}).get("class_alternatives") or {}
+    roles = (contract.get("rocc_operand_roles") or {}).get("classes") or {}
+    assert alts
+    for forms in alts.values():
+        for form in forms:
+            names = {f.get("name") for f in (roles.get(form["class"]) or {}).get("fields") or ()}
+            assert set(form.get("decoded") or {}) <= names, (form, sorted(n for n in names if n))
+
+
+def test_the_seed_capsule_keeps_the_dedicated_form_requirable():
+    """The alternative must not leave the dedicated seed class demanded by nothing: one tracked capsule
+    demands it in its own form."""
+    from merlin.common.paths import merlin_dir
+
+    alts = set((_contract("gemmini").get("encoding") or {}).get("class_alternatives") or ())
+    strict = set()
+    for path in sorted((merlin_dir() / "contract" / "capsules").glob("*/*/capsule.yaml")):
+        expected = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("expected") or {}
+        strict |= set(expected.get("strict_classes") or ()) & set(expected.get("instruction_classes") or ())
+    assert alts <= strict, (
+        f"classes with an alternative that no capsule demands in their own form: {sorted(alts - strict)}"
+    )
