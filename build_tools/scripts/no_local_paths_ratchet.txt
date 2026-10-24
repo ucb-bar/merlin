@@ -34,3 +34,5 @@ out/artifacts/targets/radiance/hand_v0/inputs/derived_facts.yaml
 
 # -- 3. the guardrail itself -------------------------------------------------------------------
 merlin/experiments/voyager_h2h/AGENT.md
+# growth-accepted: core-aten merge brings the native IEEE certificate, whose torch library/header paths sit beside their sha256 (measurement provenance).
+src/merlin/targetgen/native_ieee_certificate.json
