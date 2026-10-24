@@ -70,7 +70,9 @@ def _decline_axis(desc, family: str, cap_map: dict, *, undetermined: bool) -> st
     caps, how = _el._family_support(family, cap_map)
     if how is None:
         return "family"
-    for c in caps:
+    # Each declared row, as `is_eligible` checks them: a fold of a fused row and a standalone row has
+    # neither row's restriction, so asking it which axis refused would answer "unknown".
+    for c in (row for cap in caps for row in cap.rows()):
         if not _el._dtype_ok(desc.in_dtype, c.dtypes):
             return "dtype"
         if desc.weight_dtype is not None and not _el._dtype_ok(desc.weight_dtype, c.dtypes):
@@ -177,6 +179,9 @@ def _capsule_region(cap: dict):
         batch=batch,
         layout=layout,
         form=_sf.operation_form(op),
+        # A synthesized reduction capsule states the kind it computes, so a kind-restricted capability
+        # row can decide it instead of reporting the kind unobserved.
+        kind=sem.get("reduction_kind"),
     )
 
 
@@ -207,7 +212,11 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     # the accumulator readout epilogue). Such a family is real hardware, but a STANDALONE region of it is
     # correctly ineligible -- so it silently never enters the denominator, and a reader who sees a high
     # recall assumes a coverage the number does not claim. Derived from the capability map, never named.
-    fused_only = sorted(f for f, c in cap_map.items() if getattr(c, "composed_with", ()))
+    # Read PER DECLARED ROW: a family declared fused-only and also standalone for a narrower reduction
+    # kind folds its `composed_with` away, yet its fused-only row is still an exclusion to name.
+    from .compute_units import fused_producers
+
+    fused_only = sorted(f for f, c in cap_map.items() if fused_producers(c))
     n_fused_only_ineligible = 0
     by_family: dict[str, dict[str, int]] = {}
 
@@ -234,12 +243,18 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
             continue
         if validated_result(cap, r):
             validated_refusals.append(r["capsule"])
-            per_capsule.append({
-                "capsule": r["capsule"], "qualification": "expected_refusal",
-                "eligible": None, "accelerated": None, "must_accelerate": False,
-                "must_accelerate_violated": False, "reason": "original-bound validated refusal",
-                "undetermined": False,
-            })
+            per_capsule.append(
+                {
+                    "capsule": r["capsule"],
+                    "qualification": "expected_refusal",
+                    "eligible": None,
+                    "accelerated": None,
+                    "must_accelerate": False,
+                    "must_accelerate_violated": False,
+                    "reason": "original-bound validated refusal",
+                    "undetermined": False,
+                }
+            )
             continue
         desc = _capsule_region(cap)
         sem = cap.get("semantic") or {}
@@ -301,7 +316,7 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
                 fb["n_eligible_accelerated"] += 1
         # Ineligible SPECIFICALLY because the family is fused-only -- decided structurally from the
         # capability, never by matching the verdict's prose.
-        if not eligible and family in cap_map and getattr(cap_map[family], "composed_with", ()):
+        if not eligible and family in cap_map and fused_producers(cap_map[family]):
             n_fused_only_ineligible += 1
         if violated:
             must_accelerate_violations.append(r["capsule"])

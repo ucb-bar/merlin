@@ -449,6 +449,9 @@ _OP_FAMILY: dict[str, str] = {
     "reduce": "reduction",
     "reduce_sum": "reduction",
     "reduce_mean": "reduction",
+    # The exact integer sum over a tensor's OUTER (row) axis, one total per column: the corpus's
+    # standalone sum-reduction builder (`corpus_spec.column_sum_program`).
+    "column_sum": "reduction",
     "sum": "reduction",
     "max": "reduction",
     "argmax": "reduction",
@@ -755,6 +758,34 @@ def from_op(op: str | None) -> str | None:
     if not op:
         return None
     return _lookup(_OP_FAMILY, _OP_FAMILY_FOLDED, op)
+
+
+#: The reduction KIND (``compute_units.REDUCTION_KINDS``) a named reduction op computes. The op-name
+#: counterpart of ``contraction_coverage.reduction_kind``, which reads the kind off a region's body: a
+#: corpus writer choosing an op for a kind-restricted capability row has a name, not a body, so the
+#: names whose reduction is known are listed here. A mean or an average pool reduces by SUM (the
+#: division is a readout scale applied after it). An op not listed has no known kind and cannot be
+#: chosen for a kind-restricted row -- it is never guessed from its spelling.
+_OP_REDUCTION_KIND: dict[str, str] = {
+    "reduce_sum": "sum",
+    "column_sum": "sum",
+    "sum": "sum",
+    "reduce_mean": "sum",
+    "avgpool2d": "sum",
+    "avg_pool2d": "sum",
+    "global_average": "sum",
+    "global_avg_pool": "sum",
+    "max": "max",
+    "maxpool2d": "max",
+    "max_pool2d": "max",
+}
+
+
+def reduction_kind_of_op(op: str | None) -> str | None:
+    """The reduction kind ``op`` computes, or ``None`` when it is not a reduction of a known kind."""
+    if not op or from_op(op) != "reduction":
+        return None
+    return _OP_REDUCTION_KIND.get(str(op))
 
 
 def primitives_of(family: str) -> tuple[str, ...]:

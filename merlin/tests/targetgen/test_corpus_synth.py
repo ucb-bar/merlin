@@ -147,14 +147,23 @@ def test_a_fused_only_family_is_carried_as_an_epilogue_not_a_standalone_op():
     is a contraction carrying it as an epilogue. Which families are fused-only is read from the
     target's own capability map, never named here: a family the contract declares standalone must be
     synthesized as its own op, not hidden behind a contraction the hardware does not need.
+
+    READ PER DECLARED ROW. A family can be declared by several rows -- fused behind a contraction, and
+    standalone for a narrower reduction kind -- and the folded view intersects `composed_with` to
+    nothing. Each row is a capability the corpus must exercise: the fused row by an epilogue on a
+    contraction, the standalone row by a standalone op of the kinds it admits.
     """
+    from merlin.targetgen import compute_units as CU
     from merlin.targetgen import eligibility as E
+    from merlin.targetgen import semantic_families as SF
 
     doc = _spec("gemmini")
     res = CS.synthesize(doc)
     cap_map = E.capability_map_for_target("gemmini")
-    fused_only = {f for f, cap in cap_map.items() if cap.composed_with}
-    standalone = {f for f, cap in cap_map.items() if not cap.composed_with} - {"contraction"}
+    fused_only = {f for f, cap in cap_map.items() if CU.fused_producers(cap)}
+    standalone_rows = {
+        f: [row for row in cap.rows() if not row.composed_with] for f, cap in cap_map.items() if f != "contraction"
+    }
 
     def cells(family):
         # CELL entries only. The host-lane axis also emits capsules per family, and it is the exact
@@ -163,17 +172,136 @@ def test_a_fused_only_family_is_carried_as_an_epilogue_not_a_standalone_op():
         return [
             e
             for e in res["capsules"]
-            if f"_{family}_" in e["name"] and (e.get("generalization") or {}).get("generalization_axis") != "host_lane"
+            if e["name"].startswith(f"{CS.SYNTH_PREFIX}_{family}_")
+            and "conformance cell" in (e.get("source_reference") or "")
+            and (e.get("generalization") or {}).get("generalization_axis") != "host_lane"
         ]
 
-    fused = [e for family in sorted(fused_only) for e in cells(family)]
-    if not fused:
+    if not fused_only:
         pytest.skip("this target's requirement has no fused-only family")
-    for entry in fused:
-        assert entry["op"] == "matmul", "a fused-only family must ride a contraction"
-        assert entry.get("epilogue"), "…and must actually carry an epilogue stage"
-    for entry in (e for family in sorted(standalone) for e in cells(family)):
-        assert not entry.get("epilogue"), f"{entry['name']}: a standalone family is its own op"
+    for family in sorted(fused_only):
+        fused = [e for e in cells(family) if e.get("epilogue")]
+        assert fused, f"{family}: a fused-only row must be evidenced by a contraction carrying it"
+        for entry in fused:
+            assert entry["op"] == "matmul", "a fused-only family must ride a contraction"
+            assert SF.from_op(entry["epilogue"][0]) == family, "...carrying a stage OF that family"
+    for family, rows in sorted(standalone_rows.items()):
+        standalone = [e for e in cells(family) if not e.get("epilogue")]
+        if family not in fused_only:
+            assert not [e for e in cells(family) if e.get("epilogue")], f"{family}: a standalone family is its own op"
+        for row in rows:
+            assert standalone, f"{family}: its standalone row has no standalone capsule"
+            for entry in standalone:
+                assert SF.from_op(entry["op"]) == family
+                if row.kinds:
+                    assert SF.reduction_kind_of_op(entry["op"]) in row.kinds, (
+                        f"{entry['name']}: {entry['op']} is not a {list(row.kinds)} reduction"
+                    )
+
+
+def _two_row_contract(*rows: dict) -> dict:
+    """A one-unit capability contract declaring the given semantic-capability rows."""
+    return {
+        "compute_units": [
+            {
+                "name": "mesh",
+                "kind": "systolic",
+                "dtypes": ["int8"],
+                "semantic_capabilities": [{"family": "contraction", "dtypes": ["int8"]}, *rows],
+            }
+        ]
+    }
+
+
+_FUSED_ROW = {"family": "reduction", "dtypes": ["int8"], "composed_with": ["contraction", "movement"]}
+_SUM_ROW = {"family": "reduction", "dtypes": ["int8"], "kinds": ["sum"]}
+
+
+def _reduction_doc() -> dict:
+    return {
+        "target": "t",
+        "boundaries": {"extent_probes": [{"edge": 16, "points": [15, 16]}]},
+        "cells": [{"cell": "reduction/i8/aligned", "family": "reduction", "dtype": "i8", "alignment": "aligned"}],
+    }
+
+
+def _cell_entries(res: dict) -> list[dict]:
+    return [e for e in res["capsules"] if "conformance cell reduction/i8/aligned" in e.get("source_reference", "")]
+
+
+def test_each_declared_row_of_a_family_gets_its_own_capsule():
+    """A family declared fused-only AND standalone for a narrower kind folds into a view with neither
+    restriction (`composed_with` intersects to nothing, `kinds` unions to everything). Read that way the
+    cell looked like it wanted an unrestricted standalone reduction, and the only pool op could not be
+    graded at an integer dtype -- so synthesis refused the target outright. Read per row, the fused row
+    is carried as an epilogue and the sum row by a standalone sum, each with a writer and a golden."""
+    res = CS.synthesize(_reduction_doc(), capability_contract=_two_row_contract(_FUSED_ROW, _SUM_ROW))
+    by_name = {e["name"]: e for e in _cell_entries(res)}
+    assert set(by_name) == {f"{CS.SYNTH_PREFIX}_reduction_i8_aligned", f"{CS.SYNTH_PREFIX}_reduction_sum_i8_aligned"}
+    fused = by_name[f"{CS.SYNTH_PREFIX}_reduction_i8_aligned"]
+    assert fused["op"] == "matmul" and fused["epilogue"] == ["maxpool"]
+    standalone = by_name[f"{CS.SYNTH_PREFIX}_reduction_sum_i8_aligned"]
+    assert standalone["op"] == "column_sum" and not standalone.get("epilogue")
+    assert standalone["generalization"] == {"reduction_kind": "sum"}
+    assert not res["provenance"].get("cells_no_writer_can_express")
+
+
+def test_a_single_fused_row_still_yields_exactly_the_fused_capsule():
+    """The per-row reading changes nothing for a family declared once."""
+    res = CS.synthesize(_reduction_doc(), capability_contract=_two_row_contract(_FUSED_ROW))
+    entries = _cell_entries(res)
+    assert [(e["name"], e["op"], e.get("epilogue")) for e in entries] == [
+        (f"{CS.SYNTH_PREFIX}_reduction_i8_aligned", "matmul", ["maxpool"])
+    ]
+
+
+def test_a_kind_restricted_row_no_op_computes_is_reported_not_dropped():
+    """A standalone row whose kinds no gradeable op computes is an uncovered cell to argue about. Silently
+    letting the fused capsule stand in for it would read as covered."""
+    max_row = {"family": "reduction", "dtypes": ["int8"], "kinds": ["max"]}
+    with pytest.raises(CS.SynthesisError) as e:
+        CS.synthesize(_reduction_doc(), capability_contract=_two_row_contract(_FUSED_ROW, max_row))
+    assert "reduction/i8/aligned" in str(e.value) and "['max']" in str(e.value)
+
+
+def test_the_standalone_sum_builds_and_grades_as_an_exact_column_sum():
+    """The standalone sum capsule reuses the component-program writer and its independent integer
+    evaluator: the golden is the exact per-column total of the stimulus the capsule declares."""
+    from merlin_experiments.phase0.component_integer_bounds import derive, source_for_capsule
+
+    from merlin.targetgen import capsule_golden
+    from merlin.targetgen import corpus_spec as SPEC
+    from merlin.targetgen.capsule_inputs import materialize_capsule_leaves
+
+    binding = SPEC.CorpusBinding(
+        target="t", tile_dim=16, operand_dtype="int8", accum_dtype="int32", integer=True,
+        tiers=["L2", "L3"], compare="exact",
+    )  # fmt: skip
+    semantics = {"model": {"engine": "integer_reference"}, "overflow": "bounded_exact"}
+    entry = {
+        "name": "T_column_sum", "kind": "isa", "source_role": "derived_sweep", "source_reference": "test",
+        "op": "column_sum", "M": 16, "N": 15, "lhs": "A0", "out": "Y0", "label": "public",
+    }  # fmt: skip
+    capsule, text = SPEC.build(entry, binding)
+    assert capsule["operation"]["op"] == "component_program"
+    assert capsule["semantic"]["semantic_family"] == "reduction"
+    assert capsule["numeric_policy"]["dtype"] == "i32"  # the accumulator-width total, compared exactly
+    assert 'prov.family = "reduction"' in text and "arith.muli" not in text
+    # A reduction owes the target's movement/plumbing classes and never a multiply.
+    assert capsule["expected"]["instruction_classes"] == binding.classes_for(op="column_sum", output_dtype="i32")
+    capsule["numerical_semantics"] = semantics
+    capsule["integer_partial_sum_bound"] = derive(source_for_capsule(capsule), semantics)
+    leaves = materialize_capsule_leaves(capsule)["A0"]
+    rows, cols = leaves.shape
+    want = [[sum(int(leaves.data[r * cols + c]) for r in range(rows)) for c in range(cols)]]
+    assert capsule_golden.golden(capsule, None)["Y0"] == want
+
+
+def test_a_component_program_op_is_gradeable_only_in_the_integer_regime():
+    pool = CS.available_ops()
+    assert "column_sum" in CS.ops_gradeable_at("i8", pool)
+    for dtype in ("fp16", "bf16", "f32", "mxfp8"):
+        assert "column_sum" not in CS.ops_gradeable_at(dtype, pool), dtype
 
 
 def test_alignment_decides_the_shape():

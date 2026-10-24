@@ -1391,7 +1391,11 @@ def _epilogue_axis(target: str) -> dict:
         cap_map = capability_map_for_target(target) or {}
     except Exception:  # noqa: BLE001 -- unreadable manifest evidences nothing
         cap_map = {}
-    fused_families = {f for f, c in cap_map.items() if tuple(getattr(c, "composed_with", ()) or ())}
+    # Per declared row: a family with a fused-only row keeps that evidence even when another row of it
+    # runs standalone for a narrower reduction kind (which the fold's intersection would erase).
+    from merlin.targetgen.compute_units import fused_producers
+
+    fused_families = {f for f, c in cap_map.items() if fused_producers(c)}
 
     base: set = set()
     taxonomy = None
