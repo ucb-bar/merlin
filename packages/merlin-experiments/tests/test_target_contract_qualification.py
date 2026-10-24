@@ -164,6 +164,9 @@ def test_backend_candidates_and_actual_nested_stages_respect_authored_sw_scope()
             }
         ],
         taxonomy={},
+        # Fact-derived standalone forms (and the operand sum built on them) need the checked
+        # semantic fact; an unchecked contract declaration is not evidence.
+        semantic_facts={"facts": {"accumulate_on_load": {"status": "derived"}}},
     )
     spec, resolution = drift.resolve_spec(spec, facts)
     assert resolution["status"] == "resolved"

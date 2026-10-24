@@ -23,6 +23,7 @@ import yaml
 from merlin.common.paths import repo_root
 from merlin.targetgen import capability_manifests as cm
 from merlin.targetgen import target_registry as tr
+from merlin.targetgen.providers import ProviderError
 
 pytestmark = pytest.mark.target("gemmini")
 
@@ -35,6 +36,7 @@ def unavailable_external_evidence(tmp_path, monkeypatch):
     from merlin.targetgen.rtl import mlc_bridge
 
     monkeypatch.setenv("MERLIN_TARGET_PATH", "")
+    monkeypatch.delenv("MERLIN_TARGET_CONTRACT", raising=False)
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "isolated-out"))
     monkeypatch.setattr(mlc_bridge, "compute_unit_dtypes", lambda target: None)
     monkeypatch.setattr(isa_taxonomy, "taxonomy_for_target", lambda target: {})
@@ -91,6 +93,13 @@ def test_write_oot_target_gemmini_produces_the_interchange_package(tmp_path, mon
     assert (root / "AGENT.md").is_file()
 
     monkeypatch.setenv("MERLIN_TARGET_PATH", str(root))
+    # While the authored reference is present it is the view the package must implement; the
+    # generated contract carries derived evidence the reference deliberately omits, so it drifts.
+    with pytest.raises(ProviderError, match="drifts"):
+        tr.resolve("gemmini").load_contract()
+
+    # Eviction: the reference is gone and the generated package alone defines the target.
+    monkeypatch.setenv("MERLIN_TARGETS_DIR", str(tmp_path / "evicted-reference"))
     info = tr.resolve("gemmini")
     assert info.kind == "external"
     assert info.contract_path == root / "contracts" / "target_contract.yaml"

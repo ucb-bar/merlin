@@ -23,13 +23,20 @@ def probe(monkeypatch, tmp_path):
     path = root / "build_tools/scripts/installed_qualification_probe.py"
     spec = importlib.util.spec_from_file_location("archived_test_probe", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    site = tmp_path / "site"
-    site.mkdir()
-    monkeypatch.setattr(module.sysconfig, "get_path", lambda _: str(site))
-    monkeypatch.setattr(module, "sys", SimpleNamespace(modules={}))
-    monkeypatch.delenv("MERLIN_TEST_ARCHIVED_SOURCES", raising=False)
-    return module
+    # Executing the probe installs its native/scheduler import guard on this process's
+    # meta path. The guard belongs to the installed-qualification session it was copied
+    # into, so withdraw it again rather than leaking it into later tests in this worker.
+    original = list(sys.meta_path)
+    try:
+        spec.loader.exec_module(module)
+        site = tmp_path / "site"
+        site.mkdir()
+        monkeypatch.setattr(module.sysconfig, "get_path", lambda _: str(site))
+        monkeypatch.setattr(module, "sys", SimpleNamespace(modules={}))
+        monkeypatch.delenv("MERLIN_TEST_ARCHIVED_SOURCES", raising=False)
+        yield module
+    finally:
+        sys.meta_path[:] = original
 
 
 def roster(monkeypatch, tmp_path, *, rows=None):

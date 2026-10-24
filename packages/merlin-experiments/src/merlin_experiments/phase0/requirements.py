@@ -459,20 +459,40 @@ def unresolved_epilogue_blocker(requirement: dict) -> str | None:
     )
 
 
-def grouping_oracle(target: str, prohibited_roles):
+def reviewed_standalone_families(software_spec) -> tuple[str, ...]:
+    """Families whose unchecked standalone declaration the resolved software spec admitted on review.
+
+    ``resolve_spec`` marks such a row ``admission_basis: declared_unchecked`` only when both the spec
+    and the row carry ``status: reviewed``; nothing else here confers a review.
+    """
+    from merlin.targetgen.spec_fact_drift import semantic_family
+
+    families = set()
+    for row in (software_spec or {}).get("operations") or ():
+        if isinstance(row, dict) and row.get("admission_basis") == "declared_unchecked":
+            family = semantic_family(row)
+            if family is not None:
+                families.add(family)
+    return tuple(sorted(families))
+
+
+def grouping_oracle(target: str, prohibited_roles, software_spec=None):
     """The grouping's target oracle under the experiment's prohibited instruction roles.
 
-    ``None`` (the grouping's own default oracle) when the experiment prohibits nothing. Otherwise a
-    standalone form whose every evidence path needs a prohibited role -- a residual add licensed only
-    by a hardware loop descriptor, say -- is refused at grouping, so no form the policy forbids reaches
-    the requirement (``merlin.targetgen.capability_roles``).
+    ``None`` (the grouping's own default oracle) when the experiment prohibits nothing and the
+    selected software spec reviews no unchecked standalone declaration. Otherwise a standalone form
+    whose every evidence path needs a prohibited role -- a residual add licensed only by a hardware
+    loop descriptor, say -- is refused at grouping, so no form the policy forbids reaches the
+    requirement (``merlin.targetgen.capability_roles``), and a declaration without checked evidence
+    is admitted only where the resolved spec records its explicit review.
     """
     roles = tuple(prohibited_roles or ())
-    if not roles:
+    reviewed = reviewed_standalone_families(software_spec)
+    if not roles and not reviewed:
         return None
     from merlin.xdsl_dialects.lowering import compute_groups as CG
 
-    return CG.TargetOracle(target, prohibited_roles=roles)
+    return CG.TargetOracle(target, prohibited_roles=roles, **({"reviewed_families": reviewed} if reviewed else {}))
 
 
 def derive(
@@ -757,8 +777,11 @@ def derive(
     performance_full = None
     if public_selection is not None:
         PP.validate_selection(public_selection)
-        if (not performance_captures or set(performance_loaders) != set(performance_captures)
-                or (not independent_public and layer_guard is None)):
+        if (
+            not performance_captures
+            or set(performance_loaders) != set(performance_captures)
+            or (not independent_public and layer_guard is None)
+        ):
             raise ValueError(
                 "connected public performance sources require every declared sealed capture "
                 "and, for legacy policies, an operator-private exclusion selection"
@@ -841,7 +864,7 @@ def derive(
         target_registry.observed_contract(te.target, selected.contract),
         observed_facts(te.target, selected.refreshed_facts, Path(rtl_facts)),
     ):
-        oracle = grouping_oracle(te.target, spec.prohibited_instruction_roles)
+        oracle = grouping_oracle(te.target, spec.prohibited_instruction_roles, selected.software_spec)
         requirement["scope"]["performance"]["forms"] = derive_form_scope(
             te.target,
             captures,
@@ -938,7 +961,10 @@ def derive(
             )
         numeric_policy = recipe_doc.get("public_numerical_policy")
         boundary_entries, boundary_outputs, boundary_report = PB.derive(
-            public_entries, outputs, evidence=selected, policy=boundary_policy,
+            public_entries,
+            outputs,
+            evidence=selected,
+            policy=boundary_policy,
             **({"numerical_policy": numeric_policy} if numeric_policy is not None else {}),
         )
         # The original operator-private shape selection applies to the new

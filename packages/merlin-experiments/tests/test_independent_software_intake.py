@@ -227,6 +227,28 @@ def test_effective_binding_cannot_weaken_original_signature_constraints(selectio
         S.bind_component_software(evidence, authority)
 
 
+def test_resolver_record_carries_an_unmarked_form_but_never_a_substituted_one(selection):
+    authority = S.issue_independent_software_intake(**selection)
+    evidence = SimpleNamespace(
+        source_snapshots=(EvidenceSource(selection["source"], "software-spec", selection["source"].read_bytes()),),
+        software_spec=authority.public_facts(),
+    )
+    row = evidence.software_spec["operations"][0]
+    form = row.pop("hardware")
+    row["placement"] = "unknown"  # the facts established no form: unresolved rows carry no marker
+    with pytest.raises(RtlIntakeRefusal, match="hardware form selection"):
+        S.bind_component_software(evidence, authority)
+    evidence.software_spec_derivation = {"declarations": [{"id": row["id"], "form": form, "status": "unresolved"}]}
+    assert S.bind_component_software(evidence, authority) == {"software_intake_sha256": authority.sha256}
+    row["derived_from_facts"] = {"form": f"not-{form}"}
+    with pytest.raises(RtlIntakeRefusal, match="hardware form selection"):
+        S.bind_component_software(evidence, authority)
+    del row["derived_from_facts"]
+    evidence.software_spec_derivation["declarations"][0]["form"] = f"not-{form}"
+    with pytest.raises(RtlIntakeRefusal, match="hardware form selection"):
+        S.bind_component_software(evidence, authority)
+
+
 def test_effective_binding_cannot_duplicate_an_owner_to_drop_an_original(selection):
     spec = json.loads(selection["source"].read_bytes())
     spec["operations"]["second-copy"] = copy.deepcopy(spec["operations"]["movement"])

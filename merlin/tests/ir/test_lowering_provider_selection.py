@@ -38,9 +38,24 @@ def selected(tmp_path, monkeypatch):
     return provider, contract, native
 
 
-def test_selected_contract_wins_native_same_name(selected):
-    _, contract, _ = selected
+def _select_provider_view(monkeypatch, provider):
+    """Explicitly select the provider's own bytes as the capability view.
+
+    Without this, the same-named reference is the view the provider must implement, and this
+    fixture's provider deliberately differs from it.
+    """
+    monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(provider / "contracts/target_contract.yaml"))
+
+
+def test_selected_contract_wins_native_same_name(selected, monkeypatch):
+    provider, contract, _ = selected
+    _select_provider_view(monkeypatch, provider)
     assert pipeline.load_curated_contract("toy_npu") == contract
+
+
+def test_selected_support_drifting_from_its_reference_is_refused(selected):
+    with pytest.raises(pipeline.LoweringError, match="drifts.*notes"):
+        pipeline.load_curated_contract("toy_npu")
 
 
 @pytest.mark.parametrize("invalid", ["absent", "malformed", "nonmapping"])
@@ -72,10 +87,11 @@ def test_authored_example_contract_remains_selected(monkeypatch):
 
 
 @pytest.mark.parametrize("native_present", [False, True])
-def test_tiny_lowering_uses_selected_contract(selected, native_present):
-    _, contract, native = selected
+def test_tiny_lowering_uses_selected_contract(selected, native_present, monkeypatch):
+    provider, contract, native = selected
     if not native_present:
         (native / "target_contract.yaml").unlink()
+    _select_provider_view(monkeypatch, provider)
     # Other tests may already have loaded native provider objects. Selecting a
     # different support tree is a process boundary, not permission to clear the
     # loader's ownership records or replace live plugin objects.
