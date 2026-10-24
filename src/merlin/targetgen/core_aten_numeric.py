@@ -640,11 +640,7 @@ def _prepare_spec_int8(
                 not captured_plan["sites"]
                 and bool(island_sites)
                 and all(site["status"] == "admitted" for site in island_sites)
-                and all(
-                    row[authority]["status"] == "admitted"
-                    for row in captured_plan["quantization_sites"]
-                    for authority in ("software", "host")
-                )
+                and all(row["host"]["status"] == "admitted" for row in captured_plan["quantization_sites"])
             )
             if (
                 continuity["status"] != "preserved"
@@ -706,7 +702,9 @@ def _prepare_spec_int8(
                 observations.append((contraction.results[0], restored_readout))
             operations = list(module.walk())
             for row in plan["quantization_sites"]:
-                keys = {authority: row[authority]["declaration"] for authority in ("software", "host")}
+                keys = {
+                    authority: row[authority]["declaration"] for authority in ("software", "host") if authority in row
+                }
                 operations[row["source_operation_ordinal"]].attributes["prov.declarations"] = StringAttr(
                     json.dumps(keys, sort_keys=True)
                 )
