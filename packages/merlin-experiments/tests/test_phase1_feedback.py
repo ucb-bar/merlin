@@ -832,10 +832,17 @@ def test_qa_preserves_device_score_and_separate_guard_counts(tmp_path, monkeypat
             device_evidence_count=1,
             host_guard_pass=guard_pass,
             host_guard_total=1,
+            structural_evidence_all_pass=True,
+            # The guard is an admitted capsule outside the scored denominator.
+            cohort_admission={
+                "n_admitted_capsules": 2,
+                "admitted_name_set_sha256": qa.CG._name_set_sha256(["device", "guard"]),
+            },
         ),
     )
     verdict = qa.run("submission", str(tmp_path), tmp_path, {"public"}, False, 1, context=_context(tmp_path))
     assert verdict["n_passed"] == 1 and verdict["n_capsules"] == 1
+    assert verdict["original_cohort_complete"] == bool(guard_pass)
     assert verdict["host_guard_pass"] == guard_pass and verdict["host_guard_total"] == 1
     assert verdict["device_lane_scored_pass"] == 1
     assert verdict["all_pass"] == bool(guard_pass)

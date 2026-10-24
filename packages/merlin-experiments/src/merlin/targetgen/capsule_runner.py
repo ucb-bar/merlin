@@ -150,7 +150,6 @@ def _candidate_exception_diagnostic(exc: Exception, *, stage: str) -> dict:
     }
 
 
-
 def _grade_cpu_step(function, /, *args, **kwargs):
     """Run one synchronous grader calculation under the shared compute lease.
 
@@ -396,16 +395,24 @@ class _CarriedPreparedTier(Exception):
 
 
 @contextmanager
-def _prepared_tier_reuse(capsule_name, tier, mandatory, *, target, generated, shas, from_rtl,
-                         simulation_context):
+def _prepared_tier_reuse(capsule_name, tier, mandatory, *, target, generated, shas, from_rtl, simulation_context):
     """Look up an exact semantic certificate after this engine builds its ELF."""
+
     def observe(elf):
         from .elf_lanes import PACKAGE_ELF_NAME
 
         if Path(elf).resolve() != (Path(generated) / PACKAGE_ELF_NAME).resolve():
             return
-        result, _ = carried_tier_result(capsule_name, tier, mandatory, target=target,
-            generated=generated, shas=shas(), from_rtl=from_rtl, simulation_context=simulation_context)
+        result, _ = carried_tier_result(
+            capsule_name,
+            tier,
+            mandatory,
+            target=target,
+            generated=generated,
+            shas=shas(),
+            from_rtl=from_rtl,
+            simulation_context=simulation_context,
+        )
         if result is not None:
             raise _CarriedPreparedTier(result)
 
@@ -438,12 +445,24 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
             if not exact:
                 raise OracleUnavailable(reason)
         from .oracle_readback import run_with_readback
+        from .rtl_simulator_execution import SimulatorExecution, run_verified
 
-        res = run_with_readback(
-            cb, llvm_text, sim=sim, target=target, backend=backend, workdir=workdir, timeout=timeout,
-            policy=readback_policy,
-            **({"before_execution": _PREPARED_EXECUTION_OBSERVER.get()}
-               if _PREPARED_EXECUTION_OBSERVER.get() is not None else {}),
+        observer = _PREPARED_EXECUTION_OBSERVER.get()
+        # Reopen the selected hardware pin around the readback call and spend only the budget left
+        # after slot admission and verification.
+        res = run_verified(
+            SimulatorExecution(backend, sim, target, timeout, unavailable=OracleUnavailable),
+            lambda remaining: run_with_readback(
+                cb,
+                llvm_text,
+                sim=sim,
+                target=target,
+                backend=backend,
+                workdir=workdir,
+                timeout=remaining,
+                policy=readback_policy,
+                **({"before_execution": observer} if observer is not None else {}),
+            ),
         )
         if selection and isinstance(res.get("oracle"), dict):
             res["oracle"]["selection"] = dict(selection)
@@ -743,8 +762,9 @@ def apply_prohibited_instruction_rule(status: str, failure: dict | None, report:
     return status, failure
 
 
-def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool,
-                          simulation_context=None):
+def _tier_certificate_key(
+    capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool, simulation_context=None
+):
     """``(execution identity, instrument digest, refusal reason)`` for one (capsule, tier).
 
     The identity is ``None`` whenever either half cannot be established -- no executable yet, a
@@ -795,8 +815,9 @@ def stamp_cache_refusals(tiers: dict, refusals: dict) -> None:
             record.cache_unavailable = str(why)
 
 
-def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas, from_rtl: bool,
-                        simulation_context=None):
+def carried_tier_result(
+    capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas, from_rtl: bool, simulation_context=None
+):
     """A verdict this run may CARRY for ``tier``, as a TierResult, or ``None`` to execute the tier.
 
     The returned record is the stored one with the act of measurement stripped out: no wall-clock
@@ -817,7 +838,12 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
     from . import tier_cache as _TC
 
     identity, instrument, why = _tier_certificate_key(
-        capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl,
+        capsule_name,
+        tier,
+        target=target,
+        generated=generated,
+        shas=shas,
+        from_rtl=from_rtl,
         simulation_context=simulation_context,
     )
     if identity is None:
@@ -828,8 +854,9 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
 
         root = _SC.cache_root()
         hit = None if root is None else _TC.lookup(capsule_name, tier, identity, instrument, root=root, ledgers=False)
-        if hit is not None and _SC.key(simulation_context, run_executables(generated),
-                                      expected=(capsule_name, tier, target)) != (identity, instrument):
+        if hit is not None and _SC.key(
+            simulation_context, run_executables(generated), expected=(capsule_name, tier, target)
+        ) != (identity, instrument):
             return None, "simulation certificate identities changed before publication"
     else:
         hit = _TC.lookup(capsule_name, tier, identity, instrument)
@@ -884,7 +911,12 @@ def record_tier_certificate(
         from . import tier_cache as _TC
 
         identity, instrument, _why = _tier_certificate_key(
-            capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl,
+            capsule_name,
+            tier,
+            target=target,
+            generated=generated,
+            shas=shas,
+            from_rtl=from_rtl,
             simulation_context=simulation_context,
         )
         if identity is None:
@@ -896,9 +928,17 @@ def record_tier_certificate(
             root = cache_root()
             if root is None:
                 return
-            arguments['root'] = root
-        _TC.record(capsule_name, tier, identity, instrument, status=result.status,
-                   tier_result=result.to_dict(), run_id=run_id, **arguments)
+            arguments["root"] = root
+        _TC.record(
+            capsule_name,
+            tier,
+            identity,
+            instrument,
+            status=result.status,
+            tier_result=result.to_dict(),
+            run_id=run_id,
+            **arguments,
+        )
     except Exception:  # noqa: BLE001 -- a cache write may never gate a grade
         return
 
@@ -1614,14 +1654,21 @@ _LANE_COUNTERS: dict[str, tuple[str, str]] = {
 
 
 def lane_report(
-    capsule: dict, routing_plan: dict | None, mesh_execution: dict | None = None,
-    host_execution: dict | None = None, lane_execution: dict | None = None,
+    capsule: dict,
+    routing_plan: dict | None,
+    mesh_execution: dict | None = None,
+    host_execution: dict | None = None,
+    lane_execution: dict | None = None,
 ) -> dict | None:
     """Retain the original counter-map override at the runner boundary."""
     return _lane_report(
-        capsule, routing_plan, mesh_execution, host_execution, lane_execution, lane_counters=_LANE_COUNTERS,
+        capsule,
+        routing_plan,
+        mesh_execution,
+        host_execution,
+        lane_execution,
+        lane_counters=_LANE_COUNTERS,
     )
-
 
 
 def forbids_accelerator(capsule: dict) -> bool:
@@ -2585,13 +2632,26 @@ def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_d
     """Keep explicit public-program treatment separate from owned-host model grading."""
     if "checked_source_diagnostic" in context:
         from .checked_source_model_diagnostic_execution import grade_from_context
-        return grade_from_context(sys.modules[__name__], capsule, target=target, timeout=timeout,
-                                  package_dir=package_dir, context=context, pkg=pkg)
+
+        return grade_from_context(
+            sys.modules[__name__],
+            capsule,
+            target=target,
+            timeout=timeout,
+            package_dir=package_dir,
+            context=context,
+            pkg=pkg,
+        )
     from .owned_host_model_selection import owned_model_required
 
-    selected = _grade_public_program_capsule_inline if context.get("public_program_execution") is not None else (
-        _grade_owned_model_capsule_inline if owned_model_required(capsule, target=target)
-        else _grade_public_program_capsule_inline
+    selected = (
+        _grade_public_program_capsule_inline
+        if context.get("public_program_execution") is not None
+        else (
+            _grade_owned_model_capsule_inline
+            if owned_model_required(capsule, target=target)
+            else _grade_public_program_capsule_inline
+        )
     )
     return selected(capsule, target=target, timeout=timeout, package_dir=package_dir, context=context, pkg=pkg)
 
@@ -2667,6 +2727,7 @@ def _grade_owned_model_capsule_inline(
         # Host lowering is a trusted Merlin service. The candidate is invoked
         # only for independently source-bound device groups by that service.
         from .owned_host_model_execution import execute_owned_host_model
+
         result["owned_host_source"] = {
             "capsule_declaration": _digest(Path(capsule["__dir__"]) / "capsule.yaml"),
             "source_interface": _digest(
@@ -2756,6 +2817,7 @@ def _grade_public_program_capsule_inline(
         result["candidate_source_eligibility_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
         if diagnostic_selection is not None:
             from .checked_source_model_diagnostic_execution import finish_unavailable
+
             return finish_unavailable(
                 diagnostic_selection, result, capsule, target=target, deadline=diagnostic_deadline
             )
@@ -2830,8 +2892,11 @@ def _grade_public_program_capsule_inline(
             candidate_cb,
             compiler_provenance="actual submitted whole-program command buffer; physical pricing remains independent",
         )
-        bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if (
-            selection is not None or diagnostic_selection is not None) else {}
+        bundle_kwargs = (
+            {"artifact_root": paths.run_path / ".private_runtime_bundle"}
+            if (selection is not None or diagnostic_selection is not None)
+            else {}
+        )
         stage = "prepare_runtime_bundle"
         with _model_runtime_bundle(capsule, timeout=timeout, **bundle_kwargs) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
@@ -2867,7 +2932,10 @@ def _grade_public_program_capsule_inline(
         from .checked_source_model_diagnostic_execution import finish
 
         return finish(
-            diagnostic_selection, result, capsule, target=target,
+            diagnostic_selection,
+            result,
+            capsule,
+            target=target,
             native_result=diagnostic_native_result,
             work_root=diagnostic_work_root,
             remaining_s=max(0, diagnostic_deadline - time.monotonic()),
@@ -4274,8 +4342,8 @@ def _grade_model_capsule_inline(
                 run_where,
                 _v,
                 "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number "
-                    "is not a verdict about this backend. A comparison that did not happen is not a "
-                    "passing comparison.",
+                "is not a verdict about this backend. A comparison that did not happen is not a "
+                "passing comparison.",
             ),
             failure={
                 "plane": "model",
@@ -4730,9 +4798,17 @@ def _finalize_capsule_result(
     if result_filename not in ("capsule_result.json", ".operator_child_result.json"):
         raise ValueError("capsule result publication requires its original fixed filename")
     (paths.run_path / result_filename).write_text(json.dumps(result, indent=2), encoding="utf-8")
-    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite,
-                        filename=".operator_child_manifest.yaml" if result_filename != "capsule_result.json"
-                        else "run_manifest.yaml")
+    _write_run_manifest(
+        paths,
+        run_id,
+        name,
+        status,
+        tiers,
+        capsule,
+        target=cfg.target,
+        suite=cfg.suite,
+        filename=".operator_child_manifest.yaml" if result_filename != "capsule_result.json" else "run_manifest.yaml",
+    )
     try:
         schemas.validate(result, "capsule_result", contract=contract)
     except schemas.ContractViolation as e:
@@ -4815,8 +4891,10 @@ def run_capsule(
         verify_selection(capsule, model_execution_selection)
     if checked_source_diagnostic is not None:
         from .checked_source_model_diagnostic import verify_host_selection
-        verify_host_selection(checked_source_diagnostic, capsule, target=eff_target,
-                              public_selection=model_execution_selection)
+
+        verify_host_selection(
+            checked_source_diagnostic, capsule, target=eff_target, public_selection=model_execution_selection
+        )
     if capsule.get("kind") == "model":
         if _defer_result_publication:
             raise ValueError("operator publication cannot replace whole-model qualification")
@@ -4843,16 +4921,30 @@ def run_capsule(
         )
         from .owned_host_model_selection import owned_model_required
 
-        if (owned_model_required(capsule, target=eff_target) or model_execution_selection is not None
-                or checked_source_diagnostic is not None):
+        if (
+            owned_model_required(capsule, target=eff_target)
+            or model_execution_selection is not None
+            or checked_source_diagnostic is not None
+        ):
             from .capsule_candidate_context import grade_selected_model
 
             result = grade_selected_model(
-                sys.modules[__name__], capsule, target=eff_target, package_dir=package_dir,
-                paths=paths, runs_root=runs_root, run_id=run_id, cfg=cfg, contract=contract,
-                pkg=pkg, adapters=adapters, budget_s=_budget, timeout=timeout,
+                sys.modules[__name__],
+                capsule,
+                target=eff_target,
+                package_dir=package_dir,
+                paths=paths,
+                runs_root=runs_root,
+                run_id=run_id,
+                cfg=cfg,
+                contract=contract,
+                pkg=pkg,
+                adapters=adapters,
+                budget_s=_budget,
+                timeout=timeout,
                 model_execution_selection=model_execution_selection,
-                checked_source_diagnostic=checked_source_diagnostic)
+                checked_source_diagnostic=checked_source_diagnostic,
+            )
         else:
             result = _grade_model_capsule(
                 capsule, target=eff_target, timeout=timeout, package_dir=package_dir, budget_s=_budget
@@ -4890,8 +4982,14 @@ def run_capsule(
         if _defer_result_publication:
             raise ValueError("operator publication cannot replace the owned-host route")
         return grade_owned_host_leaf(
-            capsule, target=eff_target, paths=paths, cfg=cfg, run_id=run_id,
-            timeout=timeout, no_oracle=no_oracle, readback_policy=_adapter_readback_policy(adapters),
+            capsule,
+            target=eff_target,
+            paths=paths,
+            cfg=cfg,
+            run_id=run_id,
+            timeout=timeout,
+            no_oracle=no_oracle,
+            readback_policy=_adapter_readback_policy(adapters),
             reachable_oracle_tiers=frozenset(adapters),
         )
 
@@ -5279,12 +5377,13 @@ def run_capsule(
             trace = (
                 _grade_cpu_step(
                     RD.decode_module,
-                    _parsed_lowered_shared, target=eff_target, source=str(paths.generated / cfg.fourth_output_name)
+                    _parsed_lowered_shared,
+                    target=eff_target,
+                    source=str(paths.generated / cfg.fourth_output_name),
                 )
                 if _parsed_lowered_shared is not None
                 else _grade_cpu_step(
-                    RD.decode_text, llvm_text,
-                    source=str(paths.generated / cfg.fourth_output_name), target=eff_target
+                    RD.decode_text, llvm_text, source=str(paths.generated / cfg.fourth_output_name), target=eff_target
                 )
             )
             decoded_trace = trace  # hand to the advisory localizer on an oracle divergence
@@ -5573,8 +5672,16 @@ def run_capsule(
             _simulation_context = None
             if tier in cfg.rtl_tiers and tier not in adapter_managed_tiers:
                 _simulation_context = _simulation_request(
-                    capsule=capsule, cb=cb, gold=gold, reference=ref, direct_oracle_golden=direct_oracle_golden,
-                    policy=policy, llvm_text=llvm_text, adapter=adapter, target=eff_target, tier=tier,
+                    capsule=capsule,
+                    cb=cb,
+                    gold=gold,
+                    reference=ref,
+                    direct_oracle_golden=direct_oracle_golden,
+                    policy=policy,
+                    llvm_text=llvm_text,
+                    adapter=adapter,
+                    target=eff_target,
+                    tier=tier,
                     package_dir=package_dir,
                 )
             if _executed_here and tier not in adapter_managed_tiers:
@@ -5637,9 +5744,16 @@ def run_capsule(
                     if not isinstance(_cycle_policy, dict):
                         raise ValueError("evaluation_stage with predecessor cycles requires cycle_budget policy")
                     oracle_cb["_oracle_gsim_cycle_policy"] = dict(_cycle_policy)
-                with _prepared_tier_reuse(name, tier, mand, target=eff_target, generated=paths.generated,
-                        shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers,
-                        simulation_context=_simulation_context):
+                with _prepared_tier_reuse(
+                    name,
+                    tier,
+                    mand,
+                    target=eff_target,
+                    generated=paths.generated,
+                    shas=_pin_shas,
+                    from_rtl=tier in cfg.rtl_tiers,
+                    simulation_context=_simulation_context,
+                ):
                     with oracle_source_scope(capsule, oracle_cb, llvm_text):
                         res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _CarriedPreparedTier as carried:
@@ -6160,7 +6274,8 @@ def run_capsule(
     from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
 
     _work_volume, _cb_artifact = _grade_cpu_step(
-        _cb_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint")
+        _cb_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint"
+    )
     _lane_extra: dict[str, Any] = {}
     if (
         whole_program
@@ -6210,7 +6325,8 @@ def run_capsule(
     from merlin.perf.movement_volume import movement_evidence as _mv_evidence
 
     _movement_volume = _grade_cpu_step(
-        _mv_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint")
+        _mv_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint"
+    )
     return _finalize_capsule_result(
         result_filename=".operator_child_result.json" if _defer_result_publication else "capsule_result.json",
         submission=submission_identity(package_dir, run_id=run_id),
@@ -6393,8 +6509,12 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
     if result.get("status") != "incomplete" or "L2" not in capsule.get("required_oracle_tiers", []):
         return False
     failure = result.get("failure") or {}
-    if (failure.get("plane") != "oracle_unavailable" or failure.get("category") != "NOT_RUN_IS_NOT_PASS"
-            or failure.get("tier") != "L3" or failure.get("tier_status") != "unavailable"):
+    if (
+        failure.get("plane") != "oracle_unavailable"
+        or failure.get("category") != "NOT_RUN_IS_NOT_PASS"
+        or failure.get("tier") != "L3"
+        or failure.get("tier_status") != "unavailable"
+    ):
         return False
     tiers = result.get("tiers") or {}
     if (tiers.get("L2") or {}).get("status") != "pass" or (result.get("numeric") or {}).get("status") != "pass":
@@ -6409,9 +6529,19 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
 
 
 def _run_streaming_model_gate(
-    op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
-    on_complete=None, calibrate=None, calibration_cap=0, model_gate_continuations=(),
-    defer_pending=None, defer_running=True,
+    op_caps,
+    model_caps,
+    run_one,
+    *,
+    max_workers,
+    target,
+    oracle_adapters,
+    on_complete=None,
+    calibrate=None,
+    calibration_cap=0,
+    model_gate_continuations=(),
+    defer_pending=None,
+    defer_running=True,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
     from .capsule_scheduling import run_pipelined
@@ -6427,10 +6557,12 @@ def _run_streaming_model_gate(
     completed = {}
 
     def fraction():
-        return sum(
-            _model_gate_operation_passed(completed.get(c["name"], {}), c, oracle_adapters)
-            for c in denominator
-        ) / len(denominator) if denominator else 0.0
+        return (
+            sum(_model_gate_operation_passed(completed.get(c["name"], {}), c, oracle_adapters) for c in denominator)
+            / len(denominator)
+            if denominator
+            else 0.0
+        )
 
     def finished(result):
         completed[str(result.get("capsule"))] = result
@@ -6439,11 +6571,15 @@ def _run_streaming_model_gate(
 
     def blocked(cap):
         return {
-            "capsule": cap["name"], "kind": cap.get("kind"), "label": cap.get("label"),
-            "status": "gated", "failure": {
-                "plane": "gate", "category": "GATED",
+            "capsule": cap["name"],
+            "kind": cap.get("kind"),
+            "label": cap.get("label"),
+            "status": "gated",
+            "failure": {
+                "plane": "gate",
+                "category": "GATED",
                 "detail": f"whole-model capsule deferred: op pass fraction {fraction():.2f} "
-                          f"< gate {(cap.get('gate') or {}).get('after_op_pass_fraction')}",
+                f"< gate {(cap.get('gate') or {}).get('after_op_pass_fraction')}",
             },
         }
 
@@ -6457,13 +6593,18 @@ def _run_streaming_model_gate(
         passed = continuation or model_gate_satisfied(cap, value)
         if passed:
             cap["_driver_model_gate_admission"] = {
-                "passed": True, "fraction": value,
+                "passed": True,
+                "fraction": value,
                 "stage": "L2" if set(oracle_adapters or {}) == {"L2"} else "continuation" if continuation else "full",
             }
         return passed
 
     return run_pipelined(
-        caps, run_one, max_workers=max_workers, calibrate=calibrate, calibration_cap=calibration_cap,
+        caps,
+        run_one,
+        max_workers=max_workers,
+        calibrate=calibrate,
+        calibration_cap=calibration_cap,
         on_complete=finished,
         can_start=admitted,
         blocked_result=blocked,
@@ -6546,9 +6687,19 @@ def _run_suite(
             from .owned_host_leaf_execution import selected_host_leaf
 
             if not selected_host_leaf(cap):
-                return _operator_child.grade(cap, package_dir, runs_root=runs_root, contract=contract,
-                    target=target, suite=suite, dtype=dtype, adapters=oracle_adapters,
-                    timeout=timeout, workers=workers, no_oracle=no_oracle)
+                return _operator_child.grade(
+                    cap,
+                    package_dir,
+                    runs_root=runs_root,
+                    contract=contract,
+                    target=target,
+                    suite=suite,
+                    dtype=dtype,
+                    adapters=oracle_adapters,
+                    timeout=timeout,
+                    workers=workers,
+                    no_oracle=no_oracle,
+                )
         if _pass_recorder is None:
             return run_capsule(
                 cap,
@@ -6654,16 +6805,31 @@ def _run_suite(
             file=sys.stderr,
         )
     if model_caps and not no_oracle and _tier_policy.budget_seconds() is None:
-        print("  model gate: streaming over the fixed full selected eligible operator denominator",
-              flush=True, file=sys.stderr)
-        return _run_streaming_model_gate(
-            op_caps, model_caps, _one, max_workers=max_workers, target=target,
-            oracle_adapters=oracle_adapters, on_complete=on_capsule_complete,
-            calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
-            calibration_cap=_CALIBRATION_CAP,
-            model_gate_continuations=model_gate_continuations,
-            **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
-        ) + ungradeable
+        print(
+            "  model gate: streaming over the fixed full selected eligible operator denominator",
+            flush=True,
+            file=sys.stderr,
+        )
+        return (
+            _run_streaming_model_gate(
+                op_caps,
+                model_caps,
+                _one,
+                max_workers=max_workers,
+                target=target,
+                oracle_adapters=oracle_adapters,
+                on_complete=on_capsule_complete,
+                calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
+                calibration_cap=_CALIBRATION_CAP,
+                model_gate_continuations=model_gate_continuations,
+                **(
+                    {"defer_pending": defer_pending, "defer_running": defer_running}
+                    if defer_pending is not None
+                    else {}
+                ),
+            )
+            + ungradeable
+        )
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
         print(
@@ -6697,13 +6863,23 @@ def _run_suite(
     eligible = [r for r in graded if _gate_counts(r, capsules, target)]
     denom = eligible or graded  # fall back rather than divide by zero if nothing is classifiable
     capsule_by_name = {str(c["name"]): c for c in op_caps}
-    frac = (sum(
-        _model_gate_operation_passed(r, capsule_by_name.get(str(r.get("capsule")), {}), oracle_adapters)
-        for r in denom
-    ) / len(denom)) if denom else 0.0
+    frac = (
+        (
+            sum(
+                _model_gate_operation_passed(r, capsule_by_name.get(str(r.get("capsule")), {}), oracle_adapters)
+                for r in denom
+            )
+            / len(denom)
+        )
+        if denom
+        else 0.0
+    )
     if oracle_adapters is not None and set(oracle_adapters) == {"L2"}:
-        print("  model gate: selected L2 screen evidence only; full certification remains required",
-              flush=True, file=sys.stderr)
+        print(
+            "  model gate: selected L2 screen evidence only; full certification remains required",
+            flush=True,
+            file=sys.stderr,
+        )
     if len(eligible) != len(graded):
         print(
             f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
@@ -6729,16 +6905,24 @@ def _run_suite(
     for c in model_caps:
         reason = defer_pending() if defer_pending is not None else None
         if reason:
-            model_results.append({"capsule": c["name"], "kind": "model", "label": c.get("label"),
-                "status": "gated", "background_deferred": reason,
-                "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": reason}})
+            model_results.append(
+                {
+                    "capsule": c["name"],
+                    "kind": "model",
+                    "label": c.get("label"),
+                    "status": "gated",
+                    "background_deferred": reason,
+                    "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": reason},
+                }
+            )
             continue
         from .model_gate_continuation import admits
 
         continuation = not op_caps and admits(c, model_gate_continuations, target=target, adapters=oracle_adapters)
         if model_gate_satisfied(c, frac) or continuation:
             c["_driver_model_gate_admission"] = {
-                "passed": True, "fraction": frac,
+                "passed": True,
+                "fraction": frac,
                 "stage": "L2" if set(oracle_adapters or {}) == {"L2"} else "continuation" if continuation else "full",
             }
             result = _one(c)

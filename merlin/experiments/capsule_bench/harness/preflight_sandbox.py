@@ -307,10 +307,15 @@ def main(argv=None):
             ]
             if os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() == "vcs":
                 # A VCS-pinned run never executes Verilator: require the simv and its runtime database.
-                from merlin_experiments.phase1.timing import selected_simulator
+                from merlin.targetgen.heavy_oracles import vcs_simv
 
-                simv = selected_simulator("vcs", C.TARGET, _verilator_design())
-                checks.append(("vcs L3 simv", f"test -x '{simv}' && test -d '{simv}.daidir' && echo present"))
+                simv = vcs_simv(C.TARGET)
+                checks.append(
+                    (
+                        "vcs L3 simv",
+                        f"test -x '{simv}' && test -d '{simv}.daidir' && echo present" if simv else "false",
+                    )
+                )
             else:
                 checks.append(
                     (

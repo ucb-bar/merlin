@@ -21,6 +21,11 @@ from merlin.compile.model_execution_inputs import file_sha256
 def selected_host_leaf(capsule):
     if capsule.get("kind") not in {"layer", "model_slice"}:
         return False
+    # An unscored host guard keeps its own host grading; it is not provided host infrastructure.
+    from merlin.targetgen.capsule_common import is_unscored_host_guard
+
+    if is_unscored_host_guard(capsule):
+        return False
     screen = capsule.get("software_screen") or {}
     decisions = screen.get("decisions") or []
     semantic = capsule.get("semantic") or {}

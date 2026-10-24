@@ -967,7 +967,7 @@ def generate_target(
                     # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
                     # grades none of the author's work (host placement is Merlin-supplied), so it is removed
                     # and reported, exactly as an unprovable forbid is, never left on disk for a glob.
-                    withheld = withhold_unaccelerated(str(e.get("name", "?")), observed, Path(w))
+                    withheld = withhold_unaccelerated(str(e.get("name", "?")), observed, Path(w), capsule=actual)
                     if withheld is not None:
                         host_placed.append(withheld)
                         print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}")
@@ -1519,14 +1519,19 @@ def _with_reference_gate(entry: dict, te, descriptor: Path) -> dict:
     return {**entry, "reference_gate": str(resolved)}
 
 
-def withhold_unaccelerated(name: str, observed: dict, directory: Path) -> dict | None:
+def withhold_unaccelerated(name: str, observed: dict, directory: Path, *, capsule: dict | None = None) -> dict | None:
     """Remove a written member whose admitted program places nothing on the accelerator.
 
     Returns the record that replaces it in the manifest, or ``None`` when the member stays. Only an
     admitted screen is judged here: a refused or unknown one already leaves the graded cohort through
-    the diagnostic path, and a member already in that cohort is not public.
+    the diagnostic path, and a member already in that cohort is not public. An unscored host guard
+    stays: it is host-placed by design.
     """
     if observed.get("status") != "admitted" or directory.parent.name == "_diagnostic":
+        return None
+    from merlin.targetgen.capsule_common import is_unscored_host_guard
+
+    if is_unscored_host_guard(capsule):
         return None
     reason = accelerator_placement_refusal(observed)
     if reason is None:

@@ -30,7 +30,7 @@ def adapter(monkeypatch):
     return capsule_runner.simulator_adapter("verilator", "example"), calls
 
 
-def test_verifies_on_both_sides_and_retains_provenance(adapter, monkeypatch):
+def test_verifies_on_both_sides_and_retains_provenance(adapter, monkeypatch, tmp_path):
     run, calls = adapter
 
     def verify(*args):
@@ -38,20 +38,20 @@ def test_verifies_on_both_sides_and_retains_provenance(adapter, monkeypatch):
         return {"all_pins_ok": True, "execution_identity": {"binary": "same"}}
 
     monkeypatch.setattr(rtl_simulator_execution, "verify_selected", verify)
-    result = run({}, "", None, 100)
+    result = run({}, "", tmp_path, 100)
     assert calls == ["slot", "verify", "execute", "verify"]
     assert result["oracle"]["provenance"] == {"all_pins_ok": True, "execution_identity": {"binary": "same"}}
 
 
-def test_changed_hardware_cannot_return_a_verdict(adapter, monkeypatch):
+def test_changed_hardware_cannot_return_a_verdict(adapter, monkeypatch, tmp_path):
     run, _ = adapter
     observations = iter([{"execution_identity": {"binary": "before"}}, {"execution_identity": {"binary": "after"}}])
     monkeypatch.setattr(rtl_simulator_execution, "verify_selected", lambda *args: next(observations))
     with pytest.raises(capsule_runner.OracleUnavailable, match="changed during execution"):
-        run({}, "", None, 100)
+        run({}, "", tmp_path, 100)
 
 
-def test_repository_bookkeeping_does_not_change_hardware_identity(adapter, monkeypatch):
+def test_repository_bookkeeping_does_not_change_hardware_identity(adapter, monkeypatch, tmp_path):
     run, _ = adapter
     observations = iter(
         [
@@ -60,4 +60,4 @@ def test_repository_bookkeeping_does_not_change_hardware_identity(adapter, monke
         ]
     )
     monkeypatch.setattr(rtl_simulator_execution, "verify_selected", lambda *args: next(observations))
-    assert run({}, "", None, 100)["oracle"]["provenance"]["execution_identity"] == {"binary": "same"}
+    assert run({}, "", tmp_path, 100)["oracle"]["provenance"]["execution_identity"] == {"binary": "same"}
