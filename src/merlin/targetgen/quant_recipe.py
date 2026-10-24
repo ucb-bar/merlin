@@ -106,6 +106,9 @@ class QuantRecipe:
     families: tuple[str, ...] = (CONTRACTION,)
     #: Accelerator capture keeps exact integer semantics and full-width int32 device readout.
     readout_numerics: str = "integer_readout"
+    #: The declared integer-sum policy (``readout_facet.integer_sum_policy``); stated in the document
+    #: only when it is not the default ``bounded``, so an undeclared recipe keeps its digest.
+    integer_sum_policy: str = "bounded"
     unquantized: dict[str, str] = field(default_factory=dict)  # family -> why it stays float
     why: dict[str, str] = field(default_factory=dict)  # field -> the derivation behind it
     underivable: dict[str, str] = field(default_factory=dict)  # field -> why not
@@ -125,6 +128,8 @@ class QuantRecipe:
             "underivable": dict(sorted(self.underivable.items())),
         }
         body["readout_numerics"] = self.readout_numerics
+        if self.integer_sum_policy != "bounded":
+            body["integer_sum_policy"] = self.integer_sum_policy
         body["recipe_sha256"] = digest(body)
         return body
 
@@ -226,15 +231,23 @@ def _unit_families(recipe: QuantRecipe, capabilities: Sequence[Any] | None) -> N
 
 
 def derive(
-    facet: Any, *, prefer_activation_mode: str | None = None, capabilities: Sequence[Any] | None = None
+    facet: Any,
+    *,
+    prefer_activation_mode: str | None = None,
+    capabilities: Sequence[Any] | None = None,
+    integer_sum_policy: str | None = None,
 ) -> QuantRecipe:
     """The recipe a unit's readout facet licenses.
 
     ``prefer_activation_mode`` is a workload's request ("dynamic" for a model whose activation
     range moves with its input). It is honoured where the facet allows and recorded where it does
     not: a recipe never promises a mode the hardware would push onto the host silently.
+    ``integer_sum_policy`` is the flow's declared numeric policy for integer sums
+    (``readout_facet.integer_sum_policy``); the recipe records it and states its bounds under it.
     """
-    recipe = QuantRecipe(target=facet.target, unit=facet.unit)
+    from merlin.targetgen.readout_facet import integer_sum_policy as checked_policy
+
+    recipe = QuantRecipe(target=facet.target, unit=facet.unit, integer_sum_policy=checked_policy(integer_sum_policy))
 
     element = _format_of(facet.element_dtype)
     if element is None:
@@ -390,7 +403,7 @@ def _operand_sum(recipe: QuantRecipe, facet: Any, *, activation_granularity: str
     recipe.why[OPERAND_SUM] = (
         f"the unit's load multiplies each operand into the accumulator ({licence.get('operands')} operands, "
         f"rounded {licence.get('operand_rounding')}), so a sum of two tensors is integer work within "
-        f"{facet.operand_sum_bound()} output step(s) of the single-rounding reference"
+        f"{facet.operand_sum_bound(policy=recipe.integer_sum_policy)} output step(s) of the single-rounding reference"
     )
 
 
@@ -412,7 +425,9 @@ def with_native_output_quantization(
         raise ValueError("native output quantization requires a declared integer epilogue")
     body = json.loads(json.dumps(dict(recipe)))
     body["epilogue"]["output_quantization"] = {
-        "schema": epilogue.OUTPUT_POLICY, "operators": list(operators), "reader_policy": reader_policy,
+        "schema": epilogue.OUTPUT_POLICY,
+        "operators": list(operators),
+        "reader_policy": reader_policy,
     }
     epilogue.check(body["epilogue"])
     body.setdefault("why", {})["epilogue.output_quantization"] = (
@@ -432,9 +447,14 @@ def with_integer_extension(recipe: Mapping[str, Any], *, key: str, policy: Mappi
 
     activation = _static_int8(recipe, key)
     weight = recipe.get("weight") or {}
-    if (activation.get("dtype") != "int8" or weight.get("dtype") != "int8"
-            or weight.get("mode") != "static" or not weight.get("symmetric")
-            or recipe.get("accumulator_dtype") != "int32" or CONTRACTION not in recipe.get("families", ())):
+    if (
+        activation.get("dtype") != "int8"
+        or weight.get("dtype") != "int8"
+        or weight.get("mode") != "static"
+        or not weight.get("symmetric")
+        or recipe.get("accumulator_dtype") != "int32"
+        or CONTRACTION not in recipe.get("families", ())
+    ):
         raise ValueError("integer extensions require static symmetric I8 contractions with I32 accumulation")
     block = epilogue.check(recipe.get("epilogue"))
     if not block["exits"]["requant"]:
@@ -960,6 +980,7 @@ def derive_candidates(
     facets: Sequence[Any],
     *,
     prefer_activation_mode: str | None = None,
+    integer_sum_policy: str | None = None,
 ) -> list[QuantCandidate]:
     """Inventory every declared unit format without promoting a declaration to a proven recipe.
 
@@ -1069,7 +1090,10 @@ def derive_candidates(
             recipe = None
             if not reasons and facet is not None:
                 derived = derive(
-                    facet, prefer_activation_mode=prefer_activation_mode, capabilities=unit.semantic_capabilities
+                    facet,
+                    prefer_activation_mode=prefer_activation_mode,
+                    capabilities=unit.semantic_capabilities,
+                    integer_sum_policy=integer_sum_policy,
                 )
                 if derived.status == DERIVED:
                     recipe = derived

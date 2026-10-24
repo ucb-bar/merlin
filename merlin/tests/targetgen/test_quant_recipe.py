@@ -91,9 +91,14 @@ def test_an_add_is_quantized_only_where_a_unit_can_sum_operands() -> None:
     plain, summing = QR.derive(_facet()), QR.derive(_facet(operand_sum=_SUM))
     assert QR.OPERAND_SUM not in plain.families and "load-scale" in plain.unquantized[QR.OPERAND_SUM]
     assert QR.OPERAND_SUM in summing.families and not summing.unquantized
-    assert "0 output step" in summing.why[QR.OPERAND_SUM]
+    assert "1 output step" in summing.why[QR.OPERAND_SUM]
     # Two recipes are two captures: the family is content, so the digest moves with it.
     assert plain.to_dict()["recipe_sha256"] != summing.to_dict()["recipe_sha256"]
+    # An exact-only recipe states the zero bound, declares its policy, and is a different capture.
+    exact = QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="exact")
+    assert "0 output step" in exact.why[QR.OPERAND_SUM]
+    assert exact.to_dict()["integer_sum_policy"] == "exact" and "integer_sum_policy" not in summing.to_dict()
+    assert exact.to_dict()["recipe_sha256"] != summing.to_dict()["recipe_sha256"]
 
 
 def test_a_window_mean_is_quantized_where_one_static_scale_can_carry_the_reciprocal() -> None:

@@ -59,7 +59,7 @@ def select_spec(target: str, facts: dict, spec_path: Path, host_path: Path) -> d
     from merlin.common.yaml import load_yaml
     from merlin.targetgen.host_capabilities import validate_host_capabilities
     from merlin.targetgen.quant_recipe import derive_candidates
-    from merlin.targetgen.readout_facet import for_target
+    from merlin.targetgen.readout_facet import INTEGER_SUM_EXACT, for_target
     from merlin.targetgen.spec_fact_drift import fact_capabilities, resolve_spec
     from merlin.targetgen.target_registry import load_contract
 
@@ -67,13 +67,16 @@ def select_spec(target: str, facts: dict, spec_path: Path, host_path: Path) -> d
     host = validate_host_capabilities(load_yaml(host_path))
     contract = load_contract(target)
     facets = for_target(target, facts=facts, contract=contract)
-    candidates = [candidate.to_dict() for candidate in derive_candidates(contract, facets)]
+    # The Core ATen spec_int8 recipe admits only exact integer sums: an operand sum or mean whose
+    # terms would round before they meet is requantized exactly on the host instead.
+    policy = INTEGER_SUM_EXACT
+    candidates = [candidate.to_dict() for candidate in derive_candidates(contract, facets, integer_sum_policy=policy)]
     recipes = [candidate["recipe"] for candidate in candidates if candidate["recipe"] is not None]
     capabilities = fact_capabilities(
         target=target,
         contract=contract,
         raw_facts=facts,
-        readout_facets=[facet.to_dict() for facet in facets],
+        readout_facets=[facet.to_dict(integer_sum=policy) for facet in facets],
         quantization_candidates=candidates,
     )
     resolved, resolution = resolve_spec(spec, capabilities)
@@ -85,7 +88,7 @@ def select_spec(target: str, facts: dict, spec_path: Path, host_path: Path) -> d
         "resolution": resolution,
         "recipes": recipes,
         "quantization_candidates": candidates,
-        "readout_facets": [facet.to_dict() for facet in facets],
+        "readout_facets": [facet.to_dict(integer_sum=policy) for facet in facets],
         "identities": {
             name: {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
             for name, path in (("software_spec", spec_path), ("host_capabilities", host_path))

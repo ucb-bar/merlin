@@ -30,7 +30,8 @@ def test_group_growth_requires_one_readout_for_the_complete_composition(combined
             super().__init__()
             readouts = (
                 ({"selector": "one", "applies": ["bias_add", "relu", "acc_scale"]},)
-                if combined else (
+                if combined
+                else (
                     {"selector": "first", "applies": ["bias_add"]},
                     {"selector": "second", "applies": ["relu", "acc_scale"]},
                 )
@@ -322,7 +323,12 @@ def test_a_plan_says_which_readout_facts_nobody_derived() -> None:
     assert summary(silent)["readout_underived"] == {"scale_granularities": "no fact bundle"}
 
 
-def _summing(*, readout_scale: bool = True, standalone=()):
+#: The Core ATen spec_int8 recipe's integer-sum policy: only exact integer sums are admitted. The
+#: default (an undeclared recipe) is ``bounded``: a rounded sum is admitted at its computed bound.
+_EXACT = "exact"
+
+
+def _summing(*, readout_scale: bool = True, standalone=(), policy=None):
     from merlin.targetgen import readout_facet as RF
 
     facet = RF.ReadoutFacet(
@@ -332,16 +338,29 @@ def _summing(*, readout_scale: bool = True, standalone=()):
         scale_granularities=("tensor",) if readout_scale else None,
         operand_sum={"operands": 2, "operand_dtype": "i8", "operand_rounding": "half_even", "operand_saturates": True},
     )
-    return _Oracle(readout=RF.TargetReadout((facet,)), standalone=standalone)
+    return _Oracle(readout=RF.TargetReadout((facet,)), standalone=standalone, integer_sum_policy=policy)
 
 
 def test_a_quantized_residual_is_an_integer_sum_on_a_unit_whose_load_multiplies() -> None:
-    (group,) = _groups(_residual(lhs_scale=1.0, rhs_scale=1.0, out_scale=1.0), _summing())
+    # Exact-only: unit multipliers, no intermediate rounding, a zero bound and its product proofs.
+    (group,) = _groups(_residual(lhs_scale=1.0, rhs_scale=1.0, out_scale=1.0), _summing(policy=_EXACT))
     assert group.placement == "unit0" and group.root is not None
     assert group.stages == ["dequantize", "dequantize", "residual_add", "relu", "quantize"]
     assert group.operand_sum["bound_lsb"] == 0
     assert group.operand_sum["lhs_scale"] == group.operand_sum["rhs_scale"] == 1
     assert all(proof["status"] == "proven" for proof in group.operand_sum["product_proofs"])
+    # Bounded (the default): scaled loads are admitted, with the bound their rounding costs.
+    (group,) = _groups(_residual(lhs_scale=0.5, rhs_scale=0.25, out_scale=1.0), _summing())
+    assert group.placement == "unit0" and group.root is not None
+    assert group.stages == ["dequantize", "dequantize", "residual_add", "relu", "quantize"]
+    assert group.operand_sum == {
+        "lhs_scale": 0.5,
+        "rhs_scale": 0.25,
+        "bound_lsb": 1,
+        "readout_factor": 1.0,
+        "relu": True,
+    }
+    assert group.key()["operand_sum"]["bound_lsb"] == 1
     # The same capture where no unit's load multiplies is what it always was.
     (host,) = _groups(_residual())
     assert (host.placement, host.refusal, host.operand_sum) == (CG.HOST, "fused_only", None)
@@ -366,9 +385,21 @@ def test_quantized_sum_closes_before_downstream_integer_layout() -> None:
 
 def test_a_scaled_load_cannot_round_before_the_sum():
     for lhs, rhs in ((1.5, 0.75), (0.5, 0.25)):
-        (group,) = _groups(_residual(lhs_scale=lhs, rhs_scale=rhs, out_scale=1.0), _summing())
+        (group,) = _groups(_residual(lhs_scale=lhs, rhs_scale=rhs, out_scale=1.0), _summing(policy=_EXACT))
         assert group.placement == CG.HOST and group.operand_sum is None
         assert "round before" in group.reason
+
+
+def test_a_multiplier_above_one_goes_to_the_readout_and_the_bound_says_what_that_costs() -> None:
+    # 1.5 through a saturating load would clip an operand the other could have cancelled. The
+    # common factor is divided out and the readout's scale carries it, at a wider bound.
+    (group,) = _groups(_residual(lhs_scale=1.5, rhs_scale=0.75, out_scale=1.0), _summing())
+    assert group.placement == "unit0"
+    assert (group.operand_sum["readout_factor"], group.operand_sum["bound_lsb"]) == (1.5, 2)
+    # With no readout scale derived there is nowhere to put the factor: a hardware gap, by name.
+    (host,) = _groups(_residual(lhs_scale=1.5, rhs_scale=0.75), _summing(readout_scale=False))
+    assert (host.placement, host.refusal, host.gap) == (CG.HOST, CG.OPERAND_SUM, "OG0")
+    assert "exceed one" in host.reason
 
 
 def test_a_sum_whose_numbers_cannot_be_an_integer_form_stays_on_the_host_with_its_reason() -> None:
@@ -380,9 +411,25 @@ def test_a_sum_whose_numbers_cannot_be_an_integer_form_stays_on_the_host_with_it
 
 
 def test_a_float_mean_requires_a_bound_exact_host_quantization():
-    (group,) = _groups(_mean(in_scale=0.5, out_scale=0.25, count=12.0))
+    (group,) = _groups(_mean(in_scale=0.5, out_scale=0.25, count=12.0), _Oracle(integer_sum_policy=_EXACT))
     assert group.placement == CG.HOST and group.window_mean is None
     assert "exact rational host" in group.reason
+
+
+def test_a_mean_over_a_trailing_window_is_a_contraction_against_a_constant_one() -> None:
+    (group,) = _groups(_mean(in_scale=0.5, out_scale=0.25, count=12.0))
+    assert group.placement == "unit0" and mq.op_name(group.root) == "linalg.reduce"
+    assert group.window_mean == {
+        "rows": 16,
+        "window": 12,
+        "multiplier": 0.5 / (12.0 * 0.25),
+        "bound_lsb": 1,
+        "exactness": "float_reassociation",
+    }
+    entry = CG.capsule_entry(group)
+    assert (entry["op"], entry["M"], entry["K"], entry["N"], entry["epilogue"]) == ("matmul", 16, 12, 1, ["acc_scale"])
+    assert entry["acc_scale"] == group.window_mean["multiplier"]
+    assert CG.demand([group])["unstated"] == {}
 
 
 def test_a_mean_a_unit_cannot_hold_stays_on_the_host_and_says_which_limit() -> None:
@@ -398,6 +445,9 @@ def test_a_mean_a_unit_cannot_hold_stays_on_the_host_and_says_which_limit() -> N
 
     narrow = RF.ReadoutFacet(target="synthetic", unit="unit0", element_dtype="i8", accumulator_dtype="i8")
     (overflowing,) = _groups(_mean(), _Oracle(readout=RF.TargetReadout((narrow,))))
+    assert overflowing.placement == CG.HOST and "can exceed the i8 accumulator" in overflowing.reason
+    # Exact-only refuses the float mean before its widths are asked.
+    (overflowing,) = _groups(_mean(), _Oracle(readout=RF.TargetReadout((narrow,)), integer_sum_policy=_EXACT))
     assert overflowing.placement == CG.HOST and "exact rational host" in overflowing.reason
     # Where nothing contracts, the region is what it always was: no new refusal is invented for it.
     (plain,) = _groups(_mean(), _Oracle(families=("elementwise_map",)))
@@ -405,15 +455,36 @@ def test_a_mean_a_unit_cannot_hold_stays_on_the_host_and_says_which_limit() -> N
 
 
 def test_a_float_mean_is_never_admitted_with_an_lsb_tolerance():
-    (group,) = _groups(_mean(in_scale=0.0371, out_scale=0.0189, count=49.0))
+    (group,) = _groups(_mean(in_scale=0.0371, out_scale=0.0189, count=49.0), _Oracle(integer_sum_policy=_EXACT))
     assert group.placement == CG.HOST and group.window_mean is None
     assert "exact rational host" in group.reason
+
+
+def test_the_integer_form_of_a_mean_is_within_its_declared_bound_of_the_capture() -> None:
+    np = pytest.importorskip("numpy")
+    rng = np.random.default_rng(7)
+    (group,) = _groups(_mean(in_scale=0.0371, out_scale=0.0189, count=49.0))
+    multiplier = np.float32(group.window_mean["multiplier"])
+    x = rng.integers(-128, 128, size=(4096, 49), dtype=np.int64)
+    capture = np.rint(
+        (x.astype(np.float32) * np.float32(0.0371)).sum(axis=1, dtype=np.float32)
+        / np.float32(49.0)
+        / np.float32(0.0189)
+    )
+    device = np.rint(x.sum(axis=1).astype(np.float32) * multiplier)
+    worst = int(np.abs(np.clip(capture, -128, 127) - np.clip(device, -128, 127)).max())
+    assert worst <= group.window_mean["bound_lsb"]
 
 
 def test_a_quantized_value_handed_on_is_where_two_integer_regions_part() -> None:
     # residual -> quantize -> dequantize -> mean. Joined along the single-use value this would be
     # one region no unit takes; cut at the integers it is two, and each is placed whole.
     summed, pooled = _groups(_residual_then_mean(), _summing())
+    assert (summed.placement, pooled.placement) == ("unit0", "unit0")
+    assert summed.operand_sum is not None and summed.stages[-1] == "quantize"
+    assert pooled.window_mean["window"] == 16 and pooled.stages[0] == "dequantize"
+    # Exact-only: both regions still part at the integers, and both stay on the host (scaled sum, float mean).
+    summed, pooled = _groups(_residual_then_mean(), _summing(policy=_EXACT))
     assert (summed.placement, pooled.placement) == (CG.HOST, CG.HOST)
     assert summed.operand_sum is None and summed.stages[-1] == "quantize"
     assert pooled.window_mean is None and pooled.stages[0] == "dequantize"

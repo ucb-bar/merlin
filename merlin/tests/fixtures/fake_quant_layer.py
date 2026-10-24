@@ -314,8 +314,13 @@ class Oracle:
         readout=None,
         applies=("bias_add", "bias", "requant", "acc_scale", "relu", "maxpool"),
         standalone=(),
+        integer_sum_policy=None,
     ):
+        from merlin.targetgen.readout_facet import integer_sum_policy as checked_policy
+
         self.holds, self.families, self.target, self.readout = holds, families, "synthetic", readout
+        #: The recipe's declared integer-sum policy, as ``TargetOracle`` carries it (``bounded`` default).
+        self.integer_sum_policy = checked_policy(integer_sum_policy)
         #: Families this target admits with NO contraction in front of them -- what a contract says
         #: when it declares a family and composes it with nothing.
         self.standalone = tuple(standalone)

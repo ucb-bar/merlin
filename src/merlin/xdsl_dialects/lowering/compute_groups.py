@@ -162,8 +162,6 @@ def declared_stage_name(kind: str) -> str:
     return names[SCALE] if kind in CONVERSION_OF_SCALED_STORE else names.get(kind, kind)
 
 
-
-
 _ADD = {"arith.addf", "arith.addi"}
 _MUL = {"arith.mulf", "arith.muli"}
 _DIV = {"arith.divf"}
@@ -457,6 +455,11 @@ def classify(op) -> Stage | None:
         return Stage(ROUND)
     if kinds and kinds <= _CAST:
         return Stage(CAST)
+    if n_in == 2 and "math.fma" in kinds:
+        from .faithful_sum import provable_sum  # a bit-faithful add, when its inputs prove it a sum
+
+        if provable_sum(op):
+            return Stage(BIAS_ADD, varies_over=narrow) if narrow is not None else Stage(RESIDUAL_ADD)
     return Stage(RELU) if CC.is_compare_select_relu(op) else Stage(ELEMENTWISE, detail=" ".join(sorted(kinds)))
 
 
@@ -564,11 +567,15 @@ class TargetOracle:
         prohibited_roles=(),
         semantic_facts=None,
         routes: Sequence[Any] | None = None,
+        integer_sum_policy: str | None = None,
     ):
         from merlin.targetgen import eligibility as E
         from merlin.targetgen import readout_facet
 
         self.target = target
+        # The recipe's declared integer-sum policy (readout_facet.integer_sum_policy): whether a sum or
+        # mean whose terms round before they meet is admitted at its computed bound or only when exact.
+        self.integer_sum_policy = readout_facet.integer_sum_policy(integer_sum_policy)
         # The target's declared non-readout stage routes (a bias seeded into the accumulator before
         # the contraction, say). A stage no readout applies is still carried by the group when one
         # of these routes composes it with a contraction.
@@ -813,6 +820,8 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
     sink's position. A host contraction stays a region of its own, so the work that was refused is
     not hidden inside the glue around it.
     """
+    from merlin.targetgen.readout_facet import INTEGER_SUM_EXACT, integer_sum_policy
+
     parent: dict[int, int] = {}
 
     def find(key: int) -> int:
@@ -905,7 +914,9 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
                 group.root = wsum["reduce"]
                 group.scale_granularity = "tensor"
                 group.window_mean = {
-                    k: wsum[k] for k in ("rows", "window", "multiplier", "bound_lsb", "exactness", "product_proof")
+                    k: wsum[k]
+                    for k in ("rows", "window", "multiplier", "bound_lsb", "exactness", "product_proof")
+                    if k in wsum  # no product proof where the bounded policy admitted it without one
                 }
                 out.append(group)
                 continue
@@ -920,7 +931,8 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
         # Asked only where some unit's load multiplies: on any other target the region is what it
         # always was, an elementwise map with no standalone provider.
         if callable(asked) and any(getattr(f, "operand_sum", None) for f in getattr(readout, "facets", ())):
-            facet, refusal = asked(summed["multipliers"]) if summed is not None else (None, unread)
+            policy = integer_sum_policy(getattr(oracle, "integer_sum_policy", None))
+            facet, refusal = asked(summed["multipliers"], policy=policy) if summed is not None else (None, unread)
             ask_standalone = getattr(oracle, "standalone_admission", None)  # a stand-in may not have it
             standalone = ask_standalone(FAMILY_OF_STAGE[RESIDUAL_ADD]) if facet and callable(ask_standalone) else None
             if standalone is not None and not standalone["standalone"]:  # e.g. only a prohibited role runs it
@@ -931,13 +943,14 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
                 group.operand_sum = {
                     "lhs_scale": summed["multipliers"][0],
                     "rhs_scale": summed["multipliers"][1],
-                    "bound_lsb": facet.operand_sum_bound(summed["multipliers"]),
-                    "product_proofs": facet.operand_sum_product_proofs(summed["multipliers"]),
+                    "bound_lsb": facet.operand_sum_bound(summed["multipliers"], policy=policy),
                     # The factor the readout's scale carries when a multiplier exceeds what a
                     # saturating load can take; one when both go through the load as they are.
                     "readout_factor": max(1.0, *summed["multipliers"]),
                     "relu": summed["relu"],
                 }
+                if policy == INTEGER_SUM_EXACT:
+                    group.operand_sum["product_proofs"] = facet.operand_sum_product_proofs(summed["multipliers"])
                 out.append(group)
                 continue
             if refusal is not None:
@@ -1297,7 +1310,8 @@ def _grow(
         sequence_check = getattr(oracle, "absorbs_sequence", None)
         if absorbable.admitted and sequence_check is not None:
             absorbable = sequence_check(
-                [*(stage_of[id(member)].kind for member in members), stage.kind], unit=group.placement,
+                [*(stage_of[id(member)].kind for member in members), stage.kind],
+                unit=group.placement,
             )
         if not absorbable.admitted:
             group.stopped_by, group.stopped_at = stage.kind, pending_pad or user

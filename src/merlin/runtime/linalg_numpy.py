@@ -23,6 +23,11 @@ Semantics, stated because an oracle that rounds differently from the model is a 
 * non-contraction floating reductions carry their initial accumulator through the source's
   lexicographic reduction indices, rounding each body operation at its declared type. Only an
   explicit ``reassoc`` flag on each floating combiner permits a NumPy reduction tree.
+* ``math.fma`` rounds once: the product of two f32/f16/bf16 operands is exact in float64, the sum
+  is rounded to odd there (an error-free transformation recovers what float64 dropped), and that is
+  rounded to the declared type -- the same value a fused multiply-add returns;
+* an ``scf.for`` inside a structured op's body runs as the IR states it, one iteration after another
+  with its ``iter_args`` carried, over every point of the iteration space at once;
 * an explicitly selected host-math context may define binary32 exp/sin/cos using versioned scalar
   source shared with the runtime. It does not compile model IR or import a device implementation;
   all other interpreter operations remain independently evaluated from the source IR.
@@ -114,8 +119,32 @@ def storage_dtype(element: str):
 
 def _compute_dtype(element: str):
     if element not in _COMPUTE:
+        if _wide_width(element) is not None:
+            return np.object_
         raise LinalgNumpyError(f"no numpy arithmetic for element type {element!r}")
     return _COMPUTE[element]
+
+
+def _wide_width(element: str) -> int | None:
+    """The width of an integer type past numpy's 64 bits (an exact readout's ``i281``), else ``None``."""
+    digits = element[1:] if element.startswith("i") else ""
+    return int(digits) if digits.isdigit() and int(digits) > 64 else None
+
+
+def _fit(value, element: str):
+    """Integer values wrapped to ``element``'s width, in its compute form.
+
+    A type wider than 64 bits computes in Python integers (an object array) and is wrapped here
+    explicitly; a native type wraps through numpy's own conversion, as it always has.
+    """
+    array = np.asarray(value)
+    width = _wide_width(element)
+    if width is None and array.dtype != np.object_:
+        return array.astype(_compute_dtype(element))
+    width = width or (int(element[1:]) if element[1:].isdigit() else 64)
+    half = 1 << (width - 1)
+    wrapped = ((array.astype(np.object_) + half) & ((1 << width) - 1)) - half
+    return np.asarray(wrapped, dtype=_compute_dtype(element))
 
 
 def bf16_round(x) -> np.ndarray:
@@ -167,6 +196,8 @@ def _store(value, element: str, shape: Sequence[int] | None = None) -> np.ndarra
 # --------------------------------------------------------------------------------------- scalars
 
 #: arith.cmpi predicates by their enum value (eq ne slt sle sgt sge ult ule ugt uge).
+#: The unsigned predicates (ult ule ugt uge), compared on the operands' bit patterns.
+_UNSIGNED_CMPI = frozenset({6, 7, 8, 9})
 _CMPI = {
     0: np.equal,
     1: np.not_equal,
@@ -211,6 +242,8 @@ def _cmpf(predicate: int, a, b):
 
 def _unsigned(value, element: str):
     bits = int(element[1:]) if element.startswith("i") and element[1:].isdigit() else 64
+    if bits > 64:
+        return np.asarray(np.asarray(value).astype(np.object_) & ((1 << bits) - 1), dtype=np.object_)
     kind = {1: np.uint8, 8: np.uint8, 16: np.uint16, 32: np.uint32, 64: np.uint64}[bits]
     return np.asarray(value).astype(kind)
 
@@ -256,6 +289,10 @@ def _constant(op):
         return np.asarray(float(raw), dtype=_compute_dtype(element))[()]
     if element == "i1":
         return np.bool_(int(raw) != 0)
+    if _wide_width(element) is not None:
+        # Kept a rank-0 object array: a bare Python int that large is cast to int64 by numpy's
+        # promotion rules (and overflows) as soon as it meets a native array.
+        return _fit(np.asarray(int(raw), dtype=np.object_), element)
     return np.asarray(int(raw), dtype=_compute_dtype(element))[()]
 
 
@@ -264,6 +301,41 @@ def _cast_to(value, element: str):
     if element == "bf16":
         return bf16_round(np.asarray(value, np.float32))
     return np.asarray(value).astype(_compute_dtype(element))
+
+
+def _fma(a, b, c, element: str) -> np.ndarray:
+    """``a * b + c`` with ONE rounding to ``element``, as a fused multiply-add computes it.
+
+    The product of two operands of at most 24 significand bits is exact in float64. The float64 sum
+    is not, so the part it drops is recovered (Knuth's two-sum) and the sum is rounded to ODD: kept
+    when inexact only if its last bit is odd, otherwise moved one step toward the dropped part. A
+    value rounded to odd with at least two more bits than the target rounds to the target exactly
+    as the unrounded value would (Boldo and Melquiond), so the second rounding is not a double one.
+    """
+    if element not in ("f32", "f16", "bf16"):
+        raise LinalgNumpyError(f"math.fma of {element} is not evaluated with a single rounding")
+    a, b, c = (np.asarray(v, np.float64) for v in (a, b, c))
+    with np.errstate(all="ignore"):
+        product = a * b
+        total = product + c
+        virtual = total - c
+        dropped = (product - virtual) + (c - (total - virtual))
+        inexact = np.isfinite(total) & np.isfinite(dropped) & (dropped != 0)
+        even = (_contiguous(total).view(np.uint64) & np.uint64(1)) == 0
+        odd = np.where(inexact & even, np.nextafter(total, np.where(dropped > 0, np.inf, -np.inf)), total)
+        if element != "bf16":
+            return odd.astype(_compute_dtype(element))
+        # bf16 is rounded from float32: round to odd once more at float32 so that step is exact too.
+        narrow = odd.astype(np.float32)
+        back = narrow.astype(np.float64)
+        miss = np.isfinite(back) & (back != odd)
+        narrow_even = (_contiguous(narrow).view(np.uint32) & np.uint32(1)) == 0
+        narrow = np.where(
+            miss & narrow_even,
+            np.nextafter(narrow, np.where(odd > back, np.float32(np.inf), np.float32(-np.inf))),
+            narrow,
+        )
+        return bf16_round(narrow)
 
 
 def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] | None = None):
@@ -310,10 +382,10 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
         }[name]
         dtype = _compute_dtype(element)
         with np.errstate(all="ignore"):
-            return fn(fl(args[0]).astype(dtype), fl(args[1]).astype(dtype)).astype(dtype)
+            return _fit(fn(fl(args[0]).astype(dtype), fl(args[1]).astype(dtype)), element)
     if name in ("arith.maxsi", "arith.minsi"):
         fn = np.maximum if name == "arith.maxsi" else np.minimum
-        return fn(fl(args[0]), fl(args[1])).astype(_compute_dtype(element))
+        return np.asarray(fn(fl(args[0]), fl(args[1]))).astype(_compute_dtype(element))
     if name in ("arith.divsi", "arith.remsi"):
         # Integer arithmetic throughout: a float quotient loses the low bits of any operand past 2**53.
         a, b = fl(args[0]).astype(np.int64), fl(args[1]).astype(np.int64)
@@ -339,6 +411,17 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
         ua, ub = _unsigned(a, element), _unsigned(b, element)
         keep_a = ua <= ub if name == "arith.minui" else ua >= ub
         return np.where(keep_a, a, b).astype(_compute_dtype(element))
+    if name in ("arith.shrui", "arith.shli"):
+        # Logical shifts of the bit pattern, wrapping at the declared width; an amount outside
+        # [0, width) is poison, refused as for arith.shrsi.
+        width = int(element[1:]) if element[1:].isdigit() else 64
+        s = fl(args[1]).astype(np.int64)
+        if np.any((s < 0) | (s >= width)):
+            raise LinalgNumpyError(f"{name} by an amount outside [0, {width}) is poison")
+        bits = _unsigned(args[0], element)
+        shift = s.astype(bits.dtype)
+        moved = np.right_shift(bits, shift) if name == "arith.shrui" else np.left_shift(bits, shift)
+        return _fit(moved, element)
     if name == "arith.shrsi":
         # Arithmetic shift; an amount outside [0, width) is poison in the IR, so it is refused rather
         # than given whatever value numpy's shift would produce.
@@ -348,13 +431,20 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
             raise LinalgNumpyError(f"arith.shrsi by an amount outside [0, {width}) is poison")
         return np.right_shift(a.astype(_compute_dtype(element)), s.astype(_compute_dtype(element)))
     if name == "arith.cmpi":
-        return _CMPI[_predicate(op)](fl(args[0]), fl(args[1]))
+        predicate = _predicate(op)
+        if predicate in _UNSIGNED_CMPI:
+            # ult/ule/ugt/uge order the BIT PATTERNS: a negative signed value is a large unsigned one.
+            source = _elem(op.operands[0].type)
+            return _CMPI[predicate](_unsigned(args[0], source), _unsigned(args[1], source))
+        return _CMPI[predicate](fl(args[0]), fl(args[1]))
     if name == "arith.cmpf":
         return _cmpf(_predicate(op), args[0], args[1])
     if name == "arith.select":
         return np.where(fl(args[0]).astype(np.bool_), args[1], args[2])
     if name in ("arith.extsi", "arith.trunci", "arith.index_cast"):
         dtype = _compute_dtype(element)
+        if element != "i1" and (dtype == np.object_ or np.asarray(args[0]).dtype == np.object_):
+            return _fit(args[0], element)  # to or from a type wider than 64 bits: exact, then wrapped
         with np.errstate(all="ignore"):
             return fl(args[0]).astype(np.int64).astype(dtype) if element != "i1" else fl(args[0]).astype(np.bool_)
     if name in ("arith.extui", "arith.index_castui"):
@@ -372,7 +462,16 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
     if name in ("arith.extf", "arith.truncf"):
         return _cast_to(args[0], element)
     if name == "arith.bitcast":
-        raise LinalgNumpyError("arith.bitcast is not evaluated")
+        # The same bits read as another type of the same width (bf16 through its 16-bit pattern).
+        source = _elem(op.operands[0].type)
+        bits = _bf16_bits(args[0]) if source == "bf16" else fl(args[0]).astype(storage_dtype(source))
+        target = np.uint16 if element == "bf16" else storage_dtype(element)
+        if bits.dtype.itemsize != np.dtype(target).itemsize or np.bool_ in (bits.dtype, np.dtype(target)):
+            raise LinalgNumpyError(f"arith.bitcast from {source} to {element} is not evaluated")
+        cast = _contiguous(bits).view(target)
+        return _bf16_values(cast) if element == "bf16" else cast
+    if name == "math.fma":
+        return _fma(args[0], args[1], args[2], element)
     if name.startswith("math."):
         x = fl(args[0])
         if name in {"math.exp", "math.sin", "math.cos", "math.tanh", "math.powf"}:
@@ -384,8 +483,9 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
             # program retains the unwrapped binary64 libm symbols.
             if selected is not None and name in selected.operations and element == "f32":
                 if name == "math.powf":
-                    return selected.evaluate(name, np.asarray(x, dtype=np.float32),
-                                             np.asarray(fl(args[1]), dtype=np.float32))
+                    return selected.evaluate(
+                        name, np.asarray(x, dtype=np.float32), np.asarray(fl(args[1]), dtype=np.float32)
+                    )
                 return selected.evaluate(name, np.asarray(x, dtype=np.float32))
         with np.errstate(all="ignore"):
             if name == "math.exp":
@@ -696,16 +796,7 @@ def _generic(op, env: dict[int, Any], constants: ConstantCache | None = None) ->
 
     benv = {id(arg): view for arg, view in zip(block.args, views, strict=True)}
     if not reduced:
-        for body in block.ops:
-            if body.name == "linalg.yield":
-                break
-            if body.name == "tensor.extract":
-                source = benv[id(body.operands[0])] if id(body.operands[0]) in benv else env[id(body.operands[0])]
-                element = _elem(body.operands[0].type)
-                idx = tuple(np.asarray(benv[id(o)]).astype(np.int64) for o in body.operands[1:])
-                benv[id(body.results[0])] = _load(np.asarray(source)[idx], element)
-                continue
-            benv[id(body.results[0])] = _body_op(body, _Chain(benv, env), index_of=index_of)
+        _body_region(block, benv, env, index_of)
         results = []
         for value, amap, shape, element in zip(
             block.last_op.operands, maps[len(inputs) :], shapes, elements[len(inputs) :], strict=True
@@ -781,17 +872,65 @@ def _sequential_reduction(op, block, env, views, space, reduced, maps, shapes, e
             benv[id(arg)] = view[index]
         for arg, value in zip(block.args[n_inputs:], carried, strict=True):
             benv[id(arg)] = value
-        for body in block.ops:
-            if body.name == "linalg.yield":
-                carried = [
-                    np.array(np.broadcast_to(benv[id(v)], c.shape)) for v, c in zip(body.operands, carried, strict=True)
-                ]
-                break
-            benv[id(body.results[0])] = _body_op(body, _Chain(benv, env), index_of=index_of)
+        yielded = _body_region(block, benv, env, index_of)
+        carried = [np.array(np.broadcast_to(v, c.shape)) for v, c in zip(yielded, carried, strict=True)]
     return [
         _contiguous(_store(_output_from_space(value, amap, shape), element))
         for value, amap, shape, element in zip(carried, maps[n_inputs:], shapes, elements[n_inputs:], strict=True)
     ]
+
+
+def _body_region(block, benv: dict[int, Any], env, index_of: Callable[[int], np.ndarray]) -> list[Any]:
+    """Run a structured op's scalar region over arrays (one value per point of the iteration space);
+    every result lands in ``benv`` and what its terminator yields is returned.
+
+    A body may read a tensor element by element (``tensor.extract`` at computed indices) and may hold
+    a loop: an ``scf.for`` whose bounds are the same at every point runs one iteration after another,
+    its ``iter_args`` carried as arrays, so a source-ordered scalar recurrence keeps its order.
+    """
+    for body in block.ops:
+        if body.name in ("linalg.yield", "scf.yield"):
+            return [benv[id(v)] if id(v) in benv else env[id(v)] for v in body.operands]
+        if body.name == "tensor.extract":
+            source = benv[id(body.operands[0])] if id(body.operands[0]) in benv else env[id(body.operands[0])]
+            element = _elem(body.operands[0].type)
+            idx = tuple(np.asarray(benv[id(o)] if id(o) in benv else env[id(o)]).astype(np.int64)
+                        for o in body.operands[1:])  # fmt: skip
+            benv[id(body.results[0])] = _load(np.asarray(source)[idx], element)
+            continue
+        if body.name == "cf.assert":
+            evaluate_op(body, _Chain(benv, env))  # the program's own check, applied at every point
+            continue
+        if body.name == "scf.for":
+            for result, value in zip(body.results, _body_for(body, benv, env, index_of), strict=True):
+                benv[id(result)] = value
+            continue
+        benv[id(body.results[0])] = _body_op(body, _Chain(benv, env), index_of=index_of)
+    return []
+
+
+def _body_for(op, benv: dict[int, Any], env, index_of: Callable[[int], np.ndarray]) -> list[Any]:
+    """An ``scf.for`` nested in a structured body: the iterations in order, the carried values arrays."""
+    scope = _Chain(benv, env)
+    bounds = [np.asarray(scope[id(o)]) for o in list(op.operands)[:3]]
+    if any(bound.size != 1 for bound in bounds):
+        raise LinalgNumpyError("an scf.for whose bounds differ between points of the iteration space is not evaluated")
+    lower, upper, step = (int(bound.reshape(())) for bound in bounds)
+    if step <= 0:
+        raise LinalgNumpyError(f"an scf.for with step {step} does not terminate")
+    trips = len(range(lower, upper, step))
+    if trips > SEQUENTIAL_REDUCTION_LIMIT:
+        raise LinalgNumpyError(
+            f"an scf.for runs {trips} iterations, over the {SEQUENTIAL_REDUCTION_LIMIT} this evaluator steps through"
+        )
+    carried = [scope[id(o)] for o in list(op.operands)[3:]]
+    block = op.regions[0].blocks[0]
+    for i in range(lower, upper, step):
+        benv[id(block.args[0])] = np.int64(i)
+        for arg, value in zip(block.args[1:], carried, strict=True):
+            benv[id(arg)] = value
+        carried = _body_region(block, benv, env, index_of)
+    return carried
 
 
 class _Chain(dict):
