@@ -183,3 +183,42 @@ int32_t stage_0_model_run(const void *const *i,void *const *o,uint8_t *w,uint64_
     outputs, _, frames = parse_binary_console_details(result.stdout)
     assert outputs["out0"] == [[-1234567, -(1 << 31)]]
     assert frames["out0"].signed
+
+
+def test_stage_profile_keeps_warm_and_measured_buffers_and_prints_later(bridge, tmp_path):
+    cc = shutil.which("cc")
+    if not cc:
+        pytest.skip("Requires a host C compiler")
+    plan = bridge.plan_session(
+        {"one": stage([tensor("int32")], [tensor("int32")])},
+        {"version": 1, "calls": [{"stage": "one", "inputs": [{"fixture": 0}]}]},
+    )
+    source = bridge.render_session(plan, rtol=0, atol=0, profile_stages=True)
+    source += r"""
+const uint8_t session_input_0[8]={0};
+const uint8_t session_output_0[8]={0};
+static uint64_t tick;
+static uint64_t read_cycles(void) { return ++tick; }
+int32_t stage_0_model_run(const void *const *in,void *const *out,uint8_t *w,uint64_t n) {
+  memcpy(out[0],in[0],8);tick+=10;return 0;
+}
+int main(void) {
+  for(int r=0;r<2;++r) {
+    session_reset();if(session_run()||session_validate(0))return 1;
+  }
+  if(session_stage_cycles[0][0]!=11||session_stage_cycles[1][0]!=11)return 2;
+  puts("validated");session_report_stage_cycles();
+  return session_run()==26 ? 0:3;
+}
+"""
+    path = tmp_path / "profile.c"
+    path.write_text(source)
+    binary = tmp_path / "profile"
+    subprocess.run([cc, "-std=c11", "-O2", str(path), "-o", str(binary)], check=True, capture_output=True)
+    process = subprocess.run([str(binary)], capture_output=True, text=True)
+    assert process.returncode == 0, process.stdout
+    assert process.stdout.splitlines() == [
+        "validated",
+        "TVM_SESSION_STAGE_CYCLES phase=warm call=0 stage=one cycles=11",
+        "TVM_SESSION_STAGE_CYCLES phase=measured call=0 stage=one cycles=11",
+    ]

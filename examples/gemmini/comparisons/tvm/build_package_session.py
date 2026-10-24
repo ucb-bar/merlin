@@ -227,8 +227,14 @@ def build(args):
         fixture_objects = [out / "weights_blob.o"]
     else:
         (out / "fixtures.S").write_text("\n".join(assembly) + "\n")
+    profile_stages = getattr(args, "profile_stages", False)
     source = render_session(
-        plan, rtol=args.rtol, atol=args.atol, negative_output=args.negative_output, memory_layout=layout
+        plan,
+        rtol=args.rtol,
+        atol=args.atol,
+        negative_output=args.negative_output,
+        memory_layout=layout,
+        profile_stages=profile_stages,
     )
     source += '\n#include "htif.h"\nextern void tvm_gemmini_end(void);\n'
     source += 'static uint64_t read_cycles(void) { uint64_t v; __asm__ volatile("csrr %0,mcycle":"=r"(v)::"memory");return v; }\n'
@@ -251,13 +257,18 @@ def build(args):
     source += f'static int session_measured_validate(void) {{ int rc=session_validate(BAD_ORACLE);if(!rc)printf("{marker}\\n");return rc; }}\n'
     if args.readback:
         source += readback_source(plan)
+    success = []
+    if profile_stages:
+        success.append("session_report_stage_cycles();")
+    if args.readback:
+        success.append("if(session_readback())return 25;")
     source += render_warm_then_measure_main(
         prepare_input="int rc;\n" + "\n".join(constant_checks) + "\nsession_reset();",
         invocation=TargetInvocationHooks(invoke="if((rc=session_run()))return rc;", complete="tvm_gemmini_end();"),
         reset_after_warm=f"if((rc=session_validate(0)))return rc;\nif(!({unchanged}))return 24;\nsession_reset();",
         validate_outputs=f"({unchanged}) ? session_measured_validate() : 24",
         function_name="session_profile",
-        success_body="if(session_readback())return 25;" if args.readback else None,
+        success_body="\n".join(success) or None,
     )
     source += 'int main(int hart) { if(hart)for(;;){} console_init();int rc=session_profile();printf("TVM_SESSION_EXIT rc=%d\\n",rc);if(!rc)htif_puts("DONE\\n");htif_exit(rc);}\n'
     (out / "session.c").write_text(source)
@@ -363,6 +374,11 @@ def build(args):
             "order": "all invocation outputs in call/output order",
         },
         "timing": "One warm full session, reset, one measured full session including routing and completion; validation and reset outside interval",
+        "stage_profiling": {
+            "enabled": profile_stages,
+            "scope": "Each synchronous stage model_run; routing/reset/checks excluded; print after validation",
+            "aggregate_includes_counter_overhead": profile_stages,
+        },
         "deployed_hardware_verified": False,
     }
     (out / "session.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -400,6 +416,11 @@ def main():
     parser.add_argument("--workload", default="tvm-static-session")
     parser.add_argument(
         "--readback", action="store_true", help="Emit all actual output words after the measured interval"
+    )
+    parser.add_argument(
+        "--profile-stages",
+        action="store_true",
+        help="Retain per-call warm/measured cycles and print after validation; adds counter overhead",
     )
     build(parser.parse_args())
 

@@ -165,7 +165,7 @@ static int session_float_equal(const uint8_t *a,const uint8_t *b,uint64_t n,
 """
 
 
-def render_session(plan, *, rtol, atol, negative_output=0, memory_layout=None):
+def render_session(plan, *, rtol, atol, negative_output=0, memory_layout=None, profile_stages=False):
     """Emit only the stage ABI adapter; reference blobs are external constants."""
     if any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in (rtol, atol)):
         raise ValueError("Tolerances must be finite and nonnegative")
@@ -194,22 +194,43 @@ def render_session(plan, *, rtol, atol, negative_output=0, memory_layout=None):
                 else f"extern const uint8_t session_{name}[];"
             )
     lines.append(_CHECK_HELPERS)
+    if profile_stages:
+        lines += [
+            "static uint64_t read_cycles(void);",
+            f"static uint64_t session_stage_cycles[2][{len(plan['calls'])}];",
+            "static unsigned session_invocation;",
+            "static void session_report_stage_cycles(void) {",
+        ]
+        for ordinal, call in enumerate(plan["calls"]):
+            # Stage names are validated C identifiers by plan_session.
+            lines.append(
+                f'  for(unsigned r=0;r<2;++r) printf("TVM_SESSION_STAGE_CYCLES phase=%s call={ordinal} stage={call["stage"]} cycles=%llu\\n",r?"measured":"warm",(unsigned long long)session_stage_cycles[r][{ordinal}]);'
+            )
+        lines.append("}")
     lines += ["static void session_reset(void) {", f"  memset(session_storage,0xa5,{plan['storage_bytes']});"]
     for index, tensor in enumerate(plan["inputs"]):
         lines.append(
             f"  memcpy(session_storage+{plan['offsets']['input'][index]},session_input_{index},{tensor['bytes']});"
         )
     lines += ["}", "static int session_run(void) {"]
+    if profile_stages:
+        lines.append("  if(session_invocation>=2)return 26;")
     workspace = plan["offsets"]["workspace"][0]
     for ordinal, call in enumerate(plan["calls"]):
         args = ",".join(f"session_storage+{plan['offsets'][kind][i]}" for kind, i in call["inputs"])
         outs = ",".join(f"session_storage+{plan['offsets']['output'][i]}" for i in call["outputs"])
         stage = plan["stages"].index(call["stage"])
-        lines += [
-            f"  {{ const void *inputs[]={{{args}}}; void *outputs[]={{{outs}}};",
-            f"    int rc=stage_{stage}_model_run(inputs,outputs,session_storage+{workspace},{plan['workspace_bytes']});",
-            f'    if(rc) {{ printf("TVM_SESSION_STAGE_FAILURE call={ordinal} rc=%d\\n",rc);return 21; }} }}',
-        ]
+        lines.append(f"  {{ const void *inputs[]={{{args}}}; void *outputs[]={{{outs}}};")
+        if profile_stages:
+            lines.append("    uint64_t stage_start=read_cycles();")
+        lines.append(
+            f"    int rc=stage_{stage}_model_run(inputs,outputs,session_storage+{workspace},{plan['workspace_bytes']});"
+        )
+        if profile_stages:
+            lines.append(f"    session_stage_cycles[session_invocation][{ordinal}]=read_cycles()-stage_start;")
+        lines.append(f'    if(rc) {{ printf("TVM_SESSION_STAGE_FAILURE call={ordinal} rc=%d\\n",rc);return 21; }} }}')
+    if profile_stages:
+        lines.append("  ++session_invocation;")
     lines += ["  return 0;", "}", "static int session_validate(int negative) {"]
     for kind in ("input", "output"):
         for index, tensor in enumerate(plan[kind + "s"]):
