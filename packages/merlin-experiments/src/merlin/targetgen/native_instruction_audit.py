@@ -1,6 +1,7 @@
 """Exact-ELF ISA and executed source-bound composition audits.
 
-Numerical and timing verdicts remain independent obligations.
+Retained instruments use the original functional run. Numerical and timing
+verdicts remain independent obligations.
 """
 
 import bisect
@@ -10,6 +11,9 @@ import subprocess
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
+
+from merlin.compile.model_execution_inputs import file_sha256
+from merlin.llvmlower.source_compute_groups import form_exact_groups
 
 
 def _function_ranges(elf, symbols):
@@ -60,6 +64,81 @@ def _update_instruction_identity(digest, pc, word, kernel):
     digest.update(json.dumps([pc, word, kernel], separators=(",", ":")).encode() + b"\n")
 
 
+def _integer_writes(tokens, registers):
+    """Replay Spike's xN/value and padded x N/value integer write spellings."""
+    writes = iter(tokens)
+    for name in writes:
+        if not name.startswith(b"x"):
+            continue
+        number = next(writes, b"") if name == b"x" else name[1:]
+        value = next(writes, b"")
+        if not number.isdigit() or not 0 <= int(number) < len(registers) or not value.startswith(b"0x"):
+            raise ValueError("UNKNOWN: malformed committed integer register write")
+        try:
+            raw = int(value, 16)
+        except ValueError as error:
+            raise ValueError("UNKNOWN: invalid committed integer register value") from error
+        if int(number):
+            registers[int(number)] = raw
+        elif raw != 0:
+            raise ValueError("UNKNOWN: committed zero register is nonzero")
+
+
+def decode_retirement_trace(*, elf, trace, routed, target):
+    """Decode actual operands from per-hart committed writes, never guessed zeros."""
+    from merlin.kernels.decode.rocc import fields_of
+    from merlin.targetgen.rocc.decode import _semantics
+
+    semantics = _semantics(target)
+    isa = semantics.isa_constants(target)
+    opcode = isa.get("CUSTOM_OPCODE")
+    if type(opcode) is not int:
+        raise ValueError("UNKNOWN: executed composition has no selected custom opcode")
+    bindings = {row["symbol"]: row for row in routed}
+    if len(bindings) != len(routed):
+        raise ValueError("UNKNOWN: executed composition has ambiguous kernel bindings")
+    ranges = _function_ranges(elf, set(bindings))
+    starts = [row[0] for row in ranges]
+    registers, instructions, command_harts = {}, [], set()
+    digest = hashlib.sha256()
+    with Path(trace).open("rb") as stream:
+        for line in stream:
+            digest.update(line)
+            record = _trace_word(line)
+            if record is None:
+                continue
+            parts = line.split()
+            hart = int(parts[1][:-1])
+            regs = registers.setdefault(hart, [0, *([None] * 31)])
+            pc, word = record
+            index = bisect.bisect_right(starts, pc) - 1
+            owner = ranges[index][2] if index >= 0 and pc < ranges[index][1] else None
+            identity = {
+                "pc": pc,
+                "word": word,
+                "kernel": owner,
+                "region_id": bindings[owner]["region_id"] if owner else None,
+            }
+            fields = fields_of(word)
+            if fields["opcode"] == opcode:
+                command_harts.add(hart)
+                if len(command_harts) != 1:
+                    raise ValueError("UNKNOWN: composition commands interleave multiple harts")
+                first, second = regs[fields["rs1"]], regs[fields["rs2"]]
+                if first is None or second is None:
+                    raise ValueError("UNKNOWN: executed command reads an unobserved integer register")
+                rs1, rs2 = {"kind": "const", "raw": first}, {"kind": "const", "raw": second}
+                kind, decoded = semantics.decode_instruction(fields["funct"], rs1, rs2, isa)
+                instructions.append(
+                    {**identity, "class": kind, "funct": fields["funct"], "rs1": rs1, "rs2": rs2, "decoded": decoded}
+                )
+            # Standard RISC-V FENCE transport, independent of the selected device ISA.
+            elif owner is not None and fields["opcode"] == 15 and word >> 12 & 7 == 0:
+                instructions.append({**identity, "class": "FENCE"})
+            _integer_writes(parts[5:], regs)
+    return {"instructions": instructions, "retirement_trace_sha256": digest.hexdigest()}
+
+
 def _require_executed_sequence(decoded, observed):
     digest = hashlib.sha256()
     for row in decoded["instructions"]:
@@ -68,21 +147,6 @@ def _require_executed_sequence(decoded, observed):
         _update_instruction_identity(digest, row.get("pc"), row.get("word"), row.get("kernel"))
     if digest.hexdigest() != observed.get("instruction_sequence_sha256"):
         raise ValueError("UNKNOWN: decoded composition is not the executed PC/word/kernel sequence")
-
-
-def _decode_composition_operands(decoded, target):
-    from merlin.kernels.decode.rocc import fields_of
-    from merlin.targetgen.rocc.decode import _semantics
-
-    semantics = _semantics(target)
-    isa = semantics.isa_constants(target)
-    for row in decoded["instructions"]:
-        if row.get("class") == "FENCE" and row.get("funct") is None:
-            continue
-        fields = fields_of(row["word"])
-        if fields["opcode"] != isa["CUSTOM_OPCODE"] or row.get("funct") != fields["funct"]:
-            raise ValueError("UNKNOWN: decoded composition instruction differs from its executed word")
-        row["class"], row["decoded"] = semantics.decode_instruction(fields["funct"], row["rs1"], row["rs2"], isa)
 
 
 def _retirement_counts(trace, ranges, opcode, names):
@@ -263,7 +327,20 @@ def audit_native_composition(native, *, policy, facts, target):
     if decoded.get("retirement_trace_sha256") != observed.get("trace_sha256"):
         raise ValueError("UNKNOWN: decoded composition stream is not bound to the executed trace")
     _require_executed_sequence(decoded, observed)
-    _decode_composition_operands(decoded, target)
+    replayed = decode_retirement_trace(
+        elf=_pinned_native_file(native, "elf"),
+        trace=_pinned_native_file(native, "retirement_trace"),
+        routed=sidecar["routed"],
+        target=target,
+    )
+    fields = ("pc", "word", "kernel", "region_id", "rs1", "rs2")
+
+    def operands(stream):
+        return [tuple(row.get(key) for key in fields) for row in stream["instructions"] if row.get("funct") is not None]
+
+    if operands(decoded) != operands(replayed):
+        raise ValueError("UNKNOWN: decoded composition operands differ from committed register replay")
+    decoded = replayed
     frozen = read(declaration, declaration_path.parent)
     consumers = host_chain_consumers(
         _program(declaration, declaration_path.parent).read_text(), frozen, expected["composition"]
@@ -377,3 +454,148 @@ def audit_native_instruction_tier(native, *, target, module, policy, allow_empty
         }
     except Exception as exc:  # noqa: BLE001 -- unknown ISA legality is not a pass
         return {"status": "unverified", "detail": f"{type(exc).__name__}: {exc}"}
+
+
+def run_selected_functional(backend, elf, *, timeout, retirement_trace=None):
+    """Apply the selected process ceiling to the owned functional transport."""
+    from merlin.common.execution_deadline import ExecutionDeadline
+    from merlin.targetgen.contract.compile import _selected_run_timeout
+
+    bounded = _selected_run_timeout(backend, "spike", timeout, ExecutionDeadline.start(timeout))
+    if retirement_trace is not None:
+        invocation = getattr(backend, "functional_trace_invocation", None)
+        if not callable(invocation):
+            raise ValueError("UNKNOWN: selected functional engine supplies no committed trace invocation")
+        argv, environment = invocation(elf)
+        if argv.count(str(elf)) != 1 or argv.count("-l") != 1 or argv.count("--log-commits") != 1:
+            raise ValueError("UNKNOWN: functional trace invocation lacks exact ELF/commit-log selection")
+        with Path(retirement_trace).open("xb") as trace:
+            process = subprocess.run(argv, stdout=subprocess.PIPE, stderr=trace, env=environment, timeout=bounded)
+        if process.returncode != 0:
+            raise ValueError("UNKNOWN: composition functional trace execution did not complete")
+        return process.stdout
+    declared_runner = getattr(backend, "run_declared_model_elf", None)
+    if callable(declared_runner):
+        return declared_runner(elf, timeout=bounded, capture_bytes=True)
+    return backend.run_elf(elf, simulator="spike", timeout=bounded, capture_bytes=True)
+
+
+def _composition_routes(record, *, policy, target):
+    """Join actual linked function names to members of the original source groups."""
+    import yaml
+
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as groups_api
+
+    from .frozen_placement import _program
+    from .native_model_execution import _pinned_native_file
+
+    declaration_path = _pinned_native_file(policy, "capsule_declaration")
+    declaration = yaml.safe_load(declaration_path.read_text())
+    source = _program(declaration, declaration_path.parent)
+    bundle = Path(record["runtime_inputs"])
+    if file_sha256(source) != file_sha256(bundle / "model.mlir"):
+        raise ValueError("UNKNOWN: composition model differs from its frozen source")
+    module = mq.parse(source.read_text())
+    functions = [op for op in module.body.block.ops if mq.op_name(op) == "func.func"]
+    if len(functions) != 1 or len(functions[0].body.blocks) != 1:
+        raise ValueError("UNKNOWN: composition needs one original source block")
+    operations = [op for op in functions[0].body.block.ops if mq.op_name(op) != "func.return"]
+    indices = {op: index for index, op in enumerate(operations)}
+    groups, _ = form_exact_groups(module, target, bundle, groups_api.form_groups)
+    members = {group.index: sorted(indices[op] for op in group.members) for group in groups}
+    joined = record["source_device_join"]
+    kernels = record["build"]["output"]["device_artifacts"]["kernels"]
+    bindings = []
+    for assigned in joined["assigned"]:
+        source_group = joined["joined_groups"].get(
+            assigned["group"], joined["joined_groups"].get(str(assigned["group"]))
+        )
+        bindings.append(
+            {
+                "symbol": kernels[assigned["symbol"]]["kernel_symbol"],
+                "region_id": assigned["source_region_id"],
+                "source_op_indices": members[source_group],
+            }
+        )
+    return {"source_sha256": file_sha256(source), "bindings": bindings}
+
+
+def retain_owned_composition(record, *, policy, target, retirement_trace, directory):
+    import yaml
+
+    from .frozen_placement import _program, host_chain_consumers, read
+    from .native_model_execution import _digest, _pinned_native_file
+
+    manifest = _composition_routes(record, policy=policy, target=target)
+    declaration_path = _pinned_native_file(policy, "capsule_declaration")
+    declaration = yaml.safe_load(declaration_path.read_text())
+    frozen = read(declaration, declaration_path.parent)
+    host = {
+        "status": "verified",
+        "source_sha256": frozen["program_sha256"],
+        "intermediate_consumers": host_chain_consumers(
+            _program(declaration, declaration_path.parent).read_text(),
+            frozen,
+            policy["composition_expected"]["composition"],
+        ),
+    }
+    elf = Path(record["build"]["output"]["elf"])
+    decoded = decode_retirement_trace(elf=elf, trace=retirement_trace, routed=manifest["bindings"], target=target)
+    pins = {"elf": _digest(elf), "retirement_trace": _digest(retirement_trace)}
+    documents = {"composition_manifest": manifest, "host_chain_audit": host, "composition_trace": decoded}
+    for role, document in documents.items():
+        path = directory / f"{role}.json"
+        path.write_text(json.dumps(document, sort_keys=True, indent=2) + "\n")
+        pins[role] = _digest(path)
+    sidecar = directory / "region_offload.json"
+    sidecar.write_text(
+        json.dumps(
+            {
+                "routed": manifest["bindings"],
+                "manifest": pins["composition_manifest"]["path"],
+                "artifact_sha256": {"manifest": pins["composition_manifest"]["sha256"]},
+            },
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n"
+    )
+    pins["region_offload"] = _digest(sidecar)
+    return pins
+
+
+def audit_owned_composition(record, *, policy, facts, target):
+    from merlin.targetgen.rtl.facts import observed_facts
+
+    from .native_model_execution import _digest, _pinned_native_file
+
+    expected = _composition_routes(record, policy=policy, target=target)
+    sidecar = json.loads(_pinned_native_file(record, "region_offload").read_text())
+    manifest = json.loads(_pinned_native_file(record, "composition_manifest").read_text())
+    if manifest != expected or sidecar.get("routed") != expected["bindings"]:
+        raise ValueError("UNKNOWN: retained composition routing differs from original source groups")
+    if record.get("elf") != _digest(Path(record["build"]["output"]["elf"])):
+        raise ValueError("UNKNOWN: composition trace identifies a different linked ELF")
+    with observed_facts(target, facts):
+        return audit_native_composition(record, policy=policy, facts=facts, target=target)
+
+
+def complete_owned_composition(record, *, policy, facts, target, retirement_trace, directory):
+    """Retain and audit the completed run under the same selected RTL facts."""
+    from merlin.targetgen.rtl.facts import observed_facts
+
+    path = Path(facts["path"])
+    document = json.loads(path.read_text())
+    with observed_facts(target, document, path=path):
+        pins = retain_owned_composition(
+            record, policy=policy, target=target, retirement_trace=retirement_trace, directory=directory
+        )
+        audit = audit_owned_composition({**record, **pins}, policy=policy, facts=document, target=target)
+    return pins, audit
+
+
+def selected_execution_facts(path, *, target):
+    from merlin.compile.model_execution_inputs import selected_execution_firrtl
+
+    return selected_execution_firrtl(path, target=target)

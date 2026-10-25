@@ -3,9 +3,12 @@
 import copy
 import hashlib
 import json
+import os
 import shutil
 import struct
 import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -26,7 +29,9 @@ def _bits(value):
 
 def _row(kind, **decoded):
     if kind == "MVOUT":
-        decoded = {"acc_addr": 32, "rows": 3, "cols": 3, "readout": "i8", **decoded}
+        decoded = {"acc_addr": 32, "rows": 3, "cols": 3, "readout": "i8", "is_acc_addr": True, **decoded}
+    elif kind == "PRELOAD":
+        decoded = {"is_acc_addr": True, **decoded}
     elif kind in {"MVIN", "MVIN2", "MVIN3"}:
         decoded = {"spad_addr": 32, "rows": 3, "cols": 3, **decoded}
     return {"class": kind, "decoded": decoded, "kernel": "fused", "region_id": "chain"}
@@ -151,6 +156,13 @@ def test_missing_readout_lineage_is_unknown():
     result = _check((trace, expected))
     assert result["status"] == "fail"
     assert result["composition_audit"]["evidence_status"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize("kind", ["PRELOAD", "MVOUT"])
+def test_scratchpad_address_cannot_supply_accumulator_lineage(kind):
+    trace, expected = _readout_case()
+    next(row for row in trace["instructions"] if row["class"] == kind)["decoded"]["is_acc_addr"] = False
+    assert _check((trace, expected))["status"] == "fail"
 
 
 def test_readout_lineage_also_applies_to_standalone_trace_modes():
@@ -473,7 +485,8 @@ def test_native_composition_reopens_pins_and_never_accepts_a_cached_pass(tmp_pat
         )
 
 
-def test_native_composition_replays_pinned_source_manifest_and_executed_sequence(tmp_path, monkeypatch, native_files):
+@pytest.fixture
+def composition_execution_inputs(tmp_path, monkeypatch, native_files):
     import yaml
 
     from merlin.targetgen.native_model_execution import _digest
@@ -485,6 +498,7 @@ def test_native_composition_replays_pinned_source_manifest_and_executed_sequence
     words = []
     for row in trace["instructions"]:
         if row["class"] == "FENCE":
+            words.append(15)  # Standard RISC-V fence, not a device opcode.
             continue
         code = codes[row["class"]]
         decoded_fields[code] = (row["class"], copy.deepcopy(row["decoded"]))
@@ -493,7 +507,7 @@ def test_native_composition_replays_pinned_source_manifest_and_executed_sequence
             pc=len(words) * 4,
             word=word,
             funct=code,
-            rs1={"kind": "const", "raw": code},
+            rs1={"kind": "const", "raw": 0},
             rs2={"kind": "const", "raw": 0},
         )
         # The original decoder must ignore these volunteered field claims.
@@ -579,15 +593,151 @@ def test_native_composition_replays_pinned_source_manifest_and_executed_sequence
             }
         ]
     }
+    return native, policy, facts_document, trace
+
+
+def test_native_composition_replays_pinned_source_manifest_and_executed_sequence(
+    composition_execution_inputs, tmp_path
+):
+    from merlin.targetgen.native_model_execution import _digest
+
+    native, policy, facts_document, trace = composition_execution_inputs
     result = NA.audit_native_composition(native, policy=policy, facts=facts_document, target="synthetic")
     assert result["trace_check"]["status"] == "pass"
     # A byte-pinned but reordered decode cannot reuse an otherwise clean counter.
-    trace["instructions"][1]["pc"] = 4
+    trace["instructions"][1]["pc"] = 8
     path = tmp_path / "composition_trace.json"
     path.write_text(json.dumps(trace))
     native["composition_trace"] = _digest(path)
     with pytest.raises(ValueError, match="PC/word/kernel sequence"):
         NA.audit_native_composition(native, policy=policy, facts=facts_document, target="synthetic")
+
+
+def test_native_composition_rejects_repinned_operand_claims(composition_execution_inputs, tmp_path):
+    from merlin.targetgen.native_model_execution import _digest
+
+    native, policy, document, trace = composition_execution_inputs
+    trace["instructions"][1]["rs1"]["raw"] = 123
+    path = Path(native["composition_trace"]["path"])
+    path.write_text(json.dumps(trace))
+    native["composition_trace"] = _digest(path)
+    with pytest.raises(ValueError, match="committed register replay"):
+        NA.audit_native_composition(native, policy=policy, facts=document, target="synthetic")
+
+
+def test_executed_operands_replay_padded_register_names_and_hart_state(composition_execution_inputs, tmp_path):
+    native, _, _, _ = composition_execution_inputs
+    log = tmp_path / "registers.log"
+    word = (7 << 25) | (5 << 15) | (6 << 20) | 43
+    log.write_text(f"core 0: 3 0x1000 (0x00000013) x5 0x123 x 6 0x456\ncore 0: 3 0x4 (0x{word:08x})\n")
+    arguments = dict(
+        elf=Path(native["elf"]["path"]),
+        trace=log,
+        routed=[{"symbol": "fused", "region_id": "chain"}],
+        target="synthetic",
+    )
+    decoded = NA.decode_retirement_trace(**arguments)["instructions"][0]
+    assert decoded["rs1"]["raw"] == 0x123 and decoded["rs2"]["raw"] == 0x456
+    log.write_text(log.read_text().replace("core 0: 3 0x4", "core 1: 3 0x4"))
+    with pytest.raises(ValueError, match="unobserved integer register"):
+        NA.decode_retirement_trace(**arguments)
+
+
+def test_owned_composition_executes_then_produces_and_replays_instruments(
+    composition_execution_inputs, tmp_path, monkeypatch
+):
+    from merlin.targetgen import native_model_execution as native_model
+    from merlin.targetgen import owned_host_model_execution as owned
+    from merlin.targetgen.native_model_execution import _digest
+
+    native, policy, facts_document, _ = composition_execution_inputs
+    policy = {**policy, "required_tiers": ["L0", "L1", "L2"]}
+    fact_path = tmp_path / "facts.json"
+    fact_path.write_text(json.dumps(facts_document))
+    selected = {"path": str(fact_path)}
+    elf = native["elf"]
+    # Start from the ordinary build record, without volunteered audit instruments.
+    record = {
+        "runtime_inputs": str(tmp_path),
+        "build": {
+            "output": {
+                "elf": elf["path"],
+                "elf_sha256": elf["sha256"],
+                "device_artifacts": {"kernels": {"wrapper": {"kernel_symbol": "fused"}}},
+            }
+        },
+        "source_device_join": {
+            "assigned": [{"symbol": "wrapper", "group": 9, "source_region_id": "chain"}],
+            "joined_groups": {9: 4},
+        },
+    }
+    (tmp_path / "model.mlir").write_bytes((tmp_path / "interface.mlir").read_bytes())
+    monkeypatch.setattr(native_model, "_frozen_model_policy", lambda *a, **k: policy)
+    monkeypatch.setattr(owned, "_selected_facts", lambda *a, **k: selected)
+    monkeypatch.setattr(owned, "_dispatch_proof", lambda *a, **k: {"linked_elf": elf})
+    executed = []
+
+    def static(*args, **kwargs):
+        assert not executed
+        return {"L0": {"status": "pass"}, "L1": {"status": "pass"}}
+
+    monkeypatch.setattr(owned, "_static_tiers", static)
+    monkeypatch.setattr(
+        NA,
+        "form_exact_groups",
+        lambda module, *a: (
+            [
+                SimpleNamespace(
+                    index=4,
+                    members=list(next(op for op in module.walk() if op.name == "func.func").body.block.ops)[:-1],
+                )
+            ],
+            None,
+        ),
+    )
+    log = Path(native["retirement_trace"]["path"]).read_bytes()
+    runner = tmp_path / "functional.py"
+    runner.write_text(
+        f"import sys\nsys.stderr.buffer.write({log!r})\nsys.stdout.buffer.write(b'complete numerical output')\n"
+    )
+
+    def invocation(selected_elf):
+        executed.append(True)
+        return [sys.executable, str(runner), "-l", "--log-commits", str(selected_elf)], dict(os.environ)
+
+    backend = SimpleNamespace(functional_trace_invocation=invocation)
+    monkeypatch.setattr(owned, "_functional_engine_for_facts", lambda *a: (backend, {"digest": "engine"}, lambda: None))
+    monkeypatch.setattr(owned, "_numeric_full_output", lambda *a: ({"status": "pass"}, {}))
+    result = owned._execute_required_tiers(
+        {"__dir__": str(tmp_path)}, record, target="synthetic", facts=fact_path, timeout=10
+    )
+    assert executed == [True]
+    assert result["status"] == "verified", result
+    assert Path(result["tiers"]["L2"]["console"]["path"]).read_bytes() == b"complete numerical output"
+    for role in ("elf", "region_offload", "host_chain_audit", "composition_trace", "retirement_trace"):
+        assert native_model._pinned_native_file(result, role).is_file()
+    assert result["tiers"]["L1"]["composition_audit"]["trace_check"]["status"] == "pass"
+    # Finishing must reopen these products and the actual source/group/kernel join.
+    fresh_record = {**record, **result}
+    assert (
+        owned._audit_owned_composition(fresh_record, policy=policy, facts=facts_document, target="synthetic")[
+            "trace_check"
+        ]["status"]
+        == "pass"
+    )
+    sidecar_path = Path(result["region_offload"]["path"])
+    sidecar_bytes = sidecar_path.read_bytes()
+    sidecar = json.loads(sidecar_bytes)
+    sidecar["routed"][0]["source_op_indices"] = [0, 1]
+    sidecar_path.write_text(json.dumps(sidecar))
+    fresh_record["region_offload"] = _digest(sidecar_path)
+    with pytest.raises(ValueError, match="original source groups"):
+        owned._audit_owned_composition(fresh_record, policy=policy, facts=facts_document, target="synthetic")
+    sidecar_path.write_bytes(sidecar_bytes)
+    fresh_record["region_offload"] = result["region_offload"]
+    Path(result["retirement_trace"]["path"]).write_bytes(log + b"changed\n")
+    with pytest.raises(native_model.NativeModelExecutionError):
+        owned._audit_owned_composition(fresh_record, policy=policy, facts=facts_document, target="synthetic")
 
 
 def test_original_source_def_use_finds_host_arithmetic_even_with_matching_chain_placement():

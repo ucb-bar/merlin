@@ -141,6 +141,8 @@ def _output_commits(commits, parameters):
 
 
 def _accumulator_span(decoded, address_field, rows_field, cols_field, hardware):
+    if _known(decoded, "is_acc_addr") is not True:
+        raise ValueError("contraction/readout address does not select the accumulator")
     address = _known(decoded, address_field)
     rows, cols = _known(decoded, rows_field), _known(decoded, cols_field)
     if any(type(value) is not int or value < 0 for value in (address, rows, cols)) or min(rows, cols) <= 0:
@@ -181,7 +183,7 @@ def _readout(commits, parameters, *, relu=False, scaled=False, per_block=False):
         expected = [bits for bits, count in zip(expected, stores_per_block) for _ in range(count)]
     observed, configs = [], []
     for store, config, index, _computes in commits:
-        if _known(store, "readout") != "i8":
+        if _known(store, "readout") != "i8" or _known(store, "is_acc_addr") is not True:
             raise ValueError("scaled/activated readout requires a narrow i8 store")
         observed.append(_known(config, "acc_scale_bits"))
         configs.append(index)

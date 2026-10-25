@@ -18,6 +18,11 @@ from merlin.compile.model_execution_inputs import file_sha256
 from merlin.compile.owned_host_model import OwnedHostModelCompiler
 from merlin.llvmlower.source_compute_groups import form_exact_groups
 
+from .native_instruction_audit import audit_owned_composition as _audit_owned_composition
+from .native_instruction_audit import complete_owned_composition as _complete_owned_composition
+from .native_instruction_audit import run_selected_functional as _run_selected_functional
+from .native_instruction_audit import selected_execution_facts as _selected_facts
+
 
 class CandidateDispatchRefusal(ValueError):
     """The candidate's own emitted program fails a source-attribution requirement of its dispatch.
@@ -1008,11 +1013,6 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
                     raise ValueError("owned model ELF contains an unknown selected custom selector")
     _require_instruction_classes(policy["expected_instruction_classes"], dispatch["observed_classes"])
     with observed_facts(target, facts_document, path=Path(facts["path"])):
-        composition = None
-        if "composition_expected" in policy:
-            from .native_instruction_audit import audit_native_composition
-
-            composition = audit_native_composition(record, policy=policy, facts=facts_document, target=target)
         if policy["prohibited_instruction_roles"]:
             prohibition = scan_elf(elf, target=target, roles=policy["prohibited_instruction_roles"])
             if prohibition.get("status") != "measured" or prohibition.get("clean") is not True:
@@ -1039,15 +1039,8 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
             "prohibition": prohibition,
             "observed_classes": sorted(set(dispatch["observed_classes"])),
             "required_classes": policy["expected_instruction_classes"],
-            **({"composition_audit": composition} if composition is not None else {}),
         },
     }
-
-
-def _selected_facts(path, *, target):
-    from merlin.compile.model_execution_inputs import selected_execution_firrtl
-
-    return selected_execution_firrtl(path, target=target)
 
 
 def _native_engine_for_facts(target, engine, facts):
@@ -1067,18 +1060,6 @@ def _functional_engine_for_facts(target, facts):
 
     with observed_facts(target, json.loads(Path(facts["path"]).read_text()), path=Path(facts["path"])):
         return _functional_engine(target)
-
-
-def _run_selected_functional(backend, elf, *, timeout):
-    """Apply the selected process ceiling to the owned functional transport."""
-    from merlin.common.execution_deadline import ExecutionDeadline
-    from merlin.targetgen.contract.compile import _selected_run_timeout
-
-    bounded = _selected_run_timeout(backend, "spike", timeout, ExecutionDeadline.start(timeout))
-    declared_runner = getattr(backend, "run_declared_model_elf", None)
-    if callable(declared_runner):
-        return declared_runner(elf, timeout=bounded, capture_bytes=True)
-    return backend.run_elf(elf, simulator="spike", timeout=bounded, capture_bytes=True)
 
 
 def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
@@ -1133,6 +1114,9 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachabl
     output = record["build"]["output"]
     elf = Path(output["elf"])
     identity = _digest(elf)
+    composition_pins = {}
+    if "composition_expected" in policy:
+        tiers["L1"] = {**tiers["L1"], "status": "unverified", "detail": "composition requires completed L2 retirement"}
     for tier in policy["required_tiers"]:
         if tier in {"L0", "L1"}:
             continue
@@ -1149,7 +1133,16 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachabl
             if tier == "L2":
                 backend, citation, revalidate = _functional_engine_for_facts(target, selected_facts)
                 revalidate()
-                console = _run_selected_functional(backend, elf, timeout=timeout)
+                if "composition_expected" in policy:
+                    retirement = directory / "retirement.log"
+                    from merlin.targetgen.rtl.facts import observed_facts
+
+                    with observed_facts(
+                        target, json.loads(Path(selected_facts["path"]).read_text()), path=Path(selected_facts["path"])
+                    ):
+                        console = _run_selected_functional(backend, elf, timeout=timeout, retirement_trace=retirement)
+                else:
+                    console = _run_selected_functional(backend, elf, timeout=timeout)
                 revalidate()
                 engine_evidence = {"engine": "spike", "engine_citation": citation}
             elif tier == "L3":
@@ -1195,6 +1188,18 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachabl
             numeric, metrics = _numeric_full_output(capsule, record, console)
             if _digest(elf) != identity:
                 raise ValueError("owned model ELF changed during required-tier execution")
+            if tier == "L2" and "composition_expected" in policy:
+                composition_pins, composition = _complete_owned_composition(
+                    record,
+                    policy=policy,
+                    facts=selected_facts,
+                    target=target,
+                    retirement_trace=retirement,
+                    directory=directory,
+                )
+                tiers["L1"].update(status="pass", composition_audit=composition)
+                tiers["L1"].pop("detail", None)
+                engine_evidence["retirement_trace"] = composition_pins["retirement_trace"]
             tiers[tier] = {
                 "status": numeric["status"],
                 **engine_evidence,
@@ -1209,6 +1214,7 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachabl
     failed = [tier for tier in policy["required_tiers"] if tiers[tier]["status"] == "fail"]
     preferred = tiers.get("L3") or tiers.get("L2") or {}
     return {
+        **composition_pins,
         "status": "fail" if failed else "verified" if not missing else "unverified",
         "dispatch": dispatch,
         "tiers": tiers,
@@ -1401,6 +1407,10 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                 raise ValueError(f"owned model {tier} has no completed exact-ELF run")
             console = _pinned(evidence, "console")
             if tier == "L2":
+                if "composition_expected" in frozen_policy and evidence.get("retirement_trace") != record.get(
+                    "retirement_trace"
+                ):
+                    raise ValueError("owned composition trace differs from the completed L2 run")
                 _, citation, revalidate = _functional_engine_for_facts(target, facts)
                 if evidence.get("engine") != "spike" or evidence.get("engine_citation") != citation:
                     raise ValueError("owned model L2 engine/extension bytes changed")
@@ -1436,6 +1446,11 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                     tiers[tier].update(
                         fidelity=fidelity, derived_from_rtl=fidelity == ELABORATED_RTL, cycle_accurate=False
                     )
+        if "composition_expected" in frozen_policy:
+            composition = _audit_owned_composition(
+                fresh_record, policy=frozen_policy, facts=json.loads(Path(facts["path"]).read_text()), target=target
+            )
+            tiers["L1"]["composition_audit"] = composition
         required = frozen_policy["required_tiers"]
         failed = [tier for tier in required if tiers[tier]["status"] == "fail"]
         pending = [tier for tier in required if tiers[tier]["status"] == "unverified"]
