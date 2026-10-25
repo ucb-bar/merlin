@@ -77,6 +77,13 @@ runner:
   spike_extension:
     extension_name: REVIEWED_EXTENSION_NAME
     extlib: /REVIEWED_TOOLCHAIN/libextension.so
+  # Seal 4 and later: declare the patched Spike model (true round-near-even; hardware_pins.yaml
+  # artifact `gemmini_spike_extension_rne`) by digest instead of by path. The operator exports the
+  # location; the digest is target-owned and any other bytes raise. Seals 1-3 keep their v1 extension.
+  #   spike_extension:
+  #     extension_name: gemmini
+  #     extlib_env: MERLIN_GEMMINI_RNE_SPIKE_EXTLIB
+  #     sha256: 3dd87ffd661a658b7e4ae56c5fe3b5ea21934707ec38f0ede2eb2fd99c3fd5ea
 harness_abi:
   version: 2
   kind: logical_pointer
