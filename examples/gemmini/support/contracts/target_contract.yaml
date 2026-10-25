@@ -275,6 +275,8 @@ rocc_operand_roles:
     MVIN3: *rocc_mvin
     MVOUT:
       fields:
+        - {name: is_acc_addr, operand: rs2, bundle: MvoutRs2, field: local_addr,
+           as: flag, flag: accumulator_select}
         - {name: dram, operand: rs1, as: operand}
         - {name: rows, operand: rs2, bundle: MvoutRs2, field: num_rows}
         - {name: cols, operand: rs2, bundle: MvoutRs2, field: num_cols}
@@ -284,8 +286,12 @@ rocc_operand_roles:
            flag: full_width_readout, set: i32, clear: i8}
     PRELOAD:
       fields:
+        - {name: is_acc_addr, operand: rs2, bundle: PreloadRs, field: local_addr,
+           as: flag, flag: accumulator_select}
         - {name: weight_spad, operand: rs1, bundle: PreloadRs, field: local_addr}
         - {name: c_addr, operand: rs2, bundle: PreloadRs, field: local_addr}
+        - {name: c_rows, operand: rs2, bundle: PreloadRs, field: num_rows}
+        - {name: c_cols, operand: rs2, bundle: PreloadRs, field: num_cols}
         - {name: accumulate, operand: rs2, bundle: PreloadRs, field: local_addr, as: flag, flag: accumulate}
         - {name: readout, operand: rs2, bundle: PreloadRs, field: local_addr, as: flag_choice,
            flag: full_width_readout, set: i32, clear: i8}
