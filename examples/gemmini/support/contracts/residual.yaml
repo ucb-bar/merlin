@@ -57,6 +57,9 @@ rtl_extraction:
     node: pooling_is_enabled
     dynamic_operand_contains: pool
     config_field: has_max_pool
+  # Seal #4: pool padding remains UNKNOWN. StoreController.scala:131-134 marks
+  # out-of-bounds pool addresses as garbage; the downstream numeric value has
+  # not been derived. A pooling build gate alone cannot license padded windows.
 runner:
   suite: gemmini-capsule-bench
   dtype: i8xi8_i32
@@ -162,6 +165,8 @@ rocc_operand_roles:
   # `3<<(ADDR_LEN-2)` (accumulate, with the select bit), `full_C<<(ADDR_LEN-3)` (full-width readout).
   local_address_flags:
     accumulator_select: {msb_offset: 0}
+    # Seal #4 review: LocalAddr.scala:21-31 at rtl_source.gitlinks.generators/gemmini.
+    # Reverse Bundle packing puts accumulate immediately below is_acc_addr.
     accumulate: {msb_offset: 1}
     full_width_readout: {msb_offset: 2}
   # The ISA-constant names this target's consumers read, composed from the flags above (or a float32
@@ -183,7 +188,12 @@ rocc_operand_roles:
     publish_layouts: {CONFIG_ST_LAYOUT: ConfigMvoutRs1}
   classes:
     MVIN: &rocc_mvin
+      unresolved: "null"
       fields:
+        - {name: is_acc_addr, operand: rs2, bundle: MvinRs2, field: local_addr,
+           as: flag, flag: accumulator_select}
+        - {name: accumulate, operand: rs2, bundle: MvinRs2, field: local_addr,
+           as: flag, flag: accumulate}
         - {name: dram, operand: rs1, as: operand}
         # LoadController: vaddr==0 selects all_zeros, not a host memory access.
         # Selection recipe pins this controller source; stores have no such role.
@@ -218,12 +228,18 @@ rocc_operand_roles:
         - {name: garbage, operand: rs2, bundle: ComputeRs, field: local_addr, as: all_ones}
     COMPUTE_ACCUMULATE: *rocc_compute
     CONFIG_EX:
+      unresolved: "null"
       fields:
         - {name: subtype, const: EX}
+        # GemminiISA.scala:203-214; offset/width from register_bundle_layouts.
+        # OS/WS codes are the timing_structure.dataflow.modes fact, not literals here.
+        - {name: dataflow, operand: rs1, bundle: ConfigExRs1, field: dataflow}
     CONFIG_LD:
       unresolved: "null"
       fields:
         - {name: subtype, const: LD}
+        # GemminiISA.scala:111-121; scale and state slots are RTL-derived.
+        - {name: state_id, operand: rs1, bundle: ConfigMvinRs1, field: state_id}
         # gemmini.h config_ld passes the DRAM row stride as the whole rs2 operand.
         - {name: stride, operand: rs2, as: raw}
         - {name: scale, operand: rs1, bundle: ConfigMvinRs1, field: scale, as: f32}
@@ -237,9 +253,16 @@ rocc_operand_roles:
         - {name: acc_scale, operand: rs2, bundle: ConfigMvoutRs2, field: acc_scale, as: f32}
         - {name: acc_scale_bits, operand: rs2, bundle: ConfigMvoutRs2, field: acc_scale}
         - {name: out_stride_bytes, operand: rs2, bundle: ConfigMvoutRs2, field: stride}
-        - operand: rs1
-          bundle: ConfigMvoutRs1
-          names: [pool_stride, pool_size, pool_out_dim, porows, pocols, orows, ocols, upad, lpad]
+        # GemminiISA.scala:137-160. Explicit fields retain null when RTL is unavailable.
+        - {name: pool_stride, operand: rs1, bundle: ConfigMvoutRs1, field: pool_stride}
+        - {name: pool_size, operand: rs1, bundle: ConfigMvoutRs1, field: pool_size}
+        - {name: pool_out_dim, operand: rs1, bundle: ConfigMvoutRs1, field: pool_out_dim}
+        - {name: porows, operand: rs1, bundle: ConfigMvoutRs1, field: porows}
+        - {name: pocols, operand: rs1, bundle: ConfigMvoutRs1, field: pocols}
+        - {name: orows, operand: rs1, bundle: ConfigMvoutRs1, field: orows}
+        - {name: ocols, operand: rs1, bundle: ConfigMvoutRs1, field: ocols}
+        - {name: upad, operand: rs1, bundle: ConfigMvoutRs1, field: upad}
+        - {name: lpad, operand: rs1, bundle: ConfigMvoutRs1, field: lpad}
 # RTL CHECKS — this target's RoCC protocol for the generic HARDWARE-LEGALITY rules
 # (merlin.targetgen.rtl_checks_generic). Rule kinds are target-independent code; this block only says
 # which instruction classes play which protocol ROLE, which decoded field carries which MEANING, which
@@ -341,13 +364,14 @@ compute_units:
     dtypes: [int8]
     ops: [matmul]
     # The elaborated command register carries one bounded acc_scale value per
-    # store command. The derived readout facet therefore admits tensor-wide
-    # scaling, not an independent scale for each output channel.
-    scaling: per_tensor
+    # store command. Re-issue CONFIG_ST per column tile for block scales; the
+    # output path derives columns_per_scale. This grants no within-command vector.
+    # Seal #4 review: StoreController.scala:233-239 updates the scale on CONFIG_ST.
+    scaling: from_output_path
     requant: {ref: gemmini.accumulator_scale}
     # Semantic-family capability (ARR denominator), four families stated as hardware primitives:
     # int8 contraction on the mesh (matmul; convolution as direct per-tap matmuls, no im2col unit)
-    # with an int32 accumulator seed (bias) and a fused readout (ReLU, then one per-tensor
+    # with an int32 accumulator seed (bias) and a fused readout (ReLU, then one per-command
     # acc_scale, then saturation; integer-shift requant remains host-side); a standalone affine
     # elementwise map on the load/accumulate/readout path; sum reductions by accumulate-on-load,
     # plus max pooling fused on the store path; and mvin/mvout DMA movement. There is no softmax /
@@ -626,12 +650,18 @@ execution_capabilities:
     the whole-program harness executes one unmeasured warm invocation, then brackets exactly one complete
     kernel invocation with the target cycle counter
 
-# What each readout of this design applies, as reviewed against the generated parameter header the
-# harness is built with. The header's digest is cross-checked against the support provider's
+# What each readout applies, reviewed against the pinned RTL. The parameter header's
+# digest is cross-checked against the support provider's
 # ISA-headers spec on every read: if the spec moves to other bytes, these facts refuse rather than
 # describe a different header. Served by the generic backend as readout_epilogue_capability /
 # epilogue_stage_routes / readout_scalar_abi / readout_operand_sum.
 readout_semantics:
+  # Seal #4 operator-approved review at rtl_source.gitlinks.generators/gemmini:
+  # Configs.scala:117-151 converts signed integer to f32 RNE, multiplies in f32 RNE
+  # (MulAddRecFN with c=0), then converts to integer RNE and saturates. Narrowing
+  # clips to the element width (AccumulatorScale.scala:76-85,131-140). Load scaling
+  # uses the same sequence (Configs.scala:75-109). ROUND_NEAR_EVEN in the C header
+  # and an unpatched Spike extension are not arithmetic authorities for this path.
   evidence_header:
     file: include/gemmini_params.h
     sha256: 3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924
@@ -645,8 +675,8 @@ readout_semantics:
       evidence: >-
         the narrowing readout applies accumulator scale and activation; bias is loaded into the
         accumulator before computation, not added during readout (GemminiRocketConfig AccumulatorScale
-        and LoopMatmulLdD/LoopConvLdBias); RTL-certified bit-exact against Tensor.requant_acc_scale
-        (decision A)
+        and LoopMatmulLdD/LoopConvLdBias); signed accumulator to f32 RNE, f32 product RNE,
+        integer RNE and saturation to int8 (Configs.scala:117-151 at the pinned RTL revision)
     - selector: i32
       applies: []
       evidence: >-
@@ -667,8 +697,8 @@ readout_semantics:
       evidence: >-
         Selected GemminiRocketConfig FIRRTL LoopMatmulLdD and LoopConvLdBias write bias into
         AccumulatorMem with accumulate=0; AccumulatorScale has no bias operand.
-  # gemmini_params.h: `typedef int32_t acc_t`, `typedef int8_t elem_t`, `typedef float acc_scale_t`,
-  # ACC_SCALE = ROUND_NEAR_EVEN(x * scale) saturated to [INT8_MIN, INT8_MAX].
+  # Configs.scala:117-151 is the f32-product-then-RNE + saturate definition;
+  # the parameter header supplies storage types, not the rounding definition.
   scalar_abi:
     schema: scalar_narrow_readout_contract_v1
     accumulator_dtype: i32
@@ -676,8 +706,8 @@ readout_semantics:
     scale_dtype: f32
     clamp_min: -128
     clamp_max: 127
-  # gemmini_params.h: `#define HAS_MVIN_SCALE`, `typedef float scale_t`, MVIN_SCALE =
-  # ROUND_NEAR_EVEN(x * scale) saturated to elem_t. Two loads meet in the addressable accumulator: one
+  # Configs.scala:75-109 defines load scaling: signed integer to f32 RNE, f32 product
+  # RNE, integer RNE, saturate to elem_t. Two loads meet in the addressable accumulator: one
   # overwriting, one accumulating (LocalAddr accumulate bit; see semantic_capabilities above).
   operand_sum:
     schema: operand_sum_contract_v1

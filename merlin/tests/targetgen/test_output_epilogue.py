@@ -103,6 +103,9 @@ def test_every_output_stage_is_read_from_the_design(tmp_path):
     assert activation["functions"]["relu"]["codes"] == [1]
     assert activation["unrecognized_codes"] == [] and activation["before_scale"] is True
     assert record["pool"]["reductions"] == ["max"]
+    assert record["pool"]["padding"] == OE.UNKNOWN
+    assert "not derived" in record["unknown"]["pool.padding"]
+    assert record["output_path"]["readout"][-1]["padding"] == "unknown"
     assert record["accumulate"]["status"] == OE.UNKNOWN
     assert "accumulate" in record["unknown"]
 
@@ -145,6 +148,23 @@ def test_a_scale_split_no_registered_format_has_is_unknown(tmp_path):
 def test_pooling_needs_both_the_built_gate_and_a_command_field(tmp_path):
     record = OE.derive(_facts(_fir(tmp_path), pool=False), contract=_contract())
     assert record["pool"]["status"] == OE.UNKNOWN and record["stages"]["maxpool"] is False
+
+
+def test_pool_geometry_does_not_admit_padded_pooling(tmp_path):
+    from merlin.xdsl_dialects.lowering import output_fusion as fusion
+
+    record = OE.derive(_facts(_fir(tmp_path)), contract=_contract())
+    assert record["pool"]["status"] == OE.DERIVED
+    chain = fusion.Chain(
+        root=None,
+        channels=2,
+        float_dtype="f32",
+        ops=[],
+        stages=[fusion.Stage(kind, object()) for kind in ("convert", "pad", "pool", "quantize")],
+    )
+    decision = fusion.decide(chain, record["output_path"], fusion.Values(), {})
+    assert decision.cut != "pool"
+    assert any(row["cut"] == "pool" and row["code"] == fusion.PADDING for row in decision.refusals)
 
 
 def test_accumulate_follows_the_derived_behavioural_fact(tmp_path):
@@ -296,4 +316,5 @@ def test_a_selected_contract_is_declared_once_from_its_own_facts(tmp_path):
 def test_an_underived_record_is_well_formed_and_claims_nothing():
     record = OE.underived("no facts")
     assert record["stages"] == {"acc_scale": False, "relu": False, "maxpool": False}
-    assert record["unknown"] == {"derivation": "no facts"}
+    assert record["unknown"] == {"derivation": "no facts", "pool.padding": "no facts"}
+    assert record["pool"]["padding"] == OE.UNKNOWN

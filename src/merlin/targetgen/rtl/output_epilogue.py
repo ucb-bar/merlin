@@ -717,6 +717,14 @@ def derive(
 
     # --- pool ------------------------------------------------------------------------------------
     pool = record["pool"]
+    # A build gate and window geometry do not establish the value contributed by
+    # an out-of-bounds lane. That requires the complete store-to-reduction data
+    # cone, including sentinel handling, which this reader does not observe.
+    pool["padding"] = UNKNOWN
+    unknown["pool.padding"] = (
+        "the padded store-to-reduction value is not derived; pooling gates and "
+        "command fields do not establish padding semantics"
+    )
     features = _interface(body, "elaborated_rtl_features")
     if features is not None and features.get("status") == DERIVED:
         kinds = sorted(
@@ -786,7 +794,8 @@ def underived(reason: str) -> dict[str, Any]:
         **{name: {"status": UNKNOWN} for name in (*CAPABILITIES, *OPTIONAL_CAPABILITIES)},
     }
     record["stages"] = dict.fromkeys(STAGE_CAPABILITY, False)
-    record["unknown"] = {"derivation": str(reason)}
+    record["pool"]["padding"] = UNKNOWN
+    record["unknown"] = {"derivation": str(reason), "pool.padding": str(reason)}
     return validate(record)
 
 

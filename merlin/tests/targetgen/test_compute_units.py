@@ -26,7 +26,7 @@ def test_parse_gemmini_and_toy_contracts():
         assert isinstance(mesh.requant, dict) and "ref" in mesh.requant
     # gemmini's command register carries one acc_scale per store command, so its readout scales
     # tensor-wide; toy_npu declares a per-channel scale.
-    assert cu.compute_units(_contract("gemmini"))[0].scaling == "per_tensor"
+    assert cu.compute_units(_contract("gemmini"))[0].scaling == "from_output_path"
     assert cu.compute_units(_contract("toy_npu"))[0].scaling == "per_channel"
     # gemmini no longer re-declares the (in,weight)->acc `accumulate` matrix — it IS the CIRCT
     # datapath facts (input i8 / accumulator i32) — so its unit carries no accumulate rules; toy_npu

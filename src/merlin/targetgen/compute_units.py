@@ -33,6 +33,9 @@ from merlin.targetgen import semantic_families as _sf
 #: cells that reduces via rank-1 outer-product accumulate, not a stationary-weight systolic wavefront) —
 #: NPU-class silicon like ``systolic`` but a distinct datapath, so it carries its own fact family.
 KINDS: frozenset[str] = frozenset({"systolic", "simt", "vector", "scalar", "spatial"})
+# A deferred selection carries no fixed scale granularity promise; the derived
+# output path must supply the command partition and its physical scale width.
+SCALING_KINDS: frozenset[str] = qf.SCALE_KINDS | {"from_output_path"}
 
 
 @dataclass(frozen=True)
@@ -176,7 +179,7 @@ class ComputeUnit:
     dtypes: tuple[str, ...] = ()  # quant_format names this unit computes on
     ops: tuple[str, ...] = ()
     accumulate: tuple[AccumRule, ...] = ()
-    scaling: str | None = None  # a quant_formats SCALE_KIND (per_channel/block_e8m0/none/...)
+    scaling: str | None = None  # a quant_formats SCALE_KIND, or from_output_path
     requant: dict[str, Any] | None = None  # opaque {ref: <out-of-tree lowering id>}; not interpreted
     contains: tuple[str, ...] = ()
     semantic_capabilities: tuple[SemanticCapability, ...] = ()
@@ -337,8 +340,8 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
     if unknown:
         raise ValueError(f"compute unit {raw.get('name')!r}: unknown quant formats {unknown} (known: {qf.names()})")
     scaling = raw.get("scaling")
-    if scaling is not None and scaling not in qf.SCALE_KINDS:
-        raise ValueError(f"compute unit {raw.get('name')!r}: scaling {scaling!r} not in {sorted(qf.SCALE_KINDS)}")
+    if scaling is not None and scaling not in SCALING_KINDS:
+        raise ValueError(f"compute unit {raw.get('name')!r}: scaling {scaling!r} not in {sorted(SCALING_KINDS)}")
     name = raw["name"]
     exposure = raw.get("exposure")
     if exposure is not None:

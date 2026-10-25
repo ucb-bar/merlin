@@ -43,19 +43,23 @@ _READOUTS = [{"selector": "i8", "applies": ["acc_scale", "relu", "bias_add"]}, {
 
 
 def test_composition_requires_one_unit_and_one_readout():
-    split = RF.ReadoutFacet(target="t", unit="u", readouts=(
-        {"selector": "scaled", "applies": ["acc_scale"]},
-        {"selector": "activated", "applies": ["relu"]},
-    ))
+    split = RF.ReadoutFacet(
+        target="t",
+        unit="u",
+        readouts=(
+            {"selector": "scaled", "applies": ["acc_scale"]},
+            {"selector": "activated", "applies": ["relu"]},
+        ),
+    )
     target = RF.TargetReadout((split,))
     assert target.applies_stage("acc_scale") and target.applies_stage("relu")
     assert target.applies_composition(["acc_scale", "relu"], unit="u") is False
     assert target.applies_composition(["acc_scale"], unit="u", selector="activated") is False
     assert target.applies_composition(["acc_scale"], unit="missing") is None
 
-    other = RF.ReadoutFacet(target="t", unit="v", readouts=(
-        {"selector": "combined", "applies": ["acc_scale", "relu"]},
-    ))
+    other = RF.ReadoutFacet(
+        target="t", unit="v", readouts=({"selector": "combined", "applies": ["acc_scale", "relu"]},)
+    )
     target = RF.TargetReadout((split, other))
     assert target.applies_composition(["acc_scale", "relu"], unit="u") is False
     assert target.applies_composition(["acc_scale", "relu"], unit="v") is True
@@ -132,7 +136,7 @@ def test_selected_data_readout_does_not_require_native_runtime(monkeypatch, expl
         "runner": {"backend": "chipyard_rocc", "chipyard_rocc": {"readout": declared}},
     }
     selected = {"scalar_abi": _ABI, "readouts": [{"selector": "i32", "applies": []}]} if explicit else None
-    facet, = RF.for_target("synthetic", contract=contract, facts=_facts(), readout_inputs=selected)
+    (facet,) = RF.for_target("synthetic", contract=contract, facts=_facts(), readout_inputs=selected)
     assert facet.rounding == "half_even"
     assert list(facet.readouts) == (selected["readouts"] if explicit else _READOUTS)
     assert facet.scale_granularities == ("tensor",)
@@ -170,6 +174,9 @@ def test_a_contract_that_promises_more_than_the_readout_holds_is_named() -> None
     assert (finding["declared_granularity"], finding["derived"]) == ("column", ["tensor"])
     assert RF.reconcile({"name": "u", "scaling": "per_tensor"}, facet) == []
     assert RF.reconcile({"name": "u", "scaling": "none"}, facet) == []
+    assert RF.reconcile({"name": "u", "scaling": "from_output_path"}, facet) == []
+    # Deferring the declaration never adds a scale vector to one command.
+    assert facet.admits_granularity("column") is False
     (unaudited,) = RF.reconcile({"name": "u", "scaling": "per_channel"}, RF.derive("t", facts={}))
     assert unaudited["kind"] == "unaudited_scaling"  # "could not look" is not "cannot"
 

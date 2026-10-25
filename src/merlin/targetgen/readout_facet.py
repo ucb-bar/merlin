@@ -948,8 +948,12 @@ class TargetReadout:
     facets: tuple[ReadoutFacet, ...]
 
     def applies_composition(
-        self, stages: Sequence[str], *, unit: str | None = None,
-        selector: str | None = None, routes=(),
+        self,
+        stages: Sequence[str],
+        *,
+        unit: str | None = None,
+        selector: str | None = None,
+        routes=(),
     ) -> bool | None:
         """Whether one selected unit/readout carries the complete stage set.
 
@@ -1026,7 +1030,10 @@ def reconcile(unit: Mapping[str, Any], facet: ReadoutFacet) -> list[dict[str, An
     goldens, quantization) asks for arithmetic that can only happen on the host.
     """
     declared = unit.get("scaling")
-    if not declared or str(declared) == "none":
+    # A deferred declaration makes no independent granularity promise. Consumers
+    # must read the derived output path, including per-command scale partitions;
+    # the facet's unknowns and ordinary admission checks still apply.
+    if not declared or str(declared) in ("none", "from_output_path"):
         return []
     wanted = GRANULARITY_OF_SCALE_KIND.get(str(declared))
     base = {

@@ -75,6 +75,8 @@ def from_record(record: Mapping[str, Any]) -> dict[str, Any]:
             )
     pool = record.get("pool") or {}
     if pool.get("status") == derived and readout and readout[-1]["kind"] == "requant":
+        # No padding value has been derived by the epilogue reader. Keep the
+        # output-path refusal spelling even for historical records omitting it.
         readout.append({"kind": "pool", "reductions": list(pool.get("reductions") or ()), "padding": "unknown"})
     path["readout"] = readout
     full = (record.get("full_width_readout") or {}).get("status") == derived
