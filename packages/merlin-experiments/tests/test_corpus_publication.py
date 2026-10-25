@@ -166,3 +166,81 @@ def test_held_out_shape_identity_uses_semantic_roles(tmp_path, change):
     _capsule(tmp_path, document)
     with pytest.raises(SpecError, match="excluded historical input"):
         require_public_capsules(_held_out_experiment(), [tmp_path])
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "linear",
+        "linear_transposed",
+        "mm",
+        "bmm",
+        "batch_matmul",
+        "addmm",
+        "conv2d",
+        "aten.mm.default",
+        "aten.bmm.default",
+        "aten.linear.default",
+        "aten.addmm.default",
+    ],
+)
+@pytest.mark.parametrize("rectangular", [False, True])
+def test_held_out_contraction_aliases_cannot_be_published(tmp_path, alias, rectangular):
+    import copy
+
+    document = copy.deepcopy(_layer_document())
+    experiment = _held_out_experiment()
+    if rectangular:
+        # A separate exclusion proves orientation without relying on square weights.
+        for operand in document["inputs"]:
+            operand["shape"] = [7, 5] if operand["role"] == "input" else [5, 11]
+        excluded = tmp_path / "excluded"
+        _capsule(excluded, document)
+        experiment = SimpleNamespace(source_root=tmp_path, held_out_inputs=("excluded",), workload_spec={})
+    candidate = copy.deepcopy(document)
+    candidate["name"] = "renamed"
+    candidate["operation"]["op"] = "linear" if alias == "linear_transposed" else alias
+    operands = {item["role"]: item for item in candidate["inputs"]}
+    if alias in {"linear_transposed", "aten.linear.default"}:
+        operands["weight"]["shape"].reverse()
+    elif alias in {"bmm", "batch_matmul", "aten.bmm.default"}:
+        for item in candidate["inputs"]:
+            item["shape"].insert(0, 1)
+    elif alias in {"addmm", "aten.addmm.default"}:
+        candidate["operation"]["attributes"].update(alpha=1, beta=0)
+    elif alias == "conv2d":
+        m, k = operands["input"]["shape"]
+        operands["input"]["shape"] = [1, 1, m, k]
+        candidate["operation"]["attributes"].update(
+            ifm=operands["input"]["name"],
+            kh=1,
+            kw=1,
+            ci=k,
+            layout="nhwc",
+            stride=[1, 1],
+            padding=[0, 0, 0, 0],
+            dilation=[1, 1],
+        )
+    public = tmp_path / "public"
+    _capsule(public, candidate)
+    with pytest.raises(SpecError, match="excluded historical input"):
+        require_public_capsules(experiment, [public])
+
+
+def test_distinct_contraction_shapes_remain_public(tmp_path):
+    candidate = _layer_document()
+    candidate["inputs"][1]["shape"][0] += 1
+    candidate["operation"]["op"] = "linear"
+    _capsule(tmp_path, candidate)
+    require_public_capsules(_held_out_experiment(), [tmp_path])
+
+
+@pytest.mark.parametrize("role", ["hand-authored", "model_derived"])
+def test_unresolved_alias_shapes_fail_closed_independent_of_source_label(tmp_path, role):
+    candidate = _layer_document()
+    candidate["source_role"] = role
+    candidate["operation"]["op"] = "linear"
+    candidate["inputs"][0]["shape"] = [61, 67]
+    _capsule(tmp_path, candidate)
+    with pytest.raises(SpecError, match="cannot be identified"):
+        require_public_capsules(_held_out_experiment(), [tmp_path])

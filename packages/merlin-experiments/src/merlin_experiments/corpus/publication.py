@@ -4,12 +4,84 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import yaml
 
 from ..phase0.claim_boundary import assert_no_claim_capsules, held_out_models
 from ..spec import SpecError
+
+
+def _contraction_kind(op):
+    """Use the original capture census's ATen-to-semantic vocabulary."""
+    from merlin.capture.contraction_formats import _CONTRACTIONS
+
+    aliases = {name.split(".")[1]: kind for name, kind in _CONTRACTIONS.items()}
+    aliases.update(_CONTRACTIONS)
+    aliases.update({kind: kind for kind in _CONTRACTIONS.values()})
+    return aliases.get(op)
+
+
+def _pointwise_conv_operands(operands, attributes):
+    """The capsule NHWC, flattened-KN convolution contract at a 1x1 window."""
+    if (
+        attributes.get("layout") != "nhwc"
+        or attributes.get("kh") != 1
+        or attributes.get("kw") != 1
+        or attributes.get("stride") != [1, 1]
+        or attributes.get("padding") != [0, 0, 0, 0]
+        or attributes.get("dilation") != [1, 1]
+        or attributes.get("groups", 1) != 1
+    ):
+        return None
+    inputs = [shape for role, shape in operands if role == "input"]
+    weights = [shape for role, shape in operands if role == "weight"]
+    if len(inputs) != 1 or len(weights) != 1 or len(inputs[0]) != 4 or len(weights[0]) != 2:
+        return None
+    lhs, rhs = inputs[0], weights[0]
+    if lhs[-1] != rhs[0] or attributes.get("ci") != lhs[-1]:
+        return None
+    return [(role, [math.prod(shape[:-1]), shape[-1]] if role == "input" else shape) for role, shape in operands]
+
+
+def _canonical_operands(operation, operands):
+    kind = _contraction_kind(operation["op"])
+    if kind is None:
+        return operation["op"], operands
+    attributes = operation.get("attributes") or {}
+    if not isinstance(attributes, dict):
+        return None
+    if kind == "conv2d":
+        pointwise = _pointwise_conv_operands(operands, attributes)
+        if pointwise is None:
+            return kind, operands
+        operands = pointwise
+    elif kind not in {"matmul", "batch_matmul", "linear", "addmm"}:
+        return operation["op"], operands
+    # The publication boundary excludes the shape independently of epilogues.
+    # In addmm(beta=0), the bias storage is not read at all.
+    operands = [
+        (role, shape)
+        for role, shape in operands
+        if not (kind == "addmm" and role == "bias" and attributes.get("beta") == 0)
+    ]
+    operands = [(role, shape[1:] if len(shape) == 3 and shape[0] == 1 else shape) for role, shape in operands]
+    inputs = [shape for role, shape in operands if role == "input"]
+    weights = [shape for role, shape in operands if role == "weight"]
+    if len(inputs) != 1 or len(weights) != 1:
+        return None
+    lhs, rhs = inputs[0], weights[0]
+    if len(lhs) < 2 or len(rhs) < 2:
+        return None
+    # Capsule linear sources store KN; ATen linear stores NK. Resolve the
+    # rectangular case from K, and preserve the explicit ATen orientation.
+    if kind == "linear" and (str(operation["op"]).startswith("aten.") or rhs[-2] != lhs[-1]):
+        rhs = [*rhs[:-2], rhs[-1], rhs[-2]]
+        operands = [(role, rhs if role == "weight" else shape) for role, shape in operands]
+    if lhs[-1] != rhs[-2]:
+        return None
+    return "matmul", operands
 
 
 def shape_signature(document) -> str | None:
@@ -22,7 +94,13 @@ def shape_signature(document) -> str | None:
     """
     operation = document.get("operation") if isinstance(document, dict) else None
     inputs = document.get("inputs") if isinstance(document, dict) else None
-    if not isinstance(operation, dict) or not operation.get("op") or not isinstance(inputs, list) or not inputs:
+    if (
+        not isinstance(operation, dict)
+        or not isinstance(operation.get("op"), str)
+        or not operation["op"]
+        or not isinstance(inputs, list)
+        or not inputs
+    ):
         return None
     operands = []
     for item in inputs:
@@ -32,7 +110,11 @@ def shape_signature(document) -> str | None:
         if not isinstance(shape, list) or not shape or any(type(size) is not int or size <= 0 for size in shape):
             return None
         operands.append((item["role"], shape))
-    body = {"op": operation["op"], "operands": sorted(operands)}
+    canonical = _canonical_operands(operation, operands)
+    if canonical is None:
+        return None
+    op, operands = canonical
+    body = {"op": op, "operands": sorted(operands)}
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
@@ -65,8 +147,8 @@ def require_public_capsules(experiment, roots) -> None:
             if not isinstance(document, dict):
                 raise SpecError("public capsule declaration is malformed")
             digest = shape_signature(document)
-            if excluded and digest is None and document.get("source_role") == "model_derived":
-                raise SpecError("public model-derived capsule cannot be identified against the held-out inputs")
+            if excluded and digest is None:
+                raise SpecError("public capsule cannot be identified against the held-out inputs")
             if digest in excluded:
                 raise SpecError(
                     "public corpus contains an explicitly excluded historical input; use generated-only preparation"
