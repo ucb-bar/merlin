@@ -30,8 +30,9 @@ THE PRE-CLAMP MUST BE WIDER THAN THE FINAL RANGE. This is the easy thing to get 
 the float pre-clamp exists only to make the magic-constant identity applicable. Any `|x| > bound`
 saturates either way, because `bound` exceeds the integer range and the clamp is monotone.
 
-NOT AN APPROXIMATION. `roundeven` is IEEE round-to-nearest-even, which is what `math.roundeven`,
-`numpy.rint`, and the Gemmini header's `ROUND_NEAR_EVEN` all compute; ties go to even in every case.
+NOT AN APPROXIMATION. `roundeven` is IEEE round-to-nearest-even, as in `math.roundeven`
+and `numpy.rint`. Hardware with an IEEE RNE conversion uses this rule. A shipped
+simulator header macro is not an equivalent oracle: pred(2**e) exposes errors.
 """
 
 from __future__ import annotations

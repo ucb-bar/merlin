@@ -81,7 +81,7 @@ def test_a_sum_and_a_mean_are_stated_as_the_register_values_their_programs_issue
     assert record["skipped"] == []
     summed, pooled = record["groups"]
     # 1.5 cannot go through a saturating load: both loads are divided by it and the readout carries it.
-    assert summed["operand_sum"]["load_multipliers"] == [1.0, 0.25 / 1.5]
+    assert summed["operand_sum"]["load_multipliers"] == [1.0, float(np.float32(1 / 6))]
     assert summed["operand_sum"]["readout_multiplier_f32_bits"] == struct.unpack("<I", struct.pack("<f", 1.5))[0]
     assert (summed["operand_sum"]["bound_lsb"], summed["operand_sum"]["activation"]) == (2, "relu")
     assert pooled["window_mean"]["multiplier"] == 1.0 / (16.0 * 0.5) and pooled["window_mean"]["window"] == 16

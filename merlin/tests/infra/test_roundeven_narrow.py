@@ -3,7 +3,7 @@
 This is the arithmetic a backend emitter substitutes for ~61 emitted operations, so an error here is
 a silent miscompile of every quantized activation: the model still runs and still produces plausible
 logits. The reference is `numpy.rint` where available (IEEE roundeven, the same rounding
-`math.roundeven` and the Gemmini header's `ROUND_NEAR_EVEN` compute) and Python's own
+`math.roundeven` computes) and Python's own
 round-half-to-even otherwise.
 """
 

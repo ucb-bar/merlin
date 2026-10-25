@@ -211,6 +211,7 @@ def _int8_chain_step(lhs, rhs, acc_scale: float, semantics: dict):
 
     import numpy as np
 
+    from ..runtime.exact_readout import f32_readout, form_multiplier
     from ..targetgen.operation_numerics import integer_partial_sum_bound
 
     left, right = np.asarray(lhs), np.asarray(rhs)
@@ -224,7 +225,7 @@ def _int8_chain_step(lhs, rhs, acc_scale: float, semantics: dict):
         raise ValueError("int8 mesh-chain reference requires compatible rank-2 integral operands")
     if not isinstance(acc_scale, (int, float)) or not math.isfinite(acc_scale) or acc_scale <= 0:
         raise ValueError("int8 mesh-chain reference requires a finite positive acc_scale")
-    scale = np.float32(acc_scale)
+    scale = form_multiplier(acc_scale)
     if not np.isfinite(scale) or scale <= 0:
         raise ValueError("int8 mesh-chain acc_scale is not representable as positive f32")
     bound = integer_partial_sum_bound(
@@ -236,10 +237,7 @@ def _int8_chain_step(lhs, rhs, acc_scale: float, semantics: dict):
     if bound["status"] != "proven_safe":
         raise ValueError(f"int8 mesh-chain internal partial-sum bound is {bound['status']}")
     accumulator = left.astype(np.int64) @ right.astype(np.int64)
-    product = accumulator.astype(np.float32) * scale
-    if not np.isfinite(product).all():
-        raise ValueError("int8 mesh-chain f32 acc_scale product is non-finite")
-    return np.clip(np.rint(product), -128, 127).astype(np.int64)
+    return f32_readout(accumulator, scale, "i8").astype(np.int64)
 
 
 def _int8_chain_reference(A0, weights: list, acc_scale: float, *, numeric_policy: dict | None = None):

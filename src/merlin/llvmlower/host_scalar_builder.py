@@ -249,16 +249,14 @@ class FpBuilder:
     def round_near_even(self, x: SSAValue) -> SSAValue:
         """`x` rounded to the nearest integer, ties to EVEN, still an f32.
 
-        This is the ISA header's own `ROUND_NEAR_EVEN` (`gemmini_params.h`), which is the
-        rounding the accumulator's scale unit applies before the readout clamps -- so the
-        generated CPU-lane readout and the hardware store path agree element for element.
+        This implements IEEE RNE, including pred(2**e) products. Header macros
+        used by simulators are not an oracle for the hardware's RNE conversion.
 
         Branch-free, per R1.4: adding and then subtracting 2**23 (SIGNED LIKE `x`, so the sum
         never crosses zero) forces the IEEE round-to-nearest-even at the ulp of 1.0.  The
         magnitude matters -- with `|x| < 2**23` the sum lands in `[2**23, 2**24)`, where the f32
         ulp is EXACTLY 1, which is what makes the add round to an integer.  (The more familiar
-        1.5 * 2**23 constant only holds for `|x| < 2**22`; checked against the header's own
-        ROUND_NEAR_EVEN over 184k values, it disagrees on ~3% of them and this does not.)
+        1.5 * 2**23 constant only holds for `|x| < 2**22`.)
         Every f32 with `|x| >= 2**23` is ALREADY an integer, so the two cases are BLENDED on the
         exponent (an integer compare of the IEEE bit patterns, whose order matches numeric order
         for non-negative floats) rather than branched on.
@@ -267,6 +265,12 @@ class FpBuilder:
         rounded = self.fsub(self.fadd(x, magic), magic)
         small = self.ashr32(self.sub32(self.bits(self.fabs(x)), self.i32c(0x4B000000)), 31)
         return self.unbits(self.blend32(small, self.bits(rounded), self.bits(x)))
+
+    def f32_readout(self, acc: SSAValue, multiplier, out_dtype: str) -> SSAValue:
+        """Emit the shared declared f32 readout definition."""
+        from merlin.runtime.exact_readout import emit_f32_readout
+
+        return emit_f32_readout(acc, multiplier, out_dtype, fp=self)
 
     # -- storage formats ---------------------------------------------------------------------
     def round_bf16(self, x: SSAValue) -> SSAValue:

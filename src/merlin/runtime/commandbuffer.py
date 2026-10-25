@@ -271,13 +271,18 @@ def declared_acc_scale(attrs: dict[str, Any], *, op: str) -> float:
             f"{op}: an 'acc_scale' epilogue stage is declared and the command names no `acc_scale` "
             f"multiplier; the stage is not applied with a default"
         )
+    from merlin.runtime.exact_readout import form_multiplier, readout_policy
+
+    if readout_policy(attrs) == "f32_product_rne":
+        return float(form_multiplier(value))
     return float(value)
 
 
 def declared_acc_scale_by_column(attrs: dict[str, Any], columns: int, *, op: str) -> list[float]:
     """Read finite float32 multipliers, exactly one for every output column."""
     import math
-    import struct
+
+    from merlin.runtime.exact_readout import form_multiplier
 
     if "acc_scale" in attrs:
         raise ValueError(f"{op}: select either acc_scale or acc_scale_by_column, not both")
@@ -291,8 +296,8 @@ def declared_acc_scale_by_column(attrs: dict[str, Any], columns: int, *, op: str
         if isinstance(scale, bool) or not isinstance(scale, int | float):
             raise ValueError(f"{op}: acc_scale_by_column needs finite numeric multipliers")
         try:
-            number = struct.unpack("<f", struct.pack("<f", float(scale)))[0]
-        except (OverflowError, struct.error) as error:
+            number = float(form_multiplier(scale))
+        except (OverflowError, ValueError) as error:
             raise ValueError(f"{op}: acc_scale_by_column multiplier is not representable as float32") from error
         if not math.isfinite(number):
             raise ValueError(f"{op}: acc_scale_by_column multiplier is not finite float32")
@@ -301,12 +306,17 @@ def declared_acc_scale_by_column(attrs: dict[str, Any], columns: int, *, op: str
 
 
 def apply_declared_acc_scale(value: Tensor, attrs: dict[str, Any], *, op: str) -> Tensor:
-    """Apply a declared scalar or column-dependent float32 readout.
+    """Apply the declared numeric strategy, retaining legacy exact host commands.
 
     This states arithmetic, not hardware admission or a scale-change schedule.
     """
+    from merlin.runtime.exact_readout import readout_policy
+
+    policy = readout_policy(attrs)
     if "acc_scale_by_column" not in attrs:
         return value.requant_acc_scale(declared_acc_scale(attrs, op=op), parameters=attrs)
+    if policy != "f32_product_rne":
+        raise ValueError(f"{op}: acc_scale_by_column requires f32_product_rne; use exact rational channel parameters")
     scales = declared_acc_scale_by_column(attrs, value.shape[-1] if value.shape else 0, op=op)
     return value.requant_acc_scale_by_column(scales)
 

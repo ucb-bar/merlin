@@ -136,7 +136,9 @@ def device_weight(group: CG.Group, stated, stored):
 
 def _f32_bits(value: float) -> int:
     """The bits a scale register takes: one IEEE-754 single, no re-rounding downstream."""
-    return struct.unpack("<I", struct.pack("<f", value))[0]
+    from merlin.runtime.exact_readout import form_multiplier
+
+    return struct.unpack("<I", struct.pack("<f", form_multiplier(value)))[0]
 
 
 def _scalar_row(group: CG.Group) -> dict[str, Any]:
@@ -145,10 +147,17 @@ def _scalar_row(group: CG.Group) -> dict[str, Any]:
     A sum's two multipliers go through the LOADS after the factor its readout carries is divided
     out of them, which is how the group's program is issued; a mean has one readout multiplier.
     """
+    from merlin.runtime.exact_readout import form_multiplier
+    from merlin.targetgen.exact_arithmetic import rational
+
     row: dict[str, Any] = {"group": group.index, "stages": list(group.stages)}
     if group.operand_sum is not None:
         factor = float(group.operand_sum.get("readout_factor") or 1.0)
-        loads = [float(group.operand_sum[key]) / factor for key in ("lhs_scale", "rhs_scale")]
+        loads = [
+            float(form_multiplier(rational(group.operand_sum[key]), rational(factor)))
+            for key in ("lhs_scale", "rhs_scale")
+        ]
+        factor = float(form_multiplier(factor))
         row["operand_sum"] = {
             "load_multipliers": loads,
             "load_multipliers_f32_bits": [_f32_bits(value) for value in loads],
@@ -158,7 +167,7 @@ def _scalar_row(group: CG.Group) -> dict[str, Any]:
             "activation": "relu" if group.operand_sum.get("relu") else "none",
         }
         return row
-    multiplier = float(group.window_mean["multiplier"])
+    multiplier = float(form_multiplier(group.window_mean["multiplier"]))
     row["window_mean"] = {
         "rows": int(group.window_mean["rows"]),
         "window": int(group.window_mean["window"]),
@@ -327,7 +336,7 @@ def prepack(
                 "stages": list(group.stages),
                 "multiplier": numerics.multiplier,
                 # The bits a readout register takes: one IEEE-754 single, no re-rounding downstream.
-                "multiplier_f32_bits": struct.unpack("<I", struct.pack("<f", numerics.multiplier))[0],
+                "multiplier_f32_bits": _f32_bits(numerics.multiplier),
                 "clamp": list(numerics.clamp),
                 "activation": numerics.activation,
             }
@@ -341,21 +350,21 @@ def prepack(
                     # source/weight-bound proof fails. A surviving fused group
                     # with no proof is a compiler error, never a silent fold.
                     proof = GEF.prove(group, manifest, safetensors_path, weight_args=weight_args)
-                    if not proof['exact']:
+                    if not proof["exact"]:
                         raise ValueError(
                             f"group {group.index} has no exact float readout on "
                             f"{proof['channels'] - proof['accepted_channels']} channels"
                         )
-                    folded = np.asarray(proof['integer_bias'], dtype=np.int64)
-                    row['multiplier'] = proof['readout_scale']
-                    row['multiplier_f32_bits'] = struct.unpack('<I', struct.pack('<f', proof['readout_scale']))[0]
-                    row['exact_float_proof'] = {
-                        'schema': 'group_exact_float_v1',
-                        'source_weight': proof['weight'],
-                        'source_bias': proof['bias'],
-                        'input_bound': proof['input_bound'],
-                        'channels': proof['channels'],
-                        'method': proof['proof'],
+                    folded = np.asarray(proof["integer_bias"], dtype=np.int64)
+                    row["multiplier"] = proof["readout_scale"]
+                    row["multiplier_f32_bits"] = _f32_bits(proof["readout_scale"])
+                    row["exact_float_proof"] = {
+                        "schema": "group_exact_float_v1",
+                        "source_weight": proof["weight"],
+                        "source_bias": proof["bias"],
+                        "input_bound": proof["input_bound"],
+                        "channels": proof["channels"],
+                        "method": proof["proof"],
                     }
                 else:
                     folded = np.rint(bias / numerics.bias_divisor)

@@ -224,7 +224,10 @@ def numerics_of(group: CG.Group) -> GroupNumerics:
     if source_in.value is not None and source_w.value is not None:
         divisor = float(source_in.value) * float(source_w.value)
         if source_out.value is not None:
-            multiplier = divisor / float(source_out.value)
+            from merlin.runtime.exact_readout import form_multiplier
+            from merlin.targetgen.exact_arithmetic import rational
+
+            multiplier = float(form_multiplier(rational(source_in.value) * rational(source_w.value), source_out.value))
     bias_index = None
     for member in by_kind.get(CG.BIAS_ADD) or ():
         indices = [_bias_argument(operand) for operand in member.operands]
@@ -282,7 +285,10 @@ def _converted_store_numerics(group: CG.Group, kinds, by_kind) -> GroupNumerics:
     low, high = _int_attr(quantize, "quant_min"), _int_attr(quantize, "quant_max")
     if low is None or high is None:
         raise GroupNumericsError("the closing quantize declares no quant_min / quant_max")
-    unit = total = 1.0
+    from merlin.runtime.exact_readout import form_multiplier
+    from merlin.targetgen.exact_arithmetic import rational
+
+    unit, total = 1.0, rational(1)
     bias_index, bias_seen = None, False
     for member, stage in zip(group.members, kinds):
         kind = stage.kind if stage else ""
@@ -290,7 +296,7 @@ def _converted_store_numerics(group: CG.Group, kinds, by_kind) -> GroupNumerics:
             factor = _scale_constant(member)
             if factor is None or stage.varies_over not in ((), None):
                 raise GroupNumericsError("a store scale of this group is not one compile-time per-tensor number")
-            total *= factor
+            total *= rational(factor)
             if not bias_seen:
                 unit *= factor
         elif kind == CG.BIAS_ADD:
@@ -304,7 +310,7 @@ def _converted_store_numerics(group: CG.Group, kinds, by_kind) -> GroupNumerics:
                     "the bias is not a model argument, so an offline step cannot "
                     "be told what to fold into the accumulator's domain"
                 )
-    multiplier = total / float(source_out.value) if source_out.value is not None else None
+    multiplier = float(form_multiplier(total, source_out.value)) if source_out.value is not None else None
     return GroupNumerics(
         input=ScaleSource(value=unit, zero_point=0),
         weight=ScaleSource(value=1.0, zero_point=0),
@@ -369,11 +375,12 @@ def reference_integer(numerics: GroupNumerics, accumulator, bias_q=None):
     """What the closed group computes from an integer accumulator, as numpy (the contract's order)."""
     import numpy as np
 
+    from merlin.runtime.exact_readout import f32_readout
+
     acc = np.asarray(accumulator, dtype=np.int64)
     if bias_q is not None:
         acc = acc + np.asarray(bias_q, dtype=np.int64)
-    scaled = np.float32(numerics.multiplier) * acc.astype(np.float32)
-    out = np.clip(np.rint(scaled), numerics.clamp[0], numerics.clamp[1])
+    out = f32_readout(acc, numerics.multiplier, "i32", qmin=numerics.clamp[0], qmax=numerics.clamp[1])
     if numerics.activation == "relu":
         out = np.maximum(out, 0)
     return out.astype(np.int64)

@@ -1,7 +1,7 @@
-"""A dependency-free integer tensor with the ops the ToyNPU semantics need.
+"""An integer tensor with the ops the command-buffer semantics need.
 
-Pure Python (no numpy) so the runtime substrate has zero heavy dependencies. Tensors are
-stored as a flat ``list[int]`` plus a shape; only the operations the simulator actually uses
+Tensors are stored as a flat ``list[int]`` plus a shape. Numeric readout policies
+import NumPy locally; only the operations the simulator actually uses
 are implemented: deterministic fill, 2-D matmul (i8 x i8 -> i32 accumulate), per-column bias
 add, requantization (rounding arithmetic shift), relu, and saturating cast to int8.
 
@@ -35,12 +35,6 @@ def pool_out_dims(H: int, W: int, pool_size, pool_stride, pool_padding) -> tuple
     sh, sw = int(pool_stride[0]), int(pool_stride[1])
     pt, pl, pb, pr = (int(x) for x in pool_padding)
     return (H + pt + pb - ph) // sh + 1, (W + pl + pr - pw) // sw + 1
-
-
-#: Attributes that select the exact rational host readout for an ``acc_scale`` stage.
-EXACT_READOUT_PARAMETERS = frozenset(
-    {"scale_numerator", "scale_denominator", "zero_point", "quant_min", "quant_max", "rounding"}
-)
 
 
 @dataclass
@@ -162,35 +156,38 @@ class Tensor:
         return Tensor(self.shape, out, self.dtype)
 
     def requant_acc_scale(self, scale: float, *, parameters: dict | None = None) -> Tensor:
-        """Scale in float32 and round to the nearest integer, ties to even.
+        """Apply the declared f32 policy, or the separate exact host policy.
 
-        This is the declared ``acc_scale`` command-buffer arithmetic. An ``output_dtype: i8``
-        stage applies saturation separately through :meth:`to_i8`; integer-shift
-        :meth:`requant` remains a distinct operation. A command that names the exact host
-        readout (``EXACT_READOUT_PARAMETERS``) gets :meth:`requant_exact` instead.
+        Legacy rational commands retain their original exact semantics. An
+        explicit ``readout_strategy`` takes precedence over parameter spelling.
+        Saturation is deferred to ``to_i8`` unless quantization bounds are given.
         """
-        if parameters and not EXACT_READOUT_PARAMETERS.isdisjoint(parameters):
-            return self.requant_exact(scale, parameters=parameters)
-        import struct
+        import numpy as np
 
-        def f32(v: float) -> float:  # round a Python float to IEEE-754 single
-            return struct.unpack("<f", struct.pack("<f", v))[0]
+        from merlin.runtime.exact_readout import f32_readout, form_multiplier, readout_policy
 
-        s = f32(scale)
-        out = []
-        for x in self.data:
-            prod = f32(f32(float(x)) * s)
-            i = int(prod)  # trunc toward zero
-            nxt = i - 1 if prod < 0 else i + 1
-            rem = abs(prod - i)
-            if rem < 0.5:
-                y = i
-            elif rem > 0.5:
-                y = nxt
-            else:  # exact tie -> round to even
-                y = i if i % 2 == 0 else nxt
-            out.append(int(y))
-        return Tensor(self.shape, out, self.dtype)
+        attrs = parameters or {}
+        if readout_policy(attrs) == "exact_rational_host":
+            return self.requant_exact(scale, parameters=attrs)
+        if attrs.get("rounding", "half_to_even") not in ("half_to_even", "half_even"):
+            raise ValueError("f32 readout requires ties-to-even rounding")
+        if ("scale_numerator" in attrs) != ("scale_denominator" in attrs):
+            raise ValueError("paired scale numerator and denominator required")
+        multiplier = (
+            form_multiplier(attrs["scale_numerator"], attrs["scale_denominator"])
+            if "scale_numerator" in attrs
+            else form_multiplier(scale)
+        )
+        bounded = "quant_min" in attrs or "quant_max" in attrs or "zero_point" in attrs
+        codes = f32_readout(
+            np.asarray(self.data).reshape(self.shape),
+            multiplier,
+            "i32" if bounded else None,
+            qmin=attrs.get("quant_min"),
+            qmax=attrs.get("quant_max"),
+            zero_point=attrs.get("zero_point", 0),
+        )
+        return Tensor(self.shape, [int(x) for x in codes.flat], self.dtype)
 
     def requant_exact(self, scale: float, *, parameters: dict | None = None) -> Tensor:
         """Exact rational scaling and one host RNE; never a device fp32 chain."""
@@ -220,20 +217,15 @@ class Tensor:
         Every column retains the scalar operation's conversion, multiply and
         ties-to-even rounding. Narrowing/saturation is a separate operation.
         """
-        from math import prod
+        import numpy as np
+
+        from merlin.runtime.exact_readout import f32_readout
 
         if not self.shape or not scales or len(scales) != self.shape[-1]:
             raise ValueError("acc_scale_by_column must name one multiplier per output column")
-        if prod(self.shape) != len(self.data):
-            raise ValueError("acc_scale_by_column tensor storage disagrees with its shape")
-        width = len(scales)
-        rows = len(self.data) // width
-        columns = [
-            Tensor((rows,), self.data[index::width], self.dtype).requant_acc_scale(scale).data
-            for index, scale in enumerate(scales)
-        ]
-        return Tensor(self.shape, [columns[column][row] for row in range(rows) for column in range(width)],
-                      self.dtype)
+        values = np.asarray(self.data).reshape(self.shape)
+        codes = f32_readout(values, scales, None)
+        return Tensor(self.shape, [int(x) for x in codes.flat], self.dtype)
 
     def residual_add_scaled(self, other: Tensor, lhs_scale: float, rhs_scale: float) -> Tensor:
         """Exact scaled sum with a single host RNE after both terms."""

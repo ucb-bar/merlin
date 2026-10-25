@@ -73,12 +73,7 @@ class HostEpilogueEmitter:
         scale = a.get("acc_scale")
         if scale is None:
             raise LoweringDeclined("the acc_scale epilogue stage declares no acc_scale value", op="acc_scale")
-        fp = self.fp
-        scaled = fp.round_near_even(fp.fmul(fp.sitofp(value), fp.fconst(float(scale))))
-        lo, hi = _int_range(self.operand_dtype)
-        # Clamp in the FLOAT domain first: a scale large enough to leave the integer range
-        # would otherwise be converted before it is bounded.
-        return self.fb.clamp(fp.fptosi(fp.fclamp(scaled, float(lo), float(hi))), lo, hi)
+        return self.fp.f32_readout(value, scale, self.operand_dtype)
 
     def _apply_scalar_stages(self, value: SSAValue, stages: list[str], a: dict) -> SSAValue:
         """The elementwise part of an epilogue, in the order the ABI declares it."""

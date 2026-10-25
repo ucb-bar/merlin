@@ -424,9 +424,21 @@ def _device(path_readout: Sequence[Mapping[str, Any]], scale, y, *, relu: bool):
     """The declared readout, in its declared order and formats, on accumulator values ``y``."""
     import numpy as np
 
+    from merlin.runtime.exact_readout import f32_readout
+
     v, dt = y, None
-    for stage in path_readout:
+    for index, stage in enumerate(path_readout):
         kind = stage["kind"]
+        suffix = path_readout[index : index + 3]
+        if (
+            [s["kind"] for s in suffix] == ["convert", "scale", "requant"]
+            and _numpy_float(stage.get("to")) is np.float32
+            and _numpy_float(suffix[1].get("dtype")) is np.float32
+        ):
+            narrow = suffix[-1]
+            low, high = narrow["clamp"]
+            return f32_readout(v, scale, narrow["to"], qmin=low, qmax=high).astype(np.int64)
+        # Other declared precisions/orders retain their stage interpreter.
         if kind == "activation":
             if relu:
                 v = np.maximum(v, 0) if dt is None else np.maximum(v, dt(0))
@@ -463,8 +475,11 @@ def _require_models(readout, chain: Chain) -> None:
 
 
 def _device_scale(chain: Chain, readout, channels: int):
-    """The one multiplier per channel the device applies: the source scales and output reciprocal."""
+    """Form f32 gains by one RNE of the exact scale product/output-scale ratio."""
     import numpy as np
+
+    from merlin.runtime.exact_readout import form_multiplier
+    from merlin.targetgen.exact_arithmetic import rational
 
     scale_stage = next((s for s in readout if s["kind"] == "scale"), None)
     if scale_stage is None:
@@ -472,6 +487,15 @@ def _device_scale(chain: Chain, readout, channels: int):
     dt = _numpy_float(scale_stage["dtype"])
     fdt = _numpy_float(chain.float_dtype)
     quantize = chain.stages[-1]
+    if dt is np.float32:
+        total = np.ones(channels, dtype=object)
+        for stage in chain.stages:
+            if stage.kind == "scale":
+                factors = np.broadcast_to(np.asarray(stage.numbers, dtype=fdt), (channels,))
+                total *= np.asarray([rational(x) for x in factors], dtype=object)
+        divisors = np.broadcast_to(np.asarray(quantize.numbers, dtype=fdt), (channels,))
+        return form_multiplier(total, divisors), scale_stage
+    # f16/f64 paths are separate declared arithmetic policies.
     total = np.ones(channels, dtype=dt)
     for stage in chain.stages:
         if stage.kind == "scale":
@@ -506,8 +530,7 @@ def _granularity(total, scale_stage, channels: int) -> dict[str, Any]:
                 raise _Refused(UNMODELED, str(error)) from error
             # Numeric equivalence is still proved over the complete source bound.
             # No command count or physical placement follows from this record.
-            return {"granularity": "per_command", "columns_per_scale": width,
-                    "output_column_partition": partition}
+            return {"granularity": "per_command", "columns_per_scale": width, "output_column_partition": partition}
         raise _Refused(
             GRANULARITY,
             f"the scale differs within a group of {width} column(s) one readout scale covers",
@@ -612,7 +635,8 @@ def _bound(chain: Chain, values: Values, extents: Mapping[int, Any]) -> tuple[in
         # Read extrema as Python integers before taking their magnitudes.
         magnitudes.append(
             max(abs(int(stored.min())), abs(int(stored.max())))
-            if stored is not None and stored.size else max(-span[0], span[1])
+            if stored is not None and stored.size
+            else max(-span[0], span[1])
         )
     bound = int(extent[1]) * magnitudes[0] * magnitudes[1]
     return -bound, bound
