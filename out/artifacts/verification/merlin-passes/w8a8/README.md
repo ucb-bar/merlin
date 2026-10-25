@@ -1,5 +1,22 @@
 # Merlin W8A8 verification progress
 
+Latest local policy result: [complete-program correspondence](modular-policy/README.md),
+**33 tests passed**, 9,984 audited theorems with zero violations, and independently replayed
+complete retained TinyLlama target/reference correspondence. It covers all outcomes/outputs,
+callees/metadata and supplied suffixes under the named source semantics. Successful reference
+execution, independent policy admission and whole-model numerical definedness stay separate.
+The packet includes the complete 68-file additive W8A8-owned delivery patch; integration
+remains held. [Planner briefing](handoff/README.md) records all current owners and next work.
+
+Latest October 22 milestone: [rotary and byte-weight bounds](rotary-domain/README.md),
+**334 tests passed**, 9,974 audited theorems with zero violations, eight changed positive
+boundary replays, and an independent retained TinyLlama replay. All 163 requested prefix
+bounds pass; complete W8A8 still refuses quantizer 1533. The separately named finite/nonzero
+domain adds a proposed frequency exponent cap, without claiming an archive satisfies it.
+The [active scoped paper goal](../progress/planner/eight-day-paper/README.md) targets October 30;
+the next W8A8 task separates complete policy correspondence from whole-model definedness.
+[Worker status](worker-status/README.md) is the current resume record. Publication remains held.
+
 Work resumed on 2026-10-21. The [laptop handoff](laptop-handoff/README.md) records the previous
 pause checkpoint; the latest progress is below. The full pass is not yet qualified. Agustin
 has been nominated for the pending independent review.
@@ -1471,3 +1488,137 @@ source, statement pin or foreign Main/CLI/rule-family work was edited.
 Evidence: `projection-isolation-v1.json`, `projection-guard-v1.log`, `projection-freeze-v1.json`,
 `projection-qualified-v2.{xml,log}`, `projection-tinyllama-v1.json` and
 `projection-qualification-v1.json`.
+
+## Bounded-domain draft receipts
+
+The bounded checker now has a separate public Python/command-line route through
+`merlin.verify.lean.bounded_policy` and `merlin/lean/W8A8BoundedMain.lean`. It reuses the existing
+authoritative MLIR round trips, byte-identical boundary joins and compiler-handoff checks,
+then runs the actual bounded-domain Lean chain checker on those exact exports. The older
+unrestricted-domain diagnostics are retained separately; their verdict is not a bounded
+proof premise. Concurrent Main/CLI and other rule-family files remain untouched.
+
+Input contracts must name every actual defined source function exactly once and give one
+entry per argument. `null` provides no integer range evidence. An interval uses inclusive
+`lower` and exclusive `upper`, both nonnegative integers; Lean still checks its validity and
+every use. The receipt binds the original contract file, its readonly snapshot and the actual
+per-function intervals. Duplicate JSON object keys, duplicate function names, extra fields,
+Boolean/nonnatural bounds and mismatched function rosters cannot establish a domain.
+
+`interpreted.Runtime` records the actual interpreter, auditor, standalone entry, configuration
+and a conservative inventory of local MerlinVerify proof artifacts in the resolved search
+path. It checks both bytes and inventory before and after execution. The receipt's checker
+digest is the hash of that complete runtime record, not a public executable that did not
+execute the bounded checker. Package/toolchain trust remains in the existing receipt ledger.
+The actual bounded theorem's axioms are audited freshly on the same pinned artifacts; a
+cached result keyed only by the public checker binary cannot discharge that obligation.
+
+Each receipt also binds the preflight receipt/report, every program export, every actual
+boundary and any handoff record/subject. A changed input, entry, proof artifact, inventory,
+exporter or configuration invalidates the attempt. Timeouts and malformed/forged checker
+evidence publish an unmeasured attempt without a certificate, replacing any older result.
+Successful conditional checks still publish `abstracted` and exit 1. This route does not
+approve the draft recipe, admit primitive floating-point laws, or enable reviewed production
+admission. Ordinary refinement replay must not promote a policy receipt to unconditional
+compiler correctness.
+
+Example invocation, with stage directories containing `before.mlir`, `after.mlir` and
+`meta.json`:
+
+```sh
+PYTHONPATH=src .venv/bin/python -m merlin.verify.lean.bounded_policy path/to/w8a8-stage \
+  --destination out/artifacts/verification/merlin-passes/w8a8/my-bounded-check \
+  --input-contracts path/to/input-contracts.json --m2m-python path/to/mlir-environment/bin/python \
+  --scope captured
+```
+
+Additional stage directories before the flags compose the actual downstream suffix. The
+**239-case** final qualification passed in **299.640 seconds**, with zero failures, errors or
+skips, including **53 new cases** for bounded and
+captured domains, helper calls, projection contractions, real preprocessing, compiler handoffs,
+malformed evidence, fresh axiom admission, runtime artifact changes and timeout invalidation.
+The isolated guard still audits **9037 theorems with zero violations**; this batch introduces
+no new kernel theorem or numerical premise. All **1396** frozen records remained unchanged
+after testing, including a **752-file** interpreter/runtime capsule. Full-pass, policy-review and primitive-model-law flags remain
+false. The unrelated `zephyr_model.py` size ceiling remains **3557 > 3537** lines.
+
+Evidence: `bounded-receipts-isolation-v1.json`, `bounded-receipts-guard-v1.log`,
+`bounded-receipts-runtime-v1.json`, `bounded-receipts-freeze-v1.json` and
+`bounded-receipts-qualified-v1.{xml,log}` and `bounded-receipts-qualification-v1.json`.
+
+The separate retained TinyLlama public attempt failed closed with exit 2 and an `unmeasured`
+attempt: `JSONDecodeError: Expecting value: line 1 column 1 (char 0)`. Its structural preflight
+produced draft diagnostics, but no bounded certificate was published. The failing subprocess
+output has not yet been isolated; this model attempt is not included in the passing regression
+count. Evidence is retained under `bounded-receipts-tinyllama-v1/` and in
+`bounded-receipts-tinyllama-v1.json`. The previous standalone numerical refusal at result 1256
+is a separate open obligation.
+
+Work is paused at the user's request. The latest receipt source/tests remain uncommitted;
+the projection checkpoint was pushed as `7304d8e501c090782c81e25a8471038fc8a542ac`.
+See the [resume handoff](handoff/README.md) for exact file ownership, qualification evidence,
+the retained-model reproduction and the next tasks.
+
+## 2026-10-22 read-only diagnostic replay
+
+Under the new planner's private-capsule lease, both the standalone replay and instrumented
+actual public-route replay returned valid JSON on the preserved TinyLlama inputs. No source
+or compiled artifact was changed. All 752 runtime records matched, the six qualified source
+files matched their previous hashes, and authoritative export hashes matched the earlier
+attempt. The pinned audit used only the three standard Lean axioms.
+
+The standalone bounded driver returned exit 1 with a valid numerical-refusal report. The
+actual public route finished in 67.385 seconds and published an `abstracted` bounded receipt:
+boundary qualification and source/reference initialization remained false. All 16 child
+commands have raw stdout/stderr and status records. There were no JSON decode errors in this
+new run. This demonstrates the current public route can report the retained numerical refusal;
+it does **not isolate or fix** the original JSON failure. No speculative fix or generic JSON
+regression was added, and the original failure/evidence remains unchanged.
+
+New evidence: `bounded-receipts-diagnosis-20261022T192241Z/` for direct audit/driver replay and
+`bounded-public-diagnosis-20261022T192514Z/` for the actual public-route child traces,
+`result.json`, `summary.json` and receipt/report. These runs are separate from the historical
+239-case qualification. Draft/review/model-law/full-pass flags remain false.
+
+The [bounded-product interface proposal](numerical-interface/README.md) records the actual
+result-1256 dependency and the missing magnitude/rsqrt facts. It changes no common law meaning
+or input domain. The planner coordinates frontend compatibility before any numerical adapter
+is implemented.
+
+The next numerical investigation produced stronger negative evidence: the actual retained
+RMSnorm/gain slice overflows to positive/negative infinity for finite inputs and extreme finite
+gains. A separate kernel-checked abstract countermodel satisfies all current primitive laws
+but refutes finite-product closure. Two new regressions pass, with no new axioms or changes
+to the six previously qualified source files or their runtime capsule. See the interface
+proposal's evidence section and `rmsnorm-domain-qualification-v1.json`. This refutes an attempted
+finiteness implication; it is not a W8A8 correctness counterexample or full-model qualification.
+
+The planner subsequently stopped coordination at the user's request and left this worker's
+assignment active. Shared-branch commits and pushes remain held for user coordination. No
+commit or push has been made for the bounded receipt files or this new numerical evidence.
+
+## Numerical candidate qualification, 2026-10-22
+
+The [numerical-domain report](numerical-domain/README.md) supersedes the diagnosis-only status
+above for the new additive candidate. Named-reduction and concrete arithmetic classification
+proofs now connect to source quantization, all-byte source dequantization, actual helper calls,
+complete policy/suffix checks, input-domain nonvacuity and separately certified entry prefixes.
+
+Final qualification: **292 tests passed**, including 51 new cases; full private Lean guard:
+**9,663 theorems**, zero violations, frozen lock unchanged. Thirteen curated positive case
+receipts and the actual retained TinyLlama refusal receipt replay on one frozen new runtime.
+All 1,230 new frozen records and 752 historical runtime records remain unchanged.
+
+Under the explicitly stronger finite/nonzero-f32 candidate domain, the retained source prefix
+passes quantizer **1256**, certifies 158 finite source dequantizers and next refuses quantizer
+**1533** after 1,060 operations. The original finite-only checker/domain is unchanged. A new
+actual rotary-fragment witness shows that unbounded frequency input **201** can overflow and
+produce NaNs even on the candidate restriction. This motivates source-derived frequency bounds
+or capture binding and further attention/transcendental proofs.
+
+The new arithmetic agreement excludes irrelevant exact NaN-result bits and restricts reciprocal
+conversion premises to admissible scales; native NaN sign differences are preserved. The old
+seven source and three dynamic laws, concrete-model/rsqrt fidelity, independent review and selected
+capture binding remain open. **Complete W8A8 verification is still false.** Source-only review
+patch, exact claims, raw evidence and qualification are in `numerical-domain/`. No staging,
+commit, integration or push was performed under the user-controlled hold.
