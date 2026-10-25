@@ -81,7 +81,14 @@ def test_gemmini_software_spec_does_not_admit_integer_shift_as_fused_readout():
         "quantization": {"contraction": FactField(("quantizable",), True, ())},
     }
     spec, record = resolve_spec(authored, facts)
-    assert record["status"] == "resolved"
+    # These minimal facts resolve the operation screen; the newly declared
+    # scheme/composition axes still require their own output-path/resource facts.
+    assert all(row["status"] == "resolved" for row in record["declarations"])
+    assert record["status"] == "unresolved"
+    assert record["unresolved"] and all(
+        "scheme" in row or "composition" in row or row.get("field", "").startswith("schemes.")
+        for row in record["unresolved"]
+    )
     decision = screen_entry(spec, entry)
     assert decision["status"] == "unsupported"
     assert any(row["role"] == "epilogue" and row["status"] == "unsupported" for row in decision["decisions"])

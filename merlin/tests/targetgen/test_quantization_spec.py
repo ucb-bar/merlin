@@ -688,15 +688,21 @@ def test_contract_exposes_scheme_unknowns_and_legacy_contract_has_no_scheme_axis
     assert selected["schemes"]["schemes"][2]["status"] == "unresolved"
 
 
-def test_existing_example_software_specs_still_validate_without_schemes():
+def test_example_software_specs_validate_with_or_without_scheme_axes():
     from merlin.common.paths import repo_root
 
     paths = sorted((repo_root() / "examples").glob("*/target/software-spec.yaml"))
     assert paths
+    legacy = software_spec.load_software_spec(
+        repo_root() / "examples/gemmini/phase0/history/software-spec-seals1-3.yaml"
+    )
+    assert "schemes" not in legacy["quantization"] and "compositions" not in legacy
+    software_spec.validate_software_spec(legacy)
     for path in paths:
         selected = software_spec.load_software_spec(path)
-        assert "schemes" not in (selected.get("quantization") or {})
-        assert "compositions" not in selected
+        if "schemes" in (selected.get("quantization") or {}):
+            assert selected["quantization"]["schemes"]["schemes"]
+            assert selected["compositions"]["grading"] == "placement_and_instruction_audit"
 
 
 def test_new_schema_stage_vocabulary_matches_the_shared_output_path():

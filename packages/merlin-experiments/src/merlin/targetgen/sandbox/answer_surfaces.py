@@ -162,6 +162,7 @@ class CapsuleMetadata:
         self._lock = threading.Lock()
         self.module_location_plan = None
         from .guarded_inventory import GuardedInventory
+
         self.inventory = GuardedInventory()
         self._derived = {}
         self._derived_lock = threading.RLock()
@@ -190,13 +191,20 @@ class CapsuleMetadata:
         with self._derived_lock:
             before = observe()
             cached = self._derived.get(key)
-            if (before is not None and cached is not None and cached[0] == roots
-                    and all(a is b for a, b in zip(before, cached[1], strict=True))):
+            if (
+                before is not None
+                and cached is not None
+                and cached[0] == roots
+                and all(a is b for a, b in zip(before, cached[1], strict=True))
+            ):
                 return list(cached[2])
             result = compute()
             after = observe() if before is not None else None
-            if (after is not None and all(a is b for a, b in zip(before, after, strict=True))
-                    and len(self._derived) < 64):
+            if (
+                after is not None
+                and all(a is b for a, b in zip(before, after, strict=True))
+                and len(self._derived) < 64
+            ):
                 self._derived[key] = roots, after, tuple(result)
             else:
                 self._derived.pop(key, None)
@@ -227,9 +235,9 @@ def _discovered(root, pattern, capsules):
     if members is None:
         return root.rglob(pattern)
     # Callers select only simple filename patterns; no recursive/path glob rules.
-    if pattern.startswith('*'):
+    if pattern.startswith("*"):
         return (p for p in members if p.name.endswith(pattern[1:]))
-    if pattern.endswith('*'):
+    if pattern.endswith("*"):
         return (p for p in members if p.name.startswith(pattern[:-1]))
     return (p for p in members if p.name == pattern)
 
@@ -243,12 +251,14 @@ def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
     ``answer_files()``."""
     if capsules is not None:
         root = repo_root()
-        roots = ([te.capsule_corpus.parent, te.capsule_corpus] if te.capsule_corpus else [])
-        roots += [root / rel.rstrip('/') for rel in te.corpus_siblings()]
-        roots += [*contract_resource_roots(root, 'capsules'),
-                  *contract_resource_roots(root, 'examples'), root / 'merlin/tests']
-        return capsules.derived(('golden', tuple(roots)), roots,
-                                lambda: _golden_files(te, capsules=capsules))
+        roots = [te.capsule_corpus.parent, te.capsule_corpus] if te.capsule_corpus else []
+        roots += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
+        roots += [
+            *contract_resource_roots(root, "capsules"),
+            *contract_resource_roots(root, "examples"),
+            root / "merlin/tests",
+        ]
+        return capsules.derived(("golden", tuple(roots)), roots, lambda: _golden_files(te, capsules=capsules))
     return _golden_files(te)
 
 
@@ -304,11 +314,10 @@ def weight_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
     Both the safetensors blob and an optional manifest are covered by suffix, with no per-model list.
     """
     if capsules is not None:
-        roots = list(contract_resource_roots(repo_root(), 'capsules'))
+        roots = list(contract_resource_roots(repo_root(), "capsules"))
         if te.capsule_corpus is not None:
             roots.append(te.capsule_corpus.parent)
-        return capsules.derived(('weight', tuple(roots)), roots,
-                                lambda: _weight_files(te, capsules=capsules))
+        return capsules.derived(("weight", tuple(roots)), roots, lambda: _weight_files(te, capsules=capsules))
     return _weight_files(te)
 
 
@@ -327,8 +336,11 @@ def _weight_files(te, *, capsules=None):
             # like Path.rglob, does not descend through child directory symlinks;
             # explicitly selected root symlinks and leaf-file aliases still work.
             for directory, _children, names in os.walk(caps_root, followlinks=False):
-                files.extend(Path(directory) / name for name in names
-                             if name.endswith((".safetensors", ".safetensors.manifest.json")))
+                files.extend(
+                    Path(directory) / name
+                    for name in names
+                    if name.endswith((".safetensors", ".safetensors.manifest.json"))
+                )
     return sorted({path for path in files if path.is_file()})
 
 
@@ -704,6 +716,12 @@ def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = 
         return path.relative_to(root) if path.is_relative_to(root) else path
 
     examples_dirs = frozenset(contract_resource_roots(root, "examples"))
+    # Explicit historical inputs are withheld even beneath broad contract/source grants.
+    # Their absence in a generated-only release is expected, not missing evidence.
+    for relative in getattr(te, "held_out_inputs", ()):
+        path = root / relative
+        if path.exists():
+            out.append(AnswerSurface(f"held-out-input:{relative}", path, "dir" if path.is_dir() else "file", "hidden"))
     for g in golden_files(te, capsules=capsules):
         origin = _golden_origin(g, examples_dirs)
         out.append(AnswerSurface(f"{origin}:{shown_path(g)}", g, "file", origin))

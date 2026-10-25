@@ -10,14 +10,38 @@ from ..phase0.claim_boundary import assert_no_claim_capsules, held_out_models
 from ..spec import SpecError
 
 
+def _excluded_capsule_names(experiment) -> set[str]:
+    """Historical input exclusions also bar renamed release-local directory copies."""
+    source_root = getattr(experiment, "source_root", None)
+    if not getattr(experiment, "held_out_inputs", ()):
+        return set()
+    if source_root is None:
+        from merlin.common.paths import repo_root
+
+        source_root = repo_root()
+    names = set()
+    for relative in experiment.held_out_inputs:
+        for path in (Path(source_root) / relative).rglob("capsule.yaml"):
+            document = yaml.safe_load(path.read_bytes())
+            if not isinstance(document, dict) or not isinstance(document.get("name"), str):
+                raise SpecError("excluded historical capsule declaration is malformed")
+            names.add(document["name"])
+    return names
+
+
 def require_public_capsules(experiment, roots) -> None:
     """Inspect only selected public capsule metadata, never hidden source tensors."""
     held_out = held_out_models(experiment)
+    excluded = _excluded_capsule_names(experiment)
     for root in roots:
         for path in sorted(Path(root).rglob("capsule.yaml")):
             document = yaml.safe_load(path.read_bytes())
             if not isinstance(document, dict):
                 raise SpecError("public capsule declaration is malformed")
+            if document.get("name") in excluded:
+                raise SpecError(
+                    "public corpus contains an explicitly excluded historical input; use generated-only preparation"
+                )
             operation = document.get("operation") or {}
             if not isinstance(operation, dict):
                 raise SpecError("public capsule operation declaration is malformed")

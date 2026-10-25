@@ -340,6 +340,16 @@ def precision_class(c, v):
 
 def expectation(raw):
     """Return a deterministic lane commitment from semantics and shape only."""
+    semantic = raw.get("semantic") or {}
+    if semantic.get("generalization_axis") == "composition":
+        from .functional_truth_compositions import expectation as composition_expectation
+
+        return composition_expectation(
+            semantic["composition_chain"],
+            semantic["quantization_scheme"],
+            semantic["composition_instance"],
+            facts=semantic["composition_facts"],
+        )
     case = Case(raw, "phase0")
     decision = derive(case)
     return dict(
@@ -351,8 +361,14 @@ def expectation(raw):
     )
 
 
-def require_placement(commitment, *, device):
+def require_placement(commitment, *, device=None, member_kernels=None, instruction_audit=None):
     """A correct result on the wrong lane never satisfies a truth commitment."""
+    if commitment.get("schema") == "merlin.functional_truth.compositions.v1":
+        from .functional_truth_compositions import require_placement as require_composition
+
+        if member_kernels is None or instruction_audit is None:
+            raise ValueError("composition truth requires member placement and instruction audit")
+        return require_composition(commitment, member_kernels=member_kernels, instruction_audit=instruction_audit)
     if type(device) is not bool:
         raise ValueError("actual device placement must be a boolean")
     if commitment["lane"] not in {"device", "no-work", "host-guard"}:

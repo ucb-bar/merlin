@@ -28,6 +28,7 @@ from .capability_manifest import CapabilityManifest as CapabilityManifest
 from .capability_manifest import _derived_dtype_token as _derived_dtype_token
 from .capability_manifest import _primary_kind as _primary_kind
 from .capability_manifest import load_capability_manifest as load_capability_manifest
+from .input_exclusions import declared_held_out_inputs as declared_held_out_inputs
 
 
 def _safe_relative(value: str, *, field: str) -> Path:
@@ -546,6 +547,8 @@ class TargetExperiment:
     # yields bundle grants pointing at paths that cannot exist (a CIRCT arm granted nothing while the
     # manifest claims otherwise). Declared, never inferred; default preserves same-name targets.
     backend_package_dir: str | None = None
+    # Explicit operator-private historical inputs. Repo-relative paths; never grants.
+    held_out_inputs: tuple[str, ...] = ()
     # OPTIONAL: the contract the descriptor DECLARES as this target's capability manifest, repo-root
     # relative. It was parsed and thrown away before — no field held it — so every descriptor's
     # ``hardware_spec.target_contract`` was dead data, and what the tooling actually read was whatever
@@ -1121,9 +1124,14 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
     information_sets: dict[str, dict[str, Any]] = {}
     for variant, body in raw_information_sets.items():
         field = f"information_sets.{variant}"
-        if (not isinstance(variant, str) or Path(variant).name != variant
-                or not (variant.startswith("hwbringup_") or variant in {"public_v0", "realistic_v0"})):
-            raise ValueError(f"{p}: information-set key {variant!r} must be a supported public, realistic, or hwbringup_* variant")
+        if (
+            not isinstance(variant, str)
+            or Path(variant).name != variant
+            or not (variant.startswith("hwbringup_") or variant in {"public_v0", "realistic_v0"})
+        ):
+            raise ValueError(
+                f"{p}: information-set key {variant!r} must be a supported public, realistic, or hwbringup_* variant"
+            )
         if not isinstance(body, dict):
             raise ValueError(f"{p}: {field} must be a mapping")
         condition = body.get("condition")
@@ -1295,6 +1303,7 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
         rtl_repo=(lambda r: str(r) if r else None)((doc.get("rtl") or {}).get("repo")),
         operand_store=(lambda v: str(v) if v else None)((doc.get("rtl") or {}).get("operand_store")),
         prior_backends=tuple((doc.get("answer_surfaces") or {}).get("prior_backends") or ()),
+        held_out_inputs=declared_held_out_inputs(doc),
         path=p,
         descriptor_sha256=hashlib.sha256(descriptor_bytes).hexdigest(),
         source_root=source_root,

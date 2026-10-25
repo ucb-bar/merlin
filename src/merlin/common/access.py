@@ -143,6 +143,7 @@ module_access = _module
 
 
 MODULE_ACCESS = (
+    _module("merlin.targetgen.functional_truth_compositions", "grader"),
     _module(
         "merlin.targetgen.exact_quantized_reference",
         "oracle",
@@ -320,8 +321,11 @@ MODULE_ACCESS = (
     _module(
         "merlin.targetgen.capsule_runner",
         "grader",
-        aliases=("merlin.targetgen.oracle_policy", "merlin.targetgen._capsule_bundle_worker",
-                 "merlin.targetgen.capsule_diagnostics"),
+        aliases=(
+            "merlin.targetgen.oracle_policy",
+            "merlin.targetgen._capsule_bundle_worker",
+            "merlin.targetgen.capsule_diagnostics",
+        ),
     ),
     _module("merlin.targetgen.capsule_dram", "grader"),
     _module("merlin.targetgen.capsule_source_identity", "grader"),

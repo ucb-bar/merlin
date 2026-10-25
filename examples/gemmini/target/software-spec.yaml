@@ -48,7 +48,7 @@ numerical_semantics:
     operand_storage: [f16, bf16, f32, complex_components_f32]
     calibration: declared_observer_domain_only
     arithmetic: exact_rational_native_family
-    readout: full_int32_then_exact_host_rne
+    readout: full_int32_then_host_readout_per_scheme
     output: declared_byte_quantize_then_single_dtype_dequantize
     runtime_complex_products: composition_requires_host
     evidence: {review_status: "authored, pending operator review"}
@@ -87,6 +87,8 @@ numerical_semantics:
     mac_result_overflow: wrap_to_20_bits
     full_operation_overflow_policy: bounded_exact_requires_each_partial_sum
   readout:
+    # Seal 4 review (README S4.1): preserve the v1 default and its exact rational
+    # reference. New schemes explicitly select f32_product_rne below.
     strategy: exact_rational_host
     acc_scale_rounding: half_even
     narrowing: saturate_to_declared_dtype
@@ -101,7 +103,7 @@ quantization_contract:
   zero_points: retained_exact_integer_centering
   weight_scales: [tensor, output_channel]
   admission: selected_provider_exact_centering_and_full_i32_coverage
-  requantization: retained_source_exact_rational_host_rne
+  requantization: retained_source_host_readout_per_scheme
   evidence: {review_status: "authored, pending operator review"}
 operations:
   contraction:
@@ -276,6 +278,38 @@ restrictions:
   reason: The direct operand-sum witness covers readout scaling and ReLU, not a bias
     epilogue after the sum.
 quantization:
+  # Seal 4 operator review S4.1-S4.3. These are case axes, never model choices.
+  schemes:
+    schema: merlin.quantization_schemes.v1
+    status: reviewed
+    # Scheme-derived calibration: power_of_two keeps enclosing_power_of_two;
+    # arbitrary_f32 selects declared_observer, never evaluation input ranges.
+    axes:
+      scale_value: [power_of_two, arbitrary_f32]
+      weight_scale_granularity: [tensor, column_block]
+      activation_scale_granularity: [tensor]
+      readout_exit: [narrow_saturating, accumulator_full]
+      operand_sum_rounding: [single_rounding, per_operand]
+      residual_coefficient: [none, integer_constant]
+    constraints:
+    - {when: {scale_value: power_of_two}, readout_strategy: [exact_rational_host]}
+    - {when: {scale_value: arbitrary_f32}, readout_strategy: [f32_product_rne], oracle: {spike_extension: rounding_fixed}}
+    - {when: {readout_exit: accumulator_full}, forbids_stages: from_facts}
+    - {when: {operand_sum_rounding: per_operand}, operand_multiplier: {min_exclusive: 0, max: 1}}
+    - {when: {residual_coefficient: integer_constant}, coefficient_digits: {dtype: from_facts, max_k_extension: from_facts}}
+    schemes:
+    # First scheme is the unchanged v1 baseline; no implicit scheme selection.
+    - {id: q_pow2_tensor, scale_value: power_of_two, weight_scale_granularity: tensor, operand_sum_rounding: single_rounding, readout_strategy: exact_rational_host}
+    - {id: q_f32_tensor, scale_value: arbitrary_f32, weight_scale_granularity: tensor, operand_sum_rounding: single_rounding, readout_strategy: f32_product_rne}
+    - {id: q_f32_column_block, scale_value: arbitrary_f32, weight_scale_granularity: column_block, operand_sum_rounding: single_rounding, readout_strategy: f32_product_rne}
+    # Offered on EVERY residual add; each load rounds and saturates independently.
+    - {id: q_f32_per_operand_sum, scale_value: arbitrary_f32, weight_scale_granularity: column_block, operand_sum_rounding: per_operand, readout_strategy: f32_product_rne}
+    - id: q_f32_packed_panel
+      scale_value: arbitrary_f32
+      weight_scale_granularity: column_block
+      operand_sum_rounding: single_rounding
+      readout_strategy: f32_product_rne
+      weight_layout: {kind: packed_panel, panel_width: from_facts}
   formats:
   - operand_dtype: int8
     accumulator_dtype: i32
@@ -283,7 +317,7 @@ quantization:
     eligible_operations: from_facts
   # How every model is quantized for this target (merlin.targetgen.quant_methodology). Each hardware
   # value is the word from_output_path: it is read from the selected contract's derived output path,
-  # never written here. Per-model changes exist only as reviewed model_variants rows.
+  # never written here. Historical held-out variants are excluded from this seal input.
   methodology:
     schema: merlin.quantization_methodology.v1
     scale_granularity: from_output_path
@@ -309,79 +343,6 @@ quantization:
       - silu
       - rotary
     model_variants:
-    - model: resnet50
-      name: native-epilogue-contractions-calibration-1024
-      status: reviewed
-      reviewed_by: Codex operator, user-directed continuation after measured recipe review, 2026-10-18
-      reason: Use contraction-only hardware-order epilogues under the common recovery policy. Keep residual
-        sums and the average pool on the host; the 1024-sample cap observes 260 disjoint calibration images.
-      measured_accuracy:
-        basis: Recipe agreement against the FP32 model on 64 samples; finite diagnostic, not dataset accuracy
-        argmax_agreement: 0.984375
-        cosine_mean: 0.9858536114916205
-        cosine_min: 0.9606804251670837
-        max_abs_error: 0.9978066086769104
-        samples: 64
-        calibration_samples: 260
-        baseline_cosine_mean: 0.9912215834483504
-        tradeoff: Mean cosine decreases; top-1 agreement remains 63/64, while worst cosine and maximum absolute
-          error improve.
-      changes:
-        families:
-        - contraction
-        calibration_count: 1024
-    - model: tiny_llama
-      name: static-heads-softmax2-bounded-partner2
-      status: reviewed
-      reviewed_by: Codex operator, user-directed continuation after measured recipe review, 2026-10-18
-      reason: Use two fixed softmax planes and two bounded signed-int8 residual planes for the value operand.
-        Retain the original score grid and unchanged per-site bars; extra precision repairs the weak context
-        site.
-      measured_accuracy:
-        basis: Full pretrained 22-layer model, 64 recipe-agreement samples per stage; attention-only check
-          on four streams disjoint from calibration; no dataset-accuracy claim
-        prefill:
-          argmax_agreement: 0.890625
-          cosine_mean: 0.9930144296959043
-          cosine_min: 0.9245473742485046
-          max_abs_error: 9.495887756347656
-          samples: 64
-        decode:
-          argmax_agreement: 0.921875
-          cosine_mean: 0.9946034317836165
-          cosine_min: 0.8284692764282227
-          max_abs_error: 12.52759075164795
-          samples: 64
-        prefill_calibration_samples: 128
-        decode_calibration_samples: 1024
-        baseline_prefill_cosine_mean: 0.9931617677211761
-        heldout_attention:
-          sites: 44
-          cosine_min: 0.9999570899268245
-          rel_rmse_max: 0.010253275908719361
-        attention_device_call_ratio: 1.6666666666666667
-        tradeoff: Prefill mean cosine decreases slightly; prefill and decode top-1 agreement improve. Attention
-          device calls increase by 5/3.
-      changes:
-        families:
-        - contraction
-        - operand_sum
-        - window_mean
-        - activation_contraction
-        dynamic:
-          families:
-          - activation_contraction
-          planes:
-            softmax_output: 2
-            softmax_partner: 2
-          scales: static_heads
-          schema: dynamic_contractions_v1
-          site_agreement:
-            cosine_min: 0.947588
-            rel_rmse_max: 0.457351
-            schema: dynamic_site_agreement_v1
-          smooth: null
-        calibration_count: 1024
     - model: smolvla
       name: static-heads-softmax2-bounded-operands2
       status: reviewed
@@ -424,9 +385,60 @@ quantization:
       is disabled across models; finite recipe-agreement measurements preserve primary metrics with the
       recorded secondary tradeoffs. These measurements are not dataset accuracy or Phase 1 qualification.
 
+# Seal 4 review S4.4-S4.8. Primitive families enumerate instances; no per-op rows.
+compositions:
+  schema: merlin.software_spec.compositions.v1
+  status: reviewed
+  grading: placement_and_instruction_audit
+  chains:
+  - id: contraction_readout
+    producer: contraction
+    accumulator_stages: {preload: optional}
+    readout_stages: from_output_path
+    exits: [requant, accumulator]
+    dataflows: from_facts
+    constraints:
+    - activation_before_scale_requires_nonnegative_multiplier
+    - accumulator_exit_applies_no_readout_stage
+    - {pool_window_within_register_fields: from_facts}
+    - {pool_padding: from_facts}
+    - {os_dataflow_requires: mesh_partial_sum_bound_from_constant_operands}
+    - {scale_commands: {tensor: 1, column_block: per_block, column: output_scale_partition}}
+  - id: scaled_operand_sum
+    producer: operand_sum
+    readout_stages: from_output_path
+    exits: [requant, accumulator]
+    constraints:
+    - {operand_multiplier_in: '(0, 1]'}
+    - load_minimum_not_negated
+  - id: window_reduction_readout
+    producer: [movement, contraction]
+    readout_stages: from_output_path
+    exits: [requant]
+    reduction_kinds: [max, sum]
+    constraints:
+    - {max_requires_store_path_pooling: from_facts}
+    - scratchpad_source_pooling_fenced
+    - {padded_max_requires: producer_lower_bound_or_derived_pad_value}
+  - id: contraction_operand_extension
+    producer: contraction
+    extension: constant_integer_operand
+    readout_stages: from_output_path
+    exits: [requant, accumulator]
+    constraints:
+    - coefficient_integer_exact
+    - {k_extension_within: from_facts}
+  - id: shared_input_contractions
+    producer: contraction
+    multiplicity: {min: 2}
+    readout_stages: from_output_path
+    exits: [requant, accumulator]
+    constraints:
+    - per_output_readout_independent
+    - {shared_input_resident: from_facts}
+
 transfer_contracts:
-  # The last two rows are PROPOSED and widen this reviewed block: README.md needs a new operator
-  # decision row before they apply.
+  # Seal 4 review S4.2: narrowed copies require scheme-specific arithmetic admission.
   status: reviewed
   operand_load:
     from: host
@@ -461,10 +473,28 @@ transfer_contracts:
   int8_readout:
     from: accelerator
     to: host
-    copy: {dtype: int8, layout: row_major_contiguous}
-    valid_window: required
-    # Reviewed by the operator (Loren Hung, 2026-10-17, decision D6): on-device requantize matches
-    # the gate-3 bit-level model on Spike and stock RTL; FireSim jobs 2933/2944.
+    signature:
+      operand_dtype: int8
+      result_dtype: int8
+      operand_layout: row_major_contiguous
+      result_layout: row_major_contiguous
+    semantics:
+      conversion: bit_preserving
+      valid_window: required
+      # Seal 4 operator review S4.2 supersedes unrestricted D6 admission.
+      # Movement copies are bit-preserving; arithmetic readouts need this gate.
+      exactness_gate:
+        exact_rational_host: {proof: prove_fp32_products, requires: rational_equality_proof}
+        f32_product_rne: {definitional: f32_product_rne, requires: decoded_multiplier_bits_equal_formed_multiplier}
+      readout_definitions:
+        f32_product_rne:
+          strategy: f32_product_rne
+          accumulator_conversion: {to: f32, rounding: half_even}
+          multiplier: {dtype: f32, formation: rne_of_exact_rational}
+          product: {dtype: f32, rounding: half_even}
+          narrowing: {rounding: half_even, saturate: declared_dtype}
+          activation_order: from_facts
+          exactness_bridge: prove_fp32_products
     evidence:
       status: reviewed
-      basis: "An int8 result after the readout's ReLU, acc_scale and saturation (AccumulatorScale.scala:118-138), or an int8 tensor moved by DMA. The crossing itself is a bit-preserving copy."
+      basis: "An int8 result after the readout's ReLU, acc_scale and saturation (AccumulatorScale.scala:118-138), or an int8 tensor moved by DMA. The crossing itself is a bit-preserving copy; arithmetic admission requires the selected scheme exactness_gate. Non-unit f32 scales require the pinned rounding-fixed oracle."

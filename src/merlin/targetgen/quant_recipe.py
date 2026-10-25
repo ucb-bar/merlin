@@ -10,8 +10,8 @@ A recipe here is DATA, derived from what the target's readout was derived to hol
 (:mod:`merlin.targetgen.readout_facet`):
 
 * element formats come from the unit's datapath;
-* the weight scale granularity is the finest one the readout holds, because a finer scale is a
-  more accurate model and a coarser one is the only kind the hardware can absorb;
+* explicit schemes select weight scales within the derived readout command partitions;
+  legacy captures retain their tensor scale when finer partitions become available;
 * symmetry follows from whether the readout carries a zero point;
 * ranges follow from the element format and the readout's clamp;
 * a family the target cannot absorb stays in floating point, and says so.
@@ -362,9 +362,9 @@ def derive(
         channels_per_scale=facet.scale_columns if weight_held == "column_block" else None,
     )
     recipe.why["weight.granularity"] = (
-        f"the finest scale the readout holds is per {weight_held}"
+        f"selected weight scales are per {weight_held}"
         + (f" of {block}" if block else "")
-        + "; a finer weight scale could only be applied on the host"
+        + "; finer schemes require explicit selection and derived readout command partitions"
     )
     recipe.why["weight.range"] = (
         "symmetric weights use the restricted range so a negated weight is representable"

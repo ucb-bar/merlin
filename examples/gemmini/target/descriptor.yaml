@@ -153,6 +153,12 @@ phase1_gates:
             group_profile: true
 
 answer_surfaces:
+  # Seal 4 operator ruling R6: preserve historical builders, exclude their inputs.
+  # Generated-only release preparation also omits all historical capsule members.
+  held_out_inputs:
+  - examples/gemmini/phase0/history
+  - merlin/contract/capsules/_model_layers
+  - merlin/contract/capsules/MANIFEST.yaml
   prior_backends: [merlin_native_v0, hand_smoke_oot, agent_spec_v0_mlir_oot, agent_spec_v1_mlir_oot]
   prior_backend_exemptions: []
 
