@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
+from collections import Counter
 from pathlib import Path
 
 import yaml
@@ -48,6 +47,13 @@ def _pointwise_conv_operands(operands, attributes):
 def _canonical_operands(operation, operands):
     kind = _contraction_kind(operation["op"])
     if kind is None:
+        # An unlisted spelling of a contraction (a fused or capsule-native op) still has
+        # one input and one weight; identify it by its contraction shapes when they compose.
+        roles = [role for role, _ in operands]
+        if roles.count("input") == 1 and roles.count("weight") == 1:
+            contraction = _canonical_operands({**operation, "op": "matmul"}, operands)
+            if contraction is not None:
+                return contraction
         return operation["op"], operands
     attributes = operation.get("attributes") or {}
     if not isinstance(attributes, dict):
@@ -84,13 +90,13 @@ def _canonical_operands(operation, operands):
     return "matmul", operands
 
 
-def shape_signature(document) -> str | None:
-    """Identify an operation's role-to-shape mapping, independent of spelling.
+def operand_extents(document) -> tuple[tuple[int, ...], ...] | None:
+    """An operation's operands reduced to sorted non-unit extents, independent of spelling.
 
-    Attributes (including default/empty epilogues), tensor names, dtype and
-    numerical policies cannot change a held-out shape's publication identity.
-    Repeated roles retain their complete shape multiset. Missing roles or
-    unresolved shapes have no established identity.
+    After contraction normalization, neither the operation name, operand roles, tensor
+    names, dimension order, unit dimensions, dtype nor numerical policy is kept: a held-out
+    layer keeps its identity under any spelling, transposition or batch-1 wrapping.
+    Missing roles or unresolved shapes have no established identity (``None``).
     """
     operation = document.get("operation") if isinstance(document, dict) else None
     inputs = document.get("inputs") if isinstance(document, dict) else None
@@ -113,43 +119,48 @@ def shape_signature(document) -> str | None:
     canonical = _canonical_operands(operation, operands)
     if canonical is None:
         return None
-    op, operands = canonical
-    body = {"op": op, "operands": sorted(operands)}
-    return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+    return tuple(sorted(tuple(sorted(size for size in shape if size != 1)) for _, shape in canonical[1]))
 
 
-def _excluded_shape_signatures(experiment) -> set[str]:
-    """Semantic digests of every held-out capsule; exclusion binds to content, not mutable names."""
+def _core(extents):
+    """The held-out identity: its multi-dimensional operands (bias vectors and scalars are optional)."""
+    tensors = tuple(extent for extent in extents if len(extent) >= 2)
+    return Counter(tensors or extents)
+
+
+def _excluded_cores(experiment) -> list[Counter]:
+    """Operand cores of every held-out capsule; exclusion binds to content, not mutable names."""
     source_root = getattr(experiment, "source_root", None)
     if not getattr(experiment, "held_out_inputs", ()):
-        return set()
+        return []
     if source_root is None:
         from merlin.common.paths import repo_root
 
         source_root = repo_root()
-    digests = set()
+    cores = []
     for relative in experiment.held_out_inputs:
         for path in (Path(source_root) / relative).rglob("capsule.yaml"):
-            digest = shape_signature(yaml.safe_load(path.read_bytes()))
-            if digest is None:
+            extents = operand_extents(yaml.safe_load(path.read_bytes()))
+            if extents is None:
                 raise SpecError("excluded historical capsule declaration is malformed")
-            digests.add(digest)
-    return digests
+            cores.append(_core(extents))
+    return cores
 
 
 def require_public_capsules(experiment, roots) -> None:
     """Inspect only selected public capsule metadata, never hidden source tensors."""
     held_out = held_out_models(experiment)
-    excluded = _excluded_shape_signatures(experiment)
+    excluded = _excluded_cores(experiment)
     for root in roots:
         for path in sorted(Path(root).rglob("capsule.yaml")):
             document = yaml.safe_load(path.read_bytes())
             if not isinstance(document, dict):
                 raise SpecError("public capsule declaration is malformed")
-            digest = shape_signature(document)
-            if excluded and digest is None:
+            extents = operand_extents(document)
+            if excluded and extents is None:
                 raise SpecError("public capsule cannot be identified against the held-out inputs")
-            if digest in excluded:
+            # Extra operands (a full-output bias, a residual) cannot hide a held-out core.
+            if extents is not None and any(not core - Counter(extents) for core in excluded):
                 raise SpecError(
                     "public corpus contains an explicitly excluded historical input; use generated-only preparation"
                 )

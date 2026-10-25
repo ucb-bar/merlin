@@ -244,3 +244,43 @@ def test_unresolved_alias_shapes_fail_closed_independent_of_source_label(tmp_pat
     _capsule(tmp_path, candidate)
     with pytest.raises(SpecError, match="cannot be identified"):
         require_public_capsules(_held_out_experiment(), [tmp_path])
+
+
+@pytest.mark.parametrize("op", ["fused_matmul_bias", "gemm_bias_relu", "custom_contraction"])
+def test_unlisted_operation_spellings_cannot_publish_a_held_out_shape(tmp_path, op):
+    candidate = _layer_document()
+    candidate["name"] = "renamed"
+    candidate["operation"]["op"] = op
+    _capsule(tmp_path, candidate)
+    with pytest.raises(SpecError, match="excluded historical input"):
+        require_public_capsules(_held_out_experiment(), [tmp_path])
+
+
+@pytest.mark.parametrize("change", ["transpose_weight", "batch_one", "rename_roles"])
+def test_unlisted_spelling_with_reshaped_operands_cannot_publish_a_held_out_shape(tmp_path, change):
+    candidate = _layer_document()
+    candidate["name"] = "renamed"
+    candidate["operation"]["op"] = "fused_matmul_bias"
+    for item in candidate["inputs"]:
+        if change == "transpose_weight" and item["role"] == "weight":
+            item["shape"].reverse()
+        elif change == "batch_one":
+            item["shape"].insert(0, 1)
+        elif change == "rename_roles":
+            item["role"] = {"input": "lhs", "weight": "rhs"}.get(item["role"], item["role"])
+    _capsule(tmp_path, candidate)
+    with pytest.raises(SpecError, match="excluded historical input"):
+        require_public_capsules(_held_out_experiment(), [tmp_path])
+
+
+def test_extra_operands_cannot_hide_a_held_out_core(tmp_path):
+    candidate = _layer_document()
+    candidate["name"] = "renamed"
+    candidate["operation"]["op"] = "addmm"
+    candidate["operation"].setdefault("attributes", {}).update(alpha=1, beta=1)
+    m = next(item["shape"][0] for item in candidate["inputs"] if item["role"] == "input")
+    n = next(item["shape"][-1] for item in candidate["inputs"] if item["role"] == "weight")
+    candidate["inputs"].append({"name": "full_bias", "role": "bias", "shape": [m, n], "dtype": "i32"})
+    _capsule(tmp_path, candidate)
+    with pytest.raises(SpecError, match="excluded historical input"):
+        require_public_capsules(_held_out_experiment(), [tmp_path])
