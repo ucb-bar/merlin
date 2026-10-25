@@ -35,13 +35,21 @@ def _trace_word(line):
     fields = line.split()
     if not fields or fields[0] != b"core":
         return None
-    # Register-write log lines are not retired instruction records.
-    if len(fields) < 4 or not fields[1].endswith(b":"):
+    # Spike -l disassembly precedes the --log-commits retirement record.
+    if len(fields) >= 3 and fields[2].startswith(b"0x"):
         return None
-    if not fields[3].startswith(b"(0x") or not fields[3].endswith(b")"):
+    if (
+        len(fields) < 5
+        or not fields[1].endswith(b":")
+        or not fields[1][:-1].isdigit()
+        or not fields[2].isdigit()
+        or not fields[3].startswith(b"0x")
+        or not fields[4].startswith(b"(0x")
+        or not fields[4].endswith(b")")
+    ):
         raise ValueError("UNKNOWN: malformed retired instruction record")
     try:
-        return int(fields[2], 16), int(fields[3][1:-1], 16)
+        return int(fields[3], 16), int(fields[4][1:-1], 16)
     except ValueError as error:
         raise ValueError("UNKNOWN: invalid PC/instruction word in execution trace") from error
 

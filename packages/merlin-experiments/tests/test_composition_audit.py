@@ -25,6 +25,10 @@ def _bits(value):
 
 
 def _row(kind, **decoded):
+    if kind == "MVOUT":
+        decoded = {"acc_addr": 32, "rows": 3, "cols": 3, "readout": "i8", **decoded}
+    elif kind in {"MVIN", "MVIN2", "MVIN3"}:
+        decoded = {"spad_addr": 32, "rows": 3, "cols": 3, **decoded}
     return {"class": kind, "decoded": decoded, "kernel": "fused", "region_id": "chain"}
 
 
@@ -33,7 +37,7 @@ def _compute(count=1, **decoded):
         row
         for _ in range(count)
         for row in (
-            _row("PRELOAD", c_addr=32),
+            _row("PRELOAD", c_addr=32, c_rows=3, c_cols=3),
             _row("COMPUTE_PRELOADED", a_spad=8, **decoded),
         )
     ]
@@ -124,6 +128,57 @@ def test_fused_scaled_relu_and_exact_multiplier_bits():
     assert _check(case)["status"] == "pass"
     case[1]["mode_parameters"]["readout_multipliers"]["acc_scale_bits"] = [_bits(0.5)]
     assert _check(case)["status"] == "fail"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"acc_addr": 48},
+        {"acc_addr": 34, "rows": 2},
+        {"cols": 4},
+        {"readout": "i32"},
+    ],
+)
+def test_readout_must_consume_contraction_rows_in_narrow_mode(changes):
+    trace, expected = _readout_case()
+    trace["instructions"][-2]["decoded"].update(changes)
+    assert _check((trace, expected))["status"] == "fail"
+
+
+def test_missing_readout_lineage_is_unknown():
+    trace, expected = _readout_case()
+    del trace["instructions"][-2]["decoded"]["acc_addr"]
+    result = _check((trace, expected))
+    assert result["status"] == "fail"
+    assert result["composition_audit"]["evidence_status"] == "UNKNOWN"
+
+
+def test_readout_lineage_also_applies_to_standalone_trace_modes():
+    trace, expected = _readout_case()
+    expected.pop("composition")
+    expected["modes"] = expected.pop("stage_scoped_modes")["readout"]
+    trace["instructions"][-2]["decoded"]["acc_addr"] = 48
+    assert _check((trace, expected))["status"] == "fail"
+
+
+@pytest.mark.parametrize("privilege", [0, 1, 3])
+def test_retirement_parser_requires_privilege_and_excludes_disassembly(privilege):
+    assert NA._trace_word(f"core 0: {privilege} 0x8000 (0x0a00002b)".encode()) == (0x8000, 0x0A00002B)
+    assert NA._trace_word(b"core 0: 0x8000 (0x0a00002b) custom") is None
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        b"core 0: 3 bad-pc (0x0a00002b)",
+        b"core 0: 3 0x8000 bad-word",
+        b"core bad: 3 0x8000 (0x0a00002b)",
+        b"core 0: 3 0x8000",
+    ],
+)
+def test_malformed_committed_records_fail_closed(line):
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        NA._trace_word(line)
 
 
 @pytest.mark.parametrize(
@@ -379,12 +434,12 @@ def test_in_repo_counter_derives_opcode_and_counts_outside_instructions(native_f
         "facts": {"interfaces": [{"name": "funct_decode_table", "custom_opcode": opcode, "names": {"5": "WORK"}}]}
     }
     word = (5 << 25) | opcode
-    trace.write_text(f"core 0: 0x0 (0x{word:08x})\n")
+    trace.write_text(f"core 0: 3 0x0 (0x{word:08x})\n")
     arguments = dict(elf=elf, trace=trace, routed=[{"symbol": "fused"}], facts=document)
     result = NA.audit_case_instructions(**arguments)
     assert result["status"] == "pass" and result["outside_kernel_instructions"] == 0
     assert result["kernels"][0]["functs"] == {"5": 1}
-    trace.write_text(trace.read_text() + f"core 0: 0x100 (0x{word:08x})\n")
+    trace.write_text(trace.read_text() + f"core 0: 3 0x100 (0x{word:08x})\n")
     result = NA.audit_case_instructions(**arguments)
     assert result["status"] == "fail" and result["outside_kernel_instructions"] == 1
     del document["facts"]["interfaces"][0]["custom_opcode"]
@@ -401,11 +456,11 @@ def test_counter_refuses_unknown_commands_absent_entries_and_malformed_traces(na
             "interfaces": [{"name": "funct_decode_table", "custom_opcode": 43, "names": {"5": "WORK"}}],
         },
     )
-    trace.write_text("core 0: 0x0 (0x0000002b)\n")
+    trace.write_text("core 0: 3 0x0 (0x0000002b)\n")
     assert NA.audit_case_instructions(**arguments)["status"] == "fail"
     trace.write_text("")
     assert NA.audit_case_instructions(**arguments)["status"] == "fail"
-    trace.write_text("core 0: bad-pc (0x0000002b)\n")
+    trace.write_text("core 0: 3 bad-pc (0x0000002b)\n")
     assert NA.audit_case_instructions(**arguments)["status"] == "UNKNOWN"
 
 
@@ -451,14 +506,19 @@ def test_native_composition_replays_pinned_source_manifest_and_executed_sequence
         + ".size fused, .-fused\n"
     )
     subprocess.run([shutil.which("cc"), "-c", str(assembly), "-o", str(elf)], check=True)
-    retired.write_text("".join(f"core 0: 0x{index * 4:x} (0x{word:08x})\n" for index, word in enumerate(words)))
+    retired.write_text("".join(f"core 0: 3 0x{index * 4:x} (0x{word:08x})\n" for index, word in enumerate(words)))
     trace["retirement_trace_sha256"] = hashlib.sha256(retired.read_bytes()).hexdigest()
     trace.pop("composition_evidence")
     monkeypatch.setattr(
         decode,
         "_semantics",
         lambda _: SimpleNamespace(
-            isa_constants=lambda _: {"CUSTOM_OPCODE": 43},
+            isa_constants=lambda _: {
+                "CUSTOM_OPCODE": 43,
+                "OPERAND_FIELDS": {
+                    "PRELOAD": {"fields": [{"as": "flag", "mask": 512}]},
+                },
+            },
             decode_instruction=lambda code, rs1, rs2, isa: decoded_fields[code],
         ),
     )

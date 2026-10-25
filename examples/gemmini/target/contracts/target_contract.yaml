@@ -279,6 +279,8 @@ rocc_operand_roles:
       fields:
         - {name: weight_spad, operand: rs1, bundle: PreloadRs, field: local_addr}
         - {name: c_addr, operand: rs2, bundle: PreloadRs, field: local_addr}
+        - {name: c_rows, operand: rs2, bundle: PreloadRs, field: num_rows}
+        - {name: c_cols, operand: rs2, bundle: PreloadRs, field: num_cols}
         - {name: accumulate, operand: rs2, bundle: PreloadRs, field: local_addr, as: flag, flag: accumulate}
         - {name: readout, operand: rs2, bundle: PreloadRs, field: local_addr, as: flag_choice,
            flag: full_width_readout, set: i32, clear: i8}

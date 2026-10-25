@@ -61,7 +61,7 @@ def _selected_hardware(target, needs):
         if dataflow.get("status") != "derived" or len(codes) != 1:
             raise ValueError("UNKNOWN: output-stationary select code is underived")
         hardware["output_stationary"] = codes[0]
-    if needs & {"scaled_accumulate_load", "k_extension"}:
+    if needs & {"scaled_accumulate_load", "k_extension", "contraction_lineage"}:
         from merlin.targetgen.rocc.decode import _semantics
 
         semantics = _semantics(target)
@@ -71,12 +71,14 @@ def _selected_hardware(target, needs):
             if mapping is None:
                 raise ValueError("UNKNOWN: load-class state selection is underived")
             hardware["load_states"] = dict(mapping.ports)
-        if "k_extension" in needs:
+        if needs & {"k_extension", "contraction_lineage"}:
             isa = semantics.isa_constants(target)
+        if "k_extension" in needs:
             dimension = isa.get("DIM")
             if type(dimension) is not int or dimension <= 0:
                 raise ValueError("UNKNOWN: contraction tile geometry is underived")
             hardware["tile_k"] = dimension
+        if needs & {"k_extension", "contraction_lineage"}:
             masks = [
                 step.get("mask")
                 for program in isa.get("OPERAND_FIELDS", {}).values()
@@ -138,6 +140,37 @@ def _output_commits(commits, parameters):
     return selected
 
 
+def _accumulator_span(decoded, address_field, rows_field, cols_field, hardware):
+    address = _known(decoded, address_field)
+    rows, cols = _known(decoded, rows_field), _known(decoded, cols_field)
+    if any(type(value) is not int or value < 0 for value in (address, rows, cols)) or min(rows, cols) <= 0:
+        raise ValueError("UNKNOWN: contraction/readout accumulator extent is unresolved")
+    start = address & ~hardware["address_flags"]
+    return start, start + rows, cols
+
+
+def _contraction_lineage(instructions, hardware):
+    """Require every readout element to belong to still-resident contraction work."""
+    resident, preload = [], None
+    for row in instructions:
+        kind, decoded = row.get("class"), row.get("decoded") or {}
+        if kind == "PRELOAD":
+            preload = decoded
+        elif kind in _COMPUTES:
+            resident.append(_accumulator_span(preload or {}, "c_addr", "c_rows", "c_cols", hardware))
+        elif kind in _LOADS and decoded.get("is_acc_addr") is True:
+            start, end, _ = _accumulator_span(decoded, "spad_addr", "rows", "cols", hardware)
+            resident = [span for span in resident if span[1] <= start or end <= span[0]]
+        elif kind == "MVOUT":
+            start, end, cols = _accumulator_span(decoded, "acc_addr", "rows", "cols", hardware)
+            covered = start
+            for left, right, width in sorted(resident):
+                if width >= cols and left <= covered < right:
+                    covered = right
+            if covered < end:
+                raise ValueError("readout accumulator rows/columns are not written by the contraction")
+
+
 def _readout(commits, parameters, *, relu=False, scaled=False, per_block=False):
     commits = _output_commits(commits, parameters)
     expected = _integers(parameters, "acc_scale_bits")
@@ -147,7 +180,9 @@ def _readout(commits, parameters, *, relu=False, scaled=False, per_block=False):
             raise ValueError("UNKNOWN: column_block needs source-derived store counts for each block")
         expected = [bits for bits, count in zip(expected, stores_per_block) for _ in range(count)]
     observed, configs = [], []
-    for _store, config, index, _computes in commits:
+    for store, config, index, _computes in commits:
+        if _known(store, "readout") != "i8":
+            raise ValueError("scaled/activated readout requires a narrow i8 store")
         observed.append(_known(config, "acc_scale_bits"))
         configs.append(index)
         if relu and _known(config, "relu") is not True:
@@ -251,7 +286,11 @@ def _shared_input(instructions, parameters):
 def check_modes(instructions, modes, parameters, *, target):
     """Check a single already-bound region. Values are decoded, never bit-sliced."""
     needs = {name for name, required in modes.items() if required}
+    if any(row.get("class") in _COMPUTES for row in instructions):
+        needs.add("contraction_lineage")
     hardware = _selected_hardware(target, needs)
+    if "contraction_lineage" in needs:
+        _contraction_lineage(instructions, hardware)
     commits, computes, loads = _events(instructions, hardware)
     if not commits:
         raise ValueError("UNKNOWN: composition has no output store")
