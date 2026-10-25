@@ -1912,6 +1912,57 @@ pins:
       - gemmini.h
       - gemmini_params.h
 
+  gemmini_f2_chipyard:
+    description: >-
+      The chipyard root the AWS F2 FireSim image `firesim_f2_gemmini_latpipe_60mhz` was built from
+      (hwdb f2_gemmini_rocket_latpipe_60mhz, FireSimGemminiRocketConfig + BaseF2Config). A different
+      checkout from `gemmini_rocket_chipyard` (Alveo U250), so a cycle count measured on one is not a
+      divisor for the other.
+    repo_canonical: https://github.com/ucb-bar/chipyard.git
+    commit: "157dd69e49b9866be2bf8db390ee78bc38cd4438"
+    targets: [gemmini]
+    branch: null
+    root_env: MERLIN_F2_CHIPYARD
+    path: .
+    requires_paths:
+      - build.sbt
+      - sims/firesim/sim/Makefile
+
+  gemmini_f2_rtl:
+    description: >-
+      The Gemmini generator revision inside `gemmini_f2_chipyard`, the one the F2 image elaborates. A
+      different revision from the `gemmini_rtl` pin (6ad65b90) and from `gemmini_rocket_rtl` (63f0b68a).
+    repo_canonical: https://github.com/ucb-bar/gemmini.git
+    commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    targets: [gemmini]
+    branch: null
+    root_env: MERLIN_F2_CHIPYARD
+    path: generators/gemmini
+    nested_in: gemmini_f2_chipyard
+    nested_path: generators/gemmini
+    content_check: true
+    requires_paths:
+      - src/main/scala/gemmini/Configs.scala
+      - src/main/scala/gemmini/GemminiISA.scala
+      - src/main/scala/gemmini/Mesh.scala
+
+  firesim_f2_gemmini:
+    description: >-
+      The FireSim checkout the F2 image was built with. INTENTIONALLY NOT LATEST: e1bdea8b is five
+      commits behind upstream 9db58817, and one of those changes f2config. Do not "bump" this pin to
+      upstream without rebuilding the image; the AGFI below belongs to this revision.
+    repo_canonical: https://github.com/firesim/firesim.git
+    commit: "e1bdea8bb042b900995436ecc3d7c44100eb9da0"
+    targets: [gemmini]
+    branch: null
+    root_env: MERLIN_F2_CHIPYARD
+    path: sims/firesim
+    nested_in: gemmini_f2_chipyard
+    nested_path: sims/firesim
+    content_check: true
+    requires_paths:
+      - sim/Makefile
+
 
 # Consumed by `merlin.common.provenance.load_artifacts` / `verify_artifact`.
 artifacts:
@@ -2849,6 +2900,30 @@ artifacts:
       -Wl,-rpath,$R/lib -shared -o libgemmini.so -std=c++17 -I $R/include -fPIC -O3 gemmini.cc`,
       using the conda toolchain of the chipyard checkout the Spike binary comes from. Spike needs that
       toolchain's bin directory on PATH (dtc). Only the rounding line differs from base ea8f7ed.
+
+  firesim_f2_gemmini_latpipe_60mhz:
+    description: >-
+      The AWS F2 FireSim image the F2 whole-model cycle numbers are measured on: hwdb
+      f2_gemmini_rocket_latpipe_60mhz, agfi-03dc6c02246c6acf9 (us-east-1; copies in all F2 regions),
+      FireSimGemminiRocketConfig + BaseF2Config (FASED latency-pipe memory model), 60 MHz host clock,
+      post-route worst slack +0.027 ns. Built from chipyard 157dd69e / gemmini 8c3f9923 / firesim
+      e1bdea8b (intentionally not latest upstream firesim, see `firesim_f2_gemmini`). Not comparable
+      with the U250 bitstreams.
+    path: bitstreams/f2_gemmini_rocket_latpipe_60mhz/hwdb-entry.yaml
+    root_env: MERLIN_F2_ARTIFACTS
+    digest: "4dedb520159a7636e5107558c27b64b95a3e68f97838c7cce9b4508695ad41ac"
+    built_from: [gemmini_f2_chipyard, gemmini_f2_rtl, firesim_f2_gemmini]
+    config: FireSimGemminiRocketConfig
+    target: gemmini
+    role: firesim_bitstream
+    hw_configs: [f2_gemmini_rocket_latpipe_60mhz]
+    kind: file
+    notes: >-
+      The AGFI is a cloud image with no local bytes; the digest is of the hwdb entry that names it
+      (hwdb-entry.yaml, the file the submission points at), kept beside the build's timing.json under
+      s3://fsim-artifacts-599243103974/bitstreams/f2_gemmini_rocket_latpipe_60mhz/, and
+      MERLIN_F2_ARTIFACTS is a local mirror of that prefix's parent. Sibling image
+      f2_gemmini_rocket_ddr3llc_60mhz (agfi-02410ef1a8461b435) is a different device.
 
 
 # ------------------------------------------------------------------------------------------------------
