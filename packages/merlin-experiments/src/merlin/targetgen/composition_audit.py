@@ -123,7 +123,23 @@ def _events(instructions, hardware):
     return commits, computes, loads
 
 
+def _output_commits(commits, parameters):
+    """Select explicit logical output bindings for independent sibling exits."""
+    outputs = parameters.get("outputs")
+    if outputs is None:
+        return commits
+    if not isinstance(outputs, list) or not outputs:
+        raise ValueError("UNKNOWN: output-scoped mode needs explicit operand identities")
+    wanted = {_identity(value) for value in outputs}
+    selected = [event for event in commits if _identity(_known(event[0], "dram")) in wanted]
+    observed = {_identity(_known(event[0], "dram")) for event in selected}
+    if observed != wanted:
+        raise ValueError("UNKNOWN: output-scoped mode has no matching store for every output")
+    return selected
+
+
 def _readout(commits, parameters, *, relu=False, scaled=False, per_block=False):
+    commits = _output_commits(commits, parameters)
     expected = _integers(parameters, "acc_scale_bits")
     stores_per_block = _integers(parameters, "stores_per_block") if per_block else None
     if stores_per_block is not None:
@@ -257,8 +273,10 @@ def check_modes(instructions, modes, parameters, *, target):
     if "output_stationary" in needs:
         if not computes or any(_known(config, "dataflow") != hardware["output_stationary"] for _, config in computes):
             raise ValueError("contraction does not execute with output-stationary dataflow")
-    if "i32_exit" in needs and any(_known(store, "readout") != "i32" for store, _, _, _ in commits):
-        raise ValueError("i32_exit requires full-width stores")
+    if "i32_exit" in needs:
+        exits = _output_commits(commits, parameters.get("i32_exit", {}))
+        if any(_known(store, "readout") != "i32" for store, _, _, _ in exits):
+            raise ValueError("i32_exit requires full-width stores")
     if "k_extension" in needs:
         _k_extension(commits, parameters.get("k_extension", {}), hardware)
     if "shared_input" in needs:

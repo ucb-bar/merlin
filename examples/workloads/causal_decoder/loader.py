@@ -5,6 +5,8 @@ An optional adjacent ``profile.json`` (schema ``merlin.iteration_workload_profil
 inputs are exactly the original 8-token, 32-wide, 4-head development workload. Each optional key
 keeps its default when absent:
 
+* ``qkv_separate`` (false) captures three siblings sharing one normalized input;
+* ``gated_ffn`` (true) selects the gated branch or a plain ReLU FFN;
 * ``seq`` (8, at most 16), ``hidden`` (32, at most 64), ``heads`` (4, dividing ``hidden``) and
   ``ffn`` (64, at most 256) size the model; widths stay small so the workload remains certifiable;
 * ``kv_heads`` (``heads``): fewer key/value heads than query heads, each shared by a group of
@@ -32,23 +34,42 @@ DEFAULTS = {
     "rope": False,
     "decode_step": False,
     "cache_len": None,
+    "qkv_separate": False,
+    "gated_ffn": True,
 }
 OPTIONAL_KEYS = frozenset(DEFAULTS)
 VOCABULARY = 64
 
 
 class CausalDecoder(torch.nn.Module):
-    def __init__(self, seq=8, hidden=32, heads=4, kv_heads=None, ffn=64, rope=False, cache_len=None):
+    def __init__(
+        self,
+        seq=8,
+        hidden=32,
+        heads=4,
+        kv_heads=None,
+        ffn=64,
+        rope=False,
+        cache_len=None,
+        qkv_separate=False,
+        gated_ffn=True,
+    ):
         super().__init__()
         kv_heads = heads if kv_heads is None else kv_heads
         self.hidden, self.heads, self.kv_heads, self.head_dim = hidden, heads, kv_heads, hidden // heads
         self.length = seq if cache_len is None else 1
         self.rope = rope
+        self.qkv_separate, self.gated_ffn = qkv_separate, gated_ffn
         kv_width = kv_heads * self.head_dim
         self.split_sizes = (hidden, kv_width, kv_width)
         self.embedding = torch.nn.Embedding(VOCABULARY, hidden)
         self.norm = torch.nn.RMSNorm(hidden)
-        self.qkv = torch.nn.Linear(hidden, hidden + 2 * kv_width, bias=False)
+        if qkv_separate:
+            self.query = torch.nn.Linear(hidden, hidden, bias=False)
+            self.key = torch.nn.Linear(hidden, kv_width, bias=False)
+            self.value = torch.nn.Linear(hidden, kv_width, bias=False)
+        else:
+            self.qkv = torch.nn.Linear(hidden, hidden + 2 * kv_width, bias=False)
         self.projection = torch.nn.Linear(hidden, hidden, bias=False)
         self.gate = torch.nn.Linear(hidden, ffn, bias=False)
         self.up = torch.nn.Linear(hidden, ffn, bias=False)
@@ -80,7 +101,10 @@ class CausalDecoder(torch.nn.Module):
 
     def _decode(self, tokens, cache):
         hidden = self.embedding(tokens)
-        if self.kv_heads == self.heads:
+        if self.qkv_separate:
+            normalized = self.norm(hidden)
+            query, key, value = self.query(normalized), self.key(normalized), self.value(normalized)
+        elif self.kv_heads == self.heads:
             query, key, value = self.qkv(self.norm(hidden)).chunk(3, dim=-1)
         else:
             query, key, value = self.qkv(self.norm(hidden)).split(self.split_sizes, dim=-1)
@@ -100,7 +124,12 @@ class CausalDecoder(torch.nn.Module):
         attention = torch.softmax(scores, dim=-1) @ value
         hidden = hidden + self.projection(attention.transpose(1, 2).reshape(1, length, self.hidden))
         normalized = self.norm(hidden)
-        hidden = hidden + self.down(torch.nn.functional.silu(self.gate(normalized)) * self.up(normalized))
+        features = self.up(normalized)
+        if self.gated_ffn:
+            features = torch.nn.functional.silu(self.gate(normalized)) * features
+        else:
+            features = torch.relu(features)
+        hidden = hidden + self.down(features)
         return self.head(hidden)
 
     def forward(self, tokens):
@@ -126,7 +155,7 @@ def validate_profile(profile):
         raise ValueError("causal decoder profile has an unsupported identity")
     if any(value is None for value in profile.values()):
         raise ValueError("causal decoder profile has a null field")
-    for key in ("rope", "decode_step"):
+    for key in ("rope", "decode_step", "qkv_separate", "gated_ffn"):
         if key in profile and type(profile[key]) is not bool:
             raise ValueError(f"causal decoder profile has an invalid {key}")
     selected = {**DEFAULTS, **{key: value for key, value in profile.items() if key not in REQUIRED_KEYS}}
@@ -174,6 +203,8 @@ def get_model_and_inputs():
         profile["ffn"],
         profile["rope"],
         profile["cache_len"] if decode else None,
+        profile["qkv_separate"],
+        profile["gated_ffn"],
     ).eval()
     with torch.no_grad():
         for ordinal, module in enumerate(model.modules()):

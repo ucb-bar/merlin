@@ -455,8 +455,12 @@ def _finish_capsule(entry, binding, out_root, written, *, component_only=False, 
     native_storage = (
         native_storage_source_spec(entry) if entry.get("source") == "pytorch" or entry.get("pytorch_ref") else None
     )
-    if (diagnostic_source_protocol is None and regime == "int" and _is_source_backed(entry)
-            and (model_capsule or native_storage is None)):
+    if (
+        diagnostic_source_protocol is None
+        and regime == "int"
+        and _is_source_backed(entry)
+        and (model_capsule or native_storage is None)
+    ):
         if model_capsule:
             # A whole model's contractions read internal tensors, so it is qualified by the isolated
             # verification of every device group it forms; without that evidence it is refused
@@ -974,7 +978,15 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         except CSRC.SpecProgramUnavailable as e:
             print(f"  [skip] {entry['name']}: {e}")
             return None
+    if entry.get("op") == "composition_program":
+        from .composition_generation import prepare_entries
+
+        entry = prepare_entries([entry])[0]
     cap, mlir = CS.build(entry, eb)
+    if entry.get("op") == "composition_program":
+        from .composition_generation import bind_capsule
+
+        bind_capsule(cap, mlir)
     if cap["operation"]["op"] == "component_program":
         cap["numerical_semantics"] = copy.deepcopy(entry.get("numerical_semantics") or {})
     d = Path(out_root) / entry["cat"] / entry["name"]

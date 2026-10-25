@@ -95,8 +95,11 @@ def unavailable(path):
         if not _same_format(stage.get(field), "float32") or stage.get("rounding") != "half_even":
             return "column-readout capsules cannot state this conversion/scale format and rounding"
     requant = readout.get("requant") or {}
-    if (not _same_format(requant.get("to"), "int8") or requant.get("rounding") != "half_even"
-            or requant.get("clamp") != [-128, 127]):
+    if (
+        not _same_format(requant.get("to"), "int8")
+        or requant.get("rounding") != "half_even"
+        or requant.get("clamp") != [-128, 127]
+    ):
         return "column-readout capsules cannot state this narrowing format, rounding or clamp"
     return None
 
@@ -133,14 +136,20 @@ def requirements(path, dtypes, carriers=("matmul",), *, tails=True):
         if not _same_format(dtype, "int8"):
             continue
         for op in sorted(set(carriers) & {"matmul", "conv2d"}):
-            for tail in ((False, True) if tails else (False,)):
+            for tail in (False, True) if tails else (False,):
                 case = "tail" if tail else "aligned"
-                rows.append({
-                    "signature": f"{op}|column_group_scale|{dtype}|{width}|{case}",
-                    "op": op, "dtype": dtype, "epilogue": list(epilogue), "groups": 0, "observed_in": [],
-                    "evidenced_by": ["derived_output_path"],
-                    "column_readout": {"columns_per_scale": width, "columns": 2 * width + int(tail), "case": case},
-                })
+                rows.append(
+                    {
+                        "signature": f"{op}|column_group_scale|{dtype}|{width}|{case}",
+                        "op": op,
+                        "dtype": dtype,
+                        "epilogue": list(epilogue),
+                        "groups": 0,
+                        "observed_in": [],
+                        "evidenced_by": ["derived_output_path"],
+                        "column_readout": {"columns_per_scale": width, "columns": 2 * width + int(tail), "case": case},
+                    }
+                )
     # Preserve the existing block-uniform demands and add independent logical
     # columns. The candidate owns any physical partitioning implementation.
     if width > 1:
@@ -155,8 +164,12 @@ def requirements(path, dtypes, carriers=("matmul",), *, tails=True):
 def requirements_for_oracle(path, oracle, groups):
     """Use declared contraction formats and carriers observed in the public group inventory."""
     contraction = (getattr(oracle, "cap_map", {}) or {}).get("contraction")
-    return requirements(path, getattr(contraction, "dtypes", ()), {"matmul", *(row["op"] for row in groups)},
-                        tails=getattr(contraction, "arbitrary_mnk", False))
+    return requirements(
+        path,
+        getattr(contraction, "dtypes", ()),
+        {"matmul", *(row["op"] for row in groups)},
+        tails=getattr(contraction, "arbitrary_mnk", False),
+    )
 
 
 def entry(requirement):
@@ -167,25 +180,36 @@ def entry(requirement):
     # Deliberate workload constants, not hardware facts or model parameters.
     gains = (0.5, 0.125, 0.75)
     by_column = (
-        _distinct_scales(columns) if row["case"] == "distinct_scales_v2"
+        _distinct_scales(columns)
+        if row["case"] == "distinct_scales_v2"
         else [gains[(i if independent else i // width) % len(gains)] for i in range(columns)]
     )
     result = {
         "name": f"SY_{'independent_column' if independent else 'column'}_readout_"
-                f"{requirement['op']}_{requirement['dtype']}_{row['case']}",
-        "cat": "layers", "kind": "layer", "label": "public", "op": requirement["op"],
-        "operand_dtype": requirement["dtype"], "epilogue": list(requirement["epilogue"]),
+        f"{requirement['op']}_{requirement['dtype']}_{row['case']}",
+        "cat": "layers",
+        "kind": "layer",
+        "label": "public",
+        "op": requirement["op"],
+        "operand_dtype": requirement["dtype"],
+        "epilogue": list(requirement["epilogue"]),
         "output_dtype": "i8",
-        "M_tiles": 1, "K_tiles": 1, "N": columns,
-        "ci": width, "Himg": 2, "Wimg": 3, "kh": 1, "kw": 1,
-        **({"stride": [1, 1], "padding": [0, 0, 0, 0], "dilation": [1, 1]}
-           if requirement["op"] == "conv2d" else {}),
+        "M_tiles": 1,
+        "K_tiles": 1,
+        "N": columns,
+        "ci": width,
+        "Himg": 2,
+        "Wimg": 3,
+        "kh": 1,
+        "kw": 1,
+        **({"stride": [1, 1], "padding": [0, 0, 0, 0], "dilation": [1, 1]} if requirement["op"] == "conv2d" else {}),
         "acc_scale_by_column": by_column,
         "source_role": "derived_sweep",
         "source_reference": (
             f"selected physical readout shares one f32 gain across {width} lanes; "
             "independent logical-column source gains require a compiler implementation"
-            if independent else f"selected output path permits one f32 gain per {width} columns; synthetic gain changes"
+            if independent
+            else f"selected output path permits one f32 gain per {width} columns; synthetic gain changes"
         ),
         "lanes": {"require": ["on_mesh"]},
         "generalization": {"generalization_axis": "column_readout", "must_accelerate": True, "eligible": True},
@@ -232,5 +256,16 @@ def matches(cap, requirement):
         return False
     if requirement["column_readout"]["case"] == "distinct_scales_v2" and len(set(gains)) != columns:
         return False
-    uniform = all(len(set(gains[i:i + width])) == 1 for i in range(0, columns, width))
+    uniform = all(len(set(gains[i : i + width])) == 1 for i in range(0, columns, width))
     return not uniform if requirement["column_readout"].get("logical_granularity") == "per_channel" else uniform
+
+
+def scheme_column_scales(scheme, columns, grid):
+    """One source multiplier per logical column, respecting the resolved scheme."""
+    if type(columns) is not int or columns < 1 or not grid:
+        raise ValueError("scheme column scales require positive columns and a nonempty grid")
+    granularity = scheme["weight_scale_granularity"]
+    width = scheme.get("columns_per_scale") if granularity == "column_block" else columns
+    if granularity not in {"tensor", "column_block"} or type(width) is not int or width < 1:
+        raise ValueError("scheme column scale width is unresolved or ungraded")
+    return [grid[(column // width) % len(grid)] for column in range(columns)]

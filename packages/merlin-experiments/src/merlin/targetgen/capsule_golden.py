@@ -549,6 +549,10 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         from merlin_experiments.phase0.component_numerics import evaluate
 
         return evaluate(capsule)
+    if capsule["operation"]["op"] == "composition_program":
+        from .composition_golden import evaluate
+
+        return evaluate(capsule)
     env = materialize_capsule_leaves(capsule)
     op = capsule["operation"]["op"]
     attrs = _scheme_attributes(capsule["operation"].get("attributes", {}))

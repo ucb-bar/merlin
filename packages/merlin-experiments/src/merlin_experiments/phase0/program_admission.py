@@ -75,6 +75,7 @@ def _decision(entry: dict, *, host_only: bool) -> dict:
             ),
         )
     return {
+        **({"source_op_indices": row["source_op_indices"]} if "source_op_indices" in row else {}),
         "operation": entry.get("operation"),
         "mlir_operation": row.get("mlir_operation"),
         "frontend_op": row.get("frontend_op"),
@@ -164,11 +165,33 @@ def account_program(program: Path, *, name: str, target: str, evidence, source_c
         capability_contract=evidence.contract,
         host_capabilities=getattr(evidence, "host_capabilities", None),
     )
-    _join_source_admissions(accounting, {name: program}, evidence=evidence, source_context=source_context, target=target)
+    _join_source_admissions(
+        accounting, {name: program}, evidence=evidence, source_context=source_context, target=target
+    )
+    # Bind original top-level operations to the same parsed source inventory
+    # used for admission. Nested scalar bodies are covered by their owning op.
+    from merlin.common import mlir_query as mq
+    from merlin.frontends.capture_normalization import normalize_capture_mlir
+
+    normalized, _ = normalize_capture_mlir(program.read_text())
+    module = mq.parse(normalized)
+    functions = [op for op in module.body.block.ops if mq.op_name(op) == "func.func"]
+    if len(functions) == 1 and len(functions[0].body.blocks) == 1:
+        top = {
+            op: i for i, op in enumerate(op for op in functions[0].body.block.ops if mq.op_name(op) != "func.return")
+        }
+        walked = tuple(mq.walk(module))
+        for entry in accounting["applications"][name]["signatures"]:
+            row = entry["observed_signature"]
+            ordinals = row.get("ordinals", [])
+            if ordinals and all(walked[i] in top for i in ordinals):
+                row["source_op_indices"] = [top[walked[i]] for i in ordinals]
     return accounting["applications"][name]["signatures"]
 
 
-def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evidence, source_context=None, target=None) -> None:
+def _join_source_admissions(
+    accounting: dict, captures: dict[str, Path], *, evidence, source_context=None, target=None
+) -> None:
     """Re-screen exact inventoried source bodies; serialized signatures are insufficient."""
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
@@ -178,6 +201,7 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
         raise ValueError("source admission captures must cover the exact application roster")
     if source_context is not None:
         from .connected_source_context import require_context
+
         require_context(source_context, captures)
     for name, application in accounting["applications"].items():
         raw = Path(captures[name]).read_bytes()
@@ -186,13 +210,20 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
         normalized, _ = normalize_capture_mlir(raw.decode("utf-8"))
         operations = tuple(mq.walk(mq.parse(normalized)))
         bound_context = source_context.for_program(captures[name]) if source_context is not None else None
-        control_context = (source_context.control_admission_context(captures[name], target=target)
-                           if source_context is not None else None)
+        control_context = (
+            source_context.control_admission_context(captures[name], target=target)
+            if source_context is not None
+            else None
+        )
         index_context = source_context.index_admission_context(captures[name]) if source_context is not None else None
         for entry in application["signatures"]:
             row = entry["observed_signature"]
             control = control_context is not None and row.get("mlir_operation") in {
-                "arith.index_cast", "arith.addi", "arith.cmpi", "cf.assert"}
+                "arith.index_cast",
+                "arith.addi",
+                "arith.cmpi",
+                "cf.assert",
+            }
             if entry["host_admission"]["status"] != "unknown" and not control:
                 continue
             entry.update(
@@ -202,9 +233,13 @@ def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evid
                     capability_contract=evidence.contract,
                     host_capabilities=getattr(evidence, "host_capabilities", None),
                     source_operations=tuple(operations[ordinal] for ordinal in row["ordinals"]),
-                    source_context=(control_context if control else index_context
-                                    if index_context is not None and row.get("frontend_op") == "aten.index.Tensor"
-                                    else bound_context),
+                    source_context=(
+                        control_context
+                        if control
+                        else index_context
+                        if index_context is not None and row.get("frontend_op") == "aten.index.Tensor"
+                        else bound_context
+                    ),
                 )
             )
     if source_context is not None:

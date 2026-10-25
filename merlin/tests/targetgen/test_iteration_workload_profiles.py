@@ -80,8 +80,17 @@ def test_residual_profile_keys_are_strictly_typed(tmp_path, monkeypatch):
         "downsample": False,
         "bottleneck": False,
         "batchnorm": False,
+        "pointwise_small_weights": False,
     }
-    full = {**base, "stem": "conv7s2", "stem_pool": True, "downsample": True, "bottleneck": True, "batchnorm": True}
+    full = {
+        **base,
+        "stem": "conv7s2",
+        "stem_pool": True,
+        "downsample": True,
+        "bottleneck": True,
+        "batchnorm": True,
+        "pointwise_small_weights": False,
+    }
     assert module.validate_profile(full) == full
     with pytest.raises(ValueError, match="unsupported shape"):
         module.validate_profile({key: value for key, value in full.items() if key != "blocks"})
@@ -92,6 +101,7 @@ def test_residual_profile_keys_are_strictly_typed(tmp_path, monkeypatch):
         ("downsample", "true"),
         ("bottleneck", None),
         ("batchnorm", 0),
+        ("pointwise_small_weights", 1),
         ("channels", True),
         ("blocks", 17),
     ):
@@ -123,6 +133,8 @@ def test_decoder_profile_keys_are_strictly_typed(tmp_path, monkeypatch):
         ({"kv_heads": 3}, "kv_heads dividing heads"),
         ({"heads": 32, "rope": True}, "even head width"),
         ({"rope": 1}, "invalid rope"),
+        ({"qkv_separate": 1}, "invalid qkv_separate"),
+        ({"gated_ffn": 1}, "invalid gated_ffn"),
         ({"decode_step": "yes"}, "invalid decode_step"),
         ({"kv_heads": None}, "null field"),
         ({"cache_len": 4}, "without a decode step"),
@@ -237,3 +249,35 @@ def test_policy_patterns_build_and_run(tmp_path, monkeypatch):
     shifted = model(image, tokens, state, timestep + 1)
     assert not torch.equal(result, shifted)
     assert len(model.session_provenance["profile_sha256"]) == 64
+
+
+def test_composition_capture_knobs_share_inputs_and_bound_pointwise_weights(tmp_path, monkeypatch):
+    torch = pytest.importorskip("torch")
+    cnn = _load(
+        tmp_path,
+        monkeypatch,
+        "residual_cnn",
+        _profile("residual_cnn", channels=5, spatial_side=7, blocks=1, bottleneck=True, pointwise_small_weights=True),
+    )
+    model, inputs = cnn.get_model_and_inputs()
+    assert model(*inputs).shape == (1, 4)
+    pointwise = [
+        layer for layer in model.modules() if isinstance(layer, torch.nn.Conv2d) and layer.kernel_size == (1, 1)
+    ]
+    assert pointwise and all(int(torch.count_nonzero(layer.weight)) == layer.out_channels for layer in pointwise)
+    decoder = _load(
+        tmp_path,
+        monkeypatch,
+        "causal_decoder",
+        _profile("causal_decoder", seq=3, hidden=12, heads=3, ffn=15, qkv_separate=True, gated_ffn=False),
+    )
+    model, inputs = decoder.get_model_and_inputs()
+    observed = []
+    hooks = [
+        module.register_forward_pre_hook(lambda _, args: observed.append(args[0].data_ptr()))
+        for module in (model.query, model.key, model.value)
+    ]
+    assert model(*inputs).shape == (1, 3, decoder.VOCABULARY)
+    assert len(observed) == 3 and len(set(observed)) == 1
+    for hook in hooks:
+        hook.remove()

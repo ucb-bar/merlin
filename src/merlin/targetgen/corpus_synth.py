@@ -27,21 +27,33 @@ reads downstream as a covered one.
 
 from __future__ import annotations
 
-from merlin.targetgen.corpus_shapes import (
-    SynthesisError as SynthesisError,
-    _tile_int as _tile_int,
-    cap_to_affordable as cap_to_affordable,
-    narrowest_admitted as narrowest_admitted,
-    quanta_by_dtype as quanta_by_dtype,
-    _quantize as _quantize,
-    extents_for as extents_for,
-)
-
 import copy
 import hashlib
 import json
 from math import isqrt
 from typing import Any
+
+from merlin.targetgen.corpus_shapes import (
+    SynthesisError as SynthesisError,
+)
+from merlin.targetgen.corpus_shapes import (
+    _quantize as _quantize,
+)
+from merlin.targetgen.corpus_shapes import (
+    _tile_int as _tile_int,
+)
+from merlin.targetgen.corpus_shapes import (
+    cap_to_affordable as cap_to_affordable,
+)
+from merlin.targetgen.corpus_shapes import (
+    extents_for as extents_for,
+)
+from merlin.targetgen.corpus_shapes import (
+    narrowest_admitted as narrowest_admitted,
+)
+from merlin.targetgen.corpus_shapes import (
+    quanta_by_dtype as quanta_by_dtype,
+)
 
 from .application_operation_plan import _application_operation_plan as _application_operation_plan
 from .application_operation_plan import _cost as _cost
@@ -1083,6 +1095,8 @@ def synthesize(
     budget: int | None = None,
     application_inventory: dict | None = None,
     capability_contract: dict | None = None,
+    software_spec: dict | None = None,
+    composition_facts: dict | None = None,
 ) -> dict:
     """``{"capsules": [entry...], "provenance": {...}}`` for one target's derived requirement.
 
@@ -2511,6 +2525,17 @@ def synthesize(
         staged = [entry, *(m for m in entry.get("matmuls") or () if isinstance(m, dict))]
         if "acc_scale_by_column" not in entry and any("acc_scale" in (item.get("epilogue") or ()) for item in staged):
             entry.setdefault("acc_scale", SYNTH_ACC_SCALE)
+
+    selected_software = software_spec or spec_doc.get("software_spec") or spec_doc
+    if selected_software.get("compositions"):
+        from .composition_corpus import entries as composition_entries
+
+        try:
+            entries.extend(
+                composition_entries(selected_software, composition_facts or spec_doc.get("composition_facts") or {})
+            )
+        except ValueError as exc:
+            raise SynthesisError(str(exc)) from exc
 
     # Placement decides publication: an entry with no accelerator placement is reported, not emitted.
     entries, host_placed = withhold_host_placed(entries)

@@ -117,6 +117,7 @@ def screen_entry(
         compound_program = op in BUILDERS
     if (
         kind == "model"
+        or op == "composition_program"
         or op in {"model", "micro_model"}
         or entry.get("micro_model") is True
         or entry.get("materialized_capture")

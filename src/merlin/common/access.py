@@ -143,6 +143,7 @@ module_access = _module
 
 
 MODULE_ACCESS = (
+    _module("merlin.targetgen.composition_golden", "oracle"),
     _module("merlin.targetgen.functional_truth_compositions", "grader"),
     _module(
         "merlin.targetgen.exact_quantized_reference",

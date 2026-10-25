@@ -15,10 +15,11 @@ import yaml
 
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
+from merlin_experiments.phase0.generation_paths import (
+    _require_distinct_corpus_destinations as _require_distinct_corpus_destinations,
+)
 
 from .capture_recipe import _selected_capture_recipe as _selected_capture_recipe
-
-from merlin_experiments.phase0.generation_paths import _require_distinct_corpus_destinations as _require_distinct_corpus_destinations
 from .claim_boundary import assert_no_claim_capsules, held_out_models
 from .instruction_roles import enforcement_problems, validate_roles
 from .profiles import load_profile, validate_profile_inputs
@@ -652,6 +653,12 @@ def generate_target(
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:
                 preallocation_denials[entry["name"]] = str(exc)
+    if evidence is not None and evidence.software_spec.get("compositions"):
+        from .composition_generation import append_declared, selected_facts
+
+        composition_context = selected_facts(evidence, selected_requirement, binding)
+        synthesis_budget = int((profile.get("workload_spec") or {}).get("max_synthesized_capsules", 160))
+        entries = append_declared(entries, evidence.software_spec, composition_context, budget=synthesis_budget)
     if evidence is not None and evidence.software_spec:
         screened = []
         for entry in entries:
@@ -918,6 +925,10 @@ def generate_target(
                             host_capabilities=evidence.host_capabilities,
                         )
                     admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
+                    if e.get("op") == "composition_program":
+                        from .composition_generation import require_placement
+
+                        require_placement(actual, observed)
                     # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
                     # grades none of the author's work (host placement is Merlin-supplied), so it is removed
                     # and reported, exactly as an unprovable forbid is, never left on disk for a glob.
@@ -1208,6 +1219,9 @@ def generate_target(
             "ledger": "phase2-deferred.json",
             "sha256": hashlib.sha256(deferred_raw).hexdigest(),
         }
+    from .composition_generation import coverage as composition_coverage
+
+    performance_record["composition_coverage"] = composition_coverage(entries)
     update_provenance_manifest(
         written,
         cap_root=out_root,

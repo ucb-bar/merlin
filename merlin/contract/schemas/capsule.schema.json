@@ -212,6 +212,7 @@
             "host_island_seam",
             "scope_chain",
             "component_program",
+            "composition_program",
             "activation_matmul",
             "column_sum",
             "model"
@@ -336,7 +337,7 @@
         },
         "mode_parameters": {
           "type": "object",
-          "description": "Source-derived expectations keyed by mode: readout_multipliers: {acc_scale_bits: [integer, ...]} per MVOUT; column_block: {acc_scale_bits: [integer, ...], stores_per_block: [positive integer, ...]} per source column block; pooled_store: {fields: {pool_stride, pool_size, pool_out_dim, porows, pocols, orows, ocols, upad, lpad}} with integer values; scaled_accumulate_load: {scale_bits: [integer, ...]}; k_extension: {source_k: integer, extension_k: integer}; shared_input: {input: decoded operand identity}. Hardware codes and tile sizes are never supplied by the candidate.",
+          "description": "Source-derived expectations keyed by mode: readout_multipliers: {acc_scale_bits: [integer, ...]} per MVOUT; column_block: {acc_scale_bits: [integer, ...], stores_per_block: [positive integer, ...]} per source column block; pooled_store: {fields: {pool_stride, pool_size, pool_out_dim, porows, pocols, orows, ocols, upad, lpad}} with integer values; scaled_accumulate_load: {scale_bits: [integer, ...]}; k_extension: {source_k: integer, extension_k: integer}; shared_input: {input: decoded operand identity}. Readout and i32_exit modes may supply outputs: a nonempty list of independently bound decoded operand identities, so shared-input siblings can have different exits. Every named output must have an observed store. Hardware codes and tile sizes are never supplied by the candidate.",
           "additionalProperties": {
             "type": "object"
           }
@@ -590,6 +591,38 @@
             "type": "string"
           },
           "description": "Epilogue stage names whose family could not be resolved. Recorded rather than dropped: silently withholding coverage a capsule earned is the failure composed_families exists to fix, and an unmapped stage name is exactly how that would recur."
+        },
+        "composition_chain": {
+          "type": "object"
+        },
+        "composition_facts": {
+          "type": "object"
+        },
+        "composition_instance": {
+          "type": "object"
+        },
+        "composition_truth": {
+          "type": "object"
+        },
+        "quantization_scheme": {
+          "type": "object"
+        },
+        "composition_chain_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quantization_scheme_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shape_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grading": {
+          "enum": [
+            "placement_and_instruction_audit"
+          ]
         }
       },
       "additionalProperties": false

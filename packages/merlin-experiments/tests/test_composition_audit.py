@@ -563,3 +563,20 @@ def test_capsule_schema_documents_and_accepts_composition_requirements():
     Draft202012Validator(expected_schema).validate(expected)
     for mode in CA.MODES:
         assert mode in expected_schema["properties"]["modes"]["description"]
+
+
+def test_shared_siblings_audit_independent_narrow_and_full_width_exits():
+    case = _readout_case()
+    case[0]["instructions"].insert(-1, _row("MVOUT", dram=_operand(2), readout="i32"))
+    case[1]["stage_scoped_modes"]["readout"]["i32_exit"] = True
+    case[1]["mode_parameters"]["readout_multipliers"]["outputs"] = [_operand(1)]
+    case[1]["mode_parameters"]["i32_exit"] = dict(outputs=[_operand(2)])
+    assert _check(case)["status"] == "pass"
+    case[0]["instructions"][-2]["decoded"]["readout"] = "i8"
+    assert _check(case)["status"] == "fail"
+
+
+def test_output_scoped_audit_cannot_ignore_an_absent_sibling():
+    case = _readout_case()
+    case[1]["mode_parameters"]["readout_multipliers"]["outputs"] = [_operand(2)]
+    assert _check(case)["status"] == "fail"

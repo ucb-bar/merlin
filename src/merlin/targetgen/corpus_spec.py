@@ -1234,10 +1234,10 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
         "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
         "expected": {
             "instruction_classes": binding.classes_for(op="matmul", output_dtype=adt),
-            "modes": {"resident_reuse": sum(
-                (mm.get("M", mm.get("M_tiles", 1) * D) + D - 1) // D
-                for mm in entry["matmuls"]
-            ) > 1},
+            "modes": {
+                "resident_reuse": sum((mm.get("M", mm.get("M_tiles", 1) * D) + D - 1) // D for mm in entry["matmuls"])
+                > 1
+            },
         },
         "required_oracle_tiers": list(binding.tiers),
         "vcs": "optional",
@@ -2534,6 +2534,11 @@ def _fused_families(entry: dict, family: str | None, binding: CorpusBinding) -> 
         if family in fused_producers(cap_map.get(sfam)):
             fused.add(sfam)
     return fused, unresolved
+
+
+from .composition_capsules import build_composition
+
+BUILDERS["composition_program"] = build_composition
 
 
 def build(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:

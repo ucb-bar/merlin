@@ -13,6 +13,7 @@ independently authored patterns; each is off when its key is absent:
 * ``downsample``: a final stride-2 block that doubles the channels, with a 3x3 stride-2 pad-1
   convolution on the branch and a 1x1 stride-2 projection on the shortcut;
 * ``bottleneck``: residual branches of 1x1 reduce (to a quarter of the channels), 3x3, 1x1 expand;
+* ``pointwise_small_weights``: sparse literal 1x1 weights for constant-operand OS capture;
 * ``batchnorm``: an eval-mode ``BatchNorm2d`` with deterministic non-trivial running statistics
   after every convolution (whose own bias is then dropped).
 """
@@ -34,6 +35,7 @@ DEFAULTS = {
     "downsample": False,
     "bottleneck": False,
     "batchnorm": False,
+    "pointwise_small_weights": False,
 }
 OPTIONAL_KEYS = frozenset(DEFAULTS) - REQUIRED_KEYS
 STEMS = ("conv3", "conv7s2")
@@ -50,6 +52,7 @@ class ResidualCNN(torch.nn.Module):
         downsample=False,
         bottleneck=False,
         batchnorm=False,
+        pointwise_small_weights=False,
     ):
         super().__init__()
 
@@ -61,6 +64,9 @@ class ResidualCNN(torch.nn.Module):
 
         width = max(1, channels // 4) if bottleneck else channels
         branch = ((channels, width, 1), (width, width, 3)) if bottleneck else ((channels, channels, 3),) * 2
+        if pointwise_small_weights and not bottleneck:
+            branch = ((channels, channels, 1),) * 2
+        self.pointwise_small_weights = pointwise_small_weights
         self.stem_pool = stem_pool
         self.bottleneck = bottleneck
         self.downsample = downsample
@@ -122,7 +128,7 @@ def validate_profile(profile):
             raise ValueError(f"residual CNN profile has an invalid {key}")
     if "stem" in profile and (type(profile["stem"]) is not str or profile["stem"] not in STEMS):
         raise ValueError("residual CNN profile has an invalid stem")
-    for key in ("stem_pool", "downsample", "bottleneck", "batchnorm"):
+    for key in ("stem_pool", "downsample", "bottleneck", "batchnorm", "pointwise_small_weights"):
         if key in profile and type(profile[key]) is not bool:
             raise ValueError(f"residual CNN profile has an invalid {key}")
     return {**DEFAULTS, **profile}
@@ -162,6 +168,7 @@ def get_model_and_inputs():
         downsample=profile["downsample"],
         bottleneck=profile["bottleneck"],
         batchnorm=profile["batchnorm"],
+        pointwise_small_weights=profile["pointwise_small_weights"],
     ).eval()
     with torch.no_grad():
         for ordinal, module in enumerate(model.modules()):
@@ -171,6 +178,12 @@ def get_model_and_inputs():
                     parameter.copy_(
                         (((values * 37 + ordinal * 101 + field * 53) % 251) - 125).to(parameter.dtype) / 512
                     )
+        if profile["pointwise_small_weights"]:
+            for module in model.modules():
+                if isinstance(module, torch.nn.Conv2d) and module.kernel_size == (1, 1):
+                    module.weight.zero_()
+                    for output in range(module.out_channels):
+                        module.weight[output, output % module.in_channels, 0, 0] = 1 / 512
         _seed_batchnorm(model)
     if profile_sha256 is not None:
         model.session_provenance = {
