@@ -13,33 +13,27 @@ from ..spec import SpecError
 
 
 def shape_signature(document) -> str | None:
-    """Digest of the operation and operand shapes a capsule exposes, independent of name, dtype and numerics.
+    """Identify an operation's role-to-shape mapping, independent of spelling.
 
-    Operand names are replaced by their position so renaming a tensor cannot change the digest; the
-    capsule name, labels, prose provenance, dtypes and numeric policy are excluded, so a
-    held-out shape cannot be republished under a different quantization scheme. ``None`` means the capsule declares no
-    operation or operands, so its identity cannot be established.
+    Attributes (including default/empty epilogues), tensor names, dtype and
+    numerical policies cannot change a held-out shape's publication identity.
+    Repeated roles retain their complete shape multiset. Missing roles or
+    unresolved shapes have no established identity.
     """
     operation = document.get("operation") if isinstance(document, dict) else None
     inputs = document.get("inputs") if isinstance(document, dict) else None
     if not isinstance(operation, dict) or not operation.get("op") or not isinstance(inputs, list) or not inputs:
         return None
-    if any(not isinstance(item, dict) for item in inputs):
-        return None
-    positions = {item.get("name"): f"${index}" for index, item in enumerate(inputs) if item.get("name")}
-
-    def canonical(value):
-        if isinstance(value, dict):
-            return {k: canonical(v) for k, v in value.items() if k != "out" and not k.endswith("dtype")}
-        if isinstance(value, list):
-            return [canonical(v) for v in value]
-        return positions.get(value, value) if isinstance(value, str) else value
-
-    body = {
-        "operation": canonical(operation),
-        "inputs": [{k: item.get(k) for k in ("role", "shape")} for item in inputs],
-    }
-    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+    operands = []
+    for item in inputs:
+        if not isinstance(item, dict) or not isinstance(item.get("role"), str) or not item["role"]:
+            return None
+        shape = item.get("shape")
+        if not isinstance(shape, list) or not shape or any(type(size) is not int or size <= 0 for size in shape):
+            return None
+        operands.append((item["role"], shape))
+    body = {"op": operation["op"], "operands": sorted(operands)}
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
 def _excluded_shape_signatures(experiment) -> set[str]:
