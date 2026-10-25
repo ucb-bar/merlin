@@ -1,20 +1,22 @@
 """Bounded public exploration consumes actual native products, not just receipts."""
+
 import copy
 import json
 from dataclasses import replace
 
 import numpy as np
 import pytest
+from test_multioutput_fusion import source_program
+from test_physical_fusion import fixture as physical_fixture
+from test_shared_input_schedule import execute
+from test_shared_input_schedule import fixture as shared_fixture
 from xdsl.dialects import func
 from xdsl.dialects.builtin import StringAttr
 
 from merlin.compile import fusion_workflow as F
 from merlin.transforms.certificates import ir_digest
-from test_multioutput_fusion import source_program
-from test_physical_fusion import fixture as physical_fixture
-from test_shared_input_schedule import fixture as shared_fixture, execute
 
-OPTIONS = dict(capability_contract={}, numerical_policy_sha256='a' * 64)
+OPTIONS = dict(capability_contract={}, numerical_policy_sha256="a" * 64)
 
 
 def test_pagination_is_lossless_bound_and_nonfatal():
@@ -22,60 +24,65 @@ def test_pagination_is_lossless_bound_and_nonfatal():
     before = ir_digest(module)
     full = F.discover(module, **OPTIONS)
     page = F.discover(module, max_candidates=1, **OPTIONS)
-    assert page['status'] == 'budget_exhausted'
-    first_cursor = page['next_cursor']
-    rows = list(page['candidates'])
-    while page['next_cursor'] is not None:
-        page = F.discover(module, cursor=json.loads(json.dumps(page['next_cursor'])),
-                          max_candidates=1, **OPTIONS)
-        rows.extend(page['candidates'])
-    assert rows == full['candidates']
-    assert page['status'] == 'complete' and ir_digest(module) == before
-    for changes in ({'capability_contract': {'changed': True}},
-                    {'numerical_policy_sha256': 'b' * 64}, {'max_region_operations': 3}):
-        with pytest.raises(ValueError, match='cursor differs'):
+    assert page["status"] == "budget_exhausted"
+    first_cursor = page["next_cursor"]
+    rows = list(page["candidates"])
+    while page["next_cursor"] is not None:
+        page = F.discover(module, cursor=json.loads(json.dumps(page["next_cursor"])), max_candidates=1, **OPTIONS)
+        rows.extend(page["candidates"])
+    assert rows == full["candidates"]
+    assert page["status"] == "complete" and ir_digest(module) == before
+    for changes in (
+        {"capability_contract": {"changed": True}},
+        {"numerical_policy_sha256": "b" * 64},
+        {"max_region_operations": 3},
+    ):
+        with pytest.raises(ValueError, match="cursor differs"):
             F.discover(module, cursor=first_cursor, **dict(OPTIONS, **changes))
-    module.attributes['changed'] = StringAttr('source')
-    with pytest.raises(ValueError, match='cursor differs'):
+    module.attributes["changed"] = StringAttr("source")
+    with pytest.raises(ValueError, match="cursor differs"):
         F.discover(module, cursor=first_cursor, **OPTIONS)
 
 
 def test_incremental_frontier_retains_fanout_external_outputs():
     module, operations = source_program()
     before = ir_digest(module)
-    rows = F.discover(module, max_region_operations=3, **OPTIONS)['candidates']
+    rows = F.discover(module, max_region_operations=3, **OPTIONS)["candidates"]
     ordinal = next(i for i, op in enumerate(module.walk()) if op is operations[0])
-    growing = [row for row in rows if row['detail'].get('growth') == 'forward_frontier'
-               and row['operation_ordinals'][0] == ordinal]
-    assert [len(row['operation_ordinals']) for row in growing] == [2, 3]
+    growing = [
+        row
+        for row in rows
+        if row["detail"].get("growth") == "forward_frontier" and row["operation_ordinals"][0] == ordinal
+    ]
+    assert [len(row["operation_ordinals"]) for row in growing] == [2, 3]
     # The partial producer-consumer frontier retains the producer consumed by
     # the other branch, and the selected consumer result returned by the graph.
-    assert len(growing[0]['live_outputs']) == 2
+    assert len(growing[0]["live_outputs"]) == 2
     bounded = F.discover(module, max_region_operations=2, **OPTIONS)
-    assert any(row['detail'].get('growth_status') == 'region_budget_exhausted'
-               for row in bounded['candidates'])
+    assert any(row["detail"].get("growth_status") == "region_budget_exhausted" for row in bounded["candidates"])
     unsupported = F.realize_candidate(module, growing[-1], max_region_operations=3, **OPTIONS)
-    assert unsupported.receipt['status'] == 'unsupported'
+    assert unsupported.receipt["status"] == "unsupported"
     assert unsupported.artifact is module and ir_digest(module) == before
     ret = next(op for op in module.walk() if isinstance(op, func.ReturnOp))
     ret.operands = [*ret.operands, operations[0].results[0]]
     ret.parent_op().update_function_type()
-    declined = next(row for row in F.discover(module, **OPTIONS)['candidates'] if row['route'] == 'multioutput')
+    declined = next(row for row in F.discover(module, **OPTIONS)["candidates"] if row["route"] == "multioutput")
     result = F.realize_candidate(module, declined, **OPTIONS)
-    assert result.receipt['status'] == 'declined' and result.unfused is module
-    assert result.receipt['reason']
+    assert result.receipt["status"] == "declined" and result.unfused is module
+    assert result.receipt["reason"]
 
 
 def test_shared_prefix_native_tail_arithmetic_and_later_epilogue():
     module, group, tile, storage, resources = shared_fixture(epilogue=True)
     before = ir_digest(module)
-    rows = [row for row in F.discover(module, **OPTIONS)['candidates'] if row['route'] == 'shared_input']
-    assert [tuple(row['detail']['widths']) for row in rows] == [(7, 3), (7, 3, 9)]
+    rows = [row for row in F.discover(module, **OPTIONS)["candidates"] if row["route"] == "shared_input"]
+    assert [tuple(row["detail"]["widths"]) for row in rows] == [(7, 3), (7, 3, 9)]
     for row in rows:
         # Rows may cross an offline JSON boundary; realization rederives source.
-        result = F.realize_candidate(module, json.loads(json.dumps(row)), primitive_tile=tile,
-                                     storage=storage, resources=resources, **OPTIONS)
-        assert result.receipt['status'] == 'applied'
+        result = F.realize_candidate(
+            module, json.loads(json.dumps(row)), primitive_tile=tile, storage=storage, resources=resources, **OPTIONS
+        )
+        assert result.receipt["status"] == "applied"
         selected = result.artifact.group
         rng = np.random.default_rng(len(selected.widths))
         lhs = rng.integers(-128, 128, (selected.m, selected.k), dtype=np.int64)
@@ -85,57 +92,96 @@ def test_shared_prefix_native_tail_arithmetic_and_later_epilogue():
             np.testing.assert_array_equal(actual, (lhs @ weight).astype(np.int32).astype(np.int64))
     assert ir_digest(module) == before  # Unselected sibling and epilogue remain.
     tampered = copy.deepcopy(rows[0])
-    tampered['detail']['widths'] = (7, 4)
-    with pytest.raises(ValueError, match='current bound discovery row'):
+    tampered["detail"]["widths"] = (7, 4)
+    with pytest.raises(ValueError, match="current bound discovery row"):
         F.realize_candidate(module, tampered, **OPTIONS)
 
 
 def test_resource_refusal_and_budget_exhaustion_do_not_poison_fallback():
     module, group, tile, storage, resources = shared_fixture()
-    row = next(row for row in F.discover(module, **OPTIONS)['candidates'] if row['route'] == 'shared_input')
+    row = next(row for row in F.discover(module, **OPTIONS)["candidates"] if row["route"] == "shared_input")
+
     def realize(source, **limits):
-        return F.realize_candidate(source, row, primitive_tile=tile, storage=storage,
-                                   resources=replace(resources, **limits), **OPTIONS)
+        return F.realize_candidate(
+            source, row, primitive_tile=tile, storage=storage, resources=replace(resources, **limits), **OPTIONS
+        )
+
     emitted = []
+
     def emit(product, session):
-        emitted.append(product.receipt['status'])
+        emitted.append(product.receipt["status"])
         return product.artifact
-    results = list(F.evaluate_fusions(module, (
-        F.FusionAlternative('budget', lambda source: realize(source, candidate_budget=1)),
-        F.FusionAlternative('capacity', lambda source: realize(source, operand_bytes=1)),
-        F.FusionAlternative('tails', lambda source: realize(source, partial_output_tiles=False)),
-        F.FusionAlternative('legal', realize),
-    ), emit))
-    assert [r.status for r in results] == ['compiled', 'budget_exhausted', 'no-match', 'no-match', 'compiled']
-    assert emitted == ['unfused', 'applied']
+
+    results = list(
+        F.evaluate_fusions(
+            module,
+            (
+                F.FusionAlternative("budget", lambda source: realize(source, candidate_budget=1)),
+                F.FusionAlternative("capacity", lambda source: realize(source, operand_bytes=1)),
+                F.FusionAlternative("tails", lambda source: realize(source, partial_output_tiles=False)),
+                F.FusionAlternative("legal", realize),
+            ),
+            emit,
+        )
+    )
+    assert [r.status for r in results] == ["compiled", "budget_exhausted", "no-match", "no-match", "compiled"]
+    assert emitted == ["unfused", "unfused", "unfused", "unfused", "applied"]
     assert results[0].evaluation.result.artifact is results[0].realization.unfused
     assert results[-1].evaluation.result.artifact is results[-1].realization.artifact
     # Explicit choices must not pay or fail the unselected full product search.
-    selected = F.realize_candidate(module, row, primitive_tile=tile, storage=storage,
-        resources=replace(resources, candidate_budget=1), selected_block=(1, 1, 1), **OPTIONS)
-    assert selected.receipt['status'] == 'applied'
+    selected = F.realize_candidate(
+        module,
+        row,
+        primitive_tile=tile,
+        storage=storage,
+        resources=replace(resources, candidate_budget=1),
+        selected_block=(1, 1, 1),
+        **OPTIONS,
+    )
+    assert selected.receipt["status"] == "applied"
 
 
 def test_alternatives_feed_normal_emission_actual_transformed_calls():
-    from merlin.compile.scheduling.schedule_pipeline import compile_schedule, ScheduleBudgets
+    from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
+
     kernel, objects, banks, adapter, capability, encoding, limits, options = physical_fixture()
     seen = []
+
     def realize(source):
         return F.realize_adjacent(source, objects, banks, adapter, (capability,), **options)
+
     def emit(product, session):
         # This is the ordinary allocation, physical effect, encoding and decoded
         # conformance pipeline, not a receipt-only fake emitter.
         seen.append((session.module, product.artifact))
-        return compile_schedule(product.artifact, product.objects, banks, adapter, encoding, limits,
-                                budgets=ScheduleBudgets(max_fusions=0), **options)
-    results = list(F.evaluate_fusions(kernel, (F.FusionAlternative('adjacent', realize),), emit,
-        clone=copy.deepcopy, fingerprint=lambda k: k.digest(), verify_ir=lambda k: None,
-        ir_level='finite_schedule', unfused_objects=objects))
-    assert [r.status for r in results] == ['compiled', 'compiled'], [r.reason for r in results]
+        return compile_schedule(
+            product.artifact,
+            product.objects,
+            banks,
+            adapter,
+            encoding,
+            limits,
+            budgets=ScheduleBudgets(max_fusions=0),
+            **options,
+        )
+
+    results = list(
+        F.evaluate_fusions(
+            kernel,
+            (F.FusionAlternative("adjacent", realize),),
+            emit,
+            clone=copy.deepcopy,
+            fingerprint=lambda k: k.digest(),
+            verify_ir=lambda k: None,
+            ir_level="finite_schedule",
+            unfused_objects=objects,
+        )
+    )
+    assert [r.status for r in results] == ["compiled", "compiled"], [r.reason for r in results]
     programs = [r.evaluation.result.artifact.program for r in results]
     decoded = [tuple(call for segment in p.segments for call in encoding.decode_calls(segment)) for p in programs]
-    assert [tuple(call.instr for call in calls) for calls in decoded] == [('producer', 'consumer'), ('fused',)]
-    assert [p.report['instruction_count'] for p in programs] == [2, 1]
+    assert [tuple(call.instr for call in calls) for calls in decoded] == [("producer", "consumer"), ("fused",)]
+    assert [p.report["instruction_count"] for p in programs] == [2, 1]
     assert seen[0][0] is not kernel and seen[1][0] is not seen[0][0]
     assert seen[1][0] is not seen[1][1] and len(kernel.body) == 2
 
@@ -143,39 +189,49 @@ def test_alternatives_feed_normal_emission_actual_transformed_calls():
 def test_immutable_source_and_round_limit():
     module, _ = source_program()
     alternatives = tuple(F.FusionAlternative(str(i), lambda source: None) for i in range(16))
-    with pytest.raises(ValueError, match='fifteen'):
+    with pytest.raises(ValueError, match="fifteen"):
         list(F.evaluate_fusions(module, alternatives, lambda product, session: product.artifact))
+
     def corrupt(source):
-        source.attributes['changed'] = StringAttr('illegal')
-        return F.Realization(source, source, {'status': 'applied'})
-    results = list(F.evaluate_fusions(module, (F.FusionAlternative('corrupt', corrupt),),
-                                     lambda product, session: product.artifact))
-    assert [r.status for r in results] == ['compiled', 'failed']
-    assert 'unchanged private unfused source' in results[-1].reason
-    assert 'changed' not in module.attributes
+        source.attributes["changed"] = StringAttr("illegal")
+        return F.Realization(source, source, {"status": "applied"})
+
+    results = list(
+        F.evaluate_fusions(
+            module, (F.FusionAlternative("corrupt", corrupt),), lambda product, session: product.artifact
+        )
+    )
+    assert [r.status for r in results] == ["compiled", "failed"]
+    assert "unchanged private unfused source" in results[-1].reason
+    assert "changed" not in module.attributes
 
 
 def test_preparation_requests_bind_individual_ssa_values_even_without_reuse():
     from merlin.llvmlower.tensor_preparation_identity import TensorPreparationRequest
+
     module, operations = source_program()
     op = operations[0]
-    a = TensorPreparationRequest(op.operands[0], op, 'b' * 64)
-    b = TensorPreparationRequest(op.operands[1], op, 'b' * 64)
+    a = TensorPreparationRequest(op.operands[0], op, "b" * 64)
+    b = TensorPreparationRequest(op.operands[1], op, "b" * 64)
     page = F.discover(module, max_candidates=1, preparation_requests=(a,), **OPTIONS)
-    with pytest.raises(ValueError, match='cursor differs'):
-        F.discover(module, cursor=page['next_cursor'], preparation_requests=(b,), **OPTIONS)
+    with pytest.raises(ValueError, match="cursor differs"):
+        F.discover(module, cursor=page["next_cursor"], preparation_requests=(b,), **OPTIONS)
 
 
 def test_paged_fanout_candidate_emits_native_images_and_all_outputs(tmp_path):
-    from test_multioutput_fusion import model, execute_actual_bytes
+    from test_multioutput_fusion import execute_actual_bytes, model
+
     module, operations, selection = model(tmp_path)
-    row = next(row for row in F.discover(module, **OPTIONS)['candidates'] if row['route'] == 'multioutput')
+    row = next(row for row in F.discover(module, **OPTIONS)["candidates"] if row["route"] == "multioutput")
+
     def realize(source):
         return F.realize_candidate(source, row, **OPTIONS, **selection)
+
     def emit(product, session):
-        return product.artifact.images() if product.receipt['status'] == 'applied' else str(product.artifact)
-    results = list(F.evaluate_fusions(module, (F.FusionAlternative('fanout', realize),), emit))
-    assert [r.status for r in results] == ['compiled', 'compiled'], [r.reason for r in results]
+        return product.artifact.images() if product.receipt["status"] == "applied" else str(product.artifact)
+
+    results = list(F.evaluate_fusions(module, (F.FusionAlternative("fanout", realize),), emit))
+    assert [r.status for r in results] == ["compiled", "compiled"], [r.reason for r in results]
     compiled = results[-1].realization.artifact
     assert results[-1].evaluation.result.artifact == compiled.images()
     execute_actual_bytes(compiled, 16, False, tmp_path)
@@ -183,33 +239,83 @@ def test_paged_fanout_candidate_emits_native_images_and_all_outputs(tmp_path):
 
 def test_incorrect_numeric_realization_cannot_reach_emitter():
     kernel, objects, banks, adapter, capability, encoding, limits, options = physical_fixture()
+
     def changed_semantics(call):
         effects = adapter.project(call)
-        if call.instr != 'fused':
+        if call.instr != "fused":
             return effects
-        changed = effects.elementwise.function_ir.replace(b'32752', b'32751')
+        changed = effects.elementwise.function_ir.replace(b"32752", b"32751")
         return replace(effects, elementwise=replace(effects.elementwise, function_ir=changed))
+
     def realize(source):
-        return F.realize_adjacent(source, objects, banks, replace(adapter, project=changed_semantics),
-                                  (capability,), **options)
+        return F.realize_adjacent(
+            source, objects, banks, replace(adapter, project=changed_semantics), (capability,), **options
+        )
+
     emitted = []
+
     def emit(product, session):
-        emitted.append(product.receipt['status'])
+        emitted.append(product.receipt["status"])
         return encoding.encode(product.artifact)
-    results = list(F.evaluate_fusions(kernel, (F.FusionAlternative('wrong_bias', realize),), emit,
-        clone=copy.deepcopy, fingerprint=lambda k: k.digest(), verify_ir=lambda k: None,
-        ir_level='finite_schedule', unfused_objects=objects))
-    assert results[0].status == 'compiled' and results[-1].status in {'failed', 'no-match'}
-    assert emitted == ['unfused']
+
+    results = list(
+        F.evaluate_fusions(
+            kernel,
+            (F.FusionAlternative("wrong_bias", realize),),
+            emit,
+            clone=copy.deepcopy,
+            fingerprint=lambda k: k.digest(),
+            verify_ir=lambda k: None,
+            ir_level="finite_schedule",
+            unfused_objects=objects,
+        )
+    )
+    assert results[0].status == "compiled" and results[-1].status in {"failed", "no-match"}
+    assert emitted and all(status == "unfused" for status in emitted)
 
 
 def test_contract_change_between_variants_is_refused():
     from merlin.transforms.pipeline_state import PipelineContext
+
     module, _ = source_program()
-    context = PipelineContext(hardware='public-hardware', numerical_policy='exact-numerics')
-    iterator = F.evaluate_fusions(module, (F.FusionAlternative('unused', lambda source: None),),
-                                 lambda product, session: product.artifact, context=context)
-    assert next(iterator).status == 'compiled'
-    object.__setattr__(context, 'hardware', 'changed')
-    with pytest.raises(ValueError, match='source changed between alternatives'):
+    context = PipelineContext(hardware="public-hardware", numerical_policy="exact-numerics")
+    iterator = F.evaluate_fusions(
+        module,
+        (F.FusionAlternative("unused", lambda source: None),),
+        lambda product, session: product.artifact,
+        context=context,
+    )
+    assert next(iterator).status == "compiled"
+    object.__setattr__(context, "hardware", "changed")
+    with pytest.raises(ValueError, match="source changed between alternatives"):
         next(iterator)
+
+
+def test_declared_shared_input_uses_checked_schedule_and_capacity_fallback():
+    from merlin.verify.lean_contract import document_digest
+
+    module, _, tile, storage, resources = shared_fixture(epilogue=True)
+    compositions = {
+        "schema": "merlin.software_spec.compositions.v1",
+        "status": "reviewed",
+        "grading": "placement_and_instruction_audit",
+        "chains": [
+            {
+                "id": "independent exits",
+                "producer": "contraction",
+                "multiplicity": {"min": 2},
+                "constraints": ["per_output_readout_independent", {"shared_input_resident": "from_facts"}],
+            }
+        ],
+    }
+    opts = dict(OPTIONS, compositions=compositions)
+    row = next(row for row in F.discover(module, **opts)["candidates"] if row["detail"].get("composition"))
+    result = F.realize_candidate(module, row, primitive_tile=tile, storage=storage, resources=resources, **opts)
+    assert result.receipt["status"] == "applied"
+    assert result.artifact.group.widths == (7, 3)
+    before = document_digest(result.receipt["boundary"])
+    fallback = F.realize_candidate(
+        module, row, primitive_tile=tile, storage=storage, resources=replace(resources, operand_bytes=1), **opts
+    )
+    assert fallback.artifact is module and fallback.receipt["status"] == "no-match"
+    assert document_digest(fallback.receipt["boundary"]) == before

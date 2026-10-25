@@ -639,7 +639,12 @@ def _bound(chain: Chain, values: Values, extents: Mapping[int, Any]) -> tuple[in
             else max(-span[0], span[1])
         )
     bound = int(extent[1]) * magnitudes[0] * magnitudes[1]
-    return -bound, bound
+    if len(root.operands) < 3:
+        raise _Refused(UNREAD, "the contraction initializer is not stated")
+    initializer = values.array(root.operands[2])
+    if initializer is None or not initializer.size:
+        raise _Refused(UNREAD, "the contraction initializer is not a compile-time integer tensor")
+    return -bound + int(initializer.min()), bound + int(initializer.max())
 
 
 def _residual_values(chain: Chain, stage: Stage, values: Values, fdt):
@@ -688,7 +693,7 @@ def _accumulator_unit(chain: Chain, upto: Stage):
     return unit
 
 
-def _residual(chain: Chain, path, values: Values, absorbing: bool):
+def _residual(chain: Chain, path, values: Values, absorbing: bool, *, integer_extension=False):
     """The residual table, when the residual is IN the chain and the cut absorbs it; else None."""
     from fractions import Fraction
 
@@ -699,9 +704,15 @@ def _residual(chain: Chain, path, values: Values, absorbing: bool):
     table, scale = _residual_values(chain, stage, values, fdt)
     if absorbing:
         accumulate = next((s for s in path.get("accumulator_stages") or () if s.get("kind") == "accumulate"), None)
-        if accumulate is None:
+        if accumulate is None and not integer_extension:
             raise _Refused(UNDECLARED, "the output path accumulates no operand, so the residual stays on the host")
         unit = _accumulator_unit(chain, stage)
+        if integer_extension:
+            coefficients = {Fraction(scale) / u for u in unit}
+            if len(coefficients) != 1 or next(iter(coefficients)).denominator != 1:
+                raise _Refused(INEXACT, "K-extension residual coefficient is not one exact integer")
+            coefficient = int(coefficients.pop())
+            return {r * coefficient: value for r, value in table.items()}
         if any(Fraction(scale) != u for u in unit):
             raise _Refused(
                 INEXACT,
@@ -711,14 +722,28 @@ def _residual(chain: Chain, path, values: Values, absorbing: bool):
     return table
 
 
-def decide(chain: Chain, path: Mapping[str, Any], values: Values, extents: Mapping[int, Any]) -> Decision:
+def decide(
+    chain: Chain,
+    path: Mapping[str, Any],
+    values: Values,
+    extents: Mapping[int, Any],
+    *,
+    readout_strategy: str | None = None,
+    integer_residual_extension: bool = False,
+) -> Decision:
     """The longest cut of ``chain`` the declared ``path`` performs exactly, with every refusal."""
+    if readout_strategy not in (None, "f32_product_rne", "exact_rational_host"):
+        raise ValueError("unknown fusion readout strategy")
+    if integer_residual_extension and readout_strategy != "f32_product_rne":
+        raise ValueError("integer residual extension requires the single f32 boundary")
     refusals: list[dict[str, Any]] = []
     kinds = [stage.kind for stage in chain.stages]
     closed = bool(kinds) and kinds[-1] == "quantize" and "convert" in kinds and chain.unread is None
     for cut in CUTS:
         try:
-            members, proof = _attempt(cut, chain, path, values, extents, kinds, closed)
+            members, proof = _attempt(
+                cut, chain, path, values, extents, kinds, closed, readout_strategy, integer_residual_extension
+            )
         except _Refused as refused:
             refusals.append({"cut": cut, "code": refused.code, "reason": refused.reason})
             continue
@@ -736,7 +761,32 @@ def decide(chain: Chain, path: Mapping[str, Any], values: Values, extents: Mappi
     return Decision("bare", [], [], refusals)
 
 
-def _attempt(cut, chain, path, values, extents, kinds, closed):
+def _pool_geometry(chain):
+    """Read every spatial window/stride from affine source indexing."""
+    from merlin.kernels import shapes as KS
+
+    from . import contraction_coverage as CC
+
+    member = next(stage.op for stage in chain.stages if stage.kind == "pool")
+    maps, kinds, extents = KS.indexing_maps(member), KS._iterator_types(member), CC.loop_extents(member)
+    if not maps or not kinds or not extents:
+        raise _Refused(UNREAD, "pool index maps or static loop extents are unreadable")
+    windows, strides = [], []
+    for expression in maps[0]:
+        if KS._dim_position(expression) is not None:
+            continue
+        taps = [d for d in sorted(CG._dims_of(expression)) if kinds[d] == "reduction"]
+        stride = CG._stride_of(expression)
+        if len(taps) != 1 or stride is None or stride <= 0 or taps[0] not in extents:
+            raise _Refused(UNREAD, "pool index is not position * stride + tap")
+        windows.append(int(extents[taps[0]]))
+        strides.append(int(stride))
+    if not windows or any(w <= 0 for w in windows):
+        raise _Refused(UNREAD, "pool has no positive static spatial window")
+    return {"window": windows, "stride": strides, "padded": any(s.kind == "pad" for s in chain.stages)}
+
+
+def _attempt(cut, chain, path, values, extents, kinds, closed, readout_strategy, integer_residual_extension):
     import numpy as np
 
     exits = path.get("exits") or {}
@@ -744,6 +794,13 @@ def _attempt(cut, chain, path, values, extents, kinds, closed):
         return [], {}
     if chain.unread:
         raise _Refused(UNREAD, chain.unread)
+    if cut == "accumulator" and not chain.stages and not chain.ops:
+        if not exits.get("accumulator"):
+            raise _Refused(NO_EXIT, "the output path declares no full-width accumulator exit")
+        _, dtype = mq.type_shape_dtype(chain.root.results[0].type)
+        if CG._dtype_token(dtype) != CG._dtype_token(path["accumulator"].get("dtype")):
+            raise _Refused(UNMODELED, "the source result differs from the accumulator format")
+        return [], {"readout": "full_width", "offsets": [0] * int(chain.channels)}
     if not closed:
         raise _Refused(UNREAD, "the chain after the contraction does not end in a quantize")
     readout = _readout(path, cut)
@@ -812,7 +869,11 @@ def _attempt(cut, chain, path, values, extents, kinds, closed):
     channels = int(chain.channels)
     total, scale_stage = _device_scale(chain, readout, channels)
     split = _granularity(total, scale_stage, channels)
-    table = _residual(chain, path, values, absorbing=True) if "residual" in kinds else None
+    table = (
+        _residual(chain, path, values, absorbing=True, integer_extension=integer_residual_extension)
+        if "residual" in kinds
+        else None
+    )
     bound = _bound(chain, values, extents)
     scale = np.asarray(total)
 
@@ -820,9 +881,84 @@ def _attempt(cut, chain, path, values, extents, kinds, closed):
         return _device(readout, scale, y, relu=relu)
 
     _positive(chain)
-    proof = _prove(chain, path, target, bound, residual_values=table)
+    if readout_strategy == "f32_product_rne":
+        proof = _definitional_f32(chain, path, bound, table)
+        if integer_residual_extension:
+            proof["requires_integer_residual_extension"] = True
+    else:
+        proof = _prove(chain, path, target, bound, residual_values=table)
+    if cut == "pool":
+        proof["pool_geometry"] = _pool_geometry(chain)
     members = list(chain.ops)
-    return members, {**proof, **split, "readout": "requant", "device_scale": [float(v) for v in scale]}
+    return members, {
+        **proof,
+        **split,
+        "readout": "requant",
+        "device_scale": [float(v) for v in scale],
+        "multiplier_bits": scale.astype(np.float32).view(np.uint32).tolist(),
+    }
+
+
+def _definitional_f32(chain, path, bound, table):
+    """Admit the selected single f32 boundary, with exact integer bias seeds.
+
+    This is a scheme definition, not a proof that a legacy sequential float
+    epilogue can be reassociated. Multiplier bits remain an emission obligation.
+    """
+    from fractions import Fraction
+
+    import numpy as np
+
+    if any(
+        _numpy_float(s.get("to") if s["kind"] == "convert" else s.get("dtype")) is not np.float32
+        for s in path.get("readout", ())
+        if s["kind"] in ("convert", "scale")
+    ):
+        raise _Refused(UNMODELED, "f32_product_rne requires an f32 device convert and scale")
+    quantize = chain.stages[-1]
+    requant = next(s for s in path["readout"] if s["kind"] == "requant")
+    if requant.get("clamp") != [quantize.detail["min"], quantize.detail["max"]]:
+        raise _Refused(INEXACT, "the selected f32 boundary has a different output clamp")
+    if table:
+        bound = (bound[0] + min(0, min(table)), bound[1] + max(0, max(table)))
+    if _numpy_float(chain.float_dtype) is not np.float32:
+        raise _Refused(UNMODELED, "f32_product_rne requires f32 source scales")
+    phase, offsets = 0, [0] * int(chain.channels)
+    for stage in chain.stages:
+        if stage.kind != "quantize" and stage.op.results:
+            _, dtype = mq.type_shape_dtype(stage.op.results[0].type)
+            if _numpy_float(dtype) is not np.float32:
+                raise _Refused(UNMODELED, "the selected f32 chain changes source floating precision")
+        if stage.kind in ("bias", "residual"):
+            if phase > 1:
+                raise _Refused(INEXACT, "an accumulator add follows activation or pooling")
+            phase = 1
+        elif stage.kind in ("relu", "pool", "pad", "quantize"):
+            phase = 2
+        elif stage.kind == "scale" and phase:
+            raise _Refused(INEXACT, "a source scale follows an accumulator add or activation")
+        if stage.kind == "bias":
+            unit = _accumulator_unit(chain, stage)
+            numbers = np.broadcast_to(np.asarray(stage.numbers), (len(offsets),))
+            seeds = [Fraction(float(b)) / u for b, u in zip(numbers, unit, strict=True)]
+            if any(seed.denominator != 1 for seed in seeds):
+                raise _Refused(INEXACT, "bias is not an exact integer accumulator seed")
+            offsets = [a + int(b) for a, b in zip(offsets, seeds, strict=True)]
+    preload = next((s for s in path.get("accumulator_stages", ()) if s["kind"] == "preload"), None)
+    if any(offsets) and preload is None:
+        raise _Refused(UNDECLARED, "the output path preloads no bias")
+    allowed = _offset_range(path, any(offsets))
+    acc = _accumulator_range(path)
+    if acc is None or any(
+        not allowed[0] <= x <= allowed[1] or bound[0] + x < acc[0] or bound[1] + x > acc[1] for x in offsets
+    ):
+        raise _Refused(INEXACT, "bias or accumulator partial exceeds its declared range")
+    return {
+        "definitional": "f32_product_rne",
+        "offsets": offsets,
+        "accumulator_bound": list(bound),
+        "channels": len(offsets),
+    }
 
 
 # ----------------------------------------------------------------------------------- the pass driver

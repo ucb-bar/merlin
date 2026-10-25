@@ -3,7 +3,7 @@ title: Contributing compiler transformations and coverage
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-23
+last_verified: 2026-10-24
 related: [../reference/shared_compiler_passes, conditional_compiler_pipelines, verified_compiler_tooling, phase0_specification, ../design/compiler_verification, artifact_evaluation]
 code_refs:
   - src/merlin/transforms/pipeline_state.py
@@ -59,3 +59,30 @@ For an actual campaign, use [artifact setup](artifact_evaluation.md) and
 [terminal monitoring](experiment_dashboard.md). Fresh-machine inputs and physical
 validation remain separate requirements; pass tests do not establish full-model
 correctness or reproducibility of a historical result.
+
+
+Declared composition exploration uses `fusion_workflow.discover(...,
+compositions=block)`. The existing compositions schema supplies the block;
+semantic fields select routes independently of declaration ids. Resume with the
+returned cursor and unchanged source, declarations and numerical policy. Pass
+`composition_options` to `realize_candidate`: the selected `path`, `scheme`,
+`facts`, and (for scaled loads) `readout_facet`. The numerical policy digest must
+match the complete selected scheme. The exploration example accepts these inputs
+through `composition_selector` and saves composition plans as JSON.
+
+The provider consumes `CompositionPlan`, not rewritten target instructions.
+Readout plans carry exact bias seeds, unified f32 multiplier bits, and any column
+partition obligation. OS needs literal IR weights and initializer plus a declared
+`mesh_signed_bits` and `dataflows`; runtime weights or an overflowing partial
+retain WS. K-extension needs `digit_bits`, `max_extended_k` and
+`accumulator_bits`. Its radix digits are audit data; additive diagonal digit tiles
+reconstruct the coefficient using ordinary MACs without implicit shifts. Pool
+plans require source-derived geometry and `pool_window_max`/`pool_stride_max`
+from target register facts. These inputs are provider projections of selected
+facts, never hardware defaults.
+
+A refused plan retains the source. `evaluate_fusions` sends that source and its
+original objects through the unfused emitter, recording the refusal separately.
+A successful semantic plan still requires provider allocation, emission,
+multiplier-bit checks, and independent execution checks. No existing frozen SDK
+or import permission is extended by registering a route.
