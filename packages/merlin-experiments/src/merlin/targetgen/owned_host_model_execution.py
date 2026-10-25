@@ -270,7 +270,11 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     _linked_symbols(elf, routed_kernel_symbols(emitted))
     source["conv_input_preparation"] = convolution_input_preparations(emitted, source)
     audits = audit_built_device_host_compute(
-        elf.parent, assigned, source, target, diagnostics=elf.parent / "audit-diagnostics",
+        elf.parent,
+        assigned,
+        source,
+        target,
+        diagnostics=elf.parent / "audit-diagnostics",
         host_artifacts=output.get("host_artifacts"),
     )
     return {
@@ -300,17 +304,26 @@ def _untagged_assert_comparisons(ops, frozen, groups):
     support = set()
     assertions = set()
     for op in ops:
-        if (mq.op_name(op) != "arith.cmpi" or "prov.op" in op.attributes
-                or op.regions or op.successors or len(op.operands) != 2
-                or [str(value.type) for value in op.operands] != ["index", "index"]
-                or len(op.results) != 1 or str(op.results[0].type) != "i1"):
+        if (
+            mq.op_name(op) != "arith.cmpi"
+            or "prov.op" in op.attributes
+            or op.regions
+            or op.successors
+            or len(op.operands) != 2
+            or [str(value.type) for value in op.operands] != ["index", "index"]
+            or len(op.results) != 1
+            or str(op.results[0].type) != "i1"
+        ):
             continue
         uses = tuple(op.results[0].uses)
         if not uses or any(
-            use.operation not in ops or mq.op_name(use.operation) != "cf.assert"
+            use.operation not in ops
+            or mq.op_name(use.operation) != "cf.assert"
             or mq.attr_str(use.operation, "prov.op") != "shape_guard"
-            or len(use.operation.operands) != 1 or use.operation.results
-            or use.operation.regions or use.operation.successors
+            or len(use.operation.operands) != 1
+            or use.operation.results
+            or use.operation.regions
+            or use.operation.successors
             for use in uses
         ):
             continue
@@ -340,11 +353,9 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
         raise ValueError("owned source certificate differs from frozen source")
     if fresh["source_mlir_sha256"] != file_sha256(source_path):
         raise ValueError("owned host routed another source")
-    if (
-        fresh.get("n_precision_transform_obligations") != 0
-        or (fresh.get("precision_transform_verification") or {}).get("status")
-        not in {"not_required", "unknown_capture_format"}
-    ):
+    if fresh.get("n_precision_transform_obligations") != 0 or (fresh.get("precision_transform_verification") or {}).get(
+        "status"
+    ) not in {"not_required", "unknown_capture_format"}:
         raise ValueError("owned source has unverified captured precision obligations")
     # Layout/scalar host entries need not have an accelerator operand format.
     # Their frozen host body admission remains mandatory; unknown formats may
@@ -352,6 +363,7 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
     # actual captured input/weight types, without changing the certificate.
     if fresh.get("n_unknown_capture_formats"):
         from .frozen_placement import read as read_frozen_placement
+
         read_frozen_placement(declaration, root)
     functions = [op for op in module.body.block.ops if op.name == "func.func"]
     if len(functions) != 1 or len(functions[0].body.blocks) != 1:
@@ -378,8 +390,11 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
 
     frozen = read_frozen_placement(declaration, root)
     assertion_support = _untagged_assert_comparisons(ops, frozen, groups)
-    indexed = [(i, op) for i, op in indexed_demand_operations(ops)
-               if not untagged_setup(op) and id(op) not in assertion_support]
+    indexed = [
+        (i, op)
+        for i, op in indexed_demand_operations(ops)
+        if not untagged_setup(op) and id(op) not in assertion_support
+    ]
     rows = fresh.get("regions")
     if not isinstance(rows, list) or len(rows) != len(indexed) or fresh.get("n_regions") != len(rows):
         raise ValueError("owned source lacks complete operation eligibility")
@@ -993,6 +1008,11 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
                     raise ValueError("owned model ELF contains an unknown selected custom selector")
     _require_instruction_classes(policy["expected_instruction_classes"], dispatch["observed_classes"])
     with observed_facts(target, facts_document, path=Path(facts["path"])):
+        composition = None
+        if "composition_expected" in policy:
+            from .native_instruction_audit import audit_native_composition
+
+            composition = audit_native_composition(record, policy=policy, facts=facts_document, target=target)
         if policy["prohibited_instruction_roles"]:
             prohibition = scan_elf(elf, target=target, roles=policy["prohibited_instruction_roles"])
             if prohibition.get("status") != "measured" or prohibition.get("clean") is not True:
@@ -1019,6 +1039,7 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
             "prohibition": prohibition,
             "observed_classes": sorted(set(dispatch["observed_classes"])),
             "required_classes": policy["expected_instruction_classes"],
+            **({"composition_audit": composition} if composition is not None else {}),
         },
     }
 
@@ -1245,8 +1266,12 @@ def _stopped_before_receipt(stopped):
             "kind": "owned_host_model_execution",
             "violations": ["candidate_host_tensor_compute_violation"],
             "detail": message,
-            "failure": {"plane": "host_compute", "category": "host_compute_in_accelerator_group",
-                        "detail": message, "stage": stage},
+            "failure": {
+                "plane": "host_compute",
+                "category": "host_compute_in_accelerator_group",
+                "detail": message,
+                "stage": stage,
+            },
         }
     if kind == CandidateDispatchRefusal.__name__ and stage == "owned_host_execution":
         return {

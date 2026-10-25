@@ -94,10 +94,21 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups:
         "required_tiers": required,
         "expected_instruction_classes": expected,
         "prohibited_instruction_roles": roles,
+        **(
+            {"composition_expected": declaration["expected"]}
+            if "composition" in declaration.get("expected", {})
+            or declaration.get("expected", {}).get("stage_scoped_modes")
+            else {}
+        ),
         **({"instruction_coverage_origin": "capsule_declaration.expected"} if declaration_coverage else {}),
         **({"public_zero_device_demand": True} if public_zero_device_demand else {}),
-        **({"instruction_class_scope": "global reviewed requirements plus independently mandatory source-bound group work"}
-           if source_bound_groups else {}),
+        **(
+            {
+                "instruction_class_scope": "global reviewed requirements plus independently mandatory source-bound group work"
+            }
+            if source_bound_groups
+            else {}
+        ),
     }
 
 

@@ -578,21 +578,38 @@ def check(
 
     # 4. mode checks
     modes = expected.get("modes", {}) or {}
+    from .composition_audit import MODES, check_composition, check_modes
+
+    composition_result = None
+    if "composition" in expected or expected.get("stage_scoped_modes"):
+        composition_result = check_composition(trace, expected, target=target)
+        violations.extend(composition_result["violations"])
+    elif any(modes.get(mode) for mode in MODES):
+        try:
+            check_modes(ins, modes, expected.get("mode_parameters", {}), target=target)
+        except (ValueError, KeyError, TypeError, AttributeError, ImportError) as error:
+            violations.append(f"mode audit: {error}")
     unresolved_modes = []
     unresolved_fields = []
     accumulation_witness = None
-    if (binding is not None and protocol_selected and lowered_module is not None
-            and modes.get("k_accumulate") and any(
-                row["class"] == "PRELOAD" and row.get("decoded", {}).get("accumulate") is None
-                for row in ins) and not any(
-                row["class"] == "PRELOAD" and row.get("decoded", {}).get("accumulate") is True
-                for row in ins)):
+    if (
+        binding is not None
+        and protocol_selected
+        and lowered_module is not None
+        and modes.get("k_accumulate")
+        and any(row["class"] == "PRELOAD" and row.get("decoded", {}).get("accumulate") is None for row in ins)
+        and not any(row["class"] == "PRELOAD" and row.get("decoded", {}).get("accumulate") is True for row in ins)
+    ):
         from merlin.targetgen.rocc.control_flow import constant_control_operand_witness
 
         try:
             accumulation_witness = constant_control_operand_witness(
-                lowered_module, target=target, expected_trace=original_trace,
-                semantic_class="PRELOAD", field="accumulate", value=True,
+                lowered_module,
+                target=target,
+                expected_trace=original_trace,
+                semantic_class="PRELOAD",
+                field="accumulate",
+                value=True,
             )
         except ValueError as error:
             return {"status": "fail", "violations": [str(error)], "trace_requirement_status": "invalid_binding"}
@@ -657,8 +674,10 @@ def check(
         # A selected COMPUTE_AND_STAY operation can retain a weight bank. Its
         # class label alone does not prove accumulator write-add; use the actual
         # selected destination accumulation flag for Bound protocols.
-        ok = accumulation_witness is True or (binding is None and "COMPUTE_ACCUMULATE" in present) or _any(
-            lambda i: i["class"] == "PRELOAD" and i.get("decoded", {}).get("accumulate") is True
+        ok = (
+            accumulation_witness is True
+            or (binding is None and "COMPUTE_ACCUMULATE" in present)
+            or _any(lambda i: i["class"] == "PRELOAD" and i.get("decoded", {}).get("accumulate") is True)
         )
         if not ok:
             violations.append("mode k_accumulate declared but no accumulate-onto PRELOAD / COMPUTE_ACCUMULATE found")
@@ -725,6 +744,8 @@ def check(
         violations += dram_address_findings(trace, address_model)
 
     out = {"status": "pass" if not violations else "fail", "violations": violations}
+    if composition_result is not None:
+        out["composition_audit"] = composition_result
     if modes.get("resident_reuse"):
         out["execution_config_advisory"] = {
             "required": False,
