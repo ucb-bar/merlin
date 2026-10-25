@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import yaml
@@ -10,8 +12,38 @@ from ..phase0.claim_boundary import assert_no_claim_capsules, held_out_models
 from ..spec import SpecError
 
 
-def _excluded_capsule_names(experiment) -> set[str]:
-    """Historical input exclusions also bar renamed release-local directory copies."""
+def shape_signature(document) -> str | None:
+    """Digest of the operation and operand shapes a capsule exposes, independent of name, dtype and numerics.
+
+    Operand names are replaced by their position so renaming a tensor cannot change the digest; the
+    capsule name, labels, prose provenance, dtypes and numeric policy are excluded, so a
+    held-out shape cannot be republished under a different quantization scheme. ``None`` means the capsule declares no
+    operation or operands, so its identity cannot be established.
+    """
+    operation = document.get("operation") if isinstance(document, dict) else None
+    inputs = document.get("inputs") if isinstance(document, dict) else None
+    if not isinstance(operation, dict) or not operation.get("op") or not isinstance(inputs, list) or not inputs:
+        return None
+    if any(not isinstance(item, dict) for item in inputs):
+        return None
+    positions = {item.get("name"): f"${index}" for index, item in enumerate(inputs) if item.get("name")}
+
+    def canonical(value):
+        if isinstance(value, dict):
+            return {k: canonical(v) for k, v in value.items() if k != "out" and not k.endswith("dtype")}
+        if isinstance(value, list):
+            return [canonical(v) for v in value]
+        return positions.get(value, value) if isinstance(value, str) else value
+
+    body = {
+        "operation": canonical(operation),
+        "inputs": [{k: item.get(k) for k in ("role", "shape")} for item in inputs],
+    }
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _excluded_shape_signatures(experiment) -> set[str]:
+    """Semantic digests of every held-out capsule; exclusion binds to content, not mutable names."""
     source_root = getattr(experiment, "source_root", None)
     if not getattr(experiment, "held_out_inputs", ()):
         return set()
@@ -19,26 +51,29 @@ def _excluded_capsule_names(experiment) -> set[str]:
         from merlin.common.paths import repo_root
 
         source_root = repo_root()
-    names = set()
+    digests = set()
     for relative in experiment.held_out_inputs:
         for path in (Path(source_root) / relative).rglob("capsule.yaml"):
-            document = yaml.safe_load(path.read_bytes())
-            if not isinstance(document, dict) or not isinstance(document.get("name"), str):
+            digest = shape_signature(yaml.safe_load(path.read_bytes()))
+            if digest is None:
                 raise SpecError("excluded historical capsule declaration is malformed")
-            names.add(document["name"])
-    return names
+            digests.add(digest)
+    return digests
 
 
 def require_public_capsules(experiment, roots) -> None:
     """Inspect only selected public capsule metadata, never hidden source tensors."""
     held_out = held_out_models(experiment)
-    excluded = _excluded_capsule_names(experiment)
+    excluded = _excluded_shape_signatures(experiment)
     for root in roots:
         for path in sorted(Path(root).rglob("capsule.yaml")):
             document = yaml.safe_load(path.read_bytes())
             if not isinstance(document, dict):
                 raise SpecError("public capsule declaration is malformed")
-            if document.get("name") in excluded:
+            digest = shape_signature(document)
+            if excluded and digest is None and document.get("source_role") == "model_derived":
+                raise SpecError("public model-derived capsule cannot be identified against the held-out inputs")
+            if digest in excluded:
                 raise SpecError(
                     "public corpus contains an explicitly excluded historical input; use generated-only preparation"
                 )

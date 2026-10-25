@@ -84,3 +84,53 @@ def test_malformed_source_metadata_refuses(tmp_path, operation):
     _capsule(tmp_path, {"operation": operation})
     with pytest.raises(SpecError, match="operation declaration is malformed"):
         require_public_capsules(SimpleNamespace(workload_spec={}), [Path(tmp_path)])
+
+
+def _held_out_experiment():
+    from merlin.common.paths import repo_root
+
+    return SimpleNamespace(
+        workload_spec={"models": [_HELD_OUT]},
+        held_out_inputs=("merlin/contract/capsules/_model_layers",),
+        source_root=repo_root(),
+    )
+
+
+def _layer_document(name="G_matmul_m3136k64n64_raw"):
+    from merlin.common.paths import repo_root
+
+    path = repo_root() / "merlin/contract/capsules/_model_layers" / name / "capsule.yaml"
+    return yaml.safe_load(path.read_bytes())
+
+
+def test_renaming_a_held_out_capsule_does_not_admit_it(tmp_path):
+    document = _layer_document()
+    for index, mutate in enumerate((
+        lambda d: d.update(name="renamed"),
+        lambda d: d.update(name="renamed", source_reference="x", label="public"),
+    )):
+        copy = dict(document)
+        mutate(copy)
+        directory = tmp_path / str(index) / "c"
+        directory.mkdir(parents=True)
+        (directory / "capsule.yaml").write_text(yaml.safe_dump(copy))
+        with pytest.raises(SpecError, match="excluded historical input"):
+            require_public_capsules(_held_out_experiment(), [tmp_path / str(index)])
+
+
+def test_held_out_shape_is_rejected_under_another_dtype_and_numeric_policy(tmp_path):
+    copy = dict(_layer_document(), name="renamed")
+    copy["numeric_policy"] = {"compare": "tolerance", "dtype": "f32"}
+    copy["inputs"] = [{**item, "dtype": "f32"} for item in copy["inputs"]]
+    copy["operation"] = {**copy["operation"], "attributes": {**copy["operation"]["attributes"], "output_dtype": "f32"}}
+    directory = tmp_path / "c"
+    directory.mkdir()
+    (directory / "capsule.yaml").write_text(yaml.safe_dump(copy))
+    with pytest.raises(SpecError, match="excluded historical input"):
+        require_public_capsules(_held_out_experiment(), [tmp_path])
+
+
+def test_unidentifiable_model_derived_capsule_fails_closed(tmp_path):
+    _capsule(tmp_path, {"source_role": "model_derived"})
+    with pytest.raises(SpecError, match="cannot be identified"):
+        require_public_capsules(_held_out_experiment(), [tmp_path])
