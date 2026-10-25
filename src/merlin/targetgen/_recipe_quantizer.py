@@ -1258,14 +1258,18 @@ def build_quantizer(
             nodes = list(graph_module.graph.nodes)
             kept = closable(nodes)
             self.extensions.select(
-                nodes, lambda n: "contraction" not in dynamic_families and eligible(n, "contraction"), quantized_reader,
+                nodes,
+                lambda n: "contraction" not in dynamic_families and eligible(n, "contraction"),
+                quantized_reader,
             )
             if shared_sums is not None:
                 shared_sums.select(kept)
             self.left_in_float = sum(
-                1 for n in nodes if not self.extensions.owns(n) and (n.target in sums or n.target in means) and (
-                    n not in kept or (n.target in sums and shared_sums is not None and n not in shared_sums.selected)
-                )
+                1
+                for n in nodes
+                if not self.extensions.owns(n)
+                and (n.target in sums or n.target in means)
+                and (n not in kept or (n.target in sums and shared_sums is not None and n not in shared_sums.selected))
             )
             for node in nodes:
                 if self.extensions.owns(node):
@@ -1928,7 +1932,9 @@ def apply_recipe(
                     require_finite_calibration(sample)
                     prepared(*_as_tuple(sample))
                     calibrated += 1
-                    require_finite_observer_state(prepared, ObserverBase, HistogramObserver, calibration_sample=calibrated)
+                    require_finite_observer_state(
+                        prepared, ObserverBase, HistogramObserver, calibration_sample=calibrated
+                    )
     finally:
         for check in observer_checks:
             check.remove()
@@ -1985,8 +1991,11 @@ def apply_recipe(
         "annotated_contractions": quantizer.extensions.physical_contractions(
             quantizer.annotated + quantizer.annotated_pairs
         ),
-        **({"logical_annotated_contractions": quantizer.annotated + quantizer.annotated_pairs,
-            **extension_reports} if extension_reports else {}),
+        **(
+            {"logical_annotated_contractions": quantizer.annotated + quantizer.annotated_pairs, **extension_reports}
+            if extension_reports
+            else {}
+        ),
         **({"bias_on_accumulator_grid": bias_grid} if bias_grid is not None else {}),
         **(
             {
@@ -2029,7 +2038,11 @@ def apply_recipe(
             "activation_observer": _observer_name(recipe["activation"], is_weight=False),
             "weight_observer": _observer_name(recipe["weight"], is_weight=True),
             "observer_epsilon": epsilon,
-            "calibration_source": "declared_observer_domain" if declared_domain is not None else "explicit_calibration_stream" if calibration_inputs is not None else "example_inputs",
+            "calibration_source": "declared_observer_domain"
+            if declared_domain is not None
+            else "explicit_calibration_stream"
+            if calibration_inputs is not None
+            else "example_inputs",
             "calibration_domain": declared_domain,
             "quantization_nonfinite": recipe.get("quantization_nonfinite"),
             "readout_specials": recipe.get("readout_specials"),
