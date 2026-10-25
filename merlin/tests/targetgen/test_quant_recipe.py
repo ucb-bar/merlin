@@ -98,10 +98,11 @@ def test_an_add_is_quantized_only_where_a_unit_can_sum_operands() -> None:
     exact = QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="exact")
     bounded = QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="bounded")
     assert "0 output step" in exact.why[QR.OPERAND_SUM]
-    assert exact.to_dict()["integer_sum_policy"] == summing.to_dict()["integer_sum_policy"] == "exact"
-    assert "integer_sum_policy" not in bounded.to_dict()
-    assert exact.to_dict()["recipe_sha256"] == summing.to_dict()["recipe_sha256"]
-    assert bounded.to_dict()["recipe_sha256"] != summing.to_dict()["recipe_sha256"]
+    assert summing.integer_sum_policy == exact.integer_sum_policy == "exact"
+    assert "integer_sum_policy" not in summing.to_dict()
+    assert exact.to_dict()["integer_sum_policy"] == "exact"
+    assert bounded.to_dict()["integer_sum_policy"] == "bounded"
+    assert len({r.to_dict()["recipe_sha256"] for r in (exact, bounded, summing)}) == 3
     with pytest.raises(ValueError, match="explicit per-operand requantization capture"):
         QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="per_operand")
 
@@ -592,7 +593,7 @@ def test_selected_scheme_chooses_weight_granularity_from_output_path(columns):
     assert blocked["weight"]["channels_per_scale"] == columns
     assert "channels_per_scale" not in column["weight"]
     assert blocked["activation"]["granularity"] == "tensor"
-    assert blocked["integer_sum_policy"] == "exact"
+    assert "integer_sum_policy" not in blocked
     assert len({r["recipe_sha256"] for r in (tensor, blocked, column)}) == 3
 
 
@@ -635,19 +636,20 @@ def test_unresolved_or_unproved_schemes_never_choose_a_default():
     [
         ("tensor", "4391f1817eeab83d01891f4cd8554c5b56c70d6928122c20db7fd43bcb71bd0a"),
         ("sum", "010d6881ef1bde1fc78254a56c5d670a81977c68a62a14fcca49bf6cf4a75258"),
-        ("bounded", "6b803302d75b28e0f184e37bdb0c9d92319460932905a7a1a47f2fa1d286cc34"),
+        ("bounded", "08289e2b34468c4c02c4d98bac69dff186a9d163454d05a7420302b451498d0c"),
         ("column", "25fd93afd60a7ecb92b1cdf2b53c8da3031306cedb1537c891b46cc69abf0784"),
     ],
 )
-def test_existing_v1_recipe_fixture_digests_are_unchanged(fixture, expected):
+def test_explicit_v1_recipe_fixture_digests(fixture, expected):
     facet = _facet(operand_sum=_SUM) if fixture in ("sum", "bounded") else _facet()
     if fixture == "column":
         facet.scale_granularities = ("tensor", "column")
+    # Explicit bounded now carries its declaration; implicit bytes are pinned below.
     recipe = QR.derive(facet, integer_sum_policy="bounded" if fixture == "bounded" else "exact").to_dict()
     assert recipe["recipe_sha256"] == expected
     if fixture == "tensor":
-        selected = QR.derive(facet, scheme=_scheme()).to_dict()
-        partitionable = QR.derive(_scheme_facet(5)).to_dict()
+        selected = QR.derive(facet, scheme=_scheme(), integer_sum_policy="exact").to_dict()
+        partitionable = QR.derive(_scheme_facet(5), integer_sum_policy="exact").to_dict()
         # A newly derived partition capability must not silently change a v1 capture.
         assert json.dumps(selected, sort_keys=True) == json.dumps(recipe, sort_keys=True)
         assert json.dumps(partitionable, sort_keys=True) == json.dumps(recipe, sort_keys=True)
@@ -666,3 +668,31 @@ def test_arbitrary_scales_use_capture_instead_of_the_power_of_two_native_proof()
     )
     with pytest.raises(ValueError, match="capture-time PT2E"):
         parameters(spec)
+
+
+def test_implicit_exact_policy_preserves_merge_base_default_digest():
+    recipe = QR.derive(_facet())
+    assert recipe.integer_sum_policy == "exact"
+    # Computed by loading git show 377f1b8a4:src/merlin/targetgen/quant_recipe.py
+    # in a separate module and evaluating its derive(_facet()).to_dict().
+    assert recipe.to_dict()["recipe_sha256"] == "e6db69a15415b903d7ae1a91be9d624911389a9ff4d1ced45043b8183ddcbd4a"
+    assert "integer_sum_policy" not in recipe.to_dict()
+
+
+def test_only_explicit_integer_sum_policies_are_serialized():
+    implicit = QR.derive(_facet()).to_dict()
+    exact = QR.derive(_facet(), integer_sum_policy="exact").to_dict()
+    bounded = QR.derive(_facet(), integer_sum_policy="bounded").to_dict()
+    assert "integer_sum_policy" not in implicit
+    assert exact["integer_sum_policy"] == "exact"
+    assert bounded["integer_sum_policy"] == "bounded"
+    assert len({r["recipe_sha256"] for r in (implicit, exact, bounded)}) == 3
+
+
+def test_recipe_constructor_preserves_implicit_and_explicit_policy_provenance():
+    implicit = QR.QuantRecipe(target="t", unit="u")
+    assert implicit.integer_sum_policy == "exact"
+    assert "integer_sum_policy" not in implicit.to_dict()
+    for policy in ("exact", "bounded"):
+        explicit = QR.QuantRecipe(target="t", unit="u", integer_sum_policy=policy)
+        assert explicit.to_dict()["integer_sum_policy"] == policy

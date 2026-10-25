@@ -115,13 +115,18 @@ class QuantRecipe:
     families: tuple[str, ...] = (CONTRACTION,)
     #: Accelerator capture keeps exact integer semantics and full-width int32 device readout.
     readout_numerics: str = "integer_readout"
-    #: The declared integer-sum policy; exact is the default. ``bounded`` keeps its
-    #: historical serialization (omitted from the document) so its digests stay stable.
-    integer_sum_policy: str = "exact"
+    #: Exact semantics are implicit; only caller-declared policies enter the document.
+    integer_sum_policy: str | None = None
+    _integer_sum_policy_declared: bool = field(init=False, repr=False)
     calibration_domain: dict[str, Any] | None = None
     unquantized: dict[str, str] = field(default_factory=dict)  # family -> why it stays float
     why: dict[str, str] = field(default_factory=dict)  # field -> the derivation behind it
     underivable: dict[str, str] = field(default_factory=dict)  # field -> why not
+
+    def __post_init__(self) -> None:
+        self._integer_sum_policy_declared = self.integer_sum_policy is not None
+        if self.integer_sum_policy is None:
+            self.integer_sum_policy = "exact"
 
     def to_dict(self) -> dict[str, Any]:
         body = {
@@ -138,7 +143,7 @@ class QuantRecipe:
             "underivable": dict(sorted(self.underivable.items())),
         }
         body["readout_numerics"] = self.readout_numerics
-        if self.integer_sum_policy != "bounded":
+        if self._integer_sum_policy_declared:
             body["integer_sum_policy"] = self.integer_sum_policy
         if self.calibration_domain is not None:
             body["calibration_domain"] = dict(self.calibration_domain)
@@ -259,7 +264,8 @@ def derive(
     A selected ``scheme`` chooses source scale granularity and the declared observer policy;
     unselected recipes retain their v1 scale choice and serialized content.
     ``integer_sum_policy`` records the flow's declared numeric policy for integer sums.
-    Exact is the default. Target readouts still require exact sums and product
+    Exact is the implicit default and is serialized only when explicitly declared.
+    Target readouts still require exact sums and product
     proofs even under an explicitly retained legacy bounded declaration.
     A per_operand scheme needs a capture with explicit per-operand requantization
     nodes; it cannot be implemented by relaxing the exact readout facet.
@@ -278,7 +284,9 @@ def derive(
     if policy not in ("bounded", "exact"):
         raise ValueError(f"integer sum policy {integer_sum_policy!r} is not one of ('bounded', 'exact')")
     # Policy provenance never relaxes the target's exact sum and product proofs.
-    recipe = QuantRecipe(target=facet.target, unit=facet.unit, integer_sum_policy=policy)
+    recipe = QuantRecipe(
+        target=facet.target, unit=facet.unit, integer_sum_policy=policy if integer_sum_policy is not None else None
+    )
     if calibration_domain is not None:
         recipe.calibration_domain = dict(calibration_domain)
     if scheme is not None:
