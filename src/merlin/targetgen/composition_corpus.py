@@ -327,6 +327,11 @@ def entries(software_spec, facts, *, excluded_shapes=None):
                         dict(name="W0", axis="linear", values=[0], offset=0),
                     ],
                 )
+            if "preload" in shape["composition_instance"]["accumulator_stages"]:
+                palette = entry.setdefault("input_palette", dict(schema="merlin.component_input_palette.v1", inputs=[]))
+                palette["inputs"].append(
+                    dict(name="Bias", axis=0, values=shape["composition_instance"]["bias_values"], offset=0)
+                )
             assert_generic_shape(entry, excluded)
             entry["generalization"] = dict(
                 composition_chain_id=chain["id"],

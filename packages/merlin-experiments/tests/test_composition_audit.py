@@ -790,3 +790,41 @@ def test_output_scoped_audit_cannot_ignore_an_absent_sibling():
     case = _readout_case()
     case[1]["mode_parameters"]["readout_multipliers"]["outputs"] = [_operand(2)]
     assert _check(case)["status"] == "fail"
+
+
+@pytest.mark.parametrize("mutation", [None, "unrelated_rows", "late_seed", "wrong_source", "overwritten", "scratchpad"])
+def test_accumulator_seed_is_source_bound_and_precedes_its_contraction(mutation):
+    seed = _row("MVIN", dram=_operand(3), is_acc_addr=True, accumulate=False)
+    rows = [seed, *_compute(), _row("MVOUT")]
+    rows[1]["decoded"]["accumulate"] = True
+    if mutation == "unrelated_rows":
+        seed["decoded"]["spad_addr"] = 64
+    elif mutation == "late_seed":
+        rows.insert(-1, rows.pop(0))
+    elif mutation == "wrong_source":
+        seed["decoded"]["dram"] = _operand(4)
+    elif mutation == "overwritten":
+        rows.insert(1, _row("MVIN", dram=_operand(4), is_acc_addr=True, accumulate=False))
+    elif mutation == "scratchpad":
+        seed["decoded"]["is_acc_addr"] = False
+    case = _case(rows, {"accumulator_preload": True}, {"accumulator_preload": {"input": _operand(3)}})
+    result = _check(case)
+    assert result["status"] == ("pass" if mutation is None else "fail"), result
+
+
+def test_accumulator_seed_without_source_binding_is_unknown():
+    case = _case([_row("MVIN", is_acc_addr=True), *_compute(), _row("MVOUT")], {"accumulator_preload": True})
+    assert _check(case)["composition_audit"]["evidence_status"] == "UNKNOWN"
+
+
+def test_seed_address_flags_come_from_the_selected_operand_observer(selected_hardware, monkeypatch):
+    observer = selected_hardware[1]
+    monkeypatch.setattr(decode, "_semantics", lambda _: SimpleNamespace(operand_observer=observer))
+    rows = [
+        _row("MVIN", dram=_operand(3), is_acc_addr=True, accumulate=False),
+        _row("PRELOAD", c_addr=32, c_rows=3, c_cols=3, accumulate=True),
+        _row("COMPUTE_PRELOADED", a_spad=8),
+        _row("MVOUT"),
+    ]
+    case = _case(rows, {"accumulator_preload": True}, {"accumulator_preload": {"input": _operand(3)}})
+    assert _check(case)["status"] == "pass"

@@ -222,10 +222,7 @@ def build_composition(entry, binding):
             if "coefficient" in case:
                 value = _extension(source, value, case, m, n)
             if "preload" in case["accumulator_stages"]:
-                bias_values = case["bias_values"]
-                bias = source.constant(
-                    "Bias", [m, n], "i32", [[bias_values[row % len(bias_values)]] * n for row in range(m)]
-                )
+                bias = source.input("Bias", [m, n], "i32", "bias")
                 value = source.generic(
                     "bias", [value, bias], [m, n], "i32", ["%v = arith.addi %x0, %x1 : i32", "linalg.yield %v : i32"]
                 )

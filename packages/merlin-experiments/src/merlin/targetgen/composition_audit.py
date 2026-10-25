@@ -12,6 +12,7 @@ from .frozen_placement import require_same_region
 MODES = frozenset(
     {
         "readout_multipliers",
+        "accumulator_preload",
         "pooled_store",
         "scaled_accumulate_load",
         "output_stationary",
@@ -61,7 +62,7 @@ def _selected_hardware(target, needs):
         if dataflow.get("status") != "derived" or len(codes) != 1:
             raise ValueError("UNKNOWN: output-stationary select code is underived")
         hardware["output_stationary"] = codes[0]
-    if needs & {"scaled_accumulate_load", "k_extension", "contraction_lineage"}:
+    if needs & {"scaled_accumulate_load", "k_extension", "contraction_lineage", "accumulator_preload"}:
         from merlin.targetgen.rocc.decode import _semantics
 
         semantics = _semantics(target)
@@ -71,14 +72,14 @@ def _selected_hardware(target, needs):
             if mapping is None:
                 raise ValueError("UNKNOWN: load-class state selection is underived")
             hardware["load_states"] = dict(mapping.ports)
-        if needs & {"k_extension", "contraction_lineage"}:
-            isa = semantics.isa_constants(target)
+        if needs & {"k_extension", "contraction_lineage", "accumulator_preload"}:
+            isa = observer.isa_constants(target)
         if "k_extension" in needs:
             dimension = isa.get("DIM")
             if type(dimension) is not int or dimension <= 0:
                 raise ValueError("UNKNOWN: contraction tile geometry is underived")
             hardware["tile_k"] = dimension
-        if needs & {"k_extension", "contraction_lineage"}:
+        if needs & {"k_extension", "contraction_lineage", "accumulator_preload"}:
             masks = [
                 step.get("mask")
                 for program in isa.get("OPERAND_FIELDS", {}).values()
@@ -171,6 +172,44 @@ def _contraction_lineage(instructions, hardware):
                     covered = right
             if covered < end:
                 raise ValueError("readout accumulator rows/columns are not written by the contraction")
+
+
+def _covered(span, resident):
+    start, end, cols = span
+    for left, right, width in sorted(resident):
+        if width >= cols and left <= start < right:
+            start = max(start, right)
+    return start >= end
+
+
+def _accumulator_seed(instructions, parameters, hardware):
+    """Follow the declared seed through accumulator writes, computes and exits."""
+    source = _identity(parameters.get("input"))
+    seeds, results, preload = [], [], None
+    computes = 0
+    for row in instructions:
+        kind, decoded = row.get("class"), row.get("decoded") or {}
+        if kind in _LOADS and _known(decoded, "is_acc_addr") is True:
+            span = _accumulator_span(decoded, "spad_addr", "rows", "cols", hardware)
+            start, end, _ = span
+            seeds = [s for s in seeds if s[1] <= start or end <= s[0]]
+            results = [s for s in results if s[1] <= start or end <= s[0]]
+            if _identity(_known(decoded, "dram")) == source and _known(decoded, "accumulate") is False:
+                seeds.append(span)
+        elif kind == "PRELOAD":
+            preload = decoded
+        elif kind in _COMPUTES:
+            span = _accumulator_span(preload or {}, "c_addr", "c_rows", "c_cols", hardware)
+            if _known(preload, "accumulate") is not True or not _covered(span, seeds):
+                raise ValueError("contraction does not consume its source-bound accumulator seed")
+            results.append(span)
+            computes += 1
+        elif kind == "MVOUT":
+            span = _accumulator_span(decoded, "acc_addr", "rows", "cols", hardware)
+            if not _covered(span, results):
+                raise ValueError("readout does not consume the seeded contraction rows")
+    if not computes:
+        raise ValueError("UNKNOWN: accumulator seed has no consuming contraction")
 
 
 def _readout(commits, parameters, *, relu=False, scaled=False, per_block=False):
@@ -293,6 +332,8 @@ def check_modes(instructions, modes, parameters, *, target):
     hardware = _selected_hardware(target, needs)
     if "contraction_lineage" in needs:
         _contraction_lineage(instructions, hardware)
+    if "accumulator_preload" in needs:
+        _accumulator_seed(instructions, parameters.get("accumulator_preload", {}), hardware)
     commits, computes, loads = _events(instructions, hardware)
     if not commits:
         raise ValueError("UNKNOWN: composition has no output store")

@@ -67,9 +67,7 @@ def evaluate(cap):
             if "coefficient" in case:
                 value += np.rint(env["Residual"] * case["coefficient"]).astype(np.int64)
             if "preload" in case["accumulator_stages"]:
-                value += np.array(
-                    [[case["bias_values"][row % len(case["bias_values"])]] * n for row in range(m)], dtype=np.int64
-                )
+                value += env["Bias"]
             if case.get("siblings"):
                 outputs.append(readout(value) if sibling["exit"] == "requant" else value)
         if outputs:

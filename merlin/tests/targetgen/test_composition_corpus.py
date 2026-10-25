@@ -190,3 +190,14 @@ def test_placement_rejects_partial_or_host_chain_members(software, facts, bindin
     screen["decisions"].pop()
     with pytest.raises(ValueError, match="every original chain member"):
         require_placement(cap, screen)
+
+
+def test_generated_bias_has_an_explicit_source_operand(software, facts, binding):
+    entry = next(
+        e for e in prepare_entries(entries(software, facts)) if e["composition_instance"]["shape_class"] == "bias_relu"
+    )
+    cap, source = CS.build(entry, binding)
+    bind_capsule(cap, source)
+    seed = cap["expected"]["mode_parameters"]["accumulator_preload"]["input"]["arg_index"]
+    assert cap["inputs"][seed]["role"] == "bias"
+    assert cap["input_palette"]["inputs"][-1]["name"] == cap["inputs"][seed]["name"]

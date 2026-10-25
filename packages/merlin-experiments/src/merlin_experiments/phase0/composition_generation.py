@@ -93,6 +93,11 @@ def bind_capsule(cap, source):
                 acc_scale_bits=params["readout_multiplier_bits"],
                 stores_per_block=[stores] * len(params["readout_multiplier_bits"]),
             )
+    if "accumulator_preload" in modes:
+        seeds = [index for index, row in enumerate(cap["inputs"]) if row["role"] == "bias"]
+        if len(seeds) != 1:
+            raise ValueError("UNKNOWN: composition needs one explicit accumulator seed operand")
+        parameters["accumulator_preload"] = dict(input=dict(kind="argbase", arg_index=seeds[0], offset=0))
     if "scaled_accumulate_load" in modes:
         parameters["scaled_accumulate_load"] = dict(scale_bits=params["operand_multiplier_bits"])
     if "pool" in stages:
