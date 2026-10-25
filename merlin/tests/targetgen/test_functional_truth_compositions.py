@@ -85,13 +85,13 @@ def test_bias_relu_requant_crosses_every_declared_scheme(spec, facts, case, sche
     commitment = expect(spec, facts, case, scheme=scheme)
     assert commitment["lane"] == "fused_device", commitment
     assert commitment["scheme_id"] == scheme
-    assert commitment["required_modes"] == ["readout_multipliers"]
+    assert commitment["required_modes"] == ["readout_multipliers", "relu", "accumulator_preload"]
 
 
 def test_i32_exit_ignores_optional_pool_unknowns_and_applies_no_stages(spec, facts, case):
     case.update(exit="accumulator", readout_stages=[], members=["mac", "bias", "readout"])
     assert expect(spec, facts, case)["lane"] == "fused_device"
-    assert expect(spec, facts, case)["required_modes"] == ["i32_exit"]
+    assert expect(spec, facts, case)["required_modes"] == ["i32_exit", "accumulator_preload"]
     case["readout_stages"] = ["activation"]
     assert expect(spec, facts, case)["lane"] == "must_refuse"
 
@@ -113,6 +113,7 @@ def test_max_pool_is_composition_only_and_padding_unknown_refuses(spec, facts, c
         pool_window=[2, 2],
         pool_stride=[2, 2],
         indices_live=False,
+        scratchpad_source_pooling_fenced=True,
     )
     case["readout_stages"].append("pool")
     case["members"].append("max_values")
@@ -289,3 +290,93 @@ def test_multiblock_tail_requires_its_own_formed_multiplier(spec, facts, case):
 def test_unknown_producer_facts_cannot_be_supplied_by_a_software_request(spec, facts, case):
     facts["producer_placement"] = {}
     assert expect(spec, facts, case)["lane"] == "must_refuse"
+
+
+@pytest.mark.parametrize("missing", ["relu", "accumulator_preload"])
+def test_source_activation_and_bias_cannot_be_omitted_from_audit(spec, facts, case, missing):
+    commitment = expect(spec, facts, case)
+    audit = dict(
+        kernel="kernel",
+        modes={**dict.fromkeys(commitment["required_modes"], True), missing: False},
+        outside_kernel_instructions=0,
+        host_intermediate_arithmetic=0,
+    )
+    with pytest.raises(ValueError, match="missing or failed"):
+        truth.require_placement(
+            commitment, member_kernels=dict.fromkeys(commitment["members"], "kernel"), instruction_audit=audit
+        )
+
+
+def test_zero_padding_is_not_neutral_for_negative_pool_producer(spec, facts, case):
+    # A window containing -2 and padding has source max -2, but device max 0.
+    facts["output_path"]["readout"][-1]["padding"] = "zero"
+    case.update(
+        readout_stages=["convert", "scale", "requant", "pool"],
+        accumulator_stages=[],
+        padding=[1, 1],
+        pool_window=[2, 2],
+        pool_stride=[2, 2],
+        indices_live=False,
+        producer_lower_bound=-2,
+        multipliers=[Fraction(1)],
+    )
+    assert expect(spec, facts, case)["lane"] == "must_refuse"
+
+
+@pytest.mark.parametrize("fenced", [None, False, True])
+def test_movement_pooling_requires_declared_scratchpad_fence(spec, facts, case, fenced):
+    case.update(
+        producer="movement",
+        accumulator_stages=[],
+        padding=[0, 0],
+        pool_window=[2, 2],
+        pool_stride=[2, 2],
+        indices_live=False,
+        scratchpad_source_pooling_fenced=fenced,
+    )
+    case["readout_stages"].append("pool")
+    expected = "fused_device" if fenced is True else "must_refuse"
+    assert expect(spec, facts, case, "window_reduction_readout")["lane"] == expected
+
+
+def test_scratchpad_pool_fence_is_an_independent_instruction_obligation(spec, facts, case):
+    case.update(
+        producer="movement",
+        accumulator_stages=[],
+        padding=[0, 0],
+        pool_window=[2, 2],
+        pool_stride=[2, 2],
+        indices_live=False,
+        scratchpad_source_pooling_fenced=True,
+    )
+    case["readout_stages"].append("pool")
+    commitment = expect(spec, facts, case, "window_reduction_readout")
+    audit = dict(
+        kernel="kernel",
+        modes=dict.fromkeys(commitment["required_modes"], True),
+        outside_kernel_instructions=0,
+        host_intermediate_arithmetic=0,
+    )
+    audit["modes"]["scratchpad_source_pooling_fenced"] = False
+    with pytest.raises(ValueError, match="missing or failed"):
+        truth.require_placement(
+            commitment, member_kernels=dict.fromkeys(commitment["members"], "kernel"), instruction_audit=audit
+        )
+
+
+@pytest.mark.parametrize("activation,lower_bound", [(True, None), (False, 0), (False, 1), (False, None)])
+def test_padded_pool_requires_source_bound_or_relu_proof(spec, facts, case, activation, lower_bound):
+    facts["output_path"]["readout"][-1]["padding"] = "zero"
+    case.update(
+        accumulator_stages=[],
+        padding=[1, 1],
+        pool_window=[2, 2],
+        pool_stride=[2, 2],
+        indices_live=False,
+        producer_lower_bound=lower_bound,
+    )
+    case["readout_stages"].append("pool")
+    if not activation:
+        case["readout_stages"].remove("activation")
+    expected = "fused_device" if activation or lower_bound is not None else "must_refuse"
+    assert expect(spec, facts, case)["lane"] == expected

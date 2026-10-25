@@ -39,6 +39,10 @@ def _readout_refusals(chain, scheme, case, path):
         yield "narrow exit requires requantization"
     if "scale" in stages and "convert" not in stages:
         yield "scale requires the accumulator conversion"
+    if "activation" in stages and any(
+        stage.get("function") != "relu" for stage in path["readout"] if stage["kind"] == "activation"
+    ):
+        yield "activation instruction obligation is UNKNOWN"
     geometry = scheme_geometry(path, scheme["weight_scale_granularity"])
     if geometry.get("unknown") or any(v == "UNKNOWN" for v in geometry.values()):
         yield "scale geometry is not derived"
@@ -98,9 +102,23 @@ def _pool_refusals(constraints, case, path, facts):
         yield "max-pool indices must be dead"
     if "max_requires_store_path_pooling" in constraints and facts.get("max_requires_store_path_pooling") is not True:
         yield "movement-composed store pooling is not derived"
+    if (
+        "scratchpad_source_pooling_fenced" in constraints
+        and (case["producer"] == "movement" or case.get("pool_source") == "scratchpad")
+        and case.get("scratchpad_source_pooling_fenced") is not True
+    ):
+        yield "scratchpad-source pooling lacks its required fence"
     padding = case.get("padding")
-    if padding is None or any(padding) and pools[0].get("padding", "unknown").upper() == "UNKNOWN":
+    if not isinstance(padding, list) or not padding or any(type(value) is not int or value < 0 for value in padding):
         yield "pool padding is UNKNOWN"
+    elif any(padding):
+        pad = pools[0].get("padding")
+        if isinstance(pad, str) and pad.lower() == "zero":
+            pad = 0
+        if type(pad) not in (int, float):
+            yield "pool padding is UNKNOWN"
+        elif not _padding_neutral(case, path, pad):
+            yield "pool padding lacks a source-derived neutrality proof"
     limits = facts.get("pool_window_within_register_fields", {})
     for field, bits_key in (("pool_window", "size_bits"), ("pool_stride", "stride_bits")):
         bits, values = limits.get(bits_key), case.get(field)
@@ -111,6 +129,46 @@ def _pool_refusals(constraints, case, path, facts):
             or any(type(v) is not int or not 0 < v < 1 << bits for v in values)
         ):
             yield f"{field} exceeds or lacks derived register bounds"
+
+
+def _padding_neutral(case, path, pad):
+    """Prove neutrality in the pool's input domain, after the selected readout."""
+    import math
+
+    from merlin.runtime.exact_readout import form_multiplier
+
+    if not math.isfinite(pad):
+        return False
+    bound = case.get("producer_lower_bound")
+    try:
+        bound = Fraction(bound) if bound is not None else None
+        for stage in path["readout"]:
+            kind = stage["kind"]
+            if kind == "pool":
+                break
+            if kind not in case["readout_stages"]:
+                continue
+            if kind in {"convert", "scale", "requant"} and stage.get("rounding") != "half_even":
+                return False
+            if kind == "activation" and stage.get("function") == "relu":
+                bound = max(0, bound) if bound is not None else Fraction(0)
+            elif kind == "convert" and bound is not None:
+                bound = Fraction(float(form_multiplier(bound)))
+            elif kind == "scale":
+                scales = [Fraction(float(form_multiplier(scale))) for scale in case.get("multipliers", [])]
+                bound = (
+                    min(Fraction(float(form_multiplier(bound * scale))) for scale in scales)
+                    if bound is not None and scales and min(scales) >= 0
+                    else None
+                )
+            elif kind == "requant":
+                clamp = stage.get("clamp")
+                if not isinstance(clamp, list) or len(clamp) != 2:
+                    return False
+                bound = max(clamp[0], min(clamp[1], round(bound))) if bound is not None else clamp[0]
+        return bound is not None and bound >= pad
+    except (ValueError, TypeError, OverflowError):
+        return False
 
 
 def _sum_refusals(scheme, case):
@@ -202,14 +260,24 @@ def _family_refusals(chain, scheme, case, path, facts):
         yield from _shared_refusals(chain, case, facts)
 
 
-def _audit_modes(chain, case):
+def _audit_modes(chain, case, path):
     modes = []
     if case["exit"] == "accumulator":
         modes.append("i32_exit")
     if "scale" in case["readout_stages"]:
         modes.append("readout_multipliers")
+    if "activation" in case["readout_stages"]:
+        modes.extend(stage.get("function", "UNKNOWN") for stage in path["readout"] if stage["kind"] == "activation")
+    if "preload" in case.get("accumulator_stages", []):
+        modes.append("accumulator_preload")
+    if "accumulate" in case.get("accumulator_stages", []):
+        modes.append("scaled_accumulate_load")
     if "pool" in case["readout_stages"] or case.get("reduction_kind") == "max":
         modes.append("pooled_store")
+        if "scratchpad_source_pooling_fenced" in _constraints(chain) and (
+            case["producer"] == "movement" or case.get("pool_source") == "scratchpad"
+        ):
+            modes.append("scratchpad_source_pooling_fenced")
     if case["producer"] == "operand_sum":
         modes.append("scaled_accumulate_load")
     if case.get("dataflow") == "OS":
@@ -218,7 +286,7 @@ def _audit_modes(chain, case):
         modes.append("k_extension")
     if chain.get("multiplicity"):
         modes.append("shared_input")
-    return modes
+    return list(dict.fromkeys(modes))
 
 
 def _audit_parameters(scheme, case):
@@ -282,7 +350,7 @@ def expectation(chain, scheme, case, *, facts):
         reasons=refusals,
         members=list(members),
         grading="placement_and_instruction_audit",
-        required_modes=_audit_modes(chain, case),
+        required_modes=_audit_modes(chain, case, path),
         instruction_expectation=_audit_parameters(scheme, case),
         oracle_requirement=scheme.get("oracle_requirement"),
         exactness_gate=readout_exactness_gate(scheme["readout_strategy"]),
