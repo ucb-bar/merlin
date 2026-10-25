@@ -207,3 +207,57 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   points or reduction-channel scales. The retained TinyLlama boundary uses per-tensor zero-point-zero
   reuse and does not demonstrate these witnesses.
 
+
+## F14 — `lower_bf16_matmul_f32acc` discards a contraction's non-zero initial value
+
+- **Observed (2026-10-21):** the rewrite always accumulates from a fresh f32 `+0.0` fill
+  (`passes_xdsl.py:488-489`, used at line 498) and never reads the original destination. A
+  contraction initialized to a `1.0` splat (or a bias) is rewritten and the initial value lost.
+- **Evidence:** `test_pass_drops_a_nonzero_destination` (checker refusal, "destination is not a
+  +0.0 splat or fill"); `test_pass_drops_a_nonzero_destination_numerically` (JIT output equals
+  zero-initialized accumulation).
+- **Paper path:** not exercised; all 24 retained SmolVLA sites start from a `+0.0` splat.
+- **Status:** open; the checker refuses these inputs. The pass is unchanged pending a coordinated fix.
+
+## F15 — `lower_bf16_matmul_f32acc` ignores explicit `linalg.matmul` indexing maps
+
+- **Observed:** every `linalg.matmul` is rewritten with the default `(d0,d2), (d2,d1), (d0,d1)` maps
+  (`passes_xdsl.py:482`, maps at 467-472). The pipeline's MLIR prints `indexing_maps` on every
+  matmul; a transposed-B matmul then computes A·B instead of A·Bᵀ on square shapes (a verifier
+  error otherwise).
+- **Evidence:** `test_pass_ignores_explicit_matmul_maps`, `test_pass_computes_the_untransposed_product`.
+- **Paper path:** not exercised on the retained captures (no 16-bit `linalg.matmul`).
+- **Status:** open; the checker refuses the output (accumulating generic `indexing_maps` differ).
+
+## F16 — `lower_bf16_matmul_f32acc` recognizes contraction bodies by operation name only
+
+- **Observed:** `is_mul_add_contraction` (`passes_xdsl.py:443-451`) compares only the body's operation
+  names, so a body computing `acc + a*a` is rewritten as `acc + a*b`. Same class as F11.
+- **Evidence:** `test_pass_rewrites_a_square_as_a_product` ("body is not yield(acc + a * b)").
+- **Status:** open; the checker's source recognition checks the exact dataflow.
+
+## F17 — `lower_bf16_matmul_f32acc` emits invalid IR for f32 operands with a 16-bit result
+
+- **Observed:** only the result type of `linalg.matmul` is checked; f32 operands then receive
+  `arith.extf` f32→f32, which MLIR rejects. Fails loudly, not silently.
+- **Evidence:** `test_pass_emits_invalid_ir_for_f32_operands`.
+- **Status:** open, low severity.
+
+## F18 — the `contract` license changes results for bf16 operands
+
+- **Observed:** the pass comment says contraction preserves NaN/Inf behavior. The JIT fuses the
+  licensed multiply-add at every LLVM optimization level; for bf16 products -2^127 then 2^128 the
+  fused result is 2^127 where unfused f32 accumulation gives +inf. f16 products are exact in f32,
+  so the license cannot change f16 results.
+- **Evidence:** `test_contraction_license_admits_exactly_fused_or_unfused`.
+- **Status:** the contract permits either result; `Rules/Bf16F32AccFusion.lean` proves a uniformly
+  fused execution is an instance of the parametric model. The comment is inaccurate.
+
+The bf16 review packet now separates the modular pass claim from whole-capture qualification.
+`Check/Bf16F32AccExact.lean` checks the complete actual output against the source-derived
+reference under explicit SSA-invariant semantics; `Check/Bf16F32AccSites.lean` checks every
+actual replacement on all typed, initialized local operands and proves source-site coverage.
+The local domain has a mathematical nonempty witness. None of these results closes the
+capture's dynamic-tensor/source-definedness gaps or verifies the other shared passes. F14–F18
+remain open as stated; the optimizing pass was not changed. Independent human policy review and
+the subsequent coordinated specification lock update remain mandatory.

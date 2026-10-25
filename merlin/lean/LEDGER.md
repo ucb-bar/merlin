@@ -488,3 +488,45 @@ combined check for all 155 changed contractions. Support permits UB and poison; 
 neither successful initialized execution nor the whole-function numerical domain. Dedicated
 poison and false-assertion regressions keep that distinction explicit. Frozen dispatch and
 the public full-qualification gate remain unchanged.
+
+## f32-accumulation contract for `lower_bf16_matmul_f32acc`
+
+`Rules/Bf16F32AccContract.lean` states the contract in six clauses: per-operand `extf` to f32, the
+source's own indexing maps, one accumulator per cell folded in lexicographic order (A5), a `+0.0`
+start admitted only for a `+0.0` source destination, one attribute-free `truncf`, and multiply/add
+fast-math exactly `none` or `contract`. It is a review candidate written after reading the pass,
+not a barrier-authored specification; receipts stay `abstracted` until independent review.
+
+`Check/Bf16F32Acc.lean` and `Check/Bf16F32AccChain.lean` prove that accepted outputs (and checked
+downstream refinement suffixes) refine the source-derived reference; strict forms retain separate
+source-definedness and reference-support obligations. `Rules/Bf16F32AccTensor.lean` and
+`Rules/Bf16F32AccSite.lean` prove the reference's emitted operations compute the contract for any
+checked geometry. Recovered hints choose only `Flag` values and `Spec.Annotations.semanticsFree`
+attributes; every other attribute is compared with the canonical one.
+
+Fusion: the semantics gives `contract`-flagged operations their own uninterpreted functions.
+`Rules/Bf16F32AccFusion.fused_step` proves a fused execution is an instance of the model when the
+target fuses every contract step or none, the operand `extf` is injective (bf16 is a shift; f16 on
+non-NaN inputs) and the source has no other licensed operation (reported as `fusion_premises`).
+Mixed per-site fusion is not covered. Native evidence: `test_lean_bf16_f32acc_native.py` compares
+JIT execution, including two retained SmolVLA sites at full shape, with an independent NumPy
+reference of the contract, and extends T3's bounded evidence to bf16/f16 `extf`/`truncf`.
+
+Pass-local qualification (2026-10-21): `Check/Bf16F32AccExact.check_sound` establishes equality
+of the complete actual output and the source-derived reference under any common operation
+semantics satisfying SSA renaming and call locality, including unsuccessful executions. This
+does not supply a successful execution of the capture. `Check/Bf16F32AccSites.check_sound`
+additionally requires strict qualification of reconstructed fragments containing each actual
+source contraction, its actual initialization producers and the actual six target operations.
+`collectOps_coverage` preserves every recognized source contraction and its position, while
+`Rules/Bf16F32AccNonvacuity.operand_domain_nonempty` supplies initialized operands for every
+admitted local shape, including zero extents. Global output matching is independently required;
+local success cannot excuse another change to the capture.
+
+This permits a modular bf16 pass claim without claiming whole-capture definedness or correctness
+of another shared pass. SmolVLA's dynamic `tensor<?xi64>` and source-definedness gaps still block
+its separate whole-capture qualification. The review packet under
+`out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/review/` contains the exact proposed
+claim, executable evidence publisher and an unapplied specification/pinning patch. The publisher
+replays the checker and permits `verified` only after the installed specification, policy files
+and all current theorem statements match `SPEC_LOCK`; it cannot approve the policy itself.

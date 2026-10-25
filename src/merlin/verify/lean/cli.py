@@ -36,6 +36,17 @@ def _run(args) -> int:
             if args.lean_command == "w8a8-draft"
             else policy.check_w8a8_chain_draft(args.stages, args.work, handoff=args.handoff, **options)
         )
+    elif args.lean_command == "bf16-f32acc":
+        from . import bf16_f32acc
+
+        result = bf16_f32acc.check_stages(
+            args.stages,
+            args.work,
+            m2m_python=args.compiler_python,
+            index_bits=args.index_bits,
+            handoff=args.handoff,
+            timeout_seconds=args.checker_timeout,
+        )
     elif args.lean_command in {"support", "definedness"}:
         checker = check.check_support if args.lean_command == "support" else check.check_definedness
         result = checker(
@@ -104,6 +115,7 @@ def add_commands(subparsers) -> None:
         "typed-stage",
         "w8a8-draft",
         "w8a8-chain-draft",
+        "bf16-f32acc",
         "support",
         "definedness",
         "chain",
@@ -121,7 +133,15 @@ def add_commands(subparsers) -> None:
             command.add_argument("--work", type=Path, required=True)
         if name in {"support", "definedness", "chain", "differential"}:
             command.add_argument("--function", required=True)
-        if name in {"typed-stage", "w8a8-draft", "w8a8-chain-draft", "support", "definedness", "differential"}:
+        if name in {
+            "typed-stage",
+            "w8a8-draft",
+            "w8a8-chain-draft",
+            "bf16-f32acc",
+            "support",
+            "definedness",
+            "differential",
+        }:
             command.add_argument(
                 "--index-bits",
                 type=_positive,
@@ -147,6 +167,21 @@ def add_commands(subparsers) -> None:
             )
             command.add_argument("--work", type=Path, required=True, help="separate directory for the chain receipt")
             command.add_argument("--handoff", type=Path, help="bind the chain's last program to this handoff.json")
+        if name == "bf16-f32acc":
+            command.add_argument(
+                "stages",
+                type=Path,
+                nargs="+",
+                help="lower_bf16_matmul_f32acc stage, then downstream refinement stages up to the next policy boundary",
+            )
+            command.add_argument("--work", type=Path, required=True, help="separate directory for the receipt")
+            command.add_argument("--handoff", type=Path, help="bind the segment's last program to this handoff.json")
+            command.add_argument(
+                "--checker-timeout",
+                type=_positive,
+                default=1800,
+                help="checker process time limit in seconds; timeout establishes no claim",
+            )
         if name == "chain":
             command.add_argument("stages", type=Path, nargs="+", help="stage directories in execution order")
             command.add_argument("--support", type=Path, required=True, help="source support receipt")
