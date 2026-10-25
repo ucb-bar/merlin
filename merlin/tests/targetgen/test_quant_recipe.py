@@ -561,3 +561,108 @@ print(json.dumps({"cpu_threads": policy["cpu_threads"], "same_bytes": True}))
         [python, "-c", program, str(worker)], capture_output=True, text=True, timeout=60, check=True
     )
     assert json.loads(result.stdout) == {"cpu_threads": 1, "same_bytes": True}
+
+
+def _scheme_facet(columns):
+    from merlin.targetgen.output_path import from_record
+
+    path = from_record({"scale": {"status": "derived", "rounding": "half_even", "columns_per_scale": columns}})
+    return RF.derive(
+        "t",
+        facts=_facts(),
+        unit={"name": "u", "dtypes": ["int8"], "ops": ["matmul"]},
+        scalar_abi=_ABI,
+        readouts=_READOUTS,
+        output_path=path,
+    )
+
+
+def _scheme(granularity="tensor", value="power_of_two"):
+    return dict(weight_scale_granularity=granularity, scale_value=value, readout_strategy="f32_product_rne")
+
+
+@pytest.mark.parametrize("columns", [3, 7, 24])
+def test_selected_scheme_chooses_weight_granularity_from_output_path(columns):
+    facet = _scheme_facet(columns)
+    tensor = QR.derive(facet, scheme=_scheme()).to_dict()
+    blocked = QR.derive(facet, scheme=_scheme("column_block")).to_dict()
+    column = QR.derive(facet, scheme=_scheme("column")).to_dict()
+    assert tensor["weight"]["granularity"] == "tensor"
+    assert blocked["weight"]["granularity"] == column["weight"]["granularity"] == "channel"
+    assert blocked["weight"]["channels_per_scale"] == columns
+    assert "channels_per_scale" not in column["weight"]
+    assert blocked["activation"]["granularity"] == "tensor"
+    assert blocked["integer_sum_policy"] == "exact"
+    assert len({r["recipe_sha256"] for r in (tensor, blocked, column)}) == 3
+
+
+def test_scheme_calibration_policy_is_explicit_and_does_not_mutate_declaration():
+    domain = dict(
+        schema="merlin.declared_observer_domain.v1",
+        minimum=-0.7,
+        maximum=1.3,
+        evaluation_inputs="never_read",
+        scale_policy="enclosing_power_of_two",
+    )
+    recipe = QR.derive(
+        _scheme_facet(5), scheme=_scheme("column_block", "arbitrary_f32"), calibration_domain=domain
+    ).to_dict()
+    assert recipe["calibration_domain"]["scale_policy"] == "declared_observer"
+    assert domain["scale_policy"] == "enclosing_power_of_two"
+    assert (
+        recipe["recipe_sha256"]
+        != QR.derive(_scheme_facet(5), scheme=_scheme("column_block"), calibration_domain=domain).to_dict()[
+            "recipe_sha256"
+        ]
+    )
+    assert QR.derive(_scheme_facet(5), scheme=_scheme(value="arbitrary_f32")).status == QR.UNDERIVABLE
+
+
+def test_unresolved_or_unproved_schemes_never_choose_a_default():
+    assert QR.derive(_facet(), scheme=_scheme("column_block")).status == QR.UNDERIVABLE
+    mismatch = dict(_scheme("column_block"), columns_per_scale=9)
+    assert QR.derive(_scheme_facet(5), scheme=mismatch).status == QR.UNDERIVABLE
+    with pytest.raises(ValueError, match="resolved"):
+        QR.derive(_facet(), scheme=dict(_scheme(), status="unresolved"))
+    with pytest.raises(ValueError, match="f32_product_rne"):
+        QR.derive(_facet(), scheme=dict(_scheme(value="arbitrary_f32"), readout_strategy="exact_rational_host"))
+    with pytest.raises(ValueError, match="explicit per-operand"):
+        QR.derive(_facet(), scheme=dict(_scheme(), operand_sum_rounding="per_operand"))
+
+
+@pytest.mark.parametrize(
+    "fixture,expected",
+    [
+        ("tensor", "4391f1817eeab83d01891f4cd8554c5b56c70d6928122c20db7fd43bcb71bd0a"),
+        ("sum", "010d6881ef1bde1fc78254a56c5d670a81977c68a62a14fcca49bf6cf4a75258"),
+        ("bounded", "6b803302d75b28e0f184e37bdb0c9d92319460932905a7a1a47f2fa1d286cc34"),
+        ("column", "25fd93afd60a7ecb92b1cdf2b53c8da3031306cedb1537c891b46cc69abf0784"),
+    ],
+)
+def test_existing_v1_recipe_fixture_digests_are_unchanged(fixture, expected):
+    facet = _facet(operand_sum=_SUM) if fixture in ("sum", "bounded") else _facet()
+    if fixture == "column":
+        facet.scale_granularities = ("tensor", "column")
+    recipe = QR.derive(facet, integer_sum_policy="bounded" if fixture == "bounded" else "exact").to_dict()
+    assert recipe["recipe_sha256"] == expected
+    if fixture == "tensor":
+        selected = QR.derive(facet, scheme=_scheme()).to_dict()
+        partitionable = QR.derive(_scheme_facet(5)).to_dict()
+        # A newly derived partition capability must not silently change a v1 capture.
+        assert json.dumps(selected, sort_keys=True) == json.dumps(recipe, sort_keys=True)
+        assert json.dumps(partitionable, sort_keys=True) == json.dumps(recipe, sort_keys=True)
+
+
+def test_arbitrary_scales_use_capture_instead_of_the_power_of_two_native_proof():
+    from merlin.llvmlower.quantized_native import parameters
+
+    spec = dict(
+        numerical_semantics=dict(
+            quantized_native_fallback=dict(admission="after_native_exact_failure"),
+            calibration_domain=dict(
+                minimum=-1, maximum=1, evaluation_inputs="never_read", scale_policy="declared_observer"
+            ),
+        )
+    )
+    with pytest.raises(ValueError, match="capture-time PT2E"):
+        parameters(spec)

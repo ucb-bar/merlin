@@ -40,7 +40,14 @@ UNDERIVABLE = "underivable"
 #: Facet granularity -> the recipe's weight/activation granularity word. A recipe speaks about the
 #: TENSOR being quantized ("one scale per output channel of the weight"), a facet about the
 #: accumulator ("one scale per column"); this is the one place they meet.
-_WEIGHT_GRANULARITY = {"column": "channel", "row": "channel", "rank1": "channel", "tensor": "tensor", "block": "block"}
+_WEIGHT_GRANULARITY = {
+    "column_block": "channel",
+    "column": "channel",
+    "row": "channel",
+    "rank1": "channel",
+    "tensor": "tensor",
+    "block": "block",
+}
 #: Finest first: a recipe takes the first of these the readout holds.
 _WEIGHT_PREFERENCE = ("block", "rank1", "column", "row", "tensor")
 #: An activation scale can vary per row of the accumulator (per token) only where the readout
@@ -82,6 +89,7 @@ class TensorSpec:
     quant_max: int | None
     block: int | None = None
     mode: str = "static"  # activations only: "static" | "dynamic"
+    channels_per_scale: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -92,6 +100,7 @@ class TensorSpec:
             "quant_max": self.quant_max,
             "block": self.block,
             "mode": self.mode,
+            **({"channels_per_scale": self.channels_per_scale} if self.channels_per_scale is not None else {}),
         }
 
 
@@ -109,6 +118,7 @@ class QuantRecipe:
     #: The declared integer-sum policy; exact is the default. ``bounded`` keeps its
     #: historical serialization (omitted from the document) so its digests stay stable.
     integer_sum_policy: str = "exact"
+    calibration_domain: dict[str, Any] | None = None
     unquantized: dict[str, str] = field(default_factory=dict)  # family -> why it stays float
     why: dict[str, str] = field(default_factory=dict)  # field -> the derivation behind it
     underivable: dict[str, str] = field(default_factory=dict)  # field -> why not
@@ -130,6 +140,8 @@ class QuantRecipe:
         body["readout_numerics"] = self.readout_numerics
         if self.integer_sum_policy != "bounded":
             body["integer_sum_policy"] = self.integer_sum_policy
+        if self.calibration_domain is not None:
+            body["calibration_domain"] = dict(self.calibration_domain)
         body["recipe_sha256"] = digest(body)
         return body
 
@@ -236,12 +248,16 @@ def derive(
     prefer_activation_mode: str | None = None,
     capabilities: Sequence[Any] | None = None,
     integer_sum_policy: str | None = None,
+    scheme: Mapping[str, Any] | None = None,
+    calibration_domain: Mapping[str, Any] | None = None,
 ) -> QuantRecipe:
     """The recipe a unit's readout facet licenses.
 
     ``prefer_activation_mode`` is a workload's request ("dynamic" for a model whose activation
     range moves with its input). It is honoured where the facet allows and recorded where it does
     not: a recipe never promises a mode the hardware would push onto the host silently.
+    A selected ``scheme`` chooses source scale granularity and the declared observer policy;
+    unselected recipes retain their v1 scale choice and serialized content.
     ``integer_sum_policy`` records the flow's declared numeric policy for integer sums.
     Exact is the default. Target readouts still require exact sums and product
     proofs even under an explicitly retained legacy bounded declaration.
@@ -249,6 +265,10 @@ def derive(
     nodes; it cannot be implemented by relaxing the exact readout facet.
     """
     policy = "exact" if integer_sum_policy is None else str(integer_sum_policy)
+    if scheme is not None:
+        _validate_scheme(scheme)
+        if scheme.get("operand_sum_rounding") == "per_operand":
+            policy = "per_operand"
     if policy == "per_operand":
         raise ValueError(
             "per_operand requires an explicit per-operand requantization capture: "
@@ -259,6 +279,15 @@ def derive(
         raise ValueError(f"integer sum policy {integer_sum_policy!r} is not one of ('bounded', 'exact')")
     # Policy provenance never relaxes the target's exact sum and product proofs.
     recipe = QuantRecipe(target=facet.target, unit=facet.unit, integer_sum_policy=policy)
+    if calibration_domain is not None:
+        recipe.calibration_domain = dict(calibration_domain)
+    if scheme is not None:
+        if scheme["scale_value"] == "arbitrary_f32" and recipe.calibration_domain is None:
+            recipe.underivable["calibration_domain"] = "arbitrary_f32 requires a declared observer domain"
+        if recipe.calibration_domain is not None:
+            recipe.calibration_domain["scale_policy"] = (
+                "declared_observer" if scheme["scale_value"] == "arbitrary_f32" else "enclosing_power_of_two"
+            )
 
     element = _format_of(facet.element_dtype)
     if element is None:
@@ -280,10 +309,28 @@ def derive(
 
     integer = element.kind == "int_affine"
     symmetric = not facet.zero_point_carried if integer else True
+    # Partition support is opt-in: legacy recipes keep their original per-command tensor scale.
+    legacy_held = ("tensor",) if facet.scale_columns is not None else held
     weight_held = (
-        next(g for g in _WEIGHT_PREFERENCE if g in held) if any(g in held for g in _WEIGHT_PREFERENCE) else None
+        scheme["weight_scale_granularity"]
+        if scheme is not None
+        else next((g for g in _WEIGHT_PREFERENCE if g in legacy_held), None)
     )
-    activation_held = next((g for g in _ACTIVATION_PREFERENCE if g in held), None)
+    if weight_held not in held:
+        recipe.status = UNDERIVABLE
+        recipe.underivable["granularity"] = f"the readout has not derived {weight_held!r} scale support"
+        return recipe
+    activation_held = (
+        "tensor"
+        if scheme is not None and "tensor" in held
+        else next((g for g in _ACTIVATION_PREFERENCE if g in held), None)
+    )
+    if scheme is not None and weight_held in ("column_block", "column"):
+        columns = scheme.get("columns_per_scale", facet.scale_columns)
+        if columns != facet.scale_columns or (weight_held == "column_block" and facet.scale_columns is None):
+            recipe.status = UNDERIVABLE
+            recipe.underivable["scale.columns_per_scale"] = "scheme width disagrees with the derived output path"
+            return recipe
     if weight_held is None or (activation_held is None and "block" not in held):
         recipe.status = UNDERIVABLE
         recipe.underivable["granularity"] = (
@@ -304,6 +351,7 @@ def derive(
         quant_min=w_min,
         quant_max=w_max,
         block=block,
+        channels_per_scale=facet.scale_columns if weight_held == "column_block" else None,
     )
     recipe.why["weight.granularity"] = (
         f"the finest scale the readout holds is per {weight_held}"
@@ -379,6 +427,22 @@ def derive(
     _unit_families(recipe, capabilities)
     _readout_numerics(recipe, facet)
     return recipe
+
+
+def _validate_scheme(scheme: Mapping[str, Any]) -> None:
+    """Consume a selected axis point, never default an unresolved scheme."""
+    if scheme.get("status", "resolved") != "resolved" or scheme.get("unknown"):
+        raise ValueError("a capture recipe requires a resolved quantization scheme")
+    if scheme.get("weight_scale_granularity") not in ("tensor", "column_block", "column"):
+        raise ValueError("scheme weight_scale_granularity is tensor, column_block or column")
+    if scheme.get("activation_scale_granularity", "tensor") != "tensor":
+        raise ValueError("scheme activation_scale_granularity must be tensor")
+    if scheme.get("scale_value") not in ("power_of_two", "arbitrary_f32"):
+        raise ValueError("scheme scale_value is power_of_two or arbitrary_f32")
+    if scheme["scale_value"] == "arbitrary_f32" and scheme.get("readout_strategy") != "f32_product_rne":
+        raise ValueError("arbitrary_f32 requires f32_product_rne")
+    if scheme.get("operand_sum_rounding", "single_rounding") not in ("single_rounding", "per_operand"):
+        raise ValueError("unknown scheme operand_sum_rounding")
 
 
 def _readout_numerics(recipe: QuantRecipe, facet: Any) -> None:
@@ -975,13 +1039,20 @@ def _main(argv: Sequence[str] | None = None) -> int:
 
 
 def for_target(
-    target: str, *, facts: Mapping[str, Any] | None = None, prefer_activation_mode: str | None = None
+    target: str,
+    *,
+    facts: Mapping[str, Any] | None = None,
+    prefer_activation_mode: str | None = None,
+    scheme: Mapping[str, Any] | None = None,
+    calibration_domain: Mapping[str, Any] | None = None,
 ) -> list[QuantRecipe]:
     """One recipe per compute unit that contracts, in the contract's unit order."""
     from merlin.targetgen import readout_facet
 
     return [
-        derive(facet, prefer_activation_mode=prefer_activation_mode)
+        derive(
+            facet, prefer_activation_mode=prefer_activation_mode, scheme=scheme, calibration_domain=calibration_domain
+        )
         for facet in readout_facet.for_target(target, facts=facts)
     ]
 

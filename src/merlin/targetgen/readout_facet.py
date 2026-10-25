@@ -59,7 +59,7 @@ OPERAND_SUM_SCHEMA = "operand_sum_contract_v1"
 
 #: How a scale varies over the accumulator tile. ``row`` / ``column`` are one scale per tile row /
 #: column, ``rank1`` their outer product, ``block`` one per fixed-length run of elements.
-GRANULARITIES = ("tensor", "row", "column", "rank1", "block")
+GRANULARITIES = ("tensor", "row", "column", "column_block", "rank1", "block")
 
 #: The contract's ``scaling:`` vocabulary (``quant_formats.SCALE_KINDS``) in facet terms. ``none``
 #: is absent on purpose: a unit that declares no scaling makes no claim to audit.
@@ -75,7 +75,13 @@ GRANULARITY_OF_SCALE_KIND: dict[str, str] = {
 #: Facet granularity -> the quantized-epilogue contract's spelling (the ones it can express).
 EPILOGUE_GRANULARITY: dict[str, str] = {"tensor": "per_tensor", "column": "per_axis"}
 #: Facet granularity -> the observer granularity a PT2E / ``quantize_`` recipe asks TorchAO for.
-TORCHAO_GRANULARITY: dict[str, str] = {"tensor": "PerTensor", "row": "PerRow", "column": "PerAxis", "block": "PerGroup"}
+TORCHAO_GRANULARITY: dict[str, str] = {
+    "tensor": "PerTensor",
+    "row": "PerRow",
+    "column": "PerAxis",
+    "column_block": "PerAxis",
+    "block": "PerGroup",
+}
 
 #: Register-field roles, read from the tokens of a target's own field names.
 _FIELD_ROLE_TOKENS: dict[str, tuple[str, ...]] = {
@@ -119,6 +125,8 @@ class ReadoutFacet:
     #: report a hardware gap nobody established.
     scale_granularities_complete: bool = True
     scale_block: int | None = None
+    #: Physical command width; column scales require independent output partitions.
+    scale_columns: int | None = None
     scale_dtype: str | None = None
     scale_carriers: tuple[dict[str, Any], ...] = ()
     rounding: str | None = None
@@ -161,6 +169,7 @@ class ReadoutFacet:
                 "granularities": (list(self.scale_granularities) if self.scale_granularities is not None else None),
                 "granularities_complete": self.scale_granularities_complete,
                 "block": self.scale_block,
+                **({"columns_per_scale": self.scale_columns} if self.scale_columns is not None else {}),
                 "dtype": self.scale_dtype,
                 "carriers": [dict(carrier) for carrier in self.scale_carriers],
             },
@@ -207,6 +216,7 @@ class ReadoutFacet:
             "granularities": list(self.scale_granularities) if self.scale_granularities is not None else None,
             "granularities_complete": self.scale_granularities_complete,
             "scale_block": self.scale_block,
+            **({"columns_per_scale": self.scale_columns} if self.scale_columns is not None else {}),
         }
         canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
         return {**body, "sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest()}
@@ -630,6 +640,31 @@ def _from_output_epilogue(
         facet.note("scale_dtype", "rtl_derived", f"the readout decodes its scale as {scale['format']['format']}")
 
 
+def _from_output_path(facet: ReadoutFacet, path: Mapping[str, Any] | None, unit: Mapping[str, Any] | None) -> None:
+    """Derive partitionable output scales without inventing a per-command scale vector."""
+    if path is None or not _contracts(unit) or "format" in facet.rungs_for("scale_granularities"):
+        return
+    from merlin.targetgen.output_path import validate
+
+    scale = next((s for s in validate(path).get("readout", ()) if s["kind"] == "scale"), None)
+    if scale is None:
+        return
+    granularity = scale["granularity"]
+    if granularity == "per_command":
+        columns = scale.get("columns_per_scale")
+        if type(columns) is not int or columns < 1:
+            facet.unknown["scale_columns"] = "the output path does not derive a positive columns_per_scale"
+            return
+        facet.scale_columns = columns
+        held = ("tensor", "column_block", "column")
+        observed = f"one scale per {columns} output columns; independent columns require output_scale_partition"
+    else:
+        held = ("tensor", "column") if granularity == "per_channel" else ("tensor",)
+        observed = f"the output path holds scales {granularity}"
+    facet.scale_granularities = held
+    facet.note("scale_granularities", "output_path", observed)
+
+
 _NO_RUNG = "no rung produced it"
 #: The structural ISA role of a readout that applies a scale (``semantic_families.ISA_ROLE_FAMILY``).
 _SCALED_READOUT_ROLE = "acc_readout_scaled"
@@ -647,6 +682,7 @@ def derive(
     taxonomy: Mapping[str, Any] | None = None,
     operand_sum: Mapping[str, Any] | None = None,
     output_epilogue: Mapping[str, Any] | None = None,
+    output_path: Mapping[str, Any] | None = None,
 ) -> ReadoutFacet:
     """Derive one unit's readout facet from supplied evidence. Pure: it loads nothing."""
     facet = ReadoutFacet(target=target, unit=str(unit.get("name")) if unit else None)
@@ -670,6 +706,7 @@ def derive(
     _from_scalar_abi(facet, scalar_abi)
     _from_operand_sum(facet, operand_sum)
     _from_output_epilogue(facet, output_epilogue, unit)
+    _from_output_path(facet, output_path or (output_epilogue or {}).get("output_path"), unit)
     # An unknown says which rungs were silent and why, because "not derived" tells the next person
     # nothing about whether to extract more or to stop looking.
     silent = []
@@ -1089,7 +1126,11 @@ def epilogue_capability(facet: ReadoutFacet, *, name: str | None = None):
             f"readout facet of {facet.target!r} cannot license an epilogue capability: "
             + ", ".join(f"{key} ({facet.unknown.get(key, 'not derived')})" for key in missing)
         )
-    granularities = tuple(EPILOGUE_GRANULARITY[g] for g in facet.scale_granularities if g in EPILOGUE_GRANULARITY)
+    granularities = tuple(
+        EPILOGUE_GRANULARITY[g]
+        for g in facet.scale_granularities
+        if g in EPILOGUE_GRANULARITY and not (g == "column" and facet.scale_columns is not None)
+    )
     if not granularities:
         raise ValueError(
             f"readout facet of {facet.target!r} holds scales at "

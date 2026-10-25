@@ -352,3 +352,34 @@ def test_the_readout_applies_relu_before_the_scale() -> None:
     for template in with_relu:
         assert template.index("relu") < template.index("scale_f32") < template.index("clamp")
     assert not any(template[-1] == "relu" for template in templates)
+
+
+@pytest.mark.parametrize("columns", [3, 7, 24])
+def test_output_path_derives_block_scales_and_partitioned_columns(columns):
+    from merlin.targetgen.output_path import from_record
+
+    path = from_record({"scale": {"status": "derived", "rounding": "half_even", "columns_per_scale": columns}})
+    facet = RF.derive("t", facts=_facts(), scalar_abi=_ABI, operand_sum=_SUM, output_path=path)
+    assert facet.scale_granularities == ("tensor", "column_block", "column")
+    assert facet.scale_columns == columns
+    assert facet.to_dict()["scale"]["columns_per_scale"] == columns
+    assert facet.numerics_handoff()["columns_per_scale"] == columns
+    # The legacy epilogue contract cannot express a physical partition obligation.
+    assert RF.epilogue_capability(facet).scale_granularities == ("per_tensor",)
+    assert "output_path" in facet.rungs_for("scale_granularities")
+    assert "output_scale_partition" in facet.evidence[-1].observed
+    assert facet.operand_sum_refusal((1, 1)) is None
+    assert all(p["status"] == "proven" for p in facet.operand_sum_product_proofs((1, 1)))
+    assert "round before" in facet.operand_sum_refusal((0.5, 1))
+
+
+@pytest.mark.parametrize("columns", [None, 0, -1, True, "UNKNOWN"])
+def test_output_path_with_unknown_width_never_invents_blocks(columns):
+    from merlin.targetgen.output_path import from_record
+
+    path = from_record({"scale": {"status": "derived", "rounding": "half_even", "columns_per_scale": columns}})
+    facet = RF.derive("t", facts=_facts(), output_path=path)
+    assert facet.scale_granularities == ("tensor",)
+    assert facet.scale_columns is None
+    assert facet.admits_granularity("column_block") is False
+    assert "columns_per_scale" in facet.unknown["scale_columns"]

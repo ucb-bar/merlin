@@ -15,6 +15,10 @@ def parameters(spec):
     domain = numeric["calibration_domain"]
     if rule.get("admission") != "after_native_exact_failure" or domain.get("evaluation_inputs") != "never_read":
         raise ValueError("missing input-independent quantized fallback contract")
+    if domain["scale_policy"] == "declared_observer":
+        raise ValueError(
+            "declared_observer requires the capture-time PT2E recipe; the exact native proof needs power-of-two scales"
+        )
     if domain["scale_policy"] != "enclosing_power_of_two" or not domain["minimum"] < domain["maximum"]:
         raise ValueError("unsupported declared observer domain")
     extent = max(abs(Fraction(domain["minimum"])), abs(Fraction(domain["maximum"])))
