@@ -1,0 +1,36 @@
+{
+  "case": {
+    "name": "chain",
+    "mode": "chain",
+    "source_sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f",
+    "source_bytes": 582,
+    "changed": true
+  },
+  "originals": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/source.mlir",
+      "sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f",
+      "bytes": 582
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/actual/middle.mlir",
+      "sha256": "e9e448db30daf78e97ebecc3c660ffd27589a7d404f2d4069f3c7779cbb0a12e",
+      "bytes": 910
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/actual/after.mlir",
+      "sha256": "acc07b3151ca0a6a7df07015edd8fc73dbc5ce02e10775e0239d4db3aa906137",
+      "bytes": 906
+    }
+  ],
+  "receipt": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/receipt.json",
+    "sha256": "9b28960c31534232dd39e1ae516c5a84c0b5d7c769719696b7451094536792b6",
+    "bytes": 220088
+  },
+  "producer": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/actual/projection.json",
+    "sha256": "ef1cf32b944ee75690f4ca707177d2dd113a23d89b3b78fffee794334f342e1e",
+    "bytes": 93980
+  }
+}

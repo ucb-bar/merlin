@@ -1,0 +1,196 @@
+# Graham: independent graph-correctness review and paper evidence
+
+This is a substantial parallel workstream, not a request to rerun one example.
+Work through all six packages below; expect several sustained sessions, with
+progress recorded between them. The goal is to resolve the paper's two open
+verification items: an exact supported correctness claim, and a worked actual
+IR example with checker output and an independently reviewed mapping to Lean.
+
+Numerical proofs are deferred. Do not broaden a graph claim to numerical,
+LLVM/backend, encoding, hardware or timing correctness. Work independently of
+the implementation authors; do not approve an assumption just because their
+checker accepts. A finding that limits the claim is a useful result.
+
+## Setup, inputs and ownership
+
+Primary repository and delivery branch: `feat/pass-verification`. Pull the
+published branch first; record the exact commit and dirty source identities.
+The actual graph producer/reference is separately pinned at
+`4499eebb959c0f92cefd92cc6d80646ba66474ed`. Do not merge that experimental branch
+wholesale into the verification branch. The three implementation agents own:
+
+- `GraphLoopsMemorySCF*` / `lean_graph_loops_memory_scf*`: initializer memory and
+  actual buffer-reuse→segmentation composition.
+- `GraphRegionsDeclared*` / `lean_graph_regions_declared*`: declaration/call
+  correspondence and local fusion agreement.
+- `GraphStatePipeline*` / `lean_graph_state_pipeline*`: scalar CSE/DCE→LICM→
+  unroll→segment in one failure-preserving operational interpretation.
+
+Do not modify those sources or their sealed tests/evidence. Own a separate
+`out/artifacts/verification/graham-graph-review/` tree, independent reviewer
+scripts and newly justified adversarial cases. Propose fixes and interface
+changes to the coordinator with a reproduction; do not repair the production
+pass or frozen semantics as part of the review. Keep final changes on the
+primary branch. Publication is coordinated; do not force-push or open a PR.
+
+Read repository AGENT.md/CLAUDE.md, relevant directory instructions,
+`docs/design/merlin_lean_verification.md`, this directory's README/PAPER_TARGET,
+and the graph-first-20261023 PAPER_ALIGNMENT. Existing specifications, locks,
+qualified source capsules and counterexamples remain read-only.
+
+The accompanying `worked-example/` contains exact copies of a qualified
+CSE/DCE→LICM chain, its projection, query, original checker/audit output and
+fresh-process replay. Read `worked-example/README.md` and its manifest first.
+The original receipt paths remain historical Linux paths; do not rewrite them
+and refresh hashes to make a laptop replay appear original. Full source/dependency
+handoffs are also in the previously supplied laptop bundle. Compiled toolchains,
+large build trees and native core dumps are deliberately not portable inputs.
+
+## 1. Establish the graph-pass denominator and claim matrix
+
+Independently enumerate actual registered transformations at the pinned source:
+`transforms/certificates.py:TRANSFORM_SCOPES`, `transforms/pipeline.py`,
+`transforms/pipeline_policy.py` and `compile/scheduling/schedule_pipeline.py`.
+The common pipeline has eight transform kinds; analysis/emission stages are
+not additional proved graph rewrites. Inventory broader scheduling/fusion/
+transfer/storage mechanisms separately so they do not vanish from an all-graph
+claim. Distinguish helpers, pass selectors, actual transformations and target
+implementations. Compare with `docs/reference/shared_compiler_passes.md`.
+
+For every kind and implemented variant, map actual source → validator entry →
+projection → Lean theorem → relation/domain → assumptions → changed positive
+artifact → refusals → qualification/replay → review state. Verify the cited
+theorem covers the whole changed boundary, not just integer arithmetic, lifetime
+disjointness or a local loop identity. Mark unsupported, unqualified and missing
+composition separately; do not invent a percentage or count tests as proofs.
+
+Deliver `coverage.csv`, `coverage-review.md` and a prioritized gap list. Check the
+normalization and dependency-scheduling routes carefully: the old host broker's
+local certificate results are not automatically the newer whole-program proofs.
+
+## 2. Independently audit complete IR-to-Lean correspondence
+
+Start with the supplied nonempty CSE/DCE→LICM chain, then the retained zero-trip
+and nested chain variants. Walk the unabridged before/middle/after IR against
+`actual/projection.json` and `checked/kernel/GraphStateScalarInstance.lean`.
+Review the actual projection and serializer source, not just its JSON labels.
+
+Account for all operations, integer widths/properties, ordered operands/results,
+entry signatures, declarations/attributes, captures, scoped SSA, IVs, carries,
+yields, return values, persistent effects, observers and untouched functions.
+Check that all three stages share a justified descriptor/type/control registry
+and the middle is the same actual buffer. Identify every trusted host/parser
+step and every corresponding Lean check. Hash equality binds bytes; it does not
+prove projection fidelity or semantic injectivity.
+
+Create an independent correspondence table or small read-only structural audit
+script. It must not import the implementation's own projection as its oracle.
+Examine what unsupported metadata/regions/local calls do: refusal must cover
+the entire boundary rather than silently dropping unmodeled operations.
+After the active agents deliver their new packets, extend this audit to the
+actual multi-initializer reuse→segment case and declaration/physical-call case.
+
+Deliver `ir-map.md`, independent audit source/output and exact omissions/bugs.
+
+## 3. Review the semantic assumptions and theorem strength
+
+Read each final theorem statement and actual generated query with its full
+transitive axiom audit. Only propext/Classical.choice/Quot.sound are allowed;
+no sorry/admit/new axioms/native_decide/bv_decide/native reflection or substituted
+implementation. A generic theorem with hypotheses is not an axiom violation,
+but its hypotheses must be stated and justified for the claimed use.
+
+Audit total deterministic world-free pure operations, partial opaque results
+and terminal worlds, result arity, loop/index/control meaning, scope, aliases,
+read-before-write, completion, private observations and allocation. Distinguish
+returned-value equality, complete observer equality, possible successful
+outcomes, failure preservation, typing, initialized slots, success and poison
+freedom. Different workers currently prove different relations; do not equate
+them implicitly when composing. Check domain inhabitation and nonzero witnesses.
+
+Test necessity against retained countermodels. In particular, source allocation
+can peak at 8 bytes while the reuse candidate reserves 16; a finite allocator
+distinguishes them. Total/private/unobservable allocation is a real premise.
+The scalar loop control premise and the new operational control bridge must
+not be confused. A local fusion contract must not restate final equality.
+
+Deliver `assumption-review.md` with each premise classified as proved, reviewed
+contract, trusted implementation correspondence, experimentally tested, or open.
+Record reviewer/date/source identities and unresolved questions; independent
+review does not self-approve numerical policies or native fidelity.
+
+## 4. Challenge acceptance with independent valid mutations
+
+Inspect existing negative coverage first, then add missing compiler-valid
+mutations that challenge the theorem/IR association: same-typed wrong operand,
+changed observer/effect, wrong carry/capture, skipped initializer, altered loop
+control, wrong middle, descriptor/width/registry drift, missing output and
+coherently rehashed source/query/audit associations. Check malformed-input
+rejection separately from valid-but-wrong transformation refusal.
+
+Produce at least one independently reasoned semantic counterexample to a
+mutation, with complete public outcome including world/error when applicable.
+Do not call a native crash, timeout, setup error or unavailable tool a successful
+refusal. Do not duplicate existing cases merely to increase the count. Retain
+the first raw failure and report the actual rejected fact.
+
+Deliver `adversarial-review.md`, complete original/mutated IR, independent
+reasoning or witness, parser-validity evidence and raw checker outcomes.
+
+## 5. Reproduce qualification and audit the host acceptance boundary
+
+Use an explicitly selected pinned environment and a NEW output directory. The
+supplied reproduction recipe gives the scalar receipt CLI and original buffers.
+Independently check actual sources, kernel/tool imports/sidecars/libraries and
+the exact audited roots before and after replay. Run one reviewed original-bound
+replay for the worked example and meaningful independent refusal cases; retain
+successful artifacts. Distinguish a fresh process on the same machine from a
+clean environment on another machine. On a laptop, identify a fresh toolchain
+and source build rather than treating old Linux objects as portable proof.
+
+Audit whether the actual selected compiler host requires this validator's live
+completion before proceeding. New independent graph leaf validators are not
+automatically wired into `verify_pipeline_change`/`accepted_pipeline_receipt`.
+Record exact gate/route and any missing broker integration. Saved receipt JSON,
+identity flags and passing tests must not grant live proof authority.
+
+Preserve the unexplained Std.Time.Format.Basic object discrepancy and separate
+configuration-elision SIGSEGV. The affected source bridge/elision contexts remain
+unqualified. Do not repair/reselect/retry/rehash them to get green. Use only a
+verified unaffected selection; otherwise finish source review and report the
+replay as unavailable. No silent dependency/toolchain download or modification.
+
+Deliver `reproduction.md`, commands, versions, raw stdout/stderr/status, file
+inventory, exact reviewed roots, acceptance-gate audit and remaining trust.
+
+## 6. Produce the paper-ready review packet
+
+Return a concise `REVIEW.md` with an explicit verdict per claimed row, all open
+obligations and the strongest sentence the evidence supports. Supply a compact
+annotated actual before/after excerpt with the exact retained checker result;
+link unabridged buffers/query/audit/replay, and keep all conditional flags visible.
+Also provide proposed replacement text for both verification FIXMEs and an
+appendix table covering semantics, trusted mapping and assumptions.
+
+The user's two-buffer panel-pipelining/gSIM figure has separate execution and
+performance measurements. Do not attach a Lean claim to that exact change unless
+its full serial→pipeline boundary and completion/effects are actually proved.
+Explain the connection and limits rather than merging execution checks with a
+compiler-IR proof. Do not repeat measurements or claim unverified speedups.
+
+Conclude with a prioritized release checklist: issues that block the scoped
+graph theorem, those that limit an all-graph claim, independent specification
+approvals, host integration and final artifact/model coverage. Send substantive
+findings to the coordinator; do not wait for all six packages to expose a soundness
+bug. After compaction, reread this current task and continue the next package.
+
+## Immediate start and completion
+
+Begin packages 1–3 against the supplied already-qualified example. These do not
+depend on the active agents finishing. Then challenge/reproduce it while reviewing
+new agent packets as they arrive. This sequence provides substantial parallel
+work even when a tool or implementation bridge is blocked.
+
+Complete when the six deliverables are reviewable and every proposed paper claim
+has an evidence link and explicit remaining assumptions. Do not mark the complete
+shared pipeline, numerics or full model verified merely to close the paper FIXMEs.

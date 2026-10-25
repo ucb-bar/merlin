@@ -1,0 +1,96 @@
+{
+  "case": "actual CSE/DCE then LICM, both stages changed",
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "originals": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/source.mlir",
+      "sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f",
+      "bytes": 582
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/actual/middle.mlir",
+      "sha256": "e9e448db30daf78e97ebecc3c660ffd27589a7d404f2d4069f3c7779cbb0a12e",
+      "bytes": 910
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/actual/after.mlir",
+      "sha256": "acc07b3151ca0a6a7df07015edd8fc73dbc5ce02e10775e0239d4db3aa906137",
+      "bytes": 906
+    }
+  ],
+  "status": "conditional_graph_checked",
+  "kernel_returncode": 0,
+  "exact_roots": [
+    "Merlin.GraphState.Scalar.check_sound",
+    "Merlin.GraphState.Scalar.check_typed",
+    "Merlin.GraphState.Scalar.normalize_sound",
+    "Merlin.GraphStateScalarInstance.F0.accepted",
+    "Merlin.GraphStateScalarInstance.F0.actual",
+    "Merlin.GraphStateScalarInstance.F0.typed",
+    "Merlin.GraphStateScalarInstance.F0.initialized",
+    "Merlin.GraphStateScalarInstance.F0.operands_initialized",
+    "Merlin.GraphStateScalarInstance.F0.source_join",
+    "Merlin.GraphStateScalarInstance.F0.middle_join",
+    "Merlin.GraphStateScalarInstance.F0.final_join",
+    "Merlin.GraphStateScalarInstance.F0.first_accepted",
+    "Merlin.GraphStateScalarInstance.F0.second_accepted",
+    "Merlin.GraphStateScalarInstance.F0.first_actual",
+    "Merlin.GraphStateScalarInstance.F0.second_actual",
+    "Merlin.GraphStateScalarInstance.F0.middle_typed",
+    "Merlin.GraphStateScalarInstance.F0.independently_composed"
+  ],
+  "relation": "same ordered returned values and complete successful persistent world OR same error/terminal world; private SSA slots excluded",
+  "assumptions": [
+    "pinned xDSL parser/verification and actual scalar producer execution",
+    "primary complete typed SSA/metadata projection into the checked graph language",
+    "eligible primitives have the selected total deterministic pure value meaning",
+    "opaque descriptors share the same partial persistent-world interpretation and successful result arity",
+    "SCF bound values/control interpretation matches a common finite iteration sequence on its admitted domain",
+    "local calls, CFG and opaque regions outside the supported model are refused"
+  ],
+  "retained_replay": {
+    "schema": "merlin.graph-state-scalar.live-replay.v1",
+    "status": "conditional_graph_checked",
+    "receipt": {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/receipt.json",
+      "sha256": "9b28960c31534232dd39e1ae516c5a84c0b5d7c769719696b7451094536792b6",
+      "bytes": 220088
+    },
+    "fresh_report": {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/chain/fresh/report.json",
+      "sha256": "2aeef5aa20be6c753eb1135023e6ba64e5d57441e621f6546b64bc8b2ee30fc9",
+      "bytes": 382059
+    },
+    "retained_object_reproduced": true,
+    "host_transport_proved_in_Lean": false,
+    "claims": {
+      "status": "conditional_graph_checked",
+      "public_acceptance_issued": false,
+      "review_approved": false,
+      "native_fidelity_proved": false,
+      "primitive_fidelity_proved": false,
+      "source_success_proved": false,
+      "poison_freedom_proved": false,
+      "numerical_gates_discharged": false,
+      "full_model_claim": false
+    }
+  },
+  "source_binding_observed_again": true,
+  "new_proofs_or_tests_run": false,
+  "new_qualification_issued": false,
+  "human_review_complete": false,
+  "omitted_compiled_objects": [
+    {
+      "original": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/checked/kernel/GraphStateScalarInstance.olean",
+      "reason": "compiled binary not copied; original qualification reference retained"
+    },
+    {
+      "original": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/chain/fresh/kernel/GraphStateScalarInstance.olean",
+      "reason": "compiled binary not copied; original qualification reference retained"
+    },
+    {
+      "original": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/chain/reproduced.olean",
+      "reason": "compiled binary not copied; original qualification reference retained"
+    }
+  ]
+}

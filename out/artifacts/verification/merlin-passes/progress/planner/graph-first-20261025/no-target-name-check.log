@@ -1,0 +1,4 @@
+[  ok] no-target-name: no stray target-name literal, identifier or string in scope (12 derived target names, 5 substrates).
+[DEBT] 1 allowlisted file(s) still name a target, and 8 dependency(ies) on a specific target sit in modules whose own name claims to be generic (--coupling to list). Both counts may only fall.
+[DEBT] 33 generic file(s) still name a board/simulator/unit (target_substrate_ratchet.txt); the list may only shrink.
+[DEBT] 7 file(s) still name a target in an identifier or string (target_token_ratchet.txt); the list may only shrink.
