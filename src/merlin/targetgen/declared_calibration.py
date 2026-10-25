@@ -13,6 +13,8 @@ def initialize_observers(prepared, declaration, observer_type):
         raise ValueError("declared calibration endpoints must be finite and ordered")
     if declaration.get("evaluation_inputs") != "never_read":
         raise ValueError("declared calibration must exclude evaluation inputs")
+    if declaration.get("scale_policy") not in ("enclosing_power_of_two", "declared_observer"):
+        raise ValueError("declared calibration scale_policy must be enclosing_power_of_two or declared_observer")
     count = 0
     for node in prepared.graph.nodes:
         if node.op != "call_module":

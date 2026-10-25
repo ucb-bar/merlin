@@ -211,6 +211,8 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float, channel_axi
     from torchao.quantization.pt2e.quantizer import QuantizationSpec
 
     granularity, symmetric = tensor.get("granularity"), bool(tensor.get("symmetric"))
+    if tensor.get("channels_per_scale") is not None and not (is_weight and granularity == "channel"):
+        raise RecipeError("channels_per_scale applies only to per-channel weight observers")
     dtype = _torch_dtype(tensor.get("dtype"))
     floating_format = str(tensor.get("dtype", "")).startswith("fp8_")
     arguments: dict[str, Any] = {"eps": eps}
@@ -241,6 +243,7 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float, channel_axi
                 raise RecipeError("channels_per_scale needs a positive integer and symmetric channel scales")
             import _recipe_observers as RO  # noqa: PLC0415 -- a sibling, by bare name
 
+            # Reuse the existing capture observer to tie the fact-derived column blocks.
             observer, arguments["channels_per_scale"] = RO.grouped_channel_observer(), group
     else:
         raise RecipeError(

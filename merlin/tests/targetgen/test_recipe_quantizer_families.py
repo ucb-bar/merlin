@@ -352,3 +352,92 @@ model.eval()
 """
     result = subprocess.run([python, "-c", script], capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_declared_arbitrary_f32_and_block_scales_reuse_pt2e_observers():
+    from merlin.common.paths import env
+
+    python = env("MERLIN_M2M_PYTHON")
+    if not python or not Path(python).is_file():
+        pytest.skip("the model2MLIR torch interpreter is not configured")
+    script = r"""
+import json, math, sys
+from types import SimpleNamespace
+import torch
+sys.path.insert(0, str(__import__('pathlib').Path(sys.argv[1]).parent))
+from _recipe_quantizer import _spec, apply_recipe, RecipeError
+from merlin.targetgen.declared_calibration import initialize_observers
+from torchao.quantization.pt2e import MinMaxObserver
+
+weight = dict(dtype='int8', granularity='channel', symmetric=True, quant_min=-127,
+              quant_max=127, channels_per_scale=3)
+spec = _spec(weight, is_weight=True, eps=2**-24, channel_axis=1)
+observer = spec.observer_or_fake_quant_ctr(dtype=spec.dtype, qscheme=spec.qscheme,
+                                         quant_min=spec.quant_min, quant_max=spec.quant_max)
+# Two complete blocks and one partial block, with independent channel ranges.
+magnitudes = torch.tensor([1., 3., 2., 7., 4., 6., .5])
+observer(torch.stack((-magnitudes, magnitudes)))
+scales, zero = observer.calculate_qparams()
+independent = observer._calculate_qparams(-magnitudes, magnitudes)[0]
+expected = independent.clone()
+for start in range(0, 7, 3):
+    expected[start:start+3] = independent[start:start+3].max()
+assert torch.equal(scales, expected) and torch.equal(zero, torch.zeros_like(zero))
+assert len(scales.unique()) == 3
+
+class Prepared:
+    def __init__(self, observer):
+        self.observer = observer
+        self.graph = SimpleNamespace(nodes=[SimpleNamespace(op='call_module', target='obs')])
+    def get_submodule(self, target):
+        return self.observer
+
+domain = dict(schema='merlin.declared_observer_domain.v1', minimum=-.7, maximum=1.3,
+              evaluation_inputs='never_read', scale_policy='declared_observer')
+def fresh():
+    return MinMaxObserver(dtype=torch.int8, qscheme=torch.per_tensor_symmetric,
+                          quant_min=-128, quant_max=127, eps=2**-24)
+raw, declared, legacy = fresh(), fresh(), fresh()
+raw(torch.tensor([domain['minimum'], domain['maximum']], dtype=torch.float32))
+initialize_observers(Prepared(declared), domain, MinMaxObserver)
+initialize_observers(Prepared(legacy), dict(domain, scale_policy='enclosing_power_of_two'), MinMaxObserver)
+raw_scale, raw_zero = raw.calculate_qparams()
+scale, zero = declared.calculate_qparams()
+assert scale.dtype == torch.float32 and torch.equal(scale, raw_scale) and torch.equal(zero, raw_zero)
+assert math.frexp(scale.item())[0] != .5
+legacy_scale = legacy.calculate_qparams()[0]
+assert math.frexp(legacy_scale.item())[0] == .5 and legacy_scale.item() >= scale.item()
+# The same declaration reaches real PT2E conversion through the existing recipe entrypoint.
+recipe = dict(schema='quant_recipe_v1', status='derived', families=['contraction'], weight=weight,
+              activation=dict(dtype='int8', granularity='tensor', mode='static', symmetric=True,
+                              quant_min=-128, quant_max=127), calibration_domain=domain)
+quantized = apply_recipe(torch.nn.Linear(2, 7, bias=False).eval(), recipe,
+                         example_inputs=(torch.zeros(1, 2),))
+weight_nodes = [n for n in quantized.graph.nodes if 'dequantize_per_channel' in str(n.target)]
+assert len(weight_nodes) == 1
+stored_scales = getattr(quantized, weight_nodes[0].args[1].target)
+assert stored_scales.shape == (7,) and stored_scales.dtype == torch.float32
+assert all(math.frexp(v)[0] != .5 for v in stored_scales.tolist())
+assert quantized._recipe_quantization_stats['api'] == 'pt2e'
+try:
+    initialize_observers(Prepared(fresh()), dict(domain, scale_policy='typo'), MinMaxObserver)
+except ValueError as exc:
+    assert 'scale_policy' in str(exc)
+else:
+    raise AssertionError('unknown policy must refuse')
+for bad, is_weight in ((dict(weight, granularity='tensor'), True), (weight, False)):
+    try:
+        _spec(bad, is_weight=is_weight, eps=2**-24)
+    except RecipeError:
+        pass
+    else:
+        raise AssertionError('a block tie must never be silently ignored')
+print(json.dumps(dict(blocks=3, arbitrary_f32=True, legacy_enclosing=True)))
+"""
+    completed = subprocess.run([python, "-c", script, str(_SOURCE)], capture_output=True, text=True, timeout=60)
+    assert completed.returncode == 0, completed.stderr[-3000:]
+    import json
+
+    assert json.loads(completed.stdout.strip().splitlines()[-1]) == dict(
+        blocks=3, arbitrary_f32=True, legacy_enclosing=True
+    )
