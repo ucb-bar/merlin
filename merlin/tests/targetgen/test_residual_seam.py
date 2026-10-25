@@ -236,6 +236,12 @@ def test_a_capture_s_raw_tag_is_canonicalized_rather_than_trusted() -> None:
 #: front. Pooling is ``reduction``, a mode of the store path, for which "fused only" is the true answer.
 CENSUS_STANDALONE = {"quantize": True, "minmax": True, "elementwise": True, "pool": False}
 
+#: The reduction KIND each census region's body computes, as a capture observes it
+#: (``contraction_coverage.reduction_kind``). A max pool's body is a max. The contract restricts its
+#: standalone reduction row to sums, so without the kind the verdict could only be "kind unobserved";
+#: with it, the pool is refused for what it is: a max, which this device runs only fused.
+CENSUS_KIND = {"pool": "max"}
+
 
 def test_the_refusal_changes_from_unnameable_to_the_honest_one(census_caps) -> None:
     """THE MUTATION THAT FIRES, half one: the verdict for every census family is a statement about the
@@ -244,7 +250,9 @@ def test_the_refusal_changes_from_unnameable_to_the_honest_one(census_caps) -> N
     family's verdict is pinned to what the device does (``CENSUS_STANDALONE``), not to the others."""
     cap_map, undetermined = census_caps
     for prov_family, op, _n in CENSUS:
-        region = E.RegionDescriptor(source="c", op=op, family=prov_family, in_dtype="int8", rank=2)
+        region = E.RegionDescriptor(
+            source="c", op=op, family=prov_family, in_dtype="int8", rank=2, kind=CENSUS_KIND.get(prov_family)
+        )
         verdict = E.is_eligible(region, cap_map, undetermined=undetermined)
         assert verdict.refusal not in ("undeclared_family", "unrecognized_family"), (
             f"{op}: {verdict.refusal} -- {verdict.reason}"
@@ -270,7 +278,9 @@ def test_a_region_fused_with_the_seam_s_contraction_is_eligible_and_so_refusable
     """
     cap_map, undetermined = census_caps
     for prov_family, op, _n in CENSUS:
-        region = E.RegionDescriptor(source="c", op=op, family=prov_family, in_dtype="int8", rank=2)
+        region = E.RegionDescriptor(
+            source="c", op=op, family=prov_family, in_dtype="int8", rank=2, kind=CENSUS_KIND.get(prov_family)
+        )
         verdict = E.is_eligible(region, cap_map, undetermined=undetermined, fused_with=frozenset({"contraction"}))
         assert verdict.eligible, f"{op}: {verdict.refusal} -- {verdict.reason}"
 
@@ -295,7 +305,11 @@ def census_caps():
         undetermined = E.undetermined_families_for_target(target)
     except Exception as exc:  # noqa: BLE001
         pytest.skip(f"no resolvable capability map for {target!r}: {exc}")
-    composed = {f for f, c in cap_map.items() if getattr(c, "composed_with", ())}
+    # Per declared row: the reviewed contract declares `reduction` both fused (pooling on the store path)
+    # and standalone for sum reductions, and the fold intersects the fused row's `composed_with` away.
+    from merlin.targetgen.compute_units import fused_producers
+
+    composed = {f for f, c in cap_map.items() if fused_producers(c)}
     if not composed:
         pytest.skip(f"{target!r} declares no fused-only family, so there is no refusal to observe")
     return cap_map, undetermined

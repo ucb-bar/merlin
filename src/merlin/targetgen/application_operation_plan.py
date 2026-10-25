@@ -249,6 +249,7 @@ def _cost(op: str) -> tuple:
         "layernorm": 1,
         "add": 2,
         "reduce_sum": 1,
+        "column_sum": 1,
         "gelu": 1,
         "silu": 1,
         "bias_add": 2,

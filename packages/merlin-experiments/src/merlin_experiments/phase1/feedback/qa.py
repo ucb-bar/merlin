@@ -45,22 +45,35 @@ _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
 
 
 def _original_cohort_complete(score: dict) -> bool:
-    """A measured denominator cannot discard an original required obligation."""
+    """A measured denominator cannot discard an original required obligation.
+
+    Unscored host guards are admitted capsules outside the scored denominator: they are counted
+    here against the admission and must each appear as a passing row, never silently dropped.
+    """
     from merlin.targetgen.expected_refusal import execution_denominator
 
     admission = score.get("cohort_admission")
     if not isinstance(admission, dict):
         return False
     admitted = admission.get("n_admitted_capsules")
-    if type(admitted) is not int or admitted <= 0 or score.get("n_capsules") != admitted:
+    guards = score.get("host_guard_total", 0)
+    if type(admitted) is not int or admitted <= 0 or type(guards) is not int or guards < 0:
         return False
     if type(score.get("n_capsules")) is not int or type(score.get("n_passed")) is not int:
         return False
-    if score["n_passed"] != admitted or execution_denominator(score)[1]:
+    if score["n_capsules"] + guards != admitted:
+        return False
+    if score["n_passed"] != score["n_capsules"] or execution_denominator(score)[1]:
         return False
     for field in (
-        "n_not_measured", "n_cert_not_measured", "n_infrastructure_fault", "n_gated_deferred",
-        "n_screened_only", "n_budget_exhausted", "n_incomplete", "n_not_gradeable_no_oracle",
+        "n_not_measured",
+        "n_cert_not_measured",
+        "n_infrastructure_fault",
+        "n_gated_deferred",
+        "n_screened_only",
+        "n_budget_exhausted",
+        "n_incomplete",
+        "n_not_gradeable_no_oracle",
         "n_not_graded_ineligible",
     ):
         if type(score.get(field, 0)) is not int or score.get(field, 0) != 0:
@@ -70,12 +83,15 @@ def _original_cohort_complete(score: dict) -> bool:
         return False
     names = []
     for row in rows:
-        if (not isinstance(row, dict) or row.get("status") != "pass"
-                or type(row.get("capsule")) is not str or not row["capsule"]):
+        if (
+            not isinstance(row, dict)
+            or row.get("status") != "pass"
+            or type(row.get("capsule")) is not str
+            or not row["capsule"]
+        ):
             return False
         names.append(row["capsule"])
-    return (len(set(names)) == admitted
-            and admission.get("admitted_name_set_sha256") == CG._name_set_sha256(names))
+    return len(set(names)) == admitted and admission.get("admitted_name_set_sha256") == CG._name_set_sha256(names)
 
 
 # Process-exit metadata is NOT capsule data and must survive the numeric scrub. MEASURED (gemmini arm-4,
@@ -349,9 +365,11 @@ def _per_capsule_from_results(runs_root: Path, *, only_capsule: str | None = Non
             "status": r.get("status"),
             "expected_refusal": (
                 {"status": "met"}
-                if r.get("status") == "pass" and r.get("failure") is None
+                if r.get("status") == "pass"
+                and r.get("failure") is None
                 and (r.get("expected_refusal") or {}).get("status") == "met"
-                and isinstance(r.get("declined"), dict) and bool(r["declined"])
+                and isinstance(r.get("declined"), dict)
+                and bool(r["declined"])
                 else None
             ),
             # Opaque content address of the exact executable plus target/RTL identity. It reveals no
@@ -374,7 +392,8 @@ def _per_capsule_from_results(runs_root: Path, *, only_capsule: str | None = Non
             ),
             "trace_unavailable_requirements": (
                 list((r.get("trace_check") or {}).get("unavailable_requirements") or [])[:16]
-                if candidate_feedback is None else []
+                if candidate_feedback is None
+                else []
             ),
             "trace_violations": (
                 list((r.get("trace_check") or {}).get("violations") or []) if candidate_feedback is None else []
@@ -475,21 +494,25 @@ def _candidate_native_feedback(result: dict) -> dict | None:
         # runtime receipt or the legacy host graph's numeric observations.
         source = owned.get("candidate_source_placement")
         dispatch = owned.get("candidate_completed_dispatch")
-        owner = {"candidate_native_model_check": {
-            "schema": "merlin_candidate_native_model_check_v1",
-            "status": owned.get("status"),
-            "violations": owned.get("violations"),
-            "emitted_host_compute": (
-                {"status": "violation"}
-                if owned.get("status") == "fail"
-                and "candidate_host_tensor_compute_violation" in (owned.get("violations") or [])
-                else {"status": "clean"} if isinstance(source, dict) and source.get("status") == "clean" else {}
-            ),
-            "source_placement": source,
-            "completed_dispatch": dispatch,
-            "candidate_source_coverage": owned.get("candidate_source_coverage"),
-            "candidate_required_tiers": owned.get("candidate_required_tiers"),
-        }}
+        owner = {
+            "candidate_native_model_check": {
+                "schema": "merlin_candidate_native_model_check_v1",
+                "status": owned.get("status"),
+                "violations": owned.get("violations"),
+                "emitted_host_compute": (
+                    {"status": "violation"}
+                    if owned.get("status") == "fail"
+                    and "candidate_host_tensor_compute_violation" in (owned.get("violations") or [])
+                    else {"status": "clean"}
+                    if isinstance(source, dict) and source.get("status") == "clean"
+                    else {}
+                ),
+                "source_placement": source,
+                "completed_dispatch": dispatch,
+                "candidate_source_coverage": owned.get("candidate_source_coverage"),
+                "candidate_required_tiers": owned.get("candidate_required_tiers"),
+            }
+        }
     top_level_candidate = "candidate_native_model_check" in owner
     if not top_level_candidate:
         owner = result.get("model_execution_check")
@@ -933,14 +956,28 @@ def run(
         defer_pending = joint_defer
 
     def completed(result):
-        name = result.get('capsule')
+        name = result.get("capsule")
         projected = _per_capsule_from_results(runs_root, only_capsule=name).get(name)
         if projected is not None:
-            fields = ('status', 'numeric_status', 'mismatch_count', 'tiers', 'trace_status',
-                      'trace_requirement_status', 'trace_violations', 'failure_plane',
-                      'failure_category', 'failure_detail', 'execution_digest', 'tier_cycles',
-                      'tier_engines', 'tier_reuse', 'expected_refusal', 'candidate_native_verification')
-            on_capsule_complete({'capsule': name, **{k: projected.get(k) for k in fields}})
+            fields = (
+                "status",
+                "numeric_status",
+                "mismatch_count",
+                "tiers",
+                "trace_status",
+                "trace_requirement_status",
+                "trace_violations",
+                "failure_plane",
+                "failure_category",
+                "failure_detail",
+                "execution_digest",
+                "tier_cycles",
+                "tier_engines",
+                "tier_reuse",
+                "expected_refusal",
+                "candidate_native_verification",
+            )
+            on_capsule_complete({"capsule": name, **{k: projected.get(k) for k in fields}})
 
     from . import joint_test_scope
     selected_roots, test_scope = joint_test_scope.select(capsules_root, submission=submission)
@@ -957,8 +994,8 @@ def run(
         no_oracle=no_oracle,
         additional_forbidden=additional_forbidden,
         **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
-        **({'on_capsule_complete': completed} if on_capsule_complete is not None else {}),
-        **({'max_workers': max_workers} if max_workers else {}),
+        **({"on_capsule_complete": completed} if on_capsule_complete is not None else {}),
+        **({"max_workers": max_workers} if max_workers else {}),
     )
     redacted = _per_capsule_from_results(runs_root)
 

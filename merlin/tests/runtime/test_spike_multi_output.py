@@ -159,7 +159,7 @@ def test_build_threads_opt_in_to_generator(tmp_path, monkeypatch, dump_all):
         "index_bits": 64,
     }
     flags = ["-march=rv64gc", "-mabi=lp64d"]
-    monkeypatch.setattr(weight_prepack, "prepare_build_bundle", lambda model, *_: model)
+    monkeypatch.setattr(weight_prepack, "prepare_build_bundle", lambda model, *_a, **_k: model)
     monkeypatch.setattr(qinner, "plan_for_bundle", lambda *_: False)
     monkeypatch.setattr(spike_model._spike, "gcc_path", lambda: compiler)
     monkeypatch.setattr(spike_model, "_mlir_runtime_compiler", lambda *_: [str(compiler)])

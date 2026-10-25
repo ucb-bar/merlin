@@ -143,12 +143,21 @@ def test_harness_accepts_separately_packed_bias_from_oot_compiler(shape):
 
 
 def test_emitted_classes_are_exactly_the_ones_the_capsule_declares():
-    """The capsule declares PRELOAD + COMPUTE_PRELOADED and no bespoke bias opcode, because the target
-    HAS no bias opcode: the bias rides the existing move-in/preload pair."""
+    """The capsule declares PRELOAD + COMPUTE_PRELOADED and no bespoke bias opcode: the bias rides the
+    existing move-in/preload pair. A declared class this emitter performs in another form the contract
+    declares RTL-legal (``encoding.class_alternatives``: the dedicated accumulator-seed load, done here
+    as a move-in to an accumulator address) is covered by that form -- the same comparison the trace
+    check makes."""
+    from merlin.targetgen import trace_check as TCK
+
     capsule = _capsule_yaml()
-    emitted = {i["class"] for i in _trace(_capsule_cb())}
+    instrs = _trace(_capsule_cb())
+    emitted = {i["class"] for i in instrs}
     declared = set(capsule["expected"]["instruction_classes"])
-    assert declared <= emitted, sorted(declared - emitted)
+    missing, _how = TCK.declared_class_coverage(
+        capsule["expected"], instrs, alternatives=TCK.alternatives_for("gemmini")
+    )
+    assert not missing, sorted(missing)
     assert emitted <= declared | {"FENCE"}, sorted(emitted - declared - {"FENCE"})
 
 

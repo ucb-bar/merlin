@@ -67,7 +67,10 @@ def select_spec(target: str, facts: dict, spec_path: Path, host_path: Path) -> d
     host = validate_host_capabilities(load_yaml(host_path))
     contract = load_contract(target)
     facets = for_target(target, facts=facts, contract=contract)
-    candidates = [candidate.to_dict() for candidate in derive_candidates(contract, facets)]
+    # The Core ATen spec_int8 recipe admits only exact integer sums: an operand sum or mean whose
+    # terms would round before they meet is requantized exactly on the host instead.
+    policy = "exact"
+    candidates = [candidate.to_dict() for candidate in derive_candidates(contract, facets, integer_sum_policy=policy)]
     recipes = [candidate["recipe"] for candidate in candidates if candidate["recipe"] is not None]
     capabilities = fact_capabilities(
         target=target,
@@ -133,10 +136,21 @@ def pipeline_refusals(selection):
     return reasons
 
 
+def placement_authorities(selection, placement):
+    """The documents that own a step at ``placement``: the accelerator software spec, or the host spec.
+
+    Host-placed steps (quantize, cast, readout multiply) are declared by the selected host
+    capabilities only; the accelerator software spec does not own host support.
+    """
+    if placement == "host":
+        return (("host", selection["host"]),)
+    return (("software", selection["spec"]),)
+
+
 def readout_refusals(selection, decision):
-    """Check the numerical contract of the declaration actually admitted at step 6."""
+    """Check the numerical contract of the host declaration actually admitted at step 6."""
     reasons = []
-    for authority, document in (("software", selection["spec"]), ("host", selection["host"])):
+    for authority, document in placement_authorities(selection, "host"):
         key = decision[authority].get("declaration")
         row = next((r for r in document["operations"] if r["id"] == key), {})
         location = declaration_location(selection, authority, key)
@@ -145,20 +159,19 @@ def readout_refusals(selection, decision):
                 f"{location.get('path', '')}:{location.get('line', '')} {key}: "
                 "required host aten.mul.Tensor declaration absent"
             )
-        if authority == "host":
-            contract = row.get("numerical_contract", {})
-            semantics = contract.get("semantics", {})
-            for field, expected in (
-                ("arithmetic", "ieee754_binary32"),
-                ("rounding", "round_to_nearest_even"),
-                ("per_element", "correctly_rounded_single_operation"),
-            ):
-                if not review_accepted(contract, default="unreviewed") or semantics.get(field) != expected:
-                    where = declaration_location(selection, authority, key, ("numerical_contract", "semantics", field))
-                    reasons.append(
-                        f"{where.get('path', '')}:{where.get('line', '')} {key}: "
-                        f"required {field}={expected} declaration absent"
-                    )
+        contract = row.get("numerical_contract", {})
+        semantics = contract.get("semantics", {})
+        for field, expected in (
+            ("arithmetic", "ieee754_binary32"),
+            ("rounding", "round_to_nearest_even"),
+            ("per_element", "correctly_rounded_single_operation"),
+        ):
+            if not review_accepted(contract, default="unreviewed") or semantics.get(field) != expected:
+                where = declaration_location(selection, authority, key, ("numerical_contract", "semantics", field))
+                reasons.append(
+                    f"{where.get('path', '')}:{where.get('line', '')} {key}: "
+                    f"required {field}={expected} declaration absent"
+                )
     return reasons
 
 
@@ -365,9 +378,7 @@ def admission_plan(
 
         def screen(step, name, signature, placement="host"):
             row = {"step": step, "op": name, "signature": signature}
-            for authority, document in (("software", spec), ("host", host)):
-                if placement in {"accelerator", "fused_accelerator"} and authority == "host":
-                    continue
+            for authority, document in placement_authorities(selection, placement):
                 if name == "contraction":
                     from merlin.targetgen.software_spec import admit_contraction_operation
 
@@ -535,7 +546,7 @@ def admission_plan(
                 ),
             )
             steps[-1]["readout_multiply"] = 1
-            if all(steps[-1][a]["status"] == "admitted" for a in ("software", "host")):
+            if steps[-1]["host"]["status"] == "admitted":
                 reasons.extend(readout_refusals(selection, steps[-1]))
             screen(
                 6,
@@ -549,7 +560,7 @@ def admission_plan(
                 ),
             )
             steps[-1]["readout_multiply"] = 2
-            if all(steps[-1][a]["status"] == "admitted" for a in ("software", "host")):
+            if steps[-1]["host"]["status"] == "admitted":
                 reasons.extend(readout_refusals(selection, steps[-1]))
         expected = ("i8", "i8", "i32") if captured or native else ("f32", "f32", "f32")
         if shape.dtypes != expected and not centered:
@@ -610,7 +621,7 @@ def admission_plan(
             signature["ordered_operand_dtypes"] = [str(v.type.element_type) for v in op.operands]
             signature["ordered_result_dtypes"] = [str(op.results[0].type.element_type)]
             row = {"source_operation_ordinal": ordinals[op], "source_operation": mq.op_name(op), "signature": signature}
-            for authority, document in (("software", spec), ("host", host)):
+            for authority, document in placement_authorities(selection, "host"):
                 decision = admit_operation(document, QUANTIZE, signature, "host")
                 if decision.get("declaration"):
                     decision["source"] = declaration_location(selection, authority, decision["declaration"])

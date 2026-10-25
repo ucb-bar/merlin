@@ -422,12 +422,19 @@ def test_semantic_capabilities_differ_across_targets():
     mx = _residual_caps("out/artifacts/targets/mx_gemmini/contracts/residual.yaml")
     rad = _residual_caps("out/artifacts/targets/radiance/contracts/residual.yaml")
 
-    # int8 GEMM accelerator. Pooling is real hardware here and composed-only (a mode of the store
-    # path); the elementwise map is standalone, licensed by evidence paths that name their roles.
+    # int8 GEMM accelerator. Reduction is declared by TWO rows: max pooling is a mode of the store path
+    # (composed-only), and sums run standalone by accumulate-on-load (sum kind only). Each row keeps its
+    # own restriction -- the fold intersects `composed_with` away, so the rows are what is asserted.
+    # The elementwise map is standalone, licensed by evidence paths that name their roles: the
+    # accumulate on load, and the load path's own scale with its int8 rounding and saturation.
     assert set(gem) == {"contraction", "elementwise_map", "movement", "reduction"}
-    assert gem["reduction"].composed_with == ("contraction", "movement")
+    rows = [(r.composed_with, r.kinds, {p.fact for p in r.standalone_evidence}) for r in gem["reduction"].rows()]
+    assert rows == [(("contraction", "movement"), (), set()), ((), ("sum",), {"accumulate_on_load"})]
     assert gem["elementwise_map"].composed_with == ()
-    assert {p.fact for p in gem["elementwise_map"].standalone_evidence} == {"accumulate_on_load"}
+    assert {p.fact for p in gem["elementwise_map"].standalone_evidence} == {
+        "accumulate_on_load",
+        "load_scale_saturation",
+    }
     assert gem["contraction"].dtypes == ("int8",)
     assert set(mx) == {"contraction"}  # matmul-only MX tile
     assert "mxfp8" in mx["contraction"].dtypes
@@ -580,14 +587,27 @@ def test_gemmini_denominator_is_not_empty():
 
 
 def test_gemmini_transfer_capsule_is_a_copy_not_an_arbitrary_permute():
+    """The transfer capsule is classified as a COPY, and movement is admitted per declared FORM.
+
+    The reviewed contract names the DMA primitives as forms -- strided copy, a permutation through
+    the single 16x16 transposer, a stride-0 broadcast and a zero fill -- so a permutation is now
+    declared hardware. What the form axis still refuses is a movement whose form nothing classified:
+    family membership alone does not license it."""
     from merlin.targetgen.semantic_families import operation_form
 
+    caps = el.capability_map_for_target("gemmini")
     cap = _cap("isa/A1_mvin_mvout")
     assert operation_form(cap["operation"]["op"]) == "copy"
     assert cov._capsule_region(cap).form == "copy"
-    assert el.is_eligible(cov._capsule_region(cap), el.capability_map_for_target("gemmini")).eligible
+    assert el.is_eligible(cov._capsule_region(cap), caps).eligible
+    assert set(caps["movement"].forms) == {"copy", "permutation", "broadcast", "zero_fill"}
     permutation = el.RegionDescriptor(op="permute", family="movement", in_dtype="int8", form="permutation")
-    verdict = el.is_eligible(permutation, el.capability_map_for_target("gemmini"))
+    assert el.is_eligible(permutation, caps).eligible
+    # A pad is a copy joined with a zero fill: admitted because BOTH parts are declared.
+    pad = el.RegionDescriptor(op="pad", family="movement", in_dtype="int8", form="copy+zero_fill")
+    assert el.is_eligible(pad, caps).eligible
+    unclassified = el.RegionDescriptor(op="gather", family="movement", in_dtype="int8", form=None)
+    verdict = el.is_eligible(unclassified, caps)
     assert not verdict.eligible and verdict.refusal == "form"
 
 

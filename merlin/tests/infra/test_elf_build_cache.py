@@ -665,6 +665,8 @@ def test_compile_rebuilds_when_only_interface_changes(recipe, key_of, tmp_path, 
 
     recipe.with_effective_abi = lambda: recipe
     monkeypatch.setattr(base, "harness_build_recipe", lambda target: recipe)
+    # The fixture target declares no backend readback default.
+    monkeypatch.setattr(base, "get_backend", lambda target: SimpleNamespace())
     builds = []
 
     def object_file(text, work, **kwargs):

@@ -47,7 +47,14 @@ def test_advisory_reads_selected_facts_not_same_name_cache(selected):
     assert "selected" in basis
 
 
-def test_missing_selected_facts_use_selected_custom_contract(selected):
+def test_missing_selected_facts_use_selected_custom_contract(selected, monkeypatch, tmp_path):
+    # A same-named reference is the view the selected support must implement; this one differs,
+    # so the advisory refuses rather than borrowing either side's geometry.
+    edge, reason = localizer.tile_cols("synthetic")
+    assert edge is None
+    assert reason
+    monkeypatch.setenv("MERLIN_TARGETS_DIR", str(tmp_path / "absent-native"))
+    facts.clear_resolution_cache()
     edge, basis = localizer.tile_cols("synthetic")
     assert edge == 7
     assert "capabilities.tile.cols" in basis

@@ -456,6 +456,11 @@ def classify(op) -> Stage | None:
         return Stage(ROUND)
     if kinds and kinds <= _CAST:
         return Stage(CAST)
+    if n_in == 2 and "math.fma" in kinds:
+        from .faithful_sum import provable_sum  # a bit-faithful add, when its inputs prove it a sum
+
+        if provable_sum(op):
+            return Stage(BIAS_ADD, varies_over=narrow) if narrow is not None else Stage(RESIDUAL_ADD)
     return Stage(RELU) if CC.is_compare_select_relu(op) else Stage(ELEMENTWISE, detail=" ".join(sorted(kinds)))
 
 

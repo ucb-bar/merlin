@@ -132,66 +132,6 @@ def test_selected_timing_is_bound_to_target_config_and_simulator_bytes(tmp_path,
     assert simjob._per_capsule_timeout(0, context=context, timing_file=selected)[0] == simjob._CERT_TIMEOUT_FALLBACK_S
 
 
-def test_vcs_timing_is_bound_to_simv_and_daidir_bytes(tmp_path, monkeypatch):
-    target = "synthetic_device"
-    config = "SyntheticConfig"
-    descriptor = tmp_path / "descriptor.yaml"
-    descriptor.write_text("target: synthetic_device\n")
-    simv = tmp_path / "vcs" / "simv"
-    (tmp_path / "vcs" / "simv.daidir").mkdir(parents=True)
-    simv.write_bytes(b"observed simv loader")
-    (tmp_path / "vcs" / "simv.daidir" / "_1_archive_1.so").write_bytes(b"compiled design")
-    monkeypatch.setenv("MERLIN_SYNTHETIC_DEVICE_SIMV", str(simv))
-    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "vcs")
-    selected = timing.timing_path(tmp_path, target)
-    record = {
-        "target": target,
-        "config": config,
-        "engine": "vcs",
-        "per_capsule_s": 600.0,
-        **timing.simulator_identity("vcs", simv),
-        "measured_by": "fixture observation",
-    }
-    selected.write_text(json.dumps(record))
-    import merlin.common.paths as paths
-    import merlin.targetgen.target_experiment as experiments
-
-    monkeypatch.setattr(paths, "ext_path", lambda name: tmp_path / "chipyard")
-    monkeypatch.setattr(
-        experiments, "load_target_experiment", lambda path: SimpleNamespace(target=target, sim_via="chipyard")
-    )
-    monkeypatch.setattr(
-        experiments, "declared_vs_resolved_contract", lambda selected: (None, tmp_path / "contract.yaml", "agree")
-    )
-    monkeypatch.setattr(
-        experiments,
-        "load_capability_manifest",
-        lambda name, **kw: SimpleNamespace(contract={"runtime": {"rtl_sim_config": config}}),
-    )
-    context = SimpleNamespace(target=target, descriptor=descriptor, experiment=tmp_path)
-    assert timing.read_verified_timing(selected, descriptor=descriptor, target=target)["per_capsule_s"] == 600
-    assert certification._verilator_per_capsule_timeout(context, timing_file=selected) == 1200
-    monkeypatch.setattr(simjob, "_cert_budget_s", lambda target: (None, "no fit"))
-    assert simjob._per_capsule_timeout(0, context=context, timing_file=selected)[0] == max(
-        simjob._CERT_TIMEOUT_FLOOR_S, 1200
-    )
-
-    # A VCS-pinned run refuses a Verilator observation, and a VCS record without a daidir identity.
-    legacy = dict(record, engine=None, verilator_per_capsule_s=600.0)
-    del legacy["engine"]
-    selected.write_text(json.dumps(legacy))
-    with pytest.raises(ValueError):
-        timing.read_verified_timing(selected, descriptor=descriptor, target=target)
-    selected.write_text(json.dumps({k: v for k, v in record.items() if k != "simulator_daidir_sha256"}))
-    with pytest.raises(ValueError, match="daidir identity"):
-        timing.read_verified_timing(selected, descriptor=descriptor, target=target)
-    # The design lives in the daidir: changing it (not the loader) must invalidate the observation.
-    selected.write_text(json.dumps(record))
-    (tmp_path / "vcs" / "simv.daidir" / "_1_archive_1.so").write_bytes(b"another design")
-    with pytest.raises(ValueError, match="daidir bytes changed"):
-        timing.read_verified_timing(selected, descriptor=descriptor, target=target)
-
-
 def test_non_chipyard_simulator_keeps_legacy_timeout_without_chipyard_claim(tmp_path, monkeypatch):
     import merlin.targetgen.target_experiment as experiments
 

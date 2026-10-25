@@ -1094,6 +1094,8 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         from merlin.capture.integerization import (
             INTEGER_REFERENCE,
             accelerator_readout_numerics,
+        )
+        from merlin.capture.integerization import (
             integerize_capture_model as integerize_static_pt2e,
         )
 
@@ -1123,18 +1125,19 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         independent = None
         independent_error = None
         independent_source = None
+        reference_selection = None
         if selected_engine == "integer_reference":
             try:
-                from merlin.targetgen.core_aten_w8a8_reference import selected_pt2e_reference
+                from merlin.targetgen.pt2e_reference_selection import reference_selection as select_reference
+                from merlin.targetgen.pt2e_reference_selection import run_selected_reference
 
-                # A quantized program with no contraction has no readout to choose: its independent
-                # reference is the Q/DQ graph interpreted as declared, which the host-readout reference
-                # does (and it records the post-call inputs the boundary binds).
-                independent, independent_source = selected_pt2e_reference(
-                    mdl,
-                    tuple(inputs),
-                    declared_readout=declared_graph,
-                    numerics=readout_numerics,
+                # Use the exact oracle for closed-rational graphs, framework float otherwise.
+                # Contraction-free programs use declared Q/DQ semantics and retain the
+                # post-call inputs required by the boundary.
+                reference_selection = select_reference(mdl)
+                independent, independent_source = run_selected_reference(
+                    reference_selection, mdl, tuple(inputs),
+                    declared_readout=declared_graph, numerics=readout_numerics,
                 )
                 if not all(
                     hasattr(independent, field)
@@ -1144,9 +1147,17 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             except Exception as exc:  # noqa: BLE001 -- record a failed selected reference, never substitute portable
                 independent_error = f"{type(exc).__name__}: {exc}"[:2000]
                 independent = None
-        mdl, integerization_receipt = integerize_static_pt2e(mdl, tuple(inputs), numerics=readout_numerics, directory=out)
+        mdl, integerization_receipt = integerize_static_pt2e(
+            mdl, tuple(inputs), numerics=readout_numerics, directory=out
+        )
+        if reference_selection is not None:
+            integerization_receipt["reference_selection"] = reference_selection
+        from merlin.targetgen.pt2e_reference_selection import EXACT_ENGINE
+
+        exact_reference = reference_selection is not None and reference_selection["engine"] == EXACT_ENGINE
         if declared_graph:
-            if independent is not None:
+            # Only the exact oracle records the sites and post-call inputs this artifact carries.
+            if independent is not None and exact_reference:
                 leaves, _ = _output_abi(independent.output)
                 from merlin.targetgen.core_aten_w8a8_reference import write_pt2e_reference
 
@@ -1179,6 +1190,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                     "status": "failed",
                     "reference": INTEGER_REFERENCE,
                     "reason": independent_error or "selected integer reference returned no result",
+                    "reference_selection": reference_selection,
                 }
             else:
                 golden_agreement = _integerized_agreement(independent.output, integer_output, atol=0.0, rtol=0.0)
@@ -1208,8 +1220,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 reference_path.write_bytes(reference_bytes)
                 golden_agreement.update(
                     reference=INTEGER_REFERENCE,
-                    arithmetic="exact_rational",
-                    eager_float_divergence=independent.eager_float_divergence,
+                    reference_selection=reference_selection,
                     source=independent_source,
                     output={"path": reference_path.name, "sha256": hashlib.sha256(reference_bytes).hexdigest()},
                     executed_contractions={
@@ -1223,6 +1234,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                         "preserved": integer_partition["preserved"] if integer_partition else None,
                     },
                 )
+                if exact_reference:
+                    golden_agreement.update(arithmetic="exact_rational",
+                                            eager_float_divergence=independent.eager_float_divergence)
+                else:
+                    golden_agreement["arithmetic"] = "integer_contractions_framework_float"
             integerization_receipt["golden_agreement"] = golden_agreement
         else:
             integerization_receipt["golden_agreement"] = portable_agreement

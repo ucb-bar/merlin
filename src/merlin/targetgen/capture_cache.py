@@ -62,6 +62,7 @@ def implementation_identity() -> dict:
         "merlin.targetgen.exact_arithmetic",
         "merlin.runtime.exact_readout",
         "merlin.targetgen.exact_quantized_reference",
+        "merlin.targetgen.pt2e_reference_selection",
         "merlin.targetgen.recipe_numerics",
         "merlin.targetgen.quant_recipe",
         "merlin.targetgen.readout_facet",

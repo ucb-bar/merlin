@@ -144,7 +144,9 @@ module_access = _module
 
 MODULE_ACCESS = (
     _module(
-        "merlin.targetgen.exact_quantized_reference", "oracle", aliases=("merlin.targetgen.core_aten_w8a8_reference",)
+        "merlin.targetgen.exact_quantized_reference",
+        "oracle",
+        aliases=("merlin.targetgen.core_aten_w8a8_reference", "merlin.targetgen.pt2e_reference_selection"),
     ),
     _module("merlin.perf.analysis_worker", "grader"),
     # The whole-model build reads a model capsule's golden and recomputes its oracle; the rest of the

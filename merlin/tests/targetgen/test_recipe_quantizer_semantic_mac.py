@@ -14,7 +14,9 @@ def test_bmm_quantization_uses_declared_prospective_mac(tmp_path, mode):
     script = r"""
 import sys,torch
 from merlin.common.paths import repo_root
+from merlin.common.yaml import load_yaml
 from merlin.targetgen import _recipe_quantizer as quant
+from merlin.targetgen.host_capabilities import validate_host_capabilities
 from merlin.targetgen.software_spec import admit_operation,load_software_spec
 from merlin.targetgen.spec_fact_drift import resolve_spec
 from merlin.targetgen.core_aten_w8a8_reference import run_pt2e_reference
@@ -22,7 +24,12 @@ from merlin.capture.integerization import integerize_static_pt2e
 spec,_=resolve_spec(load_software_spec(repo_root()/'examples/gemmini/target/software-spec.yaml'),{})
 source=dict(family='contraction',ordered_operand_dtypes=['f32','f32','f32'],
             ordered_result_dtypes=['f32'],accum_dtype='f32',rank=3)
-assert admit_operation(spec,'aten.bmm.default',source,'host')['status']=='admitted'
+host=validate_host_capabilities(load_yaml(repo_root()/'examples/gemmini/platform/host-capabilities-core-aten.yaml'))
+assert admit_operation(host,'aten.bmm.default',source,'host')['status']=='admitted'
+# The accelerator spec declares no host rows; the reviewed f32 host bmm row is the host
+# capabilities'. Beside the accelerator families it must not shadow the prospective i8 MAC.
+host_bmm=[row for row in host['operations'] if 'aten.bmm.default' in row.get('ops',())]
+spec['operations']=[*spec['operations'],*host_bmm]
 assert admit_operation(spec,'aten.bmm.default',source,'accelerator')['status']=='unsupported'
 mode=sys.argv[1];allowed=mode=='allowed'
 if mode=='no_mac':spec['operations']=[row for row in spec['operations'] if row['id']!='contraction']
@@ -31,7 +38,7 @@ if mode in {'restricted_rank','unreviewed'}:
   status='unreviewed' if mode=='unreviewed' else 'reviewed',
   signature=dict(ordered_operand_dtypes=['i8','i8','i32'],ordered_result_dtypes=['i32'],
                  ranks=[2] if mode=='restricted_rank' else [3])))
-recipe=dict(schema='quant_recipe_v1',status='derived',families=['contraction'],
+recipe=dict(schema='quant_recipe_v1',status='derived',families=['contraction'],runtime_weight_contractions=True,
  weight=dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-127,quant_max=127),
  activation=dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-128,quant_max=127,mode='static'),
  accumulator_dtype='i32',software_admission=spec)
@@ -49,7 +56,7 @@ else:
  assert all(row['prospective_signature']['numerical_family']=='F3' for row in rows)
  assert rows and all(row['prospective_operator']=='aten.bmm.default' and row['declaration']=='contraction'
                      and row['status']!='unsupported' for row in rows)
- assert all(row['ignored_disjoint_host_precision_declarations']==['host_f32_bmm'] for row in rows)
+ assert all(row['ignored_disjoint_host_precision_declarations']==[r['id'] for r in host_bmm] for row in rows)
  reference=run_pt2e_reference(converted,inputs)
  integer,receipt=integerize_static_pt2e(converted,inputs,numerics="integer_readout")
  if 'integer_bmm_emitted' in receipt:

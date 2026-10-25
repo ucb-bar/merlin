@@ -785,6 +785,12 @@ def assemble(
     if capsule_scope == "accelerator":
         emitted, scope_record = select_members(emitted, fingerprint=fingerprint)
         declared = {key for key in emitted if not key.startswith("hidden/")}
+        # A deselected generated member is not released, so neither are its private answers.
+        answer_sources = {
+            key: source
+            for key, source in answer_sources.items()
+            if key in emitted or not source.is_relative_to(generated_answers)
+        }
     original = (
         {
             "generated": [],

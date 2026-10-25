@@ -69,6 +69,7 @@ def batch_provenance(
             "targetgen/exact_arithmetic.py",
             "runtime/exact_readout.py",
             "targetgen/exact_quantized_reference.py",
+            "targetgen/pt2e_reference_selection.py",
             "targetgen/recipe_numerics.py",
             "targetgen/readout_facet.py",
             "xdsl_dialects/lowering/compute_groups.py",

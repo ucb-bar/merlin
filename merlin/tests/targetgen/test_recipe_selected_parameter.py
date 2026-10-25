@@ -33,7 +33,7 @@ mm=graph.call_function(torch.ops.aten.mm.default,(a,selected))
 mm.meta.update(val=torch.ones(2,5),nn_module_stack={'root':('',torch.nn.Module)})
 graph.output(mm)
 module=torch.fx.GraphModule(root,graph)
-recipe=dict(schema='quant_recipe_v1',status='derived',families=['contraction'],
+recipe=dict(schema='quant_recipe_v1',status='derived',families=['contraction'],runtime_weight_contractions=True,
  weight=dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-127,quant_max=127),
  activation=dict(dtype='int8',granularity='tensor',symmetric=True,quant_min=-128,quant_max=127,mode='static'))
 quantizer=quant.build_quantizer(recipe,layer_plan={'layers':[]})

@@ -263,21 +263,30 @@ def bind_component_software(evidence, intake: IndependentSoftwareIntake) -> dict
         or set(identities) != set(declared)
     ):
         raise RtlIntakeRefusal("effective component software must retain every original owner exactly once")
+    # The resolver's own record of which form it resolved each declaration for, including
+    # declarations the facts left unresolved or admitted only as reviewed, unchecked forms.
+    record = getattr(evidence, "software_spec_derivation", None) or {}
+    resolved_forms = {
+        entry.get("id"): entry.get("form")
+        for entry in (record.get("declarations") or () if isinstance(record, dict) else ())
+        if isinstance(entry, dict)
+    }
     for row in effective_rows:
         source = declared[row["id"]]
         if any(row.get(key) != source.get(key) for key in ("ops", "families", "status")):
             raise RtlIntakeRefusal("effective component software semantic selectors differ from the minimal selection")
         if row.get("hardware") != source.get("hardware"):
-            # The ordinary fact resolver replaces the original form selector
-            # with an explicit derivation marker. Keep that legitimate transport
-            # while rejecting substitution of another declared form.
+            # The ordinary fact resolver replaces the original form selector. A fact-derived row
+            # carries an explicit derivation marker; every resolved row is also listed in the
+            # resolver's record. Keep that legitimate transport while rejecting substitution of
+            # another declared form: every form either transport names must be the original.
             derivation = row.get("derived_from_facts")
-            if not (
-                "hardware" not in row
-                and source.get("hardware") is not None
-                and isinstance(derivation, dict)
-                and derivation.get("form") == source["hardware"]
-            ):
+            forms = set()
+            if isinstance(derivation, dict):
+                forms.add(derivation.get("form"))
+            if row["id"] in resolved_forms:
+                forms.add(resolved_forms[row["id"]])
+            if not ("hardware" not in row and source.get("hardware") is not None and forms == {source["hardware"]}):
                 raise RtlIntakeRefusal("effective component software changes original hardware form selection")
         if "placement" in source and row.get("placement") != source["placement"]:
             raise RtlIntakeRefusal("effective component software changes original placement permission")

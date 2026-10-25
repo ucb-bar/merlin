@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import selected_driver
 
@@ -97,6 +99,10 @@ def test_profiled_compile_bypasses_legacy_build_cache(monkeypatch, tmp_path):
         return tmp_path / "package.elf"
 
     monkeypatch.setattr(compiler, "link_elf", link)
+    # Only the readback default is asked of the backend here. Stand in for one that declares
+    # none, so the cache bypass is exercised without a support provider (or a backend some
+    # earlier test happened to leave registered in this worker).
+    monkeypatch.setattr(backends, "get_backend", lambda name: SimpleNamespace())
     profile = WarmProfileContract()
     result = compiler.compile_lowered_to_elf(
         whole_program(), "unused", tmp_path, target="gemmini", inputs={"A": [[1, 2], [3, 4]]}, warm_profile=profile

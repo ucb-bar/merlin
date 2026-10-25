@@ -5,6 +5,7 @@ No Lean theorem, compiler author, numeric model, hardware or simulator executes.
 
 import hashlib
 import json
+import os
 import threading
 import time
 from types import SimpleNamespace
@@ -18,6 +19,22 @@ from merlin_experiments.phase2 import functional_inputs as FI
 from test_phase2_broker import make_broker
 
 from merlin.transforms import client
+
+
+@pytest.fixture(autouse=True)
+def _restore_selected_rtl_facts():
+    """Broker entrypoints clear or rebind MERLIN_RTL_FACTS for their own process (``frozen_facts.select``).
+
+    These tests run them in-process, so restore the caller's value (or its absence) afterwards rather
+    than leaving later tests in the same worker without the selected facts.
+    """
+    previous = os.environ.get("MERLIN_RTL_FACTS")
+    yield
+    if previous is None:
+        os.environ.pop("MERLIN_RTL_FACTS", None)
+    else:
+        os.environ["MERLIN_RTL_FACTS"] = previous
+
 
 BEFORE, AFTER = "actual before IR", "actual after IR"
 

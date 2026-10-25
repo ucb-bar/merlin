@@ -28,6 +28,50 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+#: How a selected Core ATen lane maps onto the per-operation placement record a written program carries.
+_LANE_PLACEMENT = {"device": "accelerator", "host-guard": "host"}
+
+
+def placement_screen(row: dict, lane: str, program: Path) -> dict:
+    """The frozen per-operation placement record of one full-call capsule, from its lane decision.
+
+    A full-call capsule is one ATen overload, so its record holds one decision for that overload,
+    placed where the stage's lane decision placed it (``device`` on the accelerator, ``host-guard``
+    on the host). A ``no-work`` call has no compute operation to place, and an ``any`` lane admits
+    both lanes, which leaves placement unresolved. The record is folded by the same summary every
+    written program's screen uses and is bound to the capsule's program bytes; it grants no
+    numerical, execution or hardware verdict.
+    """
+    from .program_admission import summarize
+
+    overload = row["overload"]
+    truth = row.get("functional_truth") or {}
+    admission = row.get("native_admission") or {}
+    reason = truth.get("reason") or admission.get("reason_code") or f"selected Core ATen {lane} lane"
+    admitted = {"status": "admitted", "reviewed": True, "review_status": "reviewed", "reason": reason}
+    absent = {"status": "not_applicable", "reviewed": False, "review_status": "not_applicable"}
+    placement = _LANE_PLACEMENT.get(lane)
+    entry = {
+        "operation": overload,
+        "observed_signature": {"mlir_operation": None, "frontend_op": overload},
+        "count": 1,
+        "classification": (
+            "structural"
+            if lane == "no-work"
+            else {"accelerator": "accelerator_candidate", "host": "host_required"}.get(placement, "unresolved")
+        ),
+        "accelerator_admission": admitted if placement == "accelerator" or lane == "any" else absent,
+        "host_admission": admitted if placement == "host" or lane == "any" else absent,
+    }
+    screen = summarize(
+        [entry],
+        host_only=lane in {"host-guard", "no-work"},
+        scope="Core ATen full-call lane decision: one decision for the selected overload",
+    )
+    screen["program_sha256"] = _sha(program)
+    return screen
+
+
 def declaration(recipe: Path) -> dict | None:
     document = yaml.safe_load(recipe.read_bytes()) or {}
     block = document.get("core_aten")
@@ -438,6 +482,7 @@ def generate(
                     capsule.pop("lanes", None)
                 else:
                     capsule["lanes"] = {"require" if device else "forbid": ["on_mesh"]}
+                capsule["software_screen"] = placement_screen(row, member_lane, member / capsule["interface_mlir"])
                 declaration_path.write_text(yaml.safe_dump(capsule, sort_keys=False))
                 row.setdefault("digests", {})["capsule.yaml"] = _sha(declaration_path)
                 call_digest = hashlib.sha256()

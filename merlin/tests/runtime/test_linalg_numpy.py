@@ -173,6 +173,101 @@ module {
         _evaluate(text, x)
 
 
+def _f32_fma(a, b, c) -> np.float32:
+    """``a * b + c`` rounded once to f32, from the exact rational value (nearest, ties to even)."""
+    from fractions import Fraction
+
+    exact = Fraction(float(a)) * Fraction(float(b)) + Fraction(float(c))
+    guess = np.float32(float(exact))
+    candidates = [guess, np.nextafter(guess, np.float32(np.inf)), np.nextafter(guess, np.float32(-np.inf))]
+    return min(candidates, key=lambda f: (abs(Fraction(float(f)) - exact), int(np.array(f).view(np.uint32)) & 1))
+
+
+def _fma_module(element: str = "f32") -> str:
+    return f"""
+module {{
+  func.func @forward(%a: tensor<1x3x{element}>, %b: tensor<1x3x{element}>, %c: tensor<1x3x{element}>) -> tensor<1x3x{element}> {{
+    %e = tensor.empty() : tensor<1x3x{element}>
+    %t = linalg.generic {{indexing_maps = [{_ID2}, {_ID2}, {_ID2}, {_ID2}], iterator_types = ["parallel", "parallel"]}} ins(%a, %b, %c : tensor<1x3x{element}>, tensor<1x3x{element}>, tensor<1x3x{element}>) outs(%e : tensor<1x3x{element}>) {{
+    ^bb0(%x: {element}, %y: {element}, %z: {element}, %o: {element}):
+      %r = math.fma %x, %y, %z : {element}
+      linalg.yield %r : {element}
+    }} -> tensor<1x3x{element}>
+    return %t : tensor<1x3x{element}>
+  }}
+}}
+"""
+
+
+def test_a_fused_multiply_add_rounds_once() -> None:
+    """``(1 + 2**-12)**2`` is exactly halfway between two f32 values. A product rounded first ties to
+    even and loses what ``c`` adds; a float64 sum loses a ``c`` of ``2**-70`` too, then ties. One
+    rounding of the exact value goes the way ``c`` points."""
+    near_one = np.float32(1 + 2.0**-12)
+    a = np.full((1, 3), near_one, np.float32)
+    c = np.array([[2.0**-70, -(2.0**-70), 0.0]], np.float32)
+    (out,) = _evaluate(_fma_module(), a, a, c)
+    low = np.float32(1 + 2.0**-11)
+    assert out.tolist() == [[float(np.nextafter(low, np.float32(2))), float(low), float(low)]]
+    rng = np.random.default_rng(3)
+    for _ in range(64):
+        x, y, z = (rng.standard_normal((1, 3)).astype(np.float32) * np.float32(10.0) ** rng.integers(-8, 8)
+                   for _ in range(3))  # fmt: skip
+        (got,) = _evaluate(_fma_module(), x, y, z)
+        assert got.tolist() == [[float(_f32_fma(*v)) for v in zip(x[0], y[0], z[0], strict=True)]]
+    with pytest.raises(LN.LinalgNumpyError, match="math.fma of f64"):
+        _evaluate(_fma_module("f64"), *(np.ones((1, 3)),) * 3)
+
+
+def test_a_loop_in_a_structured_body_carries_its_values_in_source_order() -> None:
+    """A per-row running mean (the shape a CPU-faithful LayerNorm's Welford loop lowers to): an
+    ``scf.for`` inside a parallel generic, reading the row element by element, its two ``iter_args``
+    carried from one iteration to the next and updated through ``math.fma``."""
+    text = f"""
+module {{
+  func.func @forward(%x: tensor<3x8xf32>) -> tensor<3x1xf32> {{
+    %e = tensor.empty() : tensor<3x1xf32>
+    %f = tensor.empty() : tensor<3x1xf32>
+    %mean, %m2 = linalg.generic {{indexing_maps = [{_ID2}, {_ID2}], iterator_types = ["parallel", "parallel"]}} outs(%e, %f : tensor<3x1xf32>, tensor<3x1xf32>) {{
+    ^bb0(%o: f32, %p: f32):
+      %row = linalg.index 0 : index
+      %zero = arith.constant 0.000000e+00 : f32
+      %one = arith.constant 1.000000e+00 : f32
+      %lo = arith.constant 0 : index
+      %hi = arith.constant 8 : index
+      %st = arith.constant 1 : index
+      %m, %s = scf.for %k = %lo to %hi step %st iter_args(%mu = %zero, %acc = %zero) -> (f32, f32) {{
+        %c1 = arith.constant 1 : index
+        %k1 = arith.addi %k, %c1 : index
+        %ki = arith.index_cast %k1 : index to i64
+        %kf = arith.sitofp %ki : i64 to f32
+        %inv = arith.divf %one, %kf : f32
+        %v = tensor.extract %x[%row, %k] : tensor<3x8xf32>
+        %d = arith.subf %v, %mu : f32
+        %nmu = math.fma %d, %inv, %mu : f32
+        %d2 = arith.subf %v, %nmu : f32
+        %nacc = math.fma %d, %d2, %acc : f32
+        scf.yield %nmu, %nacc : f32, f32
+      }}
+      linalg.yield %m, %s : f32, f32
+    }} -> (tensor<3x1xf32>, tensor<3x1xf32>)
+    return %m2 : tensor<3x1xf32>
+  }}
+}}
+"""
+    x = (np.random.default_rng(5).standard_normal((3, 8)) * 3 + 20).astype(np.float32)
+    expected = []
+    for row in x:
+        mu = acc = np.float32(0)
+        for k, v in enumerate(row):
+            d = np.float32(v - mu)
+            mu = _f32_fma(d, np.float32(1) / np.float32(k + 1), mu)
+            acc = _f32_fma(d, np.float32(v - mu), acc)
+        expected.append([float(acc)])
+    (m2,) = _evaluate(text, x)
+    assert m2.tolist() == expected
+
+
 def test_an_unknown_body_op_is_refused_by_name() -> None:
     text = f"""
 module {{
@@ -282,6 +377,86 @@ def test_an_unsigned_min_compares_bit_patterns() -> None:
     b = np.array([[31, -2, 4, -1, 7, 2**31 - 1, -(2**31), 3]], np.int32)
     (out,) = _evaluate(text, a, b)
     assert out.tolist() == [[31, 5, 4, 0, 7, 2**31 - 1, 2**31 - 1, 3]]
+
+
+def test_an_unsigned_compare_orders_bit_patterns() -> None:
+    """``ult``/``uge`` compare the unsigned values: a negative signed operand is a large unsigned one."""
+    body = "      %c = arith.cmpi uge, %x, %y : i32\n      %r = arith.extui %c : i1 to i32\n      linalg.yield %r : i32"
+    a = np.array([[-1, 5, -5, 0, 7, -(2**31), 2**31 - 1, 3]], np.int32)
+    b = np.array([[31, -2, 4, -1, 7, 2**31 - 1, -(2**31), 4]], np.int32)
+    (out,) = _evaluate(_int_binary_module(body, "i32"), a, b)
+    assert out.tolist() == [[int(x % 2**32 >= y % 2**32) for x, y in zip(a[0].tolist(), b[0].tolist())]]
+
+
+def test_logical_shifts_move_the_bit_pattern_and_refuse_poison() -> None:
+    right = _int_binary_module("      %r = arith.shrui %x, %y : i32\n      linalg.yield %r : i32", "i32")
+    left = _int_binary_module("      %r = arith.shli %x, %y : i32\n      linalg.yield %r : i32", "i32")
+    a = np.array([[-1, -8, 5, 2**30, -(2**31), 7, 1, 3]], np.int32)
+    b = np.array([[1, 3, 0, 1, 31, 2, 31, 30]], np.int32)
+
+    def signed(v):
+        return v - 2**32 if v >= 2**31 else v
+
+    (r,) = _evaluate(right, a, b)
+    (l,) = _evaluate(left, a, b)
+    pairs = list(zip(a[0].tolist(), b[0].tolist()))
+    assert r.tolist() == [[signed((x % 2**32) >> s) for x, s in pairs]]
+    assert l.tolist() == [[signed(((x % 2**32) << s) % 2**32) for x, s in pairs]]
+    with pytest.raises(LN.LinalgNumpyError, match="poison"):
+        _evaluate(right, a, np.full_like(b, 32))
+
+
+def test_a_bitcast_reads_the_same_bits_as_the_other_type() -> None:
+    text = f"""
+module {{
+  func.func @forward(%x: tensor<1x4xf32>) -> tensor<1x4xf32> {{
+    %e = tensor.empty() : tensor<1x4xf32>
+    %t = linalg.generic {{indexing_maps = [{_ID2}, {_ID2}], iterator_types = ["parallel", "parallel"]}} ins(%x : tensor<1x4xf32>) outs(%e : tensor<1x4xf32>) {{
+    ^bb0(%in: f32, %o: f32):
+      %bits = arith.bitcast %in : f32 to i32
+      %mask = arith.constant 2147483647 : i32
+      %abs = arith.andi %bits, %mask : i32
+      %r = arith.bitcast %abs : i32 to f32
+      linalg.yield %r : f32
+    }} -> tensor<1x4xf32>
+    return %t : tensor<1x4xf32>
+  }}
+}}
+"""
+    x = np.array([[-1.5, 2.0, -0.0, -np.inf]], np.float32)
+    (out,) = _evaluate(text, x)
+    assert out.view(np.uint32).tolist() == (np.abs(x)).view(np.uint32).tolist()
+
+
+def test_an_integer_wider_than_64_bits_is_exact_and_wraps_at_its_width() -> None:
+    """An exact readout multiplies in ``i281``-style types: Python integers, wrapped at the declared width."""
+    body = (
+        "      %wx = arith.extsi %x : i64 to i130\n"
+        "      %wy = arith.extsi %y : i64 to i130\n"
+        "      %p = arith.muli %wx, %wy : i130\n"
+        "      %big = arith.constant 680564733841876926926749214863536422912 : i130\n"  # 2**129: -2**129 wrapped
+        "      %q = arith.addi %p, %big : i130\n"
+        "      %c64 = arith.constant 64 : i130\n"
+        "      %h = arith.shrui %q, %c64 : i130\n"
+        "      %neg = arith.cmpi slt, %q, %p : i130\n"
+        "      %t = arith.trunci %h : i130 to i64\n"
+        "      %z = arith.constant 0 : i64\n"
+        "      %r = arith.select %neg, %t, %z : i64\n"
+        "      linalg.yield %r : i64"
+    )
+    a = np.array([[2**62, -(2**62), 3, -1, 2**63 - 1, -(2**63), 0, 12345]], np.int64)
+    b = np.array([[2**62, 2**62, -5, -1, 2**63 - 1, -(2**63), 9, -67890]], np.int64)
+    (out,) = _evaluate(_int_binary_module(body), a, b)
+
+    def wrap(v, w):
+        return (v + 2 ** (w - 1)) % 2**w - 2 ** (w - 1)
+
+    want = []
+    for x, y in zip(a[0].tolist(), b[0].tolist()):
+        p = wrap(x * y, 130)
+        q = wrap(p - 2**129, 130)
+        want.append(wrap((q % 2**130) >> 64, 64) if q < p else 0)
+    assert out.tolist() == [want]
 
 
 def test_a_runtime_assertion_is_checked_not_skipped() -> None:

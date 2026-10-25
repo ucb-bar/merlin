@@ -94,6 +94,11 @@ def test_an_add_is_quantized_only_where_a_unit_can_sum_operands() -> None:
     assert "0 output step" in summing.why[QR.OPERAND_SUM]
     # Two recipes are two captures: the family is content, so the digest moves with it.
     assert plain.to_dict()["recipe_sha256"] != summing.to_dict()["recipe_sha256"]
+    # Explicit policy provenance changes capture identity; both retain exact target arithmetic.
+    exact = QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="exact")
+    assert "0 output step" in exact.why[QR.OPERAND_SUM]
+    assert exact.to_dict()["integer_sum_policy"] == "exact" and "integer_sum_policy" not in summing.to_dict()
+    assert exact.to_dict()["recipe_sha256"] != summing.to_dict()["recipe_sha256"]
 
 
 def test_a_window_mean_is_quantized_where_one_static_scale_can_carry_the_reciprocal() -> None:
@@ -362,13 +367,23 @@ def test_a_sum_a_normalization_reads_is_left_in_floating_point(tmp_path: Path) -
         timeout=900,
         env={**os.environ, "TMPDIR": str(tmp_path)},
     )
-    # The exact oracle cannot qualify rsqrt; its refusal must remain visible,
-    # independently of whether the annotation pass left the sum in floating point.
-    assert result.returncode == 4, result.stderr[-2000:]
-    refusal = json.loads((tmp_path / "o" / "refusal.json").read_text())
-    assert refusal["code"] == "integerization_golden_disagreement"
-    agreement = refusal["integerization_receipt"]["golden_agreement"]
-    assert agreement["status"] == "failed" and "exact reference refuses" in agreement["reason"]
+    # The exact-rational oracle cannot qualify this graph: the float sum rounds an already rounded
+    # result, and rsqrt has no exact model. The per-graph selection must say so visibly and hand the
+    # golden to the framework-float integer reference rather than claim exact arithmetic.
+    from merlin.targetgen.pt2e_reference_selection import FRAMEWORK_ENGINE
+
+    assert result.returncode == 0, result.stderr[-2000:]
+    meta = json.loads((tmp_path / "o" / "meta.json").read_text())
+    stats = meta["quantization_stats"]
+    assert (stats["annotated_sums"], stats["annotated_means"]) == (0, 0), stats
+    assert stats["sums_and_means_left_in_float"] >= 2 and stats["annotated_contractions"] == 3, stats
+    receipt = meta["integerization_receipt"]
+    selection = receipt["reference_selection"]
+    assert selection["engine"] == FRAMEWORK_ENGINE and selection["closed_rational"] is False, selection
+    assert selection["reason"], selection
+    agreement = receipt["golden_agreement"]
+    assert agreement["status"] == "passed", agreement
+    assert agreement["arithmetic"] == "integer_contractions_framework_float", agreement
     inspect = subprocess.run(
         [
             python,

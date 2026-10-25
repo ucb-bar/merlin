@@ -200,6 +200,26 @@ def test_the_grouping_oracle_carries_the_policy_and_is_the_default_without_one(m
 def test_a_no_fsm_policy_still_admits_the_reviewed_standalone_residual_add():
     from merlin_experiments.phase0 import requirements as R
 
-    verdict = R.grouping_oracle("gemmini", ["loop_descriptor"]).standalone_admission("elementwise_map")
-    assert verdict["standalone"] is True and verdict["basis"] == "evidence"
+    from merlin.targetgen import spec_fact_drift as drift
+    from merlin.targetgen.software_spec import load_software_spec
+    from merlin.targetgen.target_registry import load_contract
+
+    # The contract's standalone evidence names an unchecked semantic fact, so admission rests on
+    # the selected software spec's explicit review of that declaration.
+    unreviewed = R.grouping_oracle("gemmini", ["loop_descriptor"]).standalone_admission("elementwise_map")
+    assert unreviewed["standalone"] is False and unreviewed["basis"] == "declared_unchecked"
+    authored = load_software_spec(repo_root() / "examples/gemmini/target/software-spec.yaml", target="gemmini")
+    facts = drift.fact_capabilities(
+        target="gemmini",
+        contract=load_contract("gemmini"),
+        raw_facts={},
+        readout_facets=[],
+        quantization_candidates=[],
+        prohibited_roles=["loop_descriptor"],
+    )
+    resolved, _ = drift.resolve_spec(authored, facts)
+    assert "elementwise_map" in R.reviewed_standalone_families(resolved)
+    oracle = R.grouping_oracle("gemmini", ["loop_descriptor"], resolved)
+    verdict = oracle.standalone_admission("elementwise_map")
+    assert verdict["standalone"] is True and verdict["basis"] == "declared_unchecked"
     assert all("loop_descriptor" not in path["roles"] for path in verdict["paths"])

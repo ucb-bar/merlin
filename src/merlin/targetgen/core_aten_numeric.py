@@ -560,6 +560,18 @@ def _prepare_spec_int8(
                     code="exact_recipe_refused",
                     details={"integer_recipes": refused_recipes},
                 )
+            from merlin.targetgen.pt2e_reference_selection import EXACT_ENGINE
+
+            # Declared admission consumes the exact oracle's sites and post-call inputs; a graph
+            # whose golden reference had to be framework float has no such reference to consume.
+            golden_selection = (artifact.meta.get("integerization_receipt") or {}).get("reference_selection")
+            if golden_selection and golden_selection.get("engine") != EXACT_ENGINE:
+                raise NumericCaptureRefused(
+                    "declared software admission requires the exact-rational reference: "
+                    + str(golden_selection.get("reason")),
+                    code="exact_reference_unavailable",
+                    details={"reference_selection": golden_selection},
+                )
         except NumericCaptureRefused as exc:
             # Only explicit frontend refusals grant original host fallback.
             for site in selected:
@@ -628,11 +640,7 @@ def _prepare_spec_int8(
                 not captured_plan["sites"]
                 and bool(island_sites)
                 and all(site["status"] == "admitted" for site in island_sites)
-                and all(
-                    row[authority]["status"] == "admitted"
-                    for row in captured_plan["quantization_sites"]
-                    for authority in ("software", "host")
-                )
+                and all(row["host"]["status"] == "admitted" for row in captured_plan["quantization_sites"])
             )
             if (
                 continuity["status"] != "preserved"
@@ -694,7 +702,9 @@ def _prepare_spec_int8(
                 observations.append((contraction.results[0], restored_readout))
             operations = list(module.walk())
             for row in plan["quantization_sites"]:
-                keys = {authority: row[authority]["declaration"] for authority in ("software", "host")}
+                keys = {
+                    authority: row[authority]["declaration"] for authority in ("software", "host") if authority in row
+                }
                 operations[row["source_operation_ordinal"]].attributes["prov.declarations"] = StringAttr(
                     json.dumps(keys, sort_keys=True)
                 )
