@@ -36,6 +36,22 @@ def _safe_report(report: object) -> bool:
     ))
 
 
+def _require_compiler_selection(snapshot, manifest, context, *, legacy_library):
+    """Both compiler modes require explicit original host selection and inputs."""
+    from .. import full_compiler_workspace as full
+    from ..feedback.snapshot_execution import selected
+
+    implementation = full.selected() if selected() else None
+    bound = legacy_library is not None or implementation is not None
+    if bound and (manifest is None or context is None):
+        raise ValueError("model child lost its original compiler profile context")
+    fork = snapshot / "compiler_library"
+    if not bound and fork.is_dir() and any(fork.rglob("*.py")):
+        raise ValueError("model child lost its selected compiler library")
+    if implementation is not None:
+        full.candidate_sources(implementation, snapshot)
+
+
 def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None,
                     snapshot_source: Path | None = None, context=None,
                     compiler_bundle_manifest: Path | None = None) -> dict:
@@ -104,11 +120,8 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
             if context is None:
                 from ..context import load_context
                 context = load_context(os.environ["MERLIN_TARGET_EXPERIMENT"], repo=service.repo)
-        if active_compiler_library() is not None and (compiler_bundle_manifest is None or context is None):
-            raise ValueError("model child lost its original compiler profile context")
-        fork = snapshot / "compiler_library"
-        if active_compiler_library() is None and fork.is_dir() and any(fork.rglob("*.py")):
-            raise ValueError("model child lost its selected compiler library")
+        _require_compiler_selection(snapshot, compiler_bundle_manifest, context,
+                                    legacy_library=active_compiler_library())
         argv = [python, "-m", "merlin_experiments.phase1.brokers.model_check_worker", action, "--submission", str(snapshot),
                 "--model", model, "--split", "visible", "--agent-view", "--out", str(report_path),
                 "--work", str(Path(scratch) / "work"), "--timeout-s", str(timeout_s),
@@ -300,7 +313,9 @@ def main(argv=None) -> int:
         parser.error("poll interval must be0.01..10seconds")
     from merlin.common.cpu_pool import compute_capacity
     capacity = compute_capacity() or len(os.sched_getaffinity(0))
-    max_active = min(DEFAULT_MAX_ACTIVE_REQUESTS, capacity) if args.max_active is None else args.max_active
+    from ..feedback import snapshot_execution
+    default_active = capacity if snapshot_execution.selected() else min(DEFAULT_MAX_ACTIVE_REQUESTS, capacity)
+    max_active = default_active if args.max_active is None else args.max_active
     if not 1 <= max_active <= min(capacity, MAX_QUEUED_REQUESTS):
         parser.error("max-active must fit the existing shared CPU capacity and bounded request window")
     context = resolve_context(args, parser) if args.compiler_bundle_manifest is not None else None

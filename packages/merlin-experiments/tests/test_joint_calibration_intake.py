@@ -2,6 +2,7 @@ import json
 import pytest
 
 from merlin_experiments.phase1 import joint_calibration_intake as intake
+from test_joint_calibration_eligibility import valid_grade
 
 
 def test_scope_and_structural_limits_remain_independent():
@@ -47,8 +48,7 @@ def test_public_intake_is_bounded_and_separate_from_fit_registry(tmp_path, monke
     monkeypatch.setenv(joint_control.ENV, str(tmp_path / 'state.json'))
     profile = {'performance_selection': {'sha256': 'selected'}, 'members': {}}
     state = {'policy': {}}
-    result = {'numeric': {'status': 'pass'}, 'compiler_source': {'sha256': 'native'},
-              'tiers': {'L2': {'engine': 'spike', 'status': 'pass'}}}
+    result = valid_grade()
     kwargs = dict(result=result, compiler=compiler, capsule=capsule, state=state, profile=profile)
     pin = intake.register({}, root, **kwargs)
     record = json.loads(open(pin['path']).read())
@@ -77,7 +77,7 @@ def test_unknown_original_producer_cannot_enter_index(tmp_path, monkeypatch):
     monkeypatch.setattr(census_launch, '_producer', refuse)
     monkeypatch.setenv(joint_control.ENV, str(tmp_path / 'state.json'))
     with pytest.raises(ValueError, match='original completed link'):
-        intake.register({}, tmp_path, result={'numeric': {'status': 'pass'}, 'compiler_source': True},
+        intake.register({}, tmp_path, result=valid_grade(),
                         compiler=tmp_path, capsule={'name': 'public', 'kind': 'layer'},
                         state={'policy': {}}, profile={'performance_selection': {}, 'members': {}})
     assert not (tmp_path / 'calibration_candidate_index').exists()

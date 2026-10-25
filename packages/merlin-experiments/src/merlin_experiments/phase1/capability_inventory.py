@@ -189,6 +189,8 @@ def stage(workspace, run_dir, inventory):
         (root / 'construction_actions.py').write_bytes(action_client)
         (root / 'construction_actions.py').chmod(0o444)
         (root / 'TASK.md').write_text(existing + block)
+    from .feedback.construction_plan import stage_example
+    stage_example(workspace, run_dir, inventory, data.encode())
     return {'schema': SCHEMA, 'sha256': hashlib.sha256(data.encode()).hexdigest(),
             'total': inventory['total'], 'cohorts': inventory['cohorts']}
 

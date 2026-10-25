@@ -78,14 +78,20 @@ def complete(score, observed, *, names):
     rows = score.get("per_capsule") or []
     if {r.get("capsule") for r in rows} != set(names) or set(observed) != set(names):
         return False
-    if any(score.get("tier_reached", {}).get(t) != len(names) for t in S.POLICY["tiers"]):
-        return False
+    # Preserve the original grader's explicit whole-program nonapplicability.
+    # Skipped structural interpreters are not passed tiers or missing execution.
+    from .joint_curriculum import _structural_prerequisites
+
+    for tier in S.POLICY["tiers"]:
+        measured = sum(tier_status((row.get("tiers") or {}).get(tier)) == "pass" for row in observed.values())
+        if score.get("tier_reached", {}).get(tier) != measured:
+            return False
     for name in names:
         row = observed[name]
         tiers = row.get("tiers") or {}
         if row.get("status") != "pass" or set(tiers) != set(S.POLICY["tiers"]):
             return False
-        if any(tier_status(tiers[t]) != "pass" for t in S.POLICY["tiers"]):
+        if not _structural_prerequisites(row) or tier_status(tiers["L2"]) != "pass":
             return False
         oracle = tiers["L2"]
         if (
@@ -102,7 +108,7 @@ def _observed_result(row):
     """Keep bounded compiler errors ahead of consequential proof failures."""
     from .selfcheck_results import _public_candidate_emission_failure
 
-    observed = {key: row.get(key) for key in ("capsule", "status", "tiers", "failure", "performance")}
+    observed = {key: row.get(key) for key in ("capsule", "status", "tiers", "numeric", "failure", "performance")}
     if row.get("status") != "pass":
         failure = _public_candidate_emission_failure(row)
         if failure is not None:

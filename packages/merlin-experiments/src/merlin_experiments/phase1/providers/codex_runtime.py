@@ -115,6 +115,58 @@ def selection_record(options) -> dict | None:
     }
 
 
+
+def failed_round_retry(home_root: Path, run_dir: Path, rnd: int) -> tuple[Path, dict]:
+    """Allocate a fresh sibling only from an exact retained failed driver record.
+
+    No old home is reopened by the new author. The unchanged selected root and
+    fresh-home checks still govern its runtime permissions. Existing successful,
+    foreign, unrecorded or modified homes cannot authorize a retry.
+    """
+    import json
+    import uuid
+
+    root, run = Path(home_root), Path(run_dir)
+    base = root / f"{run.name}_r{rnd:02d}"
+    if not base.exists() and not base.is_symlink():
+        return base, {}
+    if root.resolve() != root or base.is_symlink() or not base.is_dir():
+        raise ValueError("failed round retry requires canonical independent homes")
+    records = list((run / "rounds").glob(f"round_{rnd:02d}*.codex_summary.json"))
+    records = [p for p in records if p.name.startswith(f"round_{rnd:02d}.")]
+    if not records:
+        raise ValueError("fresh authoring refuses an existing home without a failed attempt record")
+    summary_path = max(records, key=lambda p: p.stat().st_mtime_ns)
+    if summary_path.is_symlink() or summary_path.resolve() != summary_path:
+        raise ValueError("failed round retry summary must be an original regular file")
+    raw = summary_path.read_bytes()
+    summary = json.loads(raw)
+    failed = (type(summary.get("exit_code")) is int and summary["exit_code"] != 0)
+    if not failed:
+        raise ValueError("fresh authoring refuses retry of a successful or incomplete attempt record")
+    recorded = summary.get("codex_home") or {}
+    prior = Path(recorded.get("codex_home", ""))
+    prefix = base.name + "_attempt_"
+    if (prior.parent != root or not (prior == base or prior.name.startswith(prefix))
+            or prior.resolve() != prior or prior.is_symlink() or not prior.is_dir()):
+        raise ValueError("failed round retry summary names a foreign home")
+    config = prior / "config.toml"
+    if (config.is_symlink() or not config.is_file()
+            or hashlib.sha256(config.read_bytes()).hexdigest() != recorded.get("config_sha256")):
+        raise ValueError("failed round retry lost its original config identity")
+    attempt = uuid.uuid4().hex
+    home = root / (prefix + attempt)
+    home.mkdir(mode=0o700)  # Atomic, never consume an existing retry directory.
+    stat = home.stat()
+    return home, {
+        "schema": "merlin.codex_failed_round_retry.v1", "attempt_id": attempt,
+        "logical_round": rnd, "home": str(home), "previous_home": str(prior),
+        "previous_summary": str(summary_path),
+        "previous_summary_sha256": hashlib.sha256(raw).hexdigest(),
+        "home_device": stat.st_dev, "home_inode": stat.st_ino,
+        "retained_compiler": True, "reused_session": False,
+    }
+
 @dataclass(frozen=True)
 class SelectedCodexRuntime:
     selection: tuple[tuple[str, str], ...]
@@ -200,6 +252,7 @@ class SelectedCodexRuntime:
             "candidate_read_paths": self.read_paths,
             "runtime_binds": self.runtime_binds,
             "require_fresh_home": True,
+            "allow_failed_home_retry": True,
         }
 
 

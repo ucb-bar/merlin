@@ -28,15 +28,54 @@ def _scoped_review(plan, runtime, active_review):
         selection = current[1] if current else None
     if not isinstance(selection, dict):
         raise ValueError('scoped calibration requires selected reviewed runtime ancestry')
-    rows = [r for r in selection.get('runtime_revisions', [])
-            if r.get('kind') == 'scoped_observer_diagnostics' and r.get('runtime') == plan['runtime']]
-    if len(rows) != 1:
+    revisions = selection.get('runtime_revisions', [])
+    if not isinstance(revisions, list) or len(revisions) > 16:
+        raise ValueError('scoped calibration requires bounded runtime ancestry')
+    origins = [i for i, r in enumerate(revisions)
+               if r.get('kind') == 'scoped_observer_diagnostics']
+    if len(origins) != 1:
         raise ValueError('scoped calibration lacks its exact reviewed runtime ancestry')
-    evidence = PERF._read(rows[0]['evidence'])
+    origin = revisions[origins[0]]
+    evidence = PERF._read(origin['evidence'])
     if (evidence.get('schema') != 'merlin.scoped_observer_revision.v1'
-            or evidence.get('runtime') != plan['runtime']
-            or evidence.get('model') != {'path': runtime['model'], 'sha256': runtime['model_sha256']}
-            or not evidence.get('continued_denial') or active_review != evidence['continued_denial']):
+            or evidence.get('runtime') != origin.get('runtime')
+            or not evidence.get('continued_denial')):
+        raise ValueError('scoped calibration ancestry differs from original review')
+    prior = origin['runtime']
+    denial = evidence['continued_denial']
+    calibration_profile = evidence.get('calibration_profile')
+    successors = revisions[origins[0]+1:]
+    if successors:
+        from .joint_provider_revision import KIND, verify
+        from .joint_readout_revision import KIND as READOUT_KIND
+        from .joint_readout_revision import PARTIAL_KIND
+        from .joint_readout_revision import LOAD_KIND
+        from .joint_readout_revision import BOOTSTRAP_KIND
+        from .joint_readout_revision import verify as verify_readout
+        from .joint_scoped_revision import verify as verify_origin
+        verify_origin(PERF._runtime(origin['previous']), PERF._runtime(prior), evidence,
+                      previous=origin['previous'], current=prior)
+        for revision in successors:
+            staged_kinds = (READOUT_KIND, PARTIAL_KIND, LOAD_KIND, BOOTSTRAP_KIND)
+            if (revision.get('kind') not in (KIND, *staged_kinds) or revision.get('previous') != prior
+                    or revision.get('schema') != 'merlin.runtime_implementation_revision.v1'
+                    or not revision.get('review_id')):
+                raise ValueError('scoped calibration has unreviewed provider ancestry')
+            evidence = PERF._read(revision['evidence'])
+            if (evidence.get('previous_denial') != denial
+                    or evidence.get('calibration_profile') != calibration_profile):
+                raise ValueError('scoped calibration provider loses inherited denial')
+            current = revision['runtime']
+            validator = verify_readout if revision['kind'] in staged_kinds else verify
+            options = (dict(partial_rows=True) if revision['kind'] == PARTIAL_KIND else
+                       dict(load_frontend=True) if revision['kind'] == LOAD_KIND else
+                       dict(loader_bootstrap=True) if revision['kind'] == BOOTSTRAP_KIND else {})
+            validator(PERF._runtime(prior), PERF._runtime(current), evidence,
+                   previous=prior, current=current, **options)
+            prior, denial = current, evidence['continued_denial']
+    if (prior != plan['runtime'] or selection.get('runtime') != prior
+            or evidence.get('model') != {'path':runtime['model'], 'sha256':runtime['model_sha256']}
+            or active_review != denial):
         raise ValueError('scoped calibration active admission review differs from continued denial')
     # The normal denial check below reopens this exact current review and evidence.
 

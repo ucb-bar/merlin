@@ -102,6 +102,8 @@ def _retain_artifacts(arguments, *, res, build, folder, workdir):
         "original_execution_invocation": invocation,
         "oracle": res.get("oracle"),
         "execution_identity": res.get("execution_identity"),
+        "readback_memory": res.get("readback_memory"),
+        "readback_observation": res.get("readback_observation"),
         "operator_cost": {
             "stage": "verification_artifact_retention",
             "wall_seconds": time.monotonic() - started,

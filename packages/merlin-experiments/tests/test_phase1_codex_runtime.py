@@ -247,7 +247,8 @@ def test_ordinary_launch_consumes_the_same_live_runtime(tmp_path, monkeypatch):
         assert kw["auth_source"] == Path(options.codex_auth_source)
         assert kw["codex_home_root"] == Path(options.codex_home_root)
         assert kw["runtime_binds"].__self__ is runtime
-        assert kw["sandbox_command"].func is E.codex_sandbox_command
+        assert type(kw["sandbox_command"]) is E.CodexSandboxCommand
+        assert kw["sandbox_command"].runtime is runtime
         assert kw["require_fresh_home"] is True
         assert "effective_model" not in kw  # Preserve the provider's existing alias resolution.
         return 0, private / "transcript"

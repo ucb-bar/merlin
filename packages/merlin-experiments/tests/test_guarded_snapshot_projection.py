@@ -129,3 +129,82 @@ def test_large_exact_declarations_do_not_exhaust_value_budget(guarded):
     assert len(calls) == 1 and entry._projection_bytes < 1024
     read(['host-roster', 'b' * (17 << 20)])
     assert len(calls) == 2
+
+
+def test_frozen_classification_reuses_only_current_validated_grants(guarded, monkeypatch):
+    from types import SimpleNamespace
+    from merlin.targetgen.sandbox.answer_surfaces import CapsuleMetadata
+
+    owner, entry = guarded
+    metadata = CapsuleMetadata()
+    calls = []
+    original = W._snapshot_grants
+    def grants(*args):
+        calls.append(1)
+        return original(*args)
+    monkeypatch.setattr(W, '_snapshot_grants', grants)
+    target = SimpleNamespace(capsule_corpus=None, corpus_siblings=lambda: ())
+    try:
+        W._frozen_answer_surfaces(owner.workspace, owner.bundle, target, [], owner.repo, metadata)
+        assert len(calls) == 1  # No second host-roster resolution inside derived().
+        W._frozen_answer_surfaces(owner.workspace, owner.bundle, target, [], owner.repo, metadata)
+        assert len(calls) == 2  # Still validate each invocation before any mask reuse.
+        marker = entry.root / B.MARKER
+        marker.chmod(0o644)
+        import json
+        changed = json.loads(marker.read_bytes())
+        changed['host_inputs'] = ['not-declared']
+        marker.write_text(json.dumps(changed))
+        with pytest.raises(RuntimeError, match='host-only input set'):
+            W._frozen_answer_surfaces(owner.workspace, owner.bundle, target, [], owner.repo, metadata)
+        assert len(calls) == 3
+    finally:
+        metadata.inventory.close()
+
+
+def test_frozen_classification_unguarded_paths_keep_second_fresh_reader(guarded, monkeypatch):
+    from types import SimpleNamespace
+    from merlin.targetgen.sandbox.answer_surfaces import CapsuleMetadata
+
+    owner, _ = guarded
+    metadata = CapsuleMetadata()
+    monkeypatch.setattr(metadata.inventory, 'tree', lambda root: None)
+    calls = []
+    original = W._snapshot_grants
+    def grants(*args):
+        calls.append(1)
+        return original(*args)
+    monkeypatch.setattr(W, '_snapshot_grants', grants)
+    target = SimpleNamespace(capsule_corpus=None, corpus_siblings=lambda: ())
+    W._frozen_answer_surfaces(owner.workspace, owner.bundle, target, [], owner.repo, metadata)
+    assert len(calls) == 2 and not metadata._derived
+    metadata.inventory.close()
+
+
+def test_marker_mutation_between_resolution_and_classification_is_reopened(guarded, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from merlin.targetgen.sandbox.answer_surfaces import CapsuleMetadata
+
+    owner, entry = guarded
+    metadata = CapsuleMetadata()
+    calls = []
+    original = W._snapshot_grants
+    def grants(*args):
+        calls.append(1)
+        result = original(*args)
+        if len(calls) == 1:
+            marker = entry.root / B.MARKER
+            marker.chmod(0o644)
+            changed = json.loads(marker.read_bytes())
+            changed['host_inputs'] = ['changed-after-resolution']
+            marker.write_text(json.dumps(changed))
+        return result
+    monkeypatch.setattr(W, '_snapshot_grants', grants)
+    target = SimpleNamespace(capsule_corpus=None, corpus_siblings=lambda: ())
+    try:
+        with pytest.raises(RuntimeError, match='host-only input set'):
+            W._frozen_answer_surfaces(owner.workspace, owner.bundle, target, [], owner.repo, metadata)
+        assert len(calls) == 2 and not metadata._derived
+    finally:
+        metadata.inventory.close()

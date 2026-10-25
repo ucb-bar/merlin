@@ -282,6 +282,10 @@ def apply(policy):
     explicitly selected Phase 2 release. Other original public leaves remain
     available in that same Python tree. No private grader tree is mounted.
     """
+    from merlin_experiments.phase1.full_compiler_workspace import selected as full_selection, apply_policy
+    full = full_selection()
+    if full is not None:
+        return apply_policy(policy, full)
     selection = active_compiler_library()
     if selection is None:
         return policy

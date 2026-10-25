@@ -3,6 +3,128 @@
 from pathlib import Path
 
 
+class SharedCompilerSource:
+    """One retained compiler tree per live evaluator, guarded across workers.
+
+    The guard only reuses a full content check while its watches remain intact.
+    Any event, unavailable watcher, or mount change reopens both trees. This
+    object is host-owned and never selected by candidate metadata.
+    """
+    def __init__(self, source, results, *, expected_source_sha256=None):
+        import os
+        import shutil
+        import threading
+        from merlin.common.bundle_snapshot import _RosterGuard
+        from merlin.common.tree_hash import hash_tree
+        from merlin_experiments.phase2.retained_revisions import source_inventory
+
+        self.source, self.results = Path(source), Path(results)
+        self.pid, self.closed = os.getpid(), False
+        self.lock = threading.RLock()
+        self.guards = []
+        if (self.results.resolve() != self.results or self.results.is_symlink()
+                or self.results.is_relative_to(self.source)):
+            raise ValueError("retained compiler evidence must be outside its source")
+        identity = source_inventory(self.source, max_bytes=128 << 20, max_files=16384, exclude_generated=True)
+        if expected_source_sha256 is not None and identity["sha256"] != expected_source_sha256:
+            raise ValueError("compiler source differs from evaluator admission")
+        self.guards.append(_RosterGuard(self.source, _source_members(self.source), scanner=_source_members))
+        self.digest = hash_tree(self.source)
+        self.destination = self.results / "compiler-source" / self.digest["sha256"]
+        self.destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if self.destination.resolve() != self.destination or self.destination.is_symlink():
+            self.close()
+            raise ValueError("retained compiler evidence is indirect")
+        try:
+            if not self.destination.exists():
+                shutil.copytree(self.source, self.destination,
+                                ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+            self.guards.append(_RosterGuard(self.destination, _source_members(self.destination), scanner=_source_members))
+            self._verify_full()
+        except BaseException:
+            self.close()
+            raise
+
+    def _verify_full(self):
+        from merlin.common.tree_hash import hash_tree
+        from merlin_experiments.phase2.retained_revisions import source_inventory
+        for root in (self.source, self.destination):
+            source_inventory(root, max_bytes=128 << 20, max_files=16384, exclude_generated=True)
+            if hash_tree(root) != self.digest:
+                raise ValueError("compiler source changed during capsule evaluation")
+
+    def check(self):
+        import os
+        from merlin.common.bundle_snapshot import _RosterGuard
+        # Forked workers may inherit a lock held by a vanished thread.
+        if self.closed or os.getpid() != self.pid:
+            raise ValueError("retained compiler evidence owner is not live")
+        with self.lock:
+            if self.closed:
+                raise ValueError("retained compiler evidence owner is not live")
+            if all(guard.unchanged() for guard in self.guards):
+                return
+            # Rearm BEFORE full verification: writes during the read invalidate
+            # the new guard and cannot license reuse at the next boundary.
+            for guard in self.guards:
+                guard.close()
+            try:
+                self.guards = []
+                for root in (self.source, self.destination):
+                    self.guards.append(_RosterGuard(root, _source_members(root), scanner=_source_members))
+                self._verify_full()
+            except BaseException:
+                self.close()
+                raise
+
+    def capture(self):
+        self.check()
+        return {"schema": "merlin.capsule_compiler_source.v2", "package": str(self.source),
+                "candidate_sha256": self.digest["sha256"], "snapshot": str(self.destination)}
+
+    def close(self):
+        with self.lock:
+            for guard in self.guards:
+                guard.close()
+            self.closed = True
+
+
+def _source_members(root):
+    """No-follow source roster, with the same generated-directory exclusions."""
+    import os
+    import stat
+    if root.resolve() != root or root.is_symlink():
+        raise ValueError("compiler source is indirect")
+    members, pending = [], [(root, ())]
+    while pending:
+        directory, prefix = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if entry.name in {"build", "__pycache__", ".git"}:
+                    continue
+                parts = (*prefix, entry.name)
+                info = entry.stat(follow_symlinks=False)
+                path = Path(entry.path)
+                if stat.S_ISDIR(info.st_mode):
+                    kind, size = "directory", None
+                    pending.append((path, parts))
+                elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
+                    kind, size = "file", info.st_size
+                else:
+                    raise ValueError("compiler source contains a linked or special member")
+                members.append((parts, path, kind, size))
+    return sorted(members, key=lambda member: member[0])
+
+
+def _shared_source(package=None):
+    from merlin_experiments.phase1.feedback.snapshot_execution import active_snapshot
+    owner = active_snapshot()
+    evidence = getattr(owner, "source_evidence", None)
+    if evidence is not None and (package is None or Path(package).resolve() == evidence.source):
+        return evidence
+    return None
+
+
 def _capture_compiler_source(package_dir, generated):
     """Retain the actual compiler before lowering, without generated build state."""
     import shutil
@@ -16,6 +138,9 @@ def _capture_compiler_source(package_dir, generated):
     # A reused build directory still holds an earlier invocation's executed programs; the receipt
     # finished below names only what this invocation's tiers execute.
     executed_program.clear(generated)
+    shared = _shared_source(package_dir)
+    if shared is not None:
+        return shared.capture()
     source = Path(package_dir).resolve()
     if not source.is_dir():
         # Observation cannot replace the ordinary package admission below.
@@ -54,12 +179,19 @@ def _finish_compiler_source(captured, generated):
     generated = Path(generated)
     executed = executed_program.collect(generated)
     expected = captured["candidate_sha256"]
-    if (
-        hash_tree(Path(captured["package"]))["sha256"] != expected
-        or hash_tree(generated / captured["snapshot"])["sha256"] != expected
-    ):
+    schema = captured.get("schema", "merlin.capsule_compiler_source.v1")
+    if schema == "merlin.capsule_compiler_source.v2":
+        shared = _shared_source(captured["package"])
+        try:
+            stable = shared is not None and shared.capture() == captured
+        except (OSError, ValueError, RuntimeError):
+            stable = False
+    else:
+        stable = (hash_tree(Path(captured["package"]))["sha256"] == expected
+                  and hash_tree(generated / captured["snapshot"])["sha256"] == expected)
+    if not stable:
         return {
-            "schema": "merlin.capsule_compiler_source.v1",
+            "schema": schema,
             "status": "source_changed",
             "executed_programs": executed,
         }
@@ -69,7 +201,7 @@ def _finish_compiler_source(captured, generated):
         if path.is_file() and not path.is_symlink():
             artifacts[name] = sha256_file(path)
     return {
-        "schema": "merlin.capsule_compiler_source.v1",
+        "schema": schema,
         "status": "stable",
         **captured,
         "artifacts": artifacts,

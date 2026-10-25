@@ -51,6 +51,134 @@ def test_failed_capability_does_not_block_independent_construction(tmp_path):
     assert result["qualification_authority"] is False
 
 
+def test_terminal_evidence_dependency_preserves_failed_verdict(tmp_path):
+    marker = tmp_path / "finished"
+    first = row("failed-check", argv=[sys.executable, "-c",
+        f"from pathlib import Path; Path({str(marker)!r}).write_text('done'); raise SystemExit(1)"])
+    gather = row("gather", argv=[sys.executable, "-c",
+        f"from pathlib import Path; assert Path({str(marker)!r}).read_text() == 'done'"])
+    gather["after_finished"] = ["failed-check"]
+    result = run(tmp_path, plan(first, row("blocked", after=["failed-check"]), gather))
+    assert result["actions"] == {"failed-check": "failed", "blocked": "deferred", "gather": "completed"}
+    assert result["qualification_authority"] is False
+    assert result["capsule_passes"] is None
+
+
+def test_terminal_dependency_cannot_reference_future_action():
+    first = row("first")
+    first["after_finished"] = ["future"]
+    with pytest.raises(ValueError, match="earlier actions"):
+        A.validate(plan(first, row("future")))
+
+
+def test_action_bound_covers_construction_and_individual_corpus_checks():
+    A.validate(plan(*(row(f"action-{n}") for n in range(300))))
+    with pytest.raises(ValueError, match="512"):
+        A.validate(plan(*(row(f"action-{n}") for n in range(513))))
+
+
+@pytest.mark.parametrize("numerical_pass", [True, False])
+def test_partial_tier_report_distinguishes_numerics_without_changing_gates(tmp_path, monkeypatch, numerical_pass):
+    monkeypatch.chdir(tmp_path)
+    # Real CLI completion with the native partial-check return code. These are
+    # synthetic report projections, never numerical qualification evidence.
+    response = {
+        "selfcheck_request_id": "partial",
+        "submission_sha256": "snapshot",
+        "all_pass": False,
+        "certified_complete": False,
+        "n_capsules": 1,
+        "per_capsule": [{
+            "capsule": "tiny",
+            "numerical_execution_passed": numerical_pass,
+            "numeric_consistency_passed": numerical_pass,
+            "structural_qualification": {"status": "pass", "violations": []},
+        }],
+    }
+    (tmp_path / "agent_selfcheck.py").write_text(
+        "import json\nprint(json.dumps(" + repr(response) + "))\nraise SystemExit(1)\n"
+    )
+    result = run(tmp_path, plan(
+        row("screen", kind="selfcheck", argv=["--capsules", "tiny", "--sim", "spike"]),
+        row("dependent", after=["screen"]),
+        row("independent"),
+    ))
+    assert result["actions"] == {"screen": "failed", "dependent": "deferred", "independent": "completed"}
+    report = result["selfcheck_reports"]["screen"]
+    assert report["completed_report"] is True
+    assert report["requested_numerical_screen"] == ("pass" if numerical_pass else "fail")
+    assert report["structural_qualification"] == "pass"
+    assert report["full_certification"] is report["grader_all_pass"] is False
+    assert result["selfcheck_summary"]["completed_reports"] == 1
+    assert result["selfcheck_summary"]["requested_numerical_screen_pass"] == int(numerical_pass)
+    assert result["selfcheck_summary"]["requested_numerical_screen_fail"] == int(not numerical_pass)
+    assert result["selfcheck_summary"]["full_certification_pass"] == 0
+    assert result["capsule_passes"] is None
+    events = [json.loads(line) for line in (tmp_path / "output/events.jsonl").read_text().splitlines()]
+    final = next(event for event in events if event["action_id"] == "screen" and "report" in event)
+    assert final["report"] == report and final["feedback"]["all_pass"] is False
+
+
+def test_scalability_screen_never_infers_structural_or_full_certification():
+    response = {
+        "selfcheck_request_id": "connected",
+        "all_pass": False,
+        "complete": False,
+        "requested_cases": ["region"],
+        "cases": [{"capsule": "region", "status": "pass", "tiers": {"L0": "pass", "L1": "pass", "L2": "pass"}}],
+    }
+    report = A.report_projection(response)
+    assert report["completed_report"] is True
+    assert report["requested_numerical_screen"] == "pass"
+    assert report["structural_qualification"] == "unknown"
+    assert report["full_certification"] is None
+    response["cases"][0]["tiers"].pop("L2")
+    assert A.report_projection(response)["requested_numerical_screen"] == "unknown"
+    response["cases"][0]["tiers"]["L2"] = "pass"
+    response["requested_cases"].append("missing")
+    assert A.report_projection(response)["requested_numerical_screen"] == "unknown"
+
+
+def test_structurally_unqualified_numerical_screen_is_not_full_success():
+    response = {
+        "selfcheck_request_id": "group",
+        "n_capsules": 1,
+        "all_pass": False,
+        "certified_complete": False,
+        "per_capsule": [{
+            "capsule": "group",
+            "numerical_execution_passed": True,
+            "structural_qualification": {"status": "unavailable_fields", "unavailable_requirements": ["reuse"]},
+        }],
+    }
+    report = A.report_projection(response)
+    assert report["requested_numerical_screen"] == "pass"
+    assert report["structural_qualification"] == "unknown"
+    assert report["cases"][0]["structural_qualification"]["unavailable_requirements"] == ["reuse"]
+    assert report["full_certification"] is False
+    response["n_capsules"] = 2
+    assert A.report_projection(response)["requested_numerical_screen"] == "unknown"
+    assert A.report_projection({"selfcheck_request_id": "r", "all_pass": True})["requested_numerical_screen"] == "unknown"
+
+
+@pytest.mark.parametrize("status", ["fail", "failed"])
+def test_structural_failure_preserves_numerical_result(status):
+    response = {
+        "selfcheck_request_id": "structural-failure",
+        "n_capsules": 1,
+        "per_capsule": [{
+            "capsule": "convolution",
+            "numerical_execution_passed": True,
+            "structural_qualification": {"status": status, "violations": ["missing accumulation"]},
+        }],
+    }
+    report = A.report_projection(response)
+    assert report["requested_numerical_screen"] == "pass"
+    assert report["structural_qualification"] == "fail"
+    assert report["cases"][0]["structural_qualification"] == response["per_capsule"][0]["structural_qualification"]
+    assert report["full_certification"] is None
+
+
 def test_pending_test_does_not_pause_construction_and_replays_exact_argv(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     # Real subprocess client shim at the same CLI boundary, no pretend numerical evidence.
@@ -320,3 +448,42 @@ def test_scripted_joint_selfcheck_starts_native_clock_before_submission(tmp_path
     assert len(observed) == 1 and 0 < observed[0][0] <= 3600
     assert observed[0][1] == 0 and "synthetic-public" in observed[0][2]
     assert json.loads(state.read_text())["started_at_epoch"] is not None
+
+
+def test_bounded_admission_keeps_construction_and_collection_rolling(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'pending').mkdir()
+    # A real subprocess protocol stub checks admission and fairness only.
+    # The slow request cannot finish before a later request has been collected.
+    (tmp_path / 'agent_selfcheck.py').write_text('''import json,sys
+from pathlib import Path
+pending=Path('pending')
+if '--attach' not in sys.argv:
+    name=sys.argv[sys.argv.index('--capsules')+1]
+    assert len(list(pending.iterdir())) < 2, 'client window overflow'
+    (pending/name).touch()
+    print(json.dumps({'request_id':name,'status':'in_progress'}))
+    raise SystemExit(3)
+name=sys.argv[sys.argv.index('--attach')+1]
+assert Path('constructed').exists(), 'pending checks blocked construction'
+if name=='slow' and not Path('fast-collected').exists():
+    print(json.dumps({'request_id':name,'status':'in_progress'}))
+    raise SystemExit(3)
+if name!='slow': Path('fast-collected').touch()
+(pending/name).unlink()
+print(json.dumps({'selfcheck_request_id':name,'all_pass':True}))
+''')
+    value = plan(
+        row('slow', kind='selfcheck', argv=['--capsules', 'slow']),
+        row('fast', kind='selfcheck', argv=['--capsules', 'fast']),
+        row('third', kind='selfcheck', argv=['--capsules', 'third']),
+        row('construct', argv=[sys.executable, '-c', "from pathlib import Path; Path('constructed').touch()"]),
+    )
+    result = A.execute(value, output=tmp_path/'output', timeout_s=10, plan_sha256='bounded',
+                       command_workers=1, selfcheck_window=2)
+    assert set(result['actions'].values()) == {'completed'}
+    assert result['selfcheck_window'] == 2
+    assert not list((tmp_path/'pending').iterdir())
+    events = [json.loads(line) for line in (tmp_path/'output/events.jsonl').read_text().splitlines()]
+    finished = [row['action_id'] for row in events if row['state']=='completed']
+    assert finished.index('construct') < finished.index('fast') < finished.index('slow')

@@ -39,6 +39,13 @@ def origin(options, workspace: Path, *, prior: dict | None = None, compiler_libr
     if submission.is_symlink() or not submission.is_dir():
         raise ValueError("fresh backend submission must be an existing empty directory before author launch")
     children = list(submission.iterdir())
+    if getattr(options, 'compiler_access', 'selected_library') == 'full_compiler':
+        from .full_compiler_workspace import selected as full_selection, exact_staged_baseline
+        full = full_selection()
+        if (full is None or len(children) != 1 or children[0].name != 'compiler_library'
+                or not exact_staged_baseline(full, submission)):
+            raise ValueError('fresh full compiler requires exact generic baseline and zero target backend files')
+        return {"schema": "merlin.empty_backend_origin.v1", "initial_files": 0}
     if children:
         from merlin.targetgen.compiler_library_fork import DIRECTORY, enabled
         # Trusted staging creates this empty directory for sparse overrides.

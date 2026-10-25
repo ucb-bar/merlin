@@ -126,7 +126,10 @@ def selected_service(*, workspace, run_dir, repo):
     bundle = yaml.safe_load(manifest.read_bytes())
     if bundle.get("compiler_tool_profile") is None:
         return None
-    return CommonTransformService(workspace=Path(workspace), bundle_manifest=manifest, repo=Path(repo))
+    from .snapshot_execution import selected
+    from .snapshot_inputs import SnapshotInputs
+    owner_type = SnapshotInputs if selected() else CommonTransformService
+    return owner_type(workspace=Path(workspace), bundle_manifest=manifest, repo=Path(repo))
 
 
 def functional_service(run_dir):
@@ -144,7 +147,10 @@ def functional_service(run_dir):
     if environment.get("compiler_tool_profile") is None:
         return None
     original = PC.verify_private_input_snapshot(Path(run_dir), environment)
-    service = CommonTransformService(
+    from .snapshot_execution import selected
+    from .snapshot_inputs import SnapshotInputs
+    owner_type = SnapshotInputs if selected() else CommonTransformService
+    service = owner_type(
         workspace=original["workspace"], bundle_manifest=original["bundle_path"], repo=original["repo"]
     )
     if service.profile != environment["compiler_tool_profile"]:
@@ -158,6 +164,13 @@ def compiler_profile_binding(service, *, run_dir):
         if functional_service(run_dir) is not None:
             raise ValueError("ordinary compiler lost its admitted original profile")
         return None
+    from .snapshot_execution import selected
+    from .snapshot_inputs import SnapshotInputs
+    if selected():
+        if type(service) is not SnapshotInputs or service.bundle_manifest != Path(run_dir) / "input_bundle_manifest.yaml":
+            raise ValueError("external compiler selected another snapshot input owner")
+        service._verify()
+        return service.record()
     if (
         type(service) is not CommonTransformService
         or service.bundle_manifest != Path(run_dir) / "input_bundle_manifest.yaml"
@@ -194,8 +207,18 @@ def selfcheck_execution(bundle_manifest, *, context, submission, work_root):
     from merlin.common.bundle_snapshot import verified_snapshot_scope
     from merlin.targetgen.target_experiment import load_target_experiment
 
+    from . import snapshot_execution
     if bundle_manifest is None:
+        if snapshot_execution.selected():
+            raise ValueError("snapshot execution requires its selected input bundle")
         yield
+        return
+    if snapshot_execution.selected():
+        from .snapshot_inputs import SnapshotInputs
+        owner = SnapshotInputs(workspace=Path.cwd(), bundle_manifest=bundle_manifest, repo=context.repo)
+        with snapshot_execution.execution(owner, target_experiment=load_target_experiment(context.descriptor),
+                candidate=Path(submission), work_root=Path(work_root)):
+            yield
         return
     workspace = Path.cwd()
     bundle = yaml.safe_load(Path(bundle_manifest).read_bytes())
@@ -554,7 +577,7 @@ class _Executor:
 
         The exact original lifetime and frozen marker remain authoritative. A
         refresh performs ordinary full verification; it cannot refresh a verdict.
-        Old scopes retain their original guard and independent final read. Four
+        Old scopes retain their original guard and full-read fallback. Four
         failed/invalidated generations exhaust this optional optimization and
         restore ordinary fresh reads. Resource exhaustion is different: one
         serialized retry per thirty seconds may establish a NEW fully verified
@@ -623,7 +646,10 @@ class _Executor:
                     raise
         with B.shared_entry_scope(entry):
             try:
-                yield
+                # Explicitly lend this original request's live admission to the
+                # framework operation. An implicit context alone cannot select
+                # guarded publication; stale or absent entries still hash fully.
+                yield entry
             finally:
                 if self._snapshot_identity() != binding or self._concurrent_selection() is None:
                     raise ValueError("snapshot refresh lifetime expired during its operation")
@@ -1050,6 +1076,12 @@ def original_compiler_execution(service, *, target_experiment, candidate, work_r
     from merlin.common.bundle_snapshot import verified_snapshot_scope
     from merlin.targetgen.compiler_library import active_compiler_library, guarded_compiler_library_verification
 
+    from . import snapshot_execution
+    if snapshot_execution.selected():
+        with snapshot_execution.execution(service, target_experiment=target_experiment,
+                candidate=candidate, work_root=work_root, sandbox_inputs=sandbox_inputs):
+            yield
+        return
     if service is None:
         yield
         return

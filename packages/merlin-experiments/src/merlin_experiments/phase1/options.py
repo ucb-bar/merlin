@@ -95,6 +95,11 @@ class RunOptions:
     author_token_admission: bool = False
     author_token_turn_allowance: int | None = None
     offline_actions: str = ""
+    compiler_execution: str = "profile_strict_v1"
+    compiler_access: str = "selected_library"
+    full_compiler_root: str = ""
+    full_compiler_manifest: str = ""
+    full_compiler_manifest_sha256: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -361,6 +366,15 @@ def build_parser(
     # available as an escape hatch (golden-masked COPY workspace + post-run transcript audit), but it is
     # detection-not-prevention and must not be used for scored runs.
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
+    ap.add_argument(
+        "--compiler-execution", choices=("profile_strict_v1", "snapshot_external_v1"),
+        default="profile_strict_v1",
+        help="compiler execution boundary; snapshot_external_v1 uses an isolated compiler snapshot and external grading",
+    )
+    ap.add_argument("--compiler-access", choices=("selected_library", "full_compiler"), default="selected_library")
+    ap.add_argument("--full-compiler-root", default="", help="operator-selected public compiler source tree")
+    ap.add_argument("--full-compiler-manifest", default="", help="public compiler source inventory")
+    ap.add_argument("--full-compiler-manifest-sha256", default="", help="exact selected inventory digest")
     ap.add_argument(
         "--allow-unsandboxed",
         action="store_true",

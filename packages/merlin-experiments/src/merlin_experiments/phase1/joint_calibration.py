@@ -17,6 +17,7 @@ from merlin.runtime import _native_files as F
 from merlin_timing.fitting import design_check
 
 from . import joint_control, joint_measurements
+from .joint_calibration_lifecycle import raise_if_stopping
 from .feedback import joint_performance as PERF
 from ..phase2.contracts import document_sha256
 
@@ -108,10 +109,8 @@ def freeze_round(*, selection_pin, cases, parameters, output, question, stage="b
         if cap["name"] not in joint_control.selected()["policy"]["gsim"]["witness_capsules"]:
             raise ValueError("calibration member is outside selected physical witness roster")
         grade = PERF._read(case["result"])
-        if (grade.get("numeric", {}).get("status") != "pass"
-                or grade.get("tiers", {}).get("L2", {}).get("status") != "pass"
-                or grade["tiers"]["L2"].get("engine") != "spike"):
-            raise ValueError("original candidate has no complete passing Spike numerical tier")
+        from .joint_calibration_eligibility import require
+        require(grade, cap, compiler_sha256=case["compiler_sha256"])
     if any(sum(split == name for split in groups.values()) < 2 for name in ("train", "held")):
         raise ValueError("training and held validation each need two independent source groups")
     value = dict(schema=SCHEMA, selection=selection_pin, runtime=selection["runtime"],
@@ -148,6 +147,7 @@ def _authorize_if_needed(name, plan):
 
 def _observe(case, *, runtime, context, directory, require_complete=True):
     """Use the original Phase 2 producer verifier and namespace runner."""
+    raise_if_stopping()
     from merlin.benchharness import hash_tree
     from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -157,6 +157,8 @@ def _observe(case, *, runtime, context, directory, require_complete=True):
     if hash_tree(compiler)["sha256"] != case["compiler_sha256"]:
         raise ValueError("original candidate snapshot changed")
     grade = PERF._read(case["result"])
+    from .joint_calibration_eligibility import require
+    require(grade, _capsule(case["capsule"]), compiler_sha256=case["compiler_sha256"])
     own = observe_generated_artifacts(root, compiler=compiler, original_grade=grade)
     if own.get("product_collection", {}).get("consumption_join") not in {
         "reopened_original_native_products", "reopened_original_retained_functional_layer_products"
@@ -164,9 +166,23 @@ def _observe(case, *, runtime, context, directory, require_complete=True):
         raise ValueError("candidate product provenance could not be reopened")
     elf = PERF.original_executable(root)
     policy = PC.package_sandbox_policy(load_target_experiment(context.descriptor), root, compiler)
+    output_export = None
+    # A coherent-readback ELF publishes values to memory, not stdout. Retain
+    # that exact executable and export its output through stock symbol-only
+    # HTIF metadata; never synthesize a serial guest or accept METRIC as values.
+    physical = [r for r in grade.get("compiler_source", {}).get("executed_programs", [])
+                if r.get("engine") == "gsim" and
+                (r.get("compiler_artifacts", {}).get("oracle") or {}).get("memory_engine")]
+    if physical:
+        from .feedback.candidate_execution_products import reopen_operator_tier_products
+        from ..phase2.integer_signature_export import IntegerSignatureExport
+        products, custody = reopen_operator_tier_products(root, grade, tier="L3")
+        if grade.get("numeric", {}).get("policy") != "exact_int" or F.digest(elf) != custody["elf_sha256"]:
+            raise ValueError("complete integer output export requires the original same-ELF physical product")
+        output_export = IntegerSignatureExport.prepare(elf=elf, command_buffer=products["command_buffer"])
     value = OBS.observe(elf, runtime=runtime, policy=policy, directory=directory,
                         input_sha256=F.digest(elf), remaining_s=min(120, joint_control.remaining(drain=True)),
-                        numerical_pass=True)
+                        numerical_pass=True, **({"output_export": output_export} if output_export else {}))
     if value.get("status") != "observed":
         raise ValueError(value.get("reason", "native replay unavailable"))
     report = PERF._read(value["report"])
@@ -178,6 +194,7 @@ def _observe(case, *, runtime, context, directory, require_complete=True):
 
 def _measure(case, *, backend, elf, observation, model, output, diagnostic=False):
     """Measure the identical ELF and compare every original full output value."""
+    raise_if_stopping()
     import numpy as np
     from merlin.common import invocation_record as I
     from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
@@ -194,7 +211,11 @@ def _measure(case, *, backend, elf, observation, model, output, diagnostic=False
     console = Path(process["path"]).parent / "stdout.bin"
     if F.digest(console) != process["stdout_sha256"]:
         raise ValueError("original numerical console changed")
-    expected, _ = backend.parse_output(console.read_bytes())
+    if observation.get("output_export") is not None:
+        from ..phase2.integer_signature_export import reopen_values
+        expected = reopen_values(observation, process)
+    else:
+        expected, _ = backend.parse_output(console.read_bytes())
     with joint_control.physical_witness(_capsule(case["capsule"])["name"]) as timeout:
         raw = backend.run_elf(elf, simulator="gsim", timeout=timeout, capture_bytes=True)
     actual, metrics = backend.parse_output(raw)
@@ -235,10 +256,16 @@ def _reopen_observation(record, runtime):
         actual = I.verify(Path(process["path"]))
         if actual["stdout"]["sha256"] != process["stdout_sha256"]:
             raise ValueError("retained replay console changed")
+        if observation.get("output_export") is not None:
+            from ..phase2.integer_signature_export import reopen_values
+            reopen_values(observation, process)
     return elf, report
 
 
 def _reopen_physical(receipt, record, backend):
+    if receipt.get("label_origin") == "retained_correctness_gsim":
+        from .joint_calibration_reuse import revalidate
+        revalidate(receipt, record, backend)
     if (receipt.get("fit_eligible") is False
             or receipt.get("schema") == "merlin.joint_structure_diagnostic_measurement.v1"):
         raise ValueError("structural diagnostic observations are not admitted fit labels")
@@ -257,15 +284,33 @@ def _reopen_physical(receipt, record, backend):
 
 def _collect_labels(cases, *, root, plan, backend, base_model, labels):
     for case in cases:
+        raise_if_stopping()
         record = json.loads((root / "probe-0" / (case["id"] + ".json")).read_text())
         measured = root / "physical" / case["id"] / "measurement.json"
         if not measured.exists():
             from .joint_calibration_admission import assert_allowed
             assert_allowed(plan)
-            name = _capsule(case["capsule"])["name"]
-            _authorize_if_needed(name, plan)
-            _measure(case, backend=backend, elf=Path(record["elf"]),
-                     observation=record["observation"], model=base_model, output=measured.parent)
+            from .joint_calibration_reuse import inspect, measurement
+            reuse = inspect(case, record=record, plan=plan, backend=backend, model=base_model)
+            review_path = root / "reuse" / (case["id"] + ".json")
+            review_path.parent.mkdir(exist_ok=True)
+            if review_path.exists():
+                # An earlier unavailable observation may become available only
+                # through a new frozen round, never replacement of its review.
+                if json.loads(review_path.read_text()) != reuse:
+                    raise ValueError("retained correctness reuse review changed within frozen round")
+            else:
+                _write(review_path, reuse)
+            if reuse["status"] == "ready":
+                measured.parent.mkdir(parents=True, exist_ok=False)
+                _write(measured, measurement(reuse, plan_pin=F.pin(root / "plan.json", max_bytes=16 << 20)))
+            else:
+                if not reuse["fresh_observation_required"]:
+                    raise ValueError("retained correctness evidence refused: " + reuse["reason"])
+                name = _capsule(case["capsule"])["name"]
+                _authorize_if_needed(name, plan)
+                _measure(case, backend=backend, elf=Path(record["elf"]),
+                         observation=record["observation"], model=base_model, output=measured.parent)
         labels[case["id"]] = _reopen_physical(json.loads(measured.read_text()), record, backend)
 
 
@@ -276,6 +321,7 @@ def run_round(plan_pin, *, context, backend, output):
     variants exist. Repeated calls reuse only this exact round's pinned completed
     receipts. Model promotion is a separate drained epoch, never an in-place edit.
     """
+    raise_if_stopping()
     plan = PERF._read(plan_pin)
     if plan.get("schema") != SCHEMA:
         raise ValueError("unsupported calibration plan")
@@ -285,6 +331,12 @@ def run_round(plan_pin, *, context, backend, output):
     # Run before native sensitivity work or reopening any terminal result.
     from .joint_calibration_admission import assert_allowed
     assert_allowed(plan)
+    # Reopen even on resume: an older plan/probe/outcome is not permission to
+    # fit a numerically passing but structurally refused compiler product.
+    from .joint_calibration_eligibility import require
+    for case in plan["cases"]:
+        require(PERF._read(case["result"]), _capsule(case["capsule"]),
+                compiler_sha256=case["compiler_sha256"])
     root = Path(output);root.mkdir(parents=True, exist_ok=True)
     state = root / "plan.json"
     if state.exists() and json.loads(state.read_text()) != plan:
@@ -303,6 +355,7 @@ def run_round(plan_pin, *, context, backend, output):
     grid = [baseline, *(v for v in itertools.product(*(p["values"] for p in plan["parameters"])) if v != baseline)]
     predictions, reports, runtime_pins, labels = [], [], [], {}
     for index, values in enumerate(grid):
+        raise_if_stopping()
         probe = root / f"probe-{index}"
         if not probe.exists():
             probe.mkdir()
@@ -365,6 +418,7 @@ def run_round(plan_pin, *, context, backend, output):
     _collect_labels([c for c in cases if c["split"]=="held"],root=root,plan=plan,
                     backend=backend,base_model=base_model,labels=labels)
     verdict=local_validation(cases,labels,predictions[0],predictions[best],gates=plan["gates"])
+    raise_if_stopping()
     outcome=dict(verdict,design=design,training_loss=loss(predictions[best]),incumbent_training_loss=loss(predictions[0]),
                  selected_runtime=runtime_pins[best],plan=plan_pin,parameters=dict(zip((str(p) for p in paths),grid[best])))
     evidence=(F.pin(root/"outcome.json", max_bytes=16 << 20)

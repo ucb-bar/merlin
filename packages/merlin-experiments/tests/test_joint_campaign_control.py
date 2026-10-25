@@ -167,3 +167,33 @@ def test_joint_periodic_qa_never_constructs_physical_ladder(campaign, tmp_path, 
     monkeypatch.setattr(qa, "_per_capsule_from_results", lambda *a, **k: {})
     result = qa.run("submission", str(root), tmp_path / "runs", {"public"}, False, 1, context=context)
     assert len(seen) == 1 and result["all_pass"] is False
+
+
+def test_external_policy_uses_dynamic_pool_without_changing_strict_limits(tmp_path):
+    path = tmp_path / "policy.json"
+    value = {"version": 1, "duration_s": 18000, "final_model_s": 3600,
+             "compiler_execution_mode": "snapshot_external_v1",
+             "gsim": {"max_jobs": 20, "worker_budget_s": 360000}}
+    path.write_text(json.dumps(value))
+    assert J.policy(path)["gsim"]["max_jobs"] == 20
+    value.pop("compiler_execution_mode")
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="gSIM"):
+        J.policy(path)
+    value["compiler_execution_mode"] = "snapshot_external_v1"
+    value["gsim"]["worker_budget_s"] = 360001
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="worker_budget"):
+        J.policy(path)
+
+
+def test_external_model_request_admission_has_no_final_window_curriculum(monkeypatch):
+    monkeypatch.setattr(J, "selected", lambda: {"policy": {
+        "compiler_execution_mode": "snapshot_external_v1", "final_model_s": 100}})
+    monkeypatch.setattr(J, "remaining", lambda **kw: 5000)
+    assert J.require_full_model() == 5000
+    with pytest.raises(RuntimeError):
+        J.require_full_model(engine="gsim")
+    monkeypatch.setattr(J, "remaining", lambda **kw: 0)
+    with pytest.raises(RuntimeError):
+        J.require_full_model()

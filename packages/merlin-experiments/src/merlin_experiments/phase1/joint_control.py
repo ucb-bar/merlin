@@ -32,8 +32,13 @@ def policy(path):
             raise ValueError(f"invalid joint campaign {key}")
     if not value["drain_s"] <= value["final_model_s"] < value["duration_s"]:
         raise ValueError("joint campaign windows must be nested")
+    mode = value.get("compiler_execution_mode", "profile_strict_v1")
+    if mode not in {"profile_strict_v1", "snapshot_external_v1"}:
+        raise ValueError("invalid joint compiler execution mode")
+    external = mode == "snapshot_external_v1"
     gsim = value.setdefault("gsim", {})
-    for key, default in (("max_jobs", 2), ("per_job_s", 1200), ("worker_budget_s", 14400)):
+    for key, default in (("max_jobs", 20 if external else 2), ("per_job_s", 1200),
+                         ("worker_budget_s", value["duration_s"] * 20 if external else 14400)):
         gsim.setdefault(key, default)
         if type(gsim[key]) is not int or not 1 <= gsim[key] <= default:
             raise ValueError(f"invalid joint gSIM {key}")
@@ -57,6 +62,8 @@ def policy(path):
             correctness.setdefault(key, default)
             if type(correctness[key]) is not int or not 1 <= correctness[key] <= maximum:
                 raise ValueError(f"invalid joint gSIM correctness {key}")
+    from .feedback.construction_plan import policy as construction_policy
+    construction_policy(value.get("construction_plan"))
     from .joint_measurements import limits
     limits(value)
     return value
@@ -66,6 +73,9 @@ def validate(options):
     if not getattr(options, "joint_campaign", ""):
         return
     selected_policy = policy(options.joint_campaign)
+    if ("compiler_execution_mode" in selected_policy and selected_policy["compiler_execution_mode"]
+            != getattr(options, "compiler_execution", "profile_strict_v1")):
+        raise ValueError("joint policy and compiler execution mode differ")
     from .joint_seed import selected as selected_seed
     seed = selected_seed(options, selected_policy)
     if options.sandbox != "bwrap" or options.continuous or options.schedule != "continuous":
@@ -137,7 +147,8 @@ def require_full_model(*, engine="spike", now=None):
     if value is None:
         return None
     left = remaining(now=now)
-    if engine != "spike" or left <= 0 or left > value["policy"]["final_model_s"]:
+    external = value["policy"].get("compiler_execution_mode") == "snapshot_external_v1"
+    if engine != "spike" or left <= 0 or (not external and left > value["policy"]["final_model_s"]):
         raise RuntimeError("joint full models are admitted only on Spike during the final model window")
     return left
 
@@ -339,6 +350,9 @@ def prompt_block():
     if value is None:
         return ""
     p = value["policy"]
+    from .full_compiler_workspace import selected as full_selection
+    if p.get("compiler_execution_mode") == "snapshot_external_v1" and full_selection() is not None:
+        return _full_compiler_prompt_block(p)
     return "\n\n## Joint compiler development campaign\n\n" + (
         f"The {p['duration_s'] / 3600:g}-hour clock starts at author launch. Small numerical success "
         "does not freeze the compiler. Keep architecture, pass composition, fusion and scheduling editable. "
@@ -427,3 +441,49 @@ def stage_evidence(verdict):
                                      "physical_correctness_required": sorted(correctness_capsules(value)),
                                      "performance_qualification": "unknown"}
     return verdict
+
+
+def _full_compiler_prompt_block(policy):
+    """Editable compiler advice plus actual selected physical/resource limits."""
+    from .joint_measurements import limits
+    bounds = limits(policy)
+    witness = policy.get("gsim", {})
+    correctness = policy.get("gsim_correctness", {})
+    return (
+        "\n\n## Joint editable compiler development\n\n"
+        "Develop one general compiler across all public capability families. A fresh run has an empty "
+        "target backend; a declared continuation retains its authored compiler. Generic compiler sources "
+        "under submission/compiler_library are editable: extend passes, dialects, numerical/layout "
+        "representations, schedules, allocation, lowering and host generation as useful. There is no "
+        "mandatory pass order, discovery sequence, tiny-canary prerequisite or minimum helper count. "
+        "Choose component ownership and testing order; up to the selected helper ceiling can work "
+        "concurrently toward the same compiler. Use all 20 CPUs as one shared pool.\n\n"
+        "Test useful eligible cases as soon as they can provide feedback, including large and connected "
+        "cases. A tiny executable can cheaply expose ABI faults but does not gate unrelated work. "
+        "Keep editing while immutable snapshots grade and integrate completed changes promptly. "
+        "Consume transformed IR in real emission; preserve all outputs, numerical contracts, source "
+        "placement and completion. No private answers, retained target backend seed, benchmark-name "
+        "dispatch or forbidden CPU fallback. An import, receipt or build is not numerical evidence.\n\n"
+        "All 250 selected cases remain eventual obligations: 153 original correctness, 20 calibration "
+        "and 77 scalability cases, with their actual required tiers. Optimize chiefly larger shapes and "
+        "connected workloads from the start; small originals primarily establish correctness and model "
+        "evidence. Full-model Spike development checks are available throughout the remaining campaign; "
+        "there is no final-model-window waiting requirement in this execution mode. "
+        + selfcheck_routing_guidance() + "\n\n"
+        f"Selected campaign duration: {policy['duration_s']/3600:g} hours from author launch; "
+        f"editing stops {policy['drain_s']/60:g} minutes before deadline for freeze/drain. "
+        f"Required gSIM correctness: {len(correctness.get('capsules', ()))} declared cases, "
+        f"concurrency {correctness.get('max_jobs', 'unselected')}, "
+        f"per-job budget {correctness.get('per_job_s', 'unselected')} seconds. "
+        f"Selective calibration gSIM concurrency {witness.get('max_jobs', 'unselected')}, "
+        f"per-job budget {witness.get('per_job_s', 'unselected')} seconds; "
+        f"initial diagnostics {bounds['initial_diagnostics_max']}, bootstrap observations "
+        f"{bounds['bootstrap_observations_max']}, later authorized batch limit {bounds['later_batch_max']}. "
+        "These are actual admission limits, not required exploration stages. Extra witnesses need "
+        "matching numerical evidence and an unresolved question under the selected policy; required "
+        "correctness has separate accounting. Unrun tiers and timeouts remain pending.\n\n"
+        "Use roofline and whole-SoC feedback with its scope and uncertainty. Prefer the selected tuned "
+        "model when qualified; missing timing is not zero cost. Independent final FireSim validation "
+        "uses the exact selected unchanged hardware configuration and complete output checks. "
+        "Report observed correctness and performance separately; private grading remains independent.\n"
+    )

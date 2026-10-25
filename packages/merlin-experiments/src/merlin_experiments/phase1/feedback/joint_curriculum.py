@@ -55,7 +55,8 @@ def _structural_prerequisites(row):
         and tiers[t].get('not_applicable') is True and tiers[t].get('reason') == reason
         for t, reason in whole_program_reasons.items())
     outputs = numeric.get('per_output')
-    whole_program = (whole_program and isinstance(outputs, dict) and bool(outputs)
+    whole_program = (whole_program and numeric.get('status') == 'pass'
+        and isinstance(outputs, dict) and bool(outputs)
         and numeric.get('missing_outputs') == [] and numeric.get('mismatch_count') == 0
         and isinstance(numeric.get('golden_source'), str) and bool(numeric['golden_source'])
         and all(isinstance(v, dict) and v.get('status') == 'pass'

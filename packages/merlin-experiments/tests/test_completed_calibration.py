@@ -6,6 +6,7 @@ import pytest
 
 from merlin.benchharness import hash_tree
 from merlin_experiments.phase1.feedback import completed_calibration as C
+from test_joint_calibration_eligibility import valid_grade
 
 
 @pytest.fixture
@@ -24,13 +25,12 @@ def completed(tmp_path, monkeypatch):
     generated.mkdir(parents=True)
     elf = generated / 'fixture.elf'
     elf.write_bytes(b'fixture original producer; not executable')
-    result = {'capsule': 'public_case', 'kind': 'layer', 'label': 'public',
-        'numeric': {'status': 'pass'},
-        'tiers': {'L2': {'status': 'pass', 'engine': 'spike'}, 'L3': {'status': 'unavailable'}},
-        'compiler_source': {'status': 'stable', 'candidate_sha256': hash_tree(compiler)['sha256']}}
+    result = valid_grade(source=hash_tree(compiler)['sha256'])
+    result['capsule'] = 'public_case'
     path = root / 'capsule_result.json'
     path.write_text(json.dumps(result))
-    cap = {'name': 'public_case', 'kind': 'layer', 'label': 'public'}
+    cap = {'name': 'public_case', 'kind': 'layer', 'label': 'public',
+           'required_oracle_tiers':['L0','L1','L2','L3']}
     selection = {'members': {'public_case': {'capsule_sha256': P.capsule_identity(cap)}},
                  'facts': {'sha256': 'facts'}}
     profile = {'performance_selection': {'sha256': 'selection'}, 'members': {}}
@@ -98,3 +98,31 @@ def test_only_existing_reviewed_profile_member_enters_fit_registry(completed, tm
     value = json.loads(entries[0].read_text())
     assert value['source_group_sha256'] == 'reviewed-independent-group'
     assert value['estimate_status'] is None  # No timing invented from numerical pass.
+
+
+@pytest.mark.parametrize('damage', ['failure', 'trace', 'placement'])
+def test_all_registration_owners_reject_numeric_pass_with_other_failure(completed, tmp_path, damage):
+    from merlin_experiments.phase1 import joint_calibration_service as S, joint_calibration_intake as I
+    result, kwargs, cap, profile = completed
+    profile['members']['public_case'] = {'source_group_sha256':'reviewed'}
+    if damage == 'failure': result['failure'] = {'plane':'placement', 'category':'MUST_ACCELERATE'}
+    elif damage == 'trace': result['trace_check']['status'] = 'fail'
+    else: result['candidate_source_placement'] = {'status':'violation'}
+    kwargs['result_path'].write_text(json.dumps(result))
+    assert C.register(result, **kwargs) is None
+    root = kwargs['result_path'].parent / 'generated'
+    assert S.register({}, root, result=result, compiler=kwargs['compiler'], capsule=cap) is None
+    assert I.register({}, root, result=result, compiler=kwargs['compiler'], capsule=cap,
+                      state={'policy':{}}, profile=profile) is None
+    assert not (tmp_path/'calibration_registry').exists()
+    assert not (tmp_path/'calibration_candidate_index').exists()
+
+
+def test_exact_pending_required_l3_can_register_without_physical_authority(completed, tmp_path):
+    result, kwargs, cap, profile = completed
+    pending = valid_grade(pending=True, source=result['compiler_source']['candidate_sha256'])
+    pending['capsule'] = result['capsule']
+    kwargs['result_path'].write_text(json.dumps(pending))
+    assert C.register(pending, **kwargs)['calibration_candidate_intake']['status'] == 'pending_review'
+    entry = json.loads(next((tmp_path/'calibration_candidate_index').glob('*.json')).read_text())
+    assert not entry['fit_authorized'] and not entry['dispatch_authorized']

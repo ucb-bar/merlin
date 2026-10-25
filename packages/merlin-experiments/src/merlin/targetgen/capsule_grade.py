@@ -785,6 +785,22 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
     if result.get("status") == "gated":
         # The scheduler never executed this model; retain its original deferral.
         return result
+    if result.get("status") == "budget_exhausted" and not any(
+        isinstance(result.get(key), dict)
+        for key in ("owned_host_native_execution", "candidate_native_execution")
+    ):
+        # The parent terminated the budgeted child before it returned a receipt.
+        # Auditing that absent receipt would overwrite the actual timeout with
+        # a generic missing-evidence error. This grants no tier or numeric pass.
+        result["model_execution_check"] = {
+            "status": "incomplete",
+            "kind": "model_execution_budget",
+            "violations": ["candidate_required_tiers_unverified"],
+            "detail": (result.get("failure") or {}).get("detail", "whole-model execution budget exhausted"),
+        }
+        result["numeric"] = {}
+        result["tiers"] = {}
+        return result
     check = model_execution_check(
         result,
         capsule,
@@ -822,6 +838,8 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
                 and ((audited.get(tier) or {}).get("selection") or {}).get("fidelity") == "elaborated_rtl",
                 "cycle_accurate": False,
                 "candidate_evidence": audited.get(tier) or {},
+                **{key: (audited.get(tier) or {})[key] for key in ("engine", "fidelity")
+                   if isinstance((audited.get(tier) or {}).get(key), str) and (audited.get(tier) or {})[key]},
             }
             for tier in required
         }
@@ -1242,10 +1260,10 @@ def _candidate_score_view(row: dict) -> dict:
             if check.get("kind") == "owned_host_model_execution"
             else "candidate_whole_program_same_elf",
         }
-        for field in ("fidelity", "derived_from_rtl", "cycle_accurate"):
+        for field in ("engine", "fidelity", "derived_from_rtl", "cycle_accurate"):
             value = audit.get(field)
-            if (field == "fidelity" and isinstance(value, str) and value) or (
-                field != "fidelity" and isinstance(value, bool)
+            if (field in {"engine", "fidelity"} and isinstance(value, str) and value) or (
+                field in {"derived_from_rtl", "cycle_accurate"} and isinstance(value, bool)
             ):
                 projected[field] = value
         view["tiers"][tier] = projected
@@ -1283,6 +1301,7 @@ def grade(
     on_capsule_complete=None,
     on_cohort_ready=None,
     model_gate_continuations=(),
+    model_gate_prerequisites=None,
     functional_hidden_tier: str | None = None,
     functional_public_tier: str | None = None,
     defer_pending=None,
@@ -1556,6 +1575,7 @@ def grade(
         model_snapshot_root=model_snapshot_root,
         post_suite=_post_suite,
         model_gate_continuations=model_gate_continuations,
+        model_gate_prerequisites=model_gate_prerequisites,
         **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         **({"on_capsule_complete": _completed} if on_capsule_complete is not None else {}),
     )

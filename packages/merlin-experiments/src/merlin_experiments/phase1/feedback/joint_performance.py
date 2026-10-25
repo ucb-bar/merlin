@@ -187,6 +187,10 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     try:
         source_capsule = selected_capsule(selection, capsule)
         epoch = choose(selection, capsule_identity(source_capsule))
+        if result.get("owned_host_native_execution") is not None and epoch["mode"] == "untuned":
+            # An owned call has a different scope identity. Never silently reuse
+            # a kernel model or fall back from a covered tuned epoch.
+            epoch = dict(epoch, runtime=selection.get("owned_model_runtime"))
         stage = "structural_roofline"
         structural = structural_feedback(selection, source_capsule, target=context.target)
         stage = "numerical_screen"
@@ -207,7 +211,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
             model_review = runtime.review_id
             stage = "same_elf_observation"
             report, observation = _observe(
-                root, context=context, compiler=compiler, runtime=runtime,
+                root, context=context, compiler=compiler, runtime=runtime, result=result,
                 remaining_s=min(remaining_s, selection.get("per_request_seconds", 30)),
             )
             reason = observation.get("reason", "native timing is provisional pending independent qualification")
@@ -264,8 +268,7 @@ def original_executable(root):
         raise ValueError("original native producer executable is unavailable")
     return elf
 
-def _observe(root, *, context, compiler, runtime, remaining_s):
-    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+def _observe(root, *, context, compiler, runtime, remaining_s, result=None):
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from ...phase2 import archive_count_observation as OBS
@@ -275,7 +278,13 @@ def _observe(root, *, context, compiler, runtime, remaining_s):
     # The native producer owns this exact slot. Retained execution snapshots
     # legitimately contain the same basename and are never alternative producers.
     # OBS still reopens the direct ELF's original recipe and invocation custody.
-    elf = original_executable(root)
+    owned_scope = None
+    if (result or {}).get("owned_host_native_execution") is not None:
+        from ...phase2.owned_model_observation import prepare
+        owned_scope = prepare(result, target=context.target, evidence_root=root / "owned_scope_review")
+        elf = owned_scope.elf
+    else:
+        elf = original_executable(root)
     compiler = Path(compiler)
     candidate = hash_tree(compiler)["sha256"]
     elf_before = F.pin(elf, max_bytes=64 << 20)
@@ -288,6 +297,7 @@ def _observe(root, *, context, compiler, runtime, remaining_s):
     observation = OBS.observe(
         elf, runtime=runtime, policy=policy, directory=root / "joint_timing",
         input_sha256=elf_before["sha256"], remaining_s=remaining_s, numerical_pass=True,
+        **({"owned_scope": owned_scope} if owned_scope is not None else {}),
     )
     observation["input_identity_basis"] = "self-contained numerically checked ELF, including embedded stimulus"
     report = _read(observation["report"]) if observation.get("status") == "observed" else None

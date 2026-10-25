@@ -365,3 +365,150 @@ def routed_kernel_symbols(emitted: Mapping[str, Any]) -> set[str]:
     if set(signatures) != set(by_symbol):
         raise ValueError("compiled kernel signature roster differs from routed symbols")
     return set(by_symbol)
+
+
+def join_sibling_source_composition(emitted, source, *, module, target, preparation_receipt=None):
+    """Re-derive a many-to-one raw projection from original typed source.
+
+    The original owner must independently select this route. This source join
+    does not authorize it, qualify borrowed effects or replace per-member actual
+    device-work attribution. Original required/optional denominators stay intact.
+    """
+    import hashlib
+    import json
+
+    from xdsl.dialects import func
+
+    from merlin.llvmlower.device_shim import logical_buffers
+    from merlin.llvmlower.sibling_source_route import _command_buffer
+    from merlin.llvmlower.source_region_host import outline_source_siblings
+    from merlin.targetgen.contract.interface_emit import emit_interface_mlir
+    from merlin.xdsl_dialects._common import text
+
+    original = text(module, generic=True)
+    source_sha = hashlib.sha256(original.encode()).hexdigest()
+    projection_module = module
+    preparation = None
+    if preparation_receipt is not None:
+        from pathlib import Path
+
+        from merlin.compile.model_execution_inputs import file_sha256
+        from merlin.frontends.linalg_mlir import parse_mlir_file
+        from merlin.llvmlower.weight_prepack import revalidate_build_preparation
+
+        receipt_path = Path(preparation_receipt)
+        if (not receipt_path.is_absolute() or not receipt_path.is_file()
+            or any(path.is_symlink() for path in (receipt_path, *receipt_path.parents))):
+            raise ValueError("sibling preparation needs its original direct owned receipt")
+        receipt_sha = file_sha256(receipt_path)
+        revalidate_build_preparation(receipt_path)
+        record = json.loads(receipt_path.read_text())
+        source_path = Path(record["source_bundle"]) / "model.mlir"
+        prepared_path = Path(record["prepared_bundle"]) / "model.mlir"
+        if text(parse_mlir_file(source_path), generic=True) != original:
+            raise ValueError("sibling preparation ancestry differs from original eligible source")
+        projection_module = parse_mlir_file(prepared_path)
+        preparation = {
+            "receipt": {"path": str(receipt_path), "sha256": receipt_sha},
+            "schema": record["schema"], "identity_sha256": record["identity_sha256"],
+            "source_model_sha256": file_sha256(source_path), "prepared_model_sha256": file_sha256(prepared_path),
+            "immutable_arguments": record["immutable_arguments"],
+        }
+    projection_sha = hashlib.sha256(text(projection_module, generic=True).encode()).hexdigest()
+    outlined, _ = outline_source_siblings(projection_module)
+    cb, group = _command_buffer(outlined.core, target)
+    functions = [op for op in outlined.core.body.block.ops if isinstance(op, func.FuncOp)]
+    function = functions[0]
+    operations = tuple(function.body.block.ops)
+    roots = tuple(operations[index] for index in group.contraction_ordinals)
+    symbol = function.sym_name.data + "_device"
+    interface = emit_interface_mlir(cb)
+    interface_sha = hashlib.sha256(interface.encode()).hexdigest()
+    buffers, reason = logical_buffers(interface)
+    if buffers is None:
+        raise ValueError("source sibling composition has no complete logical interface: " + reason)
+    # Validate the complete independent roster, including unused optional IDs.
+    roster = [*source.get("eligible_group_provenance", []), *source.get("optional_group_provenance", [])]
+    join_routed_source_groups([{"group": row["source_group"], **row} for row in roster], source)
+    by_region = {row["source_region_id"]: row for row in roster}
+    members = []
+    for index, (root, width) in enumerate(zip(roots, group.widths, strict=True)):
+        region, nodes = eligible_source_identity(root)
+        original_group = by_region.get(region)
+        if original_group is None or list(nodes) != original_group["source_node_ids"]:
+            raise ValueError("sibling member differs from independently admitted original source provenance")
+        source_group = original_group["source_group"]
+        geometry = source.get("source_group_contractions", {}).get(source_group)
+        if geometry != {"parallel": [group.m, width], "reduction": [group.k], "dtypes": ["i8", "i8", "i32"]}:
+            raise ValueError("sibling raw product differs from original contraction precision or extents")
+        members.append({
+            "source_group": source_group, "source_region_id": region,
+            # The independent roster canonicalizes the complete identity set;
+            # actual typed-call metadata must retain the source's exact order.
+            "source_node_ids": [node.data for node in root.attributes["prov.source_node_ids"]],
+            "output_role": "out_" + str(index), "geometry_m_k_n": [group.m, group.k, width],
+            "raw_output_elements": group.m * width, "raw_output_element_bytes": 4,
+            "source_useful_macs": group.m * group.k * width,
+        })
+    covered = [row["source_group"] for row in members]
+    if len(set(covered)) != len(covered) or not set(source["eligible_groups"]) <= set(covered):
+        raise ValueError("sibling composition duplicates or omits independently eligible original source groups")
+    expected_entry = {
+        "schema": "original_sibling_source_entry_v1", "name": symbol, "source_ir_sha256": source_sha,
+        "core_ir_sha256": hashlib.sha256(text(outlined.core, generic=True).encode()).hexdigest(),
+    }
+    def same(actual, expected):
+        try:
+            return json.dumps(actual, sort_keys=True, allow_nan=False) == json.dumps(
+                expected, sort_keys=True, allow_nan=False)
+        except (TypeError, ValueError):
+            return False
+
+    assigned = emitted.get("routed")
+    if (
+        emitted.get("device") != target
+        or emitted.get("granularity") != "group"
+        or emitted.get("model_sha256") != source_sha
+        or not same(emitted.get("signatures"), {symbol: [group.m, sum(group.widths), group.k]})
+        or not same(emitted.get("entries"), {symbol: expected_entry})
+        or not same(emitted.get("programs"), {symbol: cb})
+        or not same(emitted.get("expected_interfaces"), {symbol: {"mlir": interface, "sha256": interface_sha}})
+        or not same(emitted.get("call_buffers"), {symbol: [
+            {"role": buffer.role, "shape": list(buffer.shape), "dtype": buffer.dtype} for buffer in buffers
+        ]})
+        or emitted.get("arg_access") != {symbol: ["read"] * (len(members) + 1) + ["write"] * len(members)}
+        or not isinstance(assigned, list) or len(assigned) != 1 or not isinstance(assigned[0], Mapping)
+        or assigned[0].get("symbol") != symbol
+        or not (assigned[0].get("group") is None or type(assigned[0].get("group")) is int
+                and assigned[0]["group"] == 0)
+        or not same(assigned[0].get("parallel"), [group.m, sum(group.widths)])
+        or not same(assigned[0].get("reduction"), [group.k])
+        or assigned[0].get("dtypes") != ["i8", "i8", "i32"]
+        or assigned[0].get("source_region_id") is not None or assigned[0].get("source_node_ids")
+    ):
+        raise ValueError("emitted sibling composition differs from independently rederived source and complete ABI")
+    require_intended_host_selection(emitted.get("skipped", []))
+    if text(module, generic=True) != original:
+        raise ValueError("sibling source composition join changed original source")
+    if preparation is not None:
+        revalidate_build_preparation(receipt_path)
+        if (file_sha256(receipt_path) != receipt_sha
+            or file_sha256(source_path) != preparation["source_model_sha256"]
+            or file_sha256(prepared_path) != preparation["prepared_model_sha256"]):
+            raise ValueError("sibling original preparation changed during source join")
+    return {
+        "schema": "merlin.original_sibling_source_composition.v1",
+        "source_ir_sha256": source_sha, "prepared_source_ir_sha256": projection_sha,
+        "preparation": preparation, "interface_sha256": interface_sha,
+        "physical_symbol": symbol, "physical_group": assigned[0].get("group"), "members": members,
+        "host_entry_symbol": function.sym_name.data,
+        "borrowed_entry_symbol": function.sym_name.data + "_borrowed",
+        "required_source_groups": list(source["eligible_groups"]),
+        "covered_source_groups": covered,
+        "raw_output_elements": sum(row["raw_output_elements"] for row in members),
+        "raw_output_element_bytes": 4,
+        "source_useful_macs": sum(row["source_useful_macs"] for row in members),
+        "original_source_denominator_unchanged": True,
+        "scope": "original source identities, ordered raw products and complete logical interface only; "
+                 "actual member work, host calls, effects, objects, execution and required tiers remain separate",
+    }

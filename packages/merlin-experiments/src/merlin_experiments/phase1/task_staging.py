@@ -417,6 +417,25 @@ measured results.
             "  calibration witnesses, exact model-kernel replays,\n"
             "  and the offload census. Unrun declared physical tiers remain pending.",
         )
+    from .full_compiler_workspace import selected as full_selection
+    from .feedback.snapshot_execution import selected as external_selection
+    if external_selection() and full_selection() is not None:
+        body = body.replace(
+            "Build the compiler in `submission/` from the empty starting directory.",
+            "Build one compiler in `submission/`. Fresh runs start with an empty target backend; "
+            "declared continuations preserve the authored compiler.",
+        ).replace(
+            "calibration witnesses. Full-model Spike prevalidation is gated\n"
+            "to the selected final model window inside the authoring clock;",
+            "calibration witnesses. Full-model Spike development checks are available throughout\n"
+            "the remaining campaign in this execution mode;",
+        ).replace(
+            "- Before expensive simulation, stress applicable public accelerator members with",
+            "- Optional cheap code-size feedback for applicable public accelerator members:",
+        ).replace(
+            "- Then use `python agent_selfcheck.py --compile-only",
+            "- For bounded build feedback use `python agent_selfcheck.py --compile-only",
+        )
     body += task_runtime_scope_block(
         load_target_experiment(config.context.descriptor), sandbox, context=config.context, scope=scope
     )

@@ -132,6 +132,9 @@ class RunRequest:
 
         return {
             "schedule": a.schedule,
+            "compiler_execution": a.compiler_execution,
+            "compiler_access": a.compiler_access,
+            "full_compiler_manifest_sha256": a.full_compiler_manifest_sha256,
             "session_mode": (
                 "offline_construction_study"
                 if getattr(a, "offline_actions", "")
@@ -451,6 +454,14 @@ def phase_run_dir(context, arm: str, run_id: str, *, resume: bool) -> Path:
 
 def validate_preflight_options(a: RunOptions) -> None:
     """Pure selection checks, before native probes and when reopening preparation."""
+    if a.compiler_execution == "snapshot_external_v1" and a.sandbox != "bwrap":
+        raise ValueError("snapshot_external_v1 requires bwrap isolation")
+    full_sources = (a.full_compiler_root, a.full_compiler_manifest, a.full_compiler_manifest_sha256)
+    if a.compiler_access == "full_compiler":
+        if a.compiler_execution != "snapshot_external_v1" or not all(full_sources):
+            raise ValueError("full_compiler requires snapshot_external_v1 and the complete public source selection")
+    elif any(full_sources):
+        raise ValueError("full compiler inputs require --compiler-access full_compiler")
     ambient_seal = os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
     if a.corpus_seal and ambient_seal and a.corpus_seal != ambient_seal:
         raise ValueError("explicit corpus seal differs from the environment selection")
@@ -565,6 +576,14 @@ def _prepare(
     refusal = validate_options(a)
     if refusal is not None:
         return refusal
+    from merlin.targetgen.sandbox.preflight import SnapshotGuardUnavailable, require_snapshot_guards
+
+    try:
+        _guard_preflight = require_snapshot_guards()
+    except SnapshotGuardUnavailable as exc:
+        print(f"REFUSING: {exc}", file=sys.stderr)
+        print(json.dumps(exc.record, sort_keys=True), file=sys.stderr)
+        return 4
     if request.bundle_manifest.name != "input_bundle_manifest.yaml":
         raise ValueError("admission requires the bundle's canonical input_bundle_manifest.yaml path")
     arm = a.arm
@@ -576,9 +595,11 @@ def _prepare(
     bundle = yaml.safe_load(request.bundle_manifest.read_text())
     from merlin.targetgen.tool_profile import verify_tool_profile
 
-    _compiler_tool_profile = verify_tool_profile(bundle)
     if (a.preflight_only or a.codex_canary) and (not isinstance(bundle, dict) or bundle.get("bundle_id") != a.bundle):
         raise ValueError("preflight bundle identity differs from the explicitly selected manifest")
+    if not isinstance(bundle, dict):
+        raise ValueError("bundle identity requires a manifest mapping")
+    _compiler_tool_profile = verify_tool_profile(bundle)
     bundle_dir = request.bundle_manifest.parent
     _corpus_seal = a.corpus_seal or os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
     if a.qualify_submission and not _corpus_seal:
@@ -605,6 +626,13 @@ def _prepare(
             raise RuntimeError(f"resume refused: environment record unreadable: {exc}") from exc
         if not isinstance(_environment_record, dict):
             raise RuntimeError("resume refused: environment record is not a mapping")
+        prior_mode = (_environment_record.get("run_config") or {}).get("compiler_execution", "profile_strict_v1")
+        if prior_mode != a.compiler_execution:
+            raise RuntimeError("resume refused: compiler execution treatment changed; use a new checkpoint continuation")
+        prior_access = (_environment_record.get("run_config") or {}).get("compiler_access", "selected_library")
+        prior_manifest = (_environment_record.get("run_config") or {}).get("full_compiler_manifest_sha256", "")
+        if (prior_access, prior_manifest) != (a.compiler_access, a.full_compiler_manifest_sha256):
+            raise RuntimeError("resume refused: editable compiler source selection changed")
         from .feedback.capsule_certification import verify_scope
 
         verify_scope(getattr(a, "validation_scope", "full"), _environment_record)
@@ -656,6 +684,9 @@ def _prepare(
 
     workspace_leases.append(_storage.acquire(ws_root, owner="phase1-qa-workspace"))
     run_dir.mkdir(parents=True, exist_ok=True)
+    _guard_receipt = run_dir / f"snapshot_guard_preflight.{_guard_preflight['observed_at_ns']}.json"
+    with _guard_receipt.open("x", encoding="utf-8") as stream:
+        json.dump(_guard_preflight, stream, sort_keys=True, indent=2)
     # The compiler history lives beside the run record, outside the agent's writable workspace. Only a
     # sandboxed run keeps one: copy mode is a diagnostic that launches no tools and is never admitted.
     if a.sandbox == "bwrap":
@@ -721,6 +752,17 @@ def _prepare(
             require_stable_source=bool(a.qualify_submission),
             require_lineage=bool(a.seed_submission),
         )
+    _full_compiler_record = None
+    if a.compiler_access == "full_compiler":
+        from . import full_compiler_workspace as FCW
+
+        selection = FCW.select(a.full_compiler_root, a.full_compiler_manifest, a.full_compiler_manifest_sha256)
+        if _resuming:
+            _full_compiler_record = _environment_record.get("full_compiler_workspace")
+            if not isinstance(_full_compiler_record, dict) or _full_compiler_record.get("selection") != selection.record():
+                raise RuntimeError("resume refused: full compiler baseline selection changed")
+        else:
+            _full_compiler_record = FCW.stage(selection, ws / "submission")
     _bundle_snapshot_record = None
     _model_host_lane_snapshot = None
     _hidden_snapshot_record = None
@@ -971,7 +1013,8 @@ def _prepare(
 
     if not _resuming:
         CL.append_guidance(ws, run_dir, _library_binding, request.compiler_library_selection,
-                           repo=context.repo, descriptor=context.descriptor)
+                           repo=context.repo, descriptor=context.descriptor,
+                           staging_record=_full_compiler_record)
         PSD.append_guidance(_public_software, ws, run_dir)
         from .capability_inventory import stage_selected as stage_capabilities
 
@@ -1073,6 +1116,7 @@ def _prepare(
             "validation_scope": getattr(a, "validation_scope", "full"),
             **({"qualification_only": True} if a.qualify_submission else {}),
             "run_config": _run_config,
+            **({"full_compiler_workspace": _full_compiler_record} if _full_compiler_record is not None else {}),
             **({CL.KEY: _library_binding} if _library_binding is not None else {}),
             **({PSD.KEY: _public_software} if _public_software is not None else {}),
             "hidden_capsule_validation": _hidden_capsule_policy,

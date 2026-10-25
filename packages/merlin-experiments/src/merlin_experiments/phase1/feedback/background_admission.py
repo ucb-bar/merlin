@@ -191,30 +191,72 @@ class BackgroundGuard:
         self.ws, self.public, self.inputs, self.source = ws, public, inputs, source_sha256
         self.deferred = None
         self.finish_bounded_snapshot = finish_bounded_snapshot
+        self._dependency_identity = None
+        self._dependency_roster = None
+        self._pending_deferred = None
         selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
         if selected not in {'0', '1'}:
             raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
         # Legacy selection remains accepted, but may never keep queuing obsolete work.
 
-    def pending_reason(self):
-        """A selected bounded joint smoke finishes its immutable copied source.
+    def bind_snapshot(self, candidate):
+        """Bind admission relevance to the copied compiler, never live edits.
 
-        Live edits still revoke current-source attribution and promotion through
-        reason/current. They do not invalidate computations on the frozen copy.
-        Existing invocation deadlines and the shared CPU lease priorities remain.
+        Every capsule runs every declared command. The existing component closure
+        can exclude inert notes, but supplies no per-capsule dependency shortcut.
+        This identity only closes an old queue; it never reattributes its results.
+        """
+        from .promotion import submission_digests
+        candidate = Path(candidate)
+        if candidate.name != "submission":
+            raise ValueError("background dependency binding requires original submission snapshot")
+        try:
+            whole, components, _ = submission_digests(candidate.parent)
+            self._dependency_identity = (whole, components)
+        except (OSError, ValueError, TypeError):
+            self._dependency_identity = None
+        self._dependency_roster = None
+
+    def _pending_source_reason(self):
+        if self._pending_deferred is not None:
+            return self._pending_deferred
+        if self._dependency_identity is None:
+            return self.reason()  # unavailable narrowing retains original policy
+        from .promotion import submission_digests
+        try:
+            roster = _source_roster(Path(self.ws) / "submission")
+            if roster == self._dependency_roster:
+                return None
+            whole, components, _ = submission_digests(self.ws)
+            if roster != _source_roster(Path(self.ws) / "submission"):
+                self._pending_deferred = "background source changed during dependency check"
+            else:
+                old_whole, old_components = self._dependency_identity
+                relevant = (components != old_components if components and old_components
+                            else whole != old_whole)
+                if relevant:
+                    self._pending_deferred = "background source superseded"
+                else:
+                    self._dependency_roster = roster
+        except (OSError, ValueError, TypeError):
+            self._pending_deferred = "background source dependencies unavailable"
+        return self._pending_deferred
+
+    def pending_reason(self):
+        """Close only unstarted admission after relevant source changes.
+
+        Running work drains on its immutable snapshot. Neither a bounded joint
+        window nor the legacy FINISH_SNAPSHOT flag permits queuing obsolete work.
+        Final handoff/deadline retains precedence over source-edit deferral.
         """
         if self.finish_bounded_snapshot:
             from .. import joint_control
-
-            # A trusted evaluator/library handoff or final drain is distinct
-            # from ordinary edits. Finish running jobs; do not start more.
             stop = joint_control.stop_reason()
             if stop is not None:
                 return stop
             if joint_control.remaining() <= 0:
                 return "joint campaign deadline reached"
-            return None
-        return self.reason()
+        return self._pending_source_reason()
 
     def reason(self):
         # Only obsolescence defers pending work. A concurrent same-source author
@@ -228,3 +270,26 @@ class BackgroundGuard:
 
     def current(self):
         return self.source is not None and source_digest(self.ws) == self.source
+
+
+def _source_roster(root):
+    """Cheap scheduling invalidation, not a substitute for source-byte grading.
+
+    ctime/inode plus membership detect restored mtime and atomic replacement.
+    Hashes are recomputed when metadata changes; no CPU lease or byte reread on
+    an unchanged scheduler refill. Unreadable/linked inputs refuse narrowing.
+    """
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError("background source is missing or linked")
+    records = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if "__pycache__" in relative.parts:
+            continue
+        if path.is_symlink():
+            raise ValueError("background source contains a link")
+        if path.is_file():
+            stat = path.stat()
+            records.append((relative.as_posix(), stat.st_dev, stat.st_ino, stat.st_size,
+                            stat.st_mtime_ns, stat.st_ctime_ns))
+    return tuple(records)

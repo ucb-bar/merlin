@@ -38,19 +38,67 @@ Read PUBLIC_CAPABILITIES.md once, then query PUBLIC_CAPABILITIES.json only for
 relevant families and members. Use all public operations, shapes, layouts,
 numerical boundaries and connected patterns to plan ONE general compiler.
 Capsule IDs identify tests and provenance; never use them as production dispatch.
-Assign capability families across compiler boundaries: graph/pattern legality,
-numeric/layout, schedule/storage, ISA lowering, host/runtime, and integration.
-Agree on typed contracts and disjoint source ownership; do not create a compiler
-per capsule. Readiness gates admit only the relevant tests, never stop independent
-construction. Build reusable capabilities rather than repairing cases independently. Validate
-each new capability through one tiny emission/target-consumption/link/Spike/output
-canary, then admit its eligible cases to the rolling queue while construction
-continues elsewhere. Do not wait for the entire compiler before first execution.
+Before construction, make one compact capability DAG covering ALL declared public
+families, with an owner, input/output contract, local dependencies and a fallback
+or explicit missing capability for each node. Use these compiler boundaries:
 
-Original correctness, calibration prerequisites and scalability can advance
-concurrently. Preserve every declared Spike/gSIM obligation; performance effort
-primarily targets the scalability cohort once executable. Small original cases
-remain regression checks and model evidence, not the main performance objective.
+- Frontend/source graphs and legal fusion -> typed semantic interface with numerical
+  order, layouts, aliases and every live output -> reusable target lowering.
+- Public RTL/ISA declarations -> generic ISA generation and typed operations -> the
+  same target lowering. Generate neutral scaffolding inside the empty backend;
+  do not import an existing target compiler. Encoding alone proves no memory effects,
+  completion, legal fusion or instruction numerical semantics.
+- Source ownership and live buffers -> Merlin host codegen/dispatch -> complete
+  host/device execution ABI joined to target lowering.
+- Shared scheduling IR, transformations and pass policy connect these layers: tune
+  pass order and branches from source shapes, layouts, numeric contracts and resources;
+  consume transformed products in actual emission rather than logging unused calls.
+
+Construct independent nodes concurrently. Do not develop the compiler one capsule
+at a time or wait for one family to pass before implementing another. Agree on typed
+contracts and disjoint source ownership; every helper contributes to ONE compiler.
+When CONSTRUCTION_PLAN.example.json is staged, adapt it after mandatory discovery
+into submission/CONSTRUCTION_PLAN.json (and each independently tested variant).
+Preserve its inventory_sha256 and complete family roster; assign real owners,
+planned module paths and local depends_on edges, with integration_node depending
+transitively on all capability nodes. Planned modules need not exist yet. This is
+construction ownership, not evidence of implementation or a correctness certificate.
+If the selected policy requires the plan, ordinary broad simulation requests check
+it; editing, compile diagnostics and the policy's bounded tiny bootstrap remain
+available. Missing code or a failed capsule never globally stops construction.
+Existing construction_actions validates local action dependencies when used.
+
+Write executable entrypoints early and prove one tiny end-to-end
+emission/target-consumption/link/Spike/all-output path. Then immediately submit broad
+eligible sets from the entire public roster through the rolling queue; retain
+unimplemented families as active construction tasks. Further tiny canaries are for
+changed boundaries, not a mandatory serial check for every case. Fix shared ABI
+failures before repeating affected work; independent capabilities keep progressing.
+Consume each result as it arrives, without waiting for a batch or source quiet.
+Inspect the returned public source -> target IR -> LLVM/object artifacts and their
+complete pointer/output ABI, actual commands, loops, readout modes and completion.
+Trace the first incorrect boundary; a successful import, pass receipt or object
+build alone does not establish executable semantics.
+
+The goal is all 250 required public cases complete AND strong performance: 153 original
+correctness cases, 20 calibration cases and 77 primary performance/scalability targets,
+plus any explicitly admitted supplements. Correct declared refusals remain refusals.
+There is no full-153 correctness barrier before calibration or large-shape work.
+Preserve each original Spike/gSIM obligation and use the normal calibration policy.
+Begin scalable implementation and legal optimization during construction; use the
+selected provisional model with its limits, then the selected tuned model when
+available. Optimize chiefly the 77 larger targets and connected workloads; the 153
+small cases have low performance priority and supply regression/calibration evidence.
+Prioritize broad Spike numerical coverage of all 250 before spending discretionary
+gSIM work. Every gSIM candidate needs matching passing numerical evidence; the 153
+original required L3 obligations and selected 20 calibration tiers remain intact.
+As soon as informative passing Spike witnesses exist, automatic calibration can
+progress while other compiler families are repaired; do not impose a global pass
+barrier. Aim for below 5% error on independent held-out measurements within the
+model's claimed domain, including large-shape regimes. Small held-outs alone do
+not validate large-shape accuracy. Use a qualified selected model when available;
+otherwise retain explicit provisional uncertainty and missing coverage. Keep
+FireSim as independent final validation, never coefficient-fitting feedback.
 Use compact family-level feedback and retrieve details on demand. For reusable
 construction/check sequences use the staged `construction_actions.py` with explicit
 commands, semantic capability, boundary and local dependencies. Automatic and
@@ -69,7 +117,9 @@ These are host pass costs, not target cycles or capsule numerical evidence.
 ## One evolving compiler, parallel bounded work
 
 Act as one compiler coordinator and delegate bounded, independent tasks to the
-available parallel workers. Choose tasks from the current bottlenecks: frontend
+available parallel workers, up to the selected ceiling of 16 helpers when supported.
+Start independent capability construction promptly; use fewer workers when ownership,
+CPU or token budgets would make more redundant. Choose tasks from the current bottlenecks: frontend
 operator coverage, connected-region legality and fusion, scheduling/pass policy,
 shared host boundaries, or focused correctness/performance diagnosis. Every worker
 contributes to the SAME reusable compiler; do not create separate benchmark backends.
@@ -82,9 +132,10 @@ until a focused same-scope comparison supports a choice.
 Submit focused checks asynchronously against immutable compiler revisions. Continue
 independent implementation while they run; neither the coordinator nor all workers
 must wait for source quiet or each other's tests. A result belongs to its recorded
-compiler/input/runtime hashes, never automatically to newer edits. Name the revision,
+compiler/input/runtime hashes, never automatically to newer edits. Name the revision, touched files, consumed pass/IR APIs, local dependencies,
 focused checks, first actionable failure, numerical/performance/model confidence and
-artifact paths in each short handoff. Reuse an existing equivalent request/result
+artifact paths in each short handoff. Pass relevant contracts and a compact capability
+brief to helpers; retrieve detailed source or logs only for their current boundary. Reuse an existing equivalent request/result
 only when those relevant identities match. Avoid full-cohort checks on every edit;
 reserve them for declared milestones/final validation. Report untested coverage.
 All 20 selected CPUs are dynamically shared through the existing pool: no fixed

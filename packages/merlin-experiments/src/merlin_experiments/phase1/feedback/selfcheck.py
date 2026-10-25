@@ -934,19 +934,35 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         with selfcheck_execution(
             a.compiler_bundle_manifest, context=context, submission=sub, work_root=_isodir / "profile-package-work"
         ):
-            _score = CG.grade(
-                str(sub),
-                capsules_root=str(caps_root),
-                runs_root=str(runs_root),
-                labels={"public", "dev"},
-                contract=str(contract if contract is not None else context.repo / "merlin/contract"),
-                oracle_adapters=adapters,
-                timeout=a.timeout,
-                max_workers=a.workers,
-                target=_tgt,
-                model_gate_continuations=tuple(model_continuations),
-                **({"on_capsule_complete": completion} if completion is not None else {}),
-            )
+            from .rolling_model_gate import prepare as prepare_rolling_gate
+
+            rolling, rolling_complete = prepare_rolling_gate(
+                context=context, contract=contract, source=sub, runs=runs_root, graded_root=capsules_root)
+            if rolling is not None:
+                if want is None or set(want) & set(rolling.gate.models):
+                    rolling.load()
+                previous_completion = completion
+                def completed_with_prerequisites(row):
+                    rolling_complete(row)
+                    if previous_completion is not None:
+                        previous_completion(row)
+                completion = completed_with_prerequisites
+            from contextlib import nullcontext
+            with rolling.observing() if rolling is not None else nullcontext():
+                _score = CG.grade(
+                    str(sub),
+                    capsules_root=str(caps_root),
+                    runs_root=str(runs_root),
+                    labels={"public", "dev"},
+                    contract=str(contract if contract is not None else context.repo / "merlin/contract"),
+                    oracle_adapters=adapters,
+                    timeout=a.timeout,
+                    max_workers=a.workers,
+                    target=_tgt,
+                    model_gate_continuations=tuple(model_continuations),
+                    model_gate_prerequisites=rolling.gate if rolling is not None else None,
+                    **({"on_capsule_complete": completion} if completion is not None else {}),
+                )
     except Exception as e:
         print(json.dumps({"error": f"grade failed: {str(e)[:300]}"}))
         return 1
@@ -1048,6 +1064,16 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             continue
         if _qc._candidate_native_feedback(d) is not None:
             row, certified = _candidate_selfcheck_row(d, closed_rows.get(name), name=name, barrier_tier=barrier_tier)
+            # The owned model's completed ELF has its own checked call scope.
+            # Publish advisory timing after its numerical screen even while a
+            # mandatory physical tier remains pending. Legacy runner traces
+            # are distinct programs and must never supply this observation.
+            original = original_capsules.get(name)
+            if d.get("owned_host_native_execution") is not None and original is not None:
+                joint_performance.attach(
+                    row, cr.parent / "generated", result=d, context=context, compiler=sub, capsule=original,
+                    remaining_s=max(0, performance_deadline - time.monotonic()),
+                )
             if a.dynamic_census:
                 row["dynamic_census"] = {"status": "UNKNOWN", "reason": "distinct own model ELF owner required"}
             rows.append(row)

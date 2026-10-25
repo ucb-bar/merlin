@@ -51,7 +51,8 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
             return
         readiness_state = reason
         document = dict(schema="merlin.background_snapshot_readiness.v1",
-                        status="waiting_for_manifest" if reason else "manifest_present",
+                        status=("waiting_for_construction_plan" if reason and reason.startswith("construction plan")
+                                else "waiting_for_manifest" if reason else "manifest_present"),
                         reason=reason, checked_at_epoch=time.time(),
                         grade_attempted=False, all_pass=None,
                         scope="admission observation only; no package or numerical qualification")
@@ -133,6 +134,12 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
             if can_launch and time.monotonic() >= next_start:
                 if not (Path(workspace) / 'submission/manifest.yaml').is_file():
                     readiness('submission/manifest.yaml not present; author construction in progress')
+                    stop.wait(poll_s)
+                    continue
+                from .construction_plan import readiness as construction_readiness
+                plan_reason = construction_readiness(Path(workspace) / "submission")
+                if plan_reason is not None:
+                    readiness(plan_reason)
                     stop.wait(poll_s)
                     continue
                 readiness(None)

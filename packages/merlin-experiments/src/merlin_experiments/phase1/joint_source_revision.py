@@ -48,10 +48,20 @@ def normalized(initial, current):
     members = copy.deepcopy(initial['members'])
     for revision in after[len(before):]:
         if (set(revision) != {'schema', 'review_id', 'evidence'}
-                or revision['schema'] not in {'merlin.source_screen_revision.v1', 'merlin.source_member_append_revision.v1', 'merlin.single_use_resident_revision.v1', 'merlin.captured_host_lane_revision.v1', 'merlin.direct_ir_identity_revision.v1', 'merlin.captured_constant_closure_revision.v1'}
+                or revision['schema'] not in {
+                    'merlin.source_screen_revision.v1', 'merlin.source_member_append_revision.v1',
+                    'merlin.single_use_resident_revision.v1', 'merlin.captured_host_lane_revision.v1',
+                    'merlin.direct_ir_identity_revision.v1', 'merlin.captured_constant_closure_revision.v1',
+                    'merlin.typed_convolution_channel_metadata_revision.v1',
+                }
                 or not isinstance(revision['review_id'], str) or not revision['review_id'].strip()):
             raise ValueError('source revision needs an explicit bounded operator review')
         evidence = PERF._read(revision['evidence'])
+        if revision['schema'] == 'merlin.typed_convolution_channel_metadata_revision.v1':
+            from .joint_conv_metadata_revision import verify
+            name, digest = verify(evidence, members=members)
+            members[name]['capsule_sha256'] = digest
+            continue
         if revision['schema'] == 'merlin.captured_constant_closure_revision.v1':
             from .joint_constant_closure_revision import verify
             name, digest = verify(evidence, members=members)
@@ -79,13 +89,15 @@ def normalized(initial, current):
                 raise ValueError('source append cannot replace existing members')
             members.update(additions)
             continue
-        if set(evidence) != {'schema', 'name', 'before', 'after'} or evidence['schema'] != 'merlin.source_screen_equivalence.v1':
+        if (set(evidence) != {'schema', 'name', 'before', 'after'}
+                or evidence['schema'] != 'merlin.source_screen_equivalence.v1'):
             raise ValueError('source revision evidence has an unsupported scope')
         old, old_files = _capsule(evidence['before'])
         new, new_files = _capsule(evidence['after'])
         name = evidence['name']
         if (old.get('name') != name or new.get('name') != name or name not in members
-                or {k:v for k,v in old.items() if k != 'software_screen'} != {k:v for k,v in new.items() if k != 'software_screen'}
+                or {k:v for k,v in old.items() if k != 'software_screen'}
+                   != {k:v for k,v in new.items() if k != 'software_screen'}
                 or old_files != new_files or not old_files):
             raise ValueError('source revision changes source, inputs, outputs, or numerical contract')
         screen = new.get('software_screen', {})

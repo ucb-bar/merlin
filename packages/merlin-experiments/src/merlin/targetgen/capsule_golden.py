@@ -500,6 +500,27 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         from merlin_experiments.phase0.component_numerics import evaluate
 
         return evaluate(capsule)
+    if capsule["operation"]["op"] == "spatial_producer_pool":
+        attrs = capsule["operation"].get("attributes") or {}
+        if set(attrs) != {"producer", "pool", "intermediate_shape", "intermediate_dtype", "out"}:
+            raise ValueError("closed original spatial pair attributes required")
+        producer, pool = attrs["producer"], attrs["pool"]
+        if producer.get("op") != "conv2d" or pool.get("op") != "maxpool2d":
+            raise ValueError("spatial pair requires original convolution then maximum")
+        intermediate = producer["attributes"]["out"]
+        if (pool["attributes"].get("src") != intermediate or pool["attributes"].get("out") != attrs["out"]
+                or attrs["intermediate_dtype"] != "i8"
+                or producer["attributes"].get("output_dtype") != "i8"
+                or pool["attributes"].get("epilogue") != ["acc_scale", "maxpool"]):
+            raise ValueError("spatial pair must retain the exact signed-i8 source edge and ordered pool readout")
+        values = _recompute_golden({**capsule, "operation": producer})
+        if set(values) != {intermediate}:
+            raise ValueError("spatial producer has additional externally observed outputs")
+        # The first ordinary source evaluator already applied Q1 and narrowed.
+        # Widen those exact signed codes before the existing Q2/pool evaluator.
+        staged = Tensor(tuple(attrs["intermediate_shape"]), list(_flat(values[intermediate])), "i32")
+        env = materialize_capsule_leaves(capsule)
+        return {attrs["out"]: _apply_epilogue(staged, pool["attributes"], env).to_list()}
     env = materialize_capsule_leaves(capsule)
     op = capsule["operation"]["op"]
     attrs = capsule["operation"].get("attributes", {})
@@ -582,6 +603,12 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             w_i = Tensor((k, n), w.data[i * k * n : (i + 1) * k * n], w.dtype)
             batches.append(_apply_epilogue(a_i.matmul(w_i), attrs, env).to_list())
         return {out_name: batches}
+
+    if op == "maxpool2d":
+        src = env[attrs.get("src", _pick("input"))]
+        if attrs.get("epilogue") != ["acc_scale", "maxpool"]:
+            raise ValueError("maxpool2d requires explicit acc_scale then maxpool")
+        return {out_name: _apply_epilogue(Tensor(src.shape, list(src.data), "i32"), attrs, env).to_list()}
 
     if op == "movement":
         src = env[attrs.get("src", _pick("input"))]

@@ -33,10 +33,8 @@ def panel(profile, selection, rows, *, witnesses):
                 and PERF.capsule_identity(cap) == member['capsule_sha256']
                 and row['source_group_sha256'] == declared[name]['source_group_sha256']):
             grade = PERF._read(row['result'])
-            tier = grade.get('tiers', {}).get('L2', {})
-            if (grade.get('numeric', {}).get('status') == 'pass'
-                    and tier.get('status') == 'pass' and tier.get('engine') == 'spike'
-                    and (grade.get('compiler_source') or grade.get('candidate_native_execution'))):
+            from .joint_calibration_eligibility import eligible
+            if eligible(grade, cap, compiler_sha256=row['compiler_sha256']):
                 by_name.setdefault(name, []).append(row)
     runtime_status = {}
     result, allowed = [], []

@@ -130,17 +130,12 @@ def launch_continuation(selection,selection_path,directory):
 
 
 def start_watcher(selection,profile,output,directory):
-    directory.mkdir(parents=True,exist_ok=False)
-    command=['/usr/bin/taskset','-c',','.join(map(str,selection['taskset_cpus'])),selection['argv'][0],'-B','-m',
-        'merlin_experiments.phase1.joint_calibration_service','--profile',profile['path'],
-        '--profile-sha256',profile['sha256'],'--state',str(Path(selection['run_dir'])/'joint_campaign.json'),
-        '--descriptor',selection['argv'][selection['argv'].index('--descriptor')+1],
-        '--repo',selection['cwd'],'--output',str(output),'--poll-seconds','30']
-    with (directory/'watcher.log').open('xb') as log:
-        child=subprocess.Popen(command,cwd=selection['cwd'],env=environment(selection),
-            stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT)
-    write(directory/'owner.json',{'pid':child.pid,'argv':command,'started_at':time.time()},exclusive=True)
-    return child
+    from .joint_calibration_lifecycle import start
+    watcher=start(state_path=Path(selection['run_dir'])/'joint_campaign.json',
+        profile=profile,descriptor=selection['argv'][selection['argv'].index('--descriptor')+1],
+        repo=selection['cwd'],python=selection['argv'][0],environment=environment(selection),
+        output=output,directory=directory,cpus=selection['taskset_cpus'])
+    return watcher if watcher.process is not None else None
 
 
 def refresh_model_priority(selection, state, output, questions_pin=None):

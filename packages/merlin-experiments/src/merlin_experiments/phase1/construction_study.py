@@ -13,6 +13,7 @@ import os
 import shlex
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -92,7 +93,7 @@ def stage(workspace, run_dir, options):
 def execute(prepared, *, timing_file):
     from merlin.targetgen.sandbox import bwrap as BW
 
-    from . import joint_control
+    from . import joint_control, joint_calibration_lifecycle as calibration
     from .feedback import lifecycle as FL
     from .providers import execution as EX
 
@@ -124,9 +125,20 @@ def execute(prepared, *, timing_file):
             raw_evidence_root=(run_dir / "_qa_work" / "selfchecks").resolve(),
         ),
     )
-    process, primary_error = None, None
+    process, primary_error, watcher = None, None, None
+    calibration_status = None
     started = time.time_ns()
     try:
+        try:
+            watcher = calibration.start(state_path=os.environ.get(joint_control.ENV),
+                descriptor=context.descriptor, repo=context.repo, python=sys.executable,
+                environment=os.environ, output=run_dir / "calibration", directory=run_dir / "calibration_watcher",
+                request_epoch=False)
+            calibration_status = watcher.report
+        except (ValueError, OSError, RuntimeError) as error:
+            # Calibration availability is advisory to compiler construction.
+            # A denied/missing profile cannot become an execution permission.
+            calibration_status = dict(status="watcher_start_denied", reason=str(error))
         argv = ["python3", CLIENT, PLAN, "--out", "construction_study", "--timeout", str(options.max_wall_s)]
         command = EX.sandbox_command(shlex.join(argv), ws, bundle, context=context, private_run_dir=run_dir)
         with (
@@ -147,6 +159,7 @@ def execute(prepared, *, timing_file):
             "workspace": str(ws),
             "status": "actions_completed" if returncode == 0 else "actions_incomplete",
             "qualification_authority": False,
+            "calibration_watcher": calibration_status,
             "result": str(ws / "construction_study/result.json"),
             "note": "Ordinary broker evidence only; not a provider run or formal compiler qualification.",
         }
@@ -170,4 +183,8 @@ def execute(prepared, *, timing_file):
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+        # Do not tear down shared brokers while an owned calibration call still
+        # runs. Stop only this watcher, never the campaign clock or live model.
+        if watcher is not None:
+            watcher.stop()
         FL.stop_brokers(ws, broker, primary_error=primary_error)

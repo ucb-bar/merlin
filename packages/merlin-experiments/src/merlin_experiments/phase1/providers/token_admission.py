@@ -45,7 +45,8 @@ class ManagedTokens:
         )
         self.key, self.phase = None, None
         self.active, self.owner = False, uuid.uuid4().hex
-        self.started = self.next_poll = 0.0
+        self.started = None
+        self.next_poll = 0.0
         self.missing_since = None
         self.last = None
         self.path = self.run_dir / "author_token_admission.json"
@@ -143,9 +144,9 @@ class ManagedTokens:
                 state["integration_admitted"] = self.phase == "integration"
                 state["outstanding"][self.key] = {"allowance": allowance, "phase": self.phase, "owner": self.owner}
                 self.active = True
-                self.started = self.clock()
+                self.started = None
                 self.missing_since = None
-                self.next_poll = self.started + self.policy["admission"]["poll_s"]
+                self.next_poll = self.clock() + self.policy["admission"]["poll_s"]
             return self._record(
                 state,
                 {
@@ -159,6 +160,18 @@ class ManagedTokens:
                 snapshot,
             )
 
+    def provider_started(self):
+        """Start the execution slice after Popen; admission/setup still reserves tokens.
+
+        A turn can start once only. Slow sandbox preparation must not consume
+        the integration execution allowance or permit resetting a running clock.
+        """
+        if self.policy is None:
+            return
+        if not self.active or self.started is not None:
+            raise ValueError("provider start requires an unstarted active admission")
+        self.started = self.clock()
+
     def poll(self):
         if self.policy is None or self.key is None or self.clock() < self.next_poll:
             return None
@@ -166,7 +179,7 @@ class ManagedTokens:
         with self._state() as state:
             total, pending, snapshot = self._measurement(state)
             now = self.clock()
-            elapsed = now - self.started
+            elapsed = None if self.started is None else now - self.started
             if total is None:
                 if self.missing_since is None:
                     self.missing_since = now
@@ -181,7 +194,7 @@ class ManagedTokens:
                 reason = "live all-author usage unavailable after grace; checkpoint required"
             elif projected is not None and projected >= threshold:
                 reason = "development boundary" if self.phase == "exploration" else "integration target boundary"
-            elif self.phase == "integration" and elapsed >= selected["integration_slice_s"]:
+            elif self.phase == "integration" and elapsed is not None and elapsed >= selected["integration_slice_s"]:
                 reason = "integration wall slice"
             if reason == "development boundary":
                 state["integration_requested"] = True
@@ -194,6 +207,7 @@ class ManagedTokens:
                     "outstanding_allowance": pending,
                     "projected_total": projected,
                     "missing_usage_duration_s": missing_s,
+                    "provider_elapsed_s": elapsed,
                 },
                 snapshot,
             )

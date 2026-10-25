@@ -69,11 +69,16 @@ def validate(initial, current):
     if ({k:v for k,v in initial.items() if k not in excluded}
             != {k:v for k,v in comparable.items() if k not in excluded}):
         raise ValueError('calibration profile does not cover the current non-model selection')
-    prior = initial['runtime']
+    before = initial.get('runtime_revisions', [])
     revisions = current.get('runtime_revisions', [])
-    if not isinstance(revisions, list) or len(revisions) > 16:
-        raise ValueError('runtime corrections need a bounded reviewed chain')
-    for revision in revisions:
+    if (not isinstance(before, list) or not isinstance(revisions, list) or len(revisions) > 16
+            or revisions[:len(before)] != before):
+        raise ValueError('runtime corrections need a bounded unchanged reviewed ancestry prefix')
+    # A newly selected calibration profile may anchor an already-admitted
+    # descendant. Reopen its complete runtime ancestry, rather than replaying
+    # the first ancestor against the descendant or skipping prior reviews.
+    prior = before[0]['previous'] if before else initial['runtime']
+    for index, revision in enumerate(revisions):
         if (revision.get('schema') != 'merlin.runtime_implementation_revision.v1'
                 or revision.get('previous') != prior or not revision.get('review_id')):
             raise ValueError('runtime correction ancestry or operator review is missing')
@@ -83,6 +88,21 @@ def validate(initial, current):
         if kind == 'scoped_observer_diagnostics':
             from .joint_scoped_revision import verify
             verify(old, new, evidence, previous=prior, current=revision['runtime'])
+        elif kind == 'provisional_provider_implementation':
+            from .joint_provider_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'])
+        elif kind == 'provisional_readout_staging':
+            from .joint_readout_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'])
+        elif kind == 'provisional_partial_row_staging':
+            from .joint_readout_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'], partial_rows=True)
+        elif kind == 'provisional_load_frontend_arrival':
+            from .joint_readout_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'], load_frontend=True)
+        elif kind == 'provisional_loader_cache_bootstrap':
+            from .joint_readout_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'], loader_bootstrap=True)
         elif kind == 'structural_scope_extension':
             _verify_scope_extension(old, new, evidence)
         elif kind == 'capability_restriction':
@@ -105,6 +125,8 @@ def validate(initial, current):
         elif kind != 'implementation_correction' or _fixed_model(old) != _fixed_model(new):
             raise ValueError('implementation correction changes prices or model semantics')
         prior = revision['runtime']
+        if index + 1 == len(before) and prior != initial['runtime']:
+            raise ValueError('initial runtime differs from its reviewed ancestry endpoint')
     if prior != current['runtime']:
         raise ValueError('base runtime changed without reviewed implementation ancestry')
 

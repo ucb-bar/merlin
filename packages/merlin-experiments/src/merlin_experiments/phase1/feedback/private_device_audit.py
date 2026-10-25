@@ -52,6 +52,7 @@ def audit_built_device_host_compute(
     *,
     diagnostics: Path | None = None,
     host_artifacts=None,
+    source_composition=None,
 ) -> list[dict[str, Any]]:
     """Audit the package's actual per-group build inputs, not a fresh diagnostic emission.
 
@@ -76,7 +77,14 @@ def audit_built_device_host_compute(
     if device_dir.is_symlink() or not device_dir.is_dir():
         raise ValueError("linked build has no ordinary device-artifact directory")
     metrics = {**source.get("optional_group_metrics", {}), **source["eligible_group_metrics"]}
-    source_groups = _join_routed_source_groups(assigned, source)
+    if source_composition is None:
+        source_groups = _join_routed_source_groups(assigned, source)
+    else:
+        # This is the separately rederived original-source projection, never
+        # an assertion from the emitted program. Keep all original members in
+        # the report and audit the one physical object with its full raw output.
+        source_groups, composition_metrics = _composed_source_metrics(assigned, source, source_composition)
+        metrics = composition_metrics
     preparations = source.get("conv_input_preparation", {})
     host_alignments, alignment_record = {}, None
     if preparations and host_artifacts is not None:
@@ -90,7 +98,7 @@ def audit_built_device_host_compute(
         if not isinstance(symbol, str) or not symbol or Path(symbol).name != symbol or symbol in {".", ".."}:
             raise ValueError("routed group has no safe built-artifact stem")
         source_group = source_groups[index]
-        metric = metrics.get(source_group)
+        metric = metrics.get(source_group if source_composition is None else index)
         if not isinstance(metric, Mapping):
             raise ValueError(f"routed group {index} has no source-derived output extent")
         artifact, llvm_ir, obj = (
@@ -104,7 +112,11 @@ def audit_built_device_host_compute(
         digests = tuple(file_sha256(path) for path in (artifact, llvm_ir, obj))
         key = (symbol, metric["elements"], metric["element_bytes"], *digests)
         if key in completed:
-            records.append({**completed[key], "group": index, "source_group": source_group})
+            records.append({
+                **completed[key], "group": index,
+                "source_group": source_group if source_composition is None else None,
+                **({"source_groups": list(source_group)} if source_composition is not None else {}),
+            })
             continue
         context = Context(allow_unregistered=True)
         for dialect in (builtin.Builtin, llvm.LLVM, func.Func):
@@ -145,7 +157,8 @@ def audit_built_device_host_compute(
             diagnostic = {
                 "schema": "merlin.built_device.host_compute_audit.v1",
                 "group": index,
-                "source_group": source_group,
+                "source_group": source_group if source_composition is None else None,
+                **({"source_groups": list(source_group)} if source_composition is not None else {}),
                 "symbol": symbol,
                 "artifacts": {"llvm_mlir": digests[0], "llvm_ir": digests[1], "object": digests[2]},
                 "report": report,
@@ -194,7 +207,8 @@ def audit_built_device_host_compute(
         records.append(
             {
                 "group": index,
-                "source_group": source_group,
+                "source_group": source_group if source_composition is None else None,
+                **({"source_groups": list(source_group)} if source_composition is not None else {}),
                 "symbol": symbol,
                 "defined_functions_audited": len(sites),
                 "artifact_sha256": digests[0],
@@ -248,3 +262,43 @@ def audit_built_device_host_compute(
     ):
         raise ValueError("compiled host alignment inputs changed during device audit")
     return records
+
+
+def _composed_source_metrics(assigned, source, composition):
+    """Budget one actual object from every independently rederived raw product."""
+    if (not isinstance(composition, Mapping)
+        or composition.get("schema") != "merlin.original_sibling_source_composition.v1"
+        or composition.get("original_source_denominator_unchanged") is not True
+        or len(assigned) != 1 or assigned[0].get("group") != composition.get("physical_group")
+        or assigned[0].get("symbol") != composition.get("physical_symbol")):
+        raise ValueError("device audit needs its independently rederived original source composition")
+    members = composition.get("members")
+    if not isinstance(members, list) or len(members) < 2:
+        raise ValueError("source composition has no complete original member roster")
+    indices, elements = [], 0
+    for member in members:
+        if not isinstance(member, Mapping):
+            raise ValueError("source composition member is absent")
+        index = member.get("source_group")
+        original = source.get("source_group_contractions", {}).get(index)
+        if (not isinstance(original, Mapping) or original.get("dtypes") != ["i8", "i8", "i32"]
+            or len(original.get("parallel", [])) != 2 or len(original.get("reduction", [])) != 1):
+            raise ValueError("composed device audit lacks original raw product geometry")
+        m, n = original["parallel"]
+        k = original["reduction"][0]
+        if (any(type(v) is not int or v <= 0 for v in (m, n, k))
+            or member.get("geometry_m_k_n") != [m, k, n]
+            or member.get("raw_output_elements") != m * n
+            or member.get("raw_output_element_bytes") != 4
+            or member.get("source_useful_macs") != m * k * n):
+            raise ValueError("composed device budget differs from original product")
+        indices.append(index)
+        elements += m * n
+    if (len(set(indices)) != len(indices) or not set(source["eligible_groups"]) <= set(indices)
+        or composition.get("required_source_groups") != source["eligible_groups"]
+        or composition.get("covered_source_groups") != indices
+        or composition.get("raw_output_elements") != elements
+        or composition.get("raw_output_element_bytes") != 4):
+        raise ValueError("composed device budget omits or duplicates original source work")
+    physical = composition["physical_group"]
+    return {physical: tuple(indices)}, {physical: {"elements": elements, "element_bytes": 4}}

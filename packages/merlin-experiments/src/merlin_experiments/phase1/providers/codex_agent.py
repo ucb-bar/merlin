@@ -671,39 +671,7 @@ def build_resume_cmd(
     return cmd
 
 
-def _sandbox_script(rounds: Path, rnd: int, turn: int, command: str) -> list[str]:
-    """Run a bwrap command from a FILE rather than as a ``bash -c`` argument.
-
-    execve refuses any single argument over MAX_ARG_STRLEN (128 KiB) with E2BIG, and the error names
-    only the interpreter -- `Argument list too long: 'bash'` -- so a size refusal is indistinguishable
-    from a missing shell. Measured 2026-09-06 on the perf campaign: the composed sandbox command was
-    178,303 bytes and every trial died before its first round. The bind list has a size escape already
-    (``bwrap --args`` from a file descriptor), but the shell string that carries it does not, and the
-    mask set grows with the corpus, so the ceiling is reachable by adding capsules.
-
-    A file has no such limit. It lives beside the round's other artifacts and NOT in the workspace:
-    the agent must not be able to read or edit the command that sandboxes it.
-    """
-    script = rounds / f"round_{rnd:02d}.sandbox.turn{turn:02d}.sh"
-    # A completed launch seals this file 0500.  A checkpoint resume may retry the same round/turn and
-    # therefore the same path; opening the sealed inode for writing fails before Codex starts.  Replace
-    # it atomically with a newly sealed inode instead of temporarily making the old launch record
-    # writable.  The behaviour is identical for every driver invocation and independent of target.
-    rounds.mkdir(parents=True, exist_ok=True)
-    staged: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=rounds, prefix=f".{script.name}.", suffix=".tmp", delete=False
-        ) as handle:
-            handle.write(command)
-            staged = Path(handle.name)
-        staged.chmod(0o500)
-        os.replace(staged, script)
-        staged = None
-    finally:
-        if staged is not None:
-            staged.unlink(missing_ok=True)
-    return ["bash", str(script)]
+from .execution import sandbox_script as _sandbox_script
 
 
 def _verify_frozen_config(codex_home: Path, expected_sha256: str) -> None:
@@ -725,6 +693,7 @@ def _preflight_candidate_sandbox(
     rnd: int,
     *,
     runtime_binds: Callable[[Path], list[str]] | None = None,
+    prepared_plan=None,
 ) -> None:
     """No-model proof that the installed CLI enforces the frozen profile.
 
@@ -761,7 +730,7 @@ def _preflight_candidate_sandbox(
         rounds,
         rnd,
         -1,
-        sandbox_command(
+        prepared_plan.command(inner) if prepared_plan is not None else sandbox_command(
             inner, ws, bundle, extra_binds=(codex_runtime_binds if runtime_binds is None else runtime_binds)(codex_home)
         ),
     )
@@ -796,6 +765,7 @@ def run_round(
     candidate_read_paths: tuple[str, ...] | None = None,
     runtime_binds: Callable[[Path], list[str]] | None = None,
     require_fresh_home: bool = False,
+    allow_failed_home_retry: bool = False,
     auth_source: Path | None = None,
     continuation_prompt: str | None = None,
     continuation_stop: Callable[[], str | None] | None = None,
@@ -870,20 +840,29 @@ def run_round(
             # candidate shell. A future broker can deliver it without a shell
             # environment leak; clearenv intentionally does not do that today.
             raise RuntimeError("bridged Codex needs a host-side proxy credential broker under bwrap")
+    home_attempt = {}
+    selected_home = None
+    if allow_failed_home_retry and not (require_fresh_home and sandbox == "bwrap" and codex_home_root is not None):
+        raise ValueError("failed home retry requires the original isolated fresh-home route")
     if require_fresh_home and sandbox == "bwrap" and codex_home_root is not None:
         selected_home = Path(codex_home_root) / f"{run_dir.name}_r{rnd:02d}"
-        if selected_home.exists() or selected_home.is_symlink():
+        if allow_failed_home_retry:
+            from .codex_runtime import failed_round_retry
+            selected_home, home_attempt = failed_round_retry(Path(codex_home_root), run_dir, rnd)
+        if not home_attempt and (selected_home.exists() or selected_home.is_symlink()):
             raise ValueError("fresh authoring refuses an existing Codex home or session history")
         if selected_home.resolve().is_relative_to(ws.resolve()) or ws.resolve().is_relative_to(selected_home.resolve()):
             raise ValueError("isolated CODEX_HOME must not overlap the candidate workspace")
     rounds = run_dir / "rounds"
     rounds.mkdir(parents=True, exist_ok=True)
-    tpath = rounds / f"round_{rnd:02d}.transcript.jsonl"
-    raw_path = rounds / f"round_{rnd:02d}.codex_events.raw.jsonl"
-    stamped_path = rounds / f"round_{rnd:02d}.codex_events.timestamped.jsonl"
-    stderr_path = rounds / f"round_{rnd:02d}.codex_stderr.log"
-    prompt_path = rounds / f"round_{rnd:02d}.prompt.txt"
-    final_path = rounds / f"round_{rnd:02d}.final.txt"
+    artifact_prefix = f"round_{rnd:02d}" + (".attempt_" + home_attempt["attempt_id"] if home_attempt else "")
+    script_rounds = rounds / "attempts" / home_attempt["attempt_id"] if home_attempt else rounds
+    tpath = rounds / f"{artifact_prefix}.transcript.jsonl"
+    raw_path = rounds / f"{artifact_prefix}.codex_events.raw.jsonl"
+    stamped_path = rounds / f"{artifact_prefix}.codex_events.timestamped.jsonl"
+    stderr_path = rounds / f"{artifact_prefix}.codex_stderr.log"
+    prompt_path = rounds / f"{artifact_prefix}.prompt.txt"
+    final_path = rounds / f"{artifact_prefix}.final.txt"
 
     tr = _Transcript(tpath)
     tr.emit(
@@ -892,6 +871,7 @@ def run_round(
             "subtype": "init",
             "driver": "codex",
             "round": rnd,
+            "home_attempt": home_attempt,
             "model": resolved,
             "model_requested": model,
             "codex_bin": codex_bin,
@@ -932,10 +912,16 @@ def run_round(
         # auth.json is bind-mounted writable for refresh, behind Codex's native
         # candidate-command sandbox (see codex_runtime_binds).
         home_root = Path(codex_home_root) if codex_home_root is not None else cache_dir("codex_home")
-        codex_home = home_root / f"{run_dir.name}_r{rnd:02d}"
+        codex_home = selected_home or home_root / f"{run_dir.name}_r{rnd:02d}"
         if codex_home.resolve().is_relative_to(ws.resolve()) or ws.resolve().is_relative_to(codex_home.resolve()):
             raise ValueError("isolated CODEX_HOME must not overlap the candidate workspace")
-        if require_fresh_home and (codex_home.exists() or codex_home.is_symlink()):
+        if home_attempt:
+            state = codex_home.stat()
+            if (codex_home.is_symlink() or codex_home.resolve() != codex_home
+                    or (state.st_dev, state.st_ino) != (home_attempt["home_device"], home_attempt["home_inode"])
+                    or any(codex_home.iterdir())):
+                raise ValueError("fresh retry home changed before preparation")
+        elif require_fresh_home and (codex_home.exists() or codex_home.is_symlink()):
             raise ValueError("fresh authoring refuses an existing Codex home or session history")
         home_options = {"candidate_read_paths": candidate_read_paths} if candidate_read_paths is not None else {}
         if auth_source is not None:
@@ -943,15 +929,24 @@ def run_round(
         if capacity is not None:
             home_options["max_concurrent_subagents"] = capacity
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
+        home_info["attempt"] = home_attempt
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
         _START.call("config_verify", _verify_frozen_config, codex_home, home_info["config_sha256"])
         preflight_options = {"runtime_binds": runtime_selector} if runtime_binds is not None else {}
+        # Only the trusted composition owner supplies the launch-local plan.
+        from .execution import CodexSandboxCommand
+        prepared_plan = None
+        if type(sandbox_command) is CodexSandboxCommand:
+            binds = _START.call("runtime_bindings", runtime_selector, codex_home)
+            prepared_plan = _START.call("sandbox_assembly", sandbox_command.prepare, ws, bundle, binds)
+            preflight_options["prepared_plan"] = prepared_plan
         _preflight_candidate_sandbox(
-            ws, codex_home, codex_bin, bundle, sandbox_command, rounds, rnd, **preflight_options
+            ws, codex_home, codex_bin, bundle, sandbox_command, script_rounds, rnd, **preflight_options
         )
         inner = " ".join(shlex.quote(c) for c in run_cmd)
         cmd = _sandbox_script(
-            rounds, rnd, 0, _START.call("sandbox_assembly", sandbox_command, inner, ws, bundle,
+            script_rounds, rnd, 0, prepared_plan.command(inner) if prepared_plan is not None else
+            _START.call("sandbox_assembly", sandbox_command, inner, ws, bundle,
                 extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home))
         )
     else:
@@ -1018,7 +1013,7 @@ def run_round(
             if turn_index:
                 # A previous attempt's final is not this resumed turn's answer.
                 if inner_final.is_file():
-                    previous_final = rounds / f"round_{rnd:02d}.turn{turn_index - 1:02d}.final.txt"
+                    previous_final = rounds / f"{artifact_prefix}.turn{turn_index - 1:02d}.final.txt"
                     previous_final.write_text(inner_final.read_text())
                     inner_final.unlink()
                 cur_prompt.write_text(('' if token_control.phase == 'integration' else _CONTINUE_MSG) + token_control.prompt())
@@ -1062,10 +1057,11 @@ def run_round(
                             start_new_session=True,
                         )
                     active_proc, active_pgid = proc, proc.pid
+                    token_control.provider_started()
                     # Resource telemetry is sampled OUTSIDE the graded sandbox and follows the complete
                     # bwrap/Codex/tool descendant tree. One file per continuation turn prevents ambiguous
                     # counter resets when Codex is resumed in a new process.
-                    _resource_path = rounds / f"round_{rnd:02d}.turn{turn_index:02d}.resource_samples.jsonl"
+                    _resource_path = rounds / f"{artifact_prefix}.turn{turn_index:02d}.resource_samples.jsonl"
                     try:
                         subprocess.Popen(
                             [
@@ -1467,7 +1463,7 @@ def run_round(
             "final": str(final_path),
         },
     }
-    (rounds / f"round_{rnd:02d}.codex_summary.json").write_text(json.dumps(summary, indent=2))
+    (rounds / f"{artifact_prefix}.codex_summary.json").write_text(json.dumps(summary, indent=2))
     tr.emit({"type": "codex_summary", **summary})
     _link_for_aet(run_dir, raw_path, rnd)
 

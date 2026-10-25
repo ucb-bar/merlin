@@ -99,21 +99,30 @@ def _compiler_candidate(document, generated, artifacts):
     source = document.get("compiler_source")
     if source is None:
         return (document.get("original_compiler_child") or {}).get("candidate_sha256")
-    if source.get("schema") != "merlin.capsule_compiler_source.v1" or source.get("status") != "stable":
+    if source.get("schema") not in {"merlin.capsule_compiler_source.v1", "merlin.capsule_compiler_source.v2"} or source.get("status") != "stable":
         return None
     candidate = source.get("candidate_sha256")
     if (
         not isinstance(candidate, str)
         or not _sha256(candidate)
-        or source.get("snapshot") != "compiler-source/" + candidate
     ):
         return None
-    snapshot = generated / source["snapshot"]
+    if source.get("schema") == "merlin.capsule_compiler_source.v1":
+        if source.get("snapshot") != "compiler-source/" + candidate:
+            return None
+        snapshot = generated / source["snapshot"]
+        limits = dict(max_bytes=32 << 20, max_files=8192)
+    else:
+        snapshot = Path(source.get("snapshot", ""))
+        if (not snapshot.is_absolute() or snapshot.resolve() != snapshot or snapshot.is_symlink()
+                or snapshot.parts[-2:] != ("compiler-source", candidate)):
+            return None
+        limits = dict(max_bytes=128 << 20, max_files=16384)
     from merlin.common.tree_hash import hash_tree
     from merlin_experiments.phase2.retained_revisions import source_inventory
 
     try:
-        source_inventory(snapshot, max_bytes=32 << 20, max_files=8192, exclude_generated=True)
+        source_inventory(snapshot, **limits, exclude_generated=True)
         if hash_tree(snapshot)["sha256"] != candidate:
             return None
     except (OSError, ValueError, RuntimeError):

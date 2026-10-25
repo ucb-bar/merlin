@@ -259,6 +259,10 @@ def test_actual_controller_stops_after_normal_prepare_without_authoring(tmp_path
 
     monkeypatch.setattr(S, "prepare", prepare)
     monkeypatch.setattr(preflight, "complete", complete)
+    # This fixture substitutes the complete prepared run with an opaque marker;
+    # library lifetime checks are covered separately with real prepared inputs.
+    from merlin_experiments.phase1 import compiler_library
+    monkeypatch.setattr(compiler_library, "execution", lambda selected: nullcontext())
     monkeypatch.setattr(authoring, "execute", lambda *a, **kw: pytest.fail("authoring/completion reached"))
     result = controller.run(
         context,

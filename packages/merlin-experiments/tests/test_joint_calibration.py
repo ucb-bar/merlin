@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase1 import joint_calibration as C
+from test_joint_calibration_eligibility import valid_grade
 
 GATES=dict(C.GATES)
 
@@ -52,7 +53,9 @@ def test_native_probe_before_physical_fit_and_held_validation(tmp_path,monkeypat
     spec=dict(model='initial',model_sha256='initial',review_id='initial')
     selection=dict(runtime={'path':'initial'},facts={})
     rows=cases()
-    for i,r in enumerate(rows):r['generated_root']=str(tmp_path/f'generated{i}')
+    for i,r in enumerate(rows):
+        r['generated_root']=str(tmp_path/f'generated{i}')
+        r['result']={'path':f'grade{i}'}
     plan=dict(schema=C.SCHEMA,selection={'path':'selection'},runtime={'path':'initial'},cases=rows,
               parameters=[dict(path=['prices','compute','latency_cycles'],values=[1,2])],gates=GATES)
     realread=C.PERF._read
@@ -60,6 +63,7 @@ def test_native_probe_before_physical_fit_and_held_validation(tmp_path,monkeypat
         if pin['path']=='plan':return plan
         if pin['path']=='selection':return selection
         if pin['path']=='initial':return spec
+        if pin['path'].startswith('grade'):return valid_grade(source=str(int(pin['path'][5:])%2))
         return realread(pin)
     monkeypatch.setattr(C.PERF,'_read',read)
     def runtime(pin,**kwargs):
@@ -79,7 +83,8 @@ def test_native_probe_before_physical_fit_and_held_validation(tmp_path,monkeypat
         events.append(('physical',[c['id'] for c in cases]))
         labels.update({c['id']:100+2*(int(c['id'][1:])+1)*10 for c in cases})
     monkeypatch.setattr(C,'_collect_labels',labels)
-    monkeypatch.setattr(C,'_capsule',lambda p:dict(name=p['sha256']))
+    monkeypatch.setattr(C,'_capsule',lambda p:dict(name=p['sha256'],kind='layer',label='public',
+        required_oracle_tiers=['L0','L1','L2','L3']))
     result=C.run_round({'path':'plan'},context=None,backend=None,output=root)
     value=json.loads(Path(result['path']).read_text())
     if not identifiable:

@@ -20,6 +20,9 @@ def register(row, root, *, result, compiler, capsule):
     state=joint_control.selected()
     if state is None or not state['policy'].get('native_calibration'):
         return
+    from .joint_calibration_eligibility import eligible
+    if not eligible(result, capsule):
+        return
     profile=PERF._read(state['policy']['native_calibration'])
     # Descriptive public intake is deliberately separate from the reviewed fit
     # registry below. Failure here must not change legacy registration behavior.
@@ -61,7 +64,7 @@ def register(row, root, *, result, compiler, capsule):
         estimated_interval=performance.get('estimated_interval')))
 
 
-def step(*, profile_pin, state_path, context, output):
+def step(*, profile_pin, state_path, context, output, request_epoch=True):
     """One bounded polling action; no gSIM until legal independent variants exist."""
     profile=PERF._read(profile_pin)
     selected=joint_control.selected()
@@ -130,8 +133,13 @@ def step(*, profile_pin, state_path, context, output):
     from .joint_calibration_launcher import physical_runtime
     with physical_runtime(profile, context=context, directory=round_root) as backend:
         outcome=C.run_round(plan,context=context,backend=backend,output=round_root)
+    from .joint_calibration_lifecycle import raise_if_stopping
+    raise_if_stopping()
     value=PERF._read(outcome)
     if value.get('timing_epochs'):
+        if not request_epoch:
+            return dict(status='model_candidate_ready',selection=outcome,
+                reason='Evidence-only lifecycle; selecting a new evaluator requires a separate drained epoch.')
         response=C.request_promotion(outcome,previous_run=Path(state_path).parent,
             review_id='automatic-reviewed-local-native-'+key,output=round_root/'next-epoch.json')
         return dict(status='model_epoch_requested',selection=outcome,epoch=response)
@@ -144,6 +152,8 @@ def main(argv=None):
         parser.add_argument('--'+name,required=True)
     parser.add_argument('--poll-seconds',type=int,default=30)
     parser.add_argument('--once',action='store_true')
+    parser.add_argument('--stop-file',help='Host-owned cooperative watcher shutdown request')
+    parser.add_argument('--evidence-only',action='store_true',help='Retain accepted candidates without requesting an evaluator epoch')
     args=parser.parse_args(argv)
     if not 5<=args.poll_seconds<=60:
         parser.error('poll interval must be 5..60 seconds')
@@ -152,21 +162,34 @@ def main(argv=None):
     context=load_context(args.descriptor,repo=args.repo)
     pin=dict(path=str(Path(args.profile).resolve()),sha256=args.profile_sha256)
     output=Path(args.output);output.mkdir(parents=True,exist_ok=True)
-    while True:
-        try:
-            if joint_control.stop_reason():
-                result=dict(status='native_drain_or_campaign_stop',reason=joint_control.stop_reason())
-            else:
-                result=step(profile_pin=pin,state_path=args.state,context=context,output=output)
-        except (ValueError,OSError,RuntimeError,KeyError,TypeError) as error:
-            result=dict(status='blocked',reason=str(error),exception=type(error).__name__)
-        # Mutable service status is descriptive. Plans, measurements, models and
-        # promotion evidence are separately immutable and digest-bound.
-        temporary=output/'status.next.json';temporary.write_text(json.dumps(result,indent=2)+'\n')
-        temporary.replace(output/'status.json')
-        if args.once or result['status'] in {'model_epoch_requested','native_drain_or_campaign_stop'}:
-            return 0
-        time.sleep(args.poll_seconds)
+    from .joint_calibration_lifecycle import stop_scope, raise_if_stopping, StopRequested
+    with stop_scope(args.stop_file):
+        while True:
+            try:
+                raise_if_stopping()
+                if joint_control.stop_reason():
+                    result=dict(status='native_drain_or_campaign_stop',reason=joint_control.stop_reason())
+                else:
+                    result=step(profile_pin=pin,state_path=args.state,context=context,output=output,
+                                request_epoch=not args.evidence_only)
+            except StopRequested as error:
+                result=dict(status='watcher_host_stopped',reason=str(error))
+            except (ValueError,OSError,RuntimeError,KeyError,TypeError) as error:
+                result=dict(status='blocked',reason=str(error),exception=type(error).__name__)
+            # Mutable status is descriptive; all accepted evidence stays pinned.
+            temporary=output/'status.next.json';temporary.write_text(json.dumps(result,indent=2)+'\n')
+            temporary.replace(output/'status.json')
+            if args.once or result['status'] in {'model_epoch_requested','model_candidate_ready',
+                    'native_drain_or_campaign_stop','watcher_host_stopped'}:
+                return 0
+            # Responsive idle shutdown, without interrupting an owned native call.
+            deadline=time.monotonic()+args.poll_seconds
+            while time.monotonic()<deadline:
+                try:
+                    raise_if_stopping()
+                except StopRequested:
+                    break
+                time.sleep(min(.2,max(0,deadline-time.monotonic())))
 
 
 if __name__=='__main__':

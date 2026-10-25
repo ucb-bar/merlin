@@ -65,6 +65,9 @@ def register(row, root, *, result, compiler, capsule, state, profile):
             or result.get('numeric', {}).get('status') != 'pass'
             or not (result.get('compiler_source') or result.get('candidate_native_execution'))):
         return None
+    from .joint_calibration_eligibility import eligible
+    if not eligible(result, capsule):
+        return None
     # This selection is the public, source-bound roster, not hidden capsule discovery.
     selection_pin = state.get('performance_selection') or profile['performance_selection']
     selection = PERF._read(selection_pin)

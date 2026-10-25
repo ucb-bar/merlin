@@ -150,7 +150,8 @@ def verify(old, new, evidence, *, previous, current, accumulating_ws=False):
                 or report.get('model_sha256') != evidence['model']['sha256']
                 or report.get('elf_sha256') != receipt['original']['elf']['sha256']):
             raise ValueError('arrival replay lacks exact runtime, ELF or complete numerical evidence')
-        _verify_file(receipt['original']['elf'])
+        from .joint_replay_input_equivalence import verify as verify_replay_input
+        verify_replay_input(pin, receipt, runtime_sha256=new.sha256, model_pin=evidence['model'])
     profile = PERF._read(evidence['calibration_profile'])
     denial = PERF._read(evidence['continued_denial'])
     paths = sorted(tuple(p['path']) for p in profile['parameters'])

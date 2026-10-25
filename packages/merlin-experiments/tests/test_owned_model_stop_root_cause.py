@@ -73,6 +73,32 @@ def test_without_any_recorded_stop_the_absent_receipt_is_still_incomplete():
     assert check["status"] == "incomplete" and "receipt" in check["detail"] and "failure" not in check
 
 
+def test_parent_budget_stop_survives_missing_receipt_audit(monkeypatch):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("a stopped child returned no receipt to audit")
+
+    monkeypatch.setattr(CG, "model_execution_check", unexpected)
+    failure = {"plane": "model", "category": "NOT_RUN_IS_NOT_PASS", "detail": "stopped after 600s"}
+    row = {"status": "budget_exhausted", "failure": failure, "model_budget_s": 600, "elapsed_s": 614.7}
+    assert CG.enforce_model_execution_check(row, {}, target="t") is row
+    assert row["status"] == "budget_exhausted" and row["failure"] == failure
+    assert row["numeric"] == {} and row["tiers"] == {}
+    assert row["model_execution_check"]["detail"] == failure["detail"]
+
+
+def test_budget_label_cannot_bypass_an_existing_native_receipt(monkeypatch):
+    seen = []
+
+    def audit(*args, **kwargs):
+        seen.append(True)
+        return {"status": "incomplete", "kind": "owned_host_model_execution"}
+
+    monkeypatch.setattr(CG, "model_execution_check", audit)
+    row = {"status": "budget_exhausted", "owned_host_native_execution": {"status": "verified"}}
+    CG.enforce_model_execution_check(row, {}, target="t")
+    assert seen == [True] and row["status"] == "incomplete"
+
+
 def test_the_graded_row_carries_the_root_cause_and_counts_as_a_genuine_failure(monkeypatch):
     monkeypatch.setattr(owned_host_model_selection, "owned_model_required", lambda capsule, *, target: True)
     result = _model_result(_stopped(OH.CandidateDispatchRefusal(REFUSAL)))

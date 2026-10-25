@@ -187,12 +187,18 @@ def freeze_runtime(
         raise StageGateError("archive count runtime needs ordered functional libraries then one timing provider")
     model, model_pin = metadata(model_path)
     manifest, _ = metadata(source_manifest)
+    expected_scope = E.kernel_call_scope(timing_selection)
+    if "owned_model_scope" in timing_selection:
+        from .owned_model_observation import scope_digest
+        expected_scope = scope_digest(timing_selection)
+        if entry_symbol != "merlin_run_multi" or completion_symbol != "return_after_synchronous_dispatch":
+            raise StageGateError("owned runtime must select its real call and synchronous return contract")
     if (
         model.get("schema") != E.MODEL_SCHEMA
         or model.get("profile") != "phase1-public"
         or model.get("scope") != {"kind": "counter_pc_pair"}
         or model.get("domain", {}).get("feature_engine_sha256") != manifest.get("sha256")
-        or model.get("domain", {}).get("scope_sha256") != E.kernel_call_scope(timing_selection)
+        or model.get("domain", {}).get("scope_sha256") != expected_scope
     ):
         raise StageGateError("archive count runtime differs from reviewed public source/scope model")
     original_libraries = [v.partition("=")[2] for v in functional_argv if v.startswith("--extlib=")]

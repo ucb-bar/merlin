@@ -1048,3 +1048,29 @@ with MonkeyPatch.context() as patch:
             timeout=40,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_guard_exhaustion_refuses_before_workspace_materialization(project, monkeypatch, capsys):
+    from merlin.targetgen.sandbox import preflight
+
+    _external_substitutes(monkeypatch)
+    record = {'selected': True, 'status': 'unavailable', 'reason': 'inotify_watch_limit',
+              'resource_errno': 28, 'fallback': 'Full independent snapshot payload and path verification remains required.'}
+    def refuse():
+        raise preflight.SnapshotGuardUnavailable(record)
+    monkeypatch.setattr(preflight, 'require_snapshot_guards', refuse)
+    assert _run(_request(project), lambda prepared: pytest.fail('guard exhaustion reached author')) == 4
+    assert not (project / 'out').exists()
+    assert 'inotify_watch_limit' in capsys.readouterr().err
+
+
+def test_guard_preflight_receipt_survives_successful_ordinary_preparation(project, monkeypatch):
+    from merlin.targetgen.sandbox import preflight
+
+    _external_substitutes(monkeypatch)
+    record = {'schema': 'merlin.snapshot_guard_preflight.v1', 'selected': True, 'status': 'ready',
+              'observed_at_ns': 12345, 'scope': 'tiny allocation/mutation probe only'}
+    monkeypatch.setattr(preflight, 'require_snapshot_guards', lambda: record)
+    assert _run(_request(project), lambda prepared: 0) == 0
+    paths = list(project.rglob('snapshot_guard_preflight.12345.json'))
+    assert len(paths) == 1 and json.loads(paths[0].read_bytes()) == record

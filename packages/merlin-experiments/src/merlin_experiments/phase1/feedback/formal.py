@@ -513,7 +513,10 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
     original_context = context if context is not None else resolve_context(early, selection)
     from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 
-    owner = CommonTransformService(
+    from .snapshot_execution import selected as external_snapshot_selected
+    from .snapshot_inputs import SnapshotInputs
+    owner_type = SnapshotInputs if external_snapshot_selected() else CommonTransformService
+    owner = owner_type(
         workspace=early.workspace.absolute(), bundle_manifest=manifest, repo=original_context.repo
     )
     from merlin.targetgen.target_experiment import load_target_experiment

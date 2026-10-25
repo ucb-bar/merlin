@@ -368,6 +368,10 @@ def grade(
             shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
             RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
             snapshot_digest = hash_tree(cand)["sha256"]
+        if background_guard is not None:
+            background_guard.bind_snapshot(cand)
+        from .construction_plan import require_ready as require_construction_plan
+        require_construction_plan(cand)
         # The harness commits exactly the bytes about to be graded; the agent never touches the repo.
         oot_commit = OH.commit_graded(run_dir, cand, label=label, key=_key, sandbox_roots=(ws.parent,))
         with shared_compute_pool(timeout_s=timeout):
@@ -831,7 +835,10 @@ def fast_grade(
             shutil.rmtree(cand.parent)
         shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
         RI.strip_build_state(cand)
+    from .construction_plan import require_ready as require_construction_plan
+    require_construction_plan(cand)
     snapshot_digest = hash_tree(cand)["sha256"]
+    background_guard.bind_snapshot(cand)
     fruns = run_dir / "_qa_work" / f"fruns_{tick}"
     te = load_target_experiment(inputs.context.descriptor)
     from .. import joint_control

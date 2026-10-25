@@ -22,7 +22,7 @@ def project(report, observation, structural, *, selection_sha256, reason):
         estimated_whole_soc_cycles=None, structural_floor_to_estimate_ratio=None,
         qualified_attainable_fraction=None, performance_target_met=False,
         promotion_authority=False, timing_qualified=False,
-        model_sha256=None, comparison_domain_sha256=None, scope_sha256=None,
+        model_sha256=None, comparison_domain_sha256=None, scope_sha256=None, elf_sha256=None,
         feature_counts={}, unresolved_events=[], modeled_resource_activity=None,
         complete_event_accounting=False,
         scope="complete kernel-call window; host, device and completion inside that window",
@@ -63,6 +63,7 @@ def project(report, observation, structural, *, selection_sha256, reason):
                                if isinstance(k, str) and len(k) <= 256 and type(v) is int and v >= 0}
     value.update(
         model_sha256=report.get("model_sha256"), scope_sha256=report.get("scope_sha256"),
+        elf_sha256=report.get("elf_sha256"),
         report_sha256=(observation.get("report") or {}).get("sha256"),
         comparison_domain_sha256=document_sha256(report.get("domain")),
         unresolved_events=[str(v)[:256] for v in report.get("unresolved", [])[:64]],

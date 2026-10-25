@@ -40,6 +40,133 @@ def _selected_file(selection, role):
     return path
 
 
+def _composition_preferences(candidate_package):
+    """Read bounded optimization requests, never source or effect permissions."""
+    path = Path(candidate_package) / "source_composition.json"
+    defaults = {"shared_input_siblings": False, "prepack_weights": False}
+    if not path.exists() and not path.is_symlink():
+        return defaults, None
+    if (any(p.is_symlink() for p in (path, *path.parents))
+            or not path.is_file() or path.stat().st_size > 8192):
+        raise ValueError("source composition preferences need a small direct JSON file")
+    raw = path.read_bytes()
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("source composition preferences repeat a field")
+            result[key] = value
+        return result
+    record = json.loads(raw, object_pairs_hook=unique)
+    if (type(record) is not dict or set(record) != {"schema", *defaults}
+            or record["schema"] != "merlin.source-composition-preferences.v1"
+            or any(type(record[key]) is not bool for key in defaults)):
+        raise ValueError("source composition preferences contain unsupported fields or values")
+    from hashlib import sha256
+
+    return {key: record[key] for key in defaults}, {
+        "path": str(path.absolute()), "sha256": sha256(raw).hexdigest(),
+    }
+
+
+def _resolve_source_composition(module, groups, eligible_groups, *, preferences, eligible_source_regions=None):
+    """Let the original source owner resolve an optional complete sibling route.
+
+    The candidate cannot select roots, replace epilogues or certify an ABI. The
+    source reader must cover every independently eligible group; actual member
+    work, synchronous effects, objects, host calls and execution remain separate
+    mandatory checks after the build.
+    """
+    if not preferences["shared_input_siblings"]:
+        return None, {"status": "not_requested"}
+    from hashlib import sha256
+
+    from merlin_experiments.phase1.feedback.private_group_provenance import eligible_source_identity
+    from xdsl.dialects import func
+
+    from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
+    from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
+    from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+    from merlin.llvmlower.source_region_host import outline_source_siblings
+    from merlin.xdsl_dialects._common import text
+    from merlin.xdsl_dialects.lowering.compute_groups import HOST
+
+    before = text(module, generic=True)
+    try:
+        outlined, _ = outline_source_siblings(module)
+        shared = find_shared_input_groups(outlined.core)
+        if len(shared) != 1:
+            raise ValueError("source does not expose one complete checked sibling group")
+        group = shared[0]
+        group.verify_current(outlined.core)
+        function = next(op for op in outlined.core.body.block.ops if isinstance(op, func.FuncOp))
+        operations = tuple(function.body.block.ops)
+        identities = [eligible_source_identity(operations[i]) for i in group.contraction_ordinals]
+        roster = [(eligible_source_identity(g.root), g.index) for g in groups if g.placement != HOST]
+        original = dict(roster)
+        if len(original) != len(roster):
+            raise ValueError("original source groups have ambiguous duplicate identities")
+        if len(set(identities)) != len(identities) or any(identity not in original for identity in identities):
+            raise ValueError("sibling source has missing or ambiguous original group identities")
+        covered = [original[identity] for identity in identities]
+        if not set(eligible_groups) <= set(covered):
+            raise ValueError("sibling route does not cover every independently eligible source group")
+        if eligible_source_regions is not None:
+            original_function = next(op for op in module.body.block.ops if isinstance(op, func.FuncOp))
+            original_indices = {id(op): index for index, op in enumerate(original_function.body.block.ops)}
+            root_obligations = {
+                (original_indices.get(id(g.root)), g.index, eligible_source_identity(g.root)[0], "contraction")
+                for g in groups if g.index in covered
+            }
+            if (not isinstance(eligible_source_regions, list) or not eligible_source_regions
+                    or any(not isinstance(row, dict) or type(row.get("source_op_index")) is not int
+                           or (row["source_op_index"], row.get("source_group"), row.get("region_id"),
+                               row.get("semantic_family")) not in root_obligations
+                           for row in eligible_source_regions)):
+                raise ValueError(
+                    "sibling raw core cannot replace an independently required supporting source operation")
+    except ValueError as exc:
+        if text(module, generic=True) != before:
+            raise ValueError("source composition reader changed original source") from exc
+        return None, {"status": "not_applicable", "reason": str(exc), "baseline_retained": True}
+    if text(module, generic=True) != before:
+        raise ValueError("source composition reader changed original source")
+    selected = SiblingSourceRoute(
+        sha256(before.encode()).hexdigest(),
+        BorrowedBufferEffects(
+            "owned host requires synchronous noescape/no-release logical calls; "
+            "actual implementation must independently pass dispatch and effect checks",
+            True, True, True,
+        ),
+    )
+    return selected, {"status": "source_selected_not_qualified", "source_ir_sha256": selected.source_ir_sha256,
+                      "original_source_groups": covered, "original_source_denominator_unchanged": True}
+
+
+def _resolve_weight_preparation(bundle, *, requested):
+    """Resolve an optional request with the existing immutable-source planner.
+
+    A selected preparation still undergoes the normal runtime byte and ancestry
+    checks. Their failures are never converted into a successful baseline build.
+    """
+    if not requested:
+        return False, {"status": "not_requested"}
+    from merlin.llvmlower.weight_prepack import PrepackRefused, plan
+    from merlin.llvmlower.weight_prepack_runtime import fixed_arguments
+
+    try:
+        manifest = json.loads((Path(bundle) / "weights.safetensors.manifest.json").read_text())
+        immutable = fixed_arguments(bundle, manifest)
+        proposal = plan(bundle, immutable_arguments=immutable)
+        if not proposal.ok:
+            raise PrepackRefused("; ".join(proposal.problems) or "no hoistable immutable weight layout")
+    except (ValueError, PrepackRefused) as exc:
+        return False, {"status": "not_applicable", "reason": str(exc), "baseline_retained": True}
+    return True, {"status": "source_planned_not_prepared", "immutable_arguments": list(immutable),
+                  "hoistable_layouts": proposal.hoistable,
+                  "scope": "original source/ownership proposal; ordinary preparation must revalidate exact bytes"}
+
+
 def execute_owned_host_model(
     *,
     capsule,
@@ -120,9 +247,18 @@ def execute_owned_host_model(
     source_path = Path(bundle) / "model.mlir"
     module = mq.parse(source_path.read_text())
     groups, _ = form_exact_groups(module, target, bundle, groups_api.form_groups)
-    frozen_split = _source_placement(
+    placement = _source_placement(
         capsule, source_certificate, module, groups, target=target, source_path=source_path
-    )["frozen_placement"]
+    )
+    frozen_split = placement["frozen_placement"]
+    preferences, preference_pin = _composition_preferences(candidate_package)
+    sibling, composition_selection = _resolve_source_composition(
+        module, groups, _independently_eligible_group_ids(placement, groups), preferences=preferences,
+        eligible_source_regions=placement["eligible_source_regions"],
+    )
+    prepack_weights, preparation_selection = _resolve_weight_preparation(
+        bundle, requested=preferences["prepack_weights"],
+    )
     receipt = service.compile(
         capture=bundle,
         candidate_package=candidate_package,
@@ -134,10 +270,14 @@ def execute_owned_host_model(
         run="none",
         rtl_facts=facts,
         materialized_inputs=materialized,
+        # The original source audit requires every admitted accelerator group.
+        require_all_accelerator_groups=True,
+        sibling_source=sibling,
+        prepack_weights=prepack_weights,
     )
     verify()
     audit = _audit_owned_host_device_build(
-        bundle, receipt, target=target, capsule=capsule, certificate=source_certificate
+        bundle, receipt, target=target, capsule=capsule, certificate=source_certificate, sibling_source=sibling,
     )
     prepared.verify()
     for role in ("board_catalog", "dts", "instruction_declaration", "rtl_facts"):
@@ -156,6 +296,9 @@ def execute_owned_host_model(
         "selection_record": selection_record,
         "runtime_inputs": str(retained.absolute()),
         "readback_policy": readback_policy.record() if readback_policy is not None else None,
+        "source_composition_selection": {**composition_selection, "preferences": preferences,
+                                          "preference_file": preference_pin,
+                                          "weight_preparation": preparation_selection},
     }
     record.update(
         _execute_required_tiers(
@@ -170,6 +313,8 @@ def execute_owned_host_model(
     verify()
     materialized.verify(bundle)
     prepared.verify()
+    if _composition_preferences(candidate_package) != (preferences, preference_pin):
+        raise ValueError("source composition preferences changed during the original build")
     _selected_file({"selection": selection_record}, "selection")
     (output / "qualification.json").write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
     for artifact in ("qualification.json", "model", "runtime_inputs", "instruction_selection"):
@@ -228,13 +373,39 @@ def _independently_eligible_group_ids(placement, groups):
     return selected
 
 
-def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, certificate=None):
+def _rederive_composition_selection(bundle, receipt, selection, *, module, groups, placement, target):
+    """Reopen requests and resolve original owner authority during promotion."""
+    from merlin.compile.model_execution_inputs import strict_tree_sha256
+
+    device = receipt.get("inputs", {}).get("device")
+    if not isinstance(device, dict) or device.get("name") != target:
+        raise ValueError("owned composition audit lost its selected candidate package")
+    package = Path(device["package"])
+    if (not package.is_absolute() or any(path.is_symlink() for path in (package, *package.parents))
+            or strict_tree_sha256(package) != device.get("package_tree")):
+        raise ValueError("owned composition candidate package differs from the actual compiled snapshot")
+    preferences, preference_pin = _composition_preferences(package)
+    sibling, resolved = _resolve_source_composition(
+        module, groups, _independently_eligible_group_ids(placement, groups), preferences=preferences,
+        eligible_source_regions=placement["eligible_source_regions"],
+    )
+    prepack, preparation = _resolve_weight_preparation(bundle, requested=preferences["prepack_weights"])
+    expected = {**resolved, "preferences": preferences, "preference_file": preference_pin,
+                "weight_preparation": preparation}
+    if selection != expected or receipt["inputs"].get("prepack_weights", False) is not prepack:
+        raise ValueError("owned composition selection differs from independently resolved original source")
+    return sibling
+
+
+def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, certificate=None, sibling_source=None,
+                                 composition_selection=None):
     """Recompute original group identities and audit the actual linked objects."""
     from merlin_experiments.phase1.feedback.private_device_audit import audit_built_device_host_compute
     from merlin_experiments.phase1.feedback.private_full_models import _linked_symbols
     from merlin_experiments.phase1.feedback.private_group_provenance import (
         convolution_input_preparations,
         join_routed_source_groups,
+        join_sibling_source_composition,
         require_intended_host_selection,
         routed_kernel_symbols,
         source_group_roster,
@@ -253,6 +424,13 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     )
     eligible_groups = _independently_eligible_group_ids(placement, groups)
     source = source_group_roster(groups, eligible_groups, host_placement=groups_api.HOST, module=module)
+    if composition_selection is not None:
+        rederived = _rederive_composition_selection(
+            bundle, receipt, composition_selection, module=module, groups=groups, placement=placement, target=target,
+        )
+        if sibling_source is not None and (rederived is None or sibling_source.record() != rederived.record()):
+            raise ValueError("owned composition re-audit differs from the original typed caller selection")
+        sibling_source = rederived
     output = receipt["output"]
     sidecar = output["device_sidecar"]
     path = Path(sidecar["path"])
@@ -262,16 +440,39 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     if emitted.get("device") != target:
         raise ValueError("owned host model omitted eligible device groups")
     assigned = emitted.get("routed")
-    joined = join_routed_source_groups(assigned, source)
+    composition = None
+    if sibling_source is None:
+        joined = join_routed_source_groups(assigned, source)
+    else:
+        from hashlib import sha256
+
+        from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+        from merlin.xdsl_dialects._common import text as ir_text
+
+        if (type(sibling_source) is not SiblingSourceRoute
+                or sibling_source.source_ir_sha256 != sha256(ir_text(module, generic=True).encode()).hexdigest()):
+            raise ValueError("owned sibling source audit lost its original source selection")
+        sibling_source.record()
+        preparation = Path(output["elf"]).parent / "bundle_preparation.json"
+        composition = join_sibling_source_composition(
+            emitted, source, module=module, target=target,
+            preparation_receipt=preparation if receipt.get("inputs", {}).get("prepack_weights") else None,
+        )
+        # One real call remains one call; every original member stays separately
+        # listed in the composition and in the mandatory work denominator.
+        joined = {}
     require_intended_host_selection(emitted.get("skipped", []))
     elf = Path(output["elf"])
     if file_sha256(elf) != output["elf_sha256"]:
         raise ValueError("owned host linked ELF changed")
     _linked_symbols(elf, routed_kernel_symbols(emitted))
-    source["conv_input_preparation"] = convolution_input_preparations(emitted, source)
+    source["conv_input_preparation"] = (
+        {} if composition is not None else convolution_input_preparations(emitted, source)
+    )
     audits = audit_built_device_host_compute(
         elf.parent, assigned, source, target, diagnostics=elf.parent / "audit-diagnostics",
         host_artifacts=output.get("host_artifacts"),
+        **({"source_composition": composition} if composition is not None else {}),
     )
     return {
         "source": source,
@@ -279,7 +480,11 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
         "joined_groups": joined,
         "static_device_host_compute": audits,
         "assigned": assigned,
-        "optional_source_groups_routed": sorted(set(joined.values()) & set(source["optional_groups"])),
+        **({"composition": composition} if composition is not None else {}),
+        "optional_source_groups_routed": sorted(
+            set(composition["covered_source_groups"] if composition is not None else joined.values())
+            & set(source["optional_groups"])
+        ),
         "scope": "source identities joined to actual linked device objects; "
         "dynamic execution and required tiers remain separate",
     }
@@ -492,7 +697,7 @@ def _mandatory_source_commands(function, commands, obligations):
     return completed
 
 
-def _host_call_proof(host_ir, *, assigned, output):
+def _host_call_proof(host_ir, *, assigned, output, source_composition=None):
     """Read the actual final host IR, including any selected late legalization.
 
     The compiler's LLVM importer supplies typed CFGs; every original source
@@ -549,6 +754,16 @@ def _host_call_proof(host_ir, *, assigned, output):
         # The fixed host's selected wide-C-interface legalization can inline
         # the implementation into the C entry. Audit that actual entry body.
         function = wrapper
+    if source_composition is not None:
+        from .private_sibling_dispatch import borrowed_host_chain, composition_members
+
+        composition_members(source_composition, assigned=assigned)
+        chain = borrowed_host_chain(module, function, source_composition, mandatory=_mandatory_command_blocks)
+        if _digest(host_ir) != before or _digest(translator) != importer_before:
+            raise ValueError("owned host LLVM or selected importer changed during CFG import")
+        return {"host_llvm": before, "importer": importer_before, "imported_cfg": _digest(translated),
+                "generic_printer": printer_before, "generic_cfg": _digest(generic), **chain,
+                "scope": "actual source-owned wrapper CFG; descriptor bridge and final link audited separately"}
     required = Counter(row["symbol"] for row in assigned)
     sites = {}
     for op in function.walk():
@@ -578,7 +793,7 @@ def _host_call_proof(host_ir, *, assigned, output):
     }
 
 
-def _dispatch_proof(record, *, target, facts):
+def _dispatch_proof(record, *, target, facts, evidence_root=None):
     """Original-source calls -> actual candidate kernel -> object -> same ELF."""
     import yaml
     from xdsl.dialects.builtin import UnitAttr
@@ -605,6 +820,12 @@ def _dispatch_proof(record, *, target, facts):
         raise ValueError("actual device build symbol/artifact binding is absent")
     source = record["source_device_join"]
     assigned = source["assigned"]
+    composition = source.get("composition")
+    members = None
+    if composition is not None:
+        from .private_sibling_dispatch import composition_members
+
+        members = composition_members(composition, assigned=assigned)
     kernels = artifact_record.get("kernels")
     if not isinstance(kernels, dict) or set(kernels) != {row["symbol"] for row in assigned}:
         raise ValueError("actual device kernel roster differs from source-bound calls")
@@ -637,6 +858,7 @@ def _dispatch_proof(record, *, target, facts):
             obj=obj,
             original_symbol=entry_symbol,
             kernel_symbol=kernel_symbol,
+            source_composition=composition,
         )
         module = Parser(make_llvm_context(), artifact.read_text()).parse_module()
         function = _llvm_function(module, entry_symbol)
@@ -670,11 +892,19 @@ def _dispatch_proof(record, *, target, facts):
                 ).split(","):
                     raise ValueError("actual device work lacks side effect or memory clobber")
                 commands.setdefault(family, set()).add(op)
-        source_group = source["joined_groups"][row["group"]]
-        obligations = [
-            item for item in source["placement"]["eligible_source_regions"] if item["source_group"] == source_group
-        ]
-        completed.extend(_mandatory_source_commands(function, commands, obligations))
+        if composition is None:
+            source_group = source["joined_groups"][row["group"]]
+            obligations = [
+                item for item in source["placement"]["eligible_source_regions"] if item["source_group"] == source_group
+            ]
+            completed.extend(_mandatory_source_commands(function, commands, obligations))
+        else:
+            from .private_sibling_dispatch import mandatory_member_commands, verify_descriptor_bridge
+
+            obligations = source["placement"]["eligible_source_regions"]
+            completed.extend(mandatory_member_commands(
+                function, commands, obligations, members, mandatory=_mandatory_source_commands))
+            bridge = verify_descriptor_bridge(entry, composition, built=built, target=target)
         inventory_functs = all_functs
         if optimized_artifact is not None:
             optimized = Parser(make_llvm_context(), optimized_artifact.read_text()).parse_module()
@@ -704,7 +934,8 @@ def _dispatch_proof(record, *, target, facts):
             raw = (json.dumps(inventory, sort_keys=True, indent=2) + "\n").encode()
             from hashlib import sha256
 
-            diagnostic = elf.parent / f"{symbol}.command-inventory-refusal-{sha256(raw).hexdigest()}.json"
+            diagnostic = (elf.parent if evidence_root is None else evidence_root) / (
+                f"{symbol}.command-inventory-refusal-{sha256(raw).hexdigest()}.json")
             try:
                 with diagnostic.open("xb") as stream:
                     stream.write(raw)
@@ -725,12 +956,16 @@ def _dispatch_proof(record, *, target, facts):
             "kernel_symbol": kernel_symbol,
             **{role: _digest(_pinned(pins, role)) for role in pins},
         }
+        if composition is not None:
+            artifact_pins[symbol]["descriptor_bridge"] = bridge
     eligible = source["placement"]["eligible_source_op_indices"]
     if sorted(row["source_op_index"] for row in completed) != sorted(eligible):
         raise ValueError("mandatory owned-device work does not cover the complete eligible source roster")
     host = _pinned(built.get("host_artifacts") or {}, "llvm_ir")
     _pinned(built.get("host_artifacts") or {}, "object")
-    host_calls = _host_call_proof(host, assigned=assigned, output=elf.parent)
+    host_calls = _host_call_proof(
+        host, assigned=assigned, output=elf.parent if evidence_root is None else evidence_root,
+        source_composition=composition)
     return {
         "status": "verified",
         "source_sha256": source["placement"]["source_sha256"],
@@ -772,7 +1007,7 @@ def _optimized_command_functs(module, trace, table, *, source_functs):
     return functs
 
 
-def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, kernel_symbol):
+def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, kernel_symbol, source_composition=None):
     """Reopen actual stock translation/compilation and a symbol-only rename."""
     from merlin.common import invocation_record
     from merlin.llvmlower import toolchain
@@ -780,6 +1015,11 @@ def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, ke
     from .native_model_execution import _digest
 
     custody = entry.get("custody")
+    if source_composition is not None:
+        if not isinstance(custody, dict) or "sibling_source" not in custody:
+            raise ValueError("actual sibling device object lacks source-owned descriptor custody")
+        # Its exact source/ABI/bridge is independently reopened by dispatch.
+        custody = {key: value for key, value in custody.items() if key != "sibling_source"}
     original_roles = {"translation", "compilation", "rename"}
     optimized_roles = original_roles | {"optimization", "optimized_import"}
     if not isinstance(custody, dict) or set(custody) not in (original_roles, optimized_roles):
@@ -1346,6 +1586,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             target=target,
             capsule=capsule,
             certificate=result.get("candidate_source_eligibility"),
+            composition_selection=record.get("source_composition_selection"),
         )
         if record.get("frozen_placement") != _frozen_split(capsule, root / "model.mlir", target=target):
             raise ValueError("owned model split differs from the sealed capsule's frozen placement")
@@ -1403,6 +1644,9 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             ):
                 raise ValueError(f"owned model {tier} receipt differs from parsed full values")
             tiers[tier] = {**evidence, "numeric": numeric, "dispatch": dispatch}
+            if tier == "L2":
+                # Assigned only after exact functional engine and full-output re-audit.
+                tiers[tier].update(fidelity="functional_model", derived_from_rtl=False, cycle_accurate=False)
             if tier == "L3":
                 fidelity = selected_engine.get("fidelity")
                 if isinstance(fidelity, str) and fidelity:

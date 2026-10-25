@@ -226,3 +226,27 @@ def test_malformed_first_init_context_is_never_downgraded_to_legacy(tmp_path, ma
     assert C._rtl_facts_evidence(C._tool_calls(bad)[0]) is False
     historical = transcript(tmp_path/'historical.jsonl', [command], None)
     assert C._rtl_facts_evidence(C._tool_calls(historical)[0]) is True
+
+
+def test_full_compiler_external_treatment_has_no_mandatory_discovery_or_pass_use(tmp_path):
+    from merlin_experiments.phase1.feedback.certification import _authoring_completion
+
+    t = transcript(tmp_path / 'direct-authoring.jsonl', ['echo implementation > submission/backend.py'])
+    sub = tmp_path / 'submission'
+    sub.mkdir()
+    (sub / 'backend.py').write_text('import re\npattern = re.compile("public syntax")\n')
+    tools = {'rtl_facts', 'rtl_generators', 'isa_tools', 'cca_tools', 'xdsl_kit'}
+    legacy = C.compute(t, sub, 'merlin_assisted', 'external_backend', resolved_tools=tools)
+    assert legacy['conformant'] is False
+    assert legacy['checks']['arm4_discovery_before_submission_mutation'] is False
+    for access, execution in [('full_compiler', 'profile_strict_v1'),
+                              ('selected_library', 'snapshot_external_v1')]:
+        assert C.compute(t, sub, 'merlin_assisted', 'external_backend', resolved_tools=tools,
+                         compiler_access=access, compiler_execution=execution)['conformant'] is False
+    current = C.compute(t, sub, 'merlin_assisted', 'external_backend', resolved_tools=tools,
+                        compiler_access='full_compiler', compiler_execution='snapshot_external_v1')
+    assert current['conformant'] is True
+    assert current['checks'] == {}
+    assert current['qualification_authority'] is False
+    # Workflow freedom does not complete a compiler with failed/missing numerics.
+    assert _authoring_completion(False, current['conformant']) is False

@@ -24,6 +24,13 @@ def performance_signals(performance, runtime=None):
                    'Whole-trace totals are excluded. Explicit scoped bookings remain modeled reservations, not physical utilization or stalls.'],
     }
     scoped = signals['scoped_resource_feedback']
+    try:
+        from merlin_timing.optimization_feedback import project as optimization_feedback
+        signals['same_roi_optimization'] = optimization_feedback(performance)
+    except (ImportError, ValueError, TypeError, KeyError):
+        signals['same_roi_optimization'] = {'status': 'UNKNOWN',
+            'reason': 'Same-ROI optimization projection unavailable; other scopes are not substituted.',
+            'qualification_issued': False}
     if isinstance(scoped, dict):
         try:
             from merlin_timing.scoped_resources import compact
@@ -78,7 +85,8 @@ def project(result, performance):
     elif stage:
         priority, owner = 'timing_infrastructure', 'operator'
         action = 'Repair the reported timing feedback stage; extra RTL simulations do not repair this failure.'
-    elif performance.get('estimated_whole_soc_cycles') is None and numeric == 'pass':
+    elif numeric == 'pass' and (performance.get('estimated_whole_soc_cycles') is None
+                               or performance.get('status') not in ('PROVISIONAL', 'QUALIFIED')):
         priority, owner = 'timing_model_or_observation', 'operator'
         action = 'Inspect the exact timing observation reason and unresolved model events before collecting labels.'
     elif numeric == 'pass' and performance.get('estimated_whole_soc_cycles') is not None:
@@ -91,6 +99,16 @@ def project(result, performance):
                 rtl_tiers=rtl, unobserved_rtl_tiers=missing_rtl,
                 timing_status=performance.get('status', 'UNKNOWN'), timing_failure_stage=stage,
                 next_priority=priority, next_owner=owner, next_action=action,
+                compiler_work_can_continue=True,
+                parallel_action=(
+                    'Continue independent capability construction and affected-case execution. Inspect emitted '
+                    'code, traffic, storage and host boundaries while this model or observation gap is repaired.'
+                    if priority in ('timing_infrastructure', 'timing_model_or_observation') else
+                    'Integrate independent compiler work and consume completed immutable-snapshot results; '
+                    'this local diagnosis is not a global authoring barrier.'),
+                timing_reason=str(performance.get('reason') or '')[:300],
+                unresolved_model_events=[str(event)[:160] for event in
+                                         (performance.get('unresolved_events') or [])[:4]],
                 missing_rtl_is_numerical_failure=False, additional_gsim_requested=False,
                 certification_unchanged=True,
                 rtl_policy='Unobserved required RTL tiers remain uncertified. Original required gSIM checks remain mandatory; additional calibration gSIM needs an admitted mechanism question.')

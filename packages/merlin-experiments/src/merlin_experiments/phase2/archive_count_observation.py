@@ -31,7 +31,8 @@ class _Stderr:
         pass  # Raw bounded stderr remains in the actual invocation evidence.
 
 
-def _run(argv, *, prefix, directory, workspace, backing, limits, dependencies, require_done, ownership):
+def _run(argv, *, prefix, directory, workspace, backing, limits, dependencies, require_done, ownership,
+         stdout_protocol="text", extra_inputs=()):
     directory.mkdir(mode=0o700)
     with I.observe(
         directory,
@@ -40,8 +41,8 @@ def _run(argv, *, prefix, directory, workspace, backing, limits, dependencies, r
         cwd=workspace,
         env={},
         inputs=(workspace / "program.elf",)
-        + ((workspace / "scope.json",) if (workspace / "scope.json").exists() else ()),
-        outputs=tuple(Path(v.partition("=")[2]) for v in argv if v.startswith("--timing-report=")),
+        + ((workspace / "scope.json",) if (workspace / "scope.json").exists() else ()) + tuple(extra_inputs),
+        outputs=tuple(Path(v.partition("=")[2]) for v in argv if v.startswith(("--timing-report=", "+signature="))),
         dependencies=dependencies,
     ) as record:
         ownership["closed"] = False
@@ -57,6 +58,7 @@ def _run(argv, *, prefix, directory, workspace, backing, limits, dependencies, r
                     writable_roots=(workspace, backing),
                     readonly_files=(workspace / "program.elf", workspace / "scope.json"),
                     require_done=require_done,
+                    **({"stdout_protocol": stdout_protocol} if stdout_protocol != "text" else {}),
                 )
         except BaseException:
             if getattr(record, "census_started", False) and not getattr(record, "census_cleanup_complete", False):
@@ -71,7 +73,7 @@ def _run(argv, *, prefix, directory, workspace, backing, limits, dependencies, r
     return record.path, actual, (record.directory / "stdout.bin").read_bytes()
 
 
-def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numerical_pass):
+def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numerical_pass, owned_scope=None, output_export=None):
     """Observe one already graded original ELF, never an author-selected command.
 
     Complete original numerical admission precedes this call. Plain and annotated
@@ -89,6 +91,11 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         if type(runtime) is not ArchiveSpikeRuntime:
             raise StageGateError("archive counts require original reviewed runtime ownership")
         runtime.verify()
+        if output_export is not None:
+            from .integer_signature_export import IntegerSignatureExport
+            if type(output_export) is not IntegerSignatureExport or owned_scope is not None:
+                raise StageGateError("integer signature export requires the ordinary unchanged capsule scope")
+            output_export.materialize(elf)
         if type(policy) is not PC.PackageSandboxPolicy or policy.coverage_gap:
             raise StageGateError("archive counts require the original complete package namespace")
         stage = "policy_validation"
@@ -97,10 +104,20 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         limits = replace(limits, max_line_bytes=1 << 20, max_output_bytes=64 << 20)
         limits.verify()
         elf, directory = F.canonical(elf), F.canonical(directory, exists=False)
-        if not elf.is_relative_to(policy.workspace) or not directory.is_relative_to(policy.workspace):
+        if ((owned_scope is None and not elf.is_relative_to(policy.workspace))
+                or not directory.is_relative_to(policy.workspace)):
             raise StageGateError("archive count program/output escaped the original numerical job")
         stage = "producer_validation"
-        before = BOX._producer(elf, limits)
+        producer = BOX._producer
+        if owned_scope is not None:
+            from .owned_model_observation import OwnedModelScope, scope_digest
+            if type(owned_scope) is not OwnedModelScope:
+                raise StageGateError("owned observation requires original synchronous producer contract")
+            scope_digest(json.loads(runtime.timing_json))
+            producer = owned_scope.producer
+        elif "owned_model_scope" in json.loads(runtime.timing_json):
+            raise StageGateError("owned runtime requires a verified synchronous producer")
+        before = producer(elf, limits)
         stage = "namespace_setup"
         directory.mkdir(mode=0o700)
         root = Path(tempfile.mkdtemp(prefix="archive-count-", dir=directory))
@@ -129,6 +146,9 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             backing = root
         dependencies = tuple(Path(p) for p, _d in runtime.files) + tuple(Path(module.__file__).resolve()
             for module in (ALIASES, *ALIASES.source_modules())) + (Path(__file__).resolve(),)
+        if owned_scope is not None:
+            from . import owned_model_observation
+            dependencies += (Path(owned_model_observation.__file__).resolve(),)
         review_argv = [str(runtime.disassembler), "-d", "--no-show-raw-insn", str(copied)]
         stage = "scope_disassembly"
         review_process, _actual, listing = _run(
@@ -144,13 +164,13 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         )
         stage = "scope_binding"
         selection, model = json.loads(runtime.timing_json), json.loads(runtime.model_json)
-        window, review_schema = ALIASES.window(
-            E.parse_disassembly(listing.decode()),
-            elf_bytes=copied.read_bytes(),
-            counter_asm=selection["counter_asm"],
-            entry_symbol=runtime.entry_symbol,
-            completion_symbol=runtime.completion_symbol,
-        )
+        rows = E.parse_disassembly(listing.decode())
+        if owned_scope is None:
+            window, review_schema = ALIASES.window(
+                rows, elf_bytes=copied.read_bytes(), counter_asm=selection["counter_asm"],
+                entry_symbol=runtime.entry_symbol, completion_symbol=runtime.completion_symbol)
+        else:
+            window, review_schema = owned_scope.window(rows, counter_asm=selection["counter_asm"])
         review = {
             "schema": review_schema,
             "elf_sha256": before["sha256"],
@@ -174,6 +194,13 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         write_json(directory / "counter_review.json", review)
         write_json(workspace / "scope.json", binding)
         prefix = (*prefix, "--ro-bind", str(workspace / "scope.json"), str(workspace / "scope.json"))
+        export_record = None
+        if output_export is not None:
+            _, _, symbols = output_export.materialize(copied)
+            supplement = workspace / "output-symbols.elf"
+            supplement.write_bytes(symbols)
+            prefix = (*prefix, "--ro-bind", str(supplement), str(supplement))
+            export_record = dict(plan=output_export.record(), supplement=F.pin(supplement, max_bytes=64 << 10))
         report_path = workspace / "report.json"
         commands = runtime.commands(copied, report_path, workspace / "scope.json")
         consoles, processes = [], []
@@ -183,6 +210,9 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
                 raise StageGateError("archive count observation exhausted original parent deadline")
             current = replace(limits, wall_s=min(limits.wall_s, remaining))
             stage = "functional_execution" if index == 0 else "annotated_execution"
+            if output_export is not None:
+                signature = workspace / f"output-{index}.signature"
+                argv = output_export.commands(argv, elf=copied, supplement=supplement, signature=signature)
             invocation, actual, console = _run(
                 argv,
                 prefix=prefix,
@@ -193,10 +223,16 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
                 dependencies=dependencies,
                 require_done=True,
                 ownership=ownership,
+                **({"stdout_protocol": "out_bin_v1"} if owned_scope is not None else {}),
             )
             processes.append(
                 {"path": str(invocation), "sha256": F.digest(invocation), "stdout_sha256": actual["stdout"]["sha256"]}
             )
+            if output_export is not None:
+                output_export.values(signature)
+                processes[-1]["full_output_signature"] = F.pin(signature, max_bytes=256 << 10)
+            if owned_scope is not None:
+                owned_scope.validate_console(console)
             consoles.append(console)
         stage = "result_verification"
         if consoles[0] != consoles[1]:
@@ -212,7 +248,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             raise StageGateError("archive observation lacks complete current counts in its exact selected scope")
         runtime.verify()
         PC._verify_frozen_policy(policy)
-        if BOX._producer(elf, limits) != before or F.digest(copied) != before["sha256"]:
+        if producer(elf, limits) != before or F.digest(copied) != before["sha256"]:
             raise StageGateError("original count program changed during observation")
         retained = directory / "report.json"
         shutil.copyfile(report_path, retained)
@@ -227,6 +263,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             "runtime_sha256": runtime.sha256,
             "report": {"path": str(retained), "sha256": pin["sha256"]},
             "processes": processes,
+            **({"output_export": export_record} if output_export is not None else {}),
             "functional_identical": True,
             "complete_counts": True,
             "feature_counts": report["feature_counts"],

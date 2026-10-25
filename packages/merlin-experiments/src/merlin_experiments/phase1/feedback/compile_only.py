@@ -74,6 +74,10 @@ def _snapshot_operation(owner):
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
     )
 
     with ExitStack() as checks:
@@ -84,6 +88,10 @@ def _snapshot_operation(owner):
             COMMON_SUBSTRATE_V6,
             COMMON_SUBSTRATE_V7,
             COMMON_SUBSTRATE_V8,
+            COMMON_SUBSTRATE_V9,
+            COMMON_SUBSTRATE_V10,
+            COMMON_SUBSTRATE_V11,
+            COMMON_SUBSTRATE_V12,
         }:
             checks.enter_context(verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo))
         yield checks.close

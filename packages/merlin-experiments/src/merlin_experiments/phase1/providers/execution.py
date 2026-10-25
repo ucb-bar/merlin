@@ -140,7 +140,7 @@ def billing_mode(model: str, *, config: ProviderConfig) -> str:
 # Sandbox verification is on the author launch/resume critical path. Change only
 # admission priority: do not reserve a core or hold a lease over the paid turn.
 @with_priority(AUTHOR)
-def sandbox_command(
+def sandbox_plan(
     inner: str,
     ws: Path,
     bundle: dict,
@@ -212,48 +212,108 @@ def sandbox_command(
     if joint_control.selected() is not None:
         parts += ["--setenv", "MERLIN_JOINT_DEVELOPMENT", "1"]
     tool_environment = TC.sandbox_env(load_target_experiment(context.descriptor), ws, bundle=bundle)
-    payload = f"{tool_environment} {library_environment}{inner}"
-    # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the
-    # POSIX '\'' idiom). ``inner`` may itself be shlex-quoted by the caller (the opencode driver quotes
-    # its prompt arg, e.g. "…(if present)…"), so a naive f"…'{inner}'" would let those quotes close the
-    # wrapper early and expose a `(` to the outer shell (opencode arm died rc=2 on exactly this). The
-    # INNER bash still re-parses the payload as a script, so $(…)/\( \) in mask_selftest keep working.
-    # Through the SHARED composer, which moves the bind list into a file descriptor once the string
-    # would exceed the execve per-argument limit. This whole string is handed to `bash -c` as ONE
-    # argument, and a single execve argument may not exceed MAX_ARG_STRLEN (128 KiB). At the 1,172
-    # answer surfaces this checkout carries, the /dev/null and tmpfs masks alone are ~167 KB, so the
-    # inline form dies with E2BIG naming `bash` before the first round -- for every arm.
-    #
-    # This line was already fixed once (34e0296f, "one composer for the argv size rule") and the fix
-    # was lost again in a later merge that took the pre-fix side of this file. Restored here, and now
-    # pinned by merlin/tests/infra/test_bwrap_cmd_argv_size.py so a merge cannot silently drop it a
-    # third time.
-    return _BW.compose_command(parts, " bash -c '" + payload.replace("'", "'\\''") + "'", ws)
+    return SandboxPlan(tuple(parts), tool_environment + " " + library_environment, ws)
 
 
-@with_priority(AUTHOR)
-def codex_sandbox_command(inner, ws, bundle, extra_binds=None, *, context, private_run_dir, runtime):
+def sandbox_script(rounds: Path, rnd: int, turn: int, command: str) -> list[str]:
+    """Run a bwrap command from a FILE rather than as a ``bash -c`` argument.
+
+    execve refuses any single argument over MAX_ARG_STRLEN (128 KiB) with E2BIG, and the error names
+    only the interpreter -- `Argument list too long: 'bash'` -- so a size refusal is indistinguishable
+    from a missing shell. Measured 2026-09-06 on the perf campaign: the composed sandbox command was
+    178,303 bytes and every trial died before its first round. The bind list has a size escape already
+    (``bwrap --args`` from a file descriptor), but the shell string that carries it does not, and the
+    mask set grows with the corpus, so the ceiling is reachable by adding capsules.
+
+    A file has no such limit. It lives beside the round's other artifacts and NOT in the workspace:
+    the agent must not be able to read or edit the command that sandboxes it.
+    """
+    import os
+    import tempfile
+
+    script = rounds / f"round_{rnd:02d}.sandbox.turn{turn:02d}.sh"
+    # A completed launch seals this file 0500.  A checkpoint resume may retry the same round/turn and
+    # therefore the same path; opening the sealed inode for writing fails before Codex starts.  Replace
+    # it atomically with a newly sealed inode instead of temporarily making the old launch record
+    # writable.  The behaviour is identical for every driver invocation and independent of target.
+    rounds.mkdir(parents=True, exist_ok=True)
+    staged: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=rounds, prefix=f".{script.name}.", suffix=".tmp", delete=False
+        ) as handle:
+            handle.write(command)
+            staged = Path(handle.name)
+        staged.chmod(0o500)
+        os.replace(staged, script)
+        staged = None
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+    return ["bash", str(script)]
+
+
+@dataclass(frozen=True)
+class SandboxPlan:
+    """One reviewed mount policy; composing a command never adds a grant."""
+    parts: tuple[str, ...]
+    environment: str
+    workspace: Path
+
+    def command(self, inner: str) -> str:
+        from merlin.targetgen.sandbox import bwrap
+        payload = self.environment + inner
+        return bwrap.compose_command(list(self.parts), " bash -c " + shlex.quote(payload), self.workspace)
+
+
+def sandbox_command(inner, ws, bundle, extra_binds=None, **options):
+    return sandbox_plan(inner, ws, bundle, extra_binds, **options).command(inner)
+
+
+@dataclass(frozen=True)
+class CodexSandboxCommand:
+    """Launch-local plan for the permission probe and initial paid command.
+
+    Continuations rebuild their policy. Both adjacent initial commands use the
+    exact same runtime grants and final masks; no payload can add a grant.
+    """
+    context: InvocationContext
+    private_run_dir: Path
+    runtime: object | None = None
+
+    @with_priority(AUTHOR)
+    def prepare(self, ws, bundle, extra_binds=None):
+        if self.runtime is not None:
+            _verify_codex_runtime(self.runtime, self.context, ws, bundle)
+        return sandbox_plan("", ws, bundle, extra_binds, context=self.context,
+                            private_run_dir=self.private_run_dir, codex_mode=True)
+
+    def __call__(self, inner, ws, bundle, extra_binds=None):
+        return self.prepare(ws, bundle, extra_binds).command(inner)
+
+
+def _verify_codex_runtime(runtime, context, ws, bundle):
     from merlin.targetgen.sandbox import toolchain as TC
     from merlin.targetgen.target_experiment import load_target_experiment
 
     _START.call("runtime_verify", runtime.verify)
     target = load_target_experiment(context.descriptor)
-    if (
-        tuple(TC.toolchain_binds(target)) != runtime.toolchain_mounts
-        or TC.sandbox_env(target, ws, bundle=bundle) != runtime.tool_environment
-    ):
+    if (tuple(TC.toolchain_binds(target)) != runtime.toolchain_mounts
+            or TC.sandbox_env(target, ws, bundle=bundle) != runtime.tool_environment):
         raise ValueError("explicit client toolchain mount selection changed")
-    return sandbox_command(
-        inner, ws, bundle, extra_binds, context=context, private_run_dir=private_run_dir, codex_mode=True
-    )
+
+
+@with_priority(AUTHOR)
+def codex_sandbox_command(inner, ws, bundle, extra_binds=None, *, context, private_run_dir, runtime):
+    return CodexSandboxCommand(context, private_run_dir, runtime)(inner, ws, bundle, extra_binds)
 
 
 def codex_call_kwargs(runtime, *, context, run_dir, model) -> dict:
     if runtime is None:
-        return {"sandbox_command": partial(sandbox_command, context=context, private_run_dir=run_dir, codex_mode=True)}
+        return {"sandbox_command": CodexSandboxCommand(context, run_dir)}
     return {
         **runtime.round_kwargs(),
-        "sandbox_command": partial(codex_sandbox_command, context=context, private_run_dir=run_dir, runtime=runtime),
+        "sandbox_command": CodexSandboxCommand(context, run_dir, runtime),
     }
 
 

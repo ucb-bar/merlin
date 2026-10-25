@@ -258,8 +258,22 @@ def _child_deadline_monotonic(
     monotonic = time.monotonic() if now_monotonic is None else now_monotonic
     explicit = request.get("deadline_unix_ns")
     if explicit is not None:
-        return monotonic + max(0.0, int(explicit) / 1_000_000_000 - wall)
-    return monotonic + max(0, int(request.get("timeout", 1800))) + 240
+        deadline = monotonic + max(0.0, int(explicit) / 1_000_000_000 - wall)
+    else:
+        deadline = monotonic + max(0, int(request.get("timeout", 1800))) + 240
+    # A conservative suite-sized client budget cannot outlive its selected
+    # campaign. This also bounds setup before the evaluator process exists.
+    from .. import joint_control
+    campaign = joint_control.selected()
+    # Tool readiness exercises the common transformation broker before author
+    # launch. Its client deadline still applies, but no campaign clock exists
+    # yet. This exception cannot admit capsule evaluation before launch.
+    readiness = (campaign is not None and "started_at_epoch" in campaign
+                 and campaign["started_at_epoch"] is None
+                 and request.get("action") in COMMON_ACTIONS)
+    if campaign is not None and not readiness:
+        deadline = min(deadline, monotonic + joint_control.remaining(now=wall))
+    return deadline
 
 
 def _pid_namespace() -> str:
@@ -610,8 +624,16 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
     try:
         while not _should_stop(ch, orig_ppid):
             for name, job in tuple(active.items()):
+                reason = None
                 if job["process"].poll() is None:
-                    continue
+                    reason = _abort_reason(ch, orig_ppid, job["request"], job["deadline"],
+                                           request_stop=job["stop"])
+                    if reason is None:
+                        continue
+                    # The handler may still be reconstructing the selected
+                    # library/source, before it reaches its own child poll loop.
+                    # Reap the original tree before publishing/refilling its lane.
+                    _stop_owned_worker(job["process"])
                 request, rid = job["request"], name[len("req_") : -len(".json")]
                 if not ((ch / f"done_{rid}").exists() and (ch / f"resp_{rid}.json").exists()):
                     _atomic_write(
@@ -619,7 +641,13 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                         json.dumps(
                             {
                                 "all_pass": False,
-                                "error": "broker: request handler ended without durable completion",
+                                "error": (f"broker: self-check aborted ({reason}) during handler preparation/evaluation"
+                                          if reason else "broker: request handler ended without durable completion"),
+                                "request_lifecycle": {"status": "aborted" if reason else "worker_exited",
+                                    "scope": "handler preparation and evaluation; no numerical verdict",
+                                    "started_at_unix_ns": job["started_ns"],
+                                    "completed_at_unix_ns": time.time_ns(),
+                                    "deadline_monotonic": job["deadline"]},
                                 "selfcheck_protocol": PROTOCOL_VERSION,
                                 "selfcheck_request_id": rid,
                                 "submission_sha256": None,
@@ -665,7 +693,13 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                     body = json.loads(request_bytes)
                 except ValueError:
                     body = {}
+                # Include queue time even for historical requests without an
+                # explicit deadline; never renew their budget on admission.
+                deadline_body = dict(body) if isinstance(body, dict) else {}
+                deadline_body.setdefault("deadline_unix_ns", int(_request_deadline(request) * 1e9))
                 active[request.name] = {
+                    "deadline": _child_deadline_monotonic(deadline_body),
+                    "started_ns": time.time_ns(),
                     "process": process,
                     "request": request,
                     "stop": stop,
@@ -681,6 +715,8 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                     "pid": job["process"].pid,
                     "start_ticks": job["start_ticks"],
                     "diagnostic": job["diagnostic"],
+                    "elapsed_s": max(0, (time.time_ns() - job["started_ns"]) / 1e9),
+                    "deadline_remaining_s": max(0, job["deadline"] - time.monotonic()),
                     "submission": job["source_fields"]["selfcheck_submission"],
                 }
                 for name, job in active.items()
@@ -701,6 +737,17 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                 _stop_owned_worker(job["process"])
             job["stop"].unlink(missing_ok=True)
     return 0
+
+
+def _legacy_common_service(workspace, manifest, repo):
+    """External evaluation has no authority to issue legacy common-pass proofs."""
+    from ..feedback.snapshot_execution import selected
+
+    if manifest is None or selected():
+        return None
+    from .common_transforms import CommonTransformService
+
+    return CommonTransformService(workspace=workspace, bundle_manifest=manifest, repo=repo)
 
 
 @selected_child
@@ -750,15 +797,7 @@ def main(
         ap.error("request stop must belong to the original channel")
     if a.one_request is None and _dispatch_capacity() == 2:
         return _dispatch_requests(a, context, capsules_root, contract, promotion_capsules_root)
-    common_service = None
-    if a.compiler_bundle_manifest is not None:
-        from .common_transforms import CommonTransformService
-
-        common_service = CommonTransformService(
-            workspace=ws,
-            bundle_manifest=a.compiler_bundle_manifest,
-            repo=context.repo,
-        )
+    common_service = _legacy_common_service(ws, a.compiler_bundle_manifest, context.repo)
     orig_ppid = os.getppid()
     seen: set[str] = set()
     health_path = (
@@ -906,6 +945,10 @@ def main(
                     "merlin.common_compiler_substrate.v6",
                     "merlin.common_compiler_substrate.v7",
                     "merlin.common_compiler_substrate.v8",
+                    "merlin.common_compiler_substrate.v9",
+                    "merlin.common_compiler_substrate.v10",
+                    "merlin.common_compiler_substrate.v11",
+                    "merlin.common_compiler_substrate.v12",
                 ):
                     raise FileNotFoundError("common check was not admitted by the original compiler profile")
                 proof_root = a.compiler_bundle_manifest.parent / "common-transform-work"
@@ -1047,6 +1090,13 @@ def main(
             # Every check grades a private request snapshot. The author can keep
             # editing, and the response stays bound to the selected digest.
             snapshot_root = _working_snapshot(ws, graded_digest, label=label)
+            from ..feedback.construction_plan import admit as admit_construction_plan
+            construction_admission = admit_construction_plan(
+                snapshot_root / "submission", r, request_id=rid, channel="selfcheck",
+                inspection=any(r.get(k) for k in ("compile_only", "caller_layout", "candidate_diagnostics",
+                                                  "shape_coverage", "model_layers", "offload_census")))
+            if construction_admission is not None:
+                _atomic_write(ch / f"construction_plan_{rid}.json", json.dumps(construction_admission))
             argv2[argv2.index("--submission") + 1] = str(snapshot_root / "submission")
             worker_env = dict(os.environ, **{sources.LABEL_ENV: label})
             # Only submission/ may feed promotion: a variant's verdict never reaches the cert ledger.

@@ -136,3 +136,39 @@ def test_rendering_cannot_invent_an_invalid_selected_build_budget(budget):
     with pytest.raises(ValueError, match="selected 0..120-second budget"):
         prompt.render_resource_block(SimpleNamespace(public_object_build_budget_s=budget), environ={},
                                      manager_cpus=(7,), grade_workers=2)
+
+
+def test_full_compiler_joint_resources_do_not_require_shared_pass_staging(tmp_path, monkeypatch):
+    from merlin_experiments.phase1 import joint_control as joint
+    from merlin_experiments.phase1 import full_compiler_workspace as full
+
+    policy = {'duration_s': 18000, 'drain_s': 300, 'final_model_s': 7200,
+              'compiler_execution_mode': 'snapshot_external_v1',
+              'gsim': {'max_jobs': 20, 'per_job_s': 1200},
+              'gsim_correctness': {'capsules': ['public_case'], 'max_jobs': 20, 'per_job_s': 1200},
+              'operator_measurement_policy': {'initial_diagnostics_max': 1}}
+    monkeypatch.setattr(joint, 'selected', lambda: {'policy': policy})
+    monkeypatch.setattr(full, 'selected', lambda: object())
+    monkeypatch.setenv('MERLIN_COMPUTE_CPUS', '9,10')
+    monkeypatch.setenv('MERLIN_COMPUTE_CPU_SLOTS', str(tmp_path / 'slots'))
+    monkeypatch.setenv('MERLIN_CODEX_CPUS', '9,10')
+    ws, run = tmp_path / 'workspace', tmp_path / 'run'
+    ws.mkdir(); run.mkdir()
+    task = ws / 'TASK.md'
+    task.write_text('# Phase 1: Gemmini compiler for complete models\n')
+    options = SimpleNamespace(compiler_access='full_compiler', compiler_execution='snapshot_external_v1',
+                              sim_max_jobs=20, codex_max_subagents=16)
+    prompt.append_resource_guidance(ws, run, options)
+    assert 'calibration witnesses 20; required correctness 20' in task.read_text()
+    assert 'two-job' not in task.read_text()
+    assert task.read_bytes() == (run / 'TASK.md').read_bytes()
+    text = joint.prompt_block()
+    assert 'initial diagnostics 1' in text
+    assert 'declared continuation retains' in text
+    assert 'there is no final-model-window waiting requirement' in text
+    assert 'mandatory pass order' in text and 'are editable' in text
+    assert 'Shared library bytes are immutable' not in text
+    # The selected-library treatment still needs its original verified staging.
+    options.compiler_access = 'selected_library'
+    with pytest.raises(ValueError, match='requires verified task staging'):
+        prompt.append_resource_guidance(ws, run, options)

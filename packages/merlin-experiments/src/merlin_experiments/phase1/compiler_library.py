@@ -75,7 +75,51 @@ def verify(request, environment, expected):
     return snapshot
 
 
-def append_guidance(workspace, run_dir, record, selection, *, repo=None, descriptor=None):
+def append_guidance(workspace, run_dir, record, selection, *, repo=None, descriptor=None,
+                    staging_record=None):
+    from .full_compiler_workspace import selected as full_selection
+    full = full_selection()
+    if full is not None:
+        text = (
+            "\n## Editable compiler source\n\n"
+            "The complete reviewed public compiler source tree is in `submission/compiler_library/`. "
+            "Edit frontend, graph transformations, dialects, scheduling, allocation, lowering and host code directly; "
+            "add implementation modules as needed. The target backend remains your authored implementation. "
+            "There is no required per-pass API menu or proof receipt for exploratory compiler calls. "
+            "You choose component ownership, construction order and useful tests; no fixed pass order, "
+            "first-capsule sequence or helper-count minimum is imposed by this guidance. Use up to 16 helpers "
+            "within the selected ceiling when independent work exists, sharing all 20 CPUs dynamically. "
+            "Evaluate useful independent cases concurrently against immutable snapshots while continuing "
+            "edits and integrating completed helper work; there is no all-153 prerequisite for larger cases. "
+            "Private numerical, ISA, timing and isolation grading uses independent evaluator code; editing "
+            "compiler-side checks does not edit those gates. Do not add CPU fallbacks to evade acceleration obligations.\n\n"
+            "Public source inventory and explicitly unavailable dependencies: `FULL_COMPILER_SOURCE_SELECTION.json`. "
+            "Unavailable private evaluators are not compiler dependencies you may read; use public interfaces "
+            "or implement the required compiler behavior. No known target backend or private performance reference is seeded.\n"
+        )
+        versions = (staging_record or {}).get('source_versions')
+        if versions is not None:
+            if (staging_record.get('selection') != full.record()
+                    or versions.get('baseline_manifest_sha256') != full.manifest_sha256):
+                raise ValueError('compiler staging version report belongs to another source selection')
+            serialized = json.dumps(versions, sort_keys=True, indent=2) + '\n'
+            for directory in (workspace, run_dir):
+                (directory / 'COMPILER_SOURCE_VERSIONS.json').write_text(serialized)
+            count = len(versions['preserved_differences'])
+            text += (
+                f"\nInitial source staging retained {count} member(s) different from the selected baseline. "
+                "Read `COMPILER_SOURCE_VERSIONS.json` when an advertised API is missing or behaves differently. "
+                "Retained source overrides take precedence; differences can be intentional author edits or older "
+                "implementations. Inspect the relevant definitions and migrate explicitly without overwriting "
+                "useful changes. This advisory describes initial staging, not the current evolving snapshot.\n"
+            )
+        details = json.dumps(full.record(), sort_keys=True, indent=2) + "\n"
+        (workspace / 'FULL_COMPILER_SOURCE_SELECTION.json').write_text(details)
+        (run_dir / 'FULL_COMPILER_SOURCE_SELECTION.json').write_text(details)
+        task = workspace / 'TASK.md'
+        task.write_text(task.read_text() + text)
+        (run_dir / 'TASK.md').write_bytes(task.read_bytes())
+        return
     if record is None:
         return
     from merlin_experiments.phase2.compiler_library_guidance import selected_inventory
@@ -320,10 +364,16 @@ def background_target(function):
 class _Mounts:
     argv: tuple[str, ...]
     env_prefix: str
+    workspace: Path | None = None
 
 
 def sandbox_overlay(parts, *, workspace, bundle, context, private_run_dir):
     """Reuse the same exact-leaf overlay before the final answer-mask pass."""
+    from . import full_compiler_workspace as full
+    editable = full.selected()
+    if editable is not None:
+        result = full.apply_policy(_Mounts(tuple(parts), "", Path(workspace)), editable)
+        return list(result.argv), result.env_prefix
     if active_compiler_library() is None:
         return parts, ""
     from merlin.targetgen.compiler_profile_admission import original_compiler_imports
@@ -333,10 +383,17 @@ def sandbox_overlay(parts, *, workspace, bundle, context, private_run_dir):
     else:
         if private_run_dir is None:
             raise ValueError("selected library overlay requires the original private run directory")
-        with original_compiler_imports(
-            workspace=workspace, bundle_manifest=private_run_dir / "input_bundle_manifest.yaml", repo=context.repo
-        ):
-            result = overlays.apply(_Mounts(tuple(parts), ""))
+        from merlin.common.bundle_snapshot import verified_snapshot_scope
+
+        # One assembly operation owns exact entry/exit verification. Nested
+        # import/profile/source inspections reuse only that live kernel-guarded
+        # scope, including after the optional persistent lease cache falls back
+        # to full reads. No authority survives this assembly call.
+        with verified_snapshot_scope(workspace, bundle, repo=context.repo):
+            with original_compiler_imports(
+                workspace=workspace, bundle_manifest=private_run_dir / "input_bundle_manifest.yaml", repo=context.repo
+            ):
+                result = overlays.apply(_Mounts(tuple(parts), ""))
     return list(result.argv), result.env_prefix
 
 

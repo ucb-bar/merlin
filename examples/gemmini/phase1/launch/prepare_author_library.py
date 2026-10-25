@@ -35,8 +35,12 @@ def prepare(
     declaration_sha256=None,
     reviewed_module=(),
     reviewed_rtl_discovery_dependencies=False,
+    reviewed_tensor_views=False,
+    library_version=8,
 ):
     repo, output = Path(repo).resolve(), Path(output).absolute()
+    if type(library_version) is not int or library_version not in (8, 16, 17, 18, 19):
+        raise ValueError("author library preparation requires explicit inventory version 8, 16, 17, 18 or 19")
     actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
     if actual != source_revision:
         raise ValueError("source revision must match the selected repository HEAD")
@@ -54,15 +58,20 @@ def prepare(
         python_source_root=repo / "src",
         license_directory=repo,
         tools=ARM_TOOLS["merlin_rtlchecks"],
-        version=8,
+        version=library_version,
         source_binding=True,
     )
-    if reviewed_shared_manifest(sdk, version=8) != manifest:
+    if reviewed_shared_manifest(sdk, version=library_version) != manifest:
         raise ValueError("shared SDK identity changed during preparation")
     members = {row.path: row for row in base.contract.members}
     requested = reviewed_discovery_modules(
         reviewed_module, existing=base.contract.public_modules,
         enabled=reviewed_rtl_discovery_dependencies,
+    )
+    requested = reviewed_view_modules(
+        requested, existing=base.contract.public_modules,
+        source_modules={member.module for member in base.contract.members},
+        enabled=reviewed_tensor_views,
     )
     additions = reviewed_modules(requested, existing=base.contract.public_modules)
     sources = {member.path: member.module for member in base.contract.members}
@@ -131,6 +140,8 @@ def prepare(
         "campaign_launched": False,
         "source_member_sha256": hashes,
     }
+    if library_version != 8:
+        report["library_inventory_version"] = library_version
     for name, value in [
         ("compiler-library-contract.json", selection.contract.record()),
         ("compiler-library-selection.json", selection.record()),
@@ -151,6 +162,26 @@ def reviewed_discovery_modules(modules, *, existing, enabled=False):
     dependency = "merlin.common.facts_view"
     if enabled and dependency not in existing and dependency not in requested:
         requested += (dependency,)
+    return requested
+
+
+def reviewed_view_modules(modules, *, existing, source_modules, enabled=False):
+    """Explicit next-library view normalization; never upgrade a frozen SDK.
+
+    Source closure must already include the structural witness owner. Ordinary
+    contract freezing verifies its transitive imports and exact member bytes.
+    Callable guidance is derived from the selected source AST, not this option.
+    """
+    if type(enabled) is not bool:
+        raise ValueError("reviewed tensor views requires an explicit Boolean")
+    requested = tuple(modules)
+    if not enabled:
+        return requested
+    leaf = "merlin.transforms.tensor_views"
+    if "merlin.transforms.certificates" not in set(source_modules) | set(requested):
+        raise ValueError("reviewed tensor views requires its certificates source owner")
+    if leaf not in existing and leaf not in requested:
+        requested += (leaf,)
     return requested
 
 
@@ -178,9 +209,15 @@ def main():
     for name in ("source-revision", "previous-sha256"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--generated-package", type=Path)
+    parser.add_argument("--library-version", type=int, choices=(8, 16, 17, 18, 19), default=8,
+                        help="prospective reviewed source inventory; existing library grants remain explicit")
     parser.add_argument(
         "--reviewed-rtl-discovery-dependencies", action="store_true",
         help="explicitly include reviewed merlin.common.facts_view for public RTL discovery imports",
+    )
+    parser.add_argument(
+        "--reviewed-tensor-views", action="store_true",
+        help="explicitly add static tensor-view canonicalization to the next reviewed library",
     )
     parser.add_argument(
         "--reviewed-module",

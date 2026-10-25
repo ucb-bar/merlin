@@ -67,3 +67,28 @@ def test_capability_restriction_preserves_prices_ordering_and_capacity(monkeypat
     after['target']['hardware']['optional_norm'] = 1
     with pytest.raises(ValueError, match='disable'):
         R._verify_capability_restriction(runtime(model), runtime(after), evidence)
+
+
+
+def test_descendant_profile_anchor_reopens_complete_reviewed_runtime_prefix(monkeypatch):
+    models={key:dict(libraries=[key],target={'prices':{'compute':40}})for key in ['old','new','next']}
+    opened=[]
+    def runtime(pin):
+        opened.append(pin['sha256']);return SimpleNamespace(model_json=json.dumps(models[pin['sha256']]))
+    monkeypatch.setattr(R.PERF,'_runtime',runtime)
+    monkeypatch.setattr(R.PERF,'_read',lambda pin:{'review':'pinned'})
+    old={'runtime':{'sha256':'old'},'members':[1],'timing_epochs':[]}
+    def revision(a,b):return dict(schema='merlin.runtime_implementation_revision.v1',previous={'sha256':a},
+        runtime={'sha256':b},evidence={},review_id='operator')
+    initial={**old,'runtime':{'sha256':'new'},'runtime_revisions':[revision('old','new')]}
+    R.validate(initial,copy.deepcopy(initial));assert opened==['old','new']
+    successor=copy.deepcopy(initial);successor.update(runtime={'sha256':'next'})
+    successor['runtime_revisions'].append(revision('new','next'))
+    R.validate(initial,successor)
+    models['old']['target']['prices']['compute']=12
+    with pytest.raises(ValueError,match='prices'):R.validate(initial,successor)
+    models['old']['target']['prices']['compute']=40
+    damaged=copy.deepcopy(initial);damaged['runtime']={'sha256':'next'}
+    with pytest.raises(ValueError,match='endpoint'):R.validate(damaged,initial)
+    damaged=copy.deepcopy(successor);damaged['runtime_revisions'][0]['review_id']='replaced-history'
+    with pytest.raises(ValueError,match='prefix'):R.validate(initial,damaged)

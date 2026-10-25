@@ -21,6 +21,31 @@ from . import public_scalability as S
 from .preparation import copy_input, ordinary_tree
 
 
+def check_convolution_metadata(capsule: dict, source: Path) -> None:
+    """Reject stale duplicated dimensions before independent golden generation.
+
+    The written public interface is the source of this comparison. This check
+    never repairs a capsule, consults a candidate or changes numerical policy.
+    """
+    if capsule.get("operation", {}).get("op") != "conv2d":
+        return
+    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+    program = parse_interface_mlir(source.read_text())
+    commands = [row for row in program["commands"] if row["opcode"] == "CONV2D"]
+    if len(commands) != 1:
+        raise ValueError("convolution metadata requires one complete written convolution")
+    written = commands[0]["attributes"]
+    metadata = capsule["operation"]["attributes"]
+    kernel = written["kernel"]
+    for key, value in zip(("kh", "kw", "ci", "co"), kernel, strict=True):
+        if key in metadata and metadata[key] != value:
+            raise ValueError(f"convolution metadata {key} differs from written source kernel")
+    for key in ("kernel", "stride", "padding", "dilation", "layout", "epilogue", "output_dtype", "bias"):
+        if key in metadata and key in written and metadata[key] != written[key]:
+            raise ValueError(f"convolution metadata {key} differs from written source")
+
+
 def prepare(sources: list[Path], destination: Path, *, target: str, evidence, evidence_root: Path) -> Path:
     """Recompute selected placement, retain mathematical bytes, and pin all inputs."""
     if not sources or len(sources) > 512 or destination.exists():
@@ -31,6 +56,8 @@ def prepare(sources: list[Path], destination: Path, *, target: str, evidence, ev
         source = source.absolute()
         ordinary_tree(source)
         original = load_capsule(source)
+        if original.get("interface_mlir"):
+            check_convolution_metadata(original, source / original["interface_mlir"])
         name = original["name"]
         if name in names or original.get("label") not in {"public", "dev"} or original.get("kind") == "model":
             raise ValueError("scalability source must be a unique public capsule, not a full model")

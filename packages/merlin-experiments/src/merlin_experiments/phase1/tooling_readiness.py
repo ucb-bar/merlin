@@ -178,10 +178,13 @@ def _sandbox_probe(
     common_profile_sha256: str | None = None,
     common_modules: tuple[str, ...] | None = None,
 ) -> str:
+    from .feedback import snapshot_execution
+    external = snapshot_execution.selected()
     has = set(tools)
     lines = ["import json, subprocess, sys"]
-    lines += _selected_library_probe().splitlines()
-    if common_substrate:
+    if not external:
+        lines += _selected_library_probe().splitlines()
+    if common_substrate and not external:
         from merlin.targetgen.tool_profile import COMMON_PUBLIC_MODULES
 
         lines += ["import importlib"]
@@ -322,7 +325,8 @@ def public_probe_session(
                 argv += ["--rtl-facts", str(selected_facts)]
             with (channel / spec.log).open("w", encoding="utf-8") as log:
                 processes.append(subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT))
-        if bundle.get("compiler_tool_profile") is not None:
+        from .feedback import snapshot_execution
+        if bundle.get("compiler_tool_profile") is not None and not snapshot_execution.selected():
             from .context import context_argv
 
             authority = Path(
@@ -438,7 +442,8 @@ def assess(
             )
         )
         checks += _grant_checks(te, bundle, selected)
-        if profile is not None:
+        from .feedback import snapshot_execution
+        if profile is not None and not snapshot_execution.selected():
             from merlin.targetgen.tool_profile import verify_tool_profile
 
             verified_profile = verify_tool_profile(bundle, tools=selected)

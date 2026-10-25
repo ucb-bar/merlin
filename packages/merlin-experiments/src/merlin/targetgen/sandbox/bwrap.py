@@ -1259,17 +1259,25 @@ def _frozen_answer_surfaces(
         # Only the frozen tree contributes filesystem classifications here;
         # live surfaces and descriptor roots are explicit parts of the key.
         # Dynamic live-answer discovery still runs independently before this.
+        # Arm path/marker watches BEFORE resolving the records. Reuse that
+        # per-call resolution only if the same guard survives up to consumption.
+        # No guard means the original fresh second reader remains mandatory.
+        frozen_root = bundle_snapshot_root(ws)
+        declaration_facts = capsules.inventory.tree(frozen_root)
         manifest, grants = _snapshot_grants(ws, bundle, repo)
         key = ('frozen_answers', repo, te.capsule_corpus, tuple(te.corpus_siblings()),
                tuple(contract_resource_roots(repo, 'capsules')),
                tuple(contract_resource_roots(repo, 'examples')), tuple(live),
                tuple(grants), manifest['content_sha256'])
         return capsules.derived(key, (bundle_snapshot_root(ws),),
-                                lambda: _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules))
+                                lambda: _classify_frozen_answer_surfaces(
+                                    ws, bundle, te, live, repo, capsules,
+                                    grants=(grants if declaration_facts is not None
+                                            and capsules.inventory.tree(frozen_root) is declaration_facts else None)))
     return _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules)
 
 
-def _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules):
+def _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules, *, grants=None):
     """Classify answer bytes in pinned public grants, independent of mutable live sources.
 
     The snapshot marker fixes grant destinations and sources. Walking only its
@@ -1278,7 +1286,11 @@ def _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules):
     A live golden removed after freezing must still be denied at both its public
     grant destination and any late runtime alias of the snapshot source.
     """
-    _, grants = _snapshot_grants(ws, bundle, repo)
+    # The metadata owner already validated these exact immutable declarations
+    # under the same unchanged path/marker guard. Reuse only within this call,
+    # not across snapshots or callers; byte custody remains external.
+    if grants is None:
+        _, grants = _snapshot_grants(ws, bundle, repo)
     corpus_roots = list(contract_resource_roots(repo, "capsules"))
     if te.capsule_corpus is not None:
         corpus_roots.extend((te.capsule_corpus.parent, te.capsule_corpus))

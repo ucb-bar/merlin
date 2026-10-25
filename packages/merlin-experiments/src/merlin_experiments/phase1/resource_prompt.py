@@ -160,7 +160,9 @@ def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budg
         from . import joint_control
 
         joint = joint_control.selected() is not None
-        if joint and task_staging_config is None:
+        full = (getattr(options, "compiler_access", None) == "full_compiler"
+                and getattr(options, "compiler_execution", None) == "snapshot_external_v1")
+        if joint and task_staging_config is None and not full:
             raise ValueError("joint resource guidance requires verified task staging")
         selected_block = ""
         if task_staging_config is not None:
@@ -199,6 +201,17 @@ def render_joint_resource_block(options) -> str:
     """Describe actual native admission classes, not a fictitious user knob."""
     compute = grading_cpus()
     author = parse_roster(os.environ.get("MERLIN_CODEX_CPUS", ""))
+    full = (getattr(options, "compiler_access", None) == "full_compiler"
+            and getattr(options, "compiler_execution", None) == "snapshot_external_v1")
+    physical_limits = "The separate gSIM witness and two-job limits still apply."
+    if full:
+        from . import joint_control
+        joint = joint_control.selected()
+        policy = (joint or {}).get("policy", {})
+        witness = policy.get("gsim", {}).get("max_jobs", "selected policy")
+        correctness = policy.get("gsim_correctness", {}).get("max_jobs", "selected policy")
+        physical_limits = (f"Selected gSIM concurrency ceilings: calibration witnesses {witness}; "
+                           f"required correctness {correctness}. Question/worker budgets still apply.")
     return (
         "\n\n## Joint shared CPU scheduling\n\n"
         f"Author/helper affinity: `{','.join(map(str, author))}`; "
@@ -208,8 +221,7 @@ def render_joint_resource_block(options) -> str:
         "Author processes share their affinity; helpers receive no additional cores. "
         f"Native simulation concurrency ceiling: {getattr(options, 'sim_max_jobs', 0)}; "
         f"author/helper ceiling: {getattr(options, 'codex_max_subagents', None)}. "
-        "These are ceilings, not counts of running work. The separate gSIM witness and "
-        "two-job limits still apply.\n\n"
+        "These are ceilings, not counts of running work. " + physical_limits + "\n\n"
         "The native scheduler serves author-requested checks first (priority 1), "
         "background grading second (2), preparation third (3), and advisory probes last (4). "
         "Waiting jobs are FIFO within a class; running leases are not preempted. "

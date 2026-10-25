@@ -270,3 +270,59 @@ def test_an_invalid_capsule_bound_refuses(monkeypatch):
         B._feedback_scope_error({"capsules": "A"})
     monkeypatch.delenv("MERLIN_SELFCHECK_MAX_CAPSULES")
     assert B._feedback_scope_error({"capsules": "all"}) is None
+
+
+def test_campaign_deadline_bounds_conservative_suite_budget(monkeypatch):
+    from merlin_experiments.phase1 import joint_control
+    monkeypatch.setattr(joint_control, "selected", lambda: {"selected": True})
+    monkeypatch.setattr(joint_control, "remaining", lambda **kw: 12.)
+    assert B._child_deadline_monotonic({"deadline_unix_ns": 999_000_000_000},
+        now_wall=100., now_monotonic=500.) == 512.
+    assert B._child_deadline_monotonic({"deadline_unix_ns": 105_000_000_000},
+        now_wall=100., now_monotonic=500.) == 505.
+
+
+@pytest.mark.parametrize("action", ["common-transform", "common-check"])
+def test_prelaunch_common_tools_keep_client_deadline(monkeypatch, action):
+    from merlin_experiments.phase1 import joint_control
+    monkeypatch.setattr(joint_control, "selected", lambda: {"started_at_epoch": None})
+    def not_started(**kwargs):
+        raise RuntimeError("joint author clock has not started")
+    monkeypatch.setattr(joint_control, "remaining", not_started)
+    request = {"action": action, "deadline_unix_ns": 105_000_000_000}
+    assert B._child_deadline_monotonic(request, now_wall=100., now_monotonic=500.) == 505.
+    # Capsule work remains refused until the clock has actually started.
+    with pytest.raises(RuntimeError, match="clock has not started"):
+        B._child_deadline_monotonic({"action": "selfcheck"}, now_wall=100., now_monotonic=500.)
+
+
+def test_dispatcher_reaps_handler_blocked_before_its_own_poll(tmp_path, monkeypatch):
+    """A real child stalls in preparation, never entering the handler main loop."""
+    ws = tmp_path / "workspace"; ch = ws / ".qa_channel"; ch.mkdir(parents=True)
+    monkeypatch.setenv("MERLIN_SELFCHECK_ORDINARY_JOBS", "1")
+    monkeypatch.delenv("MERLIN_JOINT_CAMPAIGN_STATE", raising=False)
+    first = request(ch, "blocked", deadline_unix_ns=time.time_ns() + 1_000_000_000)
+    second = request(ch, "next")
+    arrival = time.time()
+    os.utime(first, (arrival - 1, arrival - 1))
+    launched = []
+    def command(a, context, capsules_root, contract, promotion_root, req, stop, **kwargs):
+        launched.append(req.name)
+        if req == first:
+            return [sys.executable, "-c", "import time; time.sleep(30)"]
+        # A later independent request must be admitted after the original tree
+        # is reaped; its durable completion must not be replaced by an error.
+        return [sys.executable, "-c", "from pathlib import Path; import sys; "
+                "p=Path(sys.argv[1]); (p/'resp_next.json').write_text('{\"all_pass\":false}'); "
+                "(p/'done_next').write_text('ok'); (p/'STOP').touch()", str(ch)]
+    monkeypatch.setattr(B, "_handler_command", command)
+    a = SimpleNamespace(ws=ws, poll=.01, rtl_facts=None, compiler_bundle_manifest=None)
+    started = time.monotonic()
+    B._dispatch_requests(a, SimpleNamespace(), tmp_path, None, None)
+    assert time.monotonic() - started < 8
+    assert launched == [first.name, second.name]
+    failed = json.loads((ch / "resp_blocked.json").read_text())
+    assert failed["all_pass"] is False and "timed out" in failed["error"]
+    assert failed["request_lifecycle"]["status"] == "aborted"
+    assert "n_passed" not in failed and "tiers" not in failed
+    assert json.loads((ch / "resp_next.json").read_text()) == {"all_pass": False}

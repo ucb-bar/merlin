@@ -985,6 +985,7 @@ def _stage_capability_contract(
     operand_selection=None,
     operand_revision=None,
     kernel_timing_selection=None,
+    logical_storage_budget_bytes=None,
 ):
     """Record closed execution selections separately from original Phase 0 bytes."""
     from merlin.common.digest import sha256_file
@@ -998,6 +999,7 @@ def _stage_capability_contract(
         and operand_selection is None
         and operand_revision is None
         and kernel_timing_selection is None
+        and logical_storage_budget_bytes is None
     ):
         return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
     if operand_revision is not None and operand_selection is None:
@@ -1008,6 +1010,7 @@ def _stage_capability_contract(
     try:
         selected = read_yaml(source)
         timing_record = None
+        storage_record = None
         if kernel_timing_selection is not None:
             from .kernel_timing_selection import select
 
@@ -1018,6 +1021,10 @@ def _stage_capability_contract(
             selected = rocc_selection.select_model_spike_timeout(selected, model_spike_timeout_s)
         if gsim_readback_transport is not None:
             selected = rocc_selection.select_gsim_readback(selected, gsim_readback_transport)
+        if logical_storage_budget_bytes is not None:
+            from .storage_budget_selection import select as select_storage
+
+            selected, storage_record = select_storage(selected, logical_storage_budget_bytes)
         if operand_selection is not None:
             select = (
                 rocc_selection.relocate_operand_protocol
@@ -1040,6 +1047,8 @@ def _stage_capability_contract(
         raise SpecError("selected original contract changed during execution selection")
     record = {"path": str(source), "sha256": expected_sha256}
     selected_sha256 = sha256_file(destination)
+    if storage_record is not None:
+        record["logical_storage_selection"] = {**storage_record, "selected_contract_sha256": selected_sha256}
     if timing_record is not None:
         record["kernel_timing_selection"] = {**timing_record, "selected_contract_sha256": selected_sha256}
     if native_timeout_s is not None:
@@ -1117,6 +1126,7 @@ def scaffold(
     operand_protocol_selection: tuple[Path, str] | None = None,
     operand_protocol_revision: tuple[Path, str] | None = None,
     kernel_timing_selection: tuple[Path, str] | None = None,
+    logical_storage_budget_bytes: int | None = None,
     operator_public_members: tuple[str, ...] = (),
     public_scalability: dict | None = None,
     public_reference_manifest: Path | None = None,
@@ -1250,6 +1260,7 @@ def scaffold(
             operand_selection=operand_selection,
             operand_revision=operand_revision,
             kernel_timing_selection=kernel_timing_selection,
+            logical_storage_budget_bytes=logical_storage_budget_bytes,
         )
         hardware["target_contract"] = str(staged_contract)
         inputs["capability_contract"] = contract_record
@@ -1261,6 +1272,7 @@ def scaffold(
         or gsim_readback_transport is not None
         or operand_selection is not None
         or kernel_timing_selection is not None
+        or logical_storage_budget_bytes is not None
     ):
         raise SpecError("execution selection requires an original Phase 0 contract")
     hardware_root = None

@@ -20,6 +20,9 @@ def register(result, *, result_path, compiler, capsules_root, contract):
     state = joint_control.selected()
     if state is None or not state['policy'].get('native_calibration'):
         return None
+    from ..joint_calibration_eligibility import eligible
+    if not eligible(result):
+        return None
     tier = result.get('tiers', {}).get('L2', {})
     if (result.get('label') not in {'public', 'dev'}
             or result.get('numeric', {}).get('status') != 'pass'

@@ -160,6 +160,50 @@ def test_main_selfcheck_does_not_count_legacy_screen_or_publish_legacy_artifacts
     assert SENTINEL not in json.dumps(report)
 
 
+@pytest.mark.parametrize("owned", [False, True])
+def test_owned_model_timing_is_advisory_while_required_physical_tier_is_pending(
+    tmp_path, monkeypatch, capsys, owned
+):
+    from merlin_experiments.phase1.feedback import joint_performance
+
+    monkeypatch.chdir(tmp_path)
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("{}")
+    corpus = tmp_path / "public"
+    _write_public_capsule(corpus, kind="model")
+    monkeypatch.setattr(selfcheck, "_adapters", lambda *a: ({"L3": object()}, "gsim"))
+    monkeypatch.setattr(selfcheck, "_target_sim_via", lambda *a: ("fixture", "chipyard"))
+    monkeypatch.setattr(selfcheck.CR, "suite_for", lambda *a: "fixture-suite")
+    monkeypatch.setattr(selfcheck, "_log_telemetry", lambda *a: None)
+    result = _candidate_result()
+    if owned:
+        result["owned_host_native_execution"] = {"status": "verified"}
+    calls = []
+
+    def grade(_submission, *, runs_root, **_kwargs):
+        _write_result(Path(runs_root), result)
+        return {"n_capsules": 1, "n_passed": 0, "per_capsule": [{"capsule": "model_case", "status": "incomplete"}]}
+
+    def attach(row, root, **kwargs):
+        calls.append((root, kwargs))
+        row["performance"] = {"status": "PROVISIONAL", "timing_qualified": False}
+
+    monkeypatch.setattr(selfcheck.CG, "grade", grade)
+    monkeypatch.setattr(joint_performance, "attach", attach)
+    code = selfcheck.main(["--sim", "gsim", "--submission", str(submission)],
+                          context=_context(tmp_path), capsules_root=corpus, contract=data_path("contract"))
+    report = json.loads(capsys.readouterr().out)
+    assert code == 1 and report["n_certified"] == 0
+    assert len(calls) == int(owned)
+    if owned:
+        assert calls[0][0].name == "generated"
+        assert calls[0][1]["capsule"]["name"] == "model_case"
+        assert calls[0][1]["result"] == result
+        assert report["per_capsule"][0]["performance"]["status"] == "PROVISIONAL"
+    assert SENTINEL not in json.dumps(report)
+
+
 @pytest.mark.parametrize(
     ("l2_status", "l3_status", "l3_log", "expected_tier", "expected_tail", "unreadable"),
     [

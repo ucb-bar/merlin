@@ -22,6 +22,30 @@ def _mapping(value):
     return value
 
 
+def _compiler_snapshot(root, source, expected):
+    """Resolve only the two original compiler-source capture layouts.
+
+    V2 shares one snapshot at the owning result directory, outside individual
+    ``runs/<suite>/<capsule>/generated`` products. An absolute path alone never
+    grants access to another request's tree. Payload bounds and its complete
+    original hash are checked by the caller for both layouts.
+    """
+    schema = source.get("schema", "merlin.capsule_compiler_source.v1")
+    relative = "compiler-source/" + expected
+    if schema == "merlin.capsule_compiler_source.v1":
+        if source.get("snapshot") != relative:
+            raise ValueError("original source snapshot identity is absent or malformed")
+        return root / relative
+    if schema == "merlin.capsule_compiler_source.v2":
+        if root.name != "generated" or len(root.parents) < 4 or root.parents[2].name != "runs":
+            raise ValueError("shared compiler source lacks its original result owner")
+        snapshot = root.parents[3] / relative
+        if source.get("snapshot") != str(snapshot):
+            raise ValueError("shared compiler source belongs to another result owner")
+        return snapshot
+    raise ValueError("unsupported original compiler source schema")
+
+
 def _preflight_retained(root):
     """Bound the complete namespace before the original collector reads payloads."""
     namespace, files, total, records, entries = E._root(root), {}, 0, [], 0
@@ -124,10 +148,10 @@ def _reopen_execution_products(root, grade, *, compiler=None, candidate_sha256=N
         return hash_tree(path)["sha256"]
 
     expected = source.get("candidate_sha256")
-    if (not isinstance(expected, str) or len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected)
-            or source.get("snapshot") != "compiler-source/" + expected):
+    if (not isinstance(expected, str) or len(expected) != 64
+            or any(c not in "0123456789abcdef" for c in expected)):
         raise ValueError("original source snapshot identity is absent or malformed")
-    snapshot = root / source["snapshot"]
+    snapshot = _compiler_snapshot(root, source, expected)
     if bounded_source_tree(snapshot) != expected:
         raise ValueError("original compiler source snapshot changed")
     if compiler is not None:

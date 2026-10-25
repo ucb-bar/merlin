@@ -165,6 +165,7 @@ class CapsuleMetadata:
         self.inventory = GuardedInventory()
         self._derived = {}
         self._derived_lock = threading.RLock()
+        self._derived_flights = {}
 
     def derived(self, key, roots, compute):
         """Reuse root-bounded classification only under unchanged exact tree facts.
@@ -187,20 +188,39 @@ class CapsuleMetadata:
                 facts.append(tree)
             return tuple(facts)
 
-        with self._derived_lock:
-            before = observe()
-            cached = self._derived.get(key)
-            if (before is not None and cached is not None and cached[0] == roots
-                    and all(a is b for a, b in zip(before, cached[1], strict=True))):
-                return list(cached[2])
-            result = compute()
-            after = observe() if before is not None else None
-            if (after is not None and all(a is b for a, b in zip(before, after, strict=True))
-                    and len(self._derived) < 64):
-                self._derived[key] = roots, after, tuple(result)
-            else:
+        # Unsupported trees cannot produce a reusable result. Do not serialize
+        # their fresh traversals behind unrelated mask classifications.
+        if observe() is None:
+            with self._derived_lock:
                 self._derived.pop(key, None)
-            return result
+            return compute()
+        with self._derived_lock:
+            flight = self._derived_flights.setdefault(key, [threading.RLock(), 0])
+            flight[1] += 1
+        try:
+            # Coalesce one exact classification only. The map lock never wraps
+            # filesystem work, callbacks, or another classification's wait.
+            with flight[0]:
+                before = observe()  # Recheck after waiting for this key.
+                with self._derived_lock:
+                    cached = self._derived.get(key)
+                if (before is not None and cached is not None and cached[0] == roots
+                        and all(a is b for a, b in zip(before, cached[1], strict=True))):
+                    return list(cached[2])
+                result = compute()
+                after = observe() if before is not None else None
+                with self._derived_lock:
+                    if (after is not None and all(a is b for a, b in zip(before, after, strict=True))
+                            and len(self._derived) < 64):
+                        self._derived[key] = roots, after, tuple(result)
+                    else:
+                        self._derived.pop(key, None)
+                return result
+        finally:
+            with self._derived_lock:
+                flight[1] -= 1
+                if not flight[1]:
+                    del self._derived_flights[key]
 
     def load(self, directory: Path) -> object:
         """The parsed ``directory/capsule.yaml`` (``{}`` when absent), exactly as the classifier reads it."""

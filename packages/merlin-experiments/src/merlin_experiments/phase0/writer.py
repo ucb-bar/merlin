@@ -77,6 +77,11 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
     semantics = entry.get("numerical_semantics") or {}
     operation = cap["operation"]
     op, attrs = operation["op"], operation.get("attributes") or {}
+    if op == "spatial_producer_pool":
+        producer = attrs.get("producer") or {}
+        if producer.get("op") != "conv2d":
+            raise ValueError("spatial pair lacks its original source convolution")
+        return _integer_reference_bound(entry, {**cap, "operation": producer})
     if op == "component_program":
         from .component_execution_budget import source_for_capsule
         from .component_integer_bounds import derive
@@ -113,6 +118,13 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
             rhs_values=[int(v) for v in rhs.data],
             initial_values=initial_values,
         )
+        if result["status"] == "may_overflow":
+            from merlin.targetgen.operation_numerics import integer_matrix_partial_sum_bound
+
+            result = integer_matrix_partial_sum_bound(
+                semantics, lhs_shape=lhs.shape, rhs_shape=rhs.shape,
+                lhs_values=lhs.data, rhs_values=rhs.data, initial_values=initial_values,
+            )
         if result["status"] != "proven_safe":
             raise ValueError(f"integer mathematical golden cannot qualify selected internal MAC width: {result}")
         return result
@@ -236,6 +248,18 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
         rhs_values=[int(v) for v in rhs.data],
         initial_values=initial,
     )
+    if result["status"] == "may_overflow" and op == "conv2d":
+        from merlin.targetgen.operation_numerics import integer_matrix_partial_sum_bound
+
+        patches = CG.im2col(
+            lhs, int(attrs["ci"]), int(attrs["kh"]), int(attrs["kw"]),
+            stride=attrs["stride"], padding=attrs["padding"],
+            dilation=attrs.get("dilation", [1, 1]), layout=attrs.get("layout", "nhwc"),
+        )
+        result = integer_matrix_partial_sum_bound(
+            semantics, lhs_shape=patches.shape, rhs_shape=rhs.shape,
+            lhs_values=patches.data, rhs_values=rhs.data, initial_values=initial,
+        )
     if result["status"] != "proven_safe":
         raise ValueError(f"integer mathematical golden cannot qualify selected internal MAC width: {result}")
     return result

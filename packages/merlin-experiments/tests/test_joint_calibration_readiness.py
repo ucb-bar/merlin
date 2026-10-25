@@ -1,6 +1,7 @@
 import pytest
 from merlin_experiments.phase1 import joint_calibration_readiness as R
 from merlin_experiments.phase1 import joint_calibration as C
+from test_joint_calibration_eligibility import valid_grade
 
 
 def fixture(monkeypatch):
@@ -9,9 +10,8 @@ def fixture(monkeypatch):
         n: {'capsule_sha256':R.PERF.capsule_identity(c)} for n,c in caps.items()})
     profile = dict(members={n:{'source_group_sha256':n} for n in caps}, parameters=[])
     monkeypatch.setattr(C, '_capsule', lambda pin: caps[pin['path']])
-    monkeypatch.setattr(R.PERF, '_read', lambda pin: dict(numeric={'status':'pass'},
-        tiers={'L2':{'status':'pass','engine':'spike'}}, compiler_source={'sha256':'native'}))
-    rows = [dict(id=str(i), capsule={'path':'a'}, result={}, compiler_sha256=c,
+    monkeypatch.setattr(R.PERF, '_read', lambda pin: valid_grade(source=pin['compiler']))
+    rows = [dict(id=str(i), capsule={'path':'a'}, result={'compiler':c}, compiler_sha256=c,
                  source_group_sha256='a') for i,c in enumerate(('c1','c2'))]
     return profile, selection, rows
 

@@ -158,6 +158,13 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                         expected_contract = revise(expected_contract, operand_selection, revision_pin)
                     else:
                         expected_contract = select(expected_contract, operand_selection)
+                if ((released.get("logical_harness") or {}).get("storage_budget_bytes")
+                    != (expected_contract.get("logical_harness") or {}).get("storage_budget_bytes")):
+                    from ..corpus.storage_budget_selection import reconcile
+
+                    preparation_path = te.path.parent.parent.parent / "private/preparation.json"
+                    expected_contract = reconcile(expected_contract, released,
+                        json.loads(preparation_path.read_bytes()), path)
                 if (released.get("logical_harness") or {}).get("kernel_call_timing") is not None:
                     from merlin.common.digest import sha256_file
 
@@ -187,6 +194,10 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
         verify_tool_profile,
     )
 
@@ -200,6 +211,10 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
     }:
         return paths
     root = te._source_root().absolute()

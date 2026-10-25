@@ -1021,6 +1021,21 @@ def main(
                         claimed.add(jid)
                         continue
                     source_identity_verified = True
+                from ..feedback.construction_plan import admit as admit_construction_plan, PlanRequired
+                try:
+                    construction_admission = admit_construction_plan(
+                        submission, r, request_id=jid, channel="simjob")
+                except (PlanRequired, ValueError) as error:
+                    _release_veril_workers(slots)
+                    shutil.rmtree(snapshot_root, ignore_errors=True)
+                    (ch / f"simresp_{jid}.json").write_text(json.dumps({
+                        "status": "not_scheduled", "all_pass": False,
+                        "numeric_assessment": "not_run", "error": str(error)}))
+                    (ch / f"simerr_{jid}").write_text("construction plan required")
+                    claimed.add(jid)
+                    continue
+                if construction_admission is not None:
+                    (ch / f"construction_plan_sim_{jid}.json").write_text(json.dumps(construction_admission))
                 capspec = "all" if caps == ["all"] else ",".join(caps)
                 launched_source_digest = _TP._submission_digest(snapshot_root)
                 launched_instrument = _TP.cert_instrument(_CERT_TIER, context=context) if r.get("promoted") else None
@@ -1106,7 +1121,13 @@ def main(
                 # per-job, beside the response, so a failure can be read after the fact.
                 job_log = (ch / f"simlog_{jid}.txt").open("wb")
                 try:
-                    proc = _spawn_selfcheck(argv2, cwd=ws, env=_sim_env(context), job_log=job_log, timeout_s=to)
+                    # Broker-owned frozen source/full policy root only. Requests cannot
+                    # provide a gate counter, record path or narrower denominator.
+                    from ..feedback.rolling_model_gate import broker_environment
+                    worker_env = _sim_env(context)
+                    worker_env.update(broker_environment(
+                        ws, promotion_capsules_root or capsules_root, snapshot_root / "submission"))
+                    proc = _spawn_selfcheck(argv2, cwd=ws, env=worker_env, job_log=job_log, timeout_s=to)
                 except Exception:
                     job_log.close()
                     _release_veril_workers(slots)

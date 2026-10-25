@@ -376,22 +376,21 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     monkeypatch.setattr(LG, "readback_kwargs", lambda _: {})
     monkeypatch.setattr(LG, "_record_plateau", lambda *a, **kw: None)
     monkeypatch.setattr(LG.FL, "record_channel_health", lambda *a: None)
-    from merlin_experiments.phase1.feedback import promotion, qa
+    from merlin_experiments.phase1.feedback import promotion, qa, public_scalability
+    monkeypatch.setattr(public_scalability, "selected", lambda context: None)
 
     from merlin.targetgen import capsule_grade as CG
 
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **k: (None, None, None))
     monkeypatch.setattr(
         qa, "_per_capsule_from_results", lambda *a: {name: {"status": "pass", "tiers": {"L2": "pass"}}
-            for name in (["finished", "queued"] if bounded_joint else ["finished"])}
+            for name in ["finished"]}
     )
 
     def grade(*args, **kwargs):
         (ws / "submission/manifest.yaml").write_text("language: python\nrevision: replaced\n")
-        assert kwargs["defer_pending"]() == (None if bounded_joint else "background source superseded")
+        assert kwargs["defer_pending"]() == "background source superseded"
         assert kwargs["defer_running"] is False
-        if bounded_joint:
-            return {"per_capsule": [{"capsule": "queued", "status": "pass", "tiers": {"L2": "pass"}}]}
         return {
             "per_capsule": [
                 {"capsule": "queued", "status": "gated", "background_deferred": "background source superseded"}
@@ -403,8 +402,7 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     assert result["n_capsules"] == 2 and result["all_pass"] is None
     assert result["background_grade"]["status"] == ("superseded_snapshot" if bounded_joint else "deferred")
     assert result["current_source_n_passed"] is None
-    if bounded_joint:
-        assert result["n_passed"] == 2
+    assert result["n_passed"] == 1
     assert result["snapshot_current"] is False
     assert json.loads((ws / "qa/verdict.json").read_text()) == {"current_feedback": True}
     archived = json.loads((run / "qa_history/verdict_fast_900.json").read_text())
@@ -412,7 +410,7 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     assert archived["graded_request_sha256"] == result["graded_request_sha256"]
 
 
-def test_bounded_snapshot_finishes_after_edits_but_honors_campaign_deadline(tmp_path, monkeypatch):
+def test_bounded_snapshot_stops_new_admission_after_edits_and_honors_deadline(tmp_path, monkeypatch):
     from merlin_experiments.phase1 import joint_control
 
     ws = tmp_path / "workspace"
@@ -424,7 +422,7 @@ def test_bounded_snapshot_finishes_after_edits_but_honors_campaign_deadline(tmp_
     source.write_text("new")
     monkeypatch.setattr(joint_control, "remaining", lambda: 10)
     assert guard.reason() == "background source superseded"
-    assert guard.pending_reason() is None
+    assert guard.pending_reason() == "background source superseded"
     assert not guard.current()
     monkeypatch.setattr(joint_control, "remaining", lambda: 0)
     assert guard.pending_reason() == "joint campaign deadline reached"
@@ -433,3 +431,99 @@ def test_bounded_snapshot_finishes_after_edits_but_honors_campaign_deadline(tmp_
     monkeypatch.setattr(joint_control, "stop_reason", lambda: "reviewed evaluator epoch handoff")
     assert guard.pending_reason() == "reviewed evaluator epoch handoff"
     assert guard.reason() == "background source superseded"
+
+
+def test_pending_admission_ignores_inert_notes_but_stops_for_real_dependencies(tmp_path, monkeypatch):
+    import shutil
+    from merlin_experiments.phase1 import joint_control
+    from merlin_experiments.phase1.feedback import promotion
+
+    monkeypatch.setenv("MERLIN_BACKGROUND_FINISH_SNAPSHOT", "1")
+    monkeypatch.setattr(joint_control, "remaining", lambda: 100)
+    monkeypatch.setattr(joint_control, "stop_reason", lambda: None)
+    ws = tmp_path / "workspace"
+    source = ws / "submission"
+    source.mkdir(parents=True)
+    (source / "manifest.yaml").write_text(
+        "language: python\ncommands:\n  parse:\n    argv: [python3, compiler.py]\n"
+        "components:\n  parse: [compiler.py, helper.py]\n")
+    (source / "compiler.py").write_text("import helper\nprint(helper.VALUE)\n")
+    (source / "helper.py").write_text("VALUE=1\n")
+    (source / "NOTES.md").write_text("plan one\n")
+    candidate = tmp_path / "snapshot" / "submission"
+    shutil.copytree(source, candidate)
+    guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws),
+                                      finish_bounded_snapshot=True)
+    guard.bind_snapshot(candidate)
+    original = promotion.submission_digests
+    calls = []
+    def counted(path):
+        calls.append(path)
+        return original(path)
+    monkeypatch.setattr(promotion, "submission_digests", counted)
+    assert guard.pending_reason() is None
+    assert guard.pending_reason() is None
+    assert len(calls) == 1  # unchanged refill does not hash source or acquire a CPU lease
+    (source / "NOTES.md").write_text("plan two\n")
+    assert guard.pending_reason() is None
+    assert not guard.current()  # no reattribution of old results to changed bytes
+    old = (source / "helper.py").stat()
+    (source / "helper.py").write_text("VALUE=2\n")
+    os.utime(source / "helper.py", ns=(old.st_atime_ns, old.st_mtime_ns))
+    assert guard.pending_reason() == "background source superseded"
+    (source / "helper.py").write_text("VALUE=1\n")
+    assert guard.pending_reason() == "background source superseded"  # closed queue stays closed
+    assert (candidate / "helper.py").read_text() == "VALUE=1\n"
+
+
+def test_pending_dependency_binding_uses_copied_snapshot_and_unknown_falls_back(tmp_path):
+    import shutil
+    ws = tmp_path / "workspace"
+    source = ws / "submission"
+    source.mkdir(parents=True)
+    (source / "manifest.yaml").write_text("language: unknown\n")
+    (source / "config.json").write_text('{"mode": 1}')
+    candidate = tmp_path / "snapshot" / "submission"
+    shutil.copytree(source, candidate)
+    guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws))
+    (source / "config.json").write_text('{"mode": 2}')
+    guard.bind_snapshot(candidate)
+    assert guard.pending_reason() == "background source superseded"
+
+
+def test_real_dependency_change_drains_running_queue_without_dropping_obligations(tmp_path, monkeypatch):
+    import shutil
+    from merlin_experiments.phase1 import joint_control
+
+    monkeypatch.setattr(joint_control, 'remaining', lambda: 100)
+    monkeypatch.setattr(joint_control, 'stop_reason', lambda: None)
+    ws = tmp_path / 'workspace'
+    source = ws / 'submission'
+    source.mkdir(parents=True)
+    (source / 'manifest.yaml').write_text('language: python\ncommands:\n  parse:\n    argv: [python3, compiler.py]\n')
+    program = source / 'compiler.py'
+    program.write_text('value=1\n')
+    candidate = tmp_path / 'snapshot' / 'submission'
+    shutil.copytree(source, candidate)
+    guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws),
+                                      finish_bounded_snapshot=True)
+    guard.bind_snapshot(candidate)
+    started = threading.Barrier(2)
+    changed = threading.Event()
+    finished = []
+    def run(cap, parallel):
+        assert active_defer_probe() is None  # admitted work is not interrupted
+        started.wait(timeout=2)
+        if cap['name'] == 'a':
+            program.write_text('value=2\n')
+            changed.set()
+        assert changed.wait(timeout=2)
+        return {'capsule': cap['name'], 'status': 'pass', 'source': 'original copied source'}
+    rows = run_pipelined([{'name': n, 'kind': 'operator'} for n in ('a', 'b', 'c', 'd')],
+                        run, max_workers=2, defer_pending=guard.pending_reason, defer_running=False,
+                        on_complete=lambda row: finished.append(row['capsule']))
+    assert set(finished) == {'a', 'b'}
+    assert len(rows) == 4
+    assert all(row['status'] == 'pass' for row in rows[:2])
+    assert all(row['status'] == 'gated' and row['background_deferred'] for row in rows[2:])
+    assert (candidate / 'compiler.py').read_text() == 'value=1\n'

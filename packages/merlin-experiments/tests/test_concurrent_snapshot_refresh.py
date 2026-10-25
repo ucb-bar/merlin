@@ -17,7 +17,7 @@ def payload(owner):
                 if p.is_file() and p.stat().st_size < 1024)
 
 
-def test_twenty_outer_operations_refresh_once_and_each_finishes_fresh(original, monkeypatch):
+def test_twenty_outer_operations_refresh_once_and_each_closes_live_guard(original, monkeypatch):
     owner, candidate, work = original
     with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
         executor = P.active_package_executor()
@@ -47,7 +47,7 @@ def test_twenty_outer_operations_refresh_once_and_each_finishes_fresh(original, 
                 job.result(timeout=60)
         replacement = executor.snapshot_entry_for_call()
         assert replacement is not stale and entries == [replacement] * 20
-        assert len(refreshes) == 1 and len(reads) == 21  # Refresh + 20 independent finals.
+        assert len(refreshes) == 1 and len(reads) == 1  # One fresh admission; 20 independently checked live exits.
         assert executor._snapshot_retired_entries == [stale]
     assert replacement.guard.fd is None and stale.guard.fd is None
 

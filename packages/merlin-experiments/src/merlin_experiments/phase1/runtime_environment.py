@@ -84,6 +84,26 @@ def prepare_runtime_environment(
     if environment.get(RETIRED_READONLY_ENV, "").strip() == "1":
         return result(7, RETIRED_READONLY_MESSAGE)
 
+    # Only the operator's typed invocation selects this evaluator treatment.
+    # Ambient or author-provided environment values cannot opt a run into it.
+    mode = options.compiler_execution
+    if mode not in {"profile_strict_v1", "snapshot_external_v1"}:
+        return result(7, "unknown compiler execution treatment")
+    if mode == "snapshot_external_v1" and options.sandbox != "bwrap":
+        return result(7, "snapshot_external_v1 requires the isolated bwrap compiler workspace")
+    set_value("MERLIN_COMPILER_EXECUTION_MODE", mode)
+    if options.compiler_access == "full_compiler":
+        if mode != "snapshot_external_v1" or not all((options.full_compiler_root, options.full_compiler_manifest,
+                                                     options.full_compiler_manifest_sha256)):
+            return result(7, "full compiler access requires an explicit isolated source selection")
+        set_value("MERLIN_FULL_COMPILER_SELECTION", json.dumps({
+            "root": options.full_compiler_root,
+            "manifest_path": options.full_compiler_manifest,
+            "manifest_sha256": options.full_compiler_manifest_sha256,
+        }, sort_keys=True))
+    else:
+        remove("MERLIN_FULL_COMPILER_SELECTION")
+
     budget = options.qa_timeout if options.model_budget_s is None else options.model_budget_s
     if budget:
         set_value("MERLIN_MODEL_BUDGET_S", str(budget))

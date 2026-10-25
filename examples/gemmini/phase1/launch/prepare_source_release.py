@@ -15,7 +15,13 @@ import yaml
 from merlin_experiments.corpus import release
 
 
-def prepare(previous, output, sdk, public_reference_manifest=None):
+def prepare(previous, output, sdk, public_reference_manifest=None, logical_storage_budget_bytes=None,
+            public_scalability=None, public_supplement=None,
+            common_substrate="merlin.common_compiler_substrate.v8"):
+    if common_substrate not in ("merlin.common_compiler_substrate.v8", "merlin.common_compiler_substrate.v9",
+                                 "merlin.common_compiler_substrate.v10", "merlin.common_compiler_substrate.v11",
+                                 "merlin.common_compiler_substrate.v12"):
+        raise ValueError("source refresh requires an explicitly supported reviewed common substrate")
     previous, output, sdk = Path(previous), Path(output), Path(sdk)
     old = json.loads((previous / "private/preparation.json").read_bytes())
     assembly, scaffold = old["assembly"], old["scaffolding"]
@@ -41,16 +47,19 @@ def prepare(previous, output, sdk, public_reference_manifest=None):
         lean_toolchain_manifest=lean,
         selected_levels=("EL4",),
         selected_variants=("public_v0",),
-        common_substrate="merlin.common_compiler_substrate.v8",
+        common_substrate=common_substrate,
         python_source_root=sdk,
         host_index_bits=64,
         native_timeout_s=7200,
         model_spike_timeout_s=3600,
+        logical_storage_budget_bytes=logical_storage_budget_bytes,
         gsim_readback_transport="coherent_dump_v1",
         operand_protocol_selection=pair(scaffold["operand_protocol"]),
         operand_protocol_revision=pair(scaffold["operand_revision"]),
-        public_supplement=Path(assembly["public_supplement"]["selection"]["path"]),
-        public_scalability=Path(scale["source"]["selection"]["path"]),
+        public_supplement=Path(public_supplement) if public_supplement is not None
+            else Path(assembly["public_supplement"]["selection"]["path"]),
+        public_scalability=Path(public_scalability) if public_scalability is not None
+            else Path(scale["source"]["selection"]["path"]),
         public_reference_manifest=(
             Path(public_reference_manifest)
             if public_reference_manifest is not None
@@ -96,6 +105,14 @@ def main():
     for name in ("previous", "output", "sdk"):
         p.add_argument("--" + name, type=Path, required=True)
     p.add_argument("--public-reference-manifest", type=Path)
+    p.add_argument("--logical-storage-budget-bytes", type=int)
+    p.add_argument("--public-scalability", type=Path, help="Explicit source selection for a new release epoch")
+    p.add_argument("--public-supplement", type=Path, help="Explicit additive source selection for a new release epoch")
+    p.add_argument("--common-substrate", default="merlin.common_compiler_substrate.v8",
+                   choices=("merlin.common_compiler_substrate.v8", "merlin.common_compiler_substrate.v9",
+                                 "merlin.common_compiler_substrate.v10", "merlin.common_compiler_substrate.v11",
+                                 "merlin.common_compiler_substrate.v12"),
+                   help="explicit prospective source epoch; default preserves the existing V8 profile")
     args = p.parse_args()
     report = prepare(**vars(args))
     (args.output.parent / "release-inspection.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")

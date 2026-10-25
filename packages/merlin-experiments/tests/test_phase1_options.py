@@ -32,6 +32,15 @@ def test_readback_policy_is_explicit_and_closed():
         parse_options(["--run-id", "probe", "--readback-policy", "digest_only"])
 
 
+def test_compiler_boundary_is_explicit_and_not_selected_by_environment():
+    options = parse_options(["--run-id", "probe"], environ={"MERLIN_COMPILER_EXECUTION_MODE": "snapshot_external_v1"})
+    assert options.compiler_execution == "profile_strict_v1"
+    selected = parse_options(["--run-id", "probe", "--compiler-execution", "snapshot_external_v1"])
+    assert selected.compiler_execution == "snapshot_external_v1"
+    with pytest.raises(SystemExit):
+        parse_options(["--run-id", "probe", "--compiler-execution", "unchecked"])
+
+
 def test_public_object_build_probe_is_explicit_and_bounded():
     assert parse_options(["--run-id", "probe"], environ={}).public_object_build_budget_s == 0
     assert (

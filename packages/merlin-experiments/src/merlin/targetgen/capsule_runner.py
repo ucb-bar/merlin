@@ -4807,6 +4807,7 @@ def run_capsule(
     declined: dict | None = None  # the backend's STATED refusal ({reason, shape, op})
     status = "pass"
     compiler_source = None
+    owned_source_compilation = {}
 
     try:
         compiler_source = _grade_cpu_step(_capture_compiler_source, package_dir, paths.generated)
@@ -4821,6 +4822,28 @@ def run_capsule(
                 timeout=timeout,
                 fourth_output_name=cfg.fourth_output_name,
             )
+        if capsule.get("owned_host_source") is not None:
+            import hashlib
+
+            source_receipt_path = paths.generated / "owned-source" / "receipt.json"
+            source_receipt = json.loads(source_receipt_path.read_text())
+            from merlin.compile import owned_shared_source
+            source_receipt_schema = owned_shared_source.RECEIPT if owned_shared_source.selected(capsule) else "merlin.owned_spatial_source_compilation.v1"
+            if (
+                source_receipt.get("schema") != source_receipt_schema
+                or source_receipt.get("artifact_sha256") != hashlib.sha256(llvm_text.encode()).hexdigest()
+            ):
+                raise ValueError("owned source compilation product join changed")
+            owned_source_compilation = {
+                "owned_source_compilation": {
+                    "receipt": str(source_receipt_path),
+                    "sha256": hashlib.sha256(source_receipt_path.read_bytes()).hexdigest(),
+                    "source_sha256": source_receipt["source_sha256"],
+                    "artifact_sha256": source_receipt["artifact_sha256"],
+                    "scope": "original public host graph; ordinary capsule gates apply",
+                    "whole_model_gate_credit": False,
+                }
+            }
 
         # ONE DECLARED STIMULUS RANGE, READ BY ALL THREE SIDES. The golden materializes from the
         # capsule (capsule_golden.materialize_capsule_leaves) while the reference interpreter and the
@@ -5936,6 +5959,17 @@ def run_capsule(
                 console_bytes=_cbytes,
                 **_tel,
             )
+            # Live cross-engine custody must capture the same complete tier
+            # record that finalization publishes, before another engine reuses
+            # its build paths. These labels grant no numerical or cache credit.
+            tiers[tier].submission = submission_identity(package_dir, run_id=run_id)
+            _stamp_cache_refusals()
+            # Capture original L2 custody after numerical comparison and before
+            # a later engine can reuse mutable build paths. No observer means
+            # no work; this grants only protected model scheduling evidence.
+            from merlin_experiments.phase1.feedback.rolling_model_gate import capture_tier
+            capture_tier(name, tier, tiers[tier], generated=paths.generated,
+                         package_dir=package_dir, shas=_pin_shas())
             # THIS TIER WAS PAID FOR; write down what it bought, against the bytes and the instrument
             # that produced it, so the next grade need not buy it again. Only a pass is stored (a
             # failure is what an agent acts on and is re-run for its detail); never raises.
@@ -6121,6 +6155,7 @@ def run_capsule(
             "command_buffer_artifact": _cb_artifact,
             "movement_volume": _movement_volume,
             **_lane_extra,
+            **owned_source_compilation,
             **({"order_check": order_check} if order_check is not None else {}),
         },
     )
@@ -6301,7 +6336,7 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
 def _run_streaming_model_gate(
     op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
     on_complete=None, calibrate=None, calibration_cap=0, model_gate_continuations=(),
-    defer_pending=None, defer_running=True, boundary_readiness=None,
+    defer_pending=None, defer_running=True, boundary_readiness=None, model_gate_prerequisites=None,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
     from .capsule_scheduling import run_pipelined
@@ -6316,7 +6351,12 @@ def _run_streaming_model_gate(
     denominator = eligible or op_caps
     completed = {}
 
-    def fraction():
+    def fraction(cap=None):
+        if cap is not None:
+            from .model_gate_continuation import prerequisite_fraction
+            prior = prerequisite_fraction(cap, model_gate_prerequisites, target=target)
+            if prior is not None:
+                return prior
         return sum(
             _model_gate_operation_passed(completed.get(c["name"], {}), c, oracle_adapters)
             for c in denominator
@@ -6332,7 +6372,7 @@ def _run_streaming_model_gate(
             "capsule": cap["name"], "kind": cap.get("kind"), "label": cap.get("label"),
             "status": "gated", "failure": {
                 "plane": "gate", "category": "GATED",
-                "detail": f"whole-model capsule deferred: op pass fraction {fraction():.2f} "
+                "detail": f"whole-model capsule deferred: op pass fraction {fraction(cap):.2f} "
                           f"< gate {(cap.get('gate') or {}).get('after_op_pass_fraction')}",
             },
         }
@@ -6340,10 +6380,12 @@ def _run_streaming_model_gate(
     def admitted(cap):
         if cap.get("kind") != "model":
             return True
-        from .model_gate_continuation import admits
+        from .model_gate_continuation import admits, prerequisite_fraction
 
-        continuation = not op_caps and admits(cap, model_gate_continuations, target=target, adapters=oracle_adapters)
-        value = fraction()
+        prior = prerequisite_fraction(cap, model_gate_prerequisites, target=target)
+        continuation = prior is None and not op_caps and admits(
+            cap, model_gate_continuations, target=target, adapters=oracle_adapters)
+        value = fraction(cap)
         passed = continuation or model_gate_satisfied(cap, value)
         if passed:
             cap["_driver_model_gate_admission"] = {
@@ -6440,6 +6482,7 @@ def _run_suite(
     defer_pending: Callable[[], str | None] | None = None,
     defer_running: bool = True,
     model_gate_continuations=(),
+    model_gate_prerequisites=None,
     target: str | None = None,
     suite: str | None = None,
     dtype: str = "i8xi8_i32",
@@ -6454,32 +6497,26 @@ def _run_suite(
     one-time build, so concurrent simulator instances (verilator/VCS) don't collide. Mirrors
     :func:`heavy_oracles.run_vcs_parallel`. ``max_workers == 1`` preserves the original sequential order.
     """
-    # RESOLVE THE RUNS ROOT HERE, while this is still single-threaded. Resolving it per-capsule is not
-    # enough: some capsule paths enter a context that chdirs the process (mlc resolves its arc artifacts
-    # relative to its own root), and a relative root resolved inside that window becomes an absolute path
-    # under the WRONG tree. Measured: of 26 op capsules run with 8 workers, 18 wrote their entire run
-    # directory into the mlc checkout. The suite still scored -- the results are returned in memory --
-    # but the trace collection reads from this root, so those 18 capsules contributed no coverage, and a
-    # sibling project's tree acquired 18 stray run trees.
-    # Same treatment for every OTHER relative path this suite carries into a worker thread. The runs
-    # root was only the first one to show: the package directory is re-opened per capsule, and inside a
-    # chdir window it raises FileNotFoundError on a directory that is plainly there -- which the runner
-    # records as a RUNNER_CRASH, i.e. as though the submission were broken. Measured: the same 18 of 26
-    # capsules that misplaced their run dirs also "crashed" this way, and since an errored capsule is in
-    # neither the pass nor the fail bucket, they silently left the gate denominator -- the whole-model
-    # capstone then cleared its 0.8 gate on 7/8 instead of on 26 capsules.
+    # Resolve every path before worker entry: some tool adapters change process
+    # cwd. Late resolution can misplace results and exclude failures from the
+    # prerequisite denominator; concurrent grades must retain all obligations.
     runs_root = str(Path(runs_root).resolve())
     package_dir = str(Path(package_dir).resolve())
     if contract is not None and Path(contract).exists():
         contract = str(Path(contract).resolve())
     from merlin_experiments.phase1.feedback import operator_child as _operator_child
 
-    process_operators = _operator_child.enabled() and any(cap.get("kind") != "model" for cap in capsules)
+    from merlin_experiments.phase1.feedback import snapshot_execution
+    process_operators = (not snapshot_execution.selected() and _operator_child.enabled()
+                         and any(cap.get("kind") != "model" for cap in capsules))
     if process_operators:
         _operator_child.validate(target=target, adapters=oracle_adapters, config=config, perf_extractor=perf_extractor)
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
     build_package(pkg)
+    snapshot_owner = snapshot_execution.active_snapshot()
+    if snapshot_owner is not None:
+        snapshot_owner.prepare_result_source(Path(runs_root))
     boundary_readiness = _candidate_boundary_readiness(capsules, pkg, oracle_adapters=oracle_adapters)
 
     # Pass evidence is opt-in through MERLIN_PASS_LOG. When enabled, install before any capsule work and
@@ -6568,6 +6605,7 @@ def _run_suite(
         # cheapest members while tiers are unpriced. No wave barrier, so one slow member never holds
         # the rest (merlin.targetgen.capsule_scheduling).
         from .capsule_scheduling import run_pipelined
+        from merlin_experiments.phase1.feedback import snapshot_execution
 
         return run_pipelined(
             caps,
@@ -6575,7 +6613,7 @@ def _run_suite(
             max_workers=max_workers,
             boundary_readiness=boundary_readiness,
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
-            calibration_cap=_CALIBRATION_CAP,
+            calibration_cap=0 if snapshot_execution.selected() else _CALIBRATION_CAP,
             on_complete=on_capsule_complete,
             **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         )
@@ -6620,6 +6658,17 @@ def _run_suite(
             flush=True,
             file=sys.stderr,
         )
+    from merlin_experiments.phase1.feedback import snapshot_execution
+
+    if snapshot_execution.selected():
+        # This experimental treatment lets the author choose when a model is
+        # ready. Admission is scheduling, never correctness or prior-op credit.
+        for cap in model_caps:
+            cap["_driver_model_gate_admission"] = {
+                "policy": "independent_requests_v1", "execution_mode": snapshot_execution.MODE,
+                "prerequisite_credit": False,
+            }
+        return _run_all(op_caps + model_caps) + ungradeable
     if model_caps and not no_oracle and _tier_policy.budget_seconds() is None:
         print("  model gate: streaming over the fixed full selected eligible operator denominator",
               flush=True, file=sys.stderr)
@@ -6629,6 +6678,7 @@ def _run_suite(
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             model_gate_continuations=model_gate_continuations,
+            model_gate_prerequisites=model_gate_prerequisites,
             boundary_readiness=boundary_readiness,
             **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         ) + ungradeable
@@ -6703,10 +6753,13 @@ def _run_suite(
             continue
         from .model_gate_continuation import admits
 
-        continuation = not op_caps and admits(c, model_gate_continuations, target=target, adapters=oracle_adapters)
-        if model_gate_satisfied(c, frac) or continuation:
+        from .model_gate_continuation import prerequisite_fraction
+        prior = prerequisite_fraction(c, model_gate_prerequisites, target=target)
+        value = frac if prior is None else prior
+        continuation = prior is None and not op_caps and admits(c, model_gate_continuations, target=target, adapters=oracle_adapters)
+        if model_gate_satisfied(c, value) or continuation:
             c["_driver_model_gate_admission"] = {
-                "passed": True, "fraction": frac,
+                "passed": True, "fraction": value,
                 "stage": "L2" if set(oracle_adapters or {}) == {"L2"} else "continuation" if continuation else "full",
             }
             result = _one(c)
@@ -6724,7 +6777,7 @@ def _run_suite(
                     "failure": {
                         "plane": "gate",
                         "category": "GATED",
-                        "detail": f"whole-model capsule deferred: op pass fraction {frac:.2f} < gate {thr}",
+                        "detail": f"whole-model capsule deferred: op pass fraction {value:.2f} < gate {thr}",
                     },
                 }
             )

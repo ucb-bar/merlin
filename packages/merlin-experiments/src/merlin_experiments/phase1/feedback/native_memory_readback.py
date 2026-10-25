@@ -656,6 +656,11 @@ class NativeLogicalMemoryReadback:
             "native_filesystem_view": None,
             "layout_admission_sha256": _sha(canonical_json(current)),
             "artifact_sha256": _sha(raw),
+            # These are original decoder products/inputs, not a new native
+            # runtime claim. The simulator owns the dump's producer receipt.
+            "payload": {"path": str(path), "sha256": _sha(raw)},
+            "original_elf": {"path": str(state["elf_path"]), "sha256": current["elf_sha256"]},
+            "regions": {"path": str(state["regions_path"]), "sha256": _sha(state["regions_raw"])},
             "request_sha256": _sha(state["request_raw"]),
             "command_buffer_sha256": _sha(state["cb_raw"]),
             "console_sha256": _sha(console.encode()),

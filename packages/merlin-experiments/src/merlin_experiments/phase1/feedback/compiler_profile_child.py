@@ -161,7 +161,8 @@ def _original_executor():
 
 def model_child_temporary_root():
     """Keep budget products under the original private/capped execution owner."""
-    executor = _original_executor()
+    from .snapshot_execution import active_snapshot
+    executor = active_snapshot() or _original_executor()
     return None if executor is None else _plain(executor.work_root)
 
 
@@ -552,6 +553,11 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     owner check completes before the caller can launch or grade the child;
     no registry metadata scope survives the yield, wait or result checks.
     """
+    from . import snapshot_execution, snapshot_model_child
+    if snapshot_execution.selected():
+        with snapshot_model_child.prepare(spec_path=spec_path, environment=environment, package_dir=package_dir) as transport:
+            yield transport
+        return
     from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
 
     if active_shared_pass_requirement() is not None and _original_executor() is None:
@@ -1035,6 +1041,7 @@ def run_model_grade(argv):
     sub.add_argument("--model-grade", required=True)
     sub.add_argument("--model-grade-out", required=True)
     sub.add_argument("--original-profile-fd", type=int)
+    sub.add_argument("--snapshot-external-fd", type=int)
     sa, _ = sub.parse_known_args(argv)
     runner._die_with_parent()
     spec_bytes = Path(sa.model_grade).read_bytes()
@@ -1046,6 +1053,13 @@ def run_model_grade(argv):
         if sa.original_profile_fd is None
         else restore_model_child(sa.original_profile_fd, spec_path=Path(sa.model_grade), spec_bytes=spec_bytes)
     )
+    from . import snapshot_execution, snapshot_model_child
+    if snapshot_execution.selected():
+        if sa.snapshot_external_fd is None or sa.original_profile_fd is not None:
+            raise StageGateError("external model grade requires its own sealed child transport")
+        scope = snapshot_model_child.restore(sa.snapshot_external_fd, spec_path=Path(sa.model_grade), spec_bytes=spec_bytes)
+    elif sa.snapshot_external_fd is not None:
+        raise StageGateError("external child transport requires explicit external execution mode")
     with scope as child_receipt:
         if spec.get("candidate_context") is not None:
             res = runner._grade_candidate_model_capsule_inline(
@@ -1065,6 +1079,6 @@ def run_model_grade(argv):
                 numeric_policy_identity=spec.get("numeric_policy_identity"),
             )
     if child_receipt is not None:
-        res["original_compiler_child"] = child_receipt
+        res[snapshot_model_child.FIELD if snapshot_execution.selected() else "original_compiler_child"] = child_receipt
     Path(sa.model_grade_out).write_text(json.dumps(res, indent=2), encoding="utf-8")
     return 0

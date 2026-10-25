@@ -665,7 +665,8 @@ def _is_selfcheck_report(result: str) -> bool:
 
 
 def compute(
-    tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str, *, resolved_tools: Iterable[str] | None = None
+    tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str, *, resolved_tools: Iterable[str] | None = None,
+    compiler_access: str = "selected_library", compiler_execution: str = "profile_strict_v1",
 ) -> dict:
     """Compute the conformance verdict for one round. Returns a dict with per-check booleans (or None when
     the check does not apply to this tool set), the regex-hit detail, and the overall ``conformant`` flag.
@@ -675,6 +676,21 @@ def compute(
     bundle manifest repeated that stale label.  The bundle's resolved tools are the experimental
     treatment.  ``None`` retains replay compatibility for old runs that predate the persisted tool set.
     """
+    # In this explicitly selected treatment, availability is not an obligation
+    # to invoke an API, use a dialect, avoid regex, order discovery or issue a
+    # particular selfcheck command. Actual complete numerical/ISA/placement and
+    # isolation grading remains independent of this workflow-only projection.
+    if compiler_access == "full_compiler" and compiler_execution == "snapshot_external_v1":
+        return {
+            "conformant": True, "checks": {}, "regex_hits": [], "vendored_regex_files": [],
+            "arm": arm, "endpoint_kind": endpoint_kind,
+            "resolved_tools": sorted(str(t) for t in resolved_tools) if resolved_tools is not None else None,
+            "arm4_tooling_required": False,
+            "workflow_policy": "full_compiler_guidance_v1",
+            "compiler_access": compiler_access, "compiler_execution": compiler_execution,
+            "qualification_authority": False,
+            "scope": "No mandatory tool-use or discovery-order workflow; independent grading still required.",
+        }
     tools = None if resolved_tools is None else frozenset(str(t) for t in resolved_tools)
     assisted = (
         arm in _ASSISTED
@@ -844,7 +860,16 @@ def main(argv=None) -> int:
             resolved_tools = list(saved) if isinstance(saved, list) else None
         except Exception:  # noqa: BLE001 — old runs have no persisted resolved tool set
             resolved_tools = None
-    verdict = compute(tpath, run_dir / "submission", arm, endpoint, resolved_tools=resolved_tools)
+    # Replay the recorded treatment, never an ambient caller's source grant.
+    try:
+        import yaml
+        recorded = yaml.safe_load((run_dir / "environment.yaml").read_text()) or {}
+        config = recorded.get("run_config") or {}
+    except (OSError, ValueError):
+        config = {}
+    verdict = compute(tpath, run_dir / "submission", arm, endpoint, resolved_tools=resolved_tools,
+                      compiler_access=config.get("compiler_access", "selected_library"),
+                      compiler_execution=config.get("compiler_execution", "profile_strict_v1"))
     print(json.dumps(verdict, indent=2))
     bad = failing_checks(verdict)
     if bad:

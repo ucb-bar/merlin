@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 from merlin_experiments.phase1.feedback import candidate_execution_products as P
@@ -39,10 +40,11 @@ def neutral_call():
     return b"neutral fixture transport\n"
 
 
-@pytest.fixture(params=["subprocess", "python_call"])
+@pytest.fixture(params=["subprocess", "python_call", "shared_v2"])
 def retained(tmp_path, request):
-    root = tmp_path / "generated"
-    root.mkdir()
+    shared = request.param == "shared_v2"
+    root = (tmp_path / "runs" / "fixture" / "A" if shared else tmp_path) / "generated"
+    root.mkdir(parents=True)
     for name, raw in {"package_kernel.elf": b"neutral opaque ELF fixture", "harness.c": b"neutral caller",
                       "kernel.o": b"neutral kernel object"}.items():
         (root / name).write_bytes(raw)
@@ -78,16 +80,40 @@ def retained(tmp_path, request):
     compiler.mkdir()
     (compiler / "compiler.py").write_text("raise RuntimeError('neutral source custody fixture')\n")
     candidate_sha = hash_tree(compiler)["sha256"]
-    shutil.copytree(compiler, root / "compiler-source" / candidate_sha)
+    snapshot = (tmp_path if shared else root) / "compiler-source" / candidate_sha
+    shutil.copytree(compiler, snapshot)
     grade = dict(kind="layer", label="public", tiers=dict(L2=dict(status="pass", measured_now=True,
                  sim_provenance=dict(engine="fixture", sha256="1" * 64))),
                  compiler_source=dict(status="stable", candidate_sha256=candidate_sha, package=str(compiler),
-                     snapshot="compiler-source/" + candidate_sha,
+                     snapshot=str(snapshot) if shared else "compiler-source/" + candidate_sha,
                      artifacts={name: sha(root / name) for name in
                                 ("input.interface.mlir", "lowered.llvm.mlir", "command_buffer.json")},
                      executed_programs=E.collect(root)))
+    if shared:
+        grade["compiler_source"]["schema"] = "merlin.capsule_compiler_source.v2"
     assert grade["compiler_source"]["executed_programs"][0]["compiler_artifacts"]["status"] == "retained"
     return root, grade, candidate_sha
+
+
+@pytest.mark.parametrize("damage", ["other_owner", "wrong_hash", "relative", "future_schema", "wrong_layout"])
+def test_shared_snapshot_requires_exact_original_owner(tmp_path, damage):
+    root = tmp_path / "runs" / "fixture" / "A" / "generated"
+    expected = "a" * 64
+    snapshot = tmp_path / "compiler-source" / expected
+    source = {"schema": "merlin.capsule_compiler_source.v2", "snapshot": str(snapshot)}
+    assert P._compiler_snapshot(root, source, expected) == snapshot
+    if damage == "other_owner":
+        source["snapshot"] = str(tmp_path / "other" / "compiler-source" / expected)
+    elif damage == "wrong_hash":
+        source["snapshot"] = str(snapshot.with_name("b" * 64))
+    elif damage == "relative":
+        source["snapshot"] = "compiler-source/" + expected
+    elif damage == "future_schema":
+        source["schema"] = "merlin.capsule_compiler_source.v999"
+    else:
+        root = tmp_path / "elsewhere" / "fixture" / "A" / "generated"
+    with pytest.raises(ValueError):
+        P._compiler_snapshot(root, source, expected)
 
 
 def test_exact_effective_roles_replace_ambiguous_basename_without_authority(retained):
@@ -255,7 +281,7 @@ def test_malformed_original_nested_roles_are_unavailable(retained, role):
 def test_source_tree_budget_covers_root_bytecode_before_unbounded_digest(retained, monkeypatch, tree):
     root, grade, expected = retained
     package = grade["compiler_source"]["package"]
-    target = root / grade["compiler_source"]["snapshot"] if tree == "snapshot" else root.parent / "compiler"
+    target = root / grade["compiler_source"]["snapshot"] if tree == "snapshot" else Path(package)
     with (target / "rogue.pyc").open("wb") as stream:
         stream.truncate((32 << 20) + 1)
     original_hash_tree = P.hash_tree
@@ -293,7 +319,8 @@ def test_model_slice_uses_same_exact_retained_custody(retained, damage):
         grade["tiers"]["L2"]["sim_provenance"]["sha256"] = "2" * 64
     report = O.observe_generated_artifacts(root, original_grade=grade, candidate_sha256=expected)
     if damage is None:
-        assert report["product_collection"]["consumption_join"] == "reopened_original_retained_functional_layer_products"
+        assert (report["product_collection"]["consumption_join"]
+                == "reopened_original_retained_functional_layer_products")
         assert report["authority"] == "none"
         assert report["timing_cycles"] is None
     else:

@@ -54,6 +54,12 @@ def selected_budget(owner):
 def run_gate(*, run_dir, candidate, context, capsules_root, contract, facts_path):
     """Run the complete selected public ladder under its archived profile owner."""
     from merlin_experiments.corpus.preparation import private_json
+    from .snapshot_execution import selected
+    if selected():
+        result = {"status": "not_selected", "required": False, "resource_complete": False,
+                  "scope": "legacy whole-corpus proof ladder is not selected; independent per-emission bounds remain"}
+        private_json(Path(run_dir) / "public_codegen_resources.json", result)
+        return result
 
     from . import compiler_profile_runtime
 
@@ -118,6 +124,9 @@ def observe_authoring(*, owner, candidate, context, capsules_root, contract, fac
     before expensive simulations, without exposing protected owner, tool or
     artifact paths. A missing original selection performs no compiler work.
     """
+    from .snapshot_execution import selected
+    if selected():
+        return None
     result, actual = _observe(
         owner=owner, candidate=candidate, context=context, capsules_root=capsules_root,
         contract=contract, facts_path=facts_path, work_root=work_root,
