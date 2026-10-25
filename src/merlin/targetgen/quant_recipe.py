@@ -251,7 +251,9 @@ def derive(
     policy = "exact" if integer_sum_policy is None else str(integer_sum_policy)
     if policy == "per_operand":
         raise ValueError(
-            "per_operand requires an explicit per-operand requantization capture, not an exact readout facet"
+            "per_operand requires an explicit per-operand requantization capture: "
+            "derive() receives only a readout facet and cannot verify separate rounded, "
+            "saturating requantization nodes before the residual sum; use the scheme-aware reference"
         )
     if policy not in ("bounded", "exact"):
         raise ValueError(f"integer sum policy {integer_sum_policy!r} is not one of ('bounded', 'exact')")

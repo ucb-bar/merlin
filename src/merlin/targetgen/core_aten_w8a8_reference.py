@@ -398,14 +398,14 @@ def evaluate(module, arrays, selected, *, quant_min, quant_max, eps, dispatch=No
     raise ValueError("source function lacks return")
 
 
-def run_pt2e_reference(model, inputs):
-    """Exact rational source Q/DQ oracle; eager float divergence is informational."""
+def run_pt2e_reference(model, inputs, *, scheme=None):
+    """Source Q/DQ oracle under the selected scheme; eager divergence is informational."""
     from merlin.targetgen.exact_quantized_reference import run
 
-    return run(model, inputs)
+    return run(model, inputs, scheme=scheme)
 
 
-def selected_pt2e_reference(model, inputs, *, declared_readout=False, numerics="integer_readout"):
+def selected_pt2e_reference(model, inputs, *, declared_readout=False, numerics="integer_readout", scheme=None):
     """Bind the exact-arithmetic oracle independently of the chosen lowering numerics."""
     import copy
     import hashlib
@@ -433,7 +433,9 @@ def selected_pt2e_reference(model, inputs, *, declared_readout=False, numerics="
             },
         ],
     }
-    return run_pt2e_reference(model, copy.deepcopy(inputs)), identity
+    result = run_pt2e_reference(model, copy.deepcopy(inputs), scheme=scheme)
+    identity["arithmetic"] = result.arithmetic
+    return result, identity
 
 
 def write_pt2e_reference(path, reference, leaves, source):

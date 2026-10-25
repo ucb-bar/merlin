@@ -111,7 +111,55 @@ def _narrow_to_dtype(t: Tensor, dtype: str) -> Tensor:
     return Tensor(t.shape, out, dtype)
 
 
+def _scheme_attributes(attrs: dict) -> dict:
+    scheme = attrs.get("quantization_scheme")
+    if scheme is None:
+        return attrs
+    from merlin.targetgen.exact_quantized_reference import _reference_scheme
+
+    scheme = _reference_scheme(None, scheme)
+    if scheme.get("readout_exit") == "accumulator_full" and attrs.get("epilogue"):
+        raise ValueError("accumulator_full forbids readout epilogue stages")
+    selected = dict(attrs)
+    for key in ("readout_strategy", "operand_sum_rounding"):
+        if key in selected and selected[key] != scheme[key]:
+            raise ValueError(f"capsule {key} conflicts with its quantization scheme")
+        selected[key] = scheme[key]
+    if scheme.get("weight_scale_granularity") == "column_block":
+        scales = selected.get("acc_scale_by_column")
+        if scales is not None:
+            width = scheme["columns_per_scale"]
+            for begin in range(0, len(scales), width):
+                if any(scale != scales[begin] for scale in scales[begin : begin + width]):
+                    raise ValueError("readout scales vary within a fact-derived column block")
+    return selected
+
+
+def _residual_sum(lhs: Tensor, rhs: Tensor, attrs: dict, *, op: str) -> Tensor:
+    from merlin.runtime.commandbuffer import residual_add_params
+
+    lhs_scale, rhs_scale, bound = residual_add_params(attrs, op=op)
+    rounding = attrs.get("operand_sum_rounding", "single_rounding")
+    if rounding == "single_rounding":
+        return lhs.residual_add_scaled(rhs, lhs_scale, rhs_scale)
+    if rounding != "per_operand":
+        raise ValueError(f"{op}: unknown operand_sum_rounding {rounding!r}")
+    if bound != 0 or not all(0 < scale <= 1 for scale in (lhs_scale, rhs_scale)):
+        raise ValueError(f"{op}: per_operand requires bound_lsb=0 and operand multipliers in (0, 1]")
+    if lhs.shape != rhs.shape or lhs.dtype != rhs.dtype:
+        raise ValueError(f"{op}: per_operand requires matching operand shapes and storage")
+    import numpy as np
+
+    from merlin.runtime.exact_readout import f32_readout, form_multiplier
+
+    # Load scaling saturates each operand to its declared element storage before the sum.
+    a = f32_readout(np.asarray(lhs.data), form_multiplier(lhs_scale), lhs.dtype)
+    b = f32_readout(np.asarray(rhs.data), form_multiplier(rhs_scale), rhs.dtype)
+    return Tensor(lhs.shape, (a.astype(object) + b.astype(object)).tolist(), "i32")
+
+
 def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor], operands: dict | None = None) -> Tensor:
+    attrs = _scheme_attributes(attrs)
     for stage in attrs.get("epilogue", []):
         if stage in BIAS_STAGES:
             t = t.add_bias(env[bias_tensor_name(operands or {}, attrs, op="epilogue")])
@@ -503,7 +551,7 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         return evaluate(capsule)
     env = materialize_capsule_leaves(capsule)
     op = capsule["operation"]["op"]
-    attrs = capsule["operation"].get("attributes", {})
+    attrs = _scheme_attributes(capsule["operation"].get("attributes", {}))
     out_name = attrs.get("out", "Y0")
 
     def _pick(role: str) -> str:
@@ -637,12 +685,8 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages, "bias": _bias_name()}, env).to_list()}
 
     if op == "residual_add":
-        # The single-rounding reference; the capsule's `bound_lsb` (carried into its numeric policy
-        # as the comparison tolerance) is how far a target may lie from it.
-        from merlin.runtime.commandbuffer import residual_add_params
-
-        lhs_scale, rhs_scale, _bound = residual_add_params(attrs, op=f"residual_add {out_name!r}")
-        t = env[attrs["lhs"]].residual_add_scaled(env[attrs["rhs"]], lhs_scale, rhs_scale)
+        # Legacy sums round once; explicit per_operand sums define both rounded loads exactly.
+        t = _residual_sum(env[attrs["lhs"]], env[attrs["rhs"]], attrs, op=f"residual_add {out_name!r}")
         t = _narrow_to_dtype(t, str(attrs.get("output_dtype", "i32")))
         if "relu" in (attrs.get("epilogue") or ()):
             t = t.relu()
@@ -651,20 +695,20 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
     if op == "residual_seam":
         # A contraction and a residual add as two regions. Deliberately assembled from the SAME two
         # implementations the fused and standalone branches above use -- `_apply_epilogue` for the
-        # readout and `residual_add_scaled` for the add -- rather than given arithmetic of its own.
+        # readout and `_residual_sum` for the add -- rather than given arithmetic of its own.
         # The capsule exists to ask whether a backend JOINS the two regions, so a golden that defined
         # the joined result independently could disagree with the parts it is meant to be made of, and
         # the capsule would then measure this file's arithmetic rather than the backend's placement.
-        from merlin.runtime.commandbuffer import residual_add_params
-
         lhs = env[attrs.get("lhs", _pick("input"))]
         w = env[attrs.get("weight", _pick("weight"))]
         mid = _apply_epilogue(lhs.matmul(w), attrs, env)
         mid = _narrow_to_dtype(mid, str(attrs.get("output_dtype", "i32")))
-        lhs_scale, rhs_scale, _bound = residual_add_params(
-            {**attrs, "epilogue": list(attrs.get("add_epilogue") or [])}, op=f"residual_seam {out_name!r}"
+        t = _residual_sum(
+            mid,
+            env[attrs["rhs"]],
+            {**attrs, "epilogue": list(attrs.get("add_epilogue") or [])},
+            op=f"residual_seam {out_name!r}",
         )
-        t = mid.residual_add_scaled(env[attrs["rhs"]], lhs_scale, rhs_scale)
         t = _narrow_to_dtype(t, str(attrs.get("output_dtype", "i32")))
         if "relu" in (attrs.get("add_epilogue") or ()):
             t = t.relu()

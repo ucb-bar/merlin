@@ -1,4 +1,4 @@
-"""Independent exact-rational oracle for source quantized FX graphs.
+"""Independent source quantized FX oracle with explicitly selected readout boundaries.
 
 Unknown operations refuse qualification. Eager floating divergence is diagnostic.
 """
@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import math
 import operator
+from contextvars import ContextVar
+from dataclasses import dataclass
 from fractions import Fraction
 from itertools import product
 from types import SimpleNamespace
@@ -15,11 +17,15 @@ import numpy as np
 
 from merlin.targetgen.exact_arithmetic import (
     ExactTensor,
-    exact_array as _finite_exact_array,
-    materialize as _finite_materialize,
 )
 from merlin.targetgen.exact_arithmetic import (
     dequantize as dequantize,
+)
+from merlin.targetgen.exact_arithmetic import (
+    exact_array as _finite_exact_array,
+)
+from merlin.targetgen.exact_arithmetic import (
+    materialize as _finite_materialize,
 )
 from merlin.targetgen.exact_arithmetic import (
     quantize as quantize,
@@ -30,12 +36,106 @@ from merlin.targetgen.exact_arithmetic import (
 from merlin.targetgen.exact_arithmetic import (
     round_binary as round_binary,
 )
-
-
-from contextvars import ContextVar
 from merlin.targetgen.exact_boundary_special import BoundarySpecial
 
 _boundary_state = ContextVar("exact_reference_boundary_state", default=None)
+
+
+@dataclass
+class _GridTensor(ExactTensor):
+    """Exact values with the integer grid retained for a declared f32 readout."""
+
+    unit: object = None
+    requantized: bool = False
+    from_contraction: bool = False
+
+
+class _PoolIndices:
+    """A deliberately unavailable result: only the values path is qualified."""
+
+
+class _SingleRoundingSum(ExactTensor):
+    """The declared residual policy sums scaled operands before its one RNE."""
+
+
+def _on_grid(value, unit, *, source=None, requantized=False, from_contraction=False):
+    return _GridTensor(
+        value.values,
+        value.dtype,
+        value.codes,
+        value.scale,
+        np.broadcast_to(unit, value.values.shape),
+        source.requantized if source is not None else requantized,
+        source.from_contraction if source is not None else from_contraction,
+    )
+
+
+def _quantization_unit(scale, axis, shape):
+    unit = exact_array(scale)
+    if axis is not None:
+        extent = [1] * len(shape)
+        extent[axis] = unit.size
+        unit = unit.reshape(extent)
+    return np.broadcast_to(unit, shape)
+
+
+def _reference_scheme(model, scheme):
+    if scheme is None:
+        scheme = getattr(model, "_recipe_quantization_stats", {}).get("quantization_scheme")
+    if scheme is None:
+        return {"readout_strategy": "exact_rational_host", "operand_sum_rounding": "single_rounding"}
+    if not isinstance(scheme, dict):
+        raise ValueError("reference requires a resolved quantization scheme, not a scheme id")
+    if scheme.get("unknown") or scheme.get("status") == "unresolved":
+        raise ValueError("reference cannot select an unresolved quantization scheme")
+    strategy = scheme.get("readout_strategy")
+    if strategy not in {"exact_rational_host", "f32_product_rne"}:
+        raise ValueError("reference scheme requires an explicit resolved readout_strategy")
+    if scheme.get("scale_value") == "arbitrary_f32" and strategy != "f32_product_rne":
+        raise ValueError("arbitrary_f32 requires f32_product_rne")
+    if scheme.get("operand_sum_rounding") not in {"single_rounding", "per_operand"}:
+        raise ValueError("reference scheme requires explicit operand_sum_rounding")
+    if scheme["operand_sum_rounding"] == "per_operand" and strategy != "f32_product_rne":
+        raise ValueError("per_operand requires f32_product_rne")
+    if scheme.get("weight_scale_granularity") == "column_block":
+        width = scheme.get("columns_per_scale")
+        if type(width) is not int or width <= 0:
+            raise ValueError("column_block requires columns_per_scale resolved from output-path facts")
+    if scheme.get("weight_scale_granularity", "tensor") not in {"tensor", "column_block", "column"}:
+        raise ValueError("reference scheme has an unknown weight scale granularity")
+    return scheme
+
+
+def _f32_quantize(value, scale, zp, low, high, axis):
+    from merlin.runtime.exact_readout import f32_readout, form_multiplier
+
+    if isinstance(value, _SingleRoundingSum):
+        return quantize(value, scale, zp, low, high, axis=axis)
+    if not isinstance(value, _GridTensor):
+        raise ValueError("f32 readout requires a retained integer grid through the input chain")
+    accumulator = value.values / value.unit
+    if any(x.denominator != 1 for x in accumulator.flat):
+        raise ValueError("f32 readout bias or operand sum is not on the retained integer grid")
+    output_unit = _quantization_unit(scale, axis, value.values.shape)
+    zeros = _quantization_unit(zp, axis, value.values.shape)
+    if any(x.denominator != 1 for x in zeros.flat):
+        raise ValueError("quantization zero points must be integers")
+    limits = np.iinfo(np.int32)
+    if any(not limits.min <= x <= limits.max for x in accumulator.flat):
+        raise ValueError("f32 readout requires an integer accumulator within int32 storage")
+    multipliers = form_multiplier(value.unit, output_unit)
+    codes = np.empty(value.values.shape, dtype=np.int64)
+    for zero in np.unique(zeros):
+        selected = zeros == zero
+        codes[selected] = f32_readout(
+            np.asarray(accumulator[selected], dtype=np.int64),
+            multipliers[selected],
+            "i32",
+            qmin=low,
+            qmax=high,
+            zero_point=int(zero),
+        )
+    return codes
 
 
 def rational(value):
@@ -64,6 +164,8 @@ def exact_array(value):
 
 
 def materialize(value):
+    if isinstance(value, _PoolIndices):
+        raise ValueError("exact max pool qualifies values only; live indices refuse")
     if isinstance(value, tuple):
         return tuple(materialize(x) for x in value)
     if isinstance(value, list):
@@ -75,6 +177,7 @@ def materialize(value):
     special = isinstance(value, ExactTensor) and any(isinstance(x, BoundarySpecial) for x in value.values.flat)
     if isinstance(value, ExactTensor) and (special or explicit_overflow and str(value.dtype) == "torch.float32"):
         import struct
+
         import torch
 
         state = _boundary_state.get()
@@ -167,7 +270,7 @@ def _convolution(x, w, bias, stride, padding, dilation, groups):
     return output
 
 
-def _pool(x, name, args, kwargs, *, gradient=None):
+def _pool(x, name, args, kwargs, *, gradient=None, counts_only=False):
     dims = int(name.split("pool", 1)[1][0])
     prefix = x.ndim - dims
     if "adaptive" in name:
@@ -225,7 +328,9 @@ def _pool(x, name, args, kwargs, *, gradient=None):
         )
         if not count:
             raise ValueError("exact average pool has an empty divisor")
-        if gradient is None:
+        if counts_only:
+            out[index] = Fraction(count)
+        elif gradient is None:
             out[index] = sum((x[(*index[:prefix], *p)] for p in valid), Fraction(0)) / count
         else:
             for point in valid:
@@ -238,6 +343,158 @@ def _pool_backward(gradient, shape, name, args, kwargs):
     dims = int(name.split("pool", 1)[1][0])
     forward_args = (source, gradient.shape[-dims:]) if "adaptive" in name else (source, *args[2:])
     return _pool(source, name, forward_args, kwargs, gradient=gradient)
+
+
+def _max_pool(x, name, args, kwargs):
+    dims = int(name.split("pool", 1)[1][0])
+    prefix = x.ndim - dims
+
+    def parameter(position, key, default):
+        value = args[position] if len(args) > position else kwargs.get(key, default)
+        if value is None or value == []:
+            value = default
+        if value is None:
+            raise ValueError(f"max pool requires {key}")
+        values = [value] * dims if isinstance(value, int) else list(value)
+        if len(values) != dims or any(type(v) is not int for v in values):
+            raise ValueError(f"invalid max pool {key}")
+        return values
+
+    kernel = parameter(1, "kernel_size", None)
+    stride = parameter(2, "stride", kernel)
+    padding = parameter(3, "padding", 0)
+    dilation = parameter(4, "dilation", 1)
+    ceil = args[5] if len(args) > 5 else kwargs.get("ceil_mode", False)
+    if any(padding):
+        raise ValueError("padded max pool refuses: output-path padding semantics are UNKNOWN")
+    if prefix not in (1, 2) or any(v <= 0 for v in (*kernel, *stride, *dilation)):
+        raise ValueError("invalid max pool geometry")
+    shape = []
+    for size, k, s, d in zip(x.shape[prefix:], kernel, stride, dilation, strict=True):
+        out = (size - d * (k - 1) - 1 + (s - 1 if ceil else 0)) // s + 1
+        if ceil and (out - 1) * s >= size:
+            out -= 1
+        if out <= 0:
+            raise ValueError("invalid max pool output extent")
+        shape.append(out)
+    output = np.empty((*x.shape[:prefix], *shape), dtype=object)
+    for index in np.ndindex(output.shape):
+        windows = [
+            range(
+                index[prefix + d] * stride[d],
+                min(index[prefix + d] * stride[d] + dilation[d] * (kernel[d] - 1) + 1, x.shape[prefix + d]),
+                dilation[d],
+            )
+            for d in range(dims)
+        ]
+        output[index] = max(x[(*index[:prefix], *point)] for point in product(*windows))
+    return output
+
+
+def _uniform_unit(unit, axes, *, keepdims):
+    low = np.min(unit, axis=axes, keepdims=keepdims)
+    if not np.array_equal(low, np.max(unit, axis=axes, keepdims=keepdims)):
+        raise ValueError("f32 readout requires a uniform integer grid along reduction axes")
+    return low
+
+
+def _contraction_unit(op, operands, result, scheme):
+    lhs, rhs = operands
+    if not all(isinstance(x, _GridTensor) for x in operands):
+        raise ValueError("f32 contraction requires quantized operands with retained grids")
+    activation = _uniform_unit(lhs.unit, None, keepdims=False)
+    conv = op in {"conv1d", "conv2d", "conv3d", "convolution"}
+    column_axis = 0 if conv or op == "linear" else rhs.values.ndim - 1
+    axes = tuple(i for i in range(rhs.values.ndim) if i != column_axis)
+    weights = _uniform_unit(rhs.unit, axes, keepdims=False)
+    granularity = scheme.get("weight_scale_granularity", "tensor")
+    if granularity == "tensor" and any(x != weights.flat[0] for x in weights.flat):
+        raise ValueError("tensor scheme requires a per-tensor weight grid")
+    if granularity == "column_block":
+        width = scheme["columns_per_scale"]
+        for begin in range(0, weights.size, width):
+            if any(x != weights[begin] for x in weights[begin : begin + width]):
+                raise ValueError("weight scales vary within a fact-derived column block")
+    shape = [1] * result.values.ndim
+    shape[1 if conv else -1] = weights.size
+    return activation * weights.reshape(shape)
+
+
+def _carry_grid(op, args, kwargs, result, scheme):
+    """Retain only grids whose transformation follows the source operation."""
+    source = args[0] if args else None
+    contractions = {"mm", "bmm", "matmul", "linear", "addmm", "baddbmm", "conv1d", "conv2d", "conv3d", "convolution"}
+    if op in contractions:
+        operands = args[1:3] if op in {"addmm", "baddbmm"} else args[:2]
+        return _on_grid(result, _contraction_unit(op, operands, result, scheme), from_contraction=True)
+    if isinstance(source, _SingleRoundingSum) and op == "relu":
+        return _SingleRoundingSum(result.values, result.dtype)
+    if not isinstance(source, _GridTensor):
+        return result
+    if op in {"relu", "clone", "detach", "alias", "contiguous"}:
+        return _on_grid(result, source.unit, source=source)
+    if op in {"add", "sub"}:
+        other = args[1]
+        if scheme["operand_sum_rounding"] == "per_operand" and isinstance(other, ExactTensor):
+            if not isinstance(other, _GridTensor) or not source.requantized or not other.requantized:
+                raise ValueError(
+                    "per_operand requires explicit requantization nodes for both residual operands "
+                    "with multipliers in (0, 1]"
+                )
+        if isinstance(other, _GridTensor):
+            common_grid = np.array_equal(*np.broadcast_arrays(source.unit, other.unit))
+            if (
+                scheme["operand_sum_rounding"] == "single_rounding"
+                and not source.from_contraction
+                and not other.from_contraction
+            ):
+                return _SingleRoundingSum(result.values, result.dtype)
+            if not common_grid:
+                raise ValueError("f32 bias or requantization nodes must declare a common sum grid")
+        return _on_grid(result, source.unit, from_contraction=source.from_contraction)
+    if op.startswith("max_pool"):
+        dims = int(op.split("pool", 1)[1][0])
+        unit = _uniform_unit(source.unit, tuple(range(source.values.ndim - dims, source.values.ndim)), keepdims=True)
+        values = result[0] if isinstance(result, tuple) else result
+        values = _on_grid(values, unit, source=source)
+        return (values, result[1]) if isinstance(result, tuple) else values
+    if op.startswith(("avg_pool", "adaptive_avg_pool", "_adaptive_avg_pool")) and not op.endswith("backward"):
+        dims = int(op.split("pool", 1)[1][0])
+        unit = _uniform_unit(source.unit, tuple(range(source.values.ndim - dims, source.values.ndim)), keepdims=True)
+        counts = _pool(source.values, op, args, kwargs, counts_only=True)
+        return _on_grid(result, unit / counts, from_contraction=source.from_contraction)
+    if op in {"sum", "mean"}:
+        axes = args[1] if len(args) > 1 else kwargs.get("dim")
+        axes = (
+            tuple(range(source.values.ndim))
+            if axes is None or axes == []
+            else (axes,)
+            if isinstance(axes, int)
+            else tuple(axes)
+        )
+        keep = args[2] if len(args) > 2 else kwargs.get("keepdim", False)
+        unit = _uniform_unit(source.unit, axes, keepdims=keep)
+        count = math.prod(source.values.shape[axis] for axis in axes) if op == "mean" else 1
+        return _on_grid(result, unit / count, from_contraction=source.from_contraction)
+    if op in {
+        "view",
+        "reshape",
+        "_unsafe_view",
+        "flatten",
+        "permute",
+        "transpose",
+        "t",
+        "squeeze",
+        "unsqueeze",
+        "expand",
+        "broadcast_to",
+        "repeat",
+        "slice",
+        "select",
+    }:
+        grid = evaluate_operation(f"aten.{op}.default", (ExactTensor(source.unit, source.dtype), *args[1:]), kwargs)
+        return _on_grid(result, grid.values, source=source)
+    return result
 
 
 def _fold(columns, output_size, kernel_size, dilation, padding, stride):
@@ -584,6 +841,9 @@ def evaluate_operation(target, args, kwargs):
         out = _convolution(a[0], a[1], a[2] if len(a) > 2 else None, stride, pad, dilation, groups)
     elif op.startswith(("avg_pool", "adaptive_avg_pool", "_adaptive_avg_pool")) and "backward" not in op:
         out = _pool(a[0], name, args, kwargs)
+    elif op.startswith("max_pool") and "backward" not in op:
+        values = ExactTensor(_max_pool(a[0], name, args, kwargs), dtype)
+        return (values, _PoolIndices()) if "with_indices" in op else values
     elif op.startswith(("avg_pool", "adaptive_avg_pool", "_adaptive_avg_pool")) and op.endswith("backward"):
         out = _pool_backward(a[0], a[1].shape, name, args, kwargs)
     elif op == "col2im":
@@ -686,14 +946,19 @@ def evaluate_operation(target, args, kwargs):
     return ExactTensor(np.asarray(out, dtype=object), dtype)
 
 
-def run(model, inputs):
-    """Evaluate source Q/DQ graph exactly; eager differences are informational only."""
+def run(model, inputs, *, scheme=None):
+    """Evaluate a source Q/DQ graph under an explicit scheme; legacy defaults stay rational."""
     import copy
     import logging
 
     import torch
 
     sites = []
+    scheme = _reference_scheme(model, scheme)
+    f32 = scheme["readout_strategy"] == "f32_product_rne"
+    arithmetic = "f32_product_rne" if f32 else "exact_rational"
+    readout_order = "f32 accumulator; f32 product; boundary RNE" if f32 else "exact rational; one boundary RNE"
+    requantizers = set()
     counts = {"linear": 0, "conv2d": 0, "matmul": 0}
     boundary_policy = (
         getattr(model, "_recipe_quantization_stats", {})
@@ -721,8 +986,26 @@ def run(model, inputs):
                 if ".dequantize_" in name:
                     position = 7 if channel else 6
                     out_dtype = kwargs.get("out_dtype", args[position] if len(args) > position else torch.float32)
-                    return dequantize(value, scale, zp, low, high, axis=axis, dtype=out_dtype)
-                codes = quantize(value, scale, zp, low, high, axis=axis, nonfinite=boundary_policy)
+                    result = dequantize(value, scale, zp, low, high, axis=axis, dtype=out_dtype)
+                    return (
+                        _on_grid(
+                            result,
+                            _quantization_unit(scale, axis, result.values.shape),
+                            requantized=node.args[0] in requantizers,
+                        )
+                        if f32
+                        else result
+                    )
+                if f32 and isinstance(value, ExactTensor):
+                    if scheme.get("readout_exit") == "accumulator_full":
+                        raise ValueError("accumulator_full forbids a quantized readout boundary")
+                    codes = _f32_quantize(value, scale, zp, low, high, axis)
+                    if isinstance(value, _GridTensor) and np.all(
+                        value.unit <= _quantization_unit(scale, axis, value.values.shape)
+                    ):
+                        requantizers.add(node)
+                else:
+                    codes = quantize(value, scale, zp, low, high, axis=axis, nonfinite=boundary_policy)
                 return torch.tensor(codes.tolist(), dtype=dtype).reshape(codes.shape)
             leaves = torch.utils._pytree.tree_leaves((args, kwargs))
             if name == "aten.isnan.default" and isinstance(args[0], ExactTensor):
@@ -784,8 +1067,14 @@ def run(model, inputs):
                 return super().run_node(node)
             if node.target == operator.getitem or getattr(node.target, "_m2m_tuple_selection", False):
                 value = args[0]
+                if isinstance(value, tuple) and isinstance(value[args[1]], _PoolIndices):
+                    if node.users:
+                        raise ValueError("exact max pool qualifies values only; live indices refuse")
+                    return None
                 return (
-                    ExactTensor(value.values[args[1]], value.dtype)
+                    _on_grid(ExactTensor(value.values[args[1]], value.dtype), value.unit[args[1]], source=value)
+                    if isinstance(value, _GridTensor)
+                    else ExactTensor(value.values[args[1]], value.dtype)
                     if isinstance(value, ExactTensor)
                     else value[args[1]]
                 )
@@ -794,6 +1083,8 @@ def run(model, inputs):
                 return convolution_backward(args[:3], args, node.name, sites)
             op = name.split(".")[1] if name.startswith("aten.") else name
             if name.startswith("aten.") and op.endswith("_") and not op.startswith("_"):
+                if f32 and op != "relu_":
+                    raise ValueError(f"f32 readout refuses an untracked in-place grid transformation: {name}")
                 mutated = evaluate_in_place(name, args, kwargs)
                 # Any other value viewing the written storage no longer carries its codes.
                 for value in torch.utils._pytree.tree_leaves(list(self.env.values())):
@@ -806,6 +1097,8 @@ def run(model, inputs):
                         value.scale = None
                 return mutated
             result = evaluate_operation(node.target, args, kwargs)
+            if f32:
+                result = _carry_grid(op, args, kwargs, result, scheme)
             if op in {"mm", "bmm", "matmul", "linear", "addmm", "baddbmm", "conv1d", "conv2d", "conv3d", "convolution"}:
                 kind = "linear" if op == "linear" else "conv2d" if "conv" in op else "matmul"
                 counts[kind] += 1
@@ -844,8 +1137,8 @@ def run(model, inputs):
                             else dict(lhs=scales[0], rhs=scales[1], accumulator=None)
                         ),
                         readout=None,
-                        readout_order="exact rational; one boundary RNE",
-                        arithmetic="exact_rational",
+                        readout_order=readout_order,
+                        arithmetic=arithmetic,
                     )
                 )
             return result
@@ -906,6 +1199,6 @@ def run(model, inputs):
         linear_count=counts["linear"],
         conv2d_count=counts["conv2d"],
         matmul_count=counts["matmul"],
-        arithmetic="exact_rational",
+        arithmetic=arithmetic,
         eager_float_divergence=divergence,
     )
