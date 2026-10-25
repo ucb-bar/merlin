@@ -81,7 +81,7 @@ def bind_capsule(cap, source):
         rows = cap["operation"]["attributes"]["M"]
         if "pool" in stages:
             side = case["pool_in_dims"][0]
-            rows = ((side - case["pool_window"][0]) // case["pool_stride"][0] + 1) ** 2
+            rows = ((side + 2 * case["padding"][0] - case["pool_window"][0]) // case["pool_stride"][0] + 1) ** 2
         tile = semantic["composition_facts"]["tile_dim"]
         stores = (rows + tile - 1) // tile
         parameters["readout_multipliers"] = dict(
@@ -103,7 +103,7 @@ def bind_capsule(cap, source):
     if "pool" in stages:
         side = case["pool_in_dims"][0]
         window, stride = case["pool_window"][0], case["pool_stride"][0]
-        output = (side - window) // stride + 1
+        output = (side + 2 * case["padding"][0] - window) // stride + 1
         parameters["pooled_store"] = dict(
             fields=dict(
                 pool_stride=stride,
@@ -113,8 +113,8 @@ def bind_capsule(cap, source):
                 pocols=output,
                 orows=side,
                 ocols=side,
-                upad=0,
-                lpad=0,
+                upad=case["padding"][0],
+                lpad=case["padding"][1],
             )
         )
     if "k_extension" in modes and commitment["outcome"] != "refuse":

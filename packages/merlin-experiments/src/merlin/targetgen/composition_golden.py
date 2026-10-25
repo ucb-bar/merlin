@@ -79,6 +79,10 @@ def evaluate(cap):
         wh, ww = case["pool_window"]
         sh, sw = case["pool_stride"]
         image = value.reshape(h, w, n)
+        ph, pw = case["padding"]
+        if ph or pw:
+            image = np.pad(image, ((ph, ph), (pw, pw), (0, 0)), constant_values=0)
+            h, w = h + 2 * ph, w + 2 * pw
         value = np.array(
             [
                 image[y : y + wh, x : x + ww].max(axis=(0, 1))

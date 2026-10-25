@@ -192,6 +192,25 @@ def test_placement_rejects_partial_or_host_chain_members(software, facts, bindin
         require_placement(cap, screen)
 
 
+def test_movement_pooling_has_fenced_positive_and_refusal_twins(software, facts, binding):
+    facts["output_path"]["readout"][-1]["padding"] = "zero"
+    corpus = prepare_entries(entries(software, facts))
+    movement = [e for e in corpus if e["composition_instance"]["producer"] == "movement"]
+    for label in ("standalone_pool", "padded_pool"):
+        positive = [e for e in movement if e["composition_instance"]["shape_class"] == label]
+        assert positive and all(e.get("outcome") != "refuse" for e in positive)
+        twins = [e for e in movement if e["composition_instance"]["shape_class"] == label + "_unfenced"]
+        assert len(twins) == len(positive) and all(e.get("outcome") == "refuse" for e in twins)
+        for entry in positive:
+            cap, source = CS.build(entry, binding)
+            bind_capsule(cap, source)
+            assert cap["expected"]["modes"]["scratchpad_source_pooling_fenced"]
+            assert cap["expected"]["mode_parameters"]["pooled_store"]["fields"]["upad"] == int(label == "padded_pool")
+            from merlin.common import mlir_query as mq
+
+            mq.parse(source).verify()
+
+
 def test_generated_bias_has_an_explicit_source_operand(software, facts, binding):
     entry = next(
         e for e in prepare_entries(entries(software, facts)) if e["composition_instance"]["shape_class"] == "bias_relu"

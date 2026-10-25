@@ -817,17 +817,29 @@ def test_accumulator_seed_without_source_binding_is_unknown():
     assert _check(case)["composition_audit"]["evidence_status"] == "UNKNOWN"
 
 
-def test_seed_address_flags_come_from_the_selected_operand_observer(selected_hardware, monkeypatch):
-    observer = selected_hardware[1]
-    monkeypatch.setattr(decode, "_semantics", lambda _: SimpleNamespace(operand_observer=observer))
+@pytest.mark.parametrize("mutation", [None, "no_fence", "fence_before_load", "wrong_window", "unrelated_rows"])
+def test_scratchpad_pooling_needs_a_fence_between_source_load_and_store(mutation):
+    fields = dict(pool_stride=2, pool_size=2, pool_out_dim=2, porows=2, pocols=2, orows=4, ocols=4, upad=0, lpad=0)
     rows = [
-        _row("MVIN", dram=_operand(3), is_acc_addr=True, accumulate=False),
-        _row("PRELOAD", c_addr=32, c_rows=3, c_cols=3, accumulate=True),
-        _row("COMPUTE_PRELOADED", a_spad=8),
-        _row("MVOUT"),
+        _row("CONFIG_ST", **fields),
+        _row("MVIN", is_acc_addr=False),
+        _row("FENCE"),
+        _row("MVOUT", is_acc_addr=False),
     ]
-    case = _case(rows, {"accumulator_preload": True}, {"accumulator_preload": {"input": _operand(3)}})
-    assert _check(case)["status"] == "pass"
+    if mutation == "no_fence":
+        rows.pop(2)
+    elif mutation == "fence_before_load":
+        rows[1], rows[2] = rows[2], rows[1]
+    elif mutation == "wrong_window":
+        rows[0]["decoded"]["pool_size"] = 3
+    elif mutation == "unrelated_rows":
+        rows[1]["decoded"]["spad_addr"] = 64
+    case = _case(
+        rows, {"pooled_store": True, "scratchpad_source_pooling_fenced": True}, {"pooled_store": {"fields": fields}}
+    )
+    case[1]["composition"]["producer"] = "movement"
+    result = _check(case)
+    assert result["status"] == ("pass" if mutation is None else "fail"), result
 
 
 @pytest.mark.parametrize("mutation", [None, "missing_entry_register", "overlapping_buffers", "unbound_address"])
@@ -963,3 +975,16 @@ def test_runtime_abi_is_rederived_from_the_pinned_build_interface(native_files, 
     else:
         with pytest.raises((ValueError, RuntimeError)):
             NA._composition_runtime_abi(native, declaration, [dict(symbol="fused")])
+
+
+def test_seed_address_flags_come_from_the_selected_operand_observer(selected_hardware, monkeypatch):
+    observer = selected_hardware[1]
+    monkeypatch.setattr(decode, "_semantics", lambda _: SimpleNamespace(operand_observer=observer))
+    rows = [
+        _row("MVIN", dram=_operand(3), is_acc_addr=True, accumulate=False),
+        _row("PRELOAD", c_addr=32, c_rows=3, c_cols=3, accumulate=True),
+        _row("COMPUTE_PRELOADED", a_spad=8),
+        _row("MVOUT"),
+    ]
+    case = _case(rows, {"accumulator_preload": True}, {"accumulator_preload": {"input": _operand(3)}})
+    assert _check(case)["status"] == "pass"

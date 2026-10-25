@@ -104,8 +104,29 @@ class _Source:
     def pool(self, value, case, n):
         side = case["pool_in_dims"][0]
         window, stride = case["pool_window"][0], case["pool_stride"][0]
-        if any(case["padding"]):
-            raise ValueError("composition source requires explicitly unpadded pool geometry")
+        pad_h, pad_w = case["padding"]
+        if pad_h != pad_w:
+            raise ValueError("composition source requires square pooling padding")
+        if pad_h:
+            # Materialize source-semantic zero padding before the window reduction.
+            # The truth gate separately proves zero neutral after the readout.
+            padded_side = side + 2 * pad_h
+            # tensor.pad operates on the spatial view, keeping channels unchanged.
+            spatial = f"tensor<{side}x{side}x{n}xi8>"
+            expanded = f"tensor<{padded_side}x{padded_side}x{n}xi8>"
+            flat = _type([padded_side * padded_side, n], "i8")
+            self.lines += [
+                f"    %pool_spatial = tensor.expand_shape %{value} [[0, 1], [2]] "
+                f"output_shape [{side}, {side}, {n}] : {self.types[value]} into {spatial}",
+                f"    %pool_padded = tensor.pad %pool_spatial low[{pad_h}, {pad_h}, 0] high[{pad_h}, {pad_h}, 0] {{",
+                "    ^bb0(%y: index, %x: index, %c: index):",
+                "      %pad_zero = arith.constant 0 : i8",
+                "      tensor.yield %pad_zero : i8",
+                f"    }} : {spatial} to {expanded}",
+                f"    %pool_flat = tensor.collapse_shape %pool_padded [[0, 1], [2]] : {expanded} into {flat}",
+            ]
+            value, side = "pool_flat", padded_side
+            self.types[value] = flat
         out_side = (side - window) // stride + 1
         # One reduction dimension enumerates a complete square window.
         source_map = (

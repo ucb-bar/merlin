@@ -15,6 +15,7 @@ MODES = frozenset(
         "readout_multipliers",
         "accumulator_preload",
         "pooled_store",
+        "scratchpad_source_pooling_fenced",
         "scaled_accumulate_load",
         "output_stationary",
         "i32_exit",
@@ -218,7 +219,7 @@ def _accumulator_seed(instructions, parameters, hardware):
         raise ValueError("UNKNOWN: accumulator seed has no consuming contraction")
 
 
-def _readout(commits, parameters, *, relu=False, scaled=False, per_block=False):
+def _readout(commits, parameters, *, relu=False, scaled=False, per_block=False, scratchpad=False):
     commits = _output_commits(commits, parameters)
     expected = _integers(parameters, "acc_scale_bits")
     stores_per_block = _integers(parameters, "stores_per_block") if per_block else None
@@ -228,7 +229,7 @@ def _readout(commits, parameters, *, relu=False, scaled=False, per_block=False):
         expected = [bits for bits, count in zip(expected, stores_per_block) for _ in range(count)]
     observed, configs = [], []
     for store, config, index, _computes in commits:
-        if _known(store, "readout") != "i8" or _known(store, "is_acc_addr") is not True:
+        if _known(store, "readout") != "i8" or _known(store, "is_acc_addr") is not (not scratchpad):
             raise ValueError("scaled/activated readout requires a narrow i8 store")
         observed.append(_known(config, "acc_scale_bits"))
         configs.append(index)
@@ -260,6 +261,31 @@ def _pool(commits, parameters):
     for _store, config, _index, _computes in commits:
         if any(_known(config, key) != value for key, value in fields.items()):
             raise ValueError("active pooled-store window differs from declaration")
+
+
+def _scratchpad_pool_fence(instructions):
+    """Require a still-resident, completed scratchpad source at each pooled exit."""
+    resident, completed = [], []
+    for row in instructions:
+        kind, decoded = row.get("class"), row.get("decoded") or {}
+        if kind in _LOADS and _known(decoded, "is_acc_addr") is False:
+            start, rows, cols = (_known(decoded, key) for key in ("spad_addr", "rows", "cols"))
+            if any(type(value) is not int or value < 0 for value in (start, rows, cols)) or min(rows, cols) <= 0:
+                raise ValueError("UNKNOWN: pooling source extent is unresolved")
+            end = start + rows
+            resident = [s for s in resident if s[1] <= start or end <= s[0]]
+            completed = [s for s in completed if s[1] <= start or end <= s[0]]
+            resident.append((start, end, cols))
+        elif kind == "FENCE":
+            completed = list(resident)
+        elif kind == "MVOUT":
+            if _known(decoded, "is_acc_addr") is not False:
+                raise ValueError("scratchpad pooling store does not select scratchpad rows")
+            start, rows, cols = (_known(decoded, key) for key in ("acc_addr", "rows", "cols"))
+            if any(type(value) is not int or value < 0 for value in (start, rows, cols)) or min(rows, cols) <= 0:
+                raise ValueError("UNKNOWN: pooling store extent is unresolved")
+            if not _covered((start, start + rows, cols), completed):
+                raise ValueError("scratchpad pooling source lacks a fence after its resident load")
 
 
 def _scaled_load(loads, parameters):
@@ -351,11 +377,14 @@ def check_modes(instructions, modes, parameters, *, target):
             relu=bool(modes.get("relu")),
             scaled=bool(modes.get("acc_scale")),
             per_block=name == "column_block",
+            scratchpad="scratchpad_source_pooling_fenced" in needs,
         )
     elif needs & {"relu", "acc_scale"}:
         raise ValueError("UNKNOWN: fused activation/scale requires declared readout_multipliers")
     if "pooled_store" in needs:
         _pool(commits, parameters.get("pooled_store", {}))
+    if "scratchpad_source_pooling_fenced" in needs:
+        _scratchpad_pool_fence(instructions)
     if "scaled_accumulate_load" in needs:
         _scaled_load(loads, parameters.get("scaled_accumulate_load", {}))
     if "output_stationary" in needs:

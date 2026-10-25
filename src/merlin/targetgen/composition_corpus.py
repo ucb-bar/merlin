@@ -119,7 +119,15 @@ def _variants(chain, facts):
     if producer == "operand_sum":
         return variants + ["scaled_operands"]
     if producer == "movement":
-        return variants + ["standalone_pool", "window_mean", "pool_below_tile", "pool_above_tile"]
+        return variants + [
+            "standalone_pool",
+            "standalone_pool_unfenced",
+            "padded_pool",
+            "padded_pool_unfenced",
+            "window_mean",
+            "pool_below_tile",
+            "pool_above_tile",
+        ]
     if chain.get("extension"):
         return variants + ["two_digits", "noninteger_coefficient"]
     if chain.get("multiplicity"):
@@ -183,13 +191,15 @@ def _case(chain, scheme, label, facts):
             pool_in_dims=[side, side],
             pool_window=[window, window],
             pool_stride=[window, window],
-            padding=[1, 1] if label == "padded_pool" else [0, 0],
+            padding=[1, 1] if label.startswith("padded_pool") else [0, 0],
             indices_live=False,
             reduction_kind="max",
         )
         case["readout_stages"].append("pool")
         case["members"].append("pool")
-        if label == "standalone_pool":
+        if producer == "movement":
+            case["scratchpad_source_pooling_fenced"] = not label.endswith("_unfenced")
+        if label.startswith("standalone_pool"):
             grid = [1.0]
             case["readout_stages"].remove("activation")
     if label == "window_mean":
@@ -288,7 +298,14 @@ def entries(software_spec, facts, *, excluded_shapes=None):
         for scheme in schemes:
             for label in variants:
                 if (
-                    label in {"standalone_pool", "window_mean"}
+                    label
+                    in {
+                        "standalone_pool",
+                        "standalone_pool_unfenced",
+                        "padded_pool",
+                        "padded_pool_unfenced",
+                        "window_mean",
+                    }
                     or label.startswith("os_")
                     or (
                         scheme["scale_value"] == "arbitrary_f32"
