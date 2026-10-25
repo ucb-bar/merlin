@@ -572,3 +572,93 @@ def test_definitional_f32_refuses_fractional_seed_and_non_f32_device():
         elif stage["kind"] == "scale":
             stage["dtype"] = "f16"
     assert decide(_module(), path).cut != "requant"
+
+
+def _declared_decision(text, path, strategy):
+    from merlin.targetgen import model_coverage
+
+    module = mq.parse(text)
+    root = next(op for op in module.walk() if op.name == "linalg.matmul")
+    values = OF.Values()
+    chain = OF.source_chain(root, values)
+    result = OF.decide(chain, path, values, model_coverage._contraction_extents(module), readout_strategy=strategy)
+    return result, chain
+
+
+def test_exact_host_refuses_accumulator_conversion_rounding():
+    from merlin.runtime.exact_readout import f32_readout, requantize_int32
+
+    text = _module(weight_scale=(1.0,), bias=(0,) * 8, relu=False, out_scale=2**24)
+    text = "\n".join(line for line in text.splitlines() if not line.startswith("    %w ="))
+    text = text.replace("%rq:", "%w: tensor<4096x8xi8>, %rq:")
+    text = text.replace("tensor<4x8xi8>", "tensor<4x4096xi8>").replace("tensor<8x8xi8>", "tensor<4096x8xi8>")
+    result, _chain = _declared_decision(text, _path(_drop("activation")), "exact_rational_host")
+    # This accumulator is reachable with signed-i8 operands at the declared K.
+    count, rest = divmod(33_554_433, 127 * 127)
+    quotient, remainder = divmod(rest, 127)
+    x = np.array([127] * count + [quotient, remainder], dtype=np.int8)
+    w = np.array([127] * count + [127, 1], dtype=np.int8)
+    accumulator = int(x.astype(np.int64) @ w.astype(np.int64))
+    assert x.size <= 4096 and accumulator == 33_554_433
+    assert int(f32_readout(accumulator, np.float32(2**-26), "i8")) == 0
+    assert int(requantize_int32(accumulator, scale_numerator=1, scale_denominator=2**26)) == 1
+    assert result.cut not in ("requant", "pool")
+    assert any("exactness is not proven" in r["reason"] for r in result.refusals)
+
+
+@pytest.mark.parametrize("extra", ["scale", "convert", "activation", "misplaced_activation", "pool"])
+def test_definitional_f32_refuses_extra_or_misplaced_device_stages(extra):
+    from merlin.runtime.exact_readout import f32_readout
+
+    path = _path()
+    if extra == "misplaced_activation":
+        activation = path["readout"].pop(0)
+        path["readout"].insert(2, activation)
+    elif extra == "pool":
+        path["readout"].append(copy.deepcopy(path["readout"][-1]))
+    else:
+        index = next(i for i, s in enumerate(path["readout"]) if s["kind"] == extra)
+        path["readout"].insert(index, copy.deepcopy(path["readout"][index]))
+    path = OP.validate(path)
+    result, _chain = _declared_decision(_module(bias=(0,) * 8), path, "f32_product_rne")
+    if extra == "scale":
+        multiplier = np.full(8, 1 / 64, dtype=np.float32)
+        accumulators = np.full(8, 64, dtype=np.int64)
+        assert (OF._device(path["readout"], multiplier, accumulators, relu=True) == 0).all()
+        assert (f32_readout(accumulators, multiplier, "i8") == 1).all()
+    assert result.cut not in ("requant", "pool")
+
+
+@pytest.mark.parametrize("residual", [False, True])
+def test_exact_host_records_rational_product_proof_with_integer_adds(residual):
+    result, _chain = _declared_decision(_module(residual=residual), _path(), "exact_rational_host")
+    assert result.cut == "requant"
+    assert result.proof["offsets"] == [0, 64, -64, 128, 8, -8, 0, 256]
+    assert result.proof["readout_strategy"] == "exact_rational_host"
+    assert all(p["equals_policy"] == "exact_rational_host" for p in result.proof["fp32_products"])
+    if residual:
+        assert result.proof["fp32_products"][0]["accumulator_min"] < -2048
+
+
+@pytest.mark.parametrize("kwargs", [{"out_scale": 7.0}, {"bias": (2**25,) * 8}])
+def test_exact_host_refuses_unproved_scale_or_seeded_interval(kwargs):
+    result, _chain = _declared_decision(_module(**kwargs), _path(), "exact_rational_host")
+    assert result.cut not in ("requant", "pool")
+    assert any("exactness is not proven" in r["reason"] for r in result.refusals)
+
+
+def test_definitional_f32_supports_one_scaled_relu_after_the_product():
+    path = _path()
+    activation = path["readout"].pop(0)
+    activation["domain"] = "scaled"
+    path["readout"].insert(2, activation)
+    result, _chain = _declared_decision(_module(), OP.validate(path), "f32_product_rne")
+    assert result.cut == "requant"
+    multiplier = np.array(result.proof["device_scale"], dtype=np.float32)
+    seeded = np.array([-129, -65, -1, 0, 1, 63, 64, 129]) + result.proof["offsets"]
+    from merlin.runtime.exact_readout import f32_readout
+
+    np.testing.assert_array_equal(
+        OF._device(path["readout"], multiplier, seeded, relu=True),
+        f32_readout(seeded, multiplier, "i8", relu=True),
+    )

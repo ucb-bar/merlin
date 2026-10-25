@@ -885,6 +885,8 @@ def _attempt(cut, chain, path, values, extents, kinds, closed, readout_strategy,
         proof = _definitional_f32(chain, path, bound, table)
         if integer_residual_extension:
             proof["requires_integer_residual_extension"] = True
+    elif readout_strategy == "exact_rational_host":
+        proof = _exact_rational(chain, path, bound, table)
     else:
         proof = _prove(chain, path, target, bound, residual_values=table)
     if cut == "pool":
@@ -899,6 +901,46 @@ def _attempt(cut, chain, path, values, extents, kinds, closed, readout_strategy,
     }
 
 
+def _single_product_readout(path):
+    """Require the complete device path modeled by the selected single product."""
+    stages = list(path.get("readout", ()))
+    if stages and stages[-1]["kind"] == "pool":
+        stages.pop()
+    if stages and stages[0]["kind"] == "activation":
+        activation = stages.pop(0)
+        if activation.get("function") != "relu" or activation.get("domain") != "accumulator":
+            raise _Refused(UNMODELED, "single-product activation must be accumulator ReLU before conversion")
+    elif len(stages) == 4 and stages[2]["kind"] == "activation":
+        activation = stages.pop(2)
+        if activation.get("function") != "relu" or activation.get("domain") != "scaled":
+            raise _Refused(UNMODELED, "single-product activation must be scaled ReLU after the product")
+    if [stage["kind"] for stage in stages] != ["convert", "scale", "requant"]:
+        raise _Refused(UNMODELED, "single-product readout requires exactly one convert, scale and requant")
+
+
+def _exact_rational(chain, path, bound, table):
+    """Prove the seeded device product equals the declared rational epilogue."""
+    from fractions import Fraction
+
+    from merlin.runtime.exact_readout import prove_fp32_products
+
+    proof = _definitional_f32(chain, path, bound, table)
+    quantize = chain.stages[-1]
+    units = _accumulator_unit(chain, quantize)
+    if table and any(Fraction(float(value)) != r * unit for r, value in table.items() for unit in units):
+        raise _Refused(INEXACT, "residual is not an exact rational accumulator add")
+    divisor = Fraction(float(quantize.numbers))
+    lo, hi = proof["accumulator_bound"]
+    products = []
+    for unit, offset in zip(units, proof["offsets"], strict=True):
+        try:
+            products.append(prove_fp32_products(unit / divisor, lo + offset, hi + offset))
+        except ValueError as error:
+            raise _Refused(INEXACT, str(error)) from error
+    proof.pop("definitional")
+    return {**proof, "readout_strategy": "exact_rational_host", "fp32_products": products}
+
+
 def _definitional_f32(chain, path, bound, table):
     """Admit the selected single f32 boundary, with exact integer bias seeds.
 
@@ -909,6 +951,7 @@ def _definitional_f32(chain, path, bound, table):
 
     import numpy as np
 
+    _single_product_readout(path)
     if any(
         _numpy_float(s.get("to") if s["kind"] == "convert" else s.get("dtype")) is not np.float32
         for s in path.get("readout", ())
