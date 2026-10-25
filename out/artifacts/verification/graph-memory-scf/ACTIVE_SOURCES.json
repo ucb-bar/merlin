@@ -1,0 +1,68 @@
+{
+  "status": "ACTIVE_UNQUALIFIED",
+  "branch": "feat/pass-verification",
+  "head": "229f42c627854c49476a101cb393d0b15044fab8",
+  "owned_sources": [
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+      "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
+      "bytes": 4861
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
+      "sha256": "26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2",
+      "bytes": 13452
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean",
+      "sha256": "e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf",
+      "bytes": 5846
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean",
+      "sha256": "17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1",
+      "bytes": 6157
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean",
+      "sha256": "3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4",
+      "bytes": 4269
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
+      "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
+      "bytes": 10841
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean",
+      "sha256": "5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562",
+      "bytes": 6094
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean",
+      "sha256": "86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3",
+      "bytes": 3210
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
+      "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
+      "bytes": 4589
+    }
+  ],
+  "successful_builds": [
+    "v2",
+    "v4",
+    "v6",
+    "v8",
+    "v9",
+    "v13",
+    "v15",
+    "v17",
+    "v20"
+  ],
+  "latest_root": "Merlin.GraphLoopsMemorySCF.checked_complete_observations",
+  "current_axiom_audit": false,
+  "current_actual_checker": false,
+  "current_qualification": false,
+  "staging_or_publication_by_worker": false
+}
