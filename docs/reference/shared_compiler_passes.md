@@ -2903,3 +2903,20 @@ asynchronous overlap and cross-operation persistence are not enabled by this
 API. Exporting these new source owners requires an explicitly reviewed new SDK
 release, selected equally for baseline and candidate; old frozen releases keep
 their original source membership and semantics.
+
+### Counted panel readout batching
+
+`merlin.compile.scheduling.dense_panel_readout.batch_dense_panel_readouts`
+accepts a checked `DensePanelPipelineResult` and an independently selected
+`DensePanelOverlapAdmission`. It groups pure readout loops under one completion
+boundary without expanding the loops or changing any data call or its order.
+No load, computation or accumulator initialization moves across that boundary.
+
+The default admission permits one readout per epoch. Batching requires explicit
+`max_issued_readouts`, `pending_readouts` and
+`readout_configuration="ordered_snapshot_before_store_issue"` premises from the
+target. The issue budget can exceed queue capacity only with the selected
+backpressure semantics. The final actual schedule undergoes the normal source,
+ownership, reduction and completion checks before emission. Varying per-tile
+readout configurations are currently refused. Reduced drain counts are compiler
+observations; runtime improvement still requires a matched target comparison.

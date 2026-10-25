@@ -3,7 +3,7 @@ title: Run whole programs on FireSim
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-09-29
+last_verified: 2026-10-25
 related: [zephyr, tinyllama_int8_rvv_zephyr, getting_started, reproducibility, whole_model_on_accelerator]
 code_refs: [src/merlin/runtime/backends/zephyr_model.py, src/merlin/runtime/backends/firesim_runner.py, src/merlin/perf/firesim_receipt.py, src/merlin/perf/firesim_checkpoint.py, build_tools/chipyard/setup_multicore_saturn.py, build_tools/chipyard/MerlinSaturnConfigs.scala, build_tools/scripts/firesim_sweep.py, build_tools/scripts/fsq.py, build_tools/firesim/README.md, build_tools/firesim/preflight.py, examples/firesim_modelblaster/README.md]
 ---
@@ -36,6 +36,68 @@ rate per run from the heartbeat; a historical rate is not a new worker's limit.
 Build or runner-selection checks do not qualify hardware execution. Keep model
 results and deployment qualification records in generated run artifacts. A
 missing bitstream, engine, output check or required oracle remains unavailable.
+
+## Gemmini on AWS F2: identify the complete configuration
+
+The on-demand F2 deployment observed on 2026-10-25 uses the following image.
+The target name, platform/memory configuration, source revisions and loaded image
+are separate identities; `FireSimGemminiRocketConfig` alone does not specify them.
+
+| Layer | Recorded selection |
+|---|---|
+| FPGA image | `agfi-09268e63eac5f1c08` (`afi-07e1e0eedf1d9560f`) |
+| Hardware database entry | `firesim_rocket_singlecore_gemmini_no_nic_l2_llc4mb_ddr3` |
+| Target configuration | `WithDefaultFireSimBridges_WithFireSimConfigTweaks_chipyard.GemminiRocketConfig`, the composition named `FireSimGemminiRocketConfig` |
+| Platform configuration | `WithAutoILA_FRFCFS16GBQuadRankLLC4MB_BaseF2Config` |
+| Memory timing model | FASED **First-Ready FCFS** DDR3 model, with the modeled LLC; not the default latency pipe of bare `BaseF2Config` |
+| Host platform | AWS F2; archived build summary reports 110 MHz FPGA frequency |
+| Submission | `fpga-run-elf ELF NAME`, one job at a time; wrapper owns startup and teardown |
+
+The archived build log identifies `First-Ready FCFS MAS` and records these build
+defaults: scheduler window 8, transaction queue depth 8, open-page policy enabled,
+backend latency 2, and DDR timing values `tCAS=14`, `tRCD=14`, `tRP=14`. LLC defaults
+are 8 ways, 4,096 sets, 128-byte blocks and 8 active MSHRs (4 MiB modeled capacity).
+These are FASED model settings, not a description of the physical F2 host DRAM.
+The retained launch command has no explicit `+mm_*` overrides; retain the driver
+identity and actual runtime arguments when reproducing a run. FPGA host MHz is
+not the target architectural clock or a replacement for the modeled DDR timings.
+
+### Source revisions: F2 and the historical pins are different
+
+The [`gemmini_rocket_*` pins](../../merlin/contract/hardware_pins.yaml) describe
+the older U250/source lineage. They must not be silently relabeled as the F2 build.
+
+| Component | Historical Rocket+Gemmini lineage | F2 build evidence |
+|---|---|---|
+| Chipyard | `009e85b05ca817a15fcd6c3fe4eedd86cc2a3617` | Build summary reports Chipyard 1.14.0, `0acc1e1`; matching local object is `0acc1e1de2d3284bcd4d876956932a013ffe1949` |
+| Rocket | Gitlink `885dd5966a49ce19512e3cc3275515926e729ba2` | Gitlink at `0acc1e1`: `55bcad0f59436de98ea510334121de8546b9e9d7` |
+| Gemmini | `63f0b68a68f185a016a2993f2fb32e1661ea9e6c` | Build summary reports `8c3f9923`; matching object/gitlink is `8c3f9923a44a2fe2c7930587be297d6d4f8c09ca` |
+| FireSim | Gitlink `b084672c2f8cf32e55d78f73a001074c23f8a2b8` | Gitlink at `0acc1e1`: `da2a1cbcebbb96e21c551ebef513fd95a9d73403` |
+
+The F2 Rocket and FireSim entries above are **recorded gitlinks**, not separately
+witnessed builder checkout HEADs or clean-tree attestations. The available build
+archive does not establish all nested source bytes or the deployed driver hash.
+Both Gemmini revisions have the same `Configs.scala` contents and default 16×16
+array geometry; that does not establish whole-SoC timing equivalence. The local
+FireSim-aligned gSIM checkout at `3e9bfb4bf58a7dfe6e1082496a9578a5dcd83831`
+is the historical Chipyard pin plus a committed harness-config addition. It is
+not the F2 image's source revision. Keep gSIM/model qualification attached to its
+actual elaboration and memory service, independently of F2 measurements.
+
+### Obtain the deployment evidence
+
+With read access to the deployment's artifact bucket, download the archived
+`firesim-builds/gemmini-rocket-1.14.0/{SUMMARY.txt,hwdb-entry.yaml,build.log}` from
+`s3://mb-artifacts-366258938248-usw2/`. The summary joins the build to the AGFI;
+the build log records the actual target/platform configuration and FASED defaults.
+For each execution, retain `HW_CFG_SUMMARY`, `sim-run.sh` and `uartlog` under its
+exact `firesim-runs/<timestamp>/` prefix, alongside the ELF hash and output check.
+Fetching these records is read-only and does not require starting the manager.
+
+For another deployment, record the same identities rather than copying this
+image's name. Updating a FireSim checkout does not change an existing AGFI. A new
+build needs its own source, platform/memory, driver and runtime records before
+its results can be compared as the same machine.
 
 ## Prerequisites
 

@@ -107,6 +107,13 @@ have no ABI entry yet; they are recorded as debt in `build_tools/scripts/undocum
 Maps to command-buffer opcode `RES_PACK` (`operands: {src, dst}`, `attributes: {layout}`).
 
 ### `merlin_iface.matmul` — matmul against a resident weight
+
+An optional attribute dictionary preserves source metadata on this operation.
+For original sibling source transport, `prov.region_id` is the original root's
+string identity and `prov.source_node_ids` is its ordered string list. They
+carry no execution or coverage permission: the target must bind real compute
+intervals to the corresponding source member and the original owner must verify
+the identities against its source roster. Unannotated matmuls remain unchanged.
 ```mlir
 %acc0 = merlin_iface.matmul %A0, %W_res :
         (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>

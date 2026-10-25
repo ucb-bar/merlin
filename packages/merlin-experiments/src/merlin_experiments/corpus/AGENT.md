@@ -14,6 +14,9 @@ Keep private copies on independent inodes, public summaries aggregate-only, and
 human approval explicit. Preserve schemas, historical provenance identities and
 adapter construction order. Core owns copying primitives, admission validation,
 coverage and leases. Importing this package must not import graders or run work.
+`scalability_intake` rejects duplicated convolution dimensions or attributes
+that contradict the written public interface before placement/golden work.
+Corrections require a new source-semantic selection; intake never repairs them.
 New reviewed bundle generation explicitly selects the installed compiler source root
 for public Python tools and their deny surfaces. Target resources remain descriptor-owned;
 do not invent a checkout alias or relabel a baseline bundle as an assisted treatment.

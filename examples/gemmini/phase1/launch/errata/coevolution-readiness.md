@@ -7,14 +7,16 @@ candidates require a specific unresolved mechanism and matching numerical eviden
 before selective gSIM; large scalability cases use Spike during development.
 Required physical correctness is not waived by selective model calibration.
 
-Develop capability families concurrently. Run one small end-to-end canary when a
-family is executable, then admit independent cases continuously as resources free.
+Develop capability families concurrently. A small end-to-end canary can cheaply
+expose shared ABI errors; choose it when useful, without making it a prerequisite
+for independent construction or tests. Admit useful eligible cases continuously as resources free.
 All work contributes to the same compiler. Integrate helpers' reusable changes
 frequently; evaluate immutable snapshots while authoring continues. Preserve
 per-result revision and input identities. Do not wait for all 153 originals before
 working on calibration prerequisites or large connected workloads.
 
-Start with an empty target backend. The generic ISA generator is available as
+Fresh experiments start with an empty target backend; declared checkpoint
+continuations preserve and improve their existing compiler. The generic ISA generator is available as
 `merlin.targetgen.isa_spec.resolve_isa` and
 `merlin.targetgen.isa_dialect_gen.generate_package`; it is not an already
 generated target dialect. Inspect the selected software specification for an
@@ -24,14 +26,15 @@ explicit unknown semantics/effects; do not invent fields from instruction names
 or import any existing target compiler/extractor. Generated files are outputs of
 this authoring run. Independently check encoding before using the generated ops.
 
-Divide work by compiler boundaries: source semantics and graph transformations,
+Useful divisions include compiler boundaries: source semantics and graph transformations,
 numerics/layouts, schedule/storage, instruction lowering, and host execution.
-Agree on their typed interfaces early. One integrator should keep an executable
-path while helpers expand independent capabilities; do not assign a separate
+Choose ownership and typed interfaces that let the work proceed concurrently.
+Keep an executable path while helpers expand independent capabilities; do not assign a separate
 compiler implementation per capsule. The first target executable is an early
 construction milestone: emission, target consumption, linking, Spike, and every
-output comparison must actually run before broad tests of that path. Missing
-symbols or a broken shared ABI defer affected tests while other work proceeds.
+output comparison establish more than a successful build. Choose when to broaden
+tests from the evidence available. Known shared ABI failures are a reason to avoid
+repeating affected work while independent paths proceed.
 
 Use bounded fusion discovery and pass alternatives, retaining a correct unfused
 route. Inspect the realization receipt: logical schedules, encoded stage
@@ -59,6 +62,31 @@ work. Never branch on capsule IDs or encode fixed answers.
 
 Use compact capability and API queries rather than copying complete catalogs or
 logs into each agent. All 20 CPUs form one dynamically shared reservation; there
-are no permanent role-specific pools. The aggregate planning token target is 40M,
-including cached input and all helpers, with 8M reserved for integration/repairs.
+are no permanent role-specific pools. Follow any explicitly selected runtime budget;
+this guidance adds no token threshold or integration reserve.
 Keep detailed logs on disk and concise evidence-linked handoffs in context.
+
+Own the development loop. Use up to 16 helpers within the declared ceiling when
+independent work exists, with no minimum occupancy requirement. Construct and
+improve independent compiler subsystems concurrently, then integrate into one
+compiler. The evaluator is an asynchronous feedback service, not an approval
+step for every source edit or pass invocation. While one immutable snapshot is
+evaluated, keep developing the next. Ask for targeted evaluation when a changed
+capability is ready; reuse current results for unchanged relevant code and inputs.
+Do not repeatedly submit the entire roster while an equivalent request is active.
+
+When the operator selects full compiler access, the writable generic compiler
+lives under submission/compiler_library. Inspect, modify, reorder and extend its
+transformations, dialects, analyses, allocation and host generation directly.
+Develop reusable missing abstractions instead of waiting for another wrapper API.
+Use bounded alternatives and shape/resource heuristics; each helper contributes
+to the same compiler and returns a compact change summary plus relevant evidence.
+
+Reach executable coverage across all 250 original cases, including required
+physical checks, while improving the large-shape implementation from the start.
+Once a family is correct, concentrate its performance exploration on the larger
+capsules and connected models. Keep exploring measured bottlenecks after initial
+correctness: fusion, preparation reuse, storage lifetime, tiling, overlap, command
+overhead and whole-chain scheduling. A successful build or a completed author turn
+is not completion of the correctness and performance objectives. If evaluation is
+pending, continue independent compiler work and consume results as they arrive.

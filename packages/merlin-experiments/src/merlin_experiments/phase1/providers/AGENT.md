@@ -29,11 +29,14 @@ checkout-specific dependency paths. The batch banner passes the parsed provider 
 the same accounting policy as execution. Fake CLI tests qualify process,
 transcript and cleanup behavior, not a provider account, kernel sandbox or full installed engine.
 
-Default author kickoff prompts direct the agent to the current round brief and its operator errata
+Legacy selected-library author kickoff prompts direct the agent to the current round brief and its operator errata
 before TASK.md. Required discovery must execute before submission edits or delegated compiler edits;
 stage discovery/scaffold outputs outside submission until those invocations finish. The minimal
 manifest instruction applies only afterward, before waiting for a grade. Keep this ordering identical
-across Codex and OpenCode. Custom canary prompts retain their own tasks.
+across Codex and OpenCode. The explicitly selected full-compiler/private-evaluator
+prompt instead leaves discovery, component order and useful test admission to the
+author, subject to actual selected runtime policies. It introduces no pass-use,
+first-capsule or minimum-helper barrier. Custom canary prompts retain their own tasks.
 
 The existing execution owner adds `conformance_context` to the trusted first transcript init:
 actual workspace, selected target, and only same-SHA aliases of the admitted frozen facts. It
@@ -94,3 +97,9 @@ overshoot the target. Resuming a thread preserves its history; the integration w
 not a claim of context compaction. Fresh under-budget exploration has no new
 periodic interruption; retain the existing overall wall/turn controls. Do not reset an admission ledger to continue
 exploration under the same recorded policy.
+
+The trusted Codex composition owner prepares one launch-local mount plan for the
+adjacent permission probe and initial paid command. Both retain the identical
+final mask sequence and runtime grants; payload composition adds no mounts.
+Arbitrary provider callbacks retain their existing behavior, and continuations
+prepare a new plan. This is not an environment- or policy-keyed global cache.

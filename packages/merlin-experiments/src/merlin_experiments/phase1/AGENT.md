@@ -386,3 +386,37 @@ exact selected ancestry and active continued-denial environment pin. Readiness
 supplies the current selected document; frozen rounds supply its original pin.
 A stale or missing admission review refuses before native sensitivities, labels
 or retained selections. Updating diagnostics cannot evade a model-hash denial.
+
+`joint_provider_revision` permits a narrowly reviewed provisional timing-provider
+implementation correction after scoped diagnostics. Observer/source identity,
+functional runtime, hardware facts, coefficients, resources, diagnostic settings
+and timing boundary stay unchanged. Reopen compiled source/binary pins and paired
+public replay products, including exact ELF/input/window and numerical outputs.
+Carry every earlier denial forward and bind the active denial to the successor
+model. Source/binary ancestry is not calibration or held-out accuracy authority.
+
+`joint_readout_revision` admits an explicitly reviewed provisional readout-stage
+successor: separate request admission, private-probe service and response arrival,
+plus aligned disjoint full rows. Existing prices, capacities, functional runtime
+and counter window remain fixed. Pin source snapshots, public development replays
+and stage assumptions; preserve active inherited fit denial. This review grants
+neither independent accuracy qualification nor automatic model activation.
+
+The provisional load-frontend successor admits only its source-bound six-stage
+arrival offset, enablement selector and explicit no-backpressure assumption.
+It cannot alter service occupancy, prices, existing memory facts or scope, and
+must retain the current-model fitting denial and exact public replay bindings.
+
+Loader cache bootstrap is a separate provisional observer revision, bound to a
+source receipt and original ELF loading order. It permits only the selected TSI
+loader and one loaded line per cache set; no warm-address hints, replacement
+approximation, provider change or implicit large-image qualification is allowed.
+
+`joint_calibration_eligibility` is the shared compiler-correctness admission
+screen for passive intake, fit registration, panel selection, freeze and replay.
+A numeric PASS/Spike L2 PASS never overrides trace/source-placement failures or
+missing declared obligations. Only the existing exact pending-required-L3
+boundary may remain incomplete, including its stable source and complete outputs.
+Recheck older round results before reusing probes or outcomes. This predicate
+issues no provenance, physical, fitting or timing authority; existing independent
+product reopening and calibration/model-admission gates remain mandatory.

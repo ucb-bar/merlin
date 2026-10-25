@@ -104,3 +104,30 @@ Hits are advisory (the protection worked, or nothing was read), violations (with
 `mount_visibility` owns ordered mount parsing and per-call visibility indexing.
 `bwrap` retains its parser/class aliases and local override point. New phase-1
 source selections pin both owners; no frozen selection is silently rewritten.
+
+### Guard capacity and preparation concurrency
+
+`CapsuleMetadata.derived` coalesces only matching classification keys. Unsupported
+or exhausted watches keep fresh readers; they must not hold a global callback
+lock. Frozen declarations may reuse a per-call path resolution only when watches
+armed before resolution remain unchanged. This is not payload-byte authority.
+
+When preparation repeatedly hashes an immutable snapshot, inspect actual
+`_RosterGuard.resource_errno`, not only the lease-enabled flag. Linux inotify
+`EMFILE` can mean the user's `max_user_instances` is exhausted even when the new
+process has few file descriptors; `ENOSPC` can mean `max_user_watches` is full.
+Count user-owned inotify descriptors/watches and inspect `/proc/sys/fs/inotify/`
+before concluding that the snapshot is too large. An operator may increase these
+runtime limits for the workload; never close another owner's guards or silently
+skip verification. The existing inventory and compiler executor retry resource
+failures after 30 seconds with a fresh scan/verification. No digest survives an
+unwatched interval, and restored capacity alone does not qualify old observations.
+
+The existing preflight CLI also supports `--snapshot-guards`. When
+`MERLIN_SNAPSHOT_LEASE_CACHE=1`, ordinary Phase 1 preparation first exercises a
+small real guard and mutation invalidation, before materializing the corpus.
+Unavailable selected guards refuse early with errno, runtime inotify limits and
+visible descriptor/watch reference counts; no host settings or checks change.
+Each admitted preparation writes an attempt-specific `snapshot_guard_preflight.*.json`.
+A successful tiny probe is point-in-time operability, not capacity reserved for
+all future workers. Census counts are non-atomic references, not unique instances.

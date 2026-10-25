@@ -94,6 +94,26 @@ broker's actual source/runtime identities, including explicit newer-byte notices
 Replay means the same declared actions and validation machinery; it does not
 claim identical timings or unchanged source state across separate runs.
 
+For iterative exploration, keep the existing sandbox and broker warm:
+
+```sh
+python construction_actions.py initial.json --out study-001 --timeout 21600 --inbox action-inbox
+```
+
+Atomically publish additional plans with `enqueue_actions("action-inbox", plan)`
+from this module. Each plan uses the same schema; action IDs must be unique across
+the session, and dependencies may reference previously admitted actions. New
+independent work can run while earlier immutable submissions are being checked.
+The reader records each accepted plan hash or refusal in `inbox-events.jsonl`.
+Create `action-inbox/STOP` to stop intake and finish accepted work. The wall budget
+still bounds the session. This changes client scheduling only: source admission,
+sandbox access, numerical checks and per-submission identities remain unchanged.
+
+Completed checks also append scoped public performance feedback to
+`performance.jsonl` and update `performance-portfolio.json`. Missing timing or
+scope bindings remain UNKNOWN; modeled resource activity is not physical
+utilization. Inspect the original broker result for the full evidence.
+
 See [the compiler contribution map](../../examples/compiler/compiler_change_map.md)
 for implemented API boundaries and their remaining execution obligations.
 Use the [construction study milestones](../design/compiler_coevolution_study.md#readiness-and-subsequent-comparisons)

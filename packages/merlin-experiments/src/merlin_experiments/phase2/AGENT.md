@@ -1112,3 +1112,10 @@ annotated normal completion. Reuse the bounded census guardian and auxiliary
 shared leases. Report the separate observer implementation pin, unchanged model,
 original physical scope and unresolved regimes. This issues no fit, promotion,
 new physical execution, public author access or qualification authority.
+
+`owned_model_observation` admits an explicit synchronous whole-model counter
+scope only from the original v2 compilation recipe and fresh owned dispatch
+proof. Recheck every device return fence and reject opaque host calls, missing
+groups, changed custody or ambiguous counters. Keep the separate scope identity,
+original ELF and existing sandbox observer; no aliases, numerical tier credit,
+stage-sum timing or calibration promotion follows from this adapter.

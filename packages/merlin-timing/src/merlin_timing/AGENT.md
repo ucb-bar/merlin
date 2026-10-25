@@ -23,3 +23,10 @@ bookings are modeled reservations, not physical busy time or ROB counters.
 Never synthesize activity from whole-trace sums; never add overlapping resources
 or requested bytes across boundaries. Offline and automatic projections share
 this function. Host phase timing stays unknown without its own native producer.
+
+`optimization_feedback` compacts this same scoped projection with source work.
+Compute ceiling attainment is useful work divided by structural peak and modeled
+ROI cycles, never measured array occupancy. Preserve source/count distinctions,
+unknown physical stalls, queues and byte storage high-water. Generic resource
+reservations cannot establish those counters. Suggestions describe required
+compiler capabilities and proofs, never select a target schedule or grant timing.

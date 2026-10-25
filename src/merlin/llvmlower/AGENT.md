@@ -2,6 +2,11 @@
 
 ## Purpose
 
+`host_builder.append_void_region` mechanically clones a closed void LLVM CFG
+into the caller, preserving original instructions/fences and all normal exits.
+External calls, globals, captured values and nested regions refuse. Caller
+ownership and completion proofs remain separate; no scheduling effects change.
+
 `adjacent_exp` is a default-off exact reuse choice inside one closed ordinary
 parallel tensor generic. It retains all scalar arithmetic, invokes the original
 `math.exp` for the first/new argument bits, and reuses only adjacent identical
@@ -1212,3 +1217,82 @@ and IEEE flags in every rounding mode, including underflow/overflow. Positive-on
 rows retain word-copy; other powers, unknown sums and nonfinite rows keep the
 literal original divide. No reciprocal approximation, reassociation, fast-math,
 new environment or physical alias permission is introduced.
+
+
+`integer_readout.emit_rational_scalar_ir` is an optional exact compact integer
+representation of ordered positive binary32 readout scales. It checks both ends
+of every source output interval against signed-i64 rational nearest-even
+rounding over the entire i32 domain. Double-rounding disagreement, excessive
+shifts or product range refuse. Scalar graph admission allows bitwise AND/OR
+and arithmetic right shift only by a directly defined in-range constant.
+The graph supplies no physical readout, bias access, target execution or grading
+authority; a backend must bind actual output widths, scales and storage effects.
+
+
+`quantized_affine_pair.prove_loaded_sum` checks an explicitly proposed pair of
+RNE/saturating signed-i8 loads, exact i32 addition and RNE/saturating readout
+against the ordered binary32 source on all 65,536 input pairs. It consumes the
+source's explicit LSB bound, chooses no coefficients and supplies no target
+qualification. Load clipping, output activation and conversion order remain
+part of the compared functions; a failed bound keeps the source route.
+
+`spatial_scratch_abi` composes the ordinary fresh writer and private workspace
+pool for an explicitly source-bound staged spatial producer. Scratch is a
+private ranked descriptor, never an extra logical source argument. Generated
+bridges validate capacity, strides, alignment and pairwise nonalias before the
+borrowed device helper; allocation accessibility and synchronous noescape
+effects remain separately supplied caller premises. Use the normal
+`composition_features(..., has_writers=True)` before bufferization to inline
+tensor helpers and avoid full-result allocation/copy. Public source signatures
+and both rounded readout stages remain unchanged.
+
+`connected_spatial.group_connected_spatial` is an explicit detached grouping
+before model interface extraction. It matches the current host SSA: one private
+convolution call result, one pool use, fresh destinations and no intervening
+operation except tensor.empty. Shared callees, extra observers, missing source
+programs or format mismatches remain separate requests. Both original source
+entries and rounded readouts travel unchanged in the connected request. The
+normal grammar represents the internal edge by dataflow; source grouping,
+borrowed effects and target admission remain distinct obligations.
+
+`connected_spatial_host` binds a staged plan's complete geometry and both
+original rounded coefficient boundaries to current connected host SSA. Its
+normal writer/private-pool preparation keeps scratch in the original public
+host owner, preserving all public result types. A separately named private
+raw helper can be selected through `append_void_region`: every operation and
+fence survives, while calls, globals, captures and nested regions refuse.
+Only that closed helper crosses device object admission, so allocator/runtime
+imports stay in the ordinary host. This API supplies no effect qualification,
+full-model link or execution evidence; the original device driver must consume
+the explicit host/helper selection rather than an opaque post-offload callback.
+
+An original caller may explicitly select `stack_budget_bytes` on that private
+pool/route. The bound includes each slot's worst-case alignment padding. The
+existing synchronous, initialized-before-read and noescape premises remain
+mandatory; the public owner allocates a static `memref.alloca`, so storage is
+private to each invocation and ends at return. This choice proves neither the
+complete target stack frame nor runtime/DMA accessibility: final ordinary stack
+measurement and resource/numerical gates still apply. Heap allocation remains
+the default. The checked arena binder still refuses unknown borrowed pointer
+escapes; a stack selection does not grant it candidate-asserted noescape effects.
+
+`ConnectedSpatialRoute` is the explicit original-caller selection consumed by
+ordinary `DeviceRouting`. It retains the normal placement selector, source
+group eligibility and both staged readouts. Preparation groups the actual host
+SSA before freezing its sidecar and owns private scratch in that public host;
+the selected ordinary pre-bufferization inliner exposes result forwarding.
+The object builder retains the checked producer artifact and compiles a
+separate literal closed private-helper derivation. Its descriptor bridge calls
+the ordinarily renamed helper and passes the unchanged strict two-object
+symbol check, independently of other model shims. Empty/opaque/catalog routes,
+changed source/ownership selections and helper runtime imports refuse. This
+wiring adds no borrowing/completion premise, numerical qualification, linked
+image admission or whole-model execution evidence.
+
+`public_spatial_source_graph` constructs typed host SSA from two explicitly
+supplied public source programs, using the existing source builders for complete
+edge formats and logical arguments. Its declarations retain both original
+programs in the ordinary group sidecar. This is source construction, never a
+captured-model or execution claim. The separate public raw-entry transport may
+be emitted as a self-contained C object; the private descriptor bridge remains
+in the ordinary device shim and scratch stays in the original public host.

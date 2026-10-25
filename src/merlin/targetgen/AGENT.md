@@ -1,5 +1,11 @@
 # AGENT.md — src/merlin/targetgen
 
+`public_source_abi` transports exact public component-program IO metadata into
+function attributes before ordinary lowering. The original source, complete
+capsule metadata, normalized source and helper invocation stay pinned across
+compiler use. Structural projection checks unchanged bodies/types/arity. It
+does not replace frozen source, goldens, emission custody or private input policy.
+
 `host_admission_preparation` owns one program's private selected-host copy and
 order-preserving declaration index. Validate each profile once and recheck its
 original bytes before acceptance; retain no decisions across calls or programs.
@@ -72,6 +78,10 @@ Explicit `component_program` v2 adds signed integer casts and true kept-axis
 sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
 meaning. Logical copies, fanout, aliases and state epochs are source semantics;
 physical placement, allocation, effects and timing need separate witnesses.
+The explicit `logical_io: merlin.logical_io.v1` program option emits ordered
+logical input/output names on the public function. It preserves independent
+output aliases through source-only compiler invocation; it grants no physical
+alias, placement or execution authority. Absent selection retains old bytes.
 `column_readout_capsules` derives gain-block and partial-block demands from the
 selected numeric output path and public contraction carriers. Synthetic gains
 and small extents carry no private model values or shapes. Group coverage must
@@ -598,3 +608,11 @@ stdlib-only owner of target-consumer transport declaration structure. The privat
 `capsule_common` adapter translates its errors into the original contract failure
 category; manifest inspection imports no package runtime or grading owner.
 Declaration validity remains distinct from actual changed-IR consumption.
+
+`interface_observations` decomposes only a fully declared disjoint signed-i8
+`MAXPOOL2D` macro with exact `acc_scale,maxpool` stage order into movement and
+ordered readout components. Retain the original macro, geometry, source ordinal
+and internal i8/i32/i8 storage edges. Every component still needs ordinary
+software and unchanged hardware admission. This source observation grants no
+new software declaration, physical pool lowering, numerical or execution
+authority; old source epochs and frozen release refusals remain unchanged.

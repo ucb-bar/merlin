@@ -64,6 +64,15 @@ never swallowed as a per-group failure.
 
 ## Invariants
 
+`guarded_file_digest` reuses exact selected file reads only inside a host-issued
+request owner and continuous kernel watches. Every file and parent are watched
+before the first full hash; any event, overflow, mount change or unavailable
+watch restores complete reads. Invalidated guards are never rearmed. Explicit
+joined-worker scopes recheck custody before publishing and close with the owner;
+forked/closed owners cannot reuse. No timestamps, global digest cache, source
+grants or semantic proof authority are introduced. Outside the scope RTL source
+checks retain their ordinary full reads.
+
 - Keep this directory focused on its stated purpose.
 - Every subdirectory must also contain an AGENT.md.
 - Shared helpers (schema load/validate, yaml, llm summary) are real and dependency-light.

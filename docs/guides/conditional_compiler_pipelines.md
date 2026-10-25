@@ -207,3 +207,28 @@ and refuse source, prepared-IR and selected-contract mutation.
 This module is usable by an ordinary compiler import. A sandboxed author also
 needs it added to a new reviewed immutable compiler-library export; existing
 exports and active author epochs are not changed by adding this source file.
+
+## Generate pass orders and option alternatives
+
+`merlin.transforms.pass_exploration` builds bounded alternatives for the existing
+registry and evaluator. A `PassFamily` binds a real `RegisteredPass` for each
+explicit finite knob tuple. Static or knob-dependent predicates use the same
+source-stamped shape and resource facts described above. Existing stages,
+prerequisites and invalidations, plus optional `before` edges, prune invalid
+orders before transformations run. New or edited passes can join the registry
+through the same factory; the generator contains no target or workload handlers.
+
+`generate_candidates(..., output=..., max_candidates=8)` produces at most sixteen
+alternatives under a separate finite enumeration budget. `explore_candidates`
+executes those alternatives on private IR through `evaluate_variants`. The caller
+must return `EmittedProgram` with actual emitted bytes, their explicit format and
+the transformed schedule's digest. LLVM dialect IR is an emission boundary, not
+machine-code execution evidence. Identical program bytes under identical selected
+contracts retain their pass profiles but invoke the feedback callback once.
+
+Optional caller-observed feedback must match the emitted program hash. Compilation
+never invents cycles, chooses a fastest candidate or establishes numerical/hardware
+qualification. Compact summaries contain options, executed passes, source/IR/program
+identities, measured host pass times and duplicate links; full IR and independent
+execution receipts remain in caller-owned artifacts. Read-only analyses may commute,
+while transformations with dependencies or invalidated facts constrain legal order.

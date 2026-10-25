@@ -51,6 +51,9 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   unchanged into `DeviceRouting`. Automatic `compile_model` planning currently has
   no independently selected live policy/accessor producer; an active ordinary
   device build must refuse rather than infer one from a target or package name.
+- `owned_host_model` forwards an explicit complete-group requirement to ordinary
+  source routing. Complete source contracts select every independently admitted
+  accelerator group; host placement and source/numeric legality still apply.
 
 `connected_regions.py` owns source-SSA boundaries, lifetimes and native stage
 compiler selection. `connected_runtime.py` consumes its dense/pointwise products
@@ -66,3 +69,14 @@ Preflight every view before any stage executes; reject overlapping distinct
 physical backings and metadata aliases. Explicit stage effects include completion
 on failure as well as success. Preserve exact stage products and all source live
 outputs. Binding receipts and asserted effects do not certify target execution.
+
+`owned_spatial_source` is an explicitly frozen public capsule compiler route.
+It rebuilds the original declarative component graph and compares all source
+semantics/interface fields, then prepares its actual SSA grouping and private
+host ownership. Candidate emission still uses ordinary sandboxed entrypoints;
+only literal closed helper/completion regions are retained. Original host and
+descriptor transport are emitted by this fixed compiler, with strict object
+symbol admission and separate tool/input/output custody. It accepts no saved
+ELF or candidate host compiler. Normal capsule structural, stack, full-output
+numeric and selected-engine gates must still execute. This supplement route
+issues no six-model gate credit, physical effects or timing qualification.

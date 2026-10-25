@@ -27,6 +27,9 @@ Owned-host model preparation, frozen placement and linked-device audit use the
 core capture-bound exact grouping helper. They must inspect the same selected
 output-fusion cuts as ordinary emission, with unchanged source, complete-output,
 host-compute and mandatory-tier obligations.
+After independent source admission, the owned-host adapter explicitly requires
+all admitted accelerator groups in its build. Contraction extent/economic
+selection cannot substitute for that original complete source obligation.
 
 Explicit ordinary public-program execution retains the source-owned runtime
 bundle and binds the actual complete-call caller, same ELF and raw outputs.

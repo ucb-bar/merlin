@@ -2,6 +2,11 @@
 
 ## Purpose
 
+`ROW_MAJOR_VIEW` is an explicit logical final-output reshape: one already
+produced buffer identity, equal static element count and unchanged dtype/order.
+Both numeric engines retain true nested output shape; no copy/transpose/input
+mutation, traffic or hardware completion is inferred from this metadata.
+
 The Python reference runtimes that execute Merlin command buffers / dispatch programs, plus
 the per-backend adapters under `backends/`.
 

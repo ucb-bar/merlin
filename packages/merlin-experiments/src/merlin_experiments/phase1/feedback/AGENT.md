@@ -3,7 +3,9 @@
 Concurrent original compiler operations may re-admit an invalidated snapshot guard
 under the same live owner and immutable marker. Reopen ordinary custody before
 publishing a replacement; preserve old guards until their owner drains and retain
-every operation's independent final content check. Refuse inherited process owners
+every operation's final custody check. Explicit original entries may use their
+unchanged kernel guard at publication; invalidation restores full independent
+payload verification. Refuse inherited process owners
 before touching locks. Never wait for refresh while holding a CPU lease. Bound
 failed refresh attempts and retain the ordinary full-read fallback. This optimizes
 input admission only; it never reuses numerical verdicts or changes source grants.
@@ -39,6 +41,14 @@ ELF. Reuse the Phase 2 boxed observer and propagate cleanup uncertainty. The
 public projection keeps scoped estimates provisional, whole-trace resource totals
 nonadditive and qualified attainable utilization absent. Never interpret guest
 cycles, structural-floor ratios or supplied report labels as timing authority.
+
+The common outcome brief exposes `same_roi_optimization` through the timing
+package's shared compact projection. Require the scoped model/ELF/window join
+and preserve modeled cycles, source useful work and observed requested counts
+separately. Compute ceiling attainment is not measured array occupancy. Generic
+reservation and start-queue activity does not establish physical stalls, ROB
+pressure or byte storage high-water. Missing providers remain unknown; this
+feedback neither launches target work nor changes any correctness gate.
 
 `private_source_admission` scopes prepared host declarations to one program and
 reopens the caller's original selection before returning. Keep every ordinary
@@ -539,3 +549,47 @@ all snapshot custody, concurrent draining and numerical checks remain unchanged.
 executed certificate tiers without issuing work. `selfcheck_selection` also owns
 explicit reachable-tier selection. Original promotion/selfcheck helper names
 remain re-exported; callers retain their original lookup and patch boundaries.
+
+
+`rolling_model_gate` counts only the declared original correctness cohort,
+excluding model cases and applying existing hardware eligibility. A protected
+live full-grade completion and exact source/profile/bundle/checker/corpus scope
+are mandatory; public counters, partial-tier unions and earlier compiler epochs
+never grant admission. Capture L2 producer custody immediately after its actual
+numerical comparison, before another engine reuses mutable build paths. Only
+that explicitly verified ELF input can later use its retained byte copy; all
+other invocation pins and final L3 products must reopen unchanged. Missing or
+unsupported evidence stays uncredited. The gate changes scheduling only and
+preserves the declared threshold, independent model checks and full certification.
+Bind policy declarations separately from their frozen public grading projections;
+privacy metadata differences are not source mutations. Recheck both identities,
+retain the original operator denominator, and reject changed model gate/tier policy
+or any altered worker copy. Projection binding grants no numerical credit.
+
+`construction_plan` optionally requires a complete public-family construction
+DAG before broad requests. Bind the actual frozen candidate plan to the protected
+public inventory; owner/module/dependency declarations do not prove implementation
+or worker activity. Both brokers share one protected bounded tiny-bootstrap
+counter. Background admission uses the same pure predicate without spending that
+counter and checks the frozen snapshot again. Authoring and cheap inspection stay
+available; numerical/source readiness and grading remain independent and unchanged.
+
+
+`snapshot_external_v1` is an explicit experimental execution treatment, never an
+implicit fallback from strict profile custody. Admit the original selected inputs
+and complete candidate snapshot once, then use one answer-closed sandbox policy
+with a separate IO mount per command. The compiler snapshot is read-only; only
+its declared build directory is writable for builds. Record real subprocess
+inputs/outputs and the treatment identity, retain normal external numerical,
+ISA, trace, placement and simulator checks, and reject source mutation at scope
+exit. No per-pass RPC or original-profile emission/Lean certificate is issued.
+Default `profile_strict_v1` retains its original checks and behavior.
+
+
+`snapshot_external_v1` uses an independently recorded `SnapshotInputs` owner;
+immutable public bundle grants remain verified, while current external checker
+source hashes are recorded without claiming historical host proof-profile
+identity. Its sealed model child restores this same input owner and an isolated
+compiler executor. Missing transport never falls through to unboxed candidate
+execution. Child receipts identify source/spec execution, not numerical success
+or original-profile Lean/pass qualification.

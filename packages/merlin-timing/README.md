@@ -142,3 +142,26 @@ A matching trace grants no complete-model, hardware or 4% timing qualification.
 The standalone FASED wrapper and boundary-driver generator live in
 `build_tools/gsim/reference/`. They reuse existing FireSim timing RTL; the Python
 reference tools supply no substitute timing model or fitted memory prices.
+
+### Experimental posted source actors
+
+`PostedTimeline` dispatches bounded source callbacks through an explicitly closed
+external-arrival frontier. Posting does not execute a future callback or publish
+a future row. Completion tokens remain unresolved until actual dispatch;
+retroactive arrivals, repeated identities, unknown dependencies and budget
+exhaustion fail explicitly. Callback order is deterministic; hardware arbitration
+must be supplied by the source owner rather than inferred from that order.
+
+`PostedEngineStage` owns its Event data and queries readiness without mutating
+Engine accounting. It commits only at actual stage acceptance, retries occupied
+ports later, and publishes its completion token at that stage's known result
+boundary. Pending storage ownership and registered handoffs remain source-adapter
+obligations. Unknown latency or a changed admission refuses. No default timing
+model selects these actors and no physical accuracy is implied.
+
+Compact summaries expose callback posted/dispatched/pending counts by role,
+token-blocked callbacks, dependency-release delay, unresolved completion tokens
+and peak pending depth. Counts describe model callbacks (including retries), not
+physical transactions or capsule progress; delays are not an attribution of
+unique hardware stalls. CPU/DMA cache and response-controller integration is a
+separate source-law task; scalar memory completion cannot invent first beats.

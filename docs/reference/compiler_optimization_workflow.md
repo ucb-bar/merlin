@@ -136,6 +136,29 @@ not functional correctness or evidence of performance.
 | Packing and host preparation reuse | `llvmlower` host builders and preparation routes | Identify immutable inputs and invocation lifetime; distinguish per-call reuse from persistent preparation |
 | Performance feedback | Experiment performance reports, roofline and selected timing observer | Matching source, workload, timing boundary and model epoch; no private reference scores in author feedback |
 
+### Full-reduction operand residency and completion
+
+`dense_panel_pipeline.dense_retained_choices` enumerates LHS- and RHS-resident
+full-K alternatives within the original assigned memory views. Each choice
+contains its block, loop order, retained operand and post-hoist transfer volume.
+Ranking uses source traffic and capacity, rather than measured target latency;
+evaluate the emitted alternatives before choosing a performance policy.
+
+The typed `retained_full_k` completion mode stages operands, drains their loads,
+issues the original ordered reduction against read-only operands, then drains
+computation before output or storage reuse. `DenseRetainedReductionAdmission`
+requires a separately selected ordered accumulator-commit premise. A double
+buffering admission or sufficient storage capacity cannot supply that premise.
+Loop-invariant statement hoisting acts on the actual schedule, and final source,
+storage and completion verification remains mandatory.
+
+`dense_panel_readout.batch_dense_panel_readouts` can subsequently group pure
+stores under an explicit configuration-snapshot and pending-readout admission.
+It preserves compute/initialization boundaries and checks the resulting schedule.
+Varying per-tile numerical configurations remain unsupported by batching; a
+compiler should retain their original unbatched stores. These APIs neither
+assume fixed device completion cycles nor establish performance or model accuracy.
+
 The complete contracts and restrictions are in
 [shared compiler passes](shared_compiler_passes.md). For example, the physical
 `plan_fusion` implementation handles adjacent synchronous elementwise operations
@@ -248,3 +271,33 @@ planner should return a decision with premises; the backend should realize it.
 Do not turn target instruction details into shared constants or describe a byte
 traffic heuristic as a calibrated whole-system cycle model. Qualification of a
 shared pass and demonstrated target performance remain separate release claims.
+
+## Using public scheduled implementations
+
+Public optimized examples can guide compiler construction and be declared as
+experiment inputs. Pin their revision, retain their license, and distinguish
+reference access from transformations actually used by the generated compiler.
+For example, Exo's [Gemmini GEMM schedules](https://github.com/exo-lang/exo/blob/defe17283d15553ca9d6ad70b2e9f4c22ff36ce2/apps/gemmini/src/exo/matmul.py)
+and [convolution schedules](https://github.com/exo-lang/exo/blob/defe17283d15553ca9d6ad70b2e9f4c22ff36ce2/apps/gemmini/src/exo/conv.py)
+suggest the following reusable exploration directions:
+
+| Reference mechanism | Merlin construction point |
+|---|---|
+| Split, reorder, fuse and fission counted loops | Typed `LoopTransform` requests in the scheduling dialect and `loop_schedule` |
+| Hoist invariant operand loads | `dense_retained_operand_hoists` with original source/storage checking |
+| Unroll selected compute coordinates | `dense_retained_compute_unroll`, followed by the ordinary schedule pipeline |
+| Lift configuration outside repeated work | Configuration-state passes and the target's configuration snapshot contract |
+| Change allocation scope and layout | Explicit storage views, allocation/lifetime analysis and host workspace contracts |
+| Retain overlapping convolution input rows | Window transfer analysis; requires a rolling-cache transformation and consumer lifetime proof |
+
+Compute unrolling accepts semantic M/K/N axes decoded from actual operands,
+rather than generated loop names. Apply interchanges before unrolling, then
+carry all returned requests through the same typed schedule plan. The final
+source, storage and completion checks remain required. Large expressions with
+multiple output-tail families can exceed the verifier's budget; a refused
+alternative must retain its original schedule. Unrolling is a code-size and
+host-issue tradeoff, not an assumed performance improvement.
+
+Reference schedules can contain manual guards or unchecked transformations.
+Re-derive their dependencies and storage conditions for the selected target;
+those annotations do not grant Merlin a hardware or numerical premise.

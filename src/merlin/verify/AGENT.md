@@ -2,8 +2,10 @@
 
 Original emission operations may consume their explicitly selected concurrent
 executor's snapshot re-admission context before the existing verification scope.
-The existing scope, original owner checks and independent final custody remain
-mandatory; executors without that capability retain the original path.
+The existing scope, original owner checks and final custody remain mandatory.
+The executor may explicitly lend its issued live entry for guarded publication;
+changed, expired or absent guards retain full independent payload reads.
+Executors without that capability retain the original path.
 
 
 ## Purpose
