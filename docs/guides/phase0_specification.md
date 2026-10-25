@@ -3,11 +3,16 @@ title: Defining and inspecting Phase 0 inputs
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-17
+last_verified: 2026-10-24
 related: [generating_capsules, adding_a_target, software_instruction_semantics, component_phase0_diagnostics]
 code_refs:
   - src/merlin/targetgen/corpus_instruction_roles.py
   - src/merlin/targetgen/software_spec.py
+  - src/merlin/targetgen/quantization_spec.py
+  - src/merlin/targetgen/quant_methodology.py
+  - merlin/contract/schemas/f32_readout.schema.json
+  - merlin/contract/schemas/quantization_schemes.schema.json
+  - merlin/contract/schemas/software_compositions.schema.json
   - src/merlin/targetgen/instruction_semantics.py
   - src/merlin/targetgen/rtl/circt_introspect.py
   - src/merlin/targetgen/rtl/elaboration.py
@@ -129,6 +134,120 @@ the selected readout cannot establish. Do not copy derived tensor mode,
 granularity or symmetric zero-point values into this file. Inspect their basis
 and remaining unknowns in the generated quantization contract: omission never
 proves that an unknown format became supported.
+
+## Declare quantization schemes and composition chains
+
+The optional `quantization.schemes` block (`merlin.quantization_schemes.v1`)
+adds a case dimension alongside the existing format declarations. It does not
+change a format's hardware recipe or run a quantizer. Author `status`, `axes`,
+`constraints`, and `schemes`. The closed axes are:
+
+| Axis | Values |
+| --- | --- |
+| `scale_value` | `power_of_two`, `arbitrary_f32` |
+| `weight_scale_granularity` | `tensor`, `column_block`, `column` |
+| `activation_scale_granularity` | `tensor` |
+| `readout_exit` | `narrow_saturating`, `accumulator_full` |
+| `operand_sum_rounding` | `single_rounding`, `per_operand` |
+| `residual_coefficient` | `none`, `integer_constant` |
+
+Each scheme declares an `id`, scale value, weight granularity, and operand-sum
+rounding. A point must belong to its declared axis domains. Omitted singleton
+axes follow from their domain; exits and residual coefficients are crossed per
+composition. Other unresolved values become `UNKNOWN`, with their paths listed.
+A scheme's optional `readout_strategy` overrides the selected numerical readout;
+absence inherits that explicit declaration, never an arithmetic default. Keep
+the v1 power-of-two tensor scheme on `exact_rational_host` to retain its meaning,
+even when other schemes use f32 readout. Existing specs without these blocks
+retain their declarations and have no new scheme or composition axis.
+
+`arbitrary_f32` requires `f32_product_rne`. Its readout declaration is complete:
+
+```yaml
+readout:
+  strategy: f32_product_rne
+  accumulator_conversion: {to: f32, rounding: half_even}
+  multiplier: {dtype: f32, formation: rne_of_exact_rational}
+  product: {dtype: f32, rounding: half_even}
+  narrowing: {rounding: half_even, saturate: declared_dtype}
+  activation_order: from_facts
+  exactness_bridge: prove_fp32_products
+```
+
+This defines one exact-rational multiplier formation followed by one f32
+rounding, f32 accumulator conversion and multiplication, then RNE and saturation.
+Activation order comes from the selected output path. The exactness gate is
+**definitional** under `f32_product_rne`: an admitting implementation must compare
+decoded multiplier bits with the formed multiplier bits. Under
+`exact_rational_host`, device admission requires the `prove_fp32_products`
+rational-equality proof; sampling outputs is insufficient. Resolution describes
+these obligations; it does not execute or certify the proof. The legacy
+`{strategy: exact_rational_host, requant_rounding: half_even}` declaration and
+`full_int32_then_exact_host_rne` fallback remain valid. The new fallback spelling
+is `full_int32_then_host_readout_per_scheme` in
+`numerical_semantics.quantized_native_fallback.readout`.
+
+Constraints are conditional mappings with `when` axis values. Supported
+obligations include allowed `readout_strategy` values, the
+`{spike_extension: rounding_fixed}` oracle requirement for arbitrary scales,
+`forbids_stages: from_facts` at full accumulator exit,
+`realization: output_scale_partition`, operand multipliers in `(0, 1]`, and
+fact-derived coefficient digit dtype and maximum K extension. An oracle
+requirement is not evidence that an oracle has been qualified.
+
+Weight and readout `column_block` scales share the output path's physical
+`columns_per_scale`, with no assumed tile width. Independent `column` scales are
+legal through `output_scale_partition` but **ungraded**; per-channel credit is
+at block granularity. `per_operand` means each operand is rounded and saturated
+before summation and is offered on **every residual add**. Integer-sum recipes
+default to `exact`; an explicit `bounded` policy retains its compatibility
+serialization. A scheme may declare
+`weight_layout: {kind: packed_panel, panel_width: from_facts}` for logical
+`[N/panel_width][K][panel_width]` weights. A panel width is a provider layout fact,
+not a universal constant. `row_major_contiguous` requires no panel width.
+
+The optional top-level `compositions` block declares
+`schema: merlin.software_spec.compositions.v1`, `status`,
+`grading: placement_and_instruction_audit`, and `chains`. Each chain has an
+identity, a producer family (`contraction`, `operand_sum`, `movement`, or a list
+of those), and named constraints. It never declares a frontend operation row.
+Accumulator stages use `output_path.ACCUMULATOR_KINDS`; ordered readout stages
+use `READOUT_KINDS` or `from_output_path`; exits use `EXITS`.
+
+| Family construction | Properties and required obligations |
+| --- | --- |
+| Contraction readout | Optional/required accumulator `preload`; activation, conversion, scale, requant and pool stages from the output path; `requant` and full `accumulator` exits. Full exit applies no readout stages. |
+| Scaled operand sum | `producer: operand_sum`; `operand_multiplier_in: (0, 1]` and `load_minimum_not_negated`; scheme selects single or per-operand rounding. |
+| Window reduction readout | Movement/contraction producers; `reduction_kinds: [max, sum]`; store-path pooling, fence and padding obligations for max. Sum can use an all-ones contraction or accumulate-on-load, with reciprocal count readout for a mean. |
+| Contraction with value-bound dataflow | `dataflows: from_facts` requires `os_dataflow_requires: mesh_partial_sum_bound_from_constant_operands`. Runtime or out-of-bound weights cannot establish output-stationary eligibility. |
+| Integer operand extension | `extension: constant_integer_operand` requires `coefficient_integer_exact` and `k_extension_within: from_facts`. K-concatenation is **required when the residual coefficient is integer**, subject to the extended-K partial-sum and capacity bounds. |
+| Shared-input contractions | `multiplicity: {min: 2}` requires `per_output_readout_independent` and `shared_input_resident: from_facts`: one immutable resident input, independent sibling scales, exits and stages. |
+
+Pool window register widths and padding remain fact-derived. Underived padding
+is `UNKNOWN`, never an assumed zero. Standalone max-pool is graded **only within
+composition truth**, with dead indices; these declarations do not change per-op
+truth. Every chain uses placement plus instruction audit: all chain members must
+share one routed kernel region, the declared instruction modes must be observed,
+and host arithmetic on intermediate values cannot establish fused coverage.
+Bytes alone do not establish composition coverage.
+
+`spec_fact_drift.resolve_spec` preserves authored declarations and emits
+`quantization_scheme_resolution`, `composition_resolution`, and (for f32)
+`readout_resolution`. The resolution record lists every unresolved field;
+a chain with missing facts has `placement: unknown`. A fully resolved chain has
+`placement: fused_accelerator`, subject to case-specific constraints and later
+execution/placement/instruction qualification. The fact view carries
+`composition.output_path`; additional hardware constraints consume complete,
+evidence-bearing `FactField` records. Missing or incomplete bounds, dataflows,
+panel widths and producer capability never acquire a default.
+
+The authoritative component schemas are
+[`f32_readout`](../../merlin/contract/schemas/f32_readout.schema.json),
+[`quantization_schemes`](../../merlin/contract/schemas/quantization_schemes.schema.json),
+and [`software_compositions`](../../merlin/contract/schemas/software_compositions.schema.json).
+Corpus coverage is composition × scheme × fact-derived shape class. These
+validators declare that contract; capture realization, reference arithmetic,
+corpus enumeration and instruction grading consume it in their own stages.
 
 ## What is the SW spec?
 

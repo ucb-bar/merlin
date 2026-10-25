@@ -499,3 +499,261 @@ def test_evidence_prose_is_not_an_unknown_numerical_parameter():
         "rounding": "unknown",
     }
     assert _unresolved(semantics, "numerical_semantics") == ["numerical_semantics.rounding"]
+
+
+def _schemes_spec():
+    spec = _spec()
+    spec["numerical_semantics"]["readout"] = {"strategy": "exact_rational_host", "requant_rounding": "half_even"}
+    spec["quantization"]["schemes"] = {
+        "schema": "merlin.quantization_schemes.v1",
+        "status": "authored_pending_operator_review",
+        "axes": {
+            "scale_value": ["power_of_two", "arbitrary_f32"],
+            "weight_scale_granularity": ["tensor", "column_block", "column"],
+            "activation_scale_granularity": ["tensor"],
+            "readout_exit": ["narrow_saturating", "accumulator_full"],
+            "operand_sum_rounding": ["single_rounding", "per_operand"],
+            "residual_coefficient": ["none", "integer_constant"],
+        },
+        "constraints": [
+            {
+                "when": {"scale_value": "arbitrary_f32"},
+                "readout_strategy": ["f32_product_rne"],
+                "oracle": {"spike_extension": "rounding_fixed"},
+            },
+            {"when": {"operand_sum_rounding": "per_operand"}, "operand_multiplier": {"min_exclusive": 0, "max": 1}},
+            {"when": {"readout_exit": "accumulator_full"}, "forbids_stages": "from_facts"},
+            {
+                "when": {"residual_coefficient": "integer_constant"},
+                "coefficient_digits": {"dtype": "from_facts", "max_k_extension": "from_facts"},
+            },
+        ],
+        "schemes": [
+            {
+                "id": "baseline",
+                "scale_value": "power_of_two",
+                "weight_scale_granularity": "tensor",
+                "operand_sum_rounding": "single_rounding",
+            },
+            *[
+                {
+                    "id": granularity,
+                    "scale_value": "arbitrary_f32",
+                    "weight_scale_granularity": granularity,
+                    "operand_sum_rounding": "single_rounding",
+                    "readout_strategy": "f32_product_rne",
+                }
+                for granularity in ("tensor", "column_block", "column")
+            ],
+            {
+                "id": "residual",
+                "scale_value": "arbitrary_f32",
+                "weight_scale_granularity": "column_block",
+                "operand_sum_rounding": "per_operand",
+                "readout_strategy": "f32_product_rne",
+                "weight_layout": {"kind": "packed_panel", "panel_width": "from_facts"},
+            },
+        ],
+    }
+    return spec
+
+
+def _scheme_path(width):
+    return {
+        "schema": "output_path_v1",
+        "accumulator": {"dtype": "i32"},
+        "accumulator_stages": [],
+        "readout": [
+            {"kind": "convert", "to": "f32", "rounding": "half_even"},
+            {
+                "kind": "scale",
+                "dtype": "f32",
+                "rounding": "half_even",
+                "granularity": "per_command",
+                "columns_per_scale": width,
+            },
+            {"kind": "requant", "to": "i8", "rounding": "half_even", "clamp": [-128, 127]},
+        ],
+        "exits": {"accumulator": True, "requant": True},
+    }
+
+
+@pytest.mark.parametrize("width", [3, 7, 29])
+def test_schemes_resolve_physical_width_and_grading_without_changing_baseline(width):
+    from merlin.targetgen.spec_fact_drift import FactField, resolve_spec
+
+    spec = _schemes_spec()
+    original = deepcopy(spec)
+    resolved, record = resolve_spec(
+        spec,
+        {
+            "composition": {
+                "output_path": _scheme_path(width),
+                "weight_panel_width": FactField((width + 2,), True, ("provider layout fact",)),
+                "dtype": FactField(("i8",), True, ("operand storage fact",)),
+                "max_k_extension": FactField((width * 5,), True, ("capacity bound",)),
+            }
+        },
+    )
+    assert record["status"] == "resolved"
+    assert spec == original
+    rows = {row["id"]: row for row in resolved["quantization_scheme_resolution"]["schemes"]}
+    baseline = rows["baseline"]
+    assert baseline["readout_strategy"] == "exact_rational_host"
+    assert baseline["readout_scale_granularity"] == "tensor"
+    assert baseline["exactness_gate"]["proof"] == "prove_fp32_products"
+    assert rows["column_block"]["columns_per_scale"] == width
+    assert rows["column_block"]["graded"] is True
+    assert rows["column"]["graded"] is False
+    assert rows["column"]["realization"] == "output_scale_partition"
+    residual = rows["residual"]
+    assert residual["residual_scope"] == "every_residual_add"
+    assert residual["weight_layout"]["panel_width"] == width + 2
+    assert residual["weight_layout"]["logical_order"] == ["N/panel_width", "K", "panel_width"]
+    assert residual["exactness_gate"]["definitional"] == "f32_product_rne"
+    assert residual["oracle_requirement"] == {"spike_extension": "rounding_fixed"}
+
+
+@pytest.mark.parametrize("width", [None, 0, -2, True, "unknown"])
+def test_unresolved_scheme_geometry_is_listed_and_never_defaulted(width):
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    resolved, record = resolve_spec(_schemes_spec(), {"composition": {"output_path": _scheme_path(width)}})
+    row = resolved["quantization_scheme_resolution"]["schemes"][2]
+    assert row["columns_per_scale"] == "UNKNOWN"
+    assert row["status"] == "unresolved"
+    assert "columns_per_scale" in row["unknown"]
+    assert record["status"] == "unresolved"
+    assert any(
+        item.get("scheme") == "column_block" and item["field"] == "columns_per_scale" for item in record["unresolved"]
+    )
+    assert any("coefficient_digits" in item["field"] for item in record["unresolved"])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda b: b["axes"]["scale_value"].append("model_specific"),
+        lambda b: b["schemes"].append(deepcopy(b["schemes"][0])),
+        lambda b: b["axes"].__setitem__("weight_scale_granularity", ["tensor"]),
+        lambda b: b["schemes"][0].__setitem__("operation", "matmul"),
+        lambda b: b["constraints"][0].__setitem__("tolerance", 1),
+        lambda b: b["schemes"][-1]["weight_layout"].__setitem__("panel_width", 16),
+        lambda b: b["schemes"][-1]["weight_layout"].pop("panel_width"),
+        lambda b: b["schemes"][0].pop("operand_sum_rounding"),
+        lambda b: b["constraints"][0].__setitem__("when", {}),
+    ],
+)
+def test_scheme_axes_and_points_are_closed_and_fact_shaped(mutation):
+    spec = _schemes_spec()
+    mutation(spec["quantization"]["schemes"])
+    with pytest.raises(ValueError):
+        validate_quantization_declarations(spec)
+
+
+def test_arbitrary_scales_cannot_select_the_rational_readout():
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    spec = _schemes_spec()
+    spec["quantization"]["schemes"]["schemes"][1]["readout_strategy"] = "exact_rational_host"
+    with pytest.raises(ValueError, match="arbitrary_f32 requires"):
+        resolve_spec(spec, {})
+
+
+def test_missing_strategy_and_unproved_panel_layout_remain_unknown():
+    from merlin.targetgen.spec_fact_drift import FactField, resolve_spec
+
+    spec = _schemes_spec()
+    del spec["numerical_semantics"]["readout"]
+    resolved, record = resolve_spec(
+        spec,
+        {
+            "composition": {
+                "output_path": _scheme_path(5),
+                "weight_panel_width": FactField((19,), False, ("incomplete",)),
+            }
+        },
+    )
+    rows = resolved["quantization_scheme_resolution"]["schemes"]
+    assert rows[0]["readout_strategy"] == "UNKNOWN"
+    assert rows[-1]["weight_layout"]["panel_width"] == "UNKNOWN"
+    assert record["status"] == "unresolved"
+
+
+def test_contract_exposes_scheme_unknowns_and_legacy_contract_has_no_scheme_axis():
+    baseline = build_quantization_contract(_spec(), _hardware())
+    assert "schemes" not in baseline
+    selected = build_quantization_contract(_schemes_spec(), _hardware())
+    assert selected["schemes"]["unresolved"]
+    assert selected["schemes"]["schemes"][2]["status"] == "unresolved"
+
+
+def test_existing_example_software_specs_still_validate_without_schemes():
+    from merlin.common.paths import repo_root
+
+    paths = sorted((repo_root() / "examples").glob("*/target/software-spec.yaml"))
+    assert paths
+    for path in paths:
+        selected = software_spec.load_software_spec(path)
+        assert "schemes" not in (selected.get("quantization") or {})
+        assert "compositions" not in selected
+
+
+def test_new_schema_stage_vocabulary_matches_the_shared_output_path():
+    from merlin.targetgen import output_path as OP
+    from merlin.targetgen.contract.schemas import load_schema
+
+    chain = load_schema("software_compositions")["properties"]["chains"]["items"]["properties"]
+    assert set(chain["accumulator_stages"]["properties"]) == set(OP.ACCUMULATOR_KINDS)
+    assert chain["readout_stages"]["oneOf"][1]["items"]["enum"] == list(OP.READOUT_KINDS)
+    assert chain["exits"]["items"]["enum"] == list(OP.EXITS)
+
+
+def test_new_axes_do_not_modify_legacy_resolution_or_recipe_candidates():
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    spec = _spec()
+    resolved, record = resolve_spec(spec, {})
+    assert resolved == spec
+    assert record["unresolved"] == []
+    baseline = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+    declared = _schemes_spec()
+    # An explicit scheme axis is prospective metadata; it does not silently select a new quantizer.
+    declared["numerical_semantics"] = deepcopy(spec["numerical_semantics"])
+    selected = capture_recipe_candidates(declared, build_quantization_contract(declared, _hardware()))
+    assert selected == baseline
+
+
+def test_missing_arbitrary_readout_strategy_is_listed_as_unknown():
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    spec = _schemes_spec()
+    del spec["numerical_semantics"]["readout"]
+    spec["quantization"]["schemes"]["schemes"][1].pop("readout_strategy")
+    resolved, record = resolve_spec(spec, {})
+    row = resolved["quantization_scheme_resolution"]["schemes"][1]
+    assert row["status"] == "unresolved"
+    assert row["readout_strategy"] == "UNKNOWN"
+    assert any(item.get("scheme") == "tensor" and item["field"] == "readout_strategy" for item in record["unresolved"])
+
+
+def test_full_accumulator_exit_constraints_and_digit_bounds_resolve_from_facts():
+    from merlin.targetgen.spec_fact_drift import FactField, resolve_spec
+
+    spec = _schemes_spec()
+    row = spec["quantization"]["schemes"]["schemes"][0]
+    row["readout_exit"] = "accumulator_full"
+    row["residual_coefficient"] = "integer_constant"
+    resolved, _ = resolve_spec(
+        spec,
+        {
+            "composition": {
+                "output_path": _scheme_path(5),
+                "dtype": FactField(("i8",), True, ("digit storage",)),
+                "max_k_extension": FactField((11,), True, ("mesh bound",)),
+            }
+        },
+    )
+    selected = resolved["quantization_scheme_resolution"]["schemes"][0]
+    assert selected["forbids_stages"] == ["convert", "scale", "requant"]
+    assert selected["coefficient_digits"] == {"dtype": "i8", "max_k_extension": 11}

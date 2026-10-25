@@ -128,9 +128,8 @@ def validate_numerical_semantics(document: dict) -> dict:
         ):
             raise ValueError(f"numerical_semantics.{field} requires an explicit allow/forbid nonfinite policy")
     readout = document.get("readout")
-    if isinstance(readout, dict) and readout.get("strategy") == "exact_rational_host":
-        if readout.get("requant_rounding") != "half_even":
-            raise ValueError("exact_rational_host requires readout.requant_rounding: half_even (RNE)")
+    if readout is not None:
+        validate_readout(readout)
     if model["engine"] == "specir_fp_reduce":
         if document.get("rounding") not in _IEEE_ROUNDING:
             raise ValueError("numerical_semantics.rounding must select a supported IEEE mode")
@@ -167,6 +166,68 @@ def validate_numerical_semantics(document: dict) -> dict:
         if field in model and (not isinstance(model[field], str) or not model[field].strip()):
             raise ValueError(f"model.{field} must be a nonempty string")
     return copy.deepcopy(document)
+
+
+def validate_readout(readout: object) -> dict:
+    """Keep rational readouts valid and require the complete f32 arithmetic definition."""
+    if not isinstance(readout, dict):
+        raise ValueError("numerical_semantics.readout must be a mapping")
+    strategy = readout.get("strategy")
+    if strategy == "f32_product_rne":
+        from merlin.targetgen.contract.schemas import validate
+
+        validate(readout, "f32_readout")
+    elif strategy == "exact_rational_host":
+        if readout.get("requant_rounding") != "half_even":
+            raise ValueError("exact_rational_host requires readout.requant_rounding: half_even (RNE)")
+    else:
+        raise ValueError(f"unknown readout strategy {strategy!r}")
+    return copy.deepcopy(readout)
+
+
+def readout_exactness_gate(strategy: str) -> dict:
+    """Describe admission obligations, without claiming that any proof has run."""
+    if strategy == "f32_product_rne":
+        return {"definitional": strategy, "requires": "decoded_multiplier_bits_equal_formed_multiplier"}
+    if strategy == "exact_rational_host":
+        return {"proof": "prove_fp32_products", "requires": "rational_equality_proof"}
+    raise ValueError(f"unknown readout strategy {strategy!r}")
+
+
+def validate_compositions(block: object) -> dict:
+    """Validate family chains; operation rosters cannot enter this declaration surface."""
+    from merlin.targetgen.contract.schemas import validate
+
+    validate(block, "software_compositions")
+    seen = set()
+    for chain in block["chains"]:
+        if chain["id"] in seen:
+            raise ValueError(f"duplicate composition id {chain['id']!r}")
+        seen.add(chain["id"])
+        _validate_composition_constraints(chain)
+    return copy.deepcopy(block)
+
+
+def _validate_composition_constraints(chain: dict) -> None:
+    constraints = chain["constraints"]
+    names = {item if isinstance(item, str) else next(iter(item)) for item in constraints}
+    if len(names) != len(constraints):
+        raise ValueError("composition constraints must have distinct names")
+    if (chain.get("extension") or chain.get("multiplicity")) and chain["producer"] != "contraction":
+        raise ValueError("operand extension and shared-input multiplicity require a contraction producer")
+    if chain["producer"] == "operand_sum" and not {"operand_multiplier_in", "load_minimum_not_negated"} <= names:
+        raise ValueError("operand sum requires multiplier and minimum-load constraints")
+    if "dataflows" in chain and "os_dataflow_requires" not in names:
+        raise ValueError("dataflows require a constant-operand mesh partial-sum bound")
+    if chain.get("extension") and not {"coefficient_integer_exact", "k_extension_within"} <= names:
+        raise ValueError("constant integer operand extension requires coefficient and extended-K bounds")
+    if chain.get("multiplicity") and not {"per_output_readout_independent", "shared_input_resident"} <= names:
+        raise ValueError("shared-input multiplicity requires independent readouts and residency bounds")
+    if (
+        "max" in chain.get("reduction_kinds", [])
+        and not {"max_requires_store_path_pooling", "scratchpad_source_pooling_fenced", "padded_max_requires"} <= names
+    ):
+        raise ValueError("max reduction requires store pooling, fence and padding constraints")
 
 
 def load_software_spec(path: str | Path, target: str | None = None) -> dict:
@@ -333,6 +394,15 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
     from merlin.targetgen.quantization_spec import validate_quantization_declarations
 
     validate_quantization_declarations(document)
+    if "compositions" in document:
+        validate_compositions(document["compositions"])
+    fallback = document["numerical_semantics"].get("quantized_native_fallback")
+    if fallback is not None:
+        if not isinstance(fallback, dict) or fallback.get("readout") not in {
+            "full_int32_then_exact_host_rne",
+            "full_int32_then_host_readout_per_scheme",
+        }:
+            raise ValueError("quantized_native_fallback.readout must select a supported host readout")
     from merlin.targetgen.spec_fact_drift import validate_restrictions
 
     validate_restrictions(document)
@@ -722,9 +792,7 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                     or (comparison == "multiple_of" and observed % bound)
                 ):
                     refused.append(f"dimension {axis}={observed} violates {comparison}={bound}")
-        review = review_record(
-            {"status": spec.get("status", "unreviewed"), "evidence": spec.get("evidence", {})}, row
-        )
+        review = review_record({"status": spec.get("status", "unreviewed"), "evidence": spec.get("evidence", {})}, row)
         if refused:
             status, reason = "unsupported", "; ".join(refused)
         elif missing or not review["operator_accepted"]:

@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "software_compositions.schema.json",
+  "title": "Primitive family chains graded by placement and instruction audit",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "enum": [
+        "merlin.software_spec.compositions.v1"
+      ]
+    },
+    "status": {
+      "enum": [
+        "reviewed",
+        "unreviewed",
+        "authored_pending_operator_review"
+      ]
+    },
+    "grading": {
+      "enum": [
+        "placement_and_instruction_audit"
+      ]
+    },
+    "chains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "producer": {
+            "oneOf": [
+              {
+                "enum": [
+                  "contraction",
+                  "operand_sum",
+                  "movement"
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "contraction",
+                    "operand_sum",
+                    "movement"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            ]
+          },
+          "accumulator_stages": {
+            "type": "object",
+            "properties": {
+              "preload": {
+                "enum": [
+                  "optional",
+                  "required"
+                ]
+              },
+              "accumulate": {
+                "enum": [
+                  "optional",
+                  "required"
+                ]
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "readout_stages": {
+            "oneOf": [
+              {
+                "enum": [
+                  "from_output_path"
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "activation",
+                    "convert",
+                    "scale",
+                    "requant",
+                    "pool"
+                  ]
+                },
+                "minItems": 0,
+                "uniqueItems": true
+              }
+            ]
+          },
+          "exits": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "accumulator",
+                "requant"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "dataflows": {
+            "enum": [
+              "from_facts"
+            ]
+          },
+          "reduction_kinds": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "max",
+                "sum"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "extension": {
+            "enum": [
+              "constant_integer_operand"
+            ]
+          },
+          "multiplicity": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "integer",
+                "minimum": 2
+              }
+            },
+            "required": [
+              "min"
+            ],
+            "additionalProperties": false
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "enum": [
+                    "activation_before_scale_requires_nonnegative_multiplier",
+                    "accumulator_exit_applies_no_readout_stage",
+                    "load_minimum_not_negated",
+                    "scratchpad_source_pooling_fenced",
+                    "coefficient_integer_exact",
+                    "per_output_readout_independent"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "pool_window_within_register_fields": {
+                      "enum": [
+                        "from_facts"
+                      ]
+                    },
+                    "pool_padding": {
+                      "enum": [
+                        "from_facts"
+                      ]
+                    },
+                    "os_dataflow_requires": {
+                      "enum": [
+                        "mesh_partial_sum_bound_from_constant_operands"
+                      ]
+                    },
+                    "scale_commands": {
+                      "type": "object",
+                      "properties": {
+                        "tensor": {
+                          "enum": [
+                            1
+                          ]
+                        },
+                        "column_block": {
+                          "enum": [
+                            "per_block"
+                          ]
+                        },
+                        "column": {
+                          "enum": [
+                            "output_scale_partition"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "tensor",
+                        "column_block",
+                        "column"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "operand_multiplier_in": {
+                      "enum": [
+                        "(0, 1]"
+                      ]
+                    },
+                    "max_requires_store_path_pooling": {
+                      "enum": [
+                        "from_facts"
+                      ]
+                    },
+                    "padded_max_requires": {
+                      "enum": [
+                        "producer_lower_bound_or_derived_pad_value"
+                      ]
+                    },
+                    "k_extension_within": {
+                      "enum": [
+                        "from_facts"
+                      ]
+                    },
+                    "shared_input_resident": {
+                      "enum": [
+                        "from_facts"
+                      ]
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "maxProperties": 1
+                }
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "producer",
+          "constraints"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schema",
+    "status",
+    "grading",
+    "chains"
+  ],
+  "additionalProperties": false
+}

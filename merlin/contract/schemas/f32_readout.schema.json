@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "f32_readout.schema.json",
+  "title": "F32 product RNE readout declaration",
+  "type": "object",
+  "properties": {
+    "strategy": {
+      "enum": [
+        "f32_product_rne"
+      ]
+    },
+    "accumulator_conversion": {
+      "type": "object",
+      "properties": {
+        "to": {
+          "enum": [
+            "f32"
+          ]
+        },
+        "rounding": {
+          "enum": [
+            "half_even"
+          ]
+        }
+      },
+      "required": [
+        "to",
+        "rounding"
+      ],
+      "additionalProperties": false
+    },
+    "multiplier": {
+      "type": "object",
+      "properties": {
+        "dtype": {
+          "enum": [
+            "f32"
+          ]
+        },
+        "formation": {
+          "enum": [
+            "rne_of_exact_rational"
+          ]
+        }
+      },
+      "required": [
+        "dtype",
+        "formation"
+      ],
+      "additionalProperties": false
+    },
+    "product": {
+      "type": "object",
+      "properties": {
+        "dtype": {
+          "enum": [
+            "f32"
+          ]
+        },
+        "rounding": {
+          "enum": [
+            "half_even"
+          ]
+        }
+      },
+      "required": [
+        "dtype",
+        "rounding"
+      ],
+      "additionalProperties": false
+    },
+    "narrowing": {
+      "type": "object",
+      "properties": {
+        "rounding": {
+          "enum": [
+            "half_even"
+          ]
+        },
+        "saturate": {
+          "enum": [
+            "declared_dtype"
+          ]
+        }
+      },
+      "required": [
+        "rounding",
+        "saturate"
+      ],
+      "additionalProperties": false
+    },
+    "activation_order": {
+      "enum": [
+        "from_facts"
+      ]
+    },
+    "exactness_bridge": {
+      "enum": [
+        "prove_fp32_products"
+      ]
+    }
+  },
+  "required": [
+    "strategy",
+    "accumulator_conversion",
+    "multiplier",
+    "product",
+    "narrowing",
+    "activation_order",
+    "exactness_bridge"
+  ],
+  "additionalProperties": false
+}

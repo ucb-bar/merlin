@@ -106,7 +106,8 @@ class QuantRecipe:
     families: tuple[str, ...] = (CONTRACTION,)
     #: Accelerator capture keeps exact integer semantics and full-width int32 device readout.
     readout_numerics: str = "integer_readout"
-    #: Capture identity includes the declared policy; exact sums are the default.
+    #: The declared integer-sum policy; exact is the default. ``bounded`` keeps its
+    #: historical serialization (omitted from the document) so its digests stay stable.
     integer_sum_policy: str = "exact"
     unquantized: dict[str, str] = field(default_factory=dict)  # family -> why it stays float
     why: dict[str, str] = field(default_factory=dict)  # field -> the derivation behind it
@@ -127,7 +128,8 @@ class QuantRecipe:
             "underivable": dict(sorted(self.underivable.items())),
         }
         body["readout_numerics"] = self.readout_numerics
-        body["integer_sum_policy"] = self.integer_sum_policy
+        if self.integer_sum_policy != "bounded":
+            body["integer_sum_policy"] = self.integer_sum_policy
         body["recipe_sha256"] = digest(body)
         return body
 

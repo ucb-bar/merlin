@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quantization_schemes.schema.json",
+  "title": "Quantization scheme axes and constrained points",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "enum": [
+        "merlin.quantization_schemes.v1"
+      ]
+    },
+    "status": {
+      "enum": [
+        "reviewed",
+        "unreviewed",
+        "authored_pending_operator_review"
+      ]
+    },
+    "axes": {
+      "type": "object",
+      "properties": {
+        "scale_value": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "power_of_two",
+              "arbitrary_f32"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "weight_scale_granularity": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "tensor",
+              "column_block",
+              "column"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "activation_scale_granularity": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "tensor"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "readout_exit": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "narrow_saturating",
+              "accumulator_full"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "operand_sum_rounding": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "single_rounding",
+              "per_operand"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "residual_coefficient": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "none",
+              "integer_constant"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "scale_value",
+        "weight_scale_granularity",
+        "activation_scale_granularity",
+        "readout_exit",
+        "operand_sum_rounding",
+        "residual_coefficient"
+      ],
+      "additionalProperties": false
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "when": {
+            "type": "object",
+            "properties": {
+              "scale_value": {
+                "enum": [
+                  "power_of_two",
+                  "arbitrary_f32"
+                ]
+              },
+              "weight_scale_granularity": {
+                "enum": [
+                  "tensor",
+                  "column_block",
+                  "column"
+                ]
+              },
+              "activation_scale_granularity": {
+                "enum": [
+                  "tensor"
+                ]
+              },
+              "readout_exit": {
+                "enum": [
+                  "narrow_saturating",
+                  "accumulator_full"
+                ]
+              },
+              "operand_sum_rounding": {
+                "enum": [
+                  "single_rounding",
+                  "per_operand"
+                ]
+              },
+              "residual_coefficient": {
+                "enum": [
+                  "none",
+                  "integer_constant"
+                ]
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "readout_strategy": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "exact_rational_host",
+                "f32_product_rne"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "oracle": {
+            "type": "object",
+            "properties": {
+              "spike_extension": {
+                "enum": [
+                  "rounding_fixed"
+                ]
+              }
+            },
+            "required": [
+              "spike_extension"
+            ],
+            "additionalProperties": false
+          },
+          "forbids_stages": {
+            "enum": [
+              "from_facts"
+            ]
+          },
+          "realization": {
+            "enum": [
+              "output_scale_partition"
+            ]
+          },
+          "operand_multiplier": {
+            "type": "object",
+            "properties": {
+              "min_exclusive": {
+                "enum": [
+                  0
+                ]
+              },
+              "max": {
+                "enum": [
+                  1
+                ]
+              }
+            },
+            "required": [
+              "min_exclusive",
+              "max"
+            ],
+            "additionalProperties": false
+          },
+          "coefficient_digits": {
+            "type": "object",
+            "properties": {
+              "dtype": {
+                "enum": [
+                  "from_facts"
+                ]
+              },
+              "max_k_extension": {
+                "enum": [
+                  "from_facts"
+                ]
+              }
+            },
+            "required": [
+              "dtype",
+              "max_k_extension"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "when"
+        ],
+        "additionalProperties": false,
+        "minProperties": 2
+      },
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "schemes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scale_value": {
+            "enum": [
+              "power_of_two",
+              "arbitrary_f32"
+            ]
+          },
+          "weight_scale_granularity": {
+            "enum": [
+              "tensor",
+              "column_block",
+              "column"
+            ]
+          },
+          "activation_scale_granularity": {
+            "enum": [
+              "tensor"
+            ]
+          },
+          "readout_exit": {
+            "enum": [
+              "narrow_saturating",
+              "accumulator_full"
+            ]
+          },
+          "operand_sum_rounding": {
+            "enum": [
+              "single_rounding",
+              "per_operand"
+            ]
+          },
+          "residual_coefficient": {
+            "enum": [
+              "none",
+              "integer_constant"
+            ]
+          },
+          "readout_strategy": {
+            "enum": [
+              "exact_rational_host",
+              "f32_product_rne"
+            ]
+          },
+          "weight_layout": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "row_major_contiguous",
+                  "packed_panel"
+                ]
+              },
+              "panel_width": {
+                "enum": [
+                  "from_facts"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "scale_value",
+          "weight_scale_granularity",
+          "operand_sum_rounding"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schema",
+    "status",
+    "axes",
+    "constraints",
+    "schemes"
+  ],
+  "additionalProperties": false
+}

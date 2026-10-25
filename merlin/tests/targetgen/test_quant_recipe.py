@@ -94,13 +94,13 @@ def test_an_add_is_quantized_only_where_a_unit_can_sum_operands() -> None:
     assert "0 output step" in summing.why[QR.OPERAND_SUM]
     # Two recipes are two captures: the family is content, so the digest moves with it.
     assert plain.to_dict()["recipe_sha256"] != summing.to_dict()["recipe_sha256"]
-    # Exact is the default; a legacy bounded declaration must be explicit.
+    # Exact is the default; the historical bounded policy remains an explicit compatibility choice.
     exact = QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="exact")
+    bounded = QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="bounded")
     assert "0 output step" in exact.why[QR.OPERAND_SUM]
     assert exact.to_dict()["integer_sum_policy"] == summing.to_dict()["integer_sum_policy"] == "exact"
+    assert "integer_sum_policy" not in bounded.to_dict()
     assert exact.to_dict()["recipe_sha256"] == summing.to_dict()["recipe_sha256"]
-    bounded = QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="bounded")
-    assert bounded.to_dict()["integer_sum_policy"] == "bounded"
     assert bounded.to_dict()["recipe_sha256"] != summing.to_dict()["recipe_sha256"]
     with pytest.raises(ValueError, match="explicit per-operand requantization capture"):
         QR.derive(_facet(operand_sum=_SUM), integer_sum_policy="per_operand")

@@ -57,9 +57,16 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
         return []
     if not isinstance(declaration, Mapping) or not isinstance(declaration.get("formats"), list):
         raise ValueError("quantization.formats must be a list")
-    unknown = set(declaration) - {"formats", "methodology"}
+    unknown = set(declaration) - {"formats", "methodology", "schemes"}
     if unknown:
         raise ValueError(f"quantization has unknown fields {sorted(unknown)}")
+    if "schemes" in declaration:
+        validate_quantization_schemes(declaration["schemes"])
+        for row in declaration["schemes"]["schemes"]:
+            strategy = row.get(
+                "readout_strategy", (spec.get("numerical_semantics", {}).get("readout") or {}).get("strategy")
+            )
+            _validate_scheme_strategy(row, strategy)
     if "methodology" in declaration:
         from merlin.targetgen.quant_methodology import validate as validate_methodology
 
@@ -142,6 +149,140 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
                 raise ValueError(f"{label}.numerical_semantics must match this format's operand/accumulator pairing")
         result.append(row)
     return result
+
+
+def validate_quantization_schemes(block: object) -> dict:
+    """Validate declared axis points, leaving crossed axes to composition enumeration."""
+    from merlin.targetgen.contract.schemas import validate
+
+    validate(block, "quantization_schemes")
+    axes, seen = block["axes"], set()
+    for row in block["schemes"]:
+        if row["id"] in seen:
+            raise ValueError(f"duplicate quantization scheme id {row['id']!r}")
+        seen.add(row["id"])
+        _validate_axis_point(row, axes)
+        _validate_scheme_strategy(row, row.get("readout_strategy"))
+        layout = row.get("weight_layout") or {}
+        if layout.get("kind") == "packed_panel" and "panel_width" not in layout:
+            raise ValueError("packed_panel requires a fact-derived panel_width")
+        if layout.get("kind") == "row_major_contiguous" and "panel_width" in layout:
+            raise ValueError("panel_width applies only to packed_panel")
+    for constraint in block["constraints"]:
+        if not constraint["when"]:
+            raise ValueError("scheme constraint requires a nonempty axis condition")
+        _validate_axis_point(constraint["when"], axes)
+    return copy.deepcopy(block)
+
+
+def _validate_axis_point(point: Mapping, axes: Mapping) -> None:
+    for key in axes.keys() & point.keys():
+        if point[key] not in axes[key]:
+            raise ValueError(f"scheme axis {key}: {point[key]!r} is outside the declared domain")
+
+
+def _validate_scheme_strategy(row: Mapping, strategy: str | None) -> None:
+    if row["scale_value"] == "arbitrary_f32" and strategy is not None and strategy != "f32_product_rne":
+        raise ValueError("arbitrary_f32 requires f32_product_rne")
+
+
+def resolve_quantization_schemes(spec: Mapping, context: Mapping) -> tuple[dict, list[dict]]:
+    """Resolve schemes as diagnostics, independently of capture/recipe implementation."""
+    block = validate_quantization_schemes(spec["quantization"]["schemes"])
+    rows, unresolved = [], []
+    for declaration in block["schemes"]:
+        row = _resolve_scheme(declaration, spec, block, context)
+        rows.append(row)
+        unresolved.extend({"scheme": row["id"], "field": field, "value": "UNKNOWN"} for field in row["unknown"])
+    constraints = _resolve_crossed_constraints(block["constraints"], context)
+    unresolved.extend(
+        {"field": f"schemes.constraints.{field}", "value": "UNKNOWN"} for field in unresolved_values(constraints)
+    )
+    return {
+        "schema": "merlin.quantization_schemes.resolution.v1",
+        "status": "unresolved" if unresolved else "resolved",
+        "axes": block["axes"],
+        "constraints": constraints,
+        "schemes": rows,
+    }, unresolved
+
+
+def _resolve_crossed_constraints(constraints: list, context: Mapping) -> list:
+    result = copy.deepcopy(constraints)
+    for constraint in result:
+        if constraint.get("forbids_stages") == "from_facts":
+            path = context.get("output_path")
+            constraint["forbids_stages"] = [stage["kind"] for stage in path["readout"]] if path else "UNKNOWN"
+        if "coefficient_digits" in constraint:
+            constraint["coefficient_digits"] = {
+                name: context.get(name, "UNKNOWN") for name in constraint["coefficient_digits"]
+            }
+    return result
+
+
+def _resolve_scheme(declaration: dict, spec: Mapping, block: dict, context: Mapping) -> dict:
+    from merlin.targetgen.quant_methodology import scheme_geometry
+    from merlin.targetgen.software_spec import readout_exactness_gate
+
+    row = copy.deepcopy(declaration)
+    unknown = []
+    # An omitted singleton axis is entailed by its declared domain, not a hardware default.
+    for axis, values in block["axes"].items():
+        if axis not in row and axis not in {"readout_exit", "residual_coefficient"}:
+            row[axis] = values[0] if len(values) == 1 else "UNKNOWN"
+    strategy = row.get("readout_strategy", (spec.get("numerical_semantics", {}).get("readout") or {}).get("strategy"))
+    row["readout_strategy"] = strategy or "UNKNOWN"
+    if strategy in {"exact_rational_host", "f32_product_rne"}:
+        row["exactness_gate"] = readout_exactness_gate(strategy)
+    else:
+        unknown.append("readout_strategy")
+    _validate_scheme_strategy(row, strategy)
+    row.update(scheme_geometry(context.get("output_path"), row["weight_scale_granularity"]))
+    row["graded"] = row["weight_scale_granularity"] != "column"
+    if row["operand_sum_rounding"] == "per_operand":
+        row["residual_scope"] = "every_residual_add"
+        row["operand_multiplier"] = {"min_exclusive": 0, "max": 1}
+    _resolve_scheme_constraints(row, block["constraints"], context)
+    if (row.get("weight_layout") or {}).get("kind") == "packed_panel":
+        width = context.get("weight_panel_width")
+        row["weight_layout"]["panel_width"] = width if type(width) is int and width > 0 else "UNKNOWN"
+        row["weight_layout"]["logical_order"] = ["N/panel_width", "K", "panel_width"]
+    unknown.extend(unresolved_values(row))
+    row["unknown"] = sorted(set(unknown))
+    row["status"] = "resolved" if not row["unknown"] else "unresolved"
+    return row
+
+
+def _resolve_scheme_constraints(row: dict, constraints: list, context: Mapping) -> None:
+    for constraint in _resolve_crossed_constraints(constraints, context):
+        if not all(row.get(axis) == value for axis, value in constraint["when"].items()):
+            continue
+        allowed = constraint.get("readout_strategy")
+        if allowed and row["readout_strategy"] not in allowed and row["readout_strategy"] != "UNKNOWN":
+            raise ValueError(f"scheme {row['id']}: readout strategy violates its axis constraints")
+        for key, value in constraint.items():
+            if key in {"when", "readout_strategy"}:
+                continue
+            if key == "oracle":
+                # This is an obligation for later execution qualification, never evidence of a fixed oracle.
+                row["oracle_requirement"] = copy.deepcopy(value)
+            else:
+                row[key] = copy.deepcopy(value)
+
+
+def unresolved_values(value: object, prefix: str = "") -> list[str]:
+    """List every unresolved derived field, including nested lists and constraints."""
+    if isinstance(value, Mapping):
+        return [
+            name for key, member in value.items() for name in unresolved_values(member, f"{prefix}.{key}".lstrip("."))
+        ]
+    if isinstance(value, list):
+        return [name for i, member in enumerate(value) for name in unresolved_values(member, f"{prefix}[{i}]")]
+    missing = value is None or (
+        isinstance(value, str)
+        and (value in {"from_facts", "from_output_path"} or value.upper().split(" ")[0] == "UNKNOWN")
+    )
+    return [prefix] if missing else []
 
 
 def _record(value, basis: str, *, not_applicable=False) -> dict:
@@ -597,6 +738,12 @@ def build_quantization_contract(
         "model-layer admission, or TorchAO realization proof",
     }
     methodology = (software_spec.get("quantization") or {}).get("methodology")
+    if "schemes" in (software_spec.get("quantization") or {}):
+        from merlin.targetgen import quant_methodology as QM
+
+        context = {"output_path": QM.output_path_of(hardware_snapshot.get("contract"))}
+        schemes, unknown = resolve_quantization_schemes(software_spec, context)
+        body["schemes"] = {**schemes, "unresolved": unknown}
     if methodology is not None:
         from merlin.targetgen import quant_methodology as QM
 

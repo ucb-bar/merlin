@@ -522,6 +522,22 @@ def output_path_of(contract: Mapping[str, Any] | None) -> dict[str, Any] | None:
     return dict(path) if isinstance(path, Mapping) else None
 
 
+def scheme_geometry(path: Mapping[str, Any] | None, granularity: str) -> dict[str, Any]:
+    """Resolve source/readout scale geometry without changing the legacy capture recipe."""
+    if granularity == "tensor":
+        return {"readout_scale_granularity": "tensor"}
+    if granularity not in {"column_block", "column"}:
+        raise ValueError(f"unknown scheme granularity {granularity!r}")
+    scale = _stage(path, "scale") if path else None
+    width = (scale or {}).get("columns_per_scale")
+    legal = scale is not None and scale.get("granularity") == "per_command" and type(width) is int and width > 0
+    return {
+        "readout_scale_granularity": granularity,
+        "columns_per_scale": width if legal else "UNKNOWN",
+        "realization": "output_scale_partition" if granularity == "column" else "per_block",
+    }
+
+
 def _main(argv: Sequence[str] | None = None) -> int:
     """``python -m merlin.targetgen.quant_methodology --spec S --contract C --base B [--model M] --out NEW``."""
     import argparse

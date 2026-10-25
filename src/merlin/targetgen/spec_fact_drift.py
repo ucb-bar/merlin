@@ -317,8 +317,11 @@ def fact_capabilities(
         if verdict["standalone"] and verdict["basis"] == "declared_unchecked":
             dtypes = {_dtype(dtype) for cap in capabilities if not cap.composed_with for dtype in cap.dtypes}
             declarations[family] = {"standalone": {"placement": ["accelerator"], "dtypes": sorted(dtypes)}}
+    from merlin.targetgen.quant_methodology import output_path_of
+
     return {
         "declared_unchecked_forms": declarations,
+        "composition": {"output_path": output_path_of(contract)},
         "families": families,
         "forms": forms,
         "quantization": {
@@ -591,16 +594,188 @@ def resolve_spec(spec: Mapping[str, Any], facts: Mapping[str, Any]) -> tuple[dic
             unresolved.append({"format": format_id, "reason": "no accelerator declaration covers a quantizable family"})
         declaration["eligible_operations"] = selected
         eligible_record.append({"format": format_id, "eligible_operations": selected})
+    axes = _resolve_composition_axes(resolved, facts, unresolved)
     record = {
         "schema": RESOLUTION_SCHEMA,
         "status": "resolved" if not unresolved else "unresolved",
         "declarations": rows,
         "quantization": eligible_record,
         "unresolved": unresolved,
+        **axes,
     }
-    if rows or eligible_record:
+    if rows or eligible_record or axes:
         resolved["fact_derivation"] = {"schema": RESOLUTION_SCHEMA, "status": record["status"]}
     return resolved, record
+
+
+def _resolve_composition_axes(resolved: dict, facts: Mapping, unresolved: list) -> dict:
+    """Keep authored declarations intact; place resolved diagnostics beside them."""
+    from merlin.targetgen.quantization_spec import resolve_quantization_schemes
+    from merlin.targetgen.software_spec import validate_compositions
+
+    context = _composition_context(facts)
+    records = {}
+    readout = (resolved.get("numerical_semantics") or {}).get("readout") or {}
+    if readout.get("strategy") == "f32_product_rne":
+        path = context.get("output_path")
+        order = [stage["kind"] for stage in path["readout"]] if path else "UNKNOWN"
+        resolved["readout_resolution"] = {**readout, "activation_order": order}
+        records["readout"] = resolved["readout_resolution"]
+        if order == "UNKNOWN":
+            unresolved.append({"field": "readout.activation_order", "value": "UNKNOWN"})
+    if "schemes" in (resolved.get("quantization") or {}):
+        schemes, missing = resolve_quantization_schemes(resolved, context)
+        resolved["quantization_scheme_resolution"] = schemes
+        records["schemes"] = schemes
+        unresolved.extend(missing)
+    if "compositions" in resolved:
+        block = validate_compositions(resolved["compositions"])
+        chains = [_resolve_chain(chain, facts, context) for chain in block["chains"]]
+        resolved["composition_resolution"] = {
+            "schema": "merlin.software_spec.compositions.resolution.v1",
+            "status": "resolved" if all(row["status"] == "resolved" for row in chains) else "unresolved",
+            "grading": block["grading"],
+            "chains": chains,
+        }
+        records["compositions"] = resolved["composition_resolution"]
+        for chain in chains:
+            unresolved.extend(
+                {"composition": chain["id"], "field": field, "value": "UNKNOWN"} for field in chain["unknown"]
+            )
+    return records
+
+
+def _composition_context(facts: Mapping) -> dict:
+    """Consume derived path data and evidence-bearing fields, never authored hardware guesses."""
+    from merlin.targetgen.output_path import validate
+
+    context = {}
+    for key, fact in (facts.get("composition") or {}).items():
+        if key == "output_path" and fact is not None:
+            context[key] = validate(fact)
+        elif isinstance(fact, FactField) and fact.complete and fact.values and fact.evidence:
+            value = (
+                list(fact.values)
+                if key == "dataflows"
+                else fact.values[0]
+                if len(fact.values) == 1
+                else list(fact.values)
+            )
+            context[key] = value if _valid_composition_fact(key, value) else "UNKNOWN"
+    return context
+
+
+def _valid_composition_fact(key: str, value: object) -> bool:
+    bound_fields = {
+        "pool_window_within_register_fields": {"size_bits", "stride_bits"},
+        "k_extension_within": {"max_k", "partial_sum_bits"},
+        "shared_input_resident": {"capacity_bytes"},
+    }
+    if key in bound_fields:
+        return (
+            isinstance(value, dict)
+            and set(value) == bound_fields[key]
+            and all(type(v) is int and v > 0 for v in value.values())
+        )
+    if key in {"weight_panel_width", "max_k_extension"}:
+        return type(value) is int and value > 0
+    if key == "max_requires_store_path_pooling":
+        return value is True
+    if key == "dataflows":
+        return (
+            isinstance(value, list)
+            and bool(value)
+            and all(isinstance(v, str) and bool(v) and " " not in v for v in value)
+        )
+    if key == "dtype":
+        from merlin.common.quant_formats import get
+
+        try:
+            return get(value).kind in {"int_affine", "packed_sub_byte"}
+        except (KeyError, ValueError, TypeError):
+            return False
+    return False
+
+
+def _resolve_chain(declaration: dict, facts: Mapping, context: Mapping) -> dict:
+    import copy
+
+    from merlin.targetgen.quantization_spec import unresolved_values
+
+    row = copy.deepcopy(declaration)
+    unknown = _resolve_chain_path(row, context.get("output_path"))
+    producers = row["producer"] if isinstance(row["producer"], list) else [row["producer"]]
+    row["producer_placement"] = {family: _producer_placement(family, facts) for family in producers}
+    if row.get("dataflows") == FROM_FACTS:
+        row["dataflows"] = context.get("dataflows", "UNKNOWN")
+    row["constraints"] = [_resolve_chain_constraint(item, context) for item in row["constraints"]]
+    if row.get("extension"):
+        row["required_when"] = {"residual_coefficient": "integer_constant"}
+    if row.get("multiplicity"):
+        row["shared_input"] = "one_immutable_input"
+    if "max" in row.get("reduction_kinds", []):
+        row["grading_scope"] = "composition_truth_only"
+    if "sum" in row.get("reduction_kinds", []):
+        row["sum_realizations"] = ["ones_contraction", "accumulate_on_load"]
+        row["mean_readout_multiplier"] = "reciprocal_window_count_per_scheme"
+    unknown.extend(unresolved_values(row))
+    row["unknown"] = sorted(set(unknown))
+    row["status"] = "unresolved" if row["unknown"] else "resolved"
+    row["placement"] = "unknown" if row["unknown"] else "fused_accelerator"
+    row["grading"] = "placement_and_instruction_audit"
+    row["qualification"] = "declaration resolution only; case constraints and instruction audit remain required"
+    return row
+
+
+def _producer_placement(family: str, facts: Mapping) -> object:
+    placement = (facts.get("families", {}).get(family) or {}).get("placement")
+    if isinstance(placement, FactField) and placement.complete and placement.evidence:
+        if set(placement.values) & {"accelerator", "fused_accelerator"}:
+            return list(placement.values)
+    return "UNKNOWN"
+
+
+def _resolve_chain_path(row: dict, path: Mapping | None) -> list[str]:
+    unknown = []
+    if any(key in row for key in ("readout_stages", "exits", "accumulator_stages")) and path is None:
+        return ["output_path"]
+    if path is None:
+        return unknown
+    order = [stage["kind"] for stage in path["readout"]]
+    stages = row.get("readout_stages")
+    if stages == "from_output_path":
+        row["readout_stages"] = order
+    elif isinstance(stages, list):
+        if any(stage not in order for stage in stages):
+            unknown.append("readout_stages")
+        elif stages != sorted(stages, key=order.index):
+            raise ValueError("composition readout stages violate the derived output path order")
+    if "pool" in row.get("readout_stages", []) and "pool" in order:
+        row["pool_semantics"] = next(stage for stage in path["readout"] if stage["kind"] == "pool")
+    available = {stage["kind"] for stage in path.get("accumulator_stages", [])}
+    for stage, requirement in row.get("accumulator_stages", {}).items():
+        if requirement == "required" and stage not in available:
+            unknown.append(f"accumulator_stages.{stage}")
+    row["exit_stages"] = {}
+    for exit in row.get("exits", []):
+        if path["exits"].get(exit) is not True:
+            unknown.append(f"exits.{exit}")
+        row["exit_stages"][exit] = [] if exit == "accumulator" else row.get("readout_stages", [])
+    return unknown
+
+
+def _resolve_chain_constraint(item: object, context: Mapping) -> object:
+    if isinstance(item, str):
+        return item
+    name, value = next(iter(item.items()))
+    if value != FROM_FACTS:
+        return item
+    if name == "pool_padding":
+        pools = [stage for stage in (context.get("output_path") or {}).get("readout", []) if stage["kind"] == "pool"]
+        value = pools[0].get("padding", "UNKNOWN") if len(pools) == 1 else "UNKNOWN"
+    else:
+        value = context.get(name, "UNKNOWN")
+    return {name: value}
 
 
 # --- the authored side ----------------------------------------------------------------------------
