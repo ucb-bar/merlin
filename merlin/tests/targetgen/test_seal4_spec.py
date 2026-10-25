@@ -39,12 +39,15 @@ def test_baseline_scheme_and_implicit_legacy_recipe_keep_identical_numerics():
         "weight",
         "activation",
         "calibration_domain",
-        "integer_sum_policy",
         "readout_numerics",
         "families",
         "bias_domain",
     ):
         assert explicit[key] == legacy[key]
+    assert "integer_sum_policy" not in legacy and "integer_sum_policy" not in explicit  # implicit: omitted
+    legacy_recipe = QR.derive(_scheme_facet(3), calibration_domain=domain)
+    explicit_recipe = QR.derive(_scheme_facet(3), scheme=baseline, calibration_domain=domain)
+    assert explicit_recipe.integer_sum_policy == legacy_recipe.integer_sum_policy
     assert legacy["calibration_domain"]["scale_policy"] == "enclosing_power_of_two"
     assert explicit["recipe_sha256"] == legacy["recipe_sha256"]
     assert "finest" not in legacy["why"]["weight.granularity"]
