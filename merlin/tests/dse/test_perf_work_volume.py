@@ -170,3 +170,31 @@ def test_work_receipt_is_the_hash_of_compiler_ir_not_a_corpus_field():
     assert first.exact_macs == changed.exact_macs == 24
     assert len(first.artifact_sha256) == 64
     assert first.artifact_sha256 != changed.artifact_sha256
+
+
+def test_source_owned_host_prices_device_projection_as_lower_bound_not_zero():
+    import hashlib
+    import json
+
+    private = {
+        "tensors": {"a": {"shape": [2, 3]}, "b": {"shape": [3, 4]}},
+        "commands": [{"opcode": "MATMUL", "operands": {"lhs": "a", "rhs": "b"}}],
+    }
+    public = {
+        "tensors": {"arg0": {"shape": [1, 2, 3]}},
+        "commands": [],
+        "params": {"source_owned_host_projection": {"device_command_buffer": private}},
+    }
+    actual = work_from_command_buffer(public)
+    assert actual.known_macs == 24
+    assert actual.exact_macs is None
+    assert actual.basis == "source_owned_device_projection"
+    assert "host work" in actual.refusals[-1]
+    assert (
+        actual.artifact_sha256
+        == hashlib.sha256(json.dumps(public, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    )
+    private["params"] = {"source_owned_host_projection": {"device_command_buffer": {}}}
+    refused = work_from_command_buffer(public)
+    assert refused.exact_macs is None
+    assert refused.refusals

@@ -1,0 +1,33 @@
+{
+  "schema": "merlin.curated_path_redaction.v1",
+  "description": "Non-executable placeholders replace machine roots; original hashes preserved. Development evidence only, no physical qualification or runtime activation.",
+  "records": [
+    {
+      "curated": "readout-strided-derivation.json",
+      "raw_sha256": "1b4fad397267ebf42a103419c50514d95d416eb7f83e042d7d1396e6731448b3",
+      "raw_locator": "out/artifacts/public-readout-strided-v1/derivation.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "readout-strided-comparison.json",
+      "raw_sha256": "fd496ee0c33050ab78eb85f721f63d5da3af22caaddb7aa1fd1d58008bec0a3f",
+      "raw_locator": "out/artifacts/public-readout-strided-v1/comparison.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "readout-strided-build.json",
+      "raw_sha256": "8822ef08bd049f235767f66bcb9789eacae5b5af491af7ecc119908342aa7894",
+      "raw_locator": "out/artifacts/public-readout-strided-v1/build.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    }
+  ]
+}

@@ -121,8 +121,12 @@ def _writable_budget(roots, readonly_files, limits):
                     raise CensusUnavailable("census scratch exceeds sampled byte budget")
 
 
-def capture(argv, *, environment, cwd, limits, record, census, writable_roots=(), readonly_files=(), require_done=True):
+def capture(argv, *, environment, cwd, limits, record, census, writable_roots=(), readonly_files=(),
+            require_done=True, stdout_protocol="text"):
+
     """Internal fixed producer call; accepts no author callback or receipt."""
+    if stdout_protocol not in {"text", "out_bin_v1"} or (stdout_protocol != "text" and not require_done):
+        raise CensusUnavailable("unsupported complete-console protocol")
     record.census_cleanup_complete = False
     record.census_started = False
     files = {name: (record.directory / (name + ".bin")).open("xb") for name in ("stdout", "stderr")}
@@ -206,6 +210,11 @@ def capture(argv, *, environment, cwd, limits, record, census, writable_roots=()
                         failure = "census raw output exceeds byte budget"
                         continue
                     files[name].write(data)
+                    if name == "stdout" and stdout_protocol == "out_bin_v1":
+                        # Raw payloads can contain arbitrary newline/UTF-8/DONE
+                        # bytes. The original bounded frame parser checks them
+                        # only after the producer and guardian fully close.
+                        continue
                     buffers[name] += data
                     while b"\n" in buffers[name]:
                         raw, buffers[name] = buffers[name].split(b"\n", 1)
@@ -233,6 +242,18 @@ def capture(argv, *, environment, cwd, limits, record, census, writable_roots=()
             record.census_cleanup_complete = True
             if failure is not None:
                 raise CensusUnavailable(failure)
+            if stdout_protocol == "out_bin_v1":
+                from merlin.runtime.out_bin import binary_console_diagnostics
+                files["stdout"].flush()
+                try:
+                    text = binary_console_diagnostics((record.directory/"stdout.bin").read_bytes())
+                    lines = text.splitlines()
+                    if (not any(line.startswith(b"OUT_BIN_BEGIN ") for line in lines)
+                            or any(len(line)>limits.max_line_bytes for line in lines)):
+                        raise ValueError("binary console has no bounded complete output frame")
+                    done = sum(line.strip() == b"DONE" for line in lines)
+                except (ValueError, UnicodeError) as error:
+                    raise CensusUnavailable("invalid complete binary console: " + str(error)) from error
             if packet.get("returncode") != 0 or packet.get("error") or (require_done and done != 1):
                 raise CensusUnavailable("census process or complete console did not finish successfully")
             return packet["returncode"]

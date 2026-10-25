@@ -1,0 +1,33 @@
+{
+  "schema": "merlin.curated_path_redaction.v1",
+  "description": "Non-executable placeholders replace machine roots; raw hashes preserve source receipts. No model activation or physical qualification.",
+  "records": [
+    {
+      "curated": "readout-request-stages.json",
+      "raw_sha256": "ee6c33bc2f9caf8dca6abc8bf44297f85b34ecdf41b6f3f84f3d3eb19440fd39",
+      "raw_locator": "out/artifacts/public-readout-request-v2/stage-evidence.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "readout-request-comparison.json",
+      "raw_sha256": "7b2f96ed0f01516953bb20f212e2839810e4241c48f52b93eeb1443f2f41ea35",
+      "raw_locator": "out/artifacts/public-readout-request-v2/comparison.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    },
+    {
+      "curated": "readout-request-build.json",
+      "raw_sha256": "a17c3f2ee4bf607f831904cc6f9adc380aa18756cf417a3abc154a66fde81f09",
+      "raw_locator": "out/artifacts/public-readout-request-v2/build.json",
+      "machine_paths_replaced": [
+        "<WORKSPACE>",
+        "<USER_HOME>"
+      ]
+    }
+  ]
+}

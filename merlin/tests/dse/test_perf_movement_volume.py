@@ -116,3 +116,30 @@ def test_the_block_declares_what_it_cannot_measure() -> None:
     assert block["resident_operand_charged"] == "once_at_pack"
     assert "re-loads a resident operand" in block["cannot_detect"]
     assert "RES_PACK" in block["cannot_detect"], "name the check that WOULD detect it"
+
+
+def test_source_owned_host_retains_device_traffic_as_lower_bound_not_zero():
+    private = _resident_matmul()
+    host = {
+        "tensors": {}, "commands": [],
+        "params": {"source_owned_host_projection": {"device_command_buffer": private}},
+    }
+    movement = movement_from_command_buffer(host)
+    assert movement.known_bytes == movement_from_command_buffer(private).exact_bytes == 66560
+    assert movement.exact_bytes is None and movement.is_lower_bound
+    assert movement.basis == "source_owned_device_projection"
+    assert "host traffic" in movement.refusals[-1]
+    assert movement.artifact_sha256 == work_from_command_buffer(host).artifact_sha256
+    private["commands"].append({"opcode": "unknown", "operands": {}})
+    assert any("no traffic-counting rule" in reason for reason in movement_from_command_buffer(host).refusals)
+
+
+@pytest.mark.parametrize("projection", [{}, {"device_command_buffer": {
+    "params": {"source_owned_host_projection": {}}, "commands": [], "tensors": {},
+}}])
+def test_source_owned_missing_or_nested_traffic_projection_remains_unknown(projection):
+    movement = movement_from_command_buffer({
+        "tensors": {}, "commands": [], "params": {"source_owned_host_projection": projection},
+    })
+    assert movement.exact_bytes is None and movement.is_lower_bound
+    assert movement.refusals

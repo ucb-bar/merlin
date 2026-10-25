@@ -86,3 +86,31 @@ def test_missing_window_is_refused_instead_of_index_error():
 def test_failed_functional_execution_cannot_offer_activity():
     source=report();source['functional_status']='FAIL'
     with pytest.raises(C.ContractError):S.project(source)
+
+
+def test_command_projection_preserves_missing_and_aggregates_only_complete_classes():
+    source=report()
+    source['feature_counts'].update({'target.commands':4,'target.fences':1,
+        'target.class.load':1,'target.class.compute_preloaded':1,
+        'target.class.compute_accumulated':1,'target.class.pool_store':1})
+    value=S.project(source)
+    assert value['commands']['compute']==2 and value['commands']['store']==1
+    assert value['commands']['fences']==1 and value['commands']['config'] is None
+    source['feature_counts']['target.commands']=5
+    value=S.project(source)
+    assert value['commands']['compute'] is None and value['commands']['store'] is None
+
+
+def test_scalar_fence_class_is_separate_from_accelerator_command_census():
+    source=report()
+    source['feature_counts'].update({'target.commands':7,'target.fences':3,
+        'target.class.load':2,'target.class.preload':2,'target.class.compute_ws':2,
+        'target.class.store':1,'target.class.fence':3})
+    value=S.project(source)
+    assert value['commands']['total']==7 and value['commands']['fences']==3
+    assert value['commands']['compute']==2 and value['commands']['store']==1
+    source['feature_counts']['target.class.fence']=4
+    assert S.project(source)['commands']['compute'] is None
+    source['feature_counts']['target.class.fence']=3
+    source['feature_counts']['target.commands']=8
+    assert S.project(source)['commands']['compute'] is None

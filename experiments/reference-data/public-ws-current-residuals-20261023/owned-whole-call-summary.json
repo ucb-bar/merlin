@@ -1,0 +1,71 @@
+{
+  "schema": "merlin.public_owned_whole_call_observation.v1",
+  "name": "PB01 public synchronous owned model",
+  "status": "provisional_whole_call_estimate",
+  "new_physical_runs": 0,
+  "activated": false,
+  "calibration_qualified": false,
+  "original_elf_sha256": "9e606b1e8373761c8ef00e0f4119acf2a5676f9489e10c80b6b6b4bec0884482",
+  "original_numerical_console_sha256": "6a5fafcef8b5343b7a8e77ac9d1209fb9941a1882f23ae5ceb9130b009802287",
+  "report": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/attempt-v4-bitmanip/workspace/joint_timing/report.json",
+    "sha256": "de7a9361c4a955b0ca2274984b6b43e6c5b92c693bec37dde165602d372d1fbe"
+  },
+  "observation": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/attempt-v4-bitmanip/observation.json",
+    "sha256": "85467a381b0687bd2600f914b6b0d489e39c6e41e49469d6a25d3339539ac87b"
+  },
+  "prior_unpriced_report": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/attempt-v3/workspace/joint_timing/report.json",
+    "sha256": "f8797b2ade872401485eadc4870dc057e3f8e137e51364af0ad285fdfb2560e5"
+  },
+  "runtime": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/attempt-v4-bitmanip/runtime.json",
+    "sha256": "edb8df19386641212da04f908164eb255a552b27d65b8d77da72e3ca8affcf28"
+  },
+  "model": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/attempt-v4-bitmanip/model.json",
+    "sha256": "17d4fd3bf9d9cb4ec436bc8cec04f3b3855677e62d9a39073565978168679a83"
+  },
+  "scope_sha256": "fc2850dc3f23be57800b5d3baf3e6886893023dcc15a24e41ad47b2f9560f0e7",
+  "counter_windows": [
+    {
+      "begin_pc": 2147484616,
+      "end_pc": 2147484664,
+      "instructions": 3137,
+      "estimated_cycles": 6444
+    }
+  ],
+  "estimated_cycles": 6444,
+  "timing_complete": true,
+  "whole_trace_timing_complete": false,
+  "unresolved": [],
+  "functional_identical": true,
+  "facts": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/bitmanip-audit/facts.json",
+    "sha256": "940ac8e32716d97444dc2c7173a2119167100e5813fd8c4a5df32e66e37cdefe"
+  },
+  "alignment": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/bitmanip-audit/alignment.json",
+    "sha256": "8047bf0d52e191319fe75e21c8aa5c5586badb909eb45a318b1a56585bce4452"
+  },
+  "instruction_attribution": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/bitmanip-audit/opcodes.json",
+    "sha256": "bcc9531c7aa4b5c7e8a48cc15df0a1dadf4ef22d9f9f894cc774e15ffc451312"
+  },
+  "derivation_script": {
+    "path": "<WORKSPACE>/tasks/megaphase-host-admission/merlin/out/artifacts/owned-model-timing-audit/prepare_bitmanip.py",
+    "sha256": "8026d8e9267a32666dd2741fe2f8fc747d7728d2c528411579db29fd466bcfb1"
+  },
+  "changed_model_parameters": {
+    "cpu.bitmanip.latency_cycles": 1,
+    "cpu.bitmanip.occupancy_cycles": 1
+  },
+  "limitations": [
+    "No measured PB01 gSIM/FireSim whole-call timing accuracy is established.",
+    "Existing memory, compute and output-movement approximations remain provisional; continued calibration denial unchanged.",
+    "Costs added only for selected Rocket scalar ALU execution service; no blanket fallback for unsupported instructions.",
+    "Counter includes descriptor setup, host work between groups and synchronous device completions; excludes initialization/output publication.",
+    "Whole-trace timing remains incomplete outside the selected whole-call window."
+  ]
+}

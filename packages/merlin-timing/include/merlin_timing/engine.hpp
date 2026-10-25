@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,13 @@ struct Demand {
   std::size_t units;
   std::optional<Cycle> occupancy;
 };
+// Optional diagnostic custody travels with accepted work, never with whatever
+// CPU instruction happens to be current when that work dispatches later.
+struct StageOrigin {
+  std::uint64_t pc=0, bits=0;
+  std::optional<std::uint64_t> committed_instruction;
+  std::string actor;
+};
 struct Event {
   Cycle earliest = 0;
   View<ValueId> reads;
@@ -41,6 +49,7 @@ struct Event {
   std::optional<Cycle> latency;
   bool hold_reads_until_ready = false;
   View<ValueId> retained_reads{};
+  std::optional<StageOrigin> origin{};
 };
 
 enum class UnknownReason {
@@ -169,6 +178,27 @@ public:
       horizon_ = std::max(horizon_, *completion);
     else
       count(unknown_events_);
+  }
+
+  // Pure source-stage readiness query. It neither allocates a resource nor
+  // publishes values, changes queues/frontiers or increments accounting. A
+  // posted actor must recheck at actual dispatch and commit only at that time.
+  // This is not CPU admission or proof that a future input frontier is closed.
+  std::optional<Cycle> earliest_stage_start(const Event &event) {
+    validate(event);
+    if(!event.latency)return {};
+    Cycle at=event.earliest;
+    for(const auto view:{event.reads,event.retained_reads})
+      for(std::size_t i=0;i<view.size;++i){const auto value=ready(view[i]);if(!value)return {};at=std::max(at,*value);}
+    for(std::size_t i=0;i<event.writes.size;++i){const auto value=last_use(event.writes[i]);if(!value)return {};at=std::max(at,*value);}
+    for(std::size_t i=0;i<event.demands.size;++i){
+      const auto &d=event.demands[i];const auto &r=*find(d.resource);
+      if(!r.known||!d.occupancy)return {};
+      at=std::max(at,r.lanes[d.units-1]);
+    }
+    if(!addition(at,*event.latency))return {};
+    for(std::size_t i=0;i<event.demands.size;++i)if(!addition(at,*event.demands[i].occupancy))return {};
+    return at;
   }
 
   Result submit(const Event &event) {
@@ -391,6 +421,39 @@ private:
   }
 };
 
+// A source-configured directory-read-stepped Fibonacci LFSR. The caller must
+// provide real directory lookup events (hits included), not merely misses or
+// distinct addresses. The post-step output selects a victim at the registered
+// directory-result phase. No invalid-way preference is implied.
+struct ReadSteppedLfsrSpec {
+  unsigned width, selection_bits;
+  std::uint64_t feedback_mask, seed;
+};
+class ReadSteppedLfsr {
+ public:
+  explicit ReadSteppedLfsr(ReadSteppedLfsrSpec spec):spec_(spec),state_(spec.seed) {
+    if(!spec.width || spec.width>63 || !spec.selection_bits || spec.selection_bits>spec.width)
+      throw std::invalid_argument("LFSR replacement width unsupported");
+    mask_=(std::uint64_t(1)<<spec.width)-1;
+    selection_mask_=(std::uint64_t(1)<<spec.selection_bits)-1;
+    if(!spec.feedback_mask || (spec.feedback_mask&~mask_) || !spec.seed || (spec.seed&~mask_))
+      throw std::invalid_argument("LFSR replacement taps or seed unsupported");
+  }
+  std::size_t directory_read(std::size_t ways) {
+    if(!ways || (ways&(ways-1)) || ways>selection_mask_+1)
+      throw std::invalid_argument("LFSR replacement needs bounded power-of-two ways");
+    auto selected=state_&spec_.feedback_mask;unsigned parity=0;
+    while(selected){parity^=unsigned(selected&1);selected>>=1;}
+    state_=((state_<<1)&mask_)|parity;
+    unsigned bits=0;for(auto n=ways;n>1;n>>=1)++bits;
+    return std::size_t((state_&selection_mask_)>>(spec_.selection_bits-bits));
+  }
+  void reset(){state_=spec_.seed;}
+  std::uint64_t state()const{return state_;}
+ private:
+  ReadSteppedLfsrSpec spec_;std::uint64_t state_,mask_,selection_mask_;
+};
+
 struct CacheSpec {
   std::size_t sets;
   std::size_t ways;
@@ -420,10 +483,11 @@ struct CacheReport {
 // follows from a tag lookup. The caller supplies memory hierarchy policy.
 class SetAssociativeCache {
 public:
-  explicit SetAssociativeCache(CacheSpec spec) : spec_(spec) {
+  explicit SetAssociativeCache(CacheSpec spec, std::optional<ReadSteppedLfsrSpec> replacement=std::nullopt) : spec_(spec) {
     if (spec.sets == 0 || spec.ways == 0 || spec.line_bytes == 0 ||
         spec.sets > std::numeric_limits<std::size_t>::max() / spec.ways)
       throw std::invalid_argument("cache geometry must be positive and bounded");
+    if(replacement) { replacement_.emplace(*replacement); auto validation=*replacement_; validation.directory_read(spec.ways); }
     lines_.resize(spec.sets * spec.ways);
   }
   CacheProbe probe(std::uint64_t address) const {
@@ -435,6 +499,27 @@ public:
         return {true, slot.dirty, base + i};
     }
     return {false, false, std::nullopt};
+  }
+  // Exact next-lookup classification without stepping the replacement law,
+  // touching ranks, allocating a line or changing diagnostic counters. This is
+  // an admission preview, not a cache access or permission/publication grant.
+  CacheAccess preview_access(std::uint64_t address) const {
+    const auto line=address/spec_.line_bytes;
+    const auto base=static_cast<std::size_t>(line%spec_.sets)*spec_.ways;
+    auto replacement=replacement_;
+    const auto selected=replacement?replacement->directory_read(spec_.ways):spec_.ways;
+    std::size_t victim=spec_.ways;
+    for(std::size_t i=0;i<spec_.ways;++i){
+      const auto &slot=lines_[base+i];
+      if(slot.valid&&slot.line==line)return {true,std::nullopt,false,base+i};
+      if(!slot.valid&&victim==spec_.ways)victim=i;
+    }
+    if(replacement)victim=selected;
+    if(victim==spec_.ways){victim=0;for(std::size_t i=1;i<spec_.ways;++i)
+      if(lines_[base+i].rank>lines_[base+victim].rank)victim=i;}
+    const auto &slot=lines_[base+victim];
+    return {false,slot.valid?std::optional<std::uint64_t>{slot.line}:std::nullopt,
+            slot.valid&&slot.dirty,base+victim};
   }
   CacheProbe invalidate(std::uint64_t address) {
     const auto line = address / spec_.line_bytes;
@@ -461,6 +546,7 @@ public:
     count(accesses_);
     const auto line = address / spec_.line_bytes;
     const auto base = static_cast<std::size_t>(line % spec_.sets) * spec_.ways;
+    const auto selected_victim=replacement_?replacement_->directory_read(spec_.ways):spec_.ways;
     std::size_t victim = spec_.ways;
     for (std::size_t i = 0; i < spec_.ways; ++i) {
       auto &slot = lines_[base + i];
@@ -474,6 +560,7 @@ public:
         victim = i;
     }
     count(misses_);
+    if(replacement_)victim=selected_victim;
     if (victim == spec_.ways) {
       victim = 0;
       for (std::size_t i = 1; i < spec_.ways; ++i)
@@ -490,6 +577,10 @@ public:
     return {false, old, dirty, base + victim};
   }
   CacheReport report() const { return {accesses_, hits_, misses_, entries_, lines_.size(), overflow_}; }
+  std::optional<std::uint64_t> replacement_state() const {
+    if(replacement_)return replacement_->state();
+    return std::nullopt;
+  }
 
 private:
   struct Line {
@@ -499,6 +590,7 @@ private:
     std::size_t rank = 0;
   };
   CacheSpec spec_;
+  std::optional<ReadSteppedLfsr> replacement_;
   std::vector<Line> lines_;
   std::size_t entries_ = 0;
   std::uint64_t accesses_ = 0, hits_ = 0, misses_ = 0;

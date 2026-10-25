@@ -142,6 +142,33 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
             command_buffer, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     except (TypeError, ValueError):
         artifact_sha256 = ""
+    params = command_buffer.get("params")
+    projection = params.get("source_owned_host_projection") if isinstance(params, Mapping) else None
+    if projection is not None:
+        # The original host owns storage/epilogues outside the independently
+        # retained private compiler projection. Never price an empty public
+        # pointer roster as zero work or claim the projection covers host MACs.
+        from dataclasses import replace
+
+        device = projection.get("device_command_buffer") if isinstance(projection, Mapping) else None
+        if not isinstance(device, Mapping) or (
+            isinstance(device.get("params"), Mapping) and "source_owned_host_projection" in device["params"]
+        ):
+            return ProgramWork(
+                (),
+                0,
+                True,
+                ("source-owned host has no bounded device work projection",),
+                artifact_sha256=artifact_sha256,
+            )
+        work = work_from_command_buffer(device)
+        return replace(
+            work,
+            is_lower_bound=True,
+            refusals=(*work.refusals, "original host work outside the device projection is uncounted"),
+            artifact_sha256=artifact_sha256,
+            basis="source_owned_device_projection",
+        )
     tensors = command_buffer.get("tensors")
     instructions = command_buffer.get("commands")
     if not isinstance(tensors, Mapping) or not isinstance(instructions, Sequence) \

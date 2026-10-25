@@ -37,7 +37,7 @@ def project(report: dict, *, structural: dict | None = None) -> dict:
                   and window.get('estimated_cycles')==cycles)
     result=dict(schema=SCHEMA,**pins,status='modeled' if complete else 'UNKNOWN',
         estimated_cycles_same_window=cycles if complete else None,source_kind='modeled',
-        window=window,activity_status='UNKNOWN',resources=[],overlaps=[],traffic=[],
+        window=window,activity_status='UNKNOWN',resources=[],overlaps=[],traffic=[],commands={},
         compute=dict(useful_macs=None,nominal_padded_macs=None,useful_fraction_of_padded_work=None,
                      structural_floor_to_estimate_ratio=None,ratio_kind='structural bound / modeled cycles; not physical utilization'),
         host=dict(instruction_counts={},preparation_cycles=None,dispatch_cycles=None,
@@ -48,6 +48,25 @@ def project(report: dict, *, structural: dict | None = None) -> dict:
     if not complete:
         result['reason']='complete counts and modeled cycles in the exact counter-PC window required'
         return result
+    for name,feature in [('total','target.commands'),('fences','target.fences'),
+                         ('config','target.class.config'),('load','target.class.load'),
+                         ('preload','target.class.preload'),('compute','target.class.compute'),
+                         ('store','target.class.store')]:
+        value=counts.get(feature)
+        result['commands'][name]=_count(value,feature) if value is not None else None
+    classes={key.removeprefix('target.class.'):value for key,value in counts.items()
+             if key.startswith('target.class.')}
+    # The observer counts target.commands at accelerator instruction issue.
+    # A scalar fence is reported separately, even when its target drain is
+    # classified as target.class.fence. It must not break the command census.
+    command_classes={key:value for key,value in classes.items() if key!='fence'}
+    if (classes and all(type(value) is int and value >= 0 for value in classes.values())
+            and ('fence' not in classes or classes['fence']==result['commands']['fences'])
+            and sum(command_classes.values())==result['commands']['total']):
+        result['commands']['compute']=sum(value for key,value in command_classes.items()
+                                          if key=='compute' or key.startswith('compute_'))
+        result['commands']['store']=sum(value for key,value in command_classes.items()
+                                        if key in {'store','pool_store'} or key.startswith(('store_','pool_store_')))
     for destination,source in [('useful_macs','target.useful_shape_macs'),('nominal_padded_macs','target.nominal_padded_macs')]:
         if counts.get(source) is not None:result['compute'][destination]=_count(counts[source],source)
     useful,padded=result['compute']['useful_macs'],result['compute']['nominal_padded_macs']
@@ -127,7 +146,7 @@ def project(report: dict, *, structural: dict | None = None) -> dict:
 def compact(value):
     """Bounded common projection for terminal, automatic and offline feedback."""
     result = {key:value.get(key) for key in ('schema','status','source_kind','scope_sha256','model_sha256','elf_sha256','estimated_cycles_same_window',
-        'activity_status','compute','traffic','host','resources','overlaps','suggestions','unknown','reason',
+        'activity_status','compute','traffic','commands','host','resources','overlaps','suggestions','unknown','reason',
         'latency_is_objective','resource_cycles_additive','qualification_issued')}
 
     rows=value.get('resources') or []

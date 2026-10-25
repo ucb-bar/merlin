@@ -298,13 +298,16 @@ def _loop_trips(loop, entry, values):
 
 def constant_control_counts(
     function, *, max_blocks=MAX_BLOCK_VISITS, max_operations=MAX_OPERATIONS, summarize_loops=True,
-    observe=None, observed_operations=None,
+    observe=None, observed_operations=None, summarizable_assembly=(),
 ):
     """Prove execution counts by terminating bounded constant-only CFG traversal.
 
     A straight-line counted loop (see :func:`_straight_line_loop`) is entered once
     and advanced by its exact trip count instead of being stepped: its body has no
     control and none of its values leave the loop, so the counts are the same.
+    An observer may additionally supply original result-free assembly sites
+    whose straight-line transport it has independently validated. Only unwatched
+    sites can be summarized; this supplies no instruction or memory semantics.
     """
     # An explicit watched roster allows summaries only outside that roster.
     # Callers must still discard every observation on an incomplete traversal.
@@ -322,6 +325,10 @@ def constant_control_counts(
         raise ValueError("constant control static operation budget exhausted")
     block_set = frozenset(blocks)
     watched = None if observed_operations is None else frozenset(observed_operations)
+    assembly = frozenset(summarizable_assembly)
+    if any(op.name != "llvm.inline_asm" or op.results or op.regions
+           or op.parent_block() not in block_set for op in assembly):
+        raise ValueError("summarized assembly must be original result-free instructions")
     if watched is not None and (observe is None or any(op.parent_block() not in block_set for op in watched)):
         raise ValueError("constant control observation roster leaves the original function")
 
@@ -334,7 +341,8 @@ def constant_control_counts(
                 if any(use.operation.parent_block() not in nodes for use in item.uses):
                     return False
             for op in block.ops:
-                if op in watched or op.regions or op.name in {"llvm.call", "llvm.invoke", "llvm.inline_asm"}:
+                if (op in watched or op.regions or op.name in {"llvm.call", "llvm.invoke"}
+                        or op.name == "llvm.inline_asm" and op not in assembly):
                     return False
                 # A count-only summary cannot discharge arithmetic assertions or
                 # possible division/shift poison that the scalar visitor checks.
