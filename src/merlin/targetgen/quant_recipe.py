@@ -106,9 +106,8 @@ class QuantRecipe:
     families: tuple[str, ...] = (CONTRACTION,)
     #: Accelerator capture keeps exact integer semantics and full-width int32 device readout.
     readout_numerics: str = "integer_readout"
-    #: The declared integer-sum policy; stated in the document
-    #: only when it is not the default ``bounded``, so an undeclared recipe keeps its digest.
-    integer_sum_policy: str = "bounded"
+    #: Capture identity includes the declared policy; exact sums are the default.
+    integer_sum_policy: str = "exact"
     unquantized: dict[str, str] = field(default_factory=dict)  # family -> why it stays float
     why: dict[str, str] = field(default_factory=dict)  # field -> the derivation behind it
     underivable: dict[str, str] = field(default_factory=dict)  # field -> why not
@@ -128,8 +127,7 @@ class QuantRecipe:
             "underivable": dict(sorted(self.underivable.items())),
         }
         body["readout_numerics"] = self.readout_numerics
-        if self.integer_sum_policy != "bounded":
-            body["integer_sum_policy"] = self.integer_sum_policy
+        body["integer_sum_policy"] = self.integer_sum_policy
         body["recipe_sha256"] = digest(body)
         return body
 
@@ -243,9 +241,16 @@ def derive(
     range moves with its input). It is honoured where the facet allows and recorded where it does
     not: a recipe never promises a mode the hardware would push onto the host silently.
     ``integer_sum_policy`` records the flow's declared numeric policy for integer sums.
-    Target readouts still require exact sums and product proofs under either declaration.
+    Exact is the default. Target readouts still require exact sums and product
+    proofs even under an explicitly retained legacy bounded declaration.
+    A per_operand scheme needs a capture with explicit per-operand requantization
+    nodes; it cannot be implemented by relaxing the exact readout facet.
     """
-    policy = "bounded" if integer_sum_policy is None else str(integer_sum_policy)
+    policy = "exact" if integer_sum_policy is None else str(integer_sum_policy)
+    if policy == "per_operand":
+        raise ValueError(
+            "per_operand requires an explicit per-operand requantization capture, not an exact readout facet"
+        )
     if policy not in ("bounded", "exact"):
         raise ValueError(f"integer sum policy {integer_sum_policy!r} is not one of ('bounded', 'exact')")
     # Policy provenance never relaxes the target's exact sum and product proofs.
