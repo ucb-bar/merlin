@@ -132,8 +132,20 @@ def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None, _bindings=N
     if name == "llvm.mlir.constant":
         iv = _const_value(op)
         return _Val("const", value=iv) if iv is not None else _Val("unknown")
-    if name in {"llvm.add", "llvm.sub", "llvm.mul", "llvm.and", "llvm.or", "llvm.xor",
-                "llvm.shl", "llvm.lshr", "llvm.ashr", "llvm.trunc", "llvm.sext", "llvm.zext"}:
+    if name in {
+        "llvm.add",
+        "llvm.sub",
+        "llvm.mul",
+        "llvm.and",
+        "llvm.or",
+        "llvm.xor",
+        "llvm.shl",
+        "llvm.lshr",
+        "llvm.ashr",
+        "llvm.trunc",
+        "llvm.sext",
+        "llvm.zext",
+    }:
         from .static_operands import fold_integer
 
         folded = fold_integer(val, _bindings or {})
@@ -155,13 +167,20 @@ def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None, _bindings=N
         if module is None:
             return _Val("unknown")
         symbol = reference.root_reference.data
-        definitions = [member for member in module.body.block.ops
-                       if getattr(member.properties.get("sym_name"), "data", None) == symbol]
+        definitions = [
+            member
+            for member in module.body.block.ops
+            if getattr(member.properties.get("sym_name"), "data", None) == symbol
+        ]
         if len(definitions) != 1 or not isinstance(storage := definitions[0], GlobalOp):
             return _Val("unknown")
-        if (storage.constant is None or storage.linkage.linkage.data not in {"internal", "private"}
-                or storage.thread_local_ is not None or storage.addr_space.value.data != 0
-                or (storage.value is None and not storage.body.blocks)):
+        if (
+            storage.constant is None
+            or storage.linkage.linkage.data not in {"internal", "private"}
+            or storage.thread_local_ is not None
+            or storage.addr_space.value.data != 0
+            or (storage.value is None and not storage.body.blocks)
+        ):
             return _Val("unknown")
         return _Val("global", symbol=symbol, offset=0)
     if name == "llvm.getelementptr":
@@ -191,8 +210,9 @@ def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None, _bindings=N
         base = a if a.kind in {"argbase", "global"} else (b if b.kind in {"argbase", "global"} else None)
         const = a if a.kind == "const" else (b if b.kind == "const" else None)
         if base is not None and const is not None:
-            return _Val(base.kind, arg_index=base.arg_index, symbol=base.symbol,
-                        offset=(base.offset or 0) + (const.value or 0))
+            return _Val(
+                base.kind, arg_index=base.arg_index, symbol=base.symbol, offset=(base.offset or 0) + (const.value or 0)
+            )
         if a.kind == "const" and b.kind == "const":
             return _Val("const", value=(a.value or 0) + (b.value or 0))
         return _Val("unknown")
@@ -297,14 +317,24 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
             continue
         template = _asm_template(op)
         if template == "fence":
-            trace.instructions.append({"index": idx, "class": "FENCE", "funct": None, "decoded": {}})
+            trace.instructions.append(
+                {"index": idx, "class": "FENCE", "funct": None, "decoded": {"pred": 15, "succ": 15, "fm": 0}}
+            )
         elif template.startswith(".insn"):
             parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
             if parsed is not None:
                 funct, _rd_is_x0 = parsed
                 ops = list(op.operands)  # SSA source operands, in order (rs1, rs2) — spelling-agnostic
-                rs1 = _resolve(ops[0], _word_bits=word_bits, _bindings=bindings.get(op.parent_block())) if len(ops) >= 1 else None
-                rs2 = _resolve(ops[1], _word_bits=word_bits, _bindings=bindings.get(op.parent_block())) if len(ops) >= 2 else None
+                rs1 = (
+                    _resolve(ops[0], _word_bits=word_bits, _bindings=bindings.get(op.parent_block()))
+                    if len(ops) >= 1
+                    else None
+                )
+                rs2 = (
+                    _resolve(ops[1], _word_bits=word_bits, _bindings=bindings.get(op.parent_block()))
+                    if len(ops) >= 2
+                    else None
+                )
                 klass, dec = semantics.decode_instruction(funct, _operand(rs1), _operand(rs2), isa)
                 trace.instructions.append(
                     {
@@ -384,7 +414,9 @@ def _decode_by_text_scan(text: str, *, target: str, source: str | None = None) -
         template = next((s.strip() for s in inside if s.strip().startswith(".insn") or s.strip() == "fence"), "")
         if template:
             if template == "fence":
-                trace.instructions.append({"index": idx, "class": "FENCE", "funct": None, "decoded": {}})
+                trace.instructions.append(
+                    {"index": idx, "class": "FENCE", "funct": None, "decoded": {"pred": 15, "succ": 15, "fm": 0}}
+                )
             else:
                 parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
                 if parsed is not None:

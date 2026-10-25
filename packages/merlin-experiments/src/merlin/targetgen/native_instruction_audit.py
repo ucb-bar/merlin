@@ -254,7 +254,17 @@ def decode_retirement_trace(*, elf, trace, routed, target, runtime_abi=None):
                 )
             # Standard RISC-V FENCE transport, independent of the selected device ISA.
             elif owner is not None and fields["opcode"] == 15 and word >> 12 & 7 == 0:
-                instructions.append({**identity, "class": "FENCE"})
+                instructions.append(
+                    {
+                        **identity,
+                        "class": "FENCE",
+                        "decoded": {
+                            "pred": word >> 24 & 15,
+                            "succ": word >> 20 & 15,
+                            "fm": word >> 28 & 15,
+                        },
+                    }
+                )
             _integer_writes(parts[5:], regs)
     result = {"instructions": instructions, "retirement_trace_sha256": digest.hexdigest()}
     if type(isa.get("FUNCT3")) is int:

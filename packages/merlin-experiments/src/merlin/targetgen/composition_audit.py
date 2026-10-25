@@ -69,16 +69,30 @@ def _selected_hardware(target, needs):
         if dataflow.get("status") != "derived" or len(codes) != 1:
             raise ValueError("UNKNOWN: output-stationary select code is underived")
         hardware["output_stationary"] = codes[0]
-    if needs & {"scaled_accumulate_load", "k_extension", "contraction_lineage", "accumulator_preload"}:
+    if needs & {"scaled_accumulate_load", "k_extension", "contraction_lineage", "accumulator_preload", "runtime_dma"}:
         from merlin.targetgen.rocc.decode import _semantics
 
         semantics = _semantics(target)
         observer = getattr(semantics, "operand_observer", None) or semantics
-        if "scaled_accumulate_load" in needs:
+        if needs & {"scaled_accumulate_load", "runtime_dma"}:
             mapping = getattr(observer, "load_states", None)
             if mapping is None:
                 raise ValueError("UNKNOWN: load-class state selection is underived")
             hardware["load_states"] = dict(mapping.ports)
+        if "runtime_dma" in needs:
+            from merlin.common.quant_formats import storage_bits
+            from merlin.targetgen.rtl.facts import load_facts
+
+            facts = load_facts(target)
+            body = facts.get("facts", facts)
+            dtypes = [row.get("dtype") for row in body.get("datapaths", []) if row.get("name") == "input"]
+            if len(dtypes) != 1 or not dtypes[0]:
+                raise ValueError("UNKNOWN: DMA input element width is underived")
+            bits = storage_bits(dtypes[0])
+            if bits <= 0 or bits % 8:
+                raise ValueError("UNKNOWN: DMA input element width is not byte-addressable")
+            hardware["input_bytes"] = bits // 8
+            hardware["max_load_bytes"] = getattr(mapping, "max_element_bytes", None)
         if needs & {"k_extension", "contraction_lineage", "accumulator_preload"}:
             isa = observer.isa_constants(target)
         if "k_extension" in needs:
@@ -159,6 +173,20 @@ def _accumulator_span(decoded, address_field, rows_field, cols_field, hardware):
     return start, start + rows, cols
 
 
+def _without_rows(resident, start, end):
+    """Subtract overwritten rows while retaining both unaffected fragments."""
+    remaining = []
+    for left, right, width in resident:
+        if right <= start or end <= left:
+            remaining.append((left, right, width))
+            continue
+        if left < start:
+            remaining.append((left, start, width))
+        if end < right:
+            remaining.append((end, right, width))
+    return remaining
+
+
 def _contraction_lineage(instructions, hardware):
     """Require every readout element to belong to still-resident contraction work."""
     resident, preload = [], None
@@ -170,7 +198,7 @@ def _contraction_lineage(instructions, hardware):
             resident.append(_accumulator_span(preload or {}, "c_addr", "c_rows", "c_cols", hardware))
         elif kind in _LOADS and decoded.get("is_acc_addr") is True:
             start, end, _ = _accumulator_span(decoded, "spad_addr", "rows", "cols", hardware)
-            resident = [span for span in resident if span[1] <= start or end <= span[0]]
+            resident = _without_rows(resident, start, end)
         elif kind == "MVOUT":
             start, end, cols = _accumulator_span(decoded, "acc_addr", "rows", "cols", hardware)
             covered = start
@@ -199,8 +227,8 @@ def _accumulator_seed(instructions, parameters, hardware):
         if kind in _LOADS and _known(decoded, "is_acc_addr") is True:
             span = _accumulator_span(decoded, "spad_addr", "rows", "cols", hardware)
             start, end, _ = span
-            seeds = [s for s in seeds if s[1] <= start or end <= s[0]]
-            results = [s for s in results if s[1] <= start or end <= s[0]]
+            seeds = _without_rows(seeds, start, end)
+            results = _without_rows(results, start, end)
             if _buffer_identity(_known(decoded, "dram")) == source and _known(decoded, "accumulate") is False:
                 seeds.append(span)
         elif kind == "PRELOAD":
@@ -273,11 +301,17 @@ def _scratchpad_pool_fence(instructions):
             if any(type(value) is not int or value < 0 for value in (start, rows, cols)) or min(rows, cols) <= 0:
                 raise ValueError("UNKNOWN: pooling source extent is unresolved")
             end = start + rows
-            resident = [s for s in resident if s[1] <= start or end <= s[0]]
-            completed = [s for s in completed if s[1] <= start or end <= s[0]]
+            resident = _without_rows(resident, start, end)
+            completed = _without_rows(completed, start, end)
             resident.append((start, end, cols))
-        elif kind == "FENCE":
-            completed = list(resident)
+        elif kind == "FENCE" and resident:
+            # Opaque accelerator DMA needs both memory and device-I/O ordering.
+            # The standard RISC-V default fence is iorw,iorw with fm=0.
+            pred, succ, mode = (_known(decoded, key) for key in ("pred", "succ", "fm"))
+            if any(type(value) is not int for value in (pred, succ, mode)) or mode != 0:
+                raise ValueError("UNKNOWN: pooling completion fence semantics are unresolved")
+            if pred == 15 and succ == 15:
+                completed = list(resident)
         elif kind == "MVOUT":
             if _known(decoded, "is_acc_addr") is not False:
                 raise ValueError("scratchpad pooling store does not select scratchpad rows")
@@ -400,10 +434,45 @@ def check_modes(instructions, modes, parameters, *, target):
         _shared_input(instructions, parameters.get("shared_input", {}))
 
 
-def _logical_runtime_operands(instructions):
+def _dma_footprint(kind, decoded, config, hardware):
+    """Bound the final byte touched by strided rows, including broadcast stride."""
+    rows, cols = (_known(decoded, key) for key in ("rows", "cols"))
+    if any(type(size) is not int or size <= 0 for size in (rows, cols)):
+        raise ValueError("UNKNOWN: DMA row/column extent is unresolved")
+    if kind in _LOADS:
+        accumulator = _known(decoded, "is_acc_addr")
+        if type(accumulator) is not bool:
+            raise ValueError("UNKNOWN: DMA load destination format is unresolved")
+        width = hardware["max_load_bytes"] if accumulator else hardware["input_bytes"]
+        stride = _known(config, "stride")
+    else:
+        from merlin.common.quant_formats import storage_bits
+
+        bits = storage_bits(_known(decoded, "readout"))
+        if bits <= 0 or bits % 8:
+            raise ValueError("UNKNOWN: DMA store element width is unresolved")
+        width = bits // 8
+        stride = _known(config, "out_stride_bytes")
+        if _known(config, "pool_stride") != 0:
+            raise ValueError("UNKNOWN: pooled DMA footprint is not established")
+    if type(width) is not int or width <= 0 or type(stride) is not int or stride < 0:
+        raise ValueError("UNKNOWN: DMA element width/active stride is unresolved")
+    return (rows - 1) * stride + cols * width
+
+
+def _logical_runtime_operands(instructions, *, target):
     """Project replay-owned concrete addresses without altering the raw decode."""
     result = copy.deepcopy(instructions)
+    if not any(row.get("runtime_buffer_bindings") is not None for row in result):
+        return result
+    hardware = _selected_hardware(target, {"runtime_dma"})
+    load_configs, store_config = {}, {}
     for row in result:
+        kind, decoded = row.get("class"), row.get("decoded") or {}
+        if kind == "CONFIG_LD":
+            load_configs[_known(decoded, "state_id")] = decoded
+        elif kind == "CONFIG_ST":
+            store_config = decoded
         bindings = row.get("runtime_buffer_bindings")
         if bindings is None or row.get("class") not in _LOADS | {"MVOUT"}:
             continue
@@ -416,6 +485,16 @@ def _logical_runtime_operands(instructions):
         if len(matches) != 1:
             raise ValueError("UNKNOWN: runtime memory address has no unique logical buffer binding")
         binding = matches[0]
+        if kind in _LOADS:
+            state = hardware["load_states"].get(kind)
+            if state is None:
+                raise ValueError("UNKNOWN: DMA load state is underived")
+            config = load_configs.get(state, {})
+        else:
+            config = store_config
+        footprint = _dma_footprint(kind, decoded, config, hardware)
+        if address + footprint > binding["base"] + binding["byte_extent"]:
+            raise ValueError("DMA footprint exceeds its bound logical buffer")
         decoded["dram"] = dict(kind="argbase", arg_index=binding["arg_index"], offset=address - binding["base"])
     return result
 
@@ -438,7 +517,7 @@ def check_composition(trace, expected, *, target):
             for row in trace["instructions"]
             if row.get("kernel") == binding["symbol"] and row.get("region_id") == binding["region_id"]
         ]
-        instructions = _logical_runtime_operands(instructions)
+        instructions = _logical_runtime_operands(instructions, target=target)
         producer = composition.get("producer")
         if producer == "contraction":
             producer_seen = any(row.get("class") in _COMPUTES for row in instructions)

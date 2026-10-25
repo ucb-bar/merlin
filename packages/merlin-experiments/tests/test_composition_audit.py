@@ -28,7 +28,9 @@ def _bits(value):
 
 
 def _row(kind, **decoded):
-    if kind == "MVOUT":
+    if kind == "FENCE":
+        decoded = {"pred": 15, "succ": 15, "fm": 0, **decoded}
+    elif kind == "MVOUT":
         decoded = {"acc_addr": 32, "rows": 3, "cols": 3, "readout": "i8", "is_acc_addr": True, **decoded}
     elif kind == "PRELOAD":
         decoded = {"is_acc_addr": True, **decoded}
@@ -843,9 +845,15 @@ def test_scratchpad_pooling_needs_a_fence_between_source_load_and_store(mutation
 
 
 @pytest.mark.parametrize("mutation", [None, "missing_entry_register", "overlapping_buffers", "unbound_address"])
-def test_retired_shared_input_uses_observed_runtime_argument_bases(native_files, monkeypatch, mutation):
+def test_retired_shared_input_uses_observed_runtime_argument_bases(
+    native_files, monkeypatch, selected_hardware, mutation
+):
+    selected_hardware[0]["facts"]["datapaths"] = [dict(name="input", dtype="i8")]
+    observer = selected_hardware[1]
     elf, log = native_files
     rows = [
+        _row("CONFIG_LD", state_id=6, stride=3),
+        _row("CONFIG_ST", out_stride_bytes=3, pool_stride=0),
         _row("MVIN", dram={"kind": "const", "raw": 4096}, spad_addr=8, is_acc_addr=False),
         *_compute(),
         _row("MVOUT", dram={"kind": "const", "raw": 8192}),
@@ -863,6 +871,7 @@ def test_retired_shared_input_uses_observed_runtime_argument_bases(native_files,
                 "OPERAND_FIELDS": {"PRELOAD": {"fields": [{"as": "flag", "mask": 512}]}},
             },
             decode_instruction=lambda code, *a: copy.deepcopy(codes[code]),
+            load_states=observer.load_states,
         ),
     )
     arguments = [dict(arg_index=i, register=10 + i, byte_extent=64) for i in range(3)]
@@ -872,7 +881,7 @@ def test_retired_shared_input_uses_observed_runtime_argument_bases(native_files,
     elif mutation == "overlapping_buffers":
         writes = "x10 0x1000 x11 0x1020 x12 0x3000"
     elif mutation == "unbound_address":
-        codes[4][1]["dram"]["raw"] = 16384
+        next(decoded for kind, decoded in codes.values() if kind == "MVOUT")["dram"]["raw"] = 16384
     log.write_text(
         f"core 0: 3 0x10000 (0x00000013) {writes}\n"
         + "".join(f"core 0: 3 0x{index * 4:x} (0x{code << 25 | 43:08x})\n" for index, code in enumerate(codes))
@@ -988,3 +997,117 @@ def test_seed_address_flags_come_from_the_selected_operand_observer(selected_har
     ]
     case = _case(rows, {"accumulator_preload": True}, {"accumulator_preload": {"input": _operand(3)}})
     assert _check(case)["status"] == "pass"
+
+
+@pytest.mark.parametrize("store_start", [32, 35])
+def test_partial_seed_overwrite_preserves_only_untouched_rows(store_start):
+    rows = [
+        _row("MVIN", dram=_operand(3), rows=6, is_acc_addr=True, accumulate=False),
+        _row("MVIN", dram=_operand(4), spad_addr=35, rows=3, is_acc_addr=True, accumulate=False),
+        _row("PRELOAD", c_addr=store_start, c_rows=3, c_cols=3, accumulate=True),
+        _row("COMPUTE_PRELOADED", a_spad=8),
+        _row("MVOUT", acc_addr=store_start),
+    ]
+    case = _case(rows, {"accumulator_preload": True}, {"accumulator_preload": {"input": _operand(3)}})
+    assert _check(case)["status"] == ("pass" if store_start == 32 else "fail")
+
+
+@pytest.mark.parametrize("word", [0x0000000F, 0x0330000F, 0x0F00000F, 0x00F0000F, 0x8FF0000F, 0x0FF0000F])
+def test_pooling_credit_requires_retired_ordering_fence(native_files, monkeypatch, word):
+    elf, log = native_files
+    rows = [_row("MVIN", is_acc_addr=False), _row("MVOUT", is_acc_addr=False)]
+    monkeypatch.setattr(NA, "_function_ranges", lambda *a: [(0, 12, "fused")])
+    monkeypatch.setattr(
+        decode,
+        "_semantics",
+        lambda _: SimpleNamespace(
+            isa_constants=lambda _: {"CUSTOM_OPCODE": 43},
+            decode_instruction=lambda code, *a: (rows[code - 1]["class"], rows[code - 1]["decoded"]),
+        ),
+    )
+    log.write_text(f"core 0: 3 0x0 (0x0200002b)\ncore 0: 3 0x4 (0x{word:08x})\ncore 0: 3 0x8 (0x0400002b)\n")
+    trace = NA.decode_retirement_trace(
+        elf=elf, trace=log, routed=[dict(symbol="fused", region_id="chain")], target="synthetic"
+    )
+    case = _case(trace["instructions"], {"scratchpad_source_pooling_fenced": True})
+    case[1]["composition"]["producer"] = "movement"
+    result = _check(case)
+    assert result["status"] == ("pass" if word == 0x0FF0000F else "fail"), result
+
+
+@pytest.mark.parametrize(
+    "offset,stride,width,passes",
+    [(63, 3, 1, False), (55, 3, 1, True), (55, 4, 1, False), (55, 0, 1, True), (50, 4, 2, True), (51, 4, 2, False)],
+)
+def test_runtime_binding_covers_complete_strided_dma(selected_hardware, offset, stride, width, passes):
+    selected_hardware[0]["facts"]["datapaths"] = [dict(name="input", dtype=f"i{width * 8}")]
+    rows = [
+        _row("CONFIG_LD", state_id=6, stride=stride),
+        _row("CONFIG_ST", out_stride_bytes=3),
+        _row("MVIN", dram=dict(kind="const", raw=4096 + offset), spad_addr=8, is_acc_addr=False),
+        *_compute(),
+        _row("MVOUT", dram=_operand(1)),
+        *_compute(),
+        _row("MVOUT", dram=_operand(2)),
+    ]
+    rows[2]["runtime_buffer_bindings"] = [dict(arg_index=0, base=4096, byte_extent=64)]
+    result = _check(_case(rows, {"shared_input": True}, {"shared_input": {"input": _operand(0)}}))
+    assert result["status"] == ("pass" if passes else "fail"), result
+
+
+@pytest.mark.parametrize("missing", ["rows", "cols", "stride", "width", "load_state"])
+def test_unresolved_runtime_dma_footprint_is_unknown(selected_hardware, missing):
+    selected_hardware[0]["facts"]["datapaths"] = [dict(name="input", dtype="i8")]
+    rows = [
+        _row("CONFIG_LD", state_id=6, stride=3),
+        _row("MVIN", dram=dict(kind="const", raw=4096), is_acc_addr=False),
+        *_compute(),
+        _row("MVOUT"),
+    ]
+    rows[1]["runtime_buffer_bindings"] = [dict(arg_index=0, base=4096, byte_extent=64)]
+    if missing in {"rows", "cols"}:
+        del rows[1]["decoded"][missing]
+    elif missing == "stride":
+        del rows[0]["decoded"]["stride"]
+    elif missing == "width":
+        selected_hardware[0]["facts"]["datapaths"] = []
+    else:
+        rows[0]["decoded"]["state_id"] = 3
+    result = _check(_case(rows, {"i32_exit": True}))
+    assert result["status"] == "fail"
+    assert result["composition_audit"]["evidence_status"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "readout,offset,passes", [("i8", 55, True), ("i8", 56, False), ("i32", 28, True), ("i32", 29, False)]
+)
+def test_runtime_store_footprint_uses_decoded_readout_width(selected_hardware, readout, offset, passes):
+    selected_hardware[0]["facts"]["datapaths"] = [dict(name="input", dtype="i8")]
+    rows = [
+        _row("CONFIG_ST", out_stride_bytes=12 if readout == "i32" else 3, pool_stride=0),
+        *_compute(),
+        _row("MVOUT", dram=dict(kind="const", raw=8192 + offset), readout=readout),
+    ]
+    rows[-1]["runtime_buffer_bindings"] = [dict(arg_index=1, base=8192, byte_extent=64)]
+    case = _case(
+        rows,
+        {"i32_exit": True} if readout == "i32" else {"readout_multipliers": True},
+        {"readout_multipliers": {"acc_scale_bits": [0]}},
+    )
+    rows[0]["decoded"].update(acc_scale_bits=0)
+    # _case keeps the row objects, so the active store configuration is updated too.
+    result = _check(case)
+    assert result["status"] == ("pass" if passes else "fail"), result
+
+
+def test_pooling_completion_with_missing_fence_semantics_is_unknown():
+    fence = _row("FENCE")
+    del fence["decoded"]["pred"]
+    case = _case(
+        [_row("MVIN", is_acc_addr=False), fence, _row("MVOUT", is_acc_addr=False)],
+        {"scratchpad_source_pooling_fenced": True},
+    )
+    case[1]["composition"]["producer"] = "movement"
+    result = _check(case)
+    assert result["status"] == "fail"
+    assert result["composition_audit"]["evidence_status"] == "UNKNOWN"
