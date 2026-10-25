@@ -7,6 +7,7 @@ verdicts remain independent obligations.
 import bisect
 import hashlib
 import json
+import math
 import subprocess
 from collections import Counter
 from collections.abc import Mapping
@@ -84,7 +85,119 @@ def _integer_writes(tokens, registers):
             raise ValueError("UNKNOWN: committed zero register is nonzero")
 
 
-def decode_retirement_trace(*, elf, trace, routed, target):
+def _requires_runtime_bindings(value):
+    if isinstance(value, dict):
+        return value.get("kind") == "argbase" or any(_requires_runtime_bindings(v) for v in value.values())
+    return isinstance(value, list) and any(_requires_runtime_bindings(v) for v in value)
+
+
+def _composition_runtime_abi(native, declaration, routed):
+    """Reopen this build's logical harness interface and compiled pointer ABI.
+
+    RISC-V psABI a0..a7 are host calling-convention registers, independent of
+    accelerator encodings. Stack-passed pointers and other host ABIs refuse.
+    Logical roles join the original source boundary to the actual kernel order.
+    """
+    from merlin.common import mlir_query as mq
+    from merlin.common.quant_formats import storage_bits
+    from merlin.llvmlower.device_shim import logical_buffers
+    from merlin.runtime.host_provider import read_host_function_abi
+
+    from .frozen_placement import _program
+    from .native_model_execution import _pinned_native_file
+
+    try:
+        kernels = native["build"]["output"]["device_artifacts"]["kernels"]
+        header = subprocess.check_output(
+            ["readelf", "--file-header", str(_pinned_native_file(native, "elf"))], text=True
+        )
+        host = {
+            line.partition(":")[0].strip(): line.partition(":")[2].strip()
+            for line in header.splitlines()
+            if ":" in line
+        }
+        if host.get("Class") != "ELF64" or host.get("Machine") != "RISC-V":
+            raise ValueError("linked ELF has no supported host pointer ABI")
+        source = _program(declaration, Path(native["capsule_directory"]))
+        module = mq.parse(source.read_text())
+        function = next(op for op in module.body.block.ops if mq.op_name(op) == "func.func")
+        returns = list(function.body.block.ops)[-1].operands
+        roster, counters = {}, Counter()
+        for index, row in enumerate(declaration["inputs"]):
+            role = row["role"]
+            roster[f"{role}_{counters[role]}"] = (index, row["shape"], row["dtype"])
+            counters[role] += 1
+        for index, value in enumerate(returns):
+            shape, dtype = mq.type_shape_dtype(value.type)
+            roster[f"out_{index}"] = (len(declaration["inputs"]) + index, shape, dtype)
+        result = {}
+        for route in routed:
+            found = [k for k in kernels.values() if k["kernel_symbol"] == route["symbol"]]
+            if len(found) != 1:
+                raise ValueError("kernel ABI is ambiguous")
+            kernel = found[0]
+            interface = _pinned_native_file(kernel["artifacts"], "logical_interface")
+            buffers, refusal = logical_buffers(interface.read_text())
+            if not buffers or refusal or len(buffers) > 8 or {b.role for b in buffers} != set(roster):
+                raise ValueError("logical ABI does not cover the original source boundary")
+            llvm = _pinned_native_file(kernel["artifacts"], "llvm_ir")
+            compilation = json.loads(_pinned_native_file(kernel["custody"], "compilation").read_text())
+            rename = json.loads(_pinned_native_file(kernel["custody"], "rename").read_text())
+            if any(
+                record.get("status") != "completed" or record.get("returncode") != 0 for record in (compilation, rename)
+            ):
+                raise ValueError("kernel ABI has no successful compilation/symbol binding")
+            triples = [arg.partition("=")[2] for arg in compilation["argv"] if arg.startswith("--target=")]
+            if len(triples) != 1 or not triples[0].startswith("riscv64-"):
+                raise ValueError("compiled kernel has no supported host pointer ABI")
+            renames = [arg.partition("=")[2] for arg in rename["argv"] if arg.startswith("--redefine-sym=")]
+            original = [value.partition("=")[0] for value in renames if value.partition("=")[2] == route["symbol"]]
+            if len(original) != 1:
+                raise ValueError("compiled entry ABI is not bound to its linked symbol")
+            abi = read_host_function_abi(llvm, original[0])
+            if abi.result != "void" or abi.variadic or abi.arguments != ("ptr",) * len(buffers):
+                raise ValueError("compiled entry does not have the logical pointer ABI")
+            arguments = []
+            for register, buffer in zip(range(10, 18), buffers):
+                index, shape, dtype = roster[buffer.role]
+                if list(buffer.shape) != shape or buffer.dtype != dtype:
+                    raise ValueError("kernel logical operand differs from its source role")
+                bits = storage_bits(dtype)
+                if bits % 8 or any(type(size) is not int or size <= 0 for size in shape):
+                    raise ValueError("logical pointer storage is unresolved")
+                arguments.append(dict(arg_index=index, register=register, byte_extent=math.prod(shape) * (bits // 8)))
+            result[route["symbol"]] = arguments
+        return result
+    except (KeyError, TypeError, ValueError, StopIteration, OSError) as error:
+        raise ValueError(f"UNKNOWN: runtime buffer ABI is unavailable: {error}") from error
+
+
+def _entry_buffers(arguments, registers):
+    bindings = []
+    for argument in arguments:
+        register, extent, index = (argument[key] for key in ("register", "byte_extent", "arg_index"))
+        if (
+            type(register) is not int
+            or not 0 < register < len(registers)
+            or type(extent) is not int
+            or extent <= 0
+            or type(index) is not int
+            or index < 0
+        ):
+            raise ValueError("UNKNOWN: runtime buffer ABI argument is unresolved")
+        base = registers[register]
+        if type(base) is not int or base <= 0:
+            raise ValueError("UNKNOWN: runtime argument base has no committed register observation")
+        bindings.append(dict(arg_index=index, base=base, byte_extent=extent))
+    ordered = sorted(bindings, key=lambda row: row["base"])
+    if len({row["arg_index"] for row in bindings}) != len(bindings) or any(
+        a["base"] + a["byte_extent"] > b["base"] for a, b in zip(ordered, ordered[1:])
+    ):
+        raise ValueError("UNKNOWN: runtime logical buffers overlap or repeat")
+    return bindings
+
+
+def decode_retirement_trace(*, elf, trace, routed, target, runtime_abi=None):
     """Decode actual operands from per-hart committed writes, never guessed zeros."""
     from merlin.kernels.decode.rocc import fields_of
     from merlin.targetgen.rocc.decode import _semantics
@@ -101,6 +214,7 @@ def decode_retirement_trace(*, elf, trace, routed, target):
     starts = [row[0] for row in ranges]
     registers, instructions, command_harts = {}, [], set()
     digest = hashlib.sha256()
+    active_buffers = {}
     with Path(trace).open("rb") as stream:
         for line in stream:
             digest.update(line)
@@ -113,12 +227,18 @@ def decode_retirement_trace(*, elf, trace, routed, target):
             pc, word = record
             index = bisect.bisect_right(starts, pc) - 1
             owner = ranges[index][2] if index >= 0 and pc < ranges[index][1] else None
+            if runtime_abi and owner in runtime_abi and pc == ranges[index][0]:
+                active_buffers[(hart, owner)] = _entry_buffers(runtime_abi[owner], regs)
             identity = {
                 "pc": pc,
                 "word": word,
                 "kernel": owner,
                 "region_id": bindings[owner]["region_id"] if owner else None,
             }
+            if runtime_abi and owner in runtime_abi:
+                if (hart, owner) not in active_buffers:
+                    raise ValueError("UNKNOWN: runtime buffer binding has no observed kernel entry")
+                identity["runtime_buffer_bindings"] = active_buffers[(hart, owner)]
             fields = fields_of(word)
             if fields["opcode"] == opcode:
                 command_harts.add(hart)
@@ -136,7 +256,10 @@ def decode_retirement_trace(*, elf, trace, routed, target):
             elif owner is not None and fields["opcode"] == 15 and word >> 12 & 7 == 0:
                 instructions.append({**identity, "class": "FENCE"})
             _integer_writes(parts[5:], regs)
-    return {"instructions": instructions, "retirement_trace_sha256": digest.hexdigest()}
+    result = {"instructions": instructions, "retirement_trace_sha256": digest.hexdigest()}
+    if type(isa.get("FUNCT3")) is int:
+        result["abi"] = {"custom_opcode": hex(opcode), "funct3": hex(isa["FUNCT3"])}
+    return result
 
 
 def _require_executed_sequence(decoded, observed):
@@ -327,11 +450,17 @@ def audit_native_composition(native, *, policy, facts, target):
     if decoded.get("retirement_trace_sha256") != observed.get("trace_sha256"):
         raise ValueError("UNKNOWN: decoded composition stream is not bound to the executed trace")
     _require_executed_sequence(decoded, observed)
+    runtime_abi = None
+    if _requires_runtime_bindings(expected.get("mode_parameters", {})):
+        runtime_abi = _composition_runtime_abi(
+            {**native, "capsule_directory": str(declaration_path.parent)}, declaration, sidecar["routed"]
+        )
     replayed = decode_retirement_trace(
         elf=_pinned_native_file(native, "elf"),
         trace=_pinned_native_file(native, "retirement_trace"),
         routed=sidecar["routed"],
         target=target,
+        runtime_abi=runtime_abi,
     )
     fields = ("pc", "word", "kernel", "region_id", "rs1", "rs2")
 

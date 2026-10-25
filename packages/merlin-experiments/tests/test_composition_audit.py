@@ -828,3 +828,138 @@ def test_seed_address_flags_come_from_the_selected_operand_observer(selected_har
     ]
     case = _case(rows, {"accumulator_preload": True}, {"accumulator_preload": {"input": _operand(3)}})
     assert _check(case)["status"] == "pass"
+
+
+@pytest.mark.parametrize("mutation", [None, "missing_entry_register", "overlapping_buffers", "unbound_address"])
+def test_retired_shared_input_uses_observed_runtime_argument_bases(native_files, monkeypatch, mutation):
+    elf, log = native_files
+    rows = [
+        _row("MVIN", dram={"kind": "const", "raw": 4096}, spad_addr=8, is_acc_addr=False),
+        *_compute(),
+        _row("MVOUT", dram={"kind": "const", "raw": 8192}),
+        *_compute(),
+        _row("MVOUT", dram={"kind": "const", "raw": 12288}),
+    ]
+    codes = {index + 1: (row["class"], row["decoded"]) for index, row in enumerate(rows)}
+    monkeypatch.setattr(NA, "_function_ranges", lambda *a: [(0, 4 * len(rows), "fused")])
+    monkeypatch.setattr(
+        decode,
+        "_semantics",
+        lambda _: SimpleNamespace(
+            isa_constants=lambda _: {
+                "CUSTOM_OPCODE": 43,
+                "OPERAND_FIELDS": {"PRELOAD": {"fields": [{"as": "flag", "mask": 512}]}},
+            },
+            decode_instruction=lambda code, *a: copy.deepcopy(codes[code]),
+        ),
+    )
+    arguments = [dict(arg_index=i, register=10 + i, byte_extent=64) for i in range(3)]
+    writes = "x10 0x1000 x11 0x2000 x12 0x3000"
+    if mutation == "missing_entry_register":
+        writes = "x10 0x1000 x11 0x2000"
+    elif mutation == "overlapping_buffers":
+        writes = "x10 0x1000 x11 0x1020 x12 0x3000"
+    elif mutation == "unbound_address":
+        codes[4][1]["dram"]["raw"] = 16384
+    log.write_text(
+        f"core 0: 3 0x10000 (0x00000013) {writes}\n"
+        + "".join(f"core 0: 3 0x{index * 4:x} (0x{code << 25 | 43:08x})\n" for index, code in enumerate(codes))
+    )
+    try:
+        retired = NA.decode_retirement_trace(
+            elf=elf,
+            trace=log,
+            routed=[dict(symbol="fused", region_id="chain")],
+            target="synthetic",
+            runtime_abi={"fused": arguments},
+        )
+        case = _case(retired["instructions"], {"shared_input": True}, {"shared_input": {"input": _operand(0)}})
+        result = _check(case)
+        assert result["status"] == ("pass" if mutation is None else "fail"), result
+    except ValueError as error:
+        assert mutation is not None and "UNKNOWN" in str(error)
+
+
+def test_symbolic_runtime_binding_requires_the_runs_abi_record(composition_execution_inputs):
+    native, policy, document, _ = composition_execution_inputs
+    with pytest.raises(ValueError, match="UNKNOWN.*runtime.*ABI"):
+        NA._composition_runtime_abi(native, {"inputs": []}, [dict(symbol="fused")])
+
+
+@pytest.mark.parametrize("mutation", [None, "missing_host_abi", "scalar_argument", "wrong_shape", "changed_interface"])
+def test_runtime_abi_is_rederived_from_the_pinned_build_interface(native_files, tmp_path, mutation):
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.native_model_execution import _digest
+
+    elf, _ = native_files
+    # Standard ELF e_machine identifies the host ISA independently of device facts.
+    blob = bytearray(elf.read_bytes())
+    blob[18:20] = (243).to_bytes(2, "little")
+    elf.write_bytes(blob)
+    source = tmp_path / "source.mlir"
+    source.write_text("""module {
+      func.func @forward(%a: tensor<3x3xi8>, %w: tensor<3x3xi8>) -> tensor<3x3xi32> {
+        %e = tensor.empty() : tensor<3x3xi32>
+        func.return %e : tensor<3x3xi32>
+      }
+    }""")
+    declaration = dict(
+        interface_mlir=source.name,
+        inputs=[
+            dict(name="A", role="input", shape=[3, 3], dtype="i8"),
+            dict(name="W", role="weight", shape=[3, 3], dtype="i8"),
+        ],
+    )
+    template = repo_root() / "merlin/contract/capsules/_model_layers/G_matmul_m3136k64n64_raw/capsule.interface.mlir"
+    interface = tmp_path / "interface.mlir"
+    interface.write_text(template.read_text().replace("3136", "3").replace("64", "3"))
+    llvm = tmp_path / "kernel.ll"
+    llvm.write_text("define void @entry(ptr %w, ptr %a, ptr %o) { ret void }\n")
+    if mutation == "scalar_argument":
+        llvm.write_text(llvm.read_text().replace("ptr %w", "i64 %w"))
+    compilation, rename = tmp_path / "compile.json", tmp_path / "rename.json"
+    compilation.write_text(
+        json.dumps(
+            dict(
+                status="completed",
+                returncode=0,
+                argv=[] if mutation == "missing_host_abi" else ["clang", "--target=riscv64-unknown-elf"],
+            )
+        )
+    )
+    rename.write_text(
+        json.dumps(dict(status="completed", returncode=0, argv=["objcopy", "--redefine-sym=entry=fused"]))
+    )
+    native = dict(
+        elf=_digest(elf),
+        capsule_directory=str(tmp_path),
+        build=dict(
+            output=dict(
+                device_artifacts=dict(
+                    kernels=dict(
+                        wrapper=dict(
+                            kernel_symbol="fused",
+                            artifacts=dict(logical_interface=_digest(interface), llvm_ir=_digest(llvm)),
+                            custody=dict(compilation=_digest(compilation), rename=_digest(rename)),
+                        )
+                    )
+                )
+            )
+        ),
+    )
+    if mutation == "wrong_shape":
+        declaration["inputs"][0]["shape"] = [4, 3]
+    elif mutation == "changed_interface":
+        interface.write_text(interface.read_text() + " ")
+    if mutation is None:
+        abi = NA._composition_runtime_abi(native, declaration, [dict(symbol="fused")])
+        assert abi == {
+            "fused": [
+                dict(arg_index=1, register=10, byte_extent=9),
+                dict(arg_index=0, register=11, byte_extent=9),
+                dict(arg_index=2, register=12, byte_extent=36),
+            ]
+        }
+    else:
+        with pytest.raises((ValueError, RuntimeError)):
+            NA._composition_runtime_abi(native, declaration, [dict(symbol="fused")])

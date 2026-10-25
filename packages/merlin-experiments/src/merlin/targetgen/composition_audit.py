@@ -4,6 +4,7 @@ No instruction operand is unpacked here. Decoders own field layouts and flag
 meanings; selected RTL facts own dataflow codes, load states and tile geometry.
 """
 
+import copy
 import math
 from collections import Counter
 
@@ -47,6 +48,11 @@ def _identity(value):
     if identity is None:
         raise ValueError("UNKNOWN: unresolved operand identity")
     return identity
+
+
+def _buffer_identity(value):
+    identity = _identity(value)
+    return identity[:2] if identity[0] in {"argbase", "global"} else identity
 
 
 def _selected_hardware(target, needs):
@@ -133,9 +139,9 @@ def _output_commits(commits, parameters):
         return commits
     if not isinstance(outputs, list) or not outputs:
         raise ValueError("UNKNOWN: output-scoped mode needs explicit operand identities")
-    wanted = {_identity(value) for value in outputs}
-    selected = [event for event in commits if _identity(_known(event[0], "dram")) in wanted]
-    observed = {_identity(_known(event[0], "dram")) for event in selected}
+    wanted = {_buffer_identity(value) for value in outputs}
+    selected = [event for event in commits if _buffer_identity(_known(event[0], "dram")) in wanted]
+    observed = {_buffer_identity(_known(event[0], "dram")) for event in selected}
     if observed != wanted:
         raise ValueError("UNKNOWN: output-scoped mode has no matching store for every output")
     return selected
@@ -184,7 +190,7 @@ def _covered(span, resident):
 
 def _accumulator_seed(instructions, parameters, hardware):
     """Follow the declared seed through accumulator writes, computes and exits."""
-    source = _identity(parameters.get("input"))
+    source = _buffer_identity(parameters.get("input"))
     seeds, results, preload = [], [], None
     computes = 0
     for row in instructions:
@@ -194,7 +200,7 @@ def _accumulator_seed(instructions, parameters, hardware):
             start, end, _ = span
             seeds = [s for s in seeds if s[1] <= start or end <= s[0]]
             results = [s for s in results if s[1] <= start or end <= s[0]]
-            if _identity(_known(decoded, "dram")) == source and _known(decoded, "accumulate") is False:
+            if _buffer_identity(_known(decoded, "dram")) == source and _known(decoded, "accumulate") is False:
                 seeds.append(span)
         elif kind == "PRELOAD":
             preload = decoded
@@ -287,14 +293,14 @@ def _k_extension(commits, parameters, hardware):
 
 
 def _shared_input(instructions, parameters):
-    expected = _identity(parameters.get("input"))
+    expected = _buffer_identity(parameters.get("input"))
     live, loaded, outputs = {}, Counter(), {}
     used = set()
     for row in instructions:
         kind, decoded = row.get("class"), row.get("decoded") or {}
         if kind in _LOADS:
             destination = _known(decoded, "spad_addr")
-            source = _identity(_known(decoded, "dram"))
+            source = _buffer_identity(_known(decoded, "dram"))
             extent = (_known(decoded, "rows"), _known(decoded, "cols"))
             if type(destination) is not int or any(type(size) is not int or size <= 0 for size in extent):
                 raise ValueError("UNKNOWN: shared-input load has unresolved extent/address")
@@ -312,7 +318,7 @@ def _shared_input(instructions, parameters):
             if source == expected:
                 used.add((address, extent))
         elif kind == "MVOUT":
-            output = _identity(_known(decoded, "dram"))
+            output = _buffer_identity(_known(decoded, "dram"))
             outputs.setdefault(output, set()).update(used)
             used = set()
     if (
@@ -365,6 +371,26 @@ def check_modes(instructions, modes, parameters, *, target):
         _shared_input(instructions, parameters.get("shared_input", {}))
 
 
+def _logical_runtime_operands(instructions):
+    """Project replay-owned concrete addresses without altering the raw decode."""
+    result = copy.deepcopy(instructions)
+    for row in result:
+        bindings = row.get("runtime_buffer_bindings")
+        if bindings is None or row.get("class") not in _LOADS | {"MVOUT"}:
+            continue
+        decoded = row["decoded"]
+        operand = _known(decoded, "dram")
+        if not isinstance(operand, dict) or operand.get("kind") != "const" or type(operand.get("raw")) is not int:
+            raise ValueError("UNKNOWN: runtime memory operand is not a concrete address")
+        address = operand["raw"]
+        matches = [b for b in bindings if b["base"] <= address < b["base"] + b["byte_extent"]]
+        if len(matches) != 1:
+            raise ValueError("UNKNOWN: runtime memory address has no unique logical buffer binding")
+        binding = matches[0]
+        decoded["dram"] = dict(kind="argbase", arg_index=binding["arg_index"], offset=address - binding["base"])
+    return result
+
+
 def check_composition(trace, expected, *, target):
     """Both placement and same-region instruction evidence are mandatory.
 
@@ -383,6 +409,7 @@ def check_composition(trace, expected, *, target):
             for row in trace["instructions"]
             if row.get("kernel") == binding["symbol"] and row.get("region_id") == binding["region_id"]
         ]
+        instructions = _logical_runtime_operands(instructions)
         producer = composition.get("producer")
         if producer == "contraction":
             producer_seen = any(row.get("class") in _COMPUTES for row in instructions)

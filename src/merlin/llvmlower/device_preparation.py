@@ -465,6 +465,7 @@ def build_prepared_device_objects(
                                 "size_bytes": path.stat().st_size,
                             }
                             for role, path in (
+                                ("logical_interface", work / "device" / f"{symbol}.iface.mlir"),
                                 ("llvm_mlir", work / "device" / f"{symbol}.device.mlir"),
                                 ("llvm_ir", work / "device" / f"{symbol}.ll"),
                                 *optimized_artifacts(_dev_build.custody[symbol]).items(),
