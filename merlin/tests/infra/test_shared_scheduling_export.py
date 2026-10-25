@@ -69,6 +69,56 @@ def test_export_is_deterministic_exact_and_import_closed(tmp_path):
         assert _py_imports_merlin("import " + module, compiler_library=contract) is not None
 
 
+@pytest.mark.parametrize("name,selected_version", [
+    ("merlin.compile.scheduling.compact_loaded_sum", 8),
+    ("merlin.compile.scheduling.spatial_producer", 10),
+    ("merlin.compile.scheduling.spatial_readout", 10),
+    ("merlin.llvmlower.spatial_scratch_abi", 11),
+    ("merlin.llvmlower.borrowed_effects", 11),
+    ("merlin.compile.scheduling.configuration_contexts", 15),
+    ("merlin.compile.scheduling.configuration_loop_cleanup", 15),
+    ("merlin.compile.scheduling.dense_panel_readout", 15),
+])
+def test_compact_loaded_sum_is_available_only_in_prospective_reviewed_inventory(tmp_path, name, selected_version):
+    from merlin.compile.scheduling.export import public_modules
+    from merlin.compile.scheduling.library_sources import library_modules
+
+    for version in range(6, selected_version):
+        assert name not in library_modules(version)
+        if version != 9:
+            assert name not in public_modules(version)
+    manifest = export_shared_scheduling(tmp_path / "prospective", version=selected_version)
+    contract = review(tmp_path / "prospective", manifest)
+    assert name in library_modules(selected_version)
+    assert name in manifest["public_modules"]
+    assert contract.permits(name)
+    member = next(member for member in manifest["members"] if member["module"] == name)
+    assert (tmp_path / "prospective" / member["path"]).read_bytes() == (
+        repo_root() / "src" / member["path"]
+    ).read_bytes()
+
+
+def test_historical_inventory_membership_is_unchanged_by_spatial_v10():
+    from merlin.compile.scheduling.export import public_modules
+    from merlin.compile.scheduling.library_sources import library_modules
+
+    # Public membership pinned before the spatial addition (ef421aaeb).
+    owners = {
+        6: "2e14b5081ae360398f9db8e215b47c15e7f185797db83970f86894d252cb6810",
+        7: "53179f4919e8207d9338143625c84744a6cb5e7efd93464e3ed112ed1315a0da",
+        8: "1e94a8a010e7e6adc0d1e72f8b7e1fe1cbbfb97d82b30ee1cf66bff8e18e1fad",
+        9: "40a72750a7347a003c989c03d4d624eae89ff2d9697a5c309a44ef524357a0ed",
+    }
+    public = {
+        6: "b0fd6d0fe93623410b63cb3872762e6bafdb8331edab2cbebb239a173cc321ca",
+        7: "a05264440574e0da7501375f2af0cc83bb859c835dffd0e0a2e4b5f7b2efca49",
+        8: "088d39800cd17abfa3f948440d4af16bc26a537d4e4776179bf0797972be2742",
+    }
+    for getter, pins in ((library_modules, owners), (public_modules, public)):
+        for version, expected in pins.items():
+            assert hashlib.sha256(json.dumps(getter(version), separators=(",", ":")).encode()).hexdigest() == expected
+
+
 def test_changed_or_withheld_source_cannot_enter_a_reviewed_release(tmp_path):
     manifest = export_shared_scheduling(tmp_path / "library")
     contract = review(tmp_path / "library", manifest)

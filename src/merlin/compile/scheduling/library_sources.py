@@ -101,6 +101,8 @@ LIBRARY_MODULES_V8 = (
     "merlin.compile.scheduling.configuration_loops",
     "merlin.compile.scheduling.command_compaction",
     "merlin.compile.scheduling.compact_dense",
+    "merlin.compile.scheduling.compact_loaded_sum",
+    "merlin.compile.scheduling.spatial_gather",
     "merlin.compile.scheduling.compact_verification",
     "merlin.compile.scheduling.configuration",
     "merlin.compile.scheduling.configuration_ir",
@@ -161,14 +163,100 @@ LIBRARY_MODULES_V8 = (
     "merlin.verify",
     "merlin.verify.epilogue_applicability",
 )
+# Prospective selection only; existing reviewed inventories stay unchanged.
+LIBRARY_MODULES_V9 = (*LIBRARY_MODULES_V8, "merlin.compile.scheduling.periodic_dense")
+LIBRARY_MODULES_V10 = (
+    *LIBRARY_MODULES_V9,
+    "merlin.compile.scheduling.spatial_producer",
+    "merlin.compile.scheduling.spatial_readout",
+    "merlin.llvmlower.integer_readout",
+    "merlin.llvmlower.integer_producer_range",
+    "merlin.llvmlower.requantization",
+)
+LIBRARY_MODULES_V11 = (
+    *LIBRARY_MODULES_V10,
+    "merlin.llvmlower.spatial_scratch_abi",
+    "merlin.llvmlower.fresh_tensor_writer",
+    "merlin.llvmlower.private_workspace_pool",
+    "merlin.llvmlower.borrowed_effects",
+    "merlin.xdsl_dialects",
+    "merlin.xdsl_dialects._common",
+    "merlin.xdsl_dialects.fp8",
+)
+# Executable schedule dialect consumer; older inventories remain unchanged.
+LIBRARY_MODULES_V12 = (
+    *LIBRARY_MODULES_V11,
+    "merlin.compile.scheduling.schedule_ir",
+    "merlin.xdsl_dialects.schedule",
+    "merlin.xdsl_dialects.contract",
+)
+LIBRARY_MODULES_V13 = (
+    *LIBRARY_MODULES_V12,
+    "merlin.compile.scheduling.loop_schedule",
+    "merlin.sched.primitives",
+)
+LIBRARY_MODULES_V14 = (
+    *LIBRARY_MODULES_V13,
+    "merlin.compile.scheduling.dense_panel_pipeline",
+    "merlin.compile.scheduling.scf_commands",
+    "merlin.xdsl_dialects.runtime",
+)
+LIBRARY_MODULES_V15 = (
+    *LIBRARY_MODULES_V14,
+    "merlin.compile.scheduling.configuration_contexts",
+    "merlin.compile.scheduling.configuration_loop_cleanup",
+    "merlin.compile.scheduling.dense_panel_readout",
+)
+LIBRARY_MODULES_V16 = (
+    *LIBRARY_MODULES_V15,
+    "merlin.compile.scheduling.tile_load_coalescing",
+    "merlin.compile.scheduling.panel_tile_loads",
+    "merlin.compile.scheduling.dense_segmented_pipeline",
+    "merlin.compile.scheduling.dense_array_retention",
+    "merlin.compile.scheduling.api_catalog",
+)
+LIBRARY_MODULES_V17 = (
+    *LIBRARY_MODULES_V16,
+    "merlin.compile.scheduling.rolling_window",
+    "merlin.compile.scheduling.rolling_spatial",
+    "merlin.xdsl_dialects.rolling_window",
+    "merlin.compile.scheduling.spatial_readout_cache",
+)
+LIBRARY_MODULES_V18 = (
+    *LIBRARY_MODULES_V17,
+    "merlin.compile.scheduling.dense_readout_overlap",
+    "merlin.llvmlower.host_builder",
+    "merlin.llvmlower.llvm_loop_metadata",
+    "merlin.compile.scheduling.projection_views",
+    "merlin.transforms.tensor_views",
+    "merlin.llvmlower.source_region",
+    "merlin.llvmlower.source_region_host",
+    "merlin.compile.composition_catalog",
+)
+LIBRARY_MODULES_V19 = (*LIBRARY_MODULES_V18, "merlin.compile.scheduling.dense_ready_readout")
 LIBRARY_MODULES = LIBRARY_MODULES_V6
 
 
 def library_modules(version=6):
     """Select a closed reviewed inventory; this grants no import access."""
-    if type(version) is not int or version not in (6, 7, 8):
-        raise ValueError("shared compiler inventory requires version 6 or 7 or 8")
-    return {6: LIBRARY_MODULES_V6, 7: LIBRARY_MODULES_V7, 8: LIBRARY_MODULES_V8}[version]
+    if type(version) is not int or version not in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
+        raise ValueError("shared compiler inventory requires version 6 through 19")
+    return {
+        6: LIBRARY_MODULES_V6,
+        7: LIBRARY_MODULES_V7,
+        8: LIBRARY_MODULES_V8,
+        9: LIBRARY_MODULES_V9,
+        10: LIBRARY_MODULES_V10,
+        11: LIBRARY_MODULES_V11,
+        12: LIBRARY_MODULES_V12,
+        13: LIBRARY_MODULES_V13,
+        14: LIBRARY_MODULES_V14,
+        15: LIBRARY_MODULES_V15,
+        16: LIBRARY_MODULES_V16,
+        17: LIBRARY_MODULES_V17,
+        18: LIBRARY_MODULES_V18,
+        19: LIBRARY_MODULES_V19,
+    }[version]
 
 
 def shared_library_sources(*, version=6):

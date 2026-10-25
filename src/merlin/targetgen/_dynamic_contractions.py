@@ -257,21 +257,29 @@ def static_planes(tensor: Any, *, axis: int, planes: int, qmax: int) -> list:
     return out
 
 
-def _int_matmul(emit: Emitter, lhs: Any, rhs: Any) -> Any:
-    """``lhs[..., M, K] @ rhs[..., K, N]`` in int8 -> i32, one ``_int_mm`` per batch slice."""
+def _int_matmul(emit: Emitter, lhs: Any, rhs: Any, *, output_transform=None) -> Any:
+    """One INT8 -> INT32 product per slice, optionally transformed before joining.
+
+    Applying a readout before stack/reshape keeps each product and its narrowing
+    in one closed region that the ordinary output-fusion pass can absorb.
+    """
     aten = _aten()
     a, b = lhs.meta["val"], rhs.meta["val"]
     batch = list(a.shape[:-2])
     if list(b.shape[:-2]) != batch:
         raise ValueError("a dynamic contraction needs equal batch extents on both operands")
+    def product(a, b):
+        acc = emit(aten._int_mm.default, a, b)
+        return output_transform(acc) if output_transform is not None else acc
+
     if not batch:
-        return emit(aten._int_mm.default, lhs, rhs)
+        return product(lhs, rhs)
     count = math.prod(batch)
     m, k, n = int(a.shape[-2]), int(a.shape[-1]), int(b.shape[-1])
     lhs3 = emit(aten.reshape.default, lhs, [count, m, k])
     rhs3 = emit(aten.reshape.default, rhs, [count, k, n])
     slices = [
-        emit(aten._int_mm.default, emit(aten.select.int, lhs3, 0, i), emit(aten.select.int, rhs3, 0, i))
+        product(emit(aten.select.int, lhs3, 0, i), emit(aten.select.int, rhs3, 0, i))
         for i in range(count)
     ]
     return emit(aten.reshape.default, emit(aten.stack.default, slices, 0), [*batch, m, n])

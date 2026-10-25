@@ -301,7 +301,10 @@ def verify_compact_dense_group(
         bindings.append((call, member, operation))
         return operation
 
-    sites = _project(kernel, replace(adapter, project=projection))
+    # Bindings retain original call operands and external pointers. Their
+    # singleton variables still need the original scopes for range checks;
+    # folding only the projected operation would leave these pointers unbound.
+    sites = _project(kernel, replace(adapter, project=projection), fold_singleton_loops=False)
     used = {v.name: 0 for v in views}
     lhs_loads = lhs_bytes = rhs_loads = rhs_bytes = stores = output_bytes = 0
     for site, (call, member, op) in zip(sites, bindings, strict=True):

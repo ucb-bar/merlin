@@ -883,3 +883,70 @@ def matmul_records(parsed: dict[str, Any]) -> list[dict[str, Any]]:
     A package that only lowers the matmul family (reusing the residency command path) filters here.
     """
     return [o for o in parsed.get("ops", []) if o["kind"] in _MATMUL_KINDS or o.get("family") == "contraction"]
+
+
+def bind_logical_io_metadata(text: str, inputs, outputs):
+    """Carry explicit public ABI names into typed source without changing its body.
+
+    Rows are declared public metadata, never inferred from SSA names or model
+    identities. The owner must bind them to the original capsule and preserve
+    this receipt; this pure transformation grants no source/evaluation custody.
+    Frozen corpus bytes and original numerical semantics remain unchanged.
+    """
+    import hashlib
+    import json
+    from xdsl.dialects import builtin, func
+    from xdsl.parser import Parser
+
+    module = Parser(make_linalg_context(), text).parse_module()
+    module.verify()
+    functions = [op for op in module.body.block.ops if isinstance(op, func.FuncOp)]
+    if len(functions) != 1 or len(functions[0].body.blocks) != 1:
+        raise ValueError("logical ABI enrichment needs one defined single-block entry")
+    fn = functions[0]
+    original_module = module.clone()
+    original_attributes = dict(fn.attributes)
+    rows = (tuple(inputs), tuple(outputs))
+    types = (tuple(a.type for a in fn.body.block.args), tuple(fn.function_type.outputs))
+    names, roles = [], []
+    for index, (selected, values) in enumerate(zip(rows, types, strict=True)):
+        if len(selected) != len(values):
+            raise ValueError("public logical ABI arity differs from typed source")
+        group = []
+        for row, typ in zip(selected, values, strict=True):
+            if not isinstance(row, dict) or not isinstance(typ, builtin.TensorType):
+                raise ValueError("public logical ABI needs typed tensor rows")
+            name = row.get("name")
+            if type(name) is not str or not name or row.get("shape") != list(typ.get_shape()) or row.get("dtype") != str(typ.element_type):
+                raise ValueError("public logical ABI name/shape/dtype differs from typed source")
+            if not isinstance(typ.encoding, builtin.NoneAttr) or any(n <= 0 for n in typ.get_shape()):
+                raise ValueError("public logical ABI needs positive static unencoded tensors")
+            group.append(name)
+            if index == 0:
+                if row.get("role") not in ("input", "weight", "bias", "scale"):
+                    raise ValueError("public input ownership role is absent or unsupported")
+                roles.append(row["role"])
+        names.append(group)
+    if len(set(names[0] + names[1])) != len(names[0]) + len(names[1]):
+        raise ValueError("public logical ABI contains duplicate or aliased names")
+    values = {"merlin.logical_io": builtin.StringAttr("merlin.logical_io.v1"),
+              "merlin.logical_inputs": builtin.ArrayAttr(builtin.StringAttr(n) for n in names[0]),
+              "merlin.logical_outputs": builtin.ArrayAttr(builtin.StringAttr(n) for n in names[1]),
+              "merlin.logical_input_roles": builtin.ArrayAttr(builtin.StringAttr(n) for n in roles)}
+    for key, value in values.items():
+        if key in fn.attributes and fn.attributes[key] != value:
+            raise ValueError("existing logical ABI differs from selected public metadata")
+        fn.attributes[key] = value
+    module.verify()
+    projected = module.clone()
+    projected_function = next(op for op in projected.body.block.ops if isinstance(op, func.FuncOp))
+    projected_function.attributes = original_attributes
+    if not projected.is_structurally_equivalent(original_module):
+        raise ValueError("logical ABI enrichment changed source body, type or arity")
+    rendered = str(module)
+    return rendered, {"schema": "merlin.public_logical_io_enrichment.v1",
+                      "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
+                      "metadata_sha256": hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest(),
+                      "normalized_sha256": hashlib.sha256(rendered.encode()).hexdigest(),
+                      "body_transformations": 0, "body_type_arity_unchanged": True, "inputs": names[0], "outputs": names[1],
+                      "authority": "metadata transport only; original owner custody and numerical checks required"}

@@ -430,7 +430,7 @@ def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
     } or None
 
 
-def _ordinary_integer_harness_inputs(cb):
+def _ordinary_integer_harness_inputs(cb, *, max_storage_bytes=16 << 20, stream_inputs=False):
     """Materialize the runner's existing integer stimulus, never a model fallback."""
     from merlin.common.quant_formats import get
     from merlin.runtime.commandbuffer import materialize_inputs
@@ -444,9 +444,38 @@ def _ordinary_integer_harness_inputs(cb):
         total += _tensor(spec)[2]
         if get(spec["dtype"]).kind != "int_affine":
             raise ValueError("non-integer harness requires explicit semantic inputs")
-    if total > 16 * 1024 * 1024:
+    if type(max_storage_bytes) is not int or not 0 < max_storage_bytes <= 256 << 20:
+        raise ValueError("ordinary integer harness needs a bounded selected storage budget")
+    if total > max_storage_bytes:
         raise ValueError("neutral harness exceeds its complete storage budget before input rendering")
     leaves = materialize_inputs(cb)
+    # Preserve existing small-program harness bytes. Previously refused large
+    # programs use the existing exact-byte sidecar transport, never megabytes
+    # of C scalar literals or a changed stimulus distribution.
+    if total > 16 << 20 and stream_inputs:
+        import numpy as np
+
+        from merlin.llvmlower.weight_payload import WeightPayload
+        from merlin.runtime.tensor_payload import TensorPayload
+
+        payloads = {}
+        for name, access in slots.items():
+            if access == "write":
+                continue
+            spec = normalized["tensors"][name]
+            shape, dtype, extent = _tensor(spec)
+            width = dtype.element_bits // 8
+            signed = dtype.signed
+            minimum = -(1 << (width * 8 - 1)) if signed else 0
+            maximum = (1 << (width * 8 - int(signed))) - 1
+            values = leaves[name].data
+            if any(type(value) is not int or not minimum <= value <= maximum for value in values):
+                raise ValueError("ordinary integer payload differs from its exact scalar storage")
+            array = np.asarray(values, dtype=f"<{'i' if signed else 'u'}{width}")
+            array.flags.writeable = False
+            payload = WeightPayload.array(extent, lambda array=array: array)
+            payloads[name] = TensorPayload(shape, spec["dtype"], payload)
+        return payloads
     return {name: leaves[name].to_list() for name, access in slots.items() if access != "write"}
 
 
@@ -617,7 +646,12 @@ def link_elf(
     if _compact_caller is None and prepack_authorizations is None and _build_service is None and inputs is None:
         inputs = _recorded_operands(cb)
         if inputs is None and getattr(_backends.get_backend(target), "REQUIRES_EXPLICIT_LOGICAL_INPUTS", False):
-            inputs = _ordinary_integer_harness_inputs(cb)
+            budget_provider = getattr(_backends.get_backend(target), "logical_storage_budget_bytes", None)
+            inputs = _ordinary_integer_harness_inputs(
+                cb,
+                max_storage_bytes=budget_provider() if callable(budget_provider) else 16 << 20,
+                stream_inputs=bool(blob_kwargs),
+            )
     if _compile_only_linkage is not None:
         pass
     elif _compact_caller is not None:
@@ -1302,25 +1336,19 @@ def run_on_oracle(
         from .readback_policy import require_memory_completion, require_memory_value_roster
 
         require_memory_completion(console, outputs)
-        if _execution_service is not None:
-            outputs, memory_evidence, memory_observation = _observed_memory_decode(
-                memory_readback,
-                console,
-                cb=cb,
-                elf=elf,
-                workdir=work,
-                policy=readback_policy,
-                dependencies=tuple(Path(path) for path, _ in _execution_service.source_pins),
-            )
-        else:
-            outputs, memory_evidence = memory_readback.decode(console)
-            if (
-                type(outputs) is not dict
-                or type(memory_evidence) is not dict
-                or memory_evidence.get("status") != "complete"
-            ):
-                raise ValueError("memory output reader returned no completed full-value admission")
-            require_memory_value_roster(cb, outputs)
+        outputs, memory_evidence, memory_observation = _observed_memory_decode(
+            memory_readback,
+            console,
+            cb=cb,
+            elf=elf,
+            workdir=work,
+            policy=readback_policy,
+            dependencies=(tuple(Path(path) for path, _ in _execution_service.source_pins)
+                          if _execution_service is not None else dependencies),
+            retain_in_invocation=_execution_service is None,
+            inputs=((Path(memory_kwargs["memory_readback"]["regions_path"]),)
+                    if _execution_service is None and memory_kwargs["memory_readback"].get("regions_path") else ()),
+        )
     check_budget()
     output_digests = None
     if readback_policy is not None:

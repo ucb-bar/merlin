@@ -288,6 +288,8 @@ def _operand_sum_entry(group: Group, *, name: str | None) -> dict[str, Any]:
         "N": features,
         "lhs_scale": float(group.operand_sum["lhs_scale"]),
         "rhs_scale": float(group.operand_sum["rhs_scale"]),
+        **({"source_scales": list(group.operand_sum["source_scales"])}
+           if "source_scales" in group.operand_sum else {}),
         "bound_lsb": int(group.operand_sum["bound_lsb"]),
         "epilogue": ["relu"] if group.operand_sum.get("relu") else [],
         "scale_granularity": "tensor",

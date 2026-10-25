@@ -193,6 +193,7 @@ class BoundOperandObserver:
             if type(operand) is not dict:
                 raise ValueError("operand observation must retain its original identity")
             observation = dict(operand)
+            S._known_bits(observation, word_bits=self.word_bits)
             raw = observation.get("raw")
             if raw is not None:
                 if type(raw) is not int or not -(1 << (self.word_bits - 1)) <= raw < (1 << self.word_bits):

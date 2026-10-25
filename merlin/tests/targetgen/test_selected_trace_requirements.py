@@ -10,7 +10,7 @@ from merlin.runtime.backends import base
 from merlin.targetgen import trace_check
 
 
-def _bound(tmp_path, monkeypatch, *, width=1, protocol=False, zero_fill=None):
+def _bound(tmp_path, monkeypatch, *, width=1, protocol=False, zero_fill=None, readout=False):
     fixtures = runpy.run_path(str(repo_root() / "merlin/tests/runtime/test_bound_chipyard_rocc_backend.py"))
     contract, facts = fixtures["selection"].__wrapped__(tmp_path)
     classes = {2: "LOAD_CMD", 3: "STORE_CMD", 4: "COMPUTE_AND_FLIP_CMD", 6: "PRELOAD_CMD"}
@@ -34,6 +34,12 @@ def _bound(tmp_path, monkeypatch, *, width=1, protocol=False, zero_fill=None):
                 {"name": "accumulate", "from": "acc_bit", "equals": 1},
             ]}}},
         }
+    if readout:
+        contract["rocc_operand_protocol"]["roles"]["classes"]["MVOUT"] = {"fields": [
+            {"name": "narrow", "operand": "rs2", "bundle": "Preload", "field": "acc"},
+            {"name": "readout", "all": [{"from": "narrow", "equals": 1}],
+             "set": "i8", "clear": "i32"},
+        ]}
     if zero_fill is not None:
         fields = [{"name": "dram", "operand": "rs1", "as": "operand"}]
         classes = contract["rocc_operand_protocol"]["roles"]["classes"]
@@ -373,7 +379,7 @@ def test_source_generation_is_selected_semantics_not_literal_address_exception(t
     assert result['trace_requirement_status'] == 'invalid_binding'
 
 
-def _accumulation_loop(opcode, *, accumulate=True, unknown_exit=False, poison=False):
+def _accumulation_loop(opcode, *, accumulate=True, unknown_exit=False, poison=False, iterations=2):
     from merlin.targetgen.rocc.decode import _parse_module
 
     expression = 'llvm.shl %one, %wide : i64' if poison else 'llvm.select %first, %zero, %flag : i1, i64'
@@ -383,7 +389,7 @@ def _accumulation_loop(opcode, *, accumulate=True, unknown_exit=False, poison=Fa
       llvm.func @entry(%opaque: i1) {{
         %zero = llvm.mlir.constant(0 : i64) : i64
         %one = llvm.mlir.constant(1 : i64) : i64
-        %two = llvm.mlir.constant(2 : i64) : i64
+        %two = llvm.mlir.constant({iterations} : i64) : i64
         %wide = llvm.mlir.constant(64 : i64) : i64
         %flag = llvm.mlir.constant({flag} : i64) : i64
         llvm.inline_asm has_side_effects "fence", "~{{memory}}" : () -> ()
@@ -433,7 +439,7 @@ def test_incomplete_control_witness_discards_earlier_accumulation(tmp_path, monk
     module = _accumulation_loop(backend.rocc_semantics.isa_constants('synthetic')['CUSTOM_OPCODE'],
                                 unknown_exit=case == 'unknown_branch', poison=case == 'poison')
     trace = decode_module(module, target='synthetic')
-    kwargs = {'max_blocks': 6} if case == 'budget' else {}
+    kwargs = {'max_blocks': 1} if case == 'budget' else {}
     assert constant_control_operand_witness(module, target='synthetic', expected_trace=trace,
         semantic_class='PRELOAD', field='accumulate', value=True, **kwargs) is None
     if case != 'budget':
@@ -468,3 +474,101 @@ def test_already_proved_accumulation_does_not_interpret_again(tmp_path, monkeypa
     monkeypatch.setattr(control_flow, 'constant_control_operand_witness', forbidden)
     trace_check.check(_trace(backend, (6,), rs2=16), {'modes': {'k_accumulate': True}},
                       target='synthetic', lowered_module=_parse_module('builtin.module {}'))
+
+
+def _readout_loop(opcode, **kwargs):
+    from xdsl.dialects.builtin import StringAttr
+    from merlin.targetgen.rocc.decode import _asm_template
+
+    module = _accumulation_loop(opcode, **kwargs)
+    for op in tuple(module.walk()):
+        if op.name != 'llvm.inline_asm':
+            continue
+        template = _asm_template(op)
+        if ', 6,' in template:
+            op.properties['asm_string'] = StringAttr(template.replace(', 6,', ', 3,'))
+        elif ', 4,' in template:
+            op.parent_block().erase_op(op)
+    module.verify()
+    return module
+
+
+@pytest.mark.parametrize('narrow,expected', [(True, 'pass'), (False, 'failed')])
+def test_counted_readout_uses_original_selected_operand_bits(tmp_path, monkeypatch, narrow, expected):
+    from merlin.targetgen.rocc.decode import decode_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True, readout=True)
+    module = _readout_loop(backend.rocc_semantics.isa_constants('synthetic')['CUSTOM_OPCODE'], accumulate=narrow)
+    trace = decode_module(module, target='synthetic')
+    before = copy.deepcopy(trace)
+    result = trace_check.check(trace, {'modes': {'i8': True}}, target='synthetic', lowered_module=module)
+    assert result['trace_requirement_status'] == expected, result
+    assert (result['status'] == 'pass') is narrow
+    assert trace == before  # The observer does not rewrite the original static trace.
+
+
+@pytest.mark.parametrize('case', ['unknown_branch', 'poison', 'budget'])
+def test_incomplete_readout_path_cannot_qualify_earlier_i8(tmp_path, monkeypatch, case):
+    from merlin.targetgen.rocc.control_flow import constant_control_operand_witness
+    from merlin.targetgen.rocc.decode import decode_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True, readout=True)
+    module = _readout_loop(backend.rocc_semantics.isa_constants('synthetic')['CUSTOM_OPCODE'],
+                           unknown_exit=case == 'unknown_branch', poison=case == 'poison')
+    trace = decode_module(module, target='synthetic')
+    kwargs = {'max_blocks': 1} if case == 'budget' else {}
+    assert constant_control_operand_witness(module, target='synthetic', expected_trace=trace,
+        semantic_class='MVOUT', field='readout', value='i8', **kwargs) is None
+    if case != 'budget':
+        result = trace_check.check(trace, {'modes': {'i8': True}}, target='synthetic', lowered_module=module)
+        assert result['trace_requirement_status'] == 'unavailable_fields', result
+
+
+def test_readout_witness_cannot_replace_a_different_original_trace(tmp_path, monkeypatch):
+    from merlin.targetgen.rocc.decode import decode_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True, readout=True)
+    module = _readout_loop(backend.rocc_semantics.isa_constants('synthetic')['CUSTOM_OPCODE'])
+    trace = decode_module(module, target='synthetic')
+    row = trace['instructions'][1]
+    row['rs1'] = {'kind': 'const', 'raw': 7, 'arg_index': None, 'offset': None}
+    row['class'], row['decoded'] = backend.rocc_semantics.decode_instruction(
+        row['funct'], row['rs1'], row['rs2'], backend.rocc_semantics.isa_constants('synthetic'))
+    result = trace_check.check(trace, {'modes': {'i8': True}}, target='synthetic', lowered_module=module)
+    assert result['trace_requirement_status'] == 'invalid_binding'
+    assert 'original lowered-module' in result['violations'][0]
+
+
+def test_already_observed_i8_needs_no_control_interpretation(tmp_path, monkeypatch):
+    from merlin.targetgen.rocc import control_flow
+    from merlin.targetgen.rocc.decode import _parse_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True, readout=True)
+    def forbidden(*args, **kwargs):
+        raise AssertionError('already observed mode must not trigger traversal')
+    monkeypatch.setattr(control_flow, 'constant_control_operand_witness', forbidden)
+    result = trace_check.check(_trace(backend, (3,), rs2=16), {'modes': {'i8': True}},
+                              target='synthetic', lowered_module=_parse_module('builtin.module {}'))
+    assert 'i8' not in result.get('unavailable_requirements', [])
+    assert not any('mode i8' in reason for reason in result['violations'])
+
+
+@pytest.mark.parametrize('readout', [False, True])
+@pytest.mark.parametrize('unknown_exit', [False, True])
+def test_large_loop_witness_requires_complete_compressed_control_proof(tmp_path, monkeypatch, readout, unknown_exit):
+    from merlin.targetgen.rocc.control_flow import constant_control_operand_witness
+    from merlin.targetgen.rocc.decode import decode_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True, readout=readout)
+    build = _readout_loop if readout else _accumulation_loop
+    module = build(backend.rocc_semantics.isa_constants('synthetic')['CUSTOM_OPCODE'],
+                   iterations=100_000, unknown_exit=unknown_exit)
+    trace = decode_module(module, target='synthetic')
+    observed = constant_control_operand_witness(
+        module, target='synthetic', expected_trace=trace,
+        semantic_class='MVOUT' if readout else 'PRELOAD',
+        field='readout' if readout else 'accumulate', value='i8' if readout else True,
+    )
+    # A bounded exact traversal can witness iteration 1 after proving the entire
+    # closed loop and exit. A later opaque branch still invalidates that witness.
+    assert observed is (None if unknown_exit else True)

@@ -119,9 +119,12 @@ class TargetOracle:
         rank: int | None = None,
         attached: bool,
         granularity: str | None = None,
+        form: str | None = None,
     ) -> Admission:
         region = self._E.RegionDescriptor(
-            op=op, family=family, in_dtype=in_dtype, weight_dtype=weight_dtype, rank=rank, scale_granularity=granularity
+            op=op, family=family, in_dtype=in_dtype, weight_dtype=weight_dtype,
+            rank=rank, scale_granularity=granularity,
+            form=form,
         )
         verdict = self._E.is_eligible(
             region,

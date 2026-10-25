@@ -407,13 +407,23 @@ def with_integer_extension(recipe: Mapping[str, Any], *, key: str, policy: Mappi
     return body
 
 
-def with_shared_grid_operand_sums(recipe: Mapping[str, Any]) -> dict[str, Any]:
+def with_shared_grid_operand_sums(
+    recipe: Mapping[str, Any], *, output_boundary: str = "quantized_readers", residual_selection: str | None = None
+) -> dict[str, Any]:
     """Opt into one observed i8 grid per closed residual's inputs and output.
 
     The capture spells unit-grid add/ReLU/clamp, restoring real units only
     after the integer result. This is a new quantized recipe, not an accuracy
     or execution certificate. Existing independent placement and exact
-    quantized-reference comparisons remain mandatory.
+    quantized-reference comparisons remain mandatory. Explicit ``dequantize``
+    also permits a float consumer (including normalization) after the narrowed
+    i8 result. Its float operations are unchanged, but its inputs and hence the
+    quantized reference change. Prove the selected target's two unit-load/add/
+    clamp path and qualify actual outputs before claiming device execution.
+    ``residual_selection="distinct_contraction_frontiers"`` additionally requires
+    disjoint first-contraction/input frontiers and at least one contraction;
+    same-projection coordinate transforms are excluded without naming models.
+    This selects a new recipe domain, not a guarantee of float-model accuracy.
     """
     from merlin.targetgen import _integer_operand_sum as sums
 
@@ -421,17 +431,32 @@ def with_shared_grid_operand_sums(recipe: Mapping[str, Any]) -> dict[str, Any]:
     if CONTRACTION not in (body.get("families") or ()):
         raise ValueError("shared-grid sums need a recipe that quantizes contractions")
     body["families"] = list(dict.fromkeys([*(body.get("families") or ()), OPERAND_SUM]))
-    body[sums.KEY] = {"schema": sums.SCHEMA}
+    if output_boundary not in {"quantized_readers", "dequantize"}:
+        raise ValueError("shared-grid output boundary must be quantized_readers or dequantize")
+    policy_schema = sums.FLOAT_BOUNDARY_SCHEMA if output_boundary == "dequantize" else sums.SCHEMA
+    body[sums.KEY] = ({"schema": policy_schema, "output_boundary": "dequantize"}
+                      if output_boundary == "dequantize" else {"schema": policy_schema})
+    if residual_selection is not None:
+        if output_boundary != "dequantize" or residual_selection != sums.DISTINCT_FRONTIERS:
+            raise ValueError("residual selection requires dequantize and distinct_contraction_frontiers")
+        body[sums.KEY]["selection"] = residual_selection
     sums.validate(body)
     body.setdefault("unquantized", {}).pop(OPERAND_SUM, None)
     body.setdefault("why", {})[OPERAND_SUM] = (
         "opted in: each closed residual's inputs and output share one observed activation grid; "
         "unit i8 load/readout multipliers preserve exact integer add, optional ReLU and saturation"
     )
+    if output_boundary == "dequantize":
+        body["why"][OPERAND_SUM] += (
+            "; explicit V2 boundary dequantizes the narrowed result for float readers; "
+            "normalization stays floating-point and target execution needs independent qualification"
+        )
+    if residual_selection is not None:
+        body["why"][OPERAND_SUM] += "; select disjoint first-contraction/input frontiers, excluding same-origin coordinate sums"
     if "methodology" in body:
         extensions = body["methodology"].setdefault("extensions", [])
-        if sums.SCHEMA not in extensions:
-            extensions.append(sums.SCHEMA)
+        if policy_schema not in extensions:
+            extensions.append(policy_schema)
     body["recipe_sha256"] = digest(body)
     return body
 
@@ -515,6 +540,7 @@ def with_dynamic_contractions(
     smooth: bool = False,
     static_families: Sequence[str] | None = None,
     scales: str = NON_REDUCTION,
+    context_output: str | None = None,
 ) -> dict[str, Any]:
     """``recipe`` with a ``dynamic`` block: these families' contractions take run-time scales.
 
@@ -544,6 +570,11 @@ def with_dynamic_contractions(
     ``quant_max + 1`` times finer. ``planes[RESIDUAL_OPERAND] = k`` uses those bounded residuals for
     every ordinary operand, including both score operands; it replaces the historical ``OPERAND``
     selector, whose radix arithmetic stays unchanged. Activation contractions of a static recipe only.
+
+    ``context_output="int8_value_grid"`` explicitly selects single-plane normalized
+    probabilities on a 1/127 grid and requantizes each P×V product onto its value
+    operand's grid before joining heads. Q×K still leaves as INT32. This changes
+    the numerical recipe; it is not equivalent to the exp-plane formulation.
     """
     if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
         raise ValueError("only a derived quant_recipe_v1 can be extended")
@@ -575,6 +606,13 @@ def with_dynamic_contractions(
         wanted != [ACTIVATION_CONTRACTION] or WEIGHT in selected or activation.get("mode") != "static"
     ):
         raise ValueError("static per-head scales cover activation contractions of a static recipe only")
+    if context_output is not None and (
+        context_output != "int8_value_grid" or scales != STATIC_HEADS
+        or activation.get("dtype") != "int8"
+        or (activation.get("quant_min"), activation.get("quant_max")) != (-128, 127)
+        or any(value != 1 for value in selected.values())
+    ):
+        raise ValueError("int8_value_grid context readout requires static scales and single-plane operands")
     kept = list(recipe.get("families") or ()) if static_families is None else list(static_families)
     unknown = [f for f in kept if f not in (recipe.get("families") or ())]
     if unknown:
@@ -590,6 +628,14 @@ def with_dynamic_contractions(
         "planes": dict(sorted(selected.items())),
         "smooth": SOFTMAX_AXIS if smooth else None,
     }
+    body.setdefault("why", {}).pop("dynamic.context_output", None)
+    if context_output is not None:
+        body[DYNAMIC]["context_output"] = context_output
+        body.setdefault("why", {})["dynamic.context_output"] = (
+            "explicit numerical variant: quantize normalized probabilities on the 1/127 grid, "
+            "perform an integer contraction and requantize each matrix result onto its value operand grid; "
+            "no post-contraction row-sum division and no change to score readouts"
+        )
     body.setdefault("why", {})[DYNAMIC] = (
         "opted in: run-time scales on non-reduction axes (rows of the streamed operand, columns of the "
         "other, a stored weight's output channels), applied by the host to the exact i32 accumulator "
@@ -599,6 +645,8 @@ def with_dynamic_contractions(
         "one scale; softmax probabilities as fixed-scale planes of exp(s - rowmax), rows divided by their sum "
         "on the host"
     )
+    if context_output is not None:
+        body["why"][DYNAMIC] = body["why"]["dynamic.context_output"]
     body["recipe_sha256"] = digest(body)
     return body
 
@@ -811,6 +859,11 @@ def _main(argv: Sequence[str] | None = None) -> int:
     residual = sub.add_parser("shared-grid-sums", help=with_shared_grid_operand_sums.__doc__.splitlines()[0])
     residual.add_argument("recipe", type=Path)
     residual.add_argument("out", type=Path)
+    residual.add_argument(
+        "--output-boundary", default="quantized_readers", choices=("quantized_readers", "dequantize"),
+        help="dequantize explicitly permits floating-point consumers after the new INT8 residual output",
+    )
+    residual.add_argument("--residual-selection", default=None, choices=("distinct_contraction_frontiers",))
     outputs = sub.add_parser("native-outputs", help=with_native_output_quantization.__doc__.splitlines()[0])
     outputs.add_argument("recipe", type=Path)
     outputs.add_argument("out", type=Path)
@@ -824,6 +877,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     dynamic.add_argument("--smooth", action="store_true", help="subtract the mean over a softmax's axis")
     dynamic.add_argument("--static-families", default=None, help="families kept static (default: the recipe's)")
     dynamic.add_argument("--scales", default=NON_REDUCTION, choices=(NON_REDUCTION, STATIC_HEADS))
+    dynamic.add_argument("--context-output", choices=("int8_value_grid",))
     wide = sub.add_parser("static-planes", help=with_static_planes.__doc__.splitlines()[0])
     wide.add_argument("recipe", type=Path)
     wide.add_argument("out", type=Path)
@@ -850,7 +904,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     source = json.loads(args.recipe.read_text(encoding="utf-8"))
     if args.command == "shared-grid-sums":
-        body = with_shared_grid_operand_sums(source)
+        body = with_shared_grid_operand_sums(source, output_boundary=args.output_boundary, residual_selection=args.residual_selection)
     elif args.command == "native-outputs":
         body = with_native_output_quantization(source, operators=args.operators, reader_policy=args.reader_policy)
     elif args.command == "activation-contractions":
@@ -875,6 +929,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             smooth=args.smooth,
             static_families=static,
             scales=args.scales,
+            context_output=args.context_output,
         )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")

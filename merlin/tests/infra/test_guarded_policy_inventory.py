@@ -487,3 +487,82 @@ def test_resource_retry_does_not_convert_structural_refusal_into_cache(tmp_path,
     with pytest.raises(OSError):
         H._private_hardlink_inodes([('private', root, root)], inventory=inventory)
     assert root in inventory._unsupported and not inventory._entries
+
+
+def test_unrelated_derived_keys_do_not_serialize_compute(tmp_path, inventory):
+    import threading
+
+    root = tmp_path / 'capsules'
+    root.mkdir()
+    guarded(inventory, root)
+    metadata = A.CapsuleMetadata()
+    metadata.inventory.close()
+    metadata.inventory = inventory
+    rendezvous = threading.Barrier(2)
+
+    def read(key):
+        def compute():
+            rendezvous.wait(timeout=5)
+            return [key]
+        return metadata.derived(key, (root,), compute)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(read, ('golden', 'weight'))) == [['golden'], ['weight']]
+    assert not metadata._derived_flights
+
+
+def test_unsupported_same_key_never_serializes_fresh_compute(tmp_path, monkeypatch):
+    import threading
+
+    metadata = A.CapsuleMetadata()
+    root = tmp_path / 'capsules'
+    root.mkdir()
+    monkeypatch.setattr(metadata.inventory, 'tree', lambda path: None)
+    rendezvous = threading.Barrier(2)
+
+    def read(_):
+        def compute():
+            rendezvous.wait(timeout=5)
+            return ['fresh']
+        return metadata.derived('same', (root,), compute)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(read, range(2))) == [['fresh'], ['fresh']]
+    assert not metadata._derived and not metadata._derived_flights
+
+
+def test_mutation_during_derived_compute_cannot_publish_cached_mask(tmp_path, inventory):
+    root = tmp_path / 'capsules'
+    root.mkdir()
+    guarded(inventory, root)
+    metadata = A.CapsuleMetadata()
+    metadata.inventory.close()
+    metadata.inventory = inventory
+    calls = []
+
+    def compute():
+        calls.append(1)
+        members = list(root.iterdir())
+        if len(calls) == 1:
+            (root / 'golden.npy').write_text('private')
+        return members
+
+    assert metadata.derived('answers', (root,), compute) == []
+    assert 'answers' not in metadata._derived
+    assert metadata.derived('answers', (root,), compute) == [root / 'golden.npy']
+    assert calls == [1, 1]
+
+
+def test_derived_exception_releases_singleflight_and_retries(tmp_path, inventory):
+    root = tmp_path / 'capsules'
+    root.mkdir()
+    guarded(inventory, root)
+    metadata = A.CapsuleMetadata()
+    metadata.inventory.close()
+    metadata.inventory = inventory
+    def broken():
+        raise RuntimeError('classification failure')
+    with pytest.raises(RuntimeError, match='classification failure'):
+        metadata.derived('answers', (root,), broken)
+    assert not metadata._derived_flights and not metadata._derived
+    assert metadata.derived('answers', (root,), lambda: ['retry']) == ['retry']

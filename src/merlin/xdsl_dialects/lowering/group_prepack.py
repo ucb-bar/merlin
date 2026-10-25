@@ -288,6 +288,9 @@ def prepack(
                     row["weight"] = {"refused": str(refusal)}
                 rows.append(row)
             continue
+        if group.window_pool is not None:
+            rows.append({"group": group.index, "stages": list(group.stages), "window_pool": dict(group.window_pool)})
+            continue
         if group.operand_sum is not None or group.window_mean is not None:
             scalar = _scalar_row(group)
             # A MEAN'S STORED OPERAND IS A REAL ARRAY, not only a sentence about one. The row has

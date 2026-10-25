@@ -36,7 +36,7 @@ def freeze_fp32_session_reference(module, inputs, session):
     return {**session, "quality": quality}
 
 
-def pre_quantization_session_reference(module, inputs, session):
+def pre_quantization_session_reference(module, inputs, session, *, include_diagnostic=False):
     """The source program's eager trajectory, captured before any quantization.
 
     A prequantized (recipe int8) paper-ready stage cannot let the bundle writer
@@ -46,9 +46,13 @@ def pre_quantization_session_reference(module, inputs, session):
     ``eager_fp32`` reference -- so the reference is generated independently of the
     quantized program. Every RNG is restored afterwards, so the later capture sees
     the same random state it would have without this run. A session that already
-    carries reference values, or is not paper-ready, is returned unchanged.
+    carries reference values is returned unchanged. Non-paper sessions require
+    explicit ``include_diagnostic``; this observes quality without granting
+    paper readiness. That path refuses non-FP32 source storage or outputs.
     """
-    if session is None or session.get("paper_ready") is not True:
+    if type(include_diagnostic) is not bool:
+        raise ValueError("diagnostic session reference requires an explicit Boolean")
+    if session is None or (session.get("paper_ready") is not True and not include_diagnostic):
         return session
     quality = dict(session.get("quality") or {})
     if quality.get("reference_values") is not None:
@@ -59,6 +63,14 @@ def pre_quantization_session_reference(module, inputs, session):
     import torch
     from m2m.capture.bundle import capture_session_trajectory
 
+    if include_diagnostic:
+        leaves, _ = torch.utils._pytree.tree_flatten(inputs)
+        tensors = [*module.parameters(), *module.buffers(), *leaves]
+        if any(isinstance(value, torch.Tensor) and
+               (value.is_complex() or value.is_floating_point() and value.dtype != torch.float32)
+               for value in tensors):
+            return {**session, "quality": {**quality, "reference": "unavailable",
+                    "reference_unavailable_reason": "source storage is not uniformly FP32"}}
     states = (random.getstate(), np.random.get_state(), torch.get_rng_state())
     try:
         module.eval()
@@ -67,6 +79,9 @@ def pre_quantization_session_reference(module, inputs, session):
         random.setstate(states[0])
         np.random.set_state(states[1])
         torch.set_rng_state(states[2])
-    quality.setdefault("reference", "eager_fp32")
+    if include_diagnostic and (values.dtype != np.float32 or not np.isfinite(values).all()):
+        return {**session, "quality": {**quality, "reference": "unavailable",
+                "reference_unavailable_reason": "source trajectory is not finite FP32"}}
+    quality["reference"] = "eager_fp32"
     quality["reference_values"] = values
     return {**session, "quality": quality}

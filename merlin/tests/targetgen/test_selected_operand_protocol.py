@@ -64,6 +64,26 @@ def test_detached_selection_rederives_fields_and_preserves_original_owner_and_fa
                                        observer.isa_constants("array")) == ("MVIN", {"rows": 17})
 
 
+def test_partial_scalar_bits_only_recover_complete_selected_source_fields(tmp_path):
+    original, _facts, blob, sidecar, _source, _isa = selected(tmp_path)
+    observer = load(original, blob, sidecar)
+    operand = {"kind": "unknown", "raw": None,
+               "known_bits": {"width": 64, "mask": 31 << 20, "value": 17 << 20}}
+    assert observer.decode_instruction(4, {}, operand, observer.isa_constants("array")) == ("MVIN", {"rows": 17})
+    operand["known_bits"]["mask"] ^= 1 << 21
+    assert observer.decode_instruction(4, {}, operand, observer.isa_constants("array")) == ("MVIN", {"rows": None})
+
+
+@pytest.mark.parametrize("change", [{"width": 32}, {"mask": 1 << 64}, {"value": 1}, {"mask": True}])
+def test_partial_register_facts_cannot_change_selected_width_or_unknown_bits(tmp_path, change):
+    original, _facts, blob, sidecar, _source, _isa = selected(tmp_path)
+    observer = load(original, blob, sidecar)
+    known = {"width": 64, "mask": 31 << 20, "value": 17 << 20, **change}
+    with pytest.raises(ValueError, match="width or mask"):
+        observer.decode_instruction(4, {}, {"kind": "unknown", "raw": None, "known_bits": known},
+                                    observer.isa_constants("array"))
+
+
 @pytest.mark.parametrize("mutation", ["facts", "foreign_owner", "foreign_target", "wrong_fact_pin",
     "forged_layout", "isa_source", "firrtl_source", "duplicate_pin", "missing_isa", "already_selected"])
 def test_foreign_forged_or_mutated_selection_refuses(tmp_path, mutation):

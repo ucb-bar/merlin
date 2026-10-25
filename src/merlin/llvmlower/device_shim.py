@@ -903,11 +903,16 @@ class LogicalBuffer:
     dtype: str
 
 
-def logical_buffers(interface: str) -> tuple[tuple[LogicalBuffer, ...] | None, str]:
+def logical_buffers(
+    interface: str, *, observed_outputs: tuple[str, ...] | None = None
+) -> tuple[tuple[LogicalBuffer, ...] | None, str]:
     """``(buffers in kernel_arg_order, "")`` for one interface, or ``(None, reason)``.
 
     The order, shapes and dtypes are :func:`merlin.targetgen.contract.harness_render.logical_interface`'s
-    -- what a runner-owned capsule harness passes. Inputs are numbered within their declared role;
+    -- what a runner-owned capsule harness passes. An explicit original caller
+    may supply source-bound observed outputs for a closed connected graph; no
+    observation is suppressed by inference from candidate code. The caller owes
+    that graph closure, separately from this pointer transport. Inputs are numbered within their declared role;
     activations (role ``input``) in the order the commands read them (a contraction's left operand
     first), weights and biases in declaration order; results in result order.
     """
@@ -916,6 +921,16 @@ def logical_buffers(interface: str) -> tuple[tuple[LogicalBuffer, ...] | None, s
 
     try:
         cb = parse_interface_mlir(interface)
+        if observed_outputs is not None:
+            produced = {c.get("operands", {}).get("dst") for c in cb["commands"]}
+            if (
+                type(observed_outputs) is not tuple
+                or not observed_outputs
+                or len(set(observed_outputs)) != len(observed_outputs)
+                or any(type(name) is not str or name not in produced for name in observed_outputs)
+            ):
+                raise ValueError("original caller must supply distinct actually produced observed outputs")
+            cb["outputs"] = list(observed_outputs)
         ordered = HR.logical_interface(cb, HR.logical_abi())
     except Exception as exc:  # noqa: BLE001 -- an interface the logical ABI cannot describe is a refusal
         return None, f"the logical kernel ABI does not resolve this interface ({type(exc).__name__}: {exc})"

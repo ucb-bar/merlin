@@ -26,13 +26,18 @@ def validate(policy: Mapping[str, Any]) -> dict[str, Any]:
         "float_quality",
         "integer_extensions",
     }
-    if not isinstance(policy, Mapping) or set(policy) != fields or policy.get("schema") != SCHEMA:
+    if (not isinstance(policy, Mapping) or not fields <= set(policy)
+            or set(policy) - fields - {"attention_context_output"} or policy.get("schema") != SCHEMA):
         raise ValueError("numerical recipe policy has an unknown schema or field")
     if policy["weight_granularity"] != "tensor" or policy["float_quality"] != "report_only":
         raise ValueError("this policy selects tensor weight scales and report-only float quality")
     planes = policy["dynamic_activation_planes"]
     if planes is not None and (type(planes) is not int or planes != 1):
         raise ValueError("dynamic_activation_planes is null or the integer 1")
+    if "attention_context_output" in policy and (
+        policy["attention_context_output"] != "int8_value_grid" or planes != 1
+    ):
+        raise ValueError("attention_context_output selects int8_value_grid with single-plane attention")
     outputs = policy["native_outputs"]
     if not isinstance(outputs, Mapping) or set(outputs) != {"operators", "reader_policy"}:
         raise ValueError("native_outputs states operators and reader_policy")
@@ -130,9 +135,8 @@ def select(
             raise ValueError("single-plane selection requires an existing dynamic contraction contract")
         if dynamic.get("families") != [Q.ACTIVATION_CONTRACTION]:
             raise ValueError("single-plane selection covers activation contractions only")
-        if set(dynamic) - {"schema", "families", "scales", "planes", "smooth", Q.SITE_AGREEMENT} or dynamic.get(
-            "smooth"
-        ) not in (None, Q.SOFTMAX_AXIS):
+        known = {"schema", "families", "scales", "planes", "smooth", "context_output", Q.SITE_AGREEMENT}
+        if set(dynamic) - known or dynamic.get("smooth") not in (None, Q.SOFTMAX_AXIS):
             raise ValueError("unsupported dynamic contraction policy")
         body = Q.with_dynamic_contractions(
             body,
@@ -140,6 +144,7 @@ def select(
             scales=dynamic["scales"],
             planes={key: planes for key in dynamic.get("planes", {})},
             smooth=dynamic.get("smooth") == Q.SOFTMAX_AXIS,
+            context_output=selected_policy.get("attention_context_output", dynamic.get("context_output")),
         )
     if isinstance(body.get(Q.DYNAMIC), dict):
         Q.site_agreement_of(source)  # Malformed historical thresholds cannot disappear silently.

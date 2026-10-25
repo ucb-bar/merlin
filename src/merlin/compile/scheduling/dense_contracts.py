@@ -7,7 +7,10 @@ allocation; this module never treats a whole memory as free scratch space.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
+import struct
 from dataclasses import asdict, dataclass, replace
 from types import MappingProxyType
 
@@ -116,7 +119,106 @@ class DenseIntegerReadout:
     def graph(self):
         from .fusion_semantics import scalar_graph
 
-        return scalar_graph(self.scalar_ir.encode(), 128, 65536)
+        # A signed-i8 monotone readout has at most255 transitions. Its
+        # complete scalar decision representation requires at most1021 ops.
+        # Keep both operation and byte bounds; no loops/effects become legal.
+        return scalar_graph(self.scalar_ir.encode(), 1024, 65536)
+
+
+def _f32(value):
+    try:
+        return struct.unpack("<f", struct.pack("<f", value))[0]
+    except OverflowError:
+        return math.copysign(math.inf, value)
+
+
+@dataclass(frozen=True)
+class TiledIntegerStore(Store):
+    """An actual store names its original coefficient-table tile explicitly."""
+
+    readout_tile: object = None
+
+
+@dataclass(frozen=True)
+class DenseTiledIntegerReadout:
+    """Exact i32 -> binary32 scale -> nearest-even saturated i8 semantics.
+
+    The complete original column vector is retained as bits, including repeated
+    coefficients. Tile width is supplied by the selected primitive, never guessed
+    from a model or target name. No reassociation or coefficient fitting occurs.
+    """
+
+    column_scale_bits: tuple[int, ...]
+    tile_columns: int
+    relu: bool
+    instruction_name: str
+    instruction_arguments: tuple[tuple[str, int], ...] = ()
+
+    def __post_init__(self):
+        if (type(self.column_scale_bits) is not tuple or not self.column_scale_bits
+                or len(self.column_scale_bits) > 262144
+                or type(self.tile_columns) is not int or not 0 < self.tile_columns < 2**31
+                or type(self.relu) is not bool
+                or type(self.instruction_name) is not str or not self.instruction_name
+                or type(self.instruction_arguments) is not tuple
+                or any(type(row) is not tuple or len(row) != 2 or type(row[0]) is not str
+                       or not row[0] or type(row[1]) is not int or row[1] <= 0
+                       for row in self.instruction_arguments)):
+            raise ValueError("tiled integer readout requires bounded explicit source and instruction data")
+        for bits in self.column_scale_bits:
+            if type(bits) is not int or not 0 <= bits < 2**32:
+                raise ValueError("source scale must retain its exact binary32 bits")
+            value = struct.unpack("<f", struct.pack("<I", bits))[0]
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError("tiled readout requires positive finite binary32 source scales")
+        for start in range(0, self.columns, self.tile_columns):
+            if len(set(self.column_scale_bits[start:start + self.tile_columns])) != 1:
+                raise ValueError("source scales vary within a selected output tile; retain the original route")
+
+    @classmethod
+    def from_column_scales(cls, scales, *, tile_columns, relu=False,
+                           instruction_name="store_tiled_i8", instruction_arguments=()):
+        if type(scales) not in (tuple, list) or any(type(x) not in (int, float) for x in scales):
+            raise ValueError("one explicit numeric binary32 scale per source column required")
+        bits = tuple(struct.unpack("<I", struct.pack("<f", _f32(x)))[0] for x in scales)
+        return cls(bits, tile_columns, relu, instruction_name, instruction_arguments)
+
+    @property
+    def columns(self):
+        return len(self.column_scale_bits)
+
+    @property
+    def output_dtype(self):
+        return "i8"
+
+    @property
+    def semantics(self):
+        return "signed-i32:relu-before-convert:binary32-rne:single-scale-binary32-rne:signed-i8-rne-saturate"
+
+    @property
+    def identity(self):
+        record = {"schema": "merlin.dense_tiled_integer_readout.v1", "semantics": self.semantics, **asdict(self)}
+        return hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
+
+    @property
+    def table_words(self):
+        """Immutable source coefficients, one u32 word per original output tile."""
+        return self.column_scale_bits[::self.tile_columns]
+
+    def validate_problem(self, problem):
+        if (self.columns != problem.n or self.tile_columns != problem.tile_n
+                or problem.accumulator_bytes != 4):
+            raise ValueError("tiled readout source columns, tile or accumulator width differ from the contraction")
+
+    def evaluate(self, accumulator, column):
+        """Neutral exact source oracle; never emitted as host tensor arithmetic."""
+        if (type(accumulator) is not int or not -(1 << 31) <= accumulator < 1 << 31
+                or type(column) is not int or not 0 <= column < self.columns):
+            raise ValueError("readout oracle requires original signed-i32 and column domains")
+        scale = struct.unpack("<f", struct.pack("<I", self.column_scale_bits[column]))[0]
+        value = _f32(_f32(max(0, accumulator) if self.relu else accumulator) * scale)
+        low = 0 if self.relu else -128
+        return low if value <= low else 127 if value >= 127 else max(low, min(127, round(value)))
 
 
 def _logical_pointer_abi(row):
@@ -150,7 +252,7 @@ class DenseSchedulingContract:
     partial_output_blocks: bool
     partial_reduction_tiles: bool
     logical_pointer_abi: DenseLogicalPointerABI | None = None
-    output_readout: DenseIntegerReadout | None = None
+    output_readout: DenseIntegerReadout | DenseTiledIntegerReadout | None = None
     external_pointer_arguments: tuple[tuple[str, str], ...] = ()
 
     def problem(self, m, k, n):
@@ -208,6 +310,8 @@ class DenseSchedulingContract:
                 raise DenseSchedulingUnavailable(f"dense family requires {name}={expected[name]}; selected {value}")
         if output_readout is not None and output_readout != self.output_readout:
             raise ValueError("dense output readout differs from the original selected declaration")
+        if type(output_readout) is DenseTiledIntegerReadout:
+            output_readout.validate_problem(problem)
         if problem != self.problem(problem.m, problem.k, problem.n) or tuple(dtypes) != self.dtypes:
             raise ValueError("dense problem or dtypes disagree with selected RTL geometry and software formats")
         if (
@@ -261,9 +365,10 @@ class DenseSchedulingContract:
                     return "rhs_load", Ptr(
                         "rhs", (as_expr(operation.dram_row) * problem.n + operation.dram_col) * problem.rhs_bytes
                     )
-            if type(operation) is Store:
+            if type(operation) in (Store, TiledIntegerStore):
+                output_bytes = problem.accumulator_bytes if output_readout is None else 1
                 return "store", Ptr(
-                    "output", (as_expr(operation.dram_row) * problem.n + operation.dram_col) * problem.accumulator_bytes
+                    "output", (as_expr(operation.dram_row) * problem.n + operation.dram_col) * output_bytes
                 )
             return None, None
 
@@ -284,8 +389,9 @@ class DenseSchedulingContract:
             operation = adapter.project(call)
             if isinstance(operation, Load) and operation.role in ("lhs", "weight"):
                 kind = "lhs_load" if operation.role == "lhs" else "rhs_load"
-            elif type(operation) in (Preload, Compute, Store):
-                kind = {Preload: "preload", Compute: "compute", Store: "store"}[type(operation)]
+            elif type(operation) in (Preload, Compute, Store, TiledIntegerStore):
+                kinds = {Preload: "preload", Compute: "compute", Store: "store", TiledIntegerStore: "store"}
+                kind = kinds[type(operation)]
             else:
                 raise ValueError("dense projection has an unsupported operation or memory effect")
             readout = output_readout if kind == "store" else None
@@ -461,16 +567,21 @@ def resolve_dense_contract(declaration, facts, isa):
                 raise ValueError("dense instruction has memory or state effects outside its operation binding")
     output_readout = None
     if "output_readout" in declaration:
+        if type(declaration["output_readout"]) is not dict:
+            raise ValueError("dense output readout requires an explicit mapping")
+        tiled = declaration["output_readout"].get("schema") == "merlin.dense_tiled_integer_readout.v1"
         item = _fields(
-            declaration["output_readout"], ("schema", "scalar_ir", "output", "instruction"), "integer output readout"
+            declaration["output_readout"],
+            (("schema", "column_scales", "tile_columns", "relu", "output", "instruction") if tiled
+             else ("schema", "scalar_ir", "output", "instruction")),
+            "integer output readout"
         )
         output = _fields(item["output"], ("dtype", "bits"), "output readout format")
         if (
-            item["schema"] != "merlin.dense_integer_readout.v1"
+            item["schema"] not in ("merlin.dense_integer_readout.v1", "merlin.dense_tiled_integer_readout.v1")
             or dtypes[2] != "i32"
             or output["dtype"] != "i8"
-            or type(item["scalar_ir"]) is not str
-            or len(item["scalar_ir"].encode()) > 65536
+            or (not tiled and (type(item["scalar_ir"]) is not str or len(item["scalar_ir"].encode()) > 65536))
             or resolve_fact_integer(output["bits"], facts, label="dense output readout width", minimum=1) != 8
             or type(item["instruction"]) is not str
             or item["instruction"] in instructions.values()
@@ -492,12 +603,21 @@ def resolve_dense_contract(declaration, facts, isa):
         effects = json.loads(instruction.effects_json)
         if effects != {"reads": [acc], "writes": [external["output"]]}:
             raise ValueError("dense output readout must read only its accumulator and write only its output")
-        output_readout = DenseIntegerReadout(
-            item["scalar_ir"], "i8", item["instruction"], tuple((arg.name, arg.type.bits) for arg in args)
-        )
-        graph = output_readout.graph()
-        if graph.input_bits != (32,) or graph.output_bits != 8:
-            raise ValueError("dense integer readout scalar semantics must be unary i32 to i8")
+        if tiled:
+            if "readout_tile" not in {arg.name for arg in args} or item["tile_columns"] != dimensions[2]:
+                raise ValueError("tiled readout requires an actual coefficient index and selected column primitive")
+            output_readout = DenseTiledIntegerReadout.from_column_scales(
+                item["column_scales"], tile_columns=item["tile_columns"], relu=item["relu"],
+                instruction_name=item["instruction"],
+                instruction_arguments=tuple((arg.name, arg.type.bits) for arg in args),
+            )
+        else:
+            output_readout = DenseIntegerReadout(
+                item["scalar_ir"], "i8", item["instruction"], tuple((arg.name, arg.type.bits) for arg in args)
+            )
+            graph = output_readout.graph()
+            if graph.input_bits != (32,) or graph.output_bits != 8:
+                raise ValueError("dense integer readout scalar semantics must be unary i32 to i8")
     return DenseSchedulingContract(
         dimensions,
         tuple(dtypes),

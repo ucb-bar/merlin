@@ -9,8 +9,9 @@ qualification and does not relocate hardware, compiler or admission receipts.
 from __future__ import annotations
 
 import copy
-import hashlib
 from pathlib import Path
+
+from merlin.common.guarded_file_digest import sha256 as source_digest
 
 
 def _pin(value):
@@ -73,9 +74,8 @@ def relocate_operand_sources(facts, source_relocations=None):
         path = Path(new)
         if path.resolve() != path or path.is_symlink() or not path.is_file():
             raise ValueError("source relocation requires a canonical ordinary replacement source")
-        with path.open("rb") as stream:
-            if hashlib.file_digest(stream, "sha256").hexdigest() != digest:
-                raise ValueError("source relocation replacement bytes changed")
+        if source_digest(path) != digest:
+            raise ValueError("source relocation replacement bytes changed")
         seen.add(old)
         destinations.add(new)
         if inputs.get("isa_path") == old:

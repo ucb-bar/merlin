@@ -163,6 +163,7 @@
             "conv2d",
             "depthwise_conv2d",
             "maxpool2d",
+            "spatial_producer_pool",
             "avgpool2d",
             "global_average",
             "movement",

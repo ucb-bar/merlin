@@ -40,11 +40,14 @@ _NAMESPACE_MODULES_V6 = (
 
 _NAMESPACE_MODULES_V7 = (*_NAMESPACE_MODULES_V6,)
 _NAMESPACE_MODULES_V8 = (*_NAMESPACE_MODULES_V6,)
+_NAMESPACE_MODULES_V16 = (*_NAMESPACE_MODULES_V8, "merlin.xdsl_dialects", "merlin.sched.primitives")
 
 
 def _namespace_modules(version):
     library_modules(version)
-    return {6: _NAMESPACE_MODULES_V6, 7: _NAMESPACE_MODULES_V7, 8: _NAMESPACE_MODULES_V8}[version]
+    return {6: _NAMESPACE_MODULES_V6, 7: _NAMESPACE_MODULES_V7, 8: _NAMESPACE_MODULES_V8,
+            16: _NAMESPACE_MODULES_V16, 17: _NAMESPACE_MODULES_V16, 18: _NAMESPACE_MODULES_V16,
+            19: _NAMESPACE_MODULES_V16}[version]
 
 
 def _selected_inventory(namespaces, public, modules, exported, *, version):
@@ -78,6 +81,12 @@ def _manifest_version(document, version):
         return "inventory_version" not in document and schema == (
             "merlin.shared_scheduling_library.v2" if binding else "merlin.shared_scheduling_library.v1"
         )
+    if version in (16, 17, 18, 19):
+        schemas = {16: "merlin.shared_scheduling_library.v10", 17: "merlin.shared_scheduling_library.v11",
+                   18: "merlin.shared_scheduling_library.v12",
+                   19: "merlin.shared_scheduling_library.v13"}
+        return (schema == schemas[version]
+                and type(document.get("inventory_version")) is int and document["inventory_version"] == version)
     return (
         version in (7, 8)
         and schema == {7: "merlin.shared_scheduling_library.v2", 8: "merlin.shared_scheduling_library.v3"}[version]
@@ -686,7 +695,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--python-source-root", required=True, type=Path)
     parser.add_argument("--license-directory", required=True, type=Path)
-    parser.add_argument("--library-version", type=int, choices=(6, 7, 8), default=6)
+    parser.add_argument("--library-version", type=int, choices=(6, 7, 8, 16, 17, 18, 19), default=6)
     parser.add_argument("--tool", action="append", default=[], help="existing tool registry name to stage, not grant")
     parser.add_argument("--source-binding", action="store_true", help="explicit version-8 typed-source/LLVM lexer APIs")
     args = parser.parse_args(argv)

@@ -23,6 +23,8 @@ OPS = [
     "vector_strategy",
     "select_interface",
     "block_contraction",
+    "loop_transform",
+    "panel_pipeline",
 ]
 TYPES = ["handle", "plan", "policy"]
 
@@ -37,7 +39,7 @@ KNOWN_INTERFACES = {
 }
 
 if HAS_XDSL:
-    from xdsl.dialects.builtin import StringAttr
+    from xdsl.dialects.builtin import ArrayAttr, BoolAttr, DenseArrayBase, IntegerAttr, StringAttr, i64
     from xdsl.ir import Dialect, EnumAttribute, ParametrizedAttribute, SpacedOpaqueSyntaxAttribute, TypeAttribute
     from xdsl.irdl import (
         IRDLOperation,
@@ -172,6 +174,102 @@ if HAS_XDSL:
                 raise VerifyException("schedule.bind target reference must be non-empty")
 
     @irdl_op_definition
+    class PanelPipelineOp(IRDLOperation):
+        """Executed completion epochs; each kind needs its own admission."""
+
+        name = "schedule.panel_pipeline"
+        target = operand_def(HandleType)
+        prefetch = prop_def(BoolAttr)
+        issue_order = opt_prop_def(StringAttr)
+        window_offsets = opt_prop_def(DenseArrayBase)
+        kind = opt_prop_def(StringAttr)
+
+        def verify_(self) -> None:
+            if self.kind is not None and self.kind.data not in (
+                "two_window", "retained_full_k", "retained_lhs_segmented_k"
+            ):
+                raise VerifyException("unsupported executable panel pipeline kind")
+            if (
+                self.kind is not None
+                and self.kind.data == "retained_full_k"
+                and (self.prefetch.value.data or self.issue_order is not None or self.window_offsets is not None)
+            ):
+                raise VerifyException("retained full-K stages do not accept prefetch or two-window decisions")
+            if self.window_offsets is not None and (
+                self.window_offsets.elt_type != i64
+                or len(values := tuple(self.window_offsets.get_values())) != 4
+                or any(value < 0 for value in values)
+            ):
+                raise VerifyException("panel windows need four nonnegative i64 row offsets (LHS/RHS for each slot)")
+
+    @irdl_op_definition
+    class LoopTransformOp(IRDLOperation):
+        """An executed loop proposal; its source-family verifier owns legality."""
+
+        name = "schedule.loop_transform"
+        target = operand_def(HandleType)
+        action = prop_def(StringAttr)
+        path = prop_def(ArrayAttr[StringAttr])
+        factor = opt_prop_def(IntegerAttr)
+        cut = opt_prop_def(IntegerAttr)
+        names = opt_prop_def(ArrayAttr[StringAttr])
+        index = opt_prop_def(IntegerAttr)
+        cuts = opt_prop_def(DenseArrayBase)
+
+        def verify_(self) -> None:
+            action = self.action.data
+            if action not in ("split", "unroll", "reorder", "fuse", "fission", "hoist", "partition") or not self.path:
+                raise VerifyException("loop_transform requires an executable action and nonempty path")
+            if any(not value.data for value in self.path):
+                raise VerifyException("loop_transform path names must be nonempty")
+            cuts = () if self.cuts is None else tuple(self.cuts.get_values())
+            if action == "partition":
+                if (
+                    self.cuts is None or self.cuts.elt_type != i64
+                    or not 1 <= len(cuts) <= 15 or any(value <= 0 for value in cuts)
+                    or tuple(sorted(set(cuts))) != cuts
+                    or self.factor is not None or self.cut is not None or self.index is not None
+                ):
+                    raise VerifyException("partition requires only 1..15 increasing positive i64 interior cuts")
+            elif self.cuts is not None:
+                raise VerifyException("only partition can carry interior cuts")
+            if self.names is not None:
+                names = tuple(value.data for value in self.names)
+                expected_names = (2 if action in ("split", "unroll")
+                                  else len(cuts) + 1 if action == "partition" else 1)
+                if (
+                    any(not value for value in names)
+                    or len(set(names)) != len(names)
+                    or len(names) != expected_names
+                    or action in ("reorder", "fuse", "hoist")
+                ):
+                    raise VerifyException("loop result names must name exactly the split or fission loops")
+            if action == "hoist":
+                if (
+                    self.index is None
+                    or self.index.type != i64
+                    or self.index.value.data < 0
+                    or self.factor is not None
+                    or self.cut is not None
+                ):
+                    raise VerifyException("hoist requires only a nonnegative i64 statement index")
+            elif self.index is not None:
+                raise VerifyException("only hoist can carry a statement index")
+            elif action in ("split", "unroll"):
+                if (
+                    self.factor is None
+                    or self.factor.type != i64
+                    or not 2 <= self.factor.value.data <= 64
+                    or self.cut is not None
+                ):
+                    raise VerifyException("split/unroll requires only an i64 factor 2..64")
+            elif action == "fission":
+                if self.cut is None or self.cut.type != i64 or self.cut.value.data <= 0 or self.factor is not None:
+                    raise VerifyException("fission requires only a positive i64 body cut")
+            elif self.factor is not None or self.cut is not None:
+                raise VerifyException("reorder/fuse cannot carry ignored factor or cut decisions")
+
+    @irdl_op_definition
     class ApplyPolicyOp(IRDLOperation):
         """schedule.apply_policy — applies a named policy to bound handles."""
 
@@ -277,6 +375,8 @@ if HAS_XDSL:
 
     _OP_CLASSES = [
         DenseScheduleOp,
+        LoopTransformOp,
+        PanelPipelineOp,
         PlanOp,
         BindOp,
         ApplyPolicyOp,

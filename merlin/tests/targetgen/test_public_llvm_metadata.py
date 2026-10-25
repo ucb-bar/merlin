@@ -203,3 +203,128 @@ def test_function_memory_effects_keeps_original_body_and_property_checks():
 
         with pytest.raises(ValueError):
             require_pointer_entry(invalid, entry_symbol="entry", pointer_arity=2)
+
+
+def test_scalar_pointer_comparison_keeps_typed_matching_and_original_classes():
+    from xdsl.context import Context
+    from xdsl.dialects import builtin, llvm
+
+    text = """module {llvm.func @compare(%a:!llvm.ptr,%b:!llvm.ptr)->i1 {
+      %r=llvm.icmp "eq" %a,%b:!llvm.ptr
+      llvm.return %r:i1
+    }}"""
+    selected = Parser(make_llvm_context(), text).parse_module()
+    selected.verify()
+    generic = __import__("io").StringIO()
+    from xdsl.printer import Printer
+
+    Printer(stream=generic, print_generic_format=True).print_op(selected)
+    Parser(make_llvm_context(), generic.getvalue()).parse_module().verify()
+    original = Context()
+    original.load_dialect(builtin.Builtin)
+    original.load_dialect(llvm.LLVM)
+    with pytest.raises(Exception):
+        Parser(original, text).parse_module().verify()
+    mixed = text.replace("%b:!llvm.ptr", "%b:i64").replace(
+        '%r=llvm.icmp "eq" %a,%b:!llvm.ptr',
+        '%r="llvm.icmp"(%a,%b)<{predicate=0:i64}>:(!llvm.ptr,i64)->i1',
+    )
+    with pytest.raises(Exception):
+        Parser(make_llvm_context(), mixed).parse_module().verify()
+
+
+def test_call_argument_annotations_preserve_callee_resolution_and_types():
+    text = """module {
+      llvm.func @callee(!llvm.ptr)
+      llvm.func @caller(%p:!llvm.ptr) {
+        "llvm.call"(%p)<{callee=@callee, op_bundle_sizes=array<i32>,
+          operandSegmentSizes=array<i32:1,0>, arg_attrs=[{llvm.noundef}],
+          no_unwind, nobuiltin, nobuiltins=[]}>:(!llvm.ptr)->()
+        llvm.return
+      }
+    }"""
+    module = Parser(make_llvm_context(), text).parse_module()
+    before = str(module)
+    module.verify()
+    assert str(module) == before
+    for invalid in (
+        text.replace("arg_attrs=[{llvm.noundef}]", 'arg_attrs=["bad"]'),
+        text.replace("callee=@callee", "callee=@missing"),
+        text.replace(":(!llvm.ptr)->()", ":(i64)->()"),
+    ):
+        with pytest.raises(Exception):
+            Parser(make_llvm_context(), invalid).parse_module().verify()
+
+
+def _call_effects(annotation="#llvm.memory_effects<other = none, argMem = none>"):
+    return f"""module {{
+      llvm.func @external_function(f32) -> f32
+      llvm.func @entry(%x: f32) -> f32 {{
+        %r = "llvm.call"(%x) <{{callee = @external_function,
+          CConv = #llvm.cconv<ccc>, TailCallKind = #llvm.tailcallkind<none>,
+          fastmathFlags = #llvm.fastmath<none>, op_bundle_sizes = array<i32>,
+          operandSegmentSizes = array<i32: 1, 0>, memory_effects = {annotation}}}>
+          : (f32) -> f32
+        llvm.return %r : f32
+      }}
+    }}"""
+
+
+def test_call_memory_effects_roundtrip_preserves_operands_and_original_schema():
+    from xdsl.context import Context
+    from xdsl.dialects import builtin, llvm
+
+    source = _call_effects()
+    module = Parser(make_llvm_context(), source).parse_module()
+    module.verify()
+    call = next(op for op in module.walk() if isinstance(op, llvm.CallOp))
+    assert call.properties["memory_effects"].attr_name.data == "llvm.memory_effects"
+    assert call.operands[0].type == builtin.f32
+    before = str(module)
+    Parser(make_llvm_context(), before).parse_module().verify()
+    assert str(module) == before
+    original = Context(allow_unregistered=True)
+    original.load_dialect(builtin.Builtin)
+    original.load_dialect(llvm.LLVM)
+    with pytest.raises(Exception, match="memory_effects"):
+        Parser(original, source).parse_module().verify()
+
+
+@pytest.mark.parametrize("annotation", ['"unknown"', "#other.effects<none>"])
+def test_call_memory_effects_refuses_wrong_kind(annotation):
+    with pytest.raises(Exception):
+        Parser(make_llvm_context(), _call_effects(annotation)).parse_module().verify()
+
+
+def test_call_memory_effects_keeps_unknown_property_and_parent_checks():
+    for source in (
+        _call_effects().replace("memory_effects =", "unknown_property ="),
+        _call_effects().replace("llvm.return %r : f32", "llvm.return %r : f32\n llvm.return %r : f32"),
+    ):
+        with pytest.raises(Exception):
+            Parser(make_llvm_context(), source).parse_module().verify()
+
+
+@pytest.mark.parametrize("property_name", ["will_return", "noreturn"])
+def test_standard_function_control_annotations_preserve_unit_schema(property_name):
+    source = _function_effects().replace("memory_effects =", property_name + ", memory_effects =")
+    module = Parser(make_llvm_context(), source).parse_module()
+    module.verify()
+    before = str(module)
+    Parser(make_llvm_context(), before).parse_module().verify()
+    assert str(module) == before
+    with pytest.raises(Exception):
+        Parser(
+            make_llvm_context(), source.replace(property_name + ",", property_name + " = 1 : i32,")
+        ).parse_module().verify()
+
+
+def test_standard_call_noreturn_preserves_unit_schema_and_original_structure():
+    source = _call_effects().replace("memory_effects =", "noreturn, memory_effects =")
+    module = Parser(make_llvm_context(), source).parse_module()
+    module.verify()
+    before = str(module)
+    Parser(make_llvm_context(), before).parse_module().verify()
+    assert str(module) == before
+    with pytest.raises(Exception):
+        Parser(make_llvm_context(), source.replace("noreturn,", "noreturn = 1 : i32,")).parse_module().verify()

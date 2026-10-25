@@ -17,6 +17,8 @@ from it here, into the same row vocabulary a captured application's operations u
 * ``aliasing``: ``disjoint_inputs_outputs`` when the destination names no operand.
 * epilogue stages on a commit or a named command become fused ``elementwise_map`` rows observed as
   ``composed_with`` the carrier's family, with ``scale_granularity: tensor`` for a scalar scale.
+* a fully declared signed-i8 ``MAXPOOL2D`` macro with exactly ``acc_scale,maxpool`` is observed as
+  movement and its ordered readout components, retaining the original macro on every row.
 
 Residency and readout bookkeeping (pack, evict, a stage-less commit) are support rows. Nothing here
 names a target or an opcode's hardware meaning beyond the grammar's own families.
@@ -24,6 +26,7 @@ names a target or an opcode's hardware meaning beyond the grammar's own families
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 _ROW_MAJOR = "row_major_contiguous"
@@ -129,6 +132,125 @@ def _stage_rows(
     ]
 
 
+def _pool_components(index: int, command: dict, tensors: dict, accumulator: str) -> list[dict] | None:
+    """Observe the declared scaled-pool macro as a copy and its ordered readout.
+
+    This is a source decomposition, not a new target capability: each component
+    still needs independent SW and hardware admission. Preserve the actual macro
+    and its geometry on every row. Other reductions, stage orders, dtypes, and
+    undeclared geometry retain their ordinary (possibly refused) observations.
+    """
+    if command.get("opcode") != "MAXPOOL2D" or accumulator != "i32":
+        return None
+    operands = command.get("operands") or {}
+    attrs = command.get("attributes") or {}
+    allowed = {
+        "name",
+        "epilogue",
+        "output_dtype",
+        "acc_scale",
+        "pool_in_dims",
+        "pool_size",
+        "pool_stride",
+        "pool_padding",
+        "pool_pad_value",
+    }
+    if (
+        set(operands) != {"src", "dst"}
+        or operands["src"] == operands["dst"]
+        or set(attrs) - allowed
+        or attrs.get("epilogue") != ["acc_scale", "maxpool"]
+        or attrs.get("output_dtype") != "i8"
+        or type(attrs.get("acc_scale")) not in (int, float)
+        or attrs["acc_scale"] <= 0
+    ):
+        return None
+    try:
+        if not math.isfinite(attrs["acc_scale"]):
+            return None
+    except OverflowError:
+        return None
+    src, dst = (_typed(tensors, operands[key]) for key in ("src", "dst"))
+    if not _static(src, dst) or any(
+        item["dtype"] != "i8" or len(item["shape"]) != 2 or any(type(x) is not int for x in item["shape"])
+        for item in (src, dst)
+    ):
+        return None
+    geometry = {}
+    for key, arity in (("pool_in_dims", 2), ("pool_size", 2), ("pool_stride", 2), ("pool_padding", 4)):
+        value = attrs.get(key, [0, 0, 0, 0] if key == "pool_padding" else None)
+        if (
+            not isinstance(value, (list, tuple))
+            or len(value) != arity
+            or any(type(x) is not int or x < (0 if key == "pool_padding" else 1) for x in value)
+        ):
+            return None
+        geometry[key] = list(value)
+    pad = attrs.get("pool_pad_value")
+    if (pad is not None and (type(pad) is not int or not -128 <= pad <= 127)) or (
+        any(geometry["pool_padding"]) and pad is None
+    ):
+        return None
+    from merlin.runtime.tensor import pool_out_dims
+
+    h, w = geometry["pool_in_dims"]
+    oh, ow = pool_out_dims(h, w, geometry["pool_size"], geometry["pool_stride"], geometry["pool_padding"])
+    if min(oh, ow) <= 0 or src["shape"][0] % (h * w):
+        return None
+    batches = src["shape"][0] // (h * w)
+    if dst["shape"] != [batches * oh * ow, src["shape"][1]]:
+        return None
+    provenance = {
+        "source_macro": {
+            "mlir_operation": "merlin_iface.maxpool2d",
+            "operands": dict(operands),
+            "attributes": dict(attrs),
+            "input_type": src,
+            "output_type": dst,
+        },
+        "observation_basis": "declared_scaled_pool_components_v1",
+    }
+    carrier = _row(
+        index,
+        "MAXPOOL2D",
+        "movement",
+        "movement",
+        disposition="unclassified",
+        ordered_operand_types=[src],
+        ordered_result_types=[{"shape": src["shape"], "dtype": accumulator}],
+        operand_dtypes=["i8"],
+        accumulator_dtypes=[accumulator],
+        result_dtypes=[accumulator],
+        layout=_ROW_MAJOR,
+        aliasing="disjoint_inputs_outputs",
+        component_index=0,
+        component_input_dtype="i8",
+        component_output_dtype=accumulator,
+        **provenance,
+    )
+    stages = _stage_rows(
+        index=index,
+        opcode="MAXPOOL2D",
+        stages=["acc_scale", "maxpool"],
+        producer="movement",
+        # The admission vocabulary describes the carrier's signed input format;
+        # the accumulator ABI and component edges state the i32 -> i8 readout.
+        operand_dtype="i8",
+        result_dtype="i8",
+        accumulator=accumulator,
+        destination_declared=True,
+        attributes=attrs,
+    )
+    for stage_index, row in enumerate(stages, start=1):
+        row.update(
+            provenance,
+            component_index=stage_index,
+            component_input_dtype=accumulator if stage_index == 1 else "i8",
+            component_output_dtype="i8",
+        )
+    return [carrier, *stages]
+
+
 def command_rows(cb: dict[str, Any]) -> list[dict]:
     """One row per command and per declared epilogue stage, in program order."""
     from merlin.runtime.commandbuffer import bias_tensor_name
@@ -142,6 +264,10 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
     column_sources: dict[str, dict] = {}
     rows: list[dict] = []
     for index, command in enumerate(cb.get("commands") or []):
+        components = _pool_components(index, command, tensors, accumulator)
+        if components is not None:
+            rows.extend(components)
+            continue
         opcode = str(command.get("opcode"))
         operands = dict(command.get("operands") or {})
         attributes = dict(command.get("attributes") or {})

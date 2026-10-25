@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from merlin.llvmlower.group_host_call import _logical_group_call
 from merlin.xdsl_dialects.lowering import group_command as GC
 
-_GROUP = SimpleNamespace(window_mean=None)
+_GROUP = SimpleNamespace(root=None, members=[], window_mean=None, window_pool=None)
 _NOTHING_STORED = SimpleNamespace(stored_operand=None)
 
 

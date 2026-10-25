@@ -74,7 +74,7 @@ def _checksum(payload: bytes) -> int:
 
 
 def _parse_binary_console(
-    data: bytes,
+    data: bytes, *, decode_values: bool = True,
 ) -> tuple[dict[str, list[list[int]]], dict[str, int], dict[str, BinaryFrame], bytes]:
     if type(data) is not bytes:
         raise OutBinError("OUT_BIN requires raw console bytes")
@@ -116,11 +116,14 @@ def _parse_binary_console(
                 raise OutBinError("OUT_BIN payload has no valid END")
             if int(footer_parts[2], 16) != _checksum(payload):
                 raise OutBinError("OUT_BIN payload checksum differs")
-            words = [
-                int.from_bytes(payload[index : index + width], "little", signed=signed)
-                for index in range(0, count, width)
-            ]
-            outputs[name] = [words[row * cols : (row + 1) * cols] for row in range(rows)]
+            if decode_values:
+                words = [
+                    int.from_bytes(payload[index : index + width], "little", signed=signed)
+                    for index in range(0, count, width)
+                ]
+                outputs[name] = [words[row * cols : (row + 1) * cols] for row in range(rows)]
+            else:
+                outputs[name] = []  # Preserve duplicate-name checks without materializing values.
             frames[name] = BinaryFrame(name, rows, cols, width, signed)
         elif marker in ("OUT", "OUT_ND", "OUTSUM") or marker.startswith("OUT_B64_") or marker.startswith("OUT_BIN_"):
             raise OutBinError("mixed or stray output transport in OUT_BIN console")
@@ -156,7 +159,7 @@ def parse_binary_console_details(
 def binary_console_diagnostics(data: bytes) -> bytes:
     """Return only text outside validated raw payloads for RTL diagnostics."""
 
-    return _parse_binary_console(data)[3]
+    return _parse_binary_console(data, decode_values=False)[3]
 
 
 def parse_binary_console(data: bytes) -> tuple[dict[str, list[list[int]]], dict[str, int]]:

@@ -38,10 +38,12 @@ if TYPE_CHECKING:
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     from .borrowed_buffer_calls import BorrowedBufferCalls
+    from .connected_spatial_route import ConnectedSpatialRoute
     from .device_ir_scalability import DeviceIRBudget
     from .device_offload_selection import DeviceOffloadSelection
     from .device_shim import ShimUnit
     from .host_transform_chain import HostLLVMTransformChain
+    from .sibling_source_route import SiblingSourceRoute
     from .target_schedule import TargetScheduleSelection
 
 __all__ = [
@@ -153,7 +155,20 @@ class DeviceRouting:
     #: Original selected finite target scheduling; no target effect qualification is inferred.
     target_schedule: TargetScheduleSelection | None = None
 
+    #: Original source pair, staged plan and explicit host scratch ownership.
+    connected_spatial: ConnectedSpatialRoute | None = None
+    #: Original source identity and selected synchronous borrowed sibling effects.
+    sibling_source: SiblingSourceRoute | None = None
+
     def __post_init__(self):
+        if self.sibling_source is not None:
+            from .sibling_source_route import freeze_route
+
+            freeze_route(self)
+        if self.connected_spatial is not None:
+            from .connected_spatial_route import freeze_route
+
+            freeze_route(self)
         if self.target_schedule is not None:
             from .target_schedule import TargetScheduleSelection
 
@@ -868,6 +883,8 @@ def build_device_objects(
     llvm_transform_chain: HostLLVMTransformChain | None = None,
     descriptor_results: bool = False,
     target_schedule: TargetScheduleSelection | None = None,
+    connected_spatial: tuple | None = None,
+    sibling_source: tuple | None = None,
 ) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
 
@@ -908,6 +925,34 @@ def build_device_objects(
     """
     if type(descriptor_results) is not bool:
         raise ValueError("descriptor results require an explicit original boolean")
+    private_symbol = None
+    if connected_spatial is not None:
+        from .connected_spatial_host import ConnectedSpatialHost
+        from .connected_spatial_route import ConnectedSpatialRoute
+
+        selected_spatial, spatial_host = connected_spatial
+        if type(selected_spatial) is not ConnectedSpatialRoute or type(spatial_host) is not ConnectedSpatialHost:
+            raise ValueError("private spatial object requires the original host ownership preparation")
+        ConnectedSpatialRoute.record(selected_spatial)
+        private_symbol = selected_spatial.writer.symbol
+        if (
+            entries is None or private_symbol not in signatures
+            or entries.get(private_symbol) != spatial_host.source_entry
+            or call_buffers is None
+        ):
+            raise ValueError("private spatial object lost its original routed source and logical call")
+    sibling_symbol = None
+    if sibling_source is not None:
+        from .sibling_source_route import require_host
+
+        selected_sibling, sibling_host = sibling_source
+        require_host(sibling_host, selected_sibling)
+        sibling_symbol = sibling_host.device_symbol
+        if (connected_spatial is not None or signatures != sibling_host.rewrite.signatures
+            or entries != sibling_host.rewrite.entries or call_buffers != sibling_host.rewrite.call_buffers
+            or expected_interfaces != sibling_host.rewrite.expected_interfaces
+            or package_sha256 != sibling_host.rewrite.package_sha256):
+            raise ValueError("sibling object lost its original source, interface or logical ABI")
     from merlin.common.digest import sha256_text
     from merlin.targetgen import capsule_common as CC
     from merlin.targetgen import corpus_spec as CS
@@ -1042,6 +1087,7 @@ def build_device_objects(
     build_metrics = {}
     emission_times = {}
     target_receipts = {}
+    private_receipts = {}
     objects_by_symbol = {}
     pending = deque()
 
@@ -1224,6 +1270,8 @@ def build_device_objects(
             key: built.custody[key] for key in ("translation", "optimization", "optimized_import", "compilation")
         }
         custody[sym]["rename"] = renamed_invocation
+        if sym in private_receipts:
+            custody[sym]["connected_spatial"] = private_receipts[sym]
         if "llvm_transform" in built.custody:
             custody[sym]["llvm_transform"] = built.custody["llvm_transform"]
         if target_receipt is not None:
@@ -1245,7 +1293,10 @@ def build_device_objects(
             m, n, k = key[-3:] if len(key) in (3, 4) else (None, None, None)
             want = kernel_symbol(abi.symbol, index)
             stem = work / f"{sym}"
-            if expected_interfaces is None:
+            if sym == sibling_symbol:
+                require_host(sibling_host, selected_sibling)
+                iface = sibling_host.interface
+            elif expected_interfaces is None:
                 try:
                     _capsule, iface = CS.build(entry, binding)
                 except Exception as exc:  # noqa: BLE001
@@ -1264,7 +1315,16 @@ def build_device_objects(
                         f"{sym} selected interface disagrees with pointer ABI, device, shape, or precision"
                     )
             if grouped:
-                buffers, refusal = logical_buffers(iface)
+                observed_outputs = None
+                if entry.get("schema") == "connected_spatial_entry_v1":
+                    operation = _capsule.get("operation") or {}
+                    if operation.get("op") != "spatial_producer_pool":
+                        raise ValueError("connected source entry lost its original composed program")
+                    observed_outputs = (operation["attributes"]["out"],)
+                buffers, refusal = (
+                    logical_buffers(iface) if observed_outputs is None
+                    else logical_buffers(iface, observed_outputs=observed_outputs)
+                )
                 call = (call_buffers or {}).get(sym)
                 if buffers is None or call is None:
                     skipped.append((sym, refusal or "the group rewrite recorded no host call for this symbol"))
@@ -1333,14 +1393,31 @@ def build_device_objects(
             except (BackendDeclined, CertFailure, ValueError) as error:
                 skipped.append((sym, f"package lowering: {type(error).__name__}: {str(error)[:300]}"))
                 continue
-            if expected_interfaces is not None and f"llvm.func @{entry_symbol}(" not in artifact:
+            if sym == sibling_symbol:
+                from .sibling_source_route import require_emission
+
+                require_emission(artifact, selected_sibling, sibling_host, entry_symbol=entry_symbol)
+            elif expected_interfaces is not None and f"llvm.func @{entry_symbol}(" not in artifact:
                 skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
                 continue
             art = stem.with_suffix(".device.mlir")
             # Keep the checked producer path for proof custody without a second
             # full artifact copy. Both names are in this build's filesystem.
             art.unlink(missing_ok=True)
-            art.hardlink_to(lowering / "lowered.llvm.mlir")
+            if sym == private_symbol:
+                from .connected_spatial_route import select_emission
+
+                artifact, private_receipts[sym] = select_emission(
+                    artifact, selected_spatial, spatial_host, entry_symbol=entry_symbol
+                )
+                # The independently checked producer remains in lowering/. A
+                # literal closed CFG derivation is a distinct compilation input.
+                art.write_text(artifact)
+                stem.with_suffix(".private-helper.json").write_text(
+                    json.dumps(private_receipts[sym], sort_keys=True, indent=2) + "\n"
+                )
+            else:
+                art.hardlink_to(lowering / "lowered.llvm.mlir")
             digest = hashlib.sha256(artifact.encode("utf-8")).hexdigest()
             ll = stem.with_suffix(".ll")
             raw = stem.with_suffix(".raw.o")
@@ -1384,7 +1461,9 @@ def build_device_objects(
         )
 
     unit = (
-        emit_logical_translation_unit(device, {s: group_buffers[s] for s in kernels}, kernel_symbol_for=kernels.get)
+        emit_logical_translation_unit(
+            device, {s: group_buffers[s] for s in kernels if s != private_symbol}, kernel_symbol_for=kernels.get
+        )
         if grouped
         else emit_translation_unit(
             device,
@@ -1396,6 +1475,43 @@ def build_device_objects(
             descriptor_results=descriptor_results,
         )
     )
+    if sibling_symbol in kernels:
+        from .sibling_source_route import with_borrowed_bridge
+
+        unit = with_borrowed_bridge(unit, selected_sibling, sibling_host)
+        custody[sibling_symbol]["sibling_source"] = {
+            "source_ir_sha256": selected_sibling.source_ir_sha256,
+            "interface_sha256": hashlib.sha256(sibling_host.interface.encode()).hexdigest(),
+            "borrowed_effects": selected_sibling.record()["effects"],
+            "original_epilogues_and_all_live_outputs_preserved": True,
+        }
+    if private_symbol in kernels:
+        from .connected_spatial_route import with_private_bridge
+
+        unit = with_private_bridge(
+            unit, selected_spatial, spatial_host, symbol=private_symbol, kernel=kernels[private_symbol]
+        )
+        # Keep the unchanged strict two-object guard applicable even when the
+        # ordinary model shim also forwards many unrelated routed kernels.
+        private_c = work / "spatial_descriptor_bridge.c"
+        private_o = work / "spatial_descriptor_bridge.audit.o"
+        private_c.write_text(spatial_host.scratch.bridge_source)
+        audit, bridge_invocation, _ = _observed_build_tool(
+            [clang(), *_flags(codegen_target, cflags), "-c", str(private_c), "-o", str(private_o)],
+            timeout=timeout, directory=work, stage="spatial_descriptor_bridge_audit",
+            inputs=(private_c,), output=private_o,
+        )
+        if audit.returncode != 0:
+            raise ValueError("private spatial descriptor bridge compilation failed: " + (audit.stderr or "")[:300])
+        binding = verify_object_symbol_binding(
+            objects_by_symbol[private_symbol], private_o,
+            entry_symbol="_mlir_ciface_" + selected_spatial.writer.borrowed_symbol,
+            kernel_symbol=kernels[private_symbol], original_kernel_symbol=selected_spatial.helper_symbol,
+            timeout=timeout,
+        )
+        custody[private_symbol]["connected_spatial"].update(
+            descriptor_bridge_audit=bridge_invocation, original_object_binding=binding
+        )
     if not unit.symbols:
         return DeviceBuild(
             device=device,
@@ -1441,6 +1557,16 @@ def build_device_objects(
             object_dedup=dedup_receipt(),
             build_metrics=build_metrics,
         )
+
+    if sibling_symbol in kernels:
+        def bridge_pin(path):
+            return {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                    "size_bytes": path.stat().st_size}
+
+        custody[sibling_symbol]["sibling_source"]["descriptor_bridge"] = {
+            "source": bridge_pin(shim_c), "object": bridge_pin(shim_o),
+            "compilation": _shim_invocation,
+        }
 
     for lowering, receipt_sha256 in target_receipts.values():
         revalidate_target(

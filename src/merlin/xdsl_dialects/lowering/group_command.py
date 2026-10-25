@@ -427,7 +427,7 @@ def _host_gather_window(group: CG.Group, activation_index: int, positions: int, 
     return dict(gather["window"])
 
 
-def _pool(group: CG.Group) -> dict[str, Any]:
+def _pool(group: CG.Group, *, clamp=None) -> dict[str, Any]:
     """The pooling stage's window, as the generator's ``pool_*`` fields. Read, never defaulted."""
     from . import contraction_coverage as CC
 
@@ -474,7 +474,7 @@ def _pool(group: CG.Group) -> dict[str, Any]:
         if fill == 0:
             window["pool_pad_value"] = 0
         elif isinstance(fill, float) and (math.isinf(fill) and fill < 0):
-            window["pool_pad_value"] = int(GN.numerics_of(group).clamp[0])
+            window["pool_pad_value"] = int((clamp if clamp is not None else GN.numerics_of(group).clamp)[0])
         else:
             raise CG.NoCapsuleForm(f"a pooling pad of {fill!r} is neither zero nor the identity of max")
     return window
@@ -494,6 +494,12 @@ def program(
     module again (quadratic in the model: 69% of a 1551-group statement's time)."""
     from merlin.runtime.commandbuffer import EPILOGUE_STAGES
 
+    if group.window_pool is not None:
+        entry = {k: v for k, v in group.window_pool.items() if k not in ("proof", "output_shape")}
+        entry.update(name=name or f"group_{group.index}", kind="op", op="maxpool2d",
+                     operand_dtype=group.in_dtype, epilogue=["acc_scale", "maxpool"], output_dtype="i8")
+        return GroupProgram(entry=entry, stored_operand=None, transposed=False,
+                            notes=(group.window_pool["proof"],))
     if group.fusion and group.fusion.get("cut") != "bare":
         from .group_output_program import program as output_program
 
@@ -627,6 +633,11 @@ def device_output_shape(entry: Mapping[str, Any]) -> list[int]:
     """
     op = str(entry.get("op") or "")
     features = entry.get("N")
+    if op == "maxpool2d":
+        from merlin.runtime.tensor import pool_out_dims
+        h, w = entry["pool_in_dims"]
+        ho, wo = pool_out_dims(h, w, entry["pool_size"], entry["pool_stride"], entry["pool_padding"])
+        return [ho * wo, int(features)]
     if op == "conv2d":
         needed = ("Himg", "Wimg", "kh", "kw", "stride")
         if features is None or any(entry.get(key) is None for key in needed):

@@ -227,6 +227,10 @@ def original_emission_checks(service):
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
     )
 
     if type(service) is not CommonTransformService:
@@ -245,6 +249,10 @@ def original_emission_checks(service):
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
     }:
         yield
         return
@@ -430,8 +438,11 @@ def _operation_snapshot(scope):
     operation = None
     try:
         with (
-            refresh(service) if callable(refresh) else contextlib.nullcontext(),
-            verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo),
+            (refresh(service) if callable(refresh) else contextlib.nullcontext()) as entry,
+            verified_snapshot_scope(
+                service.workspace, service.bundle, repo=service.repo,
+                entry=entry, guarded_exit=entry is not None,
+            ),
         ):
             scope.verify()
             from merlin.common import bundle_snapshot

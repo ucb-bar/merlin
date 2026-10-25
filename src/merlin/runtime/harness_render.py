@@ -8,9 +8,11 @@ effect, numerical or timing authority.
 
 from __future__ import annotations
 
+import array
 import base64
 import math
 import struct
+import sys
 from dataclasses import dataclass
 
 from merlin.common.quant_formats import get
@@ -234,40 +236,93 @@ def _payload(value, spec, shape, dtype, extent):
             value = value.get("values")
         if value is None:
             raise ValueError("neutral harness requires every exact logical input value")
-        flat_values = (
-            type(value) in (list, tuple)
-            and len(value) == extent // width
-            and all(type(scalar) not in (list, tuple) for scalar in value)
-        )
-        raw = bytearray()
-        for scalar in value if flat_values else _values(value, shape):
-            if not dtype.is_float:
-                if type(scalar) is not int:
-                    raise ValueError("neutral integer inputs require exact integers")
-                try:
-                    word = scalar.to_bytes(width, "little", signed=dtype.signed)
-                except OverflowError as error:
-                    raise ValueError("neutral integer input is outside its storage range") from error
-            else:
-                formats = {(5, 10): "e", (8, 23): "f", (11, 52): "d"}
-                code = formats.get((dtype.exp_bits, dtype.mant_bits))
-                if code is None or type(scalar) is not float or not math.isfinite(scalar):
-                    raise ValueError("neutral floating inputs need exact source bytes for this value/format")
-                try:
-                    word = struct.pack("<" + code, scalar)
-                except (OverflowError, struct.error) as error:
-                    raise ValueError("neutral floating input is outside its storage range") from error
-                restored = struct.unpack("<" + code, word)[0]
-                if restored != scalar or math.copysign(1, restored) != math.copysign(1, scalar):
-                    raise ValueError("neutral floating input would require numerical rounding")
-            raw.extend(word)
-        raw = bytes(raw)
+        packed = None
+        if (not dtype.is_float and type(value) in (list, tuple)
+                and len(value) == extent // width
+                and all(type(scalar) is int for scalar in value)):
+            code = {1: "b", 2: "h", 4: "i", 8: "q"}.get(width)
+            if code is not None:
+                code = code if dtype.signed else code.upper()
+                if array.array(code).itemsize == width:
+                    try:
+                        packed = array.array(code, value)
+                    except OverflowError as error:
+                        raise ValueError("neutral integer input is outside its storage range") from error
+                    if sys.byteorder != "little":
+                        packed.byteswap()
+        if packed is not None:
+            raw = packed.tobytes()
+        else:
+            flat_values = (
+                type(value) in (list, tuple)
+                and len(value) == extent // width
+                and all(type(scalar) not in (list, tuple) for scalar in value)
+            )
+            raw = bytearray()
+            for scalar in value if flat_values else _values(value, shape):
+                if not dtype.is_float:
+                    if type(scalar) is not int:
+                        raise ValueError("neutral integer inputs require exact integers")
+                    try:
+                        word = scalar.to_bytes(width, "little", signed=dtype.signed)
+                    except OverflowError as error:
+                        raise ValueError("neutral integer input is outside its storage range") from error
+                else:
+                    formats = {(5, 10): "e", (8, 23): "f", (11, 52): "d"}
+                    code = formats.get((dtype.exp_bits, dtype.mant_bits))
+                    if code is None or type(scalar) is not float or not math.isfinite(scalar):
+                        raise ValueError("neutral floating inputs need exact source bytes for this value/format")
+                    try:
+                        word = struct.pack("<" + code, scalar)
+                    except (OverflowError, struct.error) as error:
+                        raise ValueError("neutral floating input is outside its storage range") from error
+                    restored = struct.unpack("<" + code, word)[0]
+                    if restored != scalar or math.copysign(1, restored) != math.copysign(1, scalar):
+                        raise ValueError("neutral floating input would require numerical rounding")
+                raw.extend(word)
+            raw = bytes(raw)
     if len(raw) != extent:
         raise ValueError("neutral input bytes omit or add logical tensor elements")
     encoded = base64.b64encode(raw).decode("ascii")
     if "preload_b64" in spec and spec["preload_b64"] != encoded:
         raise ValueError("neutral explicit input differs from declared source bytes")
     return encoded
+
+
+def _check_streamed_source(payload, spec, shape, dtype, extent):
+    """Compare every lazy input byte with any explicit source declaration.
+
+    Source scalar validation uses the same canonical encoder as the ordinary
+    literal path. The selected finite storage budget bounds its temporary
+    bytes; payload consumption stays chunked and never becomes C literals.
+    """
+    if "data" not in spec and "preload_b64" not in spec:
+        return
+    if "data" in spec:
+        declared = base64.b64decode(_payload(spec["data"], spec, shape, dtype, extent), validate=True)
+    else:
+        try:
+            declared = base64.b64decode(spec["preload_b64"], validate=True)
+        except (TypeError, ValueError) as error:
+            raise ValueError("neutral explicit source bytes are not canonical base64") from error
+        _payload(declared, spec, shape, dtype, extent)
+    offset = 0
+    for chunk in payload.chunks():
+        end = offset + len(chunk)
+        if chunk != memoryview(declared)[offset:end]:
+            raise ValueError("neutral streamed input differs from declared source values or bytes")
+        offset = end
+    if offset != extent:
+        raise ValueError("neutral streamed input omits or adds declared source bytes")
+    return declared
+
+
+def selected_storage_budget(contract):
+    """Finite software allocation policy, independent of candidate tensors."""
+    budget = (contract.get("logical_harness") or {}).get("storage_budget_bytes", 16 << 20)
+    if type(budget) is not int or not 0 < budget <= 256 << 20:
+        raise ValueError("logical harness storage policy exceeds its fixed software ceiling")
+    return budget
 
 
 def render_harness(
@@ -371,10 +426,21 @@ def render_harness(
         }
         if name in expected:
             if type(inputs[name]) is TensorPayload:
-                if blobs is None or "data" in spec or "preload_b64" in spec:
-                    raise ValueError("streamed logical input needs explicit sidecars and unambiguous source bytes")
-                inputs[name].bind(shape=shape, dtype=spec["dtype"], byte_order=abi.byte_order)
-                streamed[name] = inputs[name]
+                if blobs is None:
+                    raise ValueError("streamed logical input needs explicit sidecars")
+                payload = inputs[name].bind(shape=shape, dtype=spec["dtype"], byte_order=abi.byte_order)
+                declared = _check_streamed_source(payload, spec, shape, dtype, extent)
+                if declared is None:
+                    streamed[name] = inputs[name]
+                else:
+                    import numpy as np
+
+                    from merlin.llvmlower.weight_payload import WeightPayload
+
+                    # Freeze the exact bytes just compared, rather than read
+                    # a caller's lazy provider again after source validation.
+                    frozen = WeightPayload.array(extent, lambda data=declared: np.frombuffer(data, dtype=np.uint8))
+                    streamed[name] = TensorPayload(shape, spec["dtype"], frozen)
             else:
                 tensors[name]["preload_b64"] = _payload(inputs[name], spec, shape, dtype, extent)
                 if ("data" in spec

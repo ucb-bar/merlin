@@ -81,6 +81,27 @@ def _declared_loader_profile(directory: Path, capsule: dict) -> tuple[Path, byte
     return source, raw
 
 
+def _declared_owned_source_documents(directory: Path, capsule: dict) -> tuple[tuple[Path, bytes], ...]:
+    """Retain the original owner's declared source and plan in a relocated cohort.
+
+    These documents are compiler inputs, not candidate-selected files. Reuse the
+    owner's direct-file, size and digest checks; emission independently repeats
+    them against the relocated declaration before accepting any helper.
+    """
+    selected = capsule.get("owned_host_source")
+    if selected is None:
+        return ()
+    from merlin.compile.owned_spatial_source import _local_document, source_document_fields
+
+    from merlin.compile import owned_shared_source
+    fields = owned_shared_source.source_document_fields(selected) if owned_shared_source.selected(capsule) else source_document_fields(selected)
+    documents = tuple(_local_document(directory, selected[key]) for key in fields)
+    names = [path.name for path, _ in documents]
+    if len(set(names)) != len(names) or any(name in _CAPSULE_FILES for name in names):
+        raise ValueError("public cohort owned source documents overlap the capsule bundle")
+    return documents
+
+
 def _name_set_sha256(names) -> str:
     return hashlib.sha256(json.dumps(sorted(str(x) for x in names), separators=(",", ":")).encode("utf-8")).hexdigest()
 
@@ -338,6 +359,9 @@ def materialize_public_capsules(
         source_capsule = yaml.safe_load((src / "capsule.yaml").read_text(encoding="utf-8")) or {}
         verify_capture_tool(src, source_capsule)
         profile = _declared_loader_profile(src, source_capsule)
+        owned_documents = _declared_owned_source_documents(src, source_capsule)
+        if profile is not None and any(path == profile[0] for path, _ in owned_documents):
+            raise ValueError("public cohort owned source overlaps its loader profile")
         for f in _CAPSULE_FILES:
             sp = src / f
             if not sp.is_file():
@@ -378,6 +402,10 @@ def materialize_public_capsules(
             (d / source.name).write_bytes(raw)
             if _declared_loader_profile(src, source_capsule) != profile:
                 raise ValueError("public cohort loader profile changed during publication")
+        for source, raw in owned_documents:
+            (d / source.name).write_bytes(raw)
+        if _declared_owned_source_documents(src, source_capsule) != owned_documents:
+            raise ValueError("public cohort owned source changed during publication")
         written.append(name)
     return sorted(written)
 

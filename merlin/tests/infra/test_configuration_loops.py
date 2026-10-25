@@ -210,3 +210,40 @@ def test_depth_budget_runs_before_hashing_or_recursive_structure_validation(posi
         hoist_loop_configuration(original, ADAPTER)
     with pytest.raises(ConfigurationUnavailable, match="budget"):
         verify_loop_configuration_rewrite(original, original, ADAPTER)
+
+
+def test_identical_later_writes_preserve_hoisted_values_and_all_observations():
+    source = Kernel(
+        "same_value",
+        (),
+        (
+            Loop(
+                "outer",
+                5,
+                (
+                    setup(),
+                    Call("compute", ()),
+                    Loop("inner", 3, (setup(), Call("compute", (("address", Var("inner")),)))),
+                    Call("pulse", ()),
+                ),
+            ),
+        ),
+    )
+    result = hoist_loop_configuration(source, ADAPTER)
+    before, after = run(source), run(result.kernel)
+    assert before[:2] == after[:2]
+    assert before[2]["setup"] == 20 and after[2]["setup"] == 6
+    assert before[2]["pulse"] == after[2]["pulse"] == 5
+    assert result.report["removed_dynamic_configuration_calls"] == 14
+    verify_loop_configuration_rewrite(source, result.kernel, ADAPTER)
+
+
+def test_same_value_write_with_unknown_order_still_blocks_motion():
+    def unordered(call):
+        if call.instr == "unordered_same":
+            return ConfigurationEffects(writes=(("mode", 7),), ordered=False)
+        return project(call)
+
+    adapter = replace(ADAPTER, project=unordered)
+    source = Kernel("unordered", (), (Loop("i", 4, (setup(), Call("unordered_same", ()))),))
+    assert hoist_loop_configuration(source, adapter).kernel == source

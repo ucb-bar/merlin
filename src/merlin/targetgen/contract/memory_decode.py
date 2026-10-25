@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 
-def observed_memory_decode(reader, console, *, cb, elf, workdir, policy, dependencies=()):
+def observed_memory_decode(reader, console, *, cb, elf, workdir, policy, dependencies=(), retain_in_invocation=False, inputs=()):
     """Retain the actual selected decoder and its declared private products.
 
     A callback return or payload pin supplies attribution only. Original packet
@@ -24,17 +24,22 @@ def observed_memory_decode(reader, console, *, cb, elf, workdir, policy, depende
 
     work = Path(workdir).resolve()
     product = work / "readback_decode.json"
-    if product.exists() or product.is_symlink():
+    if not retain_in_invocation and (product.exists() or product.is_symlink()):
         raise ValueError("memory decoder product already exists in its private execution owner")
     with invocation_record.observe_call(
         work,
         stage="coherent_memory_decode",
         function=reader.decode,
         arguments={"readback_policy": policy.record()},
-        inputs=(Path(elf), work / "oracle_console.log", work / BUILD_RECEIPT),
-        outputs=(product,),
+        inputs=(Path(elf), work / "oracle_console.log", work / BUILD_RECEIPT, *inputs),
+        outputs=() if retain_in_invocation else (product,),
         dependencies=(Path(__file__), Path(__file__).with_name("compile.py"), *dependencies),
     ) as observed:
+        if retain_in_invocation:
+            # Each real direct execution keeps its own decoder product; a
+            # subsequent invocation never overwrites an earlier observation.
+            product = observed.directory / "readback_decode.json"
+            observed.outputs = (product,)
         outputs, evidence = reader.decode(console)
         if type(outputs) is not dict or type(evidence) is not dict or evidence.get("status") != "complete":
             raise ValueError("memory output reader returned no completed full-value admission")

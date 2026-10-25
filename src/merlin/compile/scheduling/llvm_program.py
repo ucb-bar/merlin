@@ -70,6 +70,64 @@ class FnBuilderIndexAdapter:
         self.builder.for_loop(start, stop, step, callback, retain_loop=True)
 
 
+class FnBuilderControlAdapter(FnBuilderIndexAdapter):
+    """Ordinary typed LLVM control for checked spatial/convolution indices.
+
+    Payload operations and target effects remain in the explicit callback.
+    Signed comparisons are needed before clamping negative halo coordinates;
+    unsigned comparisons retain the existing DMA in-bounds predicates.
+    """
+
+    def op(self, opcode, lhs, rhs, dtype="i64"):
+        from xdsl.dialects import llvm
+        from xdsl.dialects.builtin import i1
+        from xdsl.ir import SSAValue
+
+        operations = {"add": llvm.AddOp, "sub": llvm.SubOp, "mul": llvm.MulOp,
+                      "udiv": llvm.UDivOp, "urem": llvm.URemOp, "and": llvm.AndOp}
+        if opcode not in operations or dtype not in ("i64", "i1") or dtype == "i1" and opcode != "and":
+            raise ValueError("unsupported typed LLVM control arithmetic")
+        if dtype == "i1":
+            if any(not isinstance(x, SSAValue) or x.type != i1 for x in (lhs, rhs)):
+                raise ValueError("LLVM predicate conjunction requires i1 operands")
+        else:
+            lhs, rhs = self.value(lhs), self.value(rhs)
+        return self.builder.add(operations[opcode](lhs, rhs)).results[0]
+
+    def cmp(self, predicate, lhs, rhs):
+        from xdsl.dialects import llvm
+        from xdsl.dialects.builtin import IntegerAttr, i64
+
+        flags = {"eq": llvm.ICmpPredicateFlag.EQ, "slt": llvm.ICmpPredicateFlag.SLT,
+                 "ult": llvm.ICmpPredicateFlag.ULT, "ule": llvm.ICmpPredicateFlag.ULE}
+        if predicate not in flags:
+            raise ValueError("unsupported LLVM control predicate")
+        return self.builder.add(llvm.ICmpOp(self.value(lhs), self.value(rhs),
+            IntegerAttr(flags[predicate].to_int(), i64))).results[0]
+
+    def branch(self, predicate, yes, no):
+        from xdsl.dialects import llvm
+        from xdsl.dialects.builtin import i1
+        from xdsl.ir import Block, SSAValue
+
+        if type(predicate) is bool:
+            (yes if predicate else no)()
+            return
+        if not isinstance(predicate, SSAValue) or predicate.type != i1:
+            raise ValueError("LLVM control branch requires an i1 predicate")
+        taken, other, after = Block(), Block(), Block()
+        for block in (taken, other, after):
+            self.builder.region.add_block(block)
+        self.builder.add(llvm.CondBrOp(predicate, taken, [], other, []))
+        self.builder.blk = taken
+        yes()
+        self.builder.add(llvm.BrOp(after))
+        self.builder.blk = other
+        no()
+        self.builder.add(llvm.BrOp(after))
+        self.builder.blk = after
+
+
 def emit_index_program(kernel, builder, lower_call):
     errors = check_structure(kernel)
     if errors:

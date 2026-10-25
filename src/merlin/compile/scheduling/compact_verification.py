@@ -9,17 +9,156 @@ Completion is synchronous in this family; asynchronous adapters must not use it.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from collections import OrderedDict
+from copy import deepcopy
+from dataclasses import dataclass, fields, is_dataclass, replace
 from itertools import product
 from math import prod
+from threading import Lock
 
 from merlin.sched.ir import Const, Loop, Scaled, Select, Sum, Var, evaluate
 
-from .block_schedule import Compute, Load, Preload, Store
+from .block_schedule import Compute, InitializeAccumulator, Load, Preload, Store
 
 
 class DenseVerificationUnavailable(ValueError):
     """The selected checking tool or budget could not establish the result."""
+
+
+_SOURCE_PROOFS = OrderedDict()
+_SOURCE_PROOF_LOCK = Lock()
+_SOURCE_PROOF_LIMIT = 64
+
+
+def _source_proof_key(sites, kernel, problem, resources, storage, adapter, output_readout, bias_source):
+    """Exact typed projected program, ignoring only vacuous scope numbering.
+
+    The ordered sites and their complete counted scope paths reconstruct the
+    program. Singleton scopes were already substituted by _project. Actual
+    Python types remain in the key: unrelated objects with similar fields do
+    not borrow a proof. No caller digest or previous timing score is trusted.
+    """
+    def typed(value):
+        if value is None or type(value) in (str, int, bool):
+            return type(value), value
+        if type(value) is tuple:
+            return tuple, tuple(typed(item) for item in value)
+        if is_dataclass(value):
+            return type(value), tuple((field.name, typed(getattr(value, field.name))) for field in fields(value))
+        raise TypeError("unsupported source-proof cache value")
+
+    scopes = {}
+    program = []
+    for site in sites:
+        path = tuple((scopes.setdefault(scope, len(scopes)), name, extent) for scope, name, extent in site.scopes)
+        program.append((path, typed(site.operation)))
+    return (
+        typed(kernel.args), typed(problem), typed(resources), typed(storage),
+        adapter.configuration_identity, adapter.numerical_policy_identity, adapter.index_bits,
+        adapter.synchronous_completion, adapter.exact_accumulator_continuation,
+        None if output_readout is None else (type(output_readout), output_readout.identity),
+        typed(bias_source), tuple(program),
+    )
+
+
+def _defined_exists(variables, claim, *, instances=()):
+    """Exactly eliminate integer witnesses defined by conjunctive equations.
+
+    A writer coordinate often obeys ``a*w + rest == 0``. Replacing its
+    existential with ``rest % abs(a) == 0`` and the corresponding quotient
+    preserves the complete claim, including every nested overwrite condition.
+    Return the complete formula and an optional constructive witness formula.
+    Unknown/nonlinear definitions retain their original quantifier. No equation
+    under a disjunction or a quantifier is assumed.
+    """
+    import z3
+
+    occurrences, affine_parts = {}, {}
+
+    def contains(expression, variable):
+        key = expression, variable
+        if key not in occurrences:
+            occurrences[key] = z3.eq(expression, variable) or any(
+                contains(child, variable) for child in expression.children()
+            )
+        return occurrences[key]
+
+    def affine(expression, variable):
+        key = expression, variable
+        if key not in affine_parts:
+            affine_parts[key] = linear_part(expression, variable)
+        return affine_parts[key]
+
+    def linear_part(expression, variable):
+        if z3.eq(expression, variable):
+            return 1, z3.IntVal(0)
+        if not contains(expression, variable):
+            return 0, expression
+        kind = expression.decl().kind() if z3.is_app(expression) else None
+        if kind in (z3.Z3_OP_ADD, z3.Z3_OP_SUB, z3.Z3_OP_UMINUS):
+            parts = [affine(child, variable) for child in expression.children()]
+            if any(part is None for part in parts):
+                return None
+            signs = [-1] if kind == z3.Z3_OP_UMINUS else [1] + [-1 if kind == z3.Z3_OP_SUB else 1] * (len(parts) - 1)
+            return sum(sign * part[0] for sign, part in zip(signs, parts)), sum(
+                sign * part[1] for sign, part in zip(signs, parts)
+            )
+        if kind == z3.Z3_OP_MUL:
+            scale, dependent = 1, []
+            for child in expression.children():
+                if z3.is_int_value(child):
+                    scale *= child.as_long()
+                else:
+                    dependent.append(child)
+            if len(dependent) == 1 and (part := affine(dependent[0], variable)) is not None:
+                return scale * part[0], scale * part[1]
+        return None
+
+    def conjuncts(expression):
+        if z3.is_and(expression):
+            return [child for item in expression.children() for child in conjuncts(item)]
+        return [expression]
+
+    remaining = list(variables)
+    claim = z3.simplify(claim)
+    while remaining:
+        definitions = []
+        for condition in conjuncts(claim):
+            if not z3.is_eq(condition) or not z3.is_int(condition.arg(0)):
+                continue
+            difference = z3.simplify(condition.arg(0) - condition.arg(1))
+            for variable in remaining:
+                part = affine(difference, variable)
+                if part is not None and part[0]:
+                    definitions.append((variable, *part))
+        if not definitions:
+            break
+        # Resolve the smallest integer coefficient first. Choosing a large
+        # outer-loop stride before a unit/inner coordinate can needlessly put
+        # still-bound variables inside quotients and obscure later definitions.
+        variable, coefficient, rest = min(definitions, key=lambda part: abs(part[1]))
+        # Normalize to a positive divisor; Z3 integer division then has the
+        # required exact quotient precisely when the retained remainder is zero.
+        numerator, divisor = (-rest if coefficient > 0 else rest), abs(coefficient)
+        value = z3.simplify(numerator / divisor)
+        claim = z3.simplify(z3.And(numerator % divisor == 0, z3.substitute(claim, (variable, value))))
+        remaining = [other for other in remaining if not z3.eq(other, variable)]
+    if not remaining:
+        return claim, claim
+    quantified = z3.Exists(remaining, claim)
+    # A concrete common-scope witness is an exact redundant disjunct of the
+    # existential, not an assumption about the latest writer. Retain the full
+    # original quantifier as well, so cross-iteration witnesses stay available.
+    # This exposes the usual same-output-block witness before Presburger
+    # search considers every preceding block that reused the physical rows.
+    substitutions = [(variable, value) for variable, value in instances if any(z3.eq(variable, v) for v in remaining)]
+    if not substitutions:
+        return quantified, quantified
+    unassigned = [v for v in remaining if not any(z3.eq(v, variable) for variable, _value in substitutions)]
+    instance = z3.simplify(z3.substitute(claim, *substitutions))
+    if unassigned:
+        instance = z3.Exists(unassigned, instance)
+    return quantified, instance
 
 
 @dataclass(frozen=True)
@@ -78,26 +217,61 @@ def _requested_elements(site, *dimensions):
     return total
 
 
-def _project(kernel, adapter):
+def _project(kernel, adapter, *, fold_singleton_loops=True):
+    from .dense_contracts import TiledIntegerStore
+
     sites = []
     scope_serial = 0
 
-    def walk(body, scopes=(), path=()):
+    def fold_singletons(value, constants):
+        if isinstance(value, Var):
+            return Const(constants[value.name]) if value.name in constants else value
+        if isinstance(value, Select):
+            if value.var in constants:
+                return fold_singletons(value.then if constants[value.var] == value.equals else value.other, constants)
+            return replace(
+                value, then=fold_singletons(value.then, constants), other=fold_singletons(value.other, constants)
+            )
+        if isinstance(value, Sum):
+            from merlin.sched.ir.expr import add
+
+            return add(*(fold_singletons(term, constants) for term in value.terms))
+        if isinstance(value, Scaled):
+            return fold_singletons(value.expr, constants) * value.factor
+        if isinstance(value, Const):
+            return value
+        if type(value) is tuple:
+            return tuple(fold_singletons(item, constants) for item in value)
+        if is_dataclass(value):
+            return replace(
+                value, **{field.name: fold_singletons(getattr(value, field.name), constants) for field in fields(value)}
+            )
+        return value
+
+    def walk(body, scopes=(), path=(), singleton_values=None):
+        singleton_values = {} if singleton_values is None else singleton_values
         nonlocal scope_serial
         for index, statement in enumerate(body):
             position = (*path, index)
             if isinstance(statement, Loop):
                 scope_serial += 1
                 scope = (scope_serial, statement.var, statement.extent)
-                walk(statement.body, (*scopes, scope), (*position, (scope_serial, statement.var)))
+                if statement.extent == 1 and fold_singleton_loops:
+                    # The only dynamic value is exactly zero. Keep its position
+                    # in the execution order, while eliminating a vacuous
+                    # quantified axis from every source/lifetime obligation.
+                    walk(statement.body, scopes, (*position, 0), {**singleton_values, statement.var: 0})
+                else:
+                    walk(statement.body, (*scopes, scope), (*position, (scope_serial, statement.var)), singleton_values)
             else:
                 if statement.produces is not None or statement.awaits:
                     raise ValueError("synchronous dense verification cannot erase completion tokens")
                 if statement.unit or statement.stages or statement.sets or statement.assumes:
                     raise ValueError("dense verification cannot erase unmodeled execution or configuration effects")
                 operation = adapter.project(statement)
-                if type(operation) not in (Load, Preload, Compute, Store):
+                if type(operation) not in (Load, Preload, Compute, Store, TiledIntegerStore, InitializeAccumulator):
                     raise ValueError("unknown projected dense operation is a conservative barrier")
+                operation = fold_singletons(operation, singleton_values)
                 sites.append(_Site(len(sites), operation, scopes, position))
 
     walk(kernel.body)
@@ -105,7 +279,8 @@ def _project(kernel, adapter):
 
 
 def verify_compact_dense(
-    kernel, problem, resources, storage, adapter, *, static_budget, timeout_ms=2000, output_readout=None
+    kernel, problem, resources, storage, adapter, *, static_budget, timeout_ms=2000,
+    output_readout=None, bias_source=None,
 ):
     """Verify current loop bounds, tails, source addresses and physical lifetimes.
 
@@ -123,8 +298,13 @@ def verify_compact_dense(
         raise ValueError("dense verification requires explicit checking and static command budgets")
     if not adapter.synchronous_completion or not adapter.exact_accumulator_continuation or storage.accumulator is None:
         raise ValueError("dense realization lacks its completion or accumulator contract")
-    if problem.bias:
-        raise ValueError("compact dense verification supports only the zero seed")
+    from .compact_dense import DenseBiasSource
+    if problem.bias != (bias_source is not None):
+        raise ValueError("bias presence requires explicit source initialization")
+    if bias_source is not None:
+        if type(bias_source) is not DenseBiasSource:
+            raise ValueError("typed dense bias source required")
+        bias_source.validate(problem, (kernel.args[0].dtype,kernel.args[1].dtype,kernel.args[2].dtype))
     if not resources.partial_output_tiles and (problem.m % problem.tile_m or problem.n % problem.tile_n):
         raise ValueError("dense resources do not declare output tail support")
     structure = check_structure(kernel)
@@ -132,21 +312,27 @@ def verify_compact_dense(
         raise ValueError("invalid dense kernel: " + "; ".join(structure))
     from merlin.sched.ir.kernel import DTYPE_BYTES
 
-    from .dense_contracts import DenseIntegerReadout
+    from .dense_contracts import DenseIntegerReadout, DenseTiledIntegerReadout, TiledIntegerStore
 
-    if output_readout is not None and type(output_readout) is not DenseIntegerReadout:
+    if output_readout is not None and type(output_readout) not in (DenseIntegerReadout, DenseTiledIntegerReadout):
         raise ValueError("dense output verification requires a selected typed readout")
+    tiled_readout = type(output_readout) is DenseTiledIntegerReadout
+    if tiled_readout:
+        output_readout.validate_problem(problem)
     output_bytes = problem.accumulator_bytes if output_readout is None else DTYPE_BYTES[output_readout.output_dtype]
     expected_args = (
         ((problem.m, problem.k), problem.lhs_bytes, "read"),
         ((problem.k, problem.n), problem.rhs_bytes, "read"),
+        *((((problem.n,), problem.accumulator_bytes, "read"),) if bias_source is not None else ()),
         ((problem.m, problem.n), output_bytes, "write"),
     )
     from merlin.sched.ir.kernel import DTYPE_BYTES
 
     if (
         kernel.attrs
-        or tuple(arg.name for arg in kernel.args) != ("lhs", "rhs", "output")
+        or tuple(arg.name for arg in kernel.args) != (
+            ("lhs", "rhs", "bias", "output") if bias_source is not None else ("lhs", "rhs", "output")
+        )
         or any(
             (arg.shape, DTYPE_BYTES.get(arg.dtype), arg.access) != expected
             for arg, expected in zip(kernel.args, expected_args)
@@ -156,28 +342,54 @@ def verify_compact_dense(
     sites = _project(kernel, adapter)
     if len(sites) > static_budget:
         raise ValueError("actual compact dense instructions exceed the static budget")
+    # Cache only successful source proofs after current boundaries, budgets and
+    # actual projections have been checked. Asynchronous epoch checks remain
+    # with their caller and always execute, even when this serial proof repeats.
+    try:
+        proof_key = _source_proof_key(sites, kernel, problem, resources, storage, adapter, output_readout, bias_source)
+    except TypeError:
+        proof_key = None
+    if proof_key is not None:
+        with _SOURCE_PROOF_LOCK:
+            previous = _SOURCE_PROOFS.get(proof_key)
+            if previous is not None:
+                _SOURCE_PROOFS.move_to_end(proof_key)
+                report = deepcopy(previous)
+                report.update(kernel_sha256=kernel.digest(), solver_queries=0,
+                              reused_solver_queries=previous["solver_queries"], source_proof_reused=True)
+                return report
     deadline = time.monotonic() + timeout_ms / 1000
     query_serial = 0
 
-    def prove(constraints, claim, reason):
+    def prove(constraints, claim, reason, *, witness=None):
         nonlocal query_serial
-        query_serial += 1
-        remaining = int((deadline - time.monotonic()) * 1000)
-        if remaining <= 0:
-            raise DenseVerificationUnavailable("compact dense verification budget exhausted: " + reason)
         # All supported addresses are affine, dimensions are finite equality
         # selects, and ownership/lifetime queries quantify integer loop indices.
         # Use the quantified linear-arithmetic procedure directly: the default
         # SMT heuristic can spend the entire budget instantiating these exact
         # Presburger queries even for a five-instruction rectangular schedule.
         # SAT and UNKNOWN retain the same refusal paths below.
-        solver = z3.Tactic("qsat").solver()
-        solver.set(timeout=max(1, remaining))
-        solver.add(*constraints, z3.Not(claim))
-        result = solver.check()
-        if result == z3.sat:
-            raise ValueError("actual compact dense invariant failed: " + reason)
-        if result != z3.unsat:
+        # Constructive common-scope witnesses retain *all* interval/order and
+        # overwrite obligations. Their success proves the original existential.
+        # If not established, check the complete formula in the SAME remaining
+        # budget; a failed preferred witness is never an invariant failure.
+        preferred = witness is not None and not z3.eq(witness, claim)
+        attempts = (witness, claim) if preferred else (claim,)
+        for index, selected in enumerate(attempts):
+            query_serial += 1
+            remaining = int((deadline - time.monotonic()) * 1000)
+            if remaining <= 0:
+                raise DenseVerificationUnavailable("compact dense verification budget exhausted: " + reason)
+            solver = z3.Tactic("qsat").solver()
+            solver.set(timeout=max(1, remaining // 2 if preferred and index == 0 else remaining))
+            solver.add(*constraints, z3.Not(selected))
+            result = solver.check()
+            if result == z3.unsat:
+                return
+            if preferred and index == 0:
+                continue
+            if result == z3.sat:
+                raise ValueError("actual compact dense invariant failed: " + reason)
             raise DenseVerificationUnavailable(
                 "compact dense proof unavailable: " + reason + ": " + solver.reason_unknown()
             )
@@ -241,6 +453,7 @@ def verify_compact_dense(
     # Build semantic read/write records from actual projected operands. Compute
     # consumes exactly its immediately preceding preload in the same loop body.
     loads = []
+    initializers = []
     computes = []
     stores = []
     consumed = set()
@@ -252,6 +465,22 @@ def verify_compact_dense(
         def x(value):
             return expression(value, env)
 
+        if isinstance(op, InitializeAccumulator):
+            if bias_source is None:
+                raise ValueError("undeclared accumulator initializer")
+            m,n=map(x,op.block)
+            rows,cols=x(op.rows),x(op.cols)
+            interval=rectangle(storage.accumulator,x(op.row),rows,cols,problem.accumulator_bytes)
+            valid=z3.And(m>=0,m<mt,n>=0,n<nt,
+                x(op.dram_col)==n*problem.tile_n,
+                x(op.source_row_stride)==0,x(op.source_col_stride)==1,
+                rows==extent(m,problem.m,problem.tile_m),
+                cols==extent(n,problem.n,problem.tile_n),
+                bounds(storage.accumulator,interval),aligned(storage.accumulator,x(op.row)),
+                cols*problem.accumulator_bytes<=storage.accumulator.unit_bytes)
+            return {"owner":(m,z3.IntVal(-1),n),"interval":interval,"view":storage.accumulator,
+                    "valid":valid,"rows":rows,"cols":cols,
+                    "reserved_end":(x(op.row)+rows-storage.accumulator.base)*storage.accumulator.unit_bytes}
         if isinstance(op, Load):
             if op.role not in {"lhs", "weight"} or op.gather is not None:
                 raise ValueError("unknown dense transfer semantics or gathered layout")
@@ -318,7 +547,7 @@ def verify_compact_dense(
                 cols == extent(n, problem.n, problem.tile_n),
                 x(preload.rows) == rows,
                 x(preload.weight_rows) == depth,
-                x(preload.accumulate) == z3.If(k == 0, 0, 1),
+                x(preload.accumulate) == (1 if bias_source is not None else z3.If(k == 0, 0, 1)),
                 bounds(storage.lhs, left),
                 bounds(storage.rhs, right),
                 bounds(storage.accumulator, output),
@@ -358,6 +587,8 @@ def verify_compact_dense(
                 bounds(storage.accumulator, interval),
                 aligned(storage.accumulator, x(op.accumulator_row)),
             )
+            if tiled_readout:
+                valid = z3.And(valid, x(op.readout_tile) == n)
             return {
                 "owner": (m, n),
                 "interval": interval,
@@ -392,11 +623,15 @@ def verify_compact_dense(
                 raise ValueError("dense compute does not consume exactly one adjacent preload")
             consumed.add(previous.ordinal)
             computes.append(site)
+        elif isinstance(op, InitializeAccumulator):
+            initializers.append(site)
         elif isinstance(op, Load):
             loads.append(site)
         elif isinstance(op, Store):
+            if (type(op) is TiledIntegerStore) != tiled_readout:
+                raise ValueError("actual dense store must retain the source-indexed readout kind")
             if op.readout != (None if output_readout is None else output_readout.identity):
-                raise ValueError("actual dense store readout differs from the checked scalar output")
+                raise ValueError("actual dense store readout differs from the checked output")
             stores.append(site)
         env, conditions = domain(site, f"bounds{site.ordinal}")
         prove(conditions, facts(site, env)["valid"], "source coordinates, tails, initialization or storage bounds")
@@ -419,6 +654,7 @@ def verify_compact_dense(
 
     coverage(computes, mt * kt * nt, "contraction")
     coverage(stores, mt * nt, "output")
+    coverage(initializers, mt * nt if bias_source is not None else 0, "bias initialization")
 
     # Conservatively separate the three simultaneously live roles through the
     # caller's explicit byte backings. No interchangeable-memory assumption.
@@ -435,7 +671,7 @@ def verify_compact_dense(
     # Reconstruct padded high-water marks from emitted addresses and loop
     # domains. Oversized assigned windows cannot bypass the resource budget.
     high_water = {view.name: 0 for view in views}
-    for site in (*loads, *computes):
+    for site in (*loads, *initializers, *computes):
         env, conditions = domain(site, f"high_water{site.ordinal}")
         fact = facts(site, env)
         remaining = int((deadline - time.monotonic()) * 1000)
@@ -459,32 +695,50 @@ def verify_compact_dense(
         raise ValueError("actual dense padded storage exceeds the selected resource budget")
 
     def prior_value(reader, renv, candidates, desired_owner, interval):
-        witnesses = []
+        witnesses, preferred = [], []
         for writer in candidates:
             we, wc = domain(writer, f"w{reader.ordinal}_{writer.ordinal}")
             wf = facts(writer, we)
+            # Simplify only exact formulas. In particular, an initializer at
+            # reduction -1 cannot witness a final K>=0 value. Excluding a
+            # statically false witness avoids constructing its nested overwrite
+            # quantifiers; every remaining lifetime obligation is unchanged.
+            matches = z3.simplify(z3.And(
+                equal(wf["owner"], desired_owner), equal(wf["interval"], interval),
+                before(writer, we, reader, renv),
+            ))
+            if z3.is_false(matches):
+                continue
             no_overwrites = []
             for other in candidates:
                 oe, oc = domain(other, f"o{reader.ordinal}_{writer.ordinal}_{other.ordinal}")
                 of = facts(other, oe)
                 if of["view"].backing != wf["view"].backing:
                     continue
-                intervenes = z3.And(
+                intervenes = z3.simplify(z3.And(
                     *oc,
                     before(writer, we, other, oe),
                     before(other, oe, reader, renv),
                     overlap(of["interval"], interval),
-                )
+                ))
+                if z3.is_false(intervenes):
+                    continue
                 no_overwrites.append(z3.Not(z3.Exists(list(oe.values()), intervenes)) if oe else z3.Not(intervenes))
             claim = z3.And(
                 *wc,
-                equal(wf["owner"], desired_owner),
-                equal(wf["interval"], interval),
-                before(writer, we, reader, renv),
+                matches,
                 *no_overwrites,
             )
-            witnesses.append(z3.Exists(list(we.values()), claim) if we else claim)
-        return z3.Or(*witnesses)
+            reader_scopes = {scope: name for scope, name, _extent in reader.scopes}
+            common = tuple(
+                (we[name], renv[reader_scopes[scope]])
+                for scope, name, _extent in writer.scopes
+                if scope in reader_scopes
+            )
+            complete, instance = _defined_exists(list(we.values()), claim, instances=common)
+            witnesses.append(complete)
+            preferred.append(instance)
+        return z3.Or(*witnesses), z3.Or(*preferred)
 
     for reader in computes:
         re, rc = domain(reader, f"read{reader.ordinal}")
@@ -492,19 +746,24 @@ def verify_compact_dense(
         m, k, n = rf["owner"]
         for role, owner, interval in (("lhs", (m, k), rf["lhs"]), ("weight", (k, n), rf["rhs"])):
             writers = [site for site in loads if site.operation.role == role]
-            available = prior_value(reader, re, writers, owner, interval)
-            prove(rc, available, role + " residency and last completed load")
-        available = prior_value(reader, re, computes, (m, k - 1, n), rf["interval"])
-        prove((*rc, k > 0), available, "exact ordered accumulator continuation")
+            available, witness = prior_value(reader, re, writers, owner, interval)
+            prove(rc, available, role + " residency and last completed load", witness=witness)
+        available, witness = prior_value(reader, re, [*initializers,*computes], (m, k - 1, n), rf["interval"])
+        prove(
+            (*rc, z3.BoolVal(True) if bias_source is not None else k > 0),
+            available,
+            "exact ordered accumulator continuation or initial bias",
+            witness=witness,
+        )
 
     for reader in stores:
         re, rc = domain(reader, f"store{reader.ordinal}")
         rf = facts(reader, re)
         m, n = rf["owner"]
-        available = prior_value(reader, re, computes, (m, kt - 1, n), rf["interval"])
-        prove(rc, available, "complete reduction before output and no accumulator overwrite")
+        available, witness = prior_value(reader, re, [*initializers,*computes], (m, kt - 1, n), rf["interval"])
+        prove(rc, available, "complete reduction before output and no accumulator overwrite", witness=witness)
 
-    return {
+    report = {
         "schema": "merlin.compact_dense_realization.v1",
         "kernel_sha256": kernel.digest(),
         "configuration_identity": adapter.configuration_identity,
@@ -514,18 +773,39 @@ def verify_compact_dense(
         "executed_instruction_calls": sum(site.instances for site in sites),
         "lhs_loads": sum(site.instances for site in loads if site.operation.role == "lhs"),
         "rhs_loads": sum(site.instances for site in loads if site.operation.role == "weight"),
+        "bias_initializations": sum(site.instances for site in initializers),
+        "bias_source": None if bias_source is None else {
+            "columns": bias_source.columns, "dtype": bias_source.dtype, "arithmetic": bias_source.arithmetic,
+            "row_stride": 0, "column_stride": 1,
+        },
+        "requested_bias_load_bytes": sum(
+            _requested_elements(site, site.operation.cols) * problem.accumulator_bytes for site in initializers
+        ),
         "requested_load_bytes": sum(
             _requested_elements(site, site.operation.rows, site.operation.cols)
             * (problem.lhs_bytes if site.operation.role == "lhs" else problem.rhs_bytes)
             for site in loads
-        ),
+        ) + sum(_requested_elements(site,site.operation.cols)*problem.accumulator_bytes for site in initializers),
         "requested_store_bytes": sum(
             _requested_elements(site, site.operation.rows, site.operation.cols) * output_bytes for site in stores
         ),
         "padded_high_water_bytes": high_water,
         "output_tiles": sum(site.instances for site in stores),
+        **({"tiled_readout": {"identity": output_readout.identity,
+                               "columns": output_readout.columns,
+                               "tile_columns": output_readout.tile_columns,
+                               "parameter_words": len(output_readout.table_words),
+                               "selection": "actual readout_tile equals original output column tile"}}
+           if tiled_readout else {}),
         "solver_queries": query_serial,
         "completion": "declared synchronous",
         "machine_emission": "not_established",
         "timing": "UNKNOWN",
     }
+    if proof_key is not None:
+        with _SOURCE_PROOF_LOCK:
+            _SOURCE_PROOFS[proof_key] = deepcopy(report)
+            _SOURCE_PROOFS.move_to_end(proof_key)
+            while len(_SOURCE_PROOFS) > _SOURCE_PROOF_LIMIT:
+                _SOURCE_PROOFS.popitem(last=False)
+    return report

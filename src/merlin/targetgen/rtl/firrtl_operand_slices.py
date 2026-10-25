@@ -8,8 +8,9 @@ not command acceptance, instruction roles, address legality or sequencer state.
 from __future__ import annotations
 
 import copy
-import hashlib
 from pathlib import Path
+
+from merlin.common.guarded_file_digest import sha256 as source_digest
 
 from . import firrtl_struct as F
 
@@ -22,8 +23,7 @@ def _source(path, expected):
     if (not path.is_absolute() or path.resolve() != path or path.is_symlink()
             or not path.is_file() or type(expected) is not str or len(expected) != 64):
         raise ValueError("operand layout needs an ordinary selected FIRRTL source and byte pin")
-    with path.open("rb") as stream:
-        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    digest = source_digest(path)
     if digest != expected:
         raise ValueError("selected operand FIRRTL bytes changed")
     return path

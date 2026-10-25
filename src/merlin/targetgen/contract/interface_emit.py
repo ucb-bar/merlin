@@ -54,6 +54,7 @@ _OP_TO_OPCODE = {v: k for k, v in _OPCODE_TO_OP.items()}
 # upper-cased. Extend this table (and the command_buffer opcode enum) as codegen gains op classes;
 # the parse/emit machinery is generic over it, so a new class is one table row plus its kernel nest.
 _NAMED_OP_OPERAND_KEYS = {
+    "maxpool2d": ["src"],
     "rmsnorm": ["src", "gamma"],
     "attention_qk": ["q", "k"],
     # P @ V, the second matmul of flash attention and the sibling of attention_qk (which contracts
@@ -144,7 +145,7 @@ def _fmt_attrs(attrs: dict[str, Any]) -> str:
             # so a round-tripped pooling command lost its window to a typing mismatch reported far from
             # the spelling that caused it. String stages (``epilogue = ["relu"]``) are unchanged.
             inner = ", ".join(
-                f"{float(x)!r} : f32" if k == "acc_scale_by_column"
+                f"{float(x)!r} : f32" if k in {"acc_scale_by_column", "source_scales"}
                 else f'"{x}"' if isinstance(x, str) else str(x)
                 for x in v
             )
@@ -203,7 +204,8 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
         elif op in ("MATMUL_RESIDENT", "MATMUL"):
             lhs, rhs, dst = ops["lhs"], ops["rhs"], ops["dst"]
             lines.append(
-                f"  %{dst} = merlin_iface.matmul %{lhs}, %{rhs} : "
+                f"  %{dst} = merlin_iface.matmul %{lhs}, %{rhs}"
+                + (" " + _fmt_attrs(attrs) if attrs else "") + " : "
                 f"({val_type[lhs]}, {val_type[rhs]}) -> !merlin_iface.acc<{acc_t}>"
             )
             val_type[dst] = f"!merlin_iface.acc<{acc_t}>"
@@ -679,9 +681,10 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
                 }
             )
         elif mnem == "matmul":
-            cb["commands"].append(
-                {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": srcs[0], "rhs": srcs[1], "dst": result}}
-            )
+            command = {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": srcs[0], "rhs": srcs[1], "dst": result}}
+            if attrs:
+                command["attributes"] = attrs
+            cb["commands"].append(command)
         elif mnem in _NAMED_OP_OPERAND_KEYS:
             keys = _NAMED_OP_OPERAND_KEYS[mnem]
             if len(srcs) != len(keys):

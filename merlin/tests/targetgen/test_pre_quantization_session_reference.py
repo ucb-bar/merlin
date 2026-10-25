@@ -57,3 +57,34 @@ def test_paper_ready_session_receives_an_independent_reference(trajectory):
 def test_other_sessions_are_returned_unchanged(trajectory, session):
     assert pre_quantization_session_reference(torch.nn.Identity(), (), session) is session
     assert trajectory == []
+
+
+def test_explicit_diagnostic_reference_preserves_nonpaper_status(trajectory):
+    session = {"paper_ready": False, "quality": {"output_index": 0}}
+    result = pre_quantization_session_reference(
+        torch.nn.Identity(), (torch.zeros(2),), session, include_diagnostic=True
+    )
+    assert result["paper_ready"] is False
+    assert result["quality"]["reference"] == "eager_fp32"
+    np.testing.assert_array_equal(result["quality"]["reference_values"], np.arange(4, dtype=np.float32))
+    assert len(trajectory) == 1
+
+
+def test_diagnostic_non_fp32_source_stays_unavailable(trajectory):
+    result = pre_quantization_session_reference(
+        torch.nn.Identity(), (torch.zeros(2, dtype=torch.bfloat16),),
+        {"paper_ready": False}, include_diagnostic=True,
+    )
+    assert result["quality"]["reference"] == "unavailable"
+    assert "reference_values" not in result["quality"]
+    assert not trajectory
+
+
+def test_diagnostic_nonfinite_source_stays_unavailable(trajectory, monkeypatch):
+    monkeypatch.setattr(sys.modules['m2m.capture.bundle'], 'capture_session_trajectory',
+                        lambda *args: np.array([float('nan')], dtype=np.float32))
+    result = pre_quantization_session_reference(
+        torch.nn.Identity(), (torch.zeros(2),), {"paper_ready": False}, include_diagnostic=True,
+    )
+    assert result["quality"]["reference"] == "unavailable"
+    assert "reference_values" not in result["quality"]

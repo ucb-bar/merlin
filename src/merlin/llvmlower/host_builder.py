@@ -228,3 +228,60 @@ class FnBuilder:
     def finish(self) -> Region:
         self.blk.add_op(llvm.ReturnOp())
         return self.region
+
+
+def append_void_region(builder: FnBuilder, function: llvm.FuncOp, arguments) -> dict:
+    """Append a closed void CFG without calls, reordering or removing any effects.
+
+    This is mechanical region composition, not an alias or async-completion
+    proof. The caller must establish actual argument ownership and ordering.
+    All exits join a fresh continuation; internal branches and fences survive.
+    The original function is never changed. External calls/globals, nested
+    regions and captured SSA values refuse rather than gaining new authority.
+    """
+    arguments = tuple(arguments)
+    function.verify()
+    if any(not key.startswith("prov.") for key in function.attributes) or set(function.properties) - {"sym_name", "function_type", "CConv", "linkage", "visibility_"}:
+        raise ValueError("region has unsupported function-level semantics")
+    blocks = tuple(function.body.blocks)
+    if not blocks or len(blocks[0].args) != len(arguments):
+        raise ValueError("closed region argument arity differs")
+    if any(a.type != b.type for a, b in zip(blocks[0].args, arguments, strict=True)):
+        raise ValueError("closed region argument types differ")
+    if builder.blk.last_op is not None and builder.blk.last_op.has_trait(llvm.IsTerminator):
+        raise ValueError("region append requires an open continuation")
+    operations = tuple(op for block in blocks for op in block.ops)
+    defined = {arg for block in blocks for arg in block.args} | {r for op in operations for r in op.results}
+    returns = [op for op in operations if isinstance(op, llvm.ReturnOp)]
+    if not returns or any(op.operands for op in returns):
+        raise ValueError("region composition requires explicit void returns")
+    if any(op.regions or isinstance(op, (llvm.CallOp, llvm.AddressOfOp)) for op in operations):
+        raise ValueError("region composition refuses nested regions, calls and global references")
+    if any(value not in defined for op in operations for value in op.operands):
+        raise ValueError("region contains captured SSA values")
+    if any(successor is blocks[0] for op in operations for successor in op.successors):
+        raise ValueError("region cannot branch to its argument entry")
+    if any(successor not in blocks for op in operations for successor in op.successors):
+        raise ValueError("region branches outside its source function")
+    if any(not isinstance(block.last_op, (llvm.BrOp, llvm.CondBrOp, llvm.ReturnOp)) for block in blocks):
+        raise ValueError("region has an unsupported exit")
+    clone = function.clone()
+    copied = tuple(clone.body.blocks)
+    first = copied[0]
+    for old, new in zip(tuple(first.args), arguments, strict=True):
+        old.replace_all_uses_with(new)
+    for old in reversed(tuple(first.args)):
+        first.erase_arg(old)
+    continuation = Block()
+    builder.add(llvm.BrOp(first))
+    for block in copied:
+        clone.body.detach_block(block)
+        builder.region.add_block(block)
+        last = block.last_op
+        if isinstance(last, llvm.ReturnOp):
+            block.erase_op(last)
+            block.add_op(llvm.BrOp(continuation))
+    builder.region.add_block(continuation)
+    builder.blk = continuation
+    return {"blocks": len(blocks), "returns": len(returns), "operations": len(operations),
+            "effects": "all original operations retained in source order", "calls_added": 0}

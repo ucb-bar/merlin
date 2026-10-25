@@ -317,7 +317,7 @@ def _nhwc_matrix(value) -> list:
     return [empty, transpose, collapse]
 
 
-def _contiguous_result_views(group, members, device):
+def _contiguous_result_views(group, members, device, *, allow_no_views=False):
     """Prove the root's complete ordered result path, retaining only its static views.
 
     Arithmetic admission remains the group's ordinary source/readout proof. Here each intervening
@@ -398,7 +398,53 @@ def _contiguous_result_views(group, members, device):
             else:
                 return None
         value = op.results[0]
-    return views or None
+    return views if views or allow_no_views else None
+
+
+def _unit_leading_residual_view(group, members, entry):
+    """Prove a source-owned residual's dense leading-unit matrix view.
+
+    The independently admitted residual still owns its arithmetic and quantization. This
+    additional proof only removes unit axes from its pointer ABI: the original add must use
+    identity coordinates, and its complete nonescaping readout must retain those coordinates.
+    """
+    from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, NoneAttr, TensorType, i64
+    from xdsl.dialects.linalg.attrs import IteratorType
+    from xdsl.ir.affine import AffineMap
+    from xdsl.traits import is_side_effect_free
+
+    from merlin.xdsl_dialects.lowering import group_command as GC
+
+    root = getattr(group, "root", None)
+    if entry.get("op") != "residual_add" or getattr(group, "operand_sum", None) is None or root is None:
+        return None
+    if root.name != "linalg.generic" or len(root.inputs) != 2 or len(root.outputs) != 1 or len(root.results) != 1:
+        return None
+    shape = _shape(root.results[0])
+    device = GC.device_output_shape(entry)
+    if len(shape) <= 2 or shape[-2:] != device or any(n != 1 for n in shape[:-2]) or any(n < 1 for n in device):
+        return None
+    values = [*root.operands, root.results[0]]
+    if any(not isinstance(v.type, TensorType) or v.type.encoding != NoneAttr() or _shape(v) != shape for v in values):
+        return None
+    if any(v.type.element_type != root.results[0].type.element_type for v in root.operands):
+        return None
+    body = list(root.body.block.ops)
+    if (
+        any(m.data != AffineMap.identity(len(shape)) for m in root.indexing_maps)
+        or len(root.indexing_maps) != len(root.operands)
+        or len(root.iterator_types) != len(shape)
+        or any(it.data != IteratorType.PARALLEL for it in root.iterator_types)
+        or not body or body[-1].name != "linalg.yield"
+        or any(not is_side_effect_free(op) for op in body[:-1])
+        or _contiguous_result_views(group, members, shape, allow_no_views=True) != []
+    ):
+        return None
+    # The first device row axis includes only the original leading unit axes and row.
+    return ArrayAttr([
+        ArrayAttr([IntegerAttr(i, i64) for i in range(len(shape) - 1)]),
+        ArrayAttr([IntegerAttr(len(shape) - 1, i64)]),
+    ])
 
 
 def _device_result(
@@ -428,6 +474,12 @@ def _device_result(
     device_type = TensorType(element, device)
     if have == device or (batch and have == [*map(int, batch), *device]):
         return None, result_type, ""
+    residual_view = _unit_leading_residual_view(group, members, entry) if not batch and not transposed else None
+    if residual_view is not None:
+        def relayout(value) -> list:
+            return [tensor.ExpandShapeOp(value, (), residual_view, have, result_type)]
+
+        return relayout, device_type, ""
     views = (
         _contiguous_result_views(group, members, device)
         if entry.get("op") == "matmul" and not batch and not transposed else None
@@ -533,6 +585,8 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
     named in the reason rather than dropped from the call. ``bind_weight(array, element_type)``, when
     given, supplies the laid-out weight as a value (:class:`merlin.llvmlower.blob_weights.WeightArgs`)
     instead of an ``arith.constant``."""
+    if group.window_pool is not None:
+        return [pair[0]], [], ["input_0"], ""
     if group.window_mean is not None:
         from xdsl.dialects import tensor
         from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, TensorType, i64
@@ -570,7 +624,25 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         from merlin.xdsl_dialects.lowering import group_command as GC
 
         second = "weight_0" if GC.stationary_is_activation(entry) else "input_1"
-        return _with_logical_bias(entry, [pair[0], pair[1]], [], ["input_0", second], row, arrays, why_no_prepack)
+        residual_view = _unit_leading_residual_view(group, group.members, entry)
+        views = []
+        if residual_view is not None:
+            from xdsl.dialects import tensor
+            from xdsl.dialects.builtin import NoneAttr, TensorType
+
+            shape = _shape(group.root.results[0])
+            if any(
+                not isinstance(value.type, TensorType) or value.type.encoding != NoneAttr() or _shape(value) != shape
+                for value in pair
+            ) or pair[0].type != pair[1].type:
+                return None, (), (), "residual inputs have no identical dense source-owned matrix view"
+            for value in pair:
+                views.append(tensor.CollapseShapeOp(
+                    operands=[value], result_types=[TensorType(value.type.element_type, GC.device_output_shape(entry))],
+                    properties={"reassociation": residual_view},
+                ))
+            pair = tuple(view.results[0] for view in views)
+        return _with_logical_bias(entry, [pair[0], pair[1]], views, ["input_0", second], row, arrays, why_no_prepack)
     operands, constants, roles = [pair[0]], [], ["input_0", "weight_0"]
     weight_row = (row or {}).get("weight") or {}
     laid_out = arrays.get(weight_row.get("array")) if isinstance(weight_row.get("array"), str) else None

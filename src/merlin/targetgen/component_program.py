@@ -9,9 +9,11 @@ It contains no target schedule, instruction, golden or workload information.
 from __future__ import annotations
 
 import copy
+import json
 from dataclasses import dataclass
 
 SCHEMA_V2 = "merlin.component_program.v2"
+LOGICAL_IO_V1 = "merlin.logical_io.v1"
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,8 @@ def _integer_dtype(value, *, operand_dtype, accumulator_dtype):
 def analyze(program, *, operand_dtype, accumulator_dtype):
     """Check a finite typed DAG and derive source effects, uses and live outputs."""
     v2 = isinstance(program, dict) and program.get("schema") == SCHEMA_V2
-    if not isinstance(program, dict) or set(program) != {"inputs", "nodes", "outputs"} | ({"schema"} if v2 else set()):
+    logical_io = isinstance(program, dict) and program.get("logical_io") == LOGICAL_IO_V1
+    if not isinstance(program, dict) or set(program) != {"inputs", "nodes", "outputs"} | ({"schema"} if v2 else set()) | ({"logical_io"} if logical_io else set()):
         raise ValueError("component program requires exactly inputs, nodes and outputs")
     _integer_dtype(accumulator_dtype, operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
     if not isinstance(program["inputs"], list) or not program["inputs"]:
@@ -178,6 +181,10 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
     }
     if v2:
         result["schema"] = SCHEMA_V2
+    if logical_io:
+        if output_names & {row["name"] for row in inputs}:
+            raise ValueError("logical IO requires distinct input and output names")
+        result["logical_io"] = LOGICAL_IO_V1
     return result
 
 
@@ -195,9 +202,19 @@ def render(program, *, operand_dtype, accumulator_dtype):
     values = {row["name"]: "%" + row["name"] for row in program["inputs"]}
     args = ", ".join(values[row["name"]] + ": " + types[row["name"]].mlir for row in program["inputs"])
     returns = ", ".join(ValueType(tuple(row["shape"]), row["dtype"]).mlir for row in program["outputs"])
+    # Opt-in preserves historical source identities. These are public logical
+    # names, not physical buffers, placements or target execution authority.
+    attributes = ""
+    if program.get("logical_io") == LOGICAL_IO_V1:
+        fields = [f'merlin.logical_io = "{LOGICAL_IO_V1}"']
+        fields.extend(
+            f"merlin.logical_{key} = " + json.dumps([row["name"] for row in program[key]], ensure_ascii=False)
+            for key in ("inputs", "outputs")
+        )
+        attributes = " attributes {" + ", ".join(fields) + "}"
     lines = [
         'builtin.module attributes {prov.level = "linalg-on-tensors"} {',
-        f"  func.func @forward({args}) -> ({returns}) {{",
+        f"  func.func @forward({args}) -> ({returns}){attributes} {{",
     ]
     identity = "affine_map<(d0, d1) -> (d0, d1)>"
     for node in program["nodes"]:

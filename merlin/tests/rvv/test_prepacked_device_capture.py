@@ -60,3 +60,45 @@ def test_foreign_original_capture_and_mutated_prepared_weights_refuse(tmp_path, 
     manifest.write_text(manifest.read_text() + " ")
     with pytest.raises(weight_prepack.PrepackRefused):
         rebind(route, source=source, prepared=prepared, work=work)
+
+
+def test_sibling_layout_derivation_retains_original_source_and_effect_selection(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    from merlin.common import mlir_query as mq
+    from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
+    from merlin.llvmlower.prepacked_device_capture import original_sibling_source
+    from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+    from merlin.xdsl_dialects._common import text
+
+    source, prepared, work, route = selected(tmp_path, monkeypatch)
+    original = mq.parse((source / 'model.mlir').read_text())
+    digest = hashlib.sha256(text(original, generic=True).encode()).hexdigest()
+    # This fixture checks only exact layout custody; no target effects are qualified.
+    choice = SiblingSourceRoute(digest, BorrowedBufferEffects('TEST-only owner premise', True, True, True))
+    route = replace(route, sibling_source=choice)
+    bound = rebind(route, source=source, prepared=prepared, work=work)
+    assert bound.sibling_source is choice and route.capture == source / 'model.mlir'
+    reopened, receipt = original_sibling_source(
+        bound, choice, actual_source=prepared / 'model.mlir', work=work,
+    )
+    assert text(reopened, generic=True) == text(original, generic=True)
+    assert choice.source_ir_sha256 == digest
+    binding = work / 'device_capture_preparation.json'
+    document = json.loads(binding.read_text())
+    document['preparation_sha256'] = '0' * 64
+    binding.write_text(json.dumps(document))
+    with pytest.raises(weight_prepack.PrepackRefused, match='original checked weight preparation'):
+        original_sibling_source(bound, choice, actual_source=prepared / 'model.mlir', work=work)
+    assert receipt['sha256'] != '0' * 64
+
+
+def test_weight_preparation_cannot_rebind_another_sibling_source(tmp_path, monkeypatch):
+    from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
+    from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+
+    source, prepared, work, route = selected(tmp_path, monkeypatch)
+    choice = SiblingSourceRoute('0' * 64, BorrowedBufferEffects('TEST-only owner premise', True, True, True))
+    with pytest.raises(weight_prepack.PrepackRefused, match='original sibling selection'):
+        rebind(replace(route, sibling_source=choice), source=source, prepared=prepared, work=work)

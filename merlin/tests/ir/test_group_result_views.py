@@ -251,3 +251,78 @@ def test_unknown_body_effects_cannot_hide_in_an_index_preserving_stage():
     relu = next(op for op in group.members if CG.classify(op).kind == CG.RELU)
     relu.body.block.insert_op_before(CallOp("effect", [], []), relu.body.block.last_op)
     assert _binding(group, entry)[2]
+
+
+def _unit_residual(rows=12, columns=48):
+    shape = f"1x{rows}x{columns}"
+    module = mq.parse(f'''module {{
+      func.func @forward(%a: tensor<{shape}xf32>, %b: tensor<{shape}xf32>,
+                         %s: tensor<f32>, %z: tensor<i64>) -> tensor<{shape}xi8> {{
+        %e = tensor.empty() : tensor<{shape}xf32>
+        %r = linalg.generic {{indexing_maps = [
+          affine_map<(d0,d1,d2)->(d0,d1,d2)>, affine_map<(d0,d1,d2)->(d0,d1,d2)>,
+          affine_map<(d0,d1,d2)->(d0,d1,d2)>], iterator_types = ["parallel","parallel","parallel"]}}
+          ins(%a,%b : tensor<{shape}xf32>,tensor<{shape}xf32>) outs(%e : tensor<{shape}xf32>) {{
+          ^bb0(%x: f32,%y: f32,%o: f32):
+            %v = arith.addf %x,%y : f32
+            linalg.yield %v : f32
+        }} -> tensor<{shape}xf32>
+        %q = "quant_ext.quantize_per_tensor"(%r,%s,%z)
+          <{{quant_min = -128 : i64, quant_max = 127 : i64, output_dtype = "int8"}}>
+          : (tensor<{shape}xf32>,tensor<f32>,tensor<i64>) -> tensor<{shape}xi8>
+        func.return %q : tensor<{shape}xi8>
+      }}
+    }}''')
+    root = next(op for op in module.walk() if op.name == "linalg.generic")
+    quantize = next(op for op in module.walk() if mq.op_name(op) == "quant_ext.quantize_per_tensor")
+    group = SimpleNamespace(root=root, members=[root, quantize], operand_sum={}, window_mean=None, window_pool=None)
+    return module, group, {"op": "residual_add", "M": rows, "N": columns}
+
+
+@pytest.mark.parametrize("rows,columns", [(12, 48), (1, 48), (17, 16)])
+def test_source_owned_unit_axes_bind_both_inputs_and_original_destination(rows, columns):
+    from merlin.llvmlower.group_host_call import _logical_group_call
+
+    module, group, entry = _unit_residual(rows, columns)
+    module.verify()
+    dtype = TensorType(i8, [1, rows, columns])
+    pair = tuple(Block(arg_types=[dtype, dtype]).args)
+    stated = SimpleNamespace(stored_operand=None)
+    operands, views, roles, why = _logical_group_call(group, stated, entry, pair, None, {}, "")
+    assert why == "" and roles == ["input_0", "input_1"]
+    assert len(views) == 2
+    for original, view, operand in zip(pair, views, operands, strict=True):
+        view.verify()
+        assert view.operands[0] is original and operand is view.results[0]
+        assert operand.type == TensorType(i8, [rows, columns])
+    relayout, result_type, why = _binding(group, entry)
+    assert not why and result_type == TensorType(i8, [rows, columns])
+    (expand,) = relayout(Block(arg_types=[result_type]).args[0])
+    expand.verify()
+    assert expand.results[0].type == dtype
+
+
+@pytest.mark.parametrize("mutation", ["permutation", "encoding", "escaping", "dtype", "extent"])
+def test_leading_unit_extent_alone_does_not_authorize_a_residual_view(mutation):
+    from xdsl.dialects.builtin import AffineMapAttr, StringAttr
+    from xdsl.ir.affine import AffineDimExpr, AffineMap
+
+    _, group, entry = _unit_residual()
+    root = group.root
+    if mutation == "permutation":
+        maps = list(root.indexing_maps)
+        maps[0] = AffineMapAttr(AffineMap(3, 0, (AffineDimExpr(0), AffineDimExpr(2), AffineDimExpr(1))))
+        root.properties["indexing_maps"] = ArrayAttr(maps)
+    elif mutation == "encoding":
+        root.results[0]._type = TensorType(f32, [1, 12, 48], StringAttr("non_dense"))
+    elif mutation == "escaping":
+        tensor.CollapseShapeOp(
+            operands=[root.results[0]], result_types=[TensorType(f32, [576])],
+            properties={"reassociation": ArrayAttr([ArrayAttr([IntegerAttr(i, i64) for i in range(3)])])},
+        )
+    elif mutation == "dtype":
+        root.operands[0]._type = TensorType(i8, [1, 12, 48])
+    else:
+        entry["M"] = 48
+        entry["N"] = 12
+    assert _binding(group, entry)[2]

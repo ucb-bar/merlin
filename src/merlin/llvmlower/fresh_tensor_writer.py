@@ -12,7 +12,7 @@ buffers introduced by later out-parameter conversion retain caller obligations.
 
 from dataclasses import dataclass
 
-from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
+from .borrowed_effects import BorrowedBufferEffects, validate_effects
 
 
 @dataclass(frozen=True)

@@ -242,11 +242,18 @@ def _decoded_inputs(ins: dict) -> dict[str, list]:
         if decoded is None:
             continue
         flat: list = []
-        stack = [decoded]
-        while stack:  # flatten any nesting to row-major order
-            cur = stack.pop(0)
+        # Preserve left-to-right leaf order without shifting a potentially
+        # multi-million-element operand list. Iterator frames need temporary
+        # storage proportional to nesting depth, not tensor size.
+        stack = [iter((decoded,))]
+        while stack:
+            try:
+                cur = next(stack[-1])
+            except StopIteration:
+                stack.pop()
+                continue
             if isinstance(cur, list):
-                stack = list(cur) + stack
+                stack.append(iter(cur))
             else:
                 flat.append(cur)
         out[name] = flat

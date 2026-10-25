@@ -878,6 +878,15 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             else None
         )
     )
+    # Direct recipe captures also reach the bundle writer already quantized.
+    # Freeze a real source trajectory first, including diagnostic sessions;
+    # the compatibility quality filename must not be mistaken for FP32 evidence.
+    if a.recipe and not a.stage_fp32 and session is not None:
+        from merlin.targetgen._capture_session_reference import pre_quantization_session_reference
+
+        session = pre_quantization_session_reference(
+            mdl, tuple(inputs), session, include_diagnostic=True
+        )
     # Capture loader-owned calibration at original precision before export.
     calibration = None
     if a.stage_fp32 and a.recipe:
@@ -1255,6 +1264,17 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         weights_path=weights_path,
         **trace_options,
     )
+    # Preserve this boundary before later eager evaluation or bundle writing can
+    # fail. A conversion refusal must remain visible even if a subsequent error
+    # prevents final metadata from being written; this is not an execution grade.
+    (out / "conversion-status.json").write_text(json.dumps({
+        "schema": "merlin.capture.conversion_status.v1",
+        "conversion_ok": bool(res.ok),
+        "mlir_bytes": len(res.mlir_text.encode("utf-8")),
+        "path_taken": getattr(res, "path_taken", None),
+        "diagnostics": [str(item)[:2000] for item in (getattr(res, "diagnostics", None) or [])[:100]],
+        "numerical_execution_qualified": False,
+    }, indent=2) + "\n", encoding="utf-8")
     opaque = opaque_report(res.mlir_text)
     n_opaque = sum(opaque.values())
     if integerization_receipt is not None:
@@ -1463,4 +1483,13 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Quantization is followed by further FX cleanup/re-export in model2mlir.
+    # Preserve vmap control effects AND live nested GraphModule state through
+    # later export/cleanup too: those passes may share child modules with the
+    # final eager golden model. No model arithmetic/framework installation edits.
+    try:
+        import _recipe_quantizer as _rq_effects
+    except ImportError:
+        from merlin.targetgen import _recipe_quantizer as _rq_effects
+    with _rq_effects.preserve_fx_vmap_effects(), _rq_effects._pt2e_nested_graph_cleanup():
+        raise SystemExit(main())

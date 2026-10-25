@@ -242,6 +242,7 @@ def schedule_source_dense(
     output_operation=None,
     output_operations=(),
     readout_qualification_identity=None,
+    schedule_plan=None,
 ):
     """Compile one current source operation; missing capability keeps fallback explicit.
 
@@ -252,6 +253,8 @@ def schedule_source_dense(
     existing bounded scheduler cannot realize a legal candidate.
     ``pass_order`` selects source stages; ``schedule_pass_order`` reaches the
     compact scheduler's independent prerequisite and realization checks.
+    An optional typed ``schedule_plan`` is bound to this unchanged source module's
+    digest automatically; it cannot supply a different scalar recurrence.
     """
     if (
         type(module) is not builtin.ModuleOp
@@ -374,6 +377,8 @@ def schedule_source_dense(
             pass_order=schedule_pass_order,
             output_readout=output_readout,
             readout_qualification_identity=readout_qualification_identity,
+            schedule_plan=schedule_plan,
+            source_identity=None if schedule_plan is None else session.stamp().source_sha256,
         )
         fresh()
         return {"compiled_dense": result}

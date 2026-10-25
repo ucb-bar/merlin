@@ -41,6 +41,25 @@ def test_narrowed_pointer_cannot_supply_original_source_identity():
     assert _pointer("%address = llvm.ptrtoint %base : !llvm.ptr to i32")["kind"] == "unknown"
 
 
+@pytest.mark.parametrize("flags", ["", "overflow<nsw>", "overflow<nuw>"])
+def test_integer_pointer_offset_accepts_zero_flags_but_not_poison_promises(flags):
+    module = RD._parse_module(f"""module {{
+      llvm.func @kernel(%base: !llvm.ptr) {{
+        %base_int = llvm.ptrtoint %base : !llvm.ptr to i64
+        %offset = llvm.mlir.constant(16 : i64) : i64
+        %address = llvm.add %base_int, %offset {flags} : i64
+        llvm.return
+      }}
+    }}""")
+    assert module is not None
+    address = next(op for op in module.walk() if op.name == "llvm.add")
+    actual = RD._operand(RD._resolve(address.results[0], _word_bits=64))
+    if flags:
+        assert actual["kind"] == "unknown"
+    else:
+        assert actual == {"kind": "argbase", "arg_index": 0, "offset": 16, "raw": None}
+
+
 _GLOBAL = """llvm.mlir.global private constant @padding(dense<0> : tensor<16xi8>)
  {addr_space = 0 : i32, alignment = 8 : i64} : !llvm.array<16 x i8>"""
 _ADDRESS = """

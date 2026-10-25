@@ -342,6 +342,7 @@ def test_a_quantized_residual_is_an_integer_sum_on_a_unit_whose_load_multiplies(
     assert group.operand_sum == {
         "lhs_scale": 0.5,
         "rhs_scale": 0.25,
+        "source_scales": (0.5, 0.25, 1.0),
         "bound_lsb": 1,
         "readout_factor": 1.0,
         "relu": True,

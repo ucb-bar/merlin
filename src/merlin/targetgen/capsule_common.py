@@ -29,7 +29,6 @@ from .contract import schemas
 def _target_consumer_record(pkg):
     """A package transport promise, never instruction or execution authority."""
     from .package_runtime import CertFailure
-
     from .shared_pass_contract import validate_target_ir_consumer_declaration
 
     try:
@@ -546,9 +545,45 @@ def run_entrypoints(
         raise CertFailure(
             "schema", _cat("STRUCTURAL_INVARIANT_VIOLATION"), f"capsule interface MLIR not found: {iface_path}"
         )
-    cb, artifact = lower_interface(
-        pkg, iface_path, paths.generated, contract=contract, timeout=timeout, artifact_name=fourth_output_name
-    )
+    from .public_source_abi import public_abi_source
+
+    owned_source = capsule.get("owned_host_source") is not None
+    candidate_artifact_name = "candidate-" + fourth_output_name if owned_source else fourth_output_name
+    from merlin.compile import owned_shared_source
+    shared_source = owned_shared_source.selected(capsule)
+    projection_validate = None
+    if shared_source:
+        iface_path, projection_validate = owned_shared_source.compiler_input(capsule, paths.generated, target=pkg.target)
+    with public_abi_source(capsule, iface_path, paths.generated) as compiler_source:
+        cb, artifact = lower_interface(
+            pkg,
+            compiler_source,
+            paths.generated,
+            contract=contract,
+            timeout=timeout,
+            artifact_name=candidate_artifact_name,
+        )
+    if owned_source:
+        if projection_validate is not None:
+            projection_validate()
+        if shared_source:
+            emit_selected = owned_shared_source.emit_selected
+        else:
+            from merlin.compile.owned_spatial_source import emit_selected
+
+        artifact, _ = emit_selected(
+            capsule,
+            artifact,
+            cb,
+            paths.generated / "owned-source",
+            target=pkg.target,
+            timeout=timeout,
+            candidate_package=package_dir,
+        )
+        if shared_source:
+            cb = owned_shared_source.full_command_buffer(capsule, cb)
+            projection_validate()
+        (paths.generated / fourth_output_name).write_text(artifact, encoding="utf-8")
     return pkg, cb, artifact
 
 

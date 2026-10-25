@@ -982,6 +982,13 @@ def prepare_for_lowering(
     require_device_offload_selection(device, offload_selection)
     require_supported_device_preparation(offload_selection, prepared_model_transform)
     features = frozenset(features or frozenset())
+    if getattr(device, "connected_spatial", None) is not None:
+        # The explicitly selected original host writer must be inlined before
+        # bufferization so its output is forwarded and its scratch lifetime is
+        # owned once by the real public entry, through ordinary upstream passes.
+        from ...llvmlower.tensor_helper_inlining import FEATURE as _SPATIAL_HOST_INLINE
+
+        features = features | {_SPATIAL_HOST_INLINE}
     # Read the vec-family point off the IMPLIES CLOSURE, not off the raw set. `normalize` is what
     # expands `implies`, and it runs inside the LOWERING (pipeline.apply_schedule) -- after this
     # point. So a feature that implies the vectorize arms got the arms spliced into the schedule and
@@ -1003,7 +1010,14 @@ def prepare_for_lowering(
     from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
 
     _op_counts: dict[str, int] = {}
+    _preparation_input = mlir_path
+    _sibling_selected = getattr(device, "sibling_source", None) is not None
     _early_complete_groups = device is not None and getattr(device, "require_complete_groups", False)
+    if _sibling_selected:
+        from ...llvmlower.device_preparation import prepare_sibling_device_host
+
+        _preparation_input = prepare_sibling_device_host(device, mlir_path, work, offload_selection)
+        _early_complete_groups = False
     if _early_complete_groups and (
         getattr(device, "prepared_transform", None) is not None
         or getattr(device, "catalog_builder", None) is not None
@@ -1012,7 +1026,7 @@ def prepare_for_lowering(
     ):
         raise ValueError("complete source group routing cannot follow a prepared-source transform or catalog")
     prepared = _prepare_model_mlir(
-        mlir_path,
+        _preparation_input,
         work,
         int8_compute=int8_compute,
         quant_passes=quant_passes,

@@ -95,6 +95,14 @@ def test_public_capability_derivation_uses_policy_without_private_recipe_or_mode
     assert Q.WINDOW_MEAN in selected["families"]
 
 
+def test_selected_policy_retains_explicit_native_context_readout():
+    source, method, path, policy = inputs()
+    policy["attention_context_output"] = "int8_value_grid"
+    selected = P.select(source, method, path, policy=policy, model="tiny_llama")
+    assert selected[Q.DYNAMIC]["context_output"] == "int8_value_grid"
+    assert selected["recipe_sha256"] == Q.digest(selected)
+
+
 def test_successor_reporting_config_preserves_geometry_and_exact_quantized_comparison():
     from merlin.model_check.models import load, selected_float_policy, selected_host_math_policy
 

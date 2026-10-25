@@ -126,7 +126,7 @@ def _is_input_dialect(mod: str) -> bool:
 
 
 def _py_imports_merlin(
-    text: str, *, compiler_library: CompilerLibraryContract | None = None, compiler_api=None, compiler_dependency=False
+    text: str, *, compiler_library: CompilerLibraryContract | None = None, compiler_api=None, compiler_dependency=False, full_compiler=None
 ) -> str | None:
     """Return the offending module name iff source imports a non-exempt core/extension harness module.
     The historical function name remains compatible. AST-based: docstrings, comments and ``merlin_iface``
@@ -144,6 +144,7 @@ def _py_imports_merlin(
     def permitted(module: str) -> bool:
         return (
             _is_input_dialect(module)
+            or (full_compiler is not None and full_compiler.permits(module))
             or (compiler_library is not None and (compiler_library.permits(module) or permits_namespace(compiler_library, module)))
             or (compiler_api is not None and compiler_api.permits(module))
             or (compiler_dependency and compiler_library is not None
@@ -537,7 +538,25 @@ def build_package(pkg: Package, *, timeout: int = 1800) -> None:
             )
 
 
-def integrity_scan(
+def integrity_scan(pkg, *, additional_forbidden=(), compiler_library=None, compiler_library_root=None):
+    """Keep default admission; external snapshot mode checks this immutable source once."""
+    def check():
+        return _integrity_scan(pkg, additional_forbidden=additional_forbidden,
+                               compiler_library=compiler_library, compiler_library_root=compiler_library_root)
+    executor = _scoped_executor()
+    if executor is not None:
+        try:
+            from merlin_experiments.phase1.feedback.snapshot_execution import active_snapshot
+        except ModuleNotFoundError as error:
+            if error.name != 'merlin_experiments.phase1.feedback.snapshot_execution':
+                raise
+        else:
+            if active_snapshot() is executor:
+                return executor.check_integrity_once(pkg, check)
+    return check()
+
+
+def _integrity_scan(
     pkg: Package,
     *,
     additional_forbidden: tuple[str, ...] = (),
@@ -553,8 +572,27 @@ def integrity_scan(
     from .compiler_library import active_compiler_library
     from .compiler_profile_admission import active_compiler_imports
 
-    compiler_api = active_compiler_imports()
-    selected_library = active_compiler_library()
+    try:
+        from merlin_experiments.phase1.full_compiler_workspace import selected as full_selection, candidate_sources
+    except ModuleNotFoundError as error:
+        if error.name not in ('merlin_experiments', 'merlin_experiments.phase1.full_compiler_workspace'):
+            raise
+        full = None
+    else:
+        full = full_selection()
+    if full is not None:
+        if pkg.integrity_exempt:
+            raise CertFailure('integrity', 'forbidden_pattern', 'full compiler cannot exempt itself from integrity')
+        try:
+            full_sources = candidate_sources(full, pkg.directory)
+        except ValueError as error:
+            raise CertFailure('integrity', 'forbidden_pattern', str(error)) from error
+        baseline = {relative: digest for relative, digest, _ in full.members}
+        compiler_library = compiler_library_root = None
+    else:
+        full_sources = baseline = {}
+    compiler_api = None if full is not None else active_compiler_imports()
+    selected_library = None if full is not None else active_compiler_library()
     if selected_library is not None:
         if compiler_library is not None and (
             compiler_library != selected_library.contract or compiler_library_root != selected_library.root
@@ -585,6 +623,13 @@ def integrity_scan(
             continue
         if "build" in src.relative_to(pkg.directory).parts:  # skip the package's generated build trees
             continue
+        if full is not None and src.is_relative_to(pkg.directory / 'compiler_library'):
+            relative = src.relative_to(pkg.directory / 'compiler_library').as_posix()
+            # A reviewed public implementation can contain dormant imports of a
+            # private evaluator that is NOT mounted. Preserve that source; new
+            # or edited code receives the ordinary private-import/path checks.
+            if full_sources.get(relative) == baseline.get(relative) and relative in baseline:
+                continue
         text = src.read_text(encoding="utf-8", errors="ignore")
         for needle in (*_FORBIDDEN, *additional_forbidden):  # oracle-access paths (any lang)
             if needle in text:
@@ -599,7 +644,7 @@ def integrity_scan(
             fork_dependency = (enabled(selected_library)
                                and src.is_relative_to(pkg.directory / DIRECTORY))
             mod = _py_imports_merlin(text, compiler_library=compiler_library, compiler_api=compiler_api,
-                                    compiler_dependency=fork_dependency)
+                                    compiler_dependency=fork_dependency, full_compiler=full)
             if mod is not None:
                 raise CertFailure(
                     "integrity",

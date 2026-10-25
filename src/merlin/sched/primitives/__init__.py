@@ -237,6 +237,8 @@ def _rewrite_expr(e: Expr, var: str, expr: Expr) -> Expr:
         # expression language cannot write down, so it refuses rather than approximating.
         if isinstance(expr, Const):
             return then if expr.value == e.equals else other
+        if isinstance(expr, Var):
+            return select(expr.name, e.equals, then, other)
         # An affine shift of the variable is an affine shift of the test: peeling the front of a loop
         # renumbers it from zero, so `k0 == 6` on the old numbering is `k0 == 5` on the new one. This is
         # exact, not an approximation, and without it a loop whose body carries a last-tile remainder --
@@ -283,6 +285,43 @@ def _map_calls(body: tuple, fn: Callable[[Call], Call]) -> tuple:
 # -- the primitives ----------------------------------------------------------------------------------
 
 
+def _divide_value(value, var, outer, inner, factor):
+    """Exact quotient/remainder substitution within the new inner domain.
+
+    Unlike general affine substitution, divide_loop establishes
+    0 <= inner < factor. That domain permits an old ``var == c`` predicate
+    to become outer == c//factor AND inner == c%factor without reassociation
+    or extending the expression language.
+    """
+    from merlin.sched.ir.expr import Const, Select
+
+    if isinstance(value, Ptr):
+        return _replace(value, offset=_divide_value(value.offset, var, outer, inner, factor))
+    if isinstance(value, Var):
+        return add(mul(outer, factor), inner) if value.name == var else value
+    if isinstance(value, Sum):
+        return add(*(_divide_value(v, var, outer, inner, factor) for v in value.terms))
+    if isinstance(value, Scaled):
+        return mul(_divide_value(value.expr, var, outer, inner, factor), value.factor)
+    if isinstance(value, Select):
+        yes = _divide_value(value.then, var, outer, inner, factor)
+        no = _divide_value(value.other, var, outer, inner, factor)
+        if value.var != var:
+            return select(value.var, value.equals, yes, no)
+        if value.equals < 0:
+            return no
+        return select(outer, value.equals // factor, select(inner, value.equals % factor, yes, no), no)
+    if isinstance(value, Const):
+        return value
+    return value
+
+
+def _divide_call(call, var, outer, inner, factor):
+    def rewrite(values):
+        return tuple((key, _divide_value(value, var, outer, inner, factor)) for key, value in values)
+    return _replace(call, args=rewrite(call.args), sets=rewrite(call.sets), assumes=rewrite(call.assumes))
+
+
 @_obligation("by_construction")
 def divide_loop(kernel: Kernel, cursor: Cursor, factor: int, *, names: tuple[str, str] | None = None) -> Kernel:
     """Split the loop the cursor names into an outer and an inner loop.
@@ -291,6 +330,8 @@ def divide_loop(kernel: Kernel, cursor: Cursor, factor: int, *, names: tuple[str
     tail, and inventing one silently is how a schedule stops computing what it did. That case REFUSES --
     peel the iteration first, which is its own move.
     """
+    if type(factor) is not int:
+        raise PrimitiveError("loop division requires an integer factor")
     if factor <= 1:
         raise NotApplicable(f"a factor of {factor} splits nothing")
     target = _loop_at(kernel.body, cursor.loops)
@@ -303,13 +344,14 @@ def divide_loop(kernel: Kernel, cursor: Cursor, factor: int, *, names: tuple[str
     for name in (outer_name, inner_name):
         if name in _bound_vars(kernel.body):
             raise PrimitiveError(f"{name!r} is already a loop variable of this kernel")
-    rebuilt = mul(as_expr(Var(outer_name)), factor)
     inner_body = _map_calls(
         target.body,
-        lambda c: _subst_call(c, target.var, add(rebuilt, Var(inner_name))),
+        lambda c: _divide_call(c, target.var, Var(outer_name), Var(inner_name), factor),
     )
     split = Loop(outer_name, target.extent // factor, (Loop(inner_name, factor, inner_body),))
-    return _replace(kernel, body=_replace_loop(kernel.body, cursor.loops, split))
+    actual = _replace(kernel, body=_replace_loop(kernel.body, cursor.loops, split))
+    _require_well_formed(actual, f"dividing {target.var!r}")
+    return actual
 
 
 @_obligation("by_construction")

@@ -19,17 +19,55 @@ from collections.abc import Mapping
 from typing import Any
 
 SCHEMA = "shared_grid_operand_sum_v1"
+FLOAT_BOUNDARY_SCHEMA = "shared_grid_operand_sum_v2"
 KEY = "operand_sum_grid"
+DISTINCT_FRONTIERS = "distinct_contraction_frontiers"
+
+
+def _float_boundary(policy: Any) -> bool:
+    return policy in (
+        {"schema": FLOAT_BOUNDARY_SCHEMA, "output_boundary": "dequantize"},
+        {"schema": FLOAT_BOUNDARY_SCHEMA, "output_boundary": "dequantize", "selection": DISTINCT_FRONTIERS},
+    )
 
 
 class OperandSumError(ValueError):
     """The explicitly selected shared-grid arithmetic cannot be represented."""
 
 
+def _disjoint_static_attention(recipe: Mapping[str, Any]) -> bool:
+    """Validate a separate calibrated attention family without rewriting its policy."""
+    from merlin.targetgen import quant_recipe as QR
+
+    block = recipe.get("dynamic")
+    if (
+        not _float_boundary(recipe.get(KEY))
+        or not isinstance(block, Mapping)
+        or set(block) - {"schema", "families", "scales", "planes", "smooth", "site_agreement"}
+        or block.get("schema") != QR.DYNAMIC_SCHEMA
+        or block.get("families") != [QR.ACTIVATION_CONTRACTION]
+        or block.get("scales") != QR.STATIC_HEADS
+        or block.get("smooth") not in (None, QR.SOFTMAX_AXIS)
+        or not isinstance(block.get("planes", {}), Mapping)
+    ):
+        return False
+    try:
+        # Reuse the existing attention policy validator, including allowed plane
+        # selectors/counts, rather than inventing a second numerical contract.
+        QR.with_dynamic_contractions(
+            recipe, families=block["families"], scales=block["scales"],
+            planes=block.get("planes"), smooth=block.get("smooth") == QR.SOFTMAX_AXIS,
+        )
+        QR.site_agreement_of(recipe)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def validate(recipe: Mapping[str, Any]) -> None:
     """Check the closed opt-in policy without importing a framework."""
-    if recipe.get(KEY) != {"schema": SCHEMA}:
-        raise OperandSumError(f"{KEY} must be exactly {{'schema': '{SCHEMA}'}}")
+    if recipe.get(KEY) != {"schema": SCHEMA} and not _float_boundary(recipe.get(KEY)):
+        raise OperandSumError("operand_sum_grid needs an exact V1 closed policy or V2 dequantize boundary")
     activation = recipe.get("activation") or {}
     if (
         recipe.get("schema") != "quant_recipe_v1"
@@ -43,7 +81,7 @@ def validate(recipe: Mapping[str, Any]) -> None:
         or type(activation.get("quant_min")) is not int
         or type(activation.get("quant_max")) is not int
         or [activation["quant_min"], activation["quant_max"]] != [-128, 127]
-        or recipe.get("dynamic")
+        or (recipe.get("dynamic") and not _disjoint_static_attention(recipe))
         or recipe.get("static_planes")
     ):
         raise OperandSumError("shared-grid sums require static symmetric per-tensor signed i8/i32 arithmetic")
@@ -54,6 +92,8 @@ class SharedGridSums:
 
     def __init__(self, recipe: Mapping[str, Any]):
         validate(recipe)
+        self.allow_float_boundary = recipe[KEY].get("output_boundary") == "dequantize"
+        self.residual_selection = recipe[KEY].get("selection")
         self.selected: dict[Any, Any] = {}
         self.sites: list[dict[str, Any]] = []
         self.rewritten: list[dict[str, Any]] = []
@@ -76,8 +116,38 @@ class SharedGridSums:
         )
 
     def select(self, candidates: Any) -> None:
-        """Only already closed, placed sums of two equal-shape f32 activations."""
+        """Select placed, equal-shape f32 sums; closure policy is decided by the caller."""
         import torch
+
+        # This is a recipe-selection filter, not a proof of float equivalence:
+        # layout/elementwise branches of one contraction should not be treated
+        # as separate residual producers. Stop at explicit contraction nodes or
+        # graph inputs, ignore stored constants, and propagate all other dataflow
+        # edges. An unrecognized contraction is conservatively traversed instead.
+        contractions = {
+            "aten.linear.default", "aten.mm.default", "aten.bmm.default", "aten.matmul.default",
+            "aten.addmm.default", "aten.convolution.default", "aten._convolution.default",
+            "aten.conv1d.default", "aten.conv2d.default", "aten.conv3d.default",
+        }
+        frontiers: dict[Any, frozenset[Any]] = {}
+
+        def frontier(value: Any) -> frozenset[Any]:
+            pending = [value]
+            while pending:
+                current = pending[-1]
+                if current in frontiers:
+                    pending.pop()
+                elif current.op == "get_attr":
+                    frontiers[current] = frozenset()
+                elif current.op == "placeholder" or str(current.target) in contractions:
+                    frontiers[current] = frozenset((current,))
+                else:
+                    missing = [n for n in current.all_input_nodes if n not in frontiers]
+                    if missing:
+                        pending.extend(missing)
+                    else:
+                        frontiers[current] = frozenset().union(*(frontiers[n] for n in current.all_input_nodes))
+            return frontiers[value]
 
         self.selected.clear()
         self.sites.clear()
@@ -99,6 +169,12 @@ class SharedGridSums:
                 continue
             if not values[0].shape or values[0].shape != values[1].shape:
                 continue
+            if self.residual_selection == DISTINCT_FRONTIERS:
+                left, right = (frontier(arg) for arg in node.args)
+                if not left or not right or not left.isdisjoint(right):
+                    continue
+                if not any(str(n.target) in contractions for n in left | right):
+                    continue
             users = list(node.users)
             last = (
                 users[0]
@@ -254,4 +330,10 @@ class SharedGridSums:
         return rows
 
     def census(self) -> dict[str, Any]:
-        return {"schema": SCHEMA, "annotated": len(self.sites), "rewritten": len(self.rewritten)}
+        return {
+            "schema": FLOAT_BOUNDARY_SCHEMA if self.allow_float_boundary else SCHEMA,
+            "annotated": len(self.sites), "rewritten": len(self.rewritten),
+            **({"output_boundary": "dequantize", "target_execution_qualified": False}
+               if self.allow_float_boundary else {}),
+            **({"selection": self.residual_selection} if self.residual_selection else {}),
+        }

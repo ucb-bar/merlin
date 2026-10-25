@@ -79,3 +79,30 @@ def test_warm_final_source_check_runs_after_new_observer_construction(tmp_path, 
     monkeypatch.setattr(P, "BoundOperandObserver", mutate)
     with pytest.raises(ValueError, match="bytes changed"):
         load(original, blob, sidecar)
+
+
+def test_guarded_source_scope_reuses_hash_not_observer_authority(tmp_path, monkeypatch):
+    from merlin.common import guarded_file_digest as G
+    monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
+    original, facts, blob, sidecar, source, isa = selected(tmp_path)
+    calls = []
+    read = G._read
+    def counted(path):
+        calls.append(path)
+        return read(path)
+    monkeypatch.setattr(G, "_read", counted)
+    owner = G.GuardedDigests()
+    try:
+        with owner.scope():
+            first = load(original, blob, sidecar)
+            second = load(original, blob, sidecar)
+        if not owner._entries:
+            pytest.skip("kernel watches unavailable")
+        assert calls.count(source) == 1
+        assert first is not second and original._facts == facts
+        with pytest.raises(ValueError, match="bytes changed"):
+            with owner.scope():
+                source.write_bytes(source.read_bytes() + b"\n")
+                load(original, blob, sidecar)
+    finally:
+        owner.close()

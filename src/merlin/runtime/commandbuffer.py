@@ -414,6 +414,32 @@ def whole_program_entry_bindings(cb: Mapping[str, Any]) -> list[str] | None:
     return list(bindings)
 
 
+def row_major_view_shape(cb, operands, attrs, source_shape, source_dtype, *, produced):
+    """Validate a byte-preserving final view of one already written buffer.
+
+    This metadata operation neither copies nor aliases distinct external slots.
+    Positive static row-major shapes and identical element width/order preserve
+    every byte. An input, fresh output, transpose or cast is not a view here.
+    """
+    from math import prod
+
+    if set(operands) != {"src", "dst"} or operands["src"] != operands["dst"]:
+        raise ValueError("ROW_MAJOR_VIEW must retain one physical buffer identity")
+    name = operands["src"]
+    if name not in produced or set(attrs) != {"source_shape", "shape"}:
+        raise ValueError("ROW_MAJOR_VIEW requires an already produced value and exact shape fields")
+    before, after = attrs["source_shape"], attrs["shape"]
+    if any(type(shape) is not list or not shape or len(shape) > 32
+           or any(type(n) is not int or n <= 0 for n in shape) for shape in (before, after)):
+        raise ValueError("ROW_MAJOR_VIEW requires positive static shapes")
+    if tuple(before) != tuple(source_shape) or prod(before) != prod(after):
+        raise ValueError("ROW_MAJOR_VIEW changes the source extent or element count")
+    declared = cb.get("tensors", {}).get(name, {})
+    if declared.get("shape") != after or declared.get("dtype") != source_dtype or declared.get("role") != "output":
+        raise ValueError("ROW_MAJOR_VIEW differs from complete output shape/type ownership")
+    return tuple(after)
+
+
 def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
     """Return a list of problems (empty == valid).
 
@@ -731,6 +757,11 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
     materialized identically for the reference, the simulator, and the device harness).
     """
     inputs = inputs or {}
+    for command in cb.get("commands", []):
+        if command.get("opcode") == "ROW_MAJOR_VIEW":
+            source = command.get("operands", {}).get("src")
+            if cb.get("tensors", {}).get(source, {}).get("role") != "output":
+                raise ValueError("ROW_MAJOR_VIEW cannot mutate a leaf input")
     produced = set()
     for cmd in cb.get("commands", []):
         ops = cmd.get("operands", {})

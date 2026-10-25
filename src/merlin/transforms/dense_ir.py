@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-from xdsl.dialects.builtin import DenseArrayBase, IntegerAttr, i64
-from xdsl.irdl import IRDLOperation, attr_def, irdl_op_definition, traits_def
+from xdsl.dialects.builtin import ArrayAttr, DenseArrayBase, IntegerAttr, StringAttr, i64
+from xdsl.irdl import IRDLOperation, attr_def, irdl_op_definition, opt_attr_def, traits_def
 from xdsl.traits import NoMemoryEffect
 from xdsl.utils.exceptions import VerifyException
 
@@ -13,8 +13,10 @@ from xdsl.utils.exceptions import VerifyException
 class DenseScheduleOp(IRDLOperation):
     """A selected contraction block, with explicit byte and command bounds.
 
-    This records a compile-time choice and executes no command. The target
-    adapter verifies its realization before emitting this decision.
+    This executes no command. The compact schedule consumer reads block sizes,
+    optional outer loop order and assigned-row bases, then independently checks
+    the actual emitted realization. Capacity/count attributes are constraints,
+    never evidence of hardware effects or numerical correctness.
     """
 
     name = "schedule.block_contraction"
@@ -26,9 +28,17 @@ class DenseScheduleOp(IRDLOperation):
     storage_capacity = attr_def(DenseArrayBase)
     static_commands = attr_def(IntegerAttr)
     command_budget = attr_def(IntegerAttr)
+    outer_order = opt_attr_def(ArrayAttr[StringAttr])
+    row_bases = opt_attr_def(DenseArrayBase)
     traits = traits_def(NoMemoryEffect())
 
     def verify_(self):
+        if self.outer_order is not None and tuple(v.data for v in self.outer_order) not in (("m", "n"), ("n", "m")):
+            raise VerifyException("dense schedule requires an m,n outer loop permutation")
+        if self.row_bases is not None:
+            bases = tuple(self.row_bases.get_values())
+            if self.row_bases.elt_type != i64 or len(bases) != 3 or any(v < 0 for v in bases):
+                raise VerifyException("dense schedule requires three nonnegative i64 row bases")
         values = {}
         for name, count in (
             ("problem", 3),

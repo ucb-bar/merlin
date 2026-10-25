@@ -181,3 +181,78 @@ def test_snapshot_marker_cannot_be_rebound_with_the_same_payload(original):
             owner._verify()
         marker.write_bytes(original_bytes)
         marker.chmod(original_mode)
+
+
+def _overlay_setup(original, monkeypatch):
+    from merlin.common import bundle_snapshot, read_lease_digest
+    from merlin_experiments.phase1 import compiler_library
+
+    manifest = original.bundle_manifest.parent / "input_bundle_manifest.yaml"
+    manifest.write_bytes(original.bundle_manifest.read_bytes())
+    bundle = yaml.safe_load(manifest.read_bytes())
+    monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
+    # Simulate the disabled cross-call lease cache: actual payload reads remain
+    # mandatory at both boundaries, while directory/file watches still protect
+    # the bounded operation. This does not mock the snapshot verifier.
+    monkeypatch.setattr(read_lease_digest, "digest", lambda _path: None)
+    monkeypatch.setattr(read_lease_digest, "reuse", lambda *args, **kwargs: None)
+    monkeypatch.setattr(compiler_library, "active_compiler_library", lambda: object())
+    reads = []
+    actual = bundle_snapshot._payload_content
+
+    def measured(members):
+        reads.append(1)
+        return actual(members)
+
+    monkeypatch.setattr(bundle_snapshot, "_payload_content", measured)
+    return compiler_library, bundle_snapshot, manifest, bundle, reads
+
+
+def test_library_overlay_batches_nested_checks_without_cross_call_cache(original, monkeypatch):
+    library, snapshots, manifest, bundle, reads = _overlay_setup(original, monkeypatch)
+
+    def assemble(policy):
+        for _ in range(4):
+            owner = API.active_compiler_imports()
+            owner.verify()
+            snapshots.snapshot_input_paths(original.workspace, owner.bundle, [], repo=original.repo)
+        return policy
+
+    monkeypatch.setattr(library.overlays, "apply", assemble)
+    argv, env = library.sandbox_overlay(
+        ["unchanged"], workspace=original.workspace, bundle=bundle,
+        context=SimpleNamespace(repo=original.repo), private_run_dir=manifest.parent,
+    )
+    assert argv == ["unchanged"] and env == ""
+    assert len(reads) == 2  # Fresh complete entry and exit; no stale cache authority.
+    assert API.active_compiler_imports() is None
+
+
+@pytest.mark.parametrize("changed", ["payload", "marker", "manifest", "policy"])
+def test_library_overlay_rejects_mutations_before_publishing(original, monkeypatch, changed):
+    library, snapshots, manifest, bundle, reads = _overlay_setup(original, monkeypatch)
+
+    def assemble(policy):
+        owner = API.active_compiler_imports()
+        if changed == "payload":
+            source = original.repo / owner.bundle["allowed"][0]["path"]
+            path = snapshots.snapshot_input_paths(original.workspace, owner.bundle, [source], repo=original.repo)[0]
+            path.chmod(0o600)
+            path.write_bytes(path.read_bytes() + b"\n# changed\n")
+        elif changed == "marker":
+            path = snapshots.bundle_snapshot_root(original.workspace) / snapshots.MARKER
+            path.chmod(0o600)
+            path.write_bytes(path.read_bytes() + b"\n")
+        elif changed == "manifest":
+            manifest.write_bytes(manifest.read_bytes() + b"\n")
+        else:
+            bundle["allowed"] = []
+        return policy
+
+    monkeypatch.setattr(library.overlays, "apply", assemble)
+    with pytest.raises((ValueError, RuntimeError)):
+        library.sandbox_overlay(
+            [], workspace=original.workspace, bundle=bundle,
+            context=SimpleNamespace(repo=original.repo), private_run_dir=manifest.parent,
+        )
+    assert API.active_compiler_imports() is None

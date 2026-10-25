@@ -29,6 +29,7 @@ from __future__ import annotations
 import contextlib
 import json
 import math
+import threading
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -60,6 +61,115 @@ _TORCH_DTYPE = {
 
 class RecipeError(ValueError):
     """The recipe cannot be realised with this framework build; says which field and why."""
+
+
+_PT2E_CLEANUP_LOCK = threading.RLock()
+
+
+@contextlib.contextmanager
+def preserve_fx_vmap_effects():
+    """Keep exported vmap context operations through every DCE in a capture.
+
+    These exact legacy Python wrappers mutate functorch's nesting stack (or
+    initialize its decompositions); their unused return values do not make them
+    dead code. Use FX's function-effect registration, not a replacement operator
+    or a model rewrite. The worker holds this scope through quantization AND
+    later model2mlir capture. Direct recipe callers get the same scope during
+    recipe application. Registrations added here are restored on exit.
+
+    Like the PT2E cleanup adapter, this is for the isolated capture interpreter;
+    unrelated concurrent framework captures belong in separate workers.
+    """
+    try:
+        from torch._functorch import predispatch
+        from torch.fx import node as fx_node
+    except ImportError:
+        yield
+        return
+    names = ("_vmap_increment_nesting", "_vmap_decrement_nesting", "lazy_load_decompositions")
+    functions = tuple(getattr(predispatch, name) for name in names if hasattr(predispatch, name))
+    with _PT2E_CLEANUP_LOCK:
+        registry = fx_node._side_effectful_functions
+        added = tuple(function for function in functions if function not in registry)
+        for function in added:
+            fx_node.has_side_effect(function)
+        try:
+            yield
+        finally:
+            for function in added:
+                registry.discard(function)
+
+
+@contextlib.contextmanager
+def _pt2e_nested_graph_cleanup():
+    """Preserve live first-class FX graph state during TorchAO conversion.
+
+    Some Torch builds prune descendants of a GraphModule referenced by get_attr,
+    although recursive DCE later requires those descendants. TorchAO creates a
+    new GraphModule inside conversion, so an instance override cannot reach its
+    cleanup. Temporarily adapt just this method in the isolated capture worker;
+    serialize opted-in conversions and restore it even on exceptions. This is
+    not an on-disk framework patch or a general multi-threaded Torch override:
+    unrelated concurrent framework conversions must use separate workers.
+    Graphs without first-class submodules retain the framework's own cleanup.
+    """
+    import torch
+
+    report = {"schema": "merlin.pt2e_nested_graph_cleanup.v1", "adapted_calls": 0,
+              "retained_graph_references": 0, "removed_modules": 0}
+    with _PT2E_CLEANUP_LOCK:
+        original = torch.fx.GraphModule.delete_all_unused_submodules
+
+        def cleanup(module):
+            used, graph_references, visiting = set(), set(), set()
+
+            def mark(path):
+                atoms = path.split(".")
+                used.update(".".join(atoms[:n]) for n in range(1, len(atoms) + 1))
+
+            def graph_state(gm, prefix=""):
+                if id(gm) in visiting:
+                    raise RecipeError("cyclic first-class FX graph state is unsupported")
+                visiting.add(id(gm))
+                try:
+                    for node in gm.graph.nodes:
+                        if node.op not in {"call_module", "get_attr"}:
+                            continue
+                        path = str(node.target)
+                        full = prefix + path
+                        mark(full)
+                        value = gm
+                        for atom in path.split("."):
+                            value = getattr(value, atom)  # Missing live state remains an error.
+                        if not isinstance(value, torch.nn.Module):
+                            continue
+                        if node.op == "get_attr" and isinstance(value, torch.fx.GraphModule):
+                            graph_references.add(full)
+                            graph_state(value, full + ".")
+                        else:
+                            # Calls may depend on any descendant. A first-class
+                            # opaque Module likewise has no inspectable FX body.
+                            for name, _ in value.named_modules():
+                                mark(full + ("." + name if name else ""))
+                finally:
+                    visiting.remove(id(gm))
+
+            graph_state(module)
+            if not graph_references:
+                return original(module)
+            removed = 0
+            for name, _ in list(module.named_modules()):
+                if name and name not in used:
+                    removed += bool(module.delete_submodule(name))
+            report["adapted_calls"] += 1
+            report["retained_graph_references"] += len(graph_references)
+            report["removed_modules"] += removed
+
+        torch.fx.GraphModule.delete_all_unused_submodules = cleanup
+        try:
+            yield report
+        finally:
+            torch.fx.GraphModule.delete_all_unused_submodules = original
 
 
 def _require(recipe: Mapping[str, Any]) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
@@ -606,7 +716,15 @@ def build_quantizer(
         if not software_allows(node, "contraction" if family == ACTIVATION_CONTRACTION else family):
             return False
         if family == ACTIVATION_CONTRACTION and int(node.args[0].meta["val"].shape[-1]) <= MIN_ACTIVATION_REDUCTION:
-            return False
+            # A small reduction is a historical profitability heuristic, not an
+            # unsupported instruction. An explicit normalized P×V recipe must
+            # also cover short prefill/decode contexts. Keep unrelated outer
+            # products (e.g. rotary frequencies) on their existing path.
+            import _dynamic_contractions as DC
+
+            if not (dynamic_block.get("context_output") == "int8_value_grid"
+                    and DC.softmax_produced(node.args[0])):
+                return False
         if family == "contraction":
             if len(node.args) < 2 or not stored_floating_weight(node.args[1]):
                 return False
@@ -658,7 +776,7 @@ def build_quantizer(
         return None
 
     def closable(nodes: Any) -> set[Any]:
-        """The sums and means whose result only quantized readers ever see.
+        """Find closed sums/means, plus explicitly authorized V2 float exits.
 
         Putting a sum on the integer grid is worth its accuracy cost only when the result is
         requantized, because that is what closes it into one integer region a unit can take. A sum
@@ -666,9 +784,15 @@ def build_quantizer(
         nothing (measured on a two-layer decoder: 8 sums and 5 means annotated, none placeable,
         17 more host regions). A reader may itself be a candidate, so this is a fixpoint: drop
         every candidate with a reader that is neither a contraction nor a surviving candidate.
+        Explicit shared-grid V2 instead supplies a dequantized boundary for checked sums;
+        it does not change means or float consumers.
         """
         candidates = set()
         for node in nodes:
+            # Calibrated attention plane recombination belongs to its numerical
+            # policy, not to the source residual family. PT2E preserves FX meta.
+            if shared_sums is not None and node.meta.get("merlin_static_attention_owned"):
+                continue
             if node.target in sums and eligible(node, "operand_sum"):
                 operands = [a for a in node.args[:2] if isinstance(a, torch.fx.Node) and a.op != "get_attr"]
                 if len(operands) == 2:
@@ -691,13 +815,23 @@ def build_quantizer(
                     found.append(user)
             return found
 
+        # Only the explicit V2 shared-grid policy authorizes a quantized exit
+        # followed by a float boundary. Preview the SAME strict source selector
+        # (dtype, equal shape, alpha, mutation/alias rules) before exempting sums;
+        # means and unsupported adds retain ordinary closure requirements.
+        float_exits = set()
+        if shared_sums is not None and shared_sums.allow_float_boundary:
+            shared_sums.select(candidates)
+            float_exits = {node for node in shared_sums.selected if readers(node)}
         while True:
             dropped = {
                 node
                 for node in candidates
-                if not (seen := readers(node))
-                or any(
-                    (r.target not in targets or not eligible(r, "contraction")) and r not in candidates for r in seen
+                if node not in float_exits and (
+                    not (seen := readers(node))
+                    or any(
+                        (r.target not in targets or not eligible(r, "contraction")) and r not in candidates for r in seen
+                    )
                 )
             }
             if not dropped:
@@ -750,7 +884,13 @@ def build_quantizer(
             import _dynamic_contractions as DC  # noqa: PLC0415 -- a sibling, by bare name
 
             if dynamic_block.get("scales") == "static_heads":
-                return self._rewrite_static_heads(graph_module, samples, limit)
+                original_nodes = set(graph_module.graph.nodes)
+                rows = self._rewrite_static_heads(graph_module, samples, limit)
+                if shared_sums is not None:
+                    for node in graph_module.graph.nodes:
+                        if node not in original_nodes:
+                            node.meta["merlin_static_attention_owned"] = True
+                return rows
             qmax = DC.qmax_of(recipe)
             for node in list(graph_module.graph.nodes):
                 family = family_of(node) if node.op == "call_function" else None
@@ -1190,6 +1330,7 @@ def _no_batch_norm_fold_needed(original_snapshot: Any, exported: Any) -> bool:
     return True
 
 
+@preserve_fx_vmap_effects()
 def apply_recipe(
     model: Any,
     recipe: Mapping[str, Any],
@@ -1385,7 +1526,8 @@ def apply_recipe(
     if epilogue is not None and weight_rounding is None:
         epilogue.correct_biases(prepared)  # GPTQ chose the codes itself; its bias is left as calibrated
     quantizer.extensions.freeze(prepared)
-    quantized = convert_pt2e(prepared, use_reference_representation=False, fold_quantize=True)
+    with _pt2e_nested_graph_cleanup() as nested_cleanup:
+        quantized = convert_pt2e(prepared, use_reference_representation=False, fold_quantize=True)
     if quantizer.shared_sums is not None:
         quantizer.shared_sums.rewrite(quantized)
     island = epilogue.finish(quantized, recipe.get("float_island")) if epilogue is not None else None
@@ -1414,6 +1556,7 @@ def apply_recipe(
         pass
     quantized._recipe_quantization_stats = {  # type: ignore[attr-defined]
         "api": "pt2e",
+        "nested_graph_cleanup": nested_cleanup,
         "recipe_sha256": recipe.get("recipe_sha256"),
         "plan_sha256": layer_plan.get("plan_sha256"),
         "layers_on_host": [d for d in layer_plan.get("layers") or () if d.get("placement") == "host"],

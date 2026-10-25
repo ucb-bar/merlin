@@ -478,6 +478,9 @@ pins:
       revision is genuinely what a piece of work wants, it needs its own pin and its own goldens.
 
   gemmini_rocket_chipyard:
+    # Historical U250/source lineage, not the on-demand AWS F2 deployment.
+    # See docs/guides/firesim.md#gemmini-on-aws-f2-identify-the-complete-configuration
+    # for the separately observed F2 image, source gitlinks and DDR3/LLC platform.
     description: >-
       The chipyard root the Alveo U250 bitstream `firesim_gemmini_rocket_u250_30mhz` was elaborated
       from. Pinned separately from `gemmini_rtl`'s root because it is a DIFFERENT CHECKOUT, not a

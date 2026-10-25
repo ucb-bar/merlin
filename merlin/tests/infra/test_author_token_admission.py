@@ -80,6 +80,7 @@ def test_live_checkpoint_transition_and_single_bounded_integration(tmp_path):
     guard.finish()
     observed[0] = usage(620)
     assert guard.admit(1)["phase"] == "integration"
+    guard.provider_started()
     assert "Do not start new exploration or helpers" in guard.prompt()
     now[0] = 3
     reason = guard.poll()
@@ -274,3 +275,41 @@ def test_new_helper_before_first_usage_does_not_end_long_healthy_turn(tmp_path):
     now[0] = 190
     assert guard.poll() is None and guard.last["observed_total"] == 132
     assert guard.last["missing_usage_duration_s"] == 0
+
+
+def test_integration_execution_slice_excludes_long_setup_without_resetting_admission(tmp_path):
+    import json
+
+    setup(tmp_path, selected(poll_s=1, integration_slice_s=300))
+    now = [0.0]
+    observed = [usage(620)]
+    guard = ManagedTokens(tmp_path, 0, clock=lambda: now[0], observe=lambda: observed[0])
+    assert guard.admit(0)["phase"] == "integration"
+    now[0] = 746
+    assert guard.poll() is None
+    assert guard.last["provider_elapsed_s"] is None
+    state = json.loads(guard.path.read_text())
+    assert state["admissions"] == 1 and state["integration_admitted"]
+    assert state["outstanding"]["0:0"]["allowance"] == 100
+    guard.provider_started()
+    now[0] += 1.5
+    assert guard.poll() is None
+    assert guard.last["provider_elapsed_s"] == 1.5
+    with pytest.raises(ValueError, match="unstarted active admission"):
+        guard.provider_started()
+    now[0] = 1046
+    assert guard.poll() == PREFIX + "integration wall slice"
+    guard.finish()
+    assert not guard.admit(1)["admitted"]
+
+
+def test_integration_token_boundary_still_applies_during_setup(tmp_path):
+    setup(tmp_path, selected(poll_s=1, integration_slice_s=300))
+    now = [0.0]
+    observed = [usage(620)]
+    guard = ManagedTokens(tmp_path, 0, clock=lambda: now[0], observe=lambda: observed[0])
+    assert guard.admit(0)["admitted"]
+    observed[0] = usage(900)
+    now[0] = 746
+    assert guard.poll() == PREFIX + "integration target boundary"
+    assert guard.last["provider_elapsed_s"] is None

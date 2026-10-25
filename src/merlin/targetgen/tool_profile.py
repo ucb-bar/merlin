@@ -76,7 +76,13 @@ COMMON_SUBSTRATE_V5 = "merlin.common_compiler_substrate.v5"
 COMMON_SUBSTRATE_V6 = "merlin.common_compiler_substrate.v6"
 COMMON_SUBSTRATE_V7 = "merlin.common_compiler_substrate.v7"
 COMMON_SUBSTRATE_V8 = "merlin.common_compiler_substrate.v8"
-_SHARED_SUBSTRATES = {COMMON_SUBSTRATE_V6: 6, COMMON_SUBSTRATE_V7: 7, COMMON_SUBSTRATE_V8: 8}
+COMMON_SUBSTRATE_V9 = "merlin.common_compiler_substrate.v9"
+COMMON_SUBSTRATE_V10 = "merlin.common_compiler_substrate.v10"
+COMMON_SUBSTRATE_V11 = "merlin.common_compiler_substrate.v11"
+COMMON_SUBSTRATE_V12 = "merlin.common_compiler_substrate.v12"
+_SHARED_SUBSTRATES = {COMMON_SUBSTRATE_V6: 6, COMMON_SUBSTRATE_V7: 7, COMMON_SUBSTRATE_V8: 8,
+                      COMMON_SUBSTRATE_V9: 16, COMMON_SUBSTRATE_V10: 17, COMMON_SUBSTRATE_V11: 18,
+                      COMMON_SUBSTRATE_V12: 19}
 _ISA_SUBSTRATES = frozenset(
     {
         COMMON_SUBSTRATE_V3,
@@ -85,6 +91,10 @@ _ISA_SUBSTRATES = frozenset(
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
     }
 )
 _PY = "merlin/python/merlin/"
@@ -219,6 +229,10 @@ def _policy_version(version: str) -> str:
         COMMON_SUBSTRATE_V6: "3",
         COMMON_SUBSTRATE_V7: "3",
         COMMON_SUBSTRATE_V8: "3",
+        COMMON_SUBSTRATE_V9: "3",
+        COMMON_SUBSTRATE_V10: "3",
+        COMMON_SUBSTRATE_V11: "3",
+        COMMON_SUBSTRATE_V12: "3",
     }[version]
 
 
@@ -661,6 +675,10 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
     }:
         lines.append(
             "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
@@ -675,6 +693,10 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
     }:
         lines.append(
             "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
@@ -702,6 +724,35 @@ def tool_profile_prompt(bundle: dict) -> str:
             "infrastructure, so historical ISA-tool ablations need a new interpretation. "
             "No target facts, instruction meanings, execution qualification or runtime tools "
             "follow from SDK availability. Missing capabilities remain unavailable."
+        )
+    if profile["common_substrate"] in (
+        COMMON_SUBSTRATE_V9, COMMON_SUBSTRATE_V10, COMMON_SUBSTRATE_V11, COMMON_SUBSTRATE_V12
+    ):
+        catalog_call = ("scheduling_capabilities()" if profile["common_substrate"] == COMMON_SUBSTRATE_V9
+                        else f"scheduling_capabilities({_SHARED_SUBSTRATES[profile['common_substrate']]})")
+        lines.append(
+            "Discover current executable scheduling APIs with "
+            f"`merlin.compile.scheduling.api_catalog.{catalog_call}` or "
+            "the selected `shared-library.json` scheduling_capabilities entry. "
+            "It lists segmented-K issue ordering, exact final wide-load composition, "
+            "array-weight reuse and source-axis loop transforms with actual symbols "
+            "and required proofs. Emit the checked actual kernel; checking projections "
+            "and discovery metadata supply no target execution admission."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V11:
+        lines.append(
+            "V18 additionally exposes checked disjoint-ACC readout/compute overlap, final wide-band "
+            "composition and explicitly opted-in persistent scalar SCF state. The composition catalog "
+            "reports exact missing selected source owners separately from original-host authority. "
+            "Scalar state checking does not establish target visibility/clobber laws or loop-carried "
+            "event ownership; readout overlap requires its separate selected completion capability."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V12:
+        lines.append(
+            "V19 additionally provides a source-checked final-K producer/readout frontier on the original "
+            "full accumulator view. It requires a separate target RAW retirement and pending-write read "
+            "readiness capability, with original store snapshots/backpressure and a final full drain. "
+            "It supplies no fixed-cycle spacing or loop-carried event ownership."
         )
     for name in profile["treatment_tools"]:
         if name in _OPTIONAL_TOOLS:

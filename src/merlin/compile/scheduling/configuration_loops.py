@@ -2,7 +2,9 @@
 
 Only an ordered pure-write prefix moves, immediately before a nonempty loop.
 Every remaining call must have known ordered effects and preserve those fields.
-The verifier independently matches actual moved calls and their complete scope;
+Identical ordered writes preserve established field values; conflicting writes
+and explicit clobbers still block motion. The verifier independently matches
+actual moved calls and their complete scope;
 no instruction name, geometry, latency or initial register value is assumed.
 """
 
@@ -123,10 +125,11 @@ def _pure(statement, effects):
     )
 
 
-def _preserves(body, keys, effects):
+def _preserves(body, established, effects):
+    keys = set(established)
     for statement in body:
         if type(statement) is Loop:
-            if not _preserves(statement.body, keys, effects):
+            if not _preserves(statement.body, established, effects):
                 return False
         else:
             effect = effects[id(statement)]
@@ -134,7 +137,7 @@ def _preserves(body, keys, effects):
                 effect is None
                 or not effect.ordered
                 or keys.intersection(effect.clobbers)
-                or keys.intersection(key for key, _ in effect.writes)
+                or any(key in established and value != established[key] for key, value in effect.writes)
             ):
                 return False
     return True
@@ -145,8 +148,10 @@ def _movable(loop, prefix, effects):
         return False
     if any(loop.var in free_vars(expr) for call in prefix for _, expr in call.args):
         return False
-    keys = {key for call in prefix for key, _ in effects[id(call)].writes}
-    return _preserves(loop.body[len(prefix) :], keys, effects)
+    established = {}
+    for call in prefix:
+        established.update(effects[id(call)].writes)
+    return _preserves(loop.body[len(prefix) :], established, effects)
 
 
 def verify_loop_configuration_rewrite(

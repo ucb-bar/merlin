@@ -42,8 +42,9 @@ from merlin.kernels import shapes as KS
 from merlin.llvmlower.quant_scope import value_preserving_input
 from merlin.xdsl_dialects.lowering import contraction_coverage as CC
 
-from .group_target_admission import Admission as Admission, TargetOracle as TargetOracle
 from .group_composition import readout_absorbs as readout_absorbs
+from .group_target_admission import Admission as Admission
+from .group_target_admission import TargetOracle as TargetOracle
 from .scale_geometry import _axis_through as _axis_through
 from .scale_geometry import _granularity as _granularity
 from .scale_geometry import _int_array as _int_array
@@ -220,6 +221,7 @@ class Group:
     #: constant one: the rows kept, the window summed, and the one readout multiplier that carries
     #: both scales and the reciprocal of the count. ``root`` is then the reduction.
     window_mean: dict[str, Any] | None = None
+    window_pool: dict[str, Any] | None = None
     #: The output-fusion pass's decision for this root (:mod:`.output_fusion`): the cut taken, the
     #: stages absorbed, the proof and every longer cut's refusal. ``None`` when the pass did not run.
     fusion: dict[str, Any] | None = None
@@ -237,6 +239,7 @@ class Group:
             "root_result_shape": shape,
             **({"operand_sum": dict(self.operand_sum)} if self.operand_sum else {}),
             **({"window_mean": dict(self.window_mean)} if self.window_mean else {}),
+            **({"window_pool": dict(self.window_pool)} if self.window_pool else {}),
             **({"fusion_cut": self.fusion["cut"]} if self.fusion else {}),
         }
 
@@ -665,7 +668,8 @@ def form_groups(
     groups += _host_regions(ops, stage_of, taken, oracle)
     for group in groups:
         group.members.sort(key=lambda member: position[id(member)])
-        group.stages = [stage_of[id(member)].kind for member in group.members]
+        if group.window_pool is None:
+            group.stages = [stage_of[id(member)].kind for member in group.members]
         absorbed = group.placement != HOST
         group.elements = sum(
             _elements(m)
@@ -753,6 +757,14 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
             group.reason = "data movement only: elements are relocated, none is computed"
             out.append(group)
             continue
+        from .window_pool import match as match_window_pool
+
+        pooled = match_window_pool(group, oracle)
+        if pooled is not None:
+            group.root, group.stages, group.placement, group.window_pool = pooled
+            group.scale_granularity = "tensor"
+            out.append(group)
+            continue
         mean, unread_mean = _window_mean_of(working, stage_of)
         if mean is not None or unread_mean is not None:
             refusal = unread_mean or _window_mean_refusal(mean, oracle, _dtype_token(dtype))
@@ -805,6 +817,7 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
                 group.operand_sum = {
                     "lhs_scale": summed["multipliers"][0],
                     "rhs_scale": summed["multipliers"][1],
+                    "source_scales": summed["source_scales"],
                     "bound_lsb": facet.operand_sum_bound(summed["multipliers"]),
                     # The factor the readout's scale carries when a multiplier exceeds what a
                     # saturating load can take; one when both go through the load as they are.
@@ -1036,6 +1049,7 @@ def _operand_sum_of(working: Sequence[Any], stage_of: Mapping[int, Stage | None]
     return {
         "add": add,
         "multipliers": (scales[0].value / out, scales[1].value / out),
+        "source_scales": tuple(float(scale.value) for scale in scales),
         "relu": bool(kinds[RELU]),
     }, None
 
@@ -1340,12 +1354,15 @@ def plan(
     """The group plan of a model on a target, with its denominators."""
     oracle = oracle or TargetOracle(target)
     groups = groups if groups is not None else form_groups(module, target, oracle=oracle, function=function)
+    from .group_route_report import lowering_obligation
+
     rows = []
     for group in groups:
         rows.append(
             {
                 "index": group.index,
                 "placement": group.placement,
+                "lowering_obligation": lowering_obligation(group),
                 "stages": list(group.stages),
                 "operations": len(group.members),
                 "key": group.key(),
@@ -1401,6 +1418,7 @@ def plan(
             "groups": len(rows),
             "accelerator_groups": len(device),
             "host_groups": len(host),
+            "host_by_lowering_obligation": dict(sorted(Counter(row["lowering_obligation"] for row in host).items())),
             "operations": sum(row["operations"] for row in rows),
             "operations_on_accelerator": sum(row["operations"] for row in device),
             "macs_on_accelerator": sum(row["macs"] or 0 for row in device),

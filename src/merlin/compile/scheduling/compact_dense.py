@@ -19,9 +19,29 @@ from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, TensorArg, Var, sel
 from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 from merlin.transforms.dense_planning import DenseBlock, DenseChoice, DenseProblem, DenseResources, choose_dense_block
 
-from .block_schedule import Compute, Load, Preload, Store
+from .block_schedule import Compute, InitializeAccumulator, Load, Preload, Store
 
-DenseOperation = Load | Preload | Compute | Store
+DenseOperation = Load | Preload | Compute | Store | InitializeAccumulator
+
+
+@dataclass(frozen=True)
+class DenseBiasSource:
+    """Explicit contiguous per-column signed modular accumulator seed.
+
+    This describes source semantics and logical memory, not a qualified target
+    load. Only row broadcasting is supported; column-strided/scalar bias keeps
+    its original route until an explicit replication operation is available.
+    """
+
+    columns: int
+    dtype: str
+    arithmetic: str = "signed-modular-accumulator-add"
+
+    def validate(self, problem, dtypes):
+        if (type(self.columns) is not int or self.columns != problem.n
+                or self.dtype != dtypes[2] or self.dtype not in ("i8", "i16", "i32", "i64")
+                or self.arithmetic != "signed-modular-accumulator-add"):
+            raise ValueError("bias source requires exact contiguous columns and signed accumulator-width modular addition")
 
 
 @dataclass(frozen=True)
@@ -150,6 +170,8 @@ class CompactDenseResult:
     checked_selection: str | None = None
     output_readout: object = None
     checked_readout: str | None = None
+    uses_schedule_ir: bool = False
+    schedule_library_version: int = 12
 
     def revalidate(self):
         from .selected_contracts import SelectedSchedulingContracts
@@ -161,11 +183,11 @@ class CompactDenseResult:
         selection = None if self.selected_contracts is None else _digest(self.selected_contracts.record())
         if selection != self.checked_selection:
             raise ValueError("dense selected RTL/software contracts changed; reselect and replan")
-        from .dense_contracts import DenseIntegerReadout
+        from .dense_contracts import DenseIntegerReadout, DenseTiledIntegerReadout
 
         if (
             self.output_readout is not None
-            and type(self.output_readout) is not DenseIntegerReadout
+            and type(self.output_readout) not in (DenseIntegerReadout, DenseTiledIntegerReadout)
             or (None if self.output_readout is None else self.output_readout.identity) != self.checked_readout
         ):
             raise ValueError("dense output readout changed; replan before emission")
@@ -175,7 +197,7 @@ class CompactDenseResult:
         if (
             stamp is None
             or self.kernel.digest() != stamp.source_sha256
-            or _digest(_dense_library_sources()) != stamp.context.library
+            or _digest(_dense_library_sources(self.uses_schedule_ir, self.schedule_library_version)) != stamp.context.library
             or type(self.index_bits) is not int
             or self.index_bits != self.checked_index_bits
             or stamp.context.execution is None
@@ -289,10 +311,17 @@ def _emit_lhs_panel(problem, block, storage, call, nest, mg, kg):
 
 
 def _emit_dense_tile_group(
-    problem, block, storage, call, variable, nest, mg, ng, *, output_readout=None, include_lhs=True
+    problem, block, storage, call, variable, nest, mg, ng, *, output_readout=None, include_lhs=True, bias_source=None
 ):
     kt = problem.tiles[1]
     statements = []
+    if bias_source is not None:
+        def initialize(i, j):
+            return (call(InitializeAccumulator(
+                (mg.base+i, ng.base+j), (ng.base+j)*problem.tile_n,
+                _edge(mg,i,problem.m,problem.tile_m), _edge(ng,j,problem.n,problem.tile_n),
+                storage.accumulator.base+(i*block.n+j)*problem.tile_m)),)
+        statements.extend(nest((mg.blocks,ng.blocks),initialize))
     for kg in _groups(kt, block.k, variable("panel")):
 
         def rhs(reduction, j):
@@ -324,7 +353,7 @@ def _emit_dense_tile_group(
                         storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
                         (k, n),
                         row,
-                        _first(kg, reduction),
+                        Const(1) if bias_source is not None else _first(kg, reduction),
                         rows,
                         cols,
                         depth,
@@ -341,15 +370,20 @@ def _emit_dense_tile_group(
         statements.extend((Loop(kg.var, kg.trips, body),) if kg.var is not None else body)
 
     def store(i, j):
+        from .dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
+
+        tiled = type(output_readout) is DenseTiledIntegerReadout
+        store_type = TiledIntegerStore if tiled else Store
         return (
             call(
-                Store(
+                store_type(
                     (mg.base + i) * problem.tile_m,
                     (ng.base + j) * problem.tile_n,
                     _edge(mg, i, problem.m, problem.tile_m),
                     _edge(ng, j, problem.n, problem.tile_n),
                     storage.accumulator.base + (i * block.n + j) * problem.tile_m,
                     output_readout.identity if output_readout is not None else None,
+                    **({"readout_tile": ng.base + j} if tiled else {}),
                 )
             ),
         )
@@ -368,21 +402,31 @@ def emit_compact_dense(
     dtypes: tuple[str, str, str],
     outer_order: tuple[str, str] = ("m", "n"),
     output_readout=None,
+    bias_source=None,
 ):
     """Emit bounded panel nests without enumerating tensor elements or tiles.
 
     The supported family starts a zero-initialized reduction on its first
     compute and keeps each output accumulator through the complete K domain.
-    Bias/other seeds retain their original route until explicitly implemented.
+    Explicit per-column modular bias may initialize each output tile first.
+    Other seeds retain their original route.
     """
-    if problem.bias:
-        raise ValueError("compact dense family requires an explicit zero seed; bias initialization is unavailable")
+    if problem.bias != (bias_source is not None):
+        raise ValueError("compact dense requires zero seed unless an explicit matching bias source is supplied")
+    if bias_source is not None:
+        if type(bias_source) is not DenseBiasSource:
+            raise ValueError("typed dense bias source required")
+        bias_source.validate(problem,dtypes)
     if any(type(value) is not int or value <= 0 for value in (block.m, block.k, block.n)):
         raise ValueError("compact dense block dimensions must be positive integers")
     if not adapter.synchronous_completion or not adapter.exact_accumulator_continuation:
         raise ValueError("compact dense family needs synchronous completion and exact accumulator continuation")
     if storage.accumulator is None:
         raise ValueError("compact dense family has no declared addressable accumulator storage")
+    from .dense_contracts import DenseTiledIntegerReadout
+
+    if type(output_readout) is DenseTiledIntegerReadout:
+        output_readout.validate_problem(problem)
     if outer_order not in (("m", "n"), ("n", "m")):
         raise ValueError("compact dense outer order must keep the complete source reduction inside each output block")
     if tuple(DTYPE_BYTES.get(t) for t in dtypes) != (problem.lhs_bytes, problem.rhs_bytes, problem.accumulator_bytes):
@@ -410,7 +454,7 @@ def emit_compact_dense(
 
     def tile_group(mg, ng):
         return _emit_dense_tile_group(
-            problem, block, storage, call, variable, nest, mg, ng, output_readout=output_readout
+            problem, block, storage, call, variable, nest, mg, ng, output_readout=output_readout, bias_source=bias_source
         )
 
     groups = {"m": _groups(mt, block.m, "outer_m"), "n": _groups(nt, block.n, "outer_n")}
@@ -430,6 +474,7 @@ def emit_compact_dense(
         (
             TensorArg("lhs", (problem.m, problem.k), dtypes[0], "read"),
             TensorArg("rhs", (problem.k, problem.n), dtypes[1], "read"),
+            *((TensorArg("bias", (problem.n,), bias_source.dtype, "read"),) if bias_source is not None else ()),
             TensorArg(
                 "output",
                 (problem.m, problem.n),
@@ -463,6 +508,9 @@ def schedule_compact_dense(
     pass_order=(),
     output_readout=None,
     readout_qualification_identity=None,
+    bias_source=None,
+    schedule_plan=None,
+    source_identity=None,
 ):
     """Ordinary scheduling entry: choose, emit and independently verify output.
 
@@ -474,6 +522,9 @@ def schedule_compact_dense(
     With selected contracts, geometry, formats and assigned windows are checked
     against both pinned documents; resources=None derives available budgets.
     Reservations name canonical backing bytes after upstream allocation.
+    ``schedule_plan`` reads explicit typed schedule decisions against the original
+    ``source_identity`` and bound context, then verifies their actual emission.
+    An explicit decision never silently re-searches or repairs to another block.
     """
     if type(external_buffers_disjoint) is not bool or not external_buffers_disjoint:
         raise ValueError("dense scheduling cannot reorder possibly aliased external buffers")
@@ -489,12 +540,12 @@ def schedule_compact_dense(
     )
 
     from .compact_verification import DenseVerificationUnavailable, verify_compact_dense
-    from .dense_contracts import DenseIntegerReadout
+    from .dense_contracts import DenseIntegerReadout, DenseTiledIntegerReadout
     from .selected_contracts import SelectedSchedulingContracts, _parse
 
     if output_readout is not None:
         if (
-            type(output_readout) is not DenseIntegerReadout
+            type(output_readout) not in (DenseIntegerReadout, DenseTiledIntegerReadout)
             or selected_contracts is None
             or type(readout_qualification_identity) is not str
             or not readout_qualification_identity.strip()
@@ -526,7 +577,22 @@ def schedule_compact_dense(
         )
     elif resources is None or reservations:
         raise ValueError("dense resource derivation and reservations require selected RTL/software contracts")
-    sources = _dense_library_sources()
+    decision = None
+    if schedule_plan is not None:
+        from .schedule_ir import read_dense_schedule_plan
+
+        decision = read_dense_schedule_plan(
+            schedule_plan, problem, resources, storage, adapter,
+            source_identity=source_identity, dtypes=dtypes, static_budget=static_budget,
+            output_readout=output_readout, bias_source=bias_source,
+        )
+        if decision.pipeline_prefetch is not None:
+            raise ValueError("panel overlap requires schedule_dense_panel_pipeline and original execution admission")
+        storage, outer_order = decision.storage, decision.outer_order
+    elif source_identity is not None:
+        raise ValueError("dense source identity requires an explicit schedule plan")
+    schedule_library_version = 13 if decision is not None and decision.loop_transforms else 12
+    sources = _dense_library_sources(decision is not None, schedule_library_version)
     checked_selection = None if selected_contracts is None else _digest(selected_contracts.record())
     binding = (
         None
@@ -545,7 +611,9 @@ def schedule_compact_dense(
             "identity": checked_readout,
             "output_dtype": output_readout.output_dtype,
             "qualification_identity": readout_qualification_identity,
-            "scope": "declared exact unary integer output; independent implementation qualification required",
+            "scope": ("declared source-column-indexed integer output; independent implementation qualification required"
+                      if type(output_readout) is DenseTiledIntegerReadout
+                      else "declared exact unary integer output; independent implementation qualification required"),
         }
     context = PipelineContext(
         hardware=adapter.configuration_identity,
@@ -566,6 +634,7 @@ def schedule_compact_dense(
             if output_readout is None
             else f":readout={checked_readout}:qualification={readout_qualification_identity}"
         )
+        + ("" if decision is None else f":schedule={decision.plan_sha256}")
         + f":selection={checked_selection or 'unselected'}:index_bits={adapter.index_bits}"
         + ("" if checked_readout is None else f":readout={checked_readout}"),
         library=_digest(sources),
@@ -580,6 +649,8 @@ def schedule_compact_dense(
         "static_budget": static_budget,
         "external_buffers_disjoint": external_buffers_disjoint,
         "kernel": None,
+        "schedule_plan": None if decision is None else decision.plan_sha256,
+        "bias_source": None if bias_source is None else asdict(bias_source),
         **({} if output_readout is None else {"output_readout": asdict(output_readout)}),
     }
 
@@ -632,11 +703,11 @@ def schedule_compact_dense(
                 raise ValueError("dense selected output readout changed during compilation; replan")
             if _digest(selected_contracts.record()) != checked_selection:
                 raise ValueError("dense selected RTL/software contracts changed during compilation; replan")
-        if sources != _dense_library_sources():
+        if sources != _dense_library_sources(decision is not None, schedule_library_version):
             raise ValueError("dense shared library changed during compilation; replan")
 
     def emit(block):
-        return emit_compact_dense(
+        kernel = emit_compact_dense(
             problem,
             block,
             storage,
@@ -645,7 +716,14 @@ def schedule_compact_dense(
             dtypes=dtypes,
             outer_order=outer_order,
             output_readout=output_readout,
+            bias_source=bias_source,
         )
+
+        if decision is not None and decision.loop_transforms:
+            from .loop_schedule import propose_loop_transforms
+
+            kernel = propose_loop_transforms(kernel, decision.loop_transforms, index_bits=adapter.index_bits)
+        return kernel
 
     repairs = []
     search = resources
@@ -660,6 +738,13 @@ def schedule_compact_dense(
 
         def blocking():
             nonlocal choice
+            if decision is not None:
+                from .schedule_ir import check_dense_schedule_commands
+
+                sites = sum(1 for _ in _static_calls(emit(decision.block).body))
+                check_dense_schedule_commands(decision, sites, static_budget)
+                choice = DenseChoice(decision.block, sites, 1, "explicit_schedule_ir")
+                return {"choice": choice}
             choice = choose_dense_block(
                 problem,
                 search,
@@ -673,6 +758,12 @@ def schedule_compact_dense(
 
         def emission():
             state["kernel"] = emit(session.analysis("choice").block)
+            if decision is not None:
+                from .schedule_ir import check_dense_schedule_commands
+
+                check_dense_schedule_commands(
+                    decision, sum(1 for _ in _static_calls(state["kernel"].body)), static_budget
+                )
             return {"emitted": state["kernel"].digest()}
 
         def realization():
@@ -687,6 +778,7 @@ def schedule_compact_dense(
                     static_budget=static_budget,
                     timeout_ms=verification_timeout_ms,
                     output_readout=output_readout,
+                    bias_source=bias_source,
                 )
             except DenseVerificationUnavailable as exc:
                 unavailable = exc
@@ -701,7 +793,7 @@ def schedule_compact_dense(
             if spec.name == "blocking" and choice is None:
                 return None
         if unavailable is not None:
-            if attempt == max_repairs or isinstance(unavailable.__cause__, ImportError):
+            if decision is not None or attempt == max_repairs or isinstance(unavailable.__cause__, ImportError):
                 raise unavailable
             repairs.append({"discarded_kernel_sha256": state["kernel"].digest(), "reason": str(unavailable)})
             session.repair(stage=0, reason=str(unavailable))
@@ -709,6 +801,15 @@ def schedule_compact_dense(
             search = replace(resources, max_m_blocks=1, max_n_blocks=1, max_k_blocks=1)
         else:
             report = session.analysis("realization")
+            if decision is not None:
+                report["schedule_ir"] = {
+                    "sha256": decision.plan_sha256,
+                    "text": decision.plan_text,
+                    "source_identity": source_identity,
+                    "decisions_consumed": ("block_tiles", "outer_order", "row_bases")
+                    + (("loop_transforms",) if decision.loop_transforms else ()),
+                    "loop_transforms": [asdict(request) for request in decision.loop_transforms],
+                }
             report["repairs"] = repairs
             report["pipeline"] = {
                 "schema": "merlin.compact_dense_pipeline.v1",
@@ -730,6 +831,8 @@ def schedule_compact_dense(
                 checked_selection,
                 output_readout,
                 checked_readout,
+                decision is not None,
+                schedule_library_version,
             )
 
 
@@ -740,7 +843,11 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def _dense_library_sources():
+def _dense_library_sources(uses_schedule_ir=False, schedule_library_version=12):
+    if uses_schedule_ir:
+        from .library_sources import shared_library_sources
+
+        return shared_library_sources(version=schedule_library_version)
     from .schedule_pipeline import shared_library_sources
 
     return shared_library_sources()

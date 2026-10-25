@@ -139,7 +139,13 @@ def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None, _bindings=N
         folded = fold_integer(val, _bindings or {})
         if folded is not None:
             return _Val("const", value=folded)
-        if op.properties.get("overflowFlags") is not None:
+        flags = op.properties.get("overflowFlags")
+        # xDSL materializes an explicit zero for ordinary modular arithmetic.
+        # Preserve base+constant pointer identity for that spelling; nonzero
+        # poison-producing promises still need an independent proof.
+        from xdsl.dialects.builtin import IntegerAttr
+
+        if flags is not None and (not isinstance(flags, IntegerAttr) or flags.value.data != 0):
             return _Val("unknown")
     if name == "llvm.ptrtoint" and len(op.operands) >= 1:
         if _word_bits is not None and op.results[0].type != IntegerType(_word_bits):
@@ -237,6 +243,7 @@ class _Val:
     arg_index: int | None = None
     offset: int | None = None
     symbol: str | None = None  # original module's closed, read-only global
+    known_bits: dict | None = None  # finite original scalar bit facts; never a whole raw word
 
 
 def _operand(v: _Val | None) -> dict:
@@ -248,7 +255,8 @@ def _operand(v: _Val | None) -> dict:
         return {"raw": None, "kind": "argbase", "arg_index": v.arg_index, "offset": v.offset}
     if v.kind == "global":
         return {"raw": None, "kind": "global", "arg_index": None, "offset": v.offset, "symbol": v.symbol}
-    return {"raw": None, "kind": "unknown", "arg_index": None, "offset": None}
+    return {"raw": None, "kind": "unknown", "arg_index": None, "offset": None,
+            **({"known_bits": dict(v.known_bits)} if v.known_bits is not None else {})}
 
 
 @dataclass
@@ -288,7 +296,7 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
     word_bits = getattr(semantics, "word_bits", getattr(semantics, "_width", None))
     if type(word_bits) is not int:
         word_bits = None  # Historical external providers retain their original unselected behavior.
-    from .static_operands import counted_loop_observations
+    from .static_operands import counted_loop_observations, known_integer_bits
 
     loop_observation, bindings = counted_loop_observations(module)
     idx = 0
@@ -303,8 +311,14 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
             if parsed is not None:
                 funct, _rd_is_x0 = parsed
                 ops = list(op.operands)  # SSA source operands, in order (rs1, rs2) — spelling-agnostic
-                rs1 = _resolve(ops[0], _word_bits=word_bits, _bindings=bindings.get(op.parent_block())) if len(ops) >= 1 else None
-                rs2 = _resolve(ops[1], _word_bits=word_bits, _bindings=bindings.get(op.parent_block())) if len(ops) >= 2 else None
+                block_bindings = bindings.get(op.parent_block())
+                rs1 = _resolve(ops[0], _word_bits=word_bits, _bindings=block_bindings) if len(ops) >= 1 else None
+                rs2 = _resolve(ops[1], _word_bits=word_bits, _bindings=block_bindings) if len(ops) >= 2 else None
+                for original, resolved in zip(ops[:2], (rs1, rs2)):
+                    if resolved is not None and resolved.kind == "unknown":
+                        known = known_integer_bits(original, bindings.get(op.parent_block(), {}))
+                        if known is not None and known[0] and (word_bits is None or known[2] == word_bits):
+                            resolved.known_bits = dict(mask=known[0], value=known[1], width=known[2])
                 klass, dec = semantics.decode_instruction(funct, _operand(rs1), _operand(rs2), isa)
                 trace.instructions.append(
                     {

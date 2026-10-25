@@ -491,6 +491,10 @@ def generate_bundles(
                 COMMON_SUBSTRATE_V6,
                 COMMON_SUBSTRATE_V7,
                 COMMON_SUBSTRATE_V8,
+                COMMON_SUBSTRATE_V9,
+                COMMON_SUBSTRATE_V10,
+                COMMON_SUBSTRATE_V11,
+                COMMON_SUBSTRATE_V12,
             )
 
             if common_substrate not in {
@@ -500,6 +504,10 @@ def generate_bundles(
                 COMMON_SUBSTRATE_V6,
                 COMMON_SUBSTRATE_V7,
                 COMMON_SUBSTRATE_V8,
+                COMMON_SUBSTRATE_V9,
+                COMMON_SUBSTRATE_V10,
+                COMMON_SUBSTRATE_V11,
+                COMMON_SUBSTRATE_V12,
             }:
                 attach_common_substrate(
                     out[bid],
@@ -524,6 +532,10 @@ def generate_bundles(
             "merlin.common_compiler_substrate.v6",
             "merlin.common_compiler_substrate.v7",
             "merlin.common_compiler_substrate.v8",
+            "merlin.common_compiler_substrate.v9",
+            "merlin.common_compiler_substrate.v10",
+            "merlin.common_compiler_substrate.v11",
+            "merlin.common_compiler_substrate.v12",
         }:
             # The common generated task is the sole authoring instruction owner.
             # Legacy target task directories remain operator inputs, not grants.
@@ -932,6 +944,10 @@ def _main(argv: list[str] | None = None) -> int:
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
         COMMON_SUBSTRATE_V8,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
     )
 
     ap.add_argument(
@@ -945,6 +961,10 @@ def _main(argv: list[str] | None = None) -> int:
             COMMON_SUBSTRATE_V6,
             COMMON_SUBSTRATE_V7,
             COMMON_SUBSTRATE_V8,
+            COMMON_SUBSTRATE_V9,
+            COMMON_SUBSTRATE_V10,
+            COMMON_SUBSTRATE_V11,
+            COMMON_SUBSTRATE_V12,
         ),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )

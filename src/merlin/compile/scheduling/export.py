@@ -64,6 +64,8 @@ PUBLIC_MODULES_V8 = (
     "merlin.compile.scheduling.configuration_loops",
     "merlin.compile.scheduling.command_compaction",
     "merlin.compile.scheduling.compact_dense",
+    "merlin.compile.scheduling.compact_loaded_sum",
+    "merlin.compile.scheduling.spatial_gather",
     "merlin.compile.scheduling.dense_source",
     "merlin.compile.scheduling.configuration",
     "merlin.compile.scheduling.configuration_ir",
@@ -94,10 +96,71 @@ PUBLIC_MODULES_V8 = (
     "merlin.transforms.dense_planning",
     "merlin.transforms.pipeline_state",
 )
+PUBLIC_MODULES_V10 = (
+    *PUBLIC_MODULES_V8,
+    "merlin.compile.scheduling.periodic_dense",
+    "merlin.compile.scheduling.spatial_producer",
+    "merlin.compile.scheduling.spatial_readout",
+)
+PUBLIC_MODULES_V11 = (
+    *PUBLIC_MODULES_V10,
+    "merlin.llvmlower.spatial_scratch_abi",
+    "merlin.llvmlower.fresh_tensor_writer",
+    "merlin.llvmlower.private_workspace_pool",
+    "merlin.llvmlower.borrowed_effects",
+)
+PUBLIC_MODULES_V12 = (
+    *PUBLIC_MODULES_V11,
+    "merlin.compile.scheduling.schedule_ir",
+    "merlin.xdsl_dialects.schedule",
+)
+PUBLIC_MODULES_V13 = (*PUBLIC_MODULES_V12, "merlin.compile.scheduling.loop_schedule")
+PUBLIC_MODULES_V14 = (
+    *PUBLIC_MODULES_V13,
+    "merlin.compile.scheduling.dense_panel_pipeline",
+    "merlin.compile.scheduling.scf_commands",
+)
+PUBLIC_MODULES_V15 = (
+    *PUBLIC_MODULES_V14,
+    "merlin.compile.scheduling.configuration_contexts",
+    "merlin.compile.scheduling.configuration_loop_cleanup",
+    "merlin.compile.scheduling.dense_panel_readout",
+)
+PUBLIC_MODULES_V16 = (
+    *PUBLIC_MODULES_V15,
+    "merlin.compile.scheduling.tile_load_coalescing",
+    "merlin.compile.scheduling.panel_tile_loads",
+    "merlin.compile.scheduling.dense_segmented_pipeline",
+    "merlin.compile.scheduling.dense_array_retention",
+    "merlin.compile.scheduling.api_catalog",
+)
+PUBLIC_MODULES_V17 = (
+    *PUBLIC_MODULES_V16,
+    "merlin.compile.scheduling.rolling_window",
+    "merlin.compile.scheduling.rolling_spatial",
+    "merlin.xdsl_dialects.rolling_window",
+    "merlin.compile.scheduling.spatial_readout_cache",
+)
+PUBLIC_MODULES_V18 = (
+    *PUBLIC_MODULES_V17,
+    "merlin.compile.scheduling.dense_readout_overlap",
+    "merlin.llvmlower.host_builder",
+    "merlin.compile.scheduling.projection_views",
+    "merlin.transforms.tensor_views",
+    "merlin.llvmlower.source_region",
+    "merlin.llvmlower.source_region_host",
+    "merlin.compile.composition_catalog",
+)
+PUBLIC_MODULES_V19 = (*PUBLIC_MODULES_V18, "merlin.compile.scheduling.dense_ready_readout")
 PUBLIC_MODULES = PUBLIC_MODULES_V6
 _NAMESPACES_V6 = dict(_NAMESPACES)
 _NAMESPACES_V7 = dict(_NAMESPACES_V6)
 _NAMESPACES_V8 = dict(_NAMESPACES_V6)
+_NAMESPACES_V10 = dict(_NAMESPACES_V8)
+_NAMESPACES_V11 = {
+    **_NAMESPACES_V10,
+    "merlin.xdsl_dialects": '"""Shared xDSL helpers; dialect modules are explicitly selected."""\n',
+}
 
 SOURCE_BINDING_PROTOCOL = "merlin.shared_source_binding.v1"
 SOURCE_BINDING_MODULES = ("merlin.compile.scheduling.direct_source", "merlin.compile.scheduling.source_tokens")
@@ -105,12 +168,42 @@ SOURCE_BINDING_MODULES = ("merlin.compile.scheduling.direct_source", "merlin.com
 
 def public_modules(version=6):
     library_modules(version)
-    return {6: PUBLIC_MODULES_V6, 7: PUBLIC_MODULES_V7, 8: PUBLIC_MODULES_V8}[version]
+    return {
+        6: PUBLIC_MODULES_V6,
+        7: PUBLIC_MODULES_V7,
+        8: PUBLIC_MODULES_V8,
+        10: PUBLIC_MODULES_V10,
+        11: PUBLIC_MODULES_V11,
+        12: PUBLIC_MODULES_V12,
+        13: PUBLIC_MODULES_V13,
+        14: PUBLIC_MODULES_V14,
+        15: PUBLIC_MODULES_V15,
+        16: PUBLIC_MODULES_V16,
+        17: PUBLIC_MODULES_V17,
+        18: PUBLIC_MODULES_V18,
+        19: PUBLIC_MODULES_V19,
+    }[version]
 
 
 def namespace_replacements(version=6):
     library_modules(version)
-    return dict({6: _NAMESPACES_V6, 7: _NAMESPACES_V7, 8: _NAMESPACES_V8}[version])
+    return dict(
+        {
+            6: _NAMESPACES_V6,
+            7: _NAMESPACES_V7,
+            8: _NAMESPACES_V8,
+            10: _NAMESPACES_V10,
+            11: _NAMESPACES_V11,
+            12: _NAMESPACES_V11,
+            13: _NAMESPACES_V11,
+            14: _NAMESPACES_V11,
+            15: _NAMESPACES_V11,
+            16: _NAMESPACES_V11,
+            17: _NAMESPACES_V11,
+            18: _NAMESPACES_V11,
+            19: _NAMESPACES_V11,
+        }[version]
+    )
 
 
 def _source_identities(source_root, *, version, source_binding):
@@ -135,8 +228,10 @@ def export_shared_scheduling(
     modules, namespaces = library_modules(version), namespace_replacements(version)
     if type(source_binding) is not bool:
         raise ValueError("shared source-binding export requires an explicit Boolean")
-    if source_binding and version != 8:
-        raise ValueError("new source-binding exports require explicit inventory version 8")
+    if source_binding and version not in (8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
+        raise ValueError(
+            "new source-binding exports require explicit inventory version 8 or 10 through 19"
+        )
     if source_binding:
         modules = (*modules, *SOURCE_BINDING_MODULES)
     directory = Path(directory).absolute()
@@ -178,6 +273,16 @@ def export_shared_scheduling(
             6: "merlin.shared_scheduling_library.v1",
             7: "merlin.shared_scheduling_library.v2",
             8: "merlin.shared_scheduling_library.v3",
+            10: "merlin.shared_scheduling_library.v4",
+            11: "merlin.shared_scheduling_library.v5",
+            12: "merlin.shared_scheduling_library.v6",
+            13: "merlin.shared_scheduling_library.v7",
+            14: "merlin.shared_scheduling_library.v8",
+            15: "merlin.shared_scheduling_library.v9",
+            16: "merlin.shared_scheduling_library.v10",
+            17: "merlin.shared_scheduling_library.v11",
+            18: "merlin.shared_scheduling_library.v12",
+            19: "merlin.shared_scheduling_library.v13",
         }[version],
         "public_modules": list(
             (*public_modules(version), *SOURCE_BINDING_MODULES) if source_binding else public_modules(version)
@@ -193,6 +298,10 @@ def export_shared_scheduling(
         manifest["inventory_version"] = version
     if source_binding:
         manifest["source_binding_protocol"] = SOURCE_BINDING_PROTOCOL
+    if version in (16, 17, 18, 19):
+        from .api_catalog import scheduling_capabilities
+
+        manifest["scheduling_capabilities"] = scheduling_capabilities(version)
     if (
         sources != _source_identities(source_root, version=version, source_binding=source_binding)
         or exporter != Path(__file__).read_bytes()
@@ -230,14 +339,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--include-block-schedule", action="store_true")
-    parser.add_argument("--library-version", type=int, choices=(6, 7, 8), default=6)
+    parser.add_argument("--library-version", type=int,
+                        choices=(6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19), default=6)
     parser.add_argument(
         "--shared-library", action="store_true", help="export all shared scheduling families for host review"
     )
     parser.add_argument(
         "--license-directory", type=Path, help="selected LICENSE and NOTICE directory for installed sources"
     )
-    parser.add_argument("--source-binding", action="store_true", help="explicit version-8 typed-source/LLVM lexer APIs")
+    parser.add_argument(
+        "--source-binding", action="store_true", help="explicit version-8/version-10 typed-source/LLVM lexer APIs"
+    )
     args = parser.parse_args(argv)
     if args.shared_library and args.include_block_schedule:
         parser.error("--shared-library and --include-block-schedule select different export formats")

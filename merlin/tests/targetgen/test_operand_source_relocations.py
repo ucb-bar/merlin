@@ -139,14 +139,14 @@ def test_original_facts_mutation_during_source_hash_refuses(relocated, monkeypat
     from merlin.targetgen.rtl import source_relocations as S
 
     original, _blob, _recipe, rows, *_ = relocated
-    native = S.hashlib.file_digest
+    native = S.source_digest
 
     def mutate(*args):
         result = native(*args)
         original._facts["inputs"]["target"] = "other"
         return result
 
-    monkeypatch.setattr(S.hashlib, "file_digest", mutate)
+    monkeypatch.setattr(S, "source_digest", mutate)
     with pytest.raises(ValueError, match="original facts or roster changed"):
         relocate_operand_sources(original._facts, rows)
 

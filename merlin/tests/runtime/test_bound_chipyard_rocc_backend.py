@@ -930,6 +930,9 @@ def test_neutral_packet_reader_preserves_original_full_output_roster(logical_mem
     assert evidence["transport"] == "gsim_coherent_packet_v1" and evidence["status"] == "complete"
     assert evidence["block_words"] == 256 and evidence["packet_framing"] == "neutral_dense_blocks_out_bin_v1"
     assert evidence["native_filesystem_view"] is None
+    assert evidence["payload"] == _pin(Path(request["output_path"]))
+    assert evidence["regions"] == _pin(Path(request["regions_path"]))
+    assert evidence["original_elf"] == _pin(logical_memory_case[-1])
     assert bound.engine_readback_policy("gsim", cb=cb).transport == COHERENT_PACKET_V1
     assert bound.readback_policy().transport == FULL_VALUES_B64
     assert request["regions"][0]["bytes"] == 8
@@ -983,6 +986,11 @@ def test_packet_process_uses_only_declared_original_mode(logical_memory_case, mo
     monkeypatch.setattr(B, "_bounded_process", run)
     monkeypatch.setattr(rtl_engine_policy, "simulation_runtime_slot", lambda *a, **k: nullcontext())
     assert bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request) == "DONE\n"
+    record = next(I.verify(p) for p in logical_memory_case[-1].parent.glob("invocations/*/invocation.json")
+                  if json.loads(p.read_text()).get("stage") == "selected_rocc_process")
+    assert _pin(Path(request["output_path"])) in record["outputs"]
+    assert _pin(Path(request["regions_path"])) in record["inputs"]
+    assert _pin(Path(request["regions_path"])) not in record["outputs"]
 
 
 @pytest.mark.parametrize("logical_memory_case", [COHERENT_PACKET_V1], indirect=True)
@@ -1485,3 +1493,19 @@ def test_declared_model_spike_machine_is_explicit_and_recorded(selection, tmp_pa
     assert "-p1" in record["argv"]
     assert record["inputs"] == [_pin(elf)]
     assert _engine(selection)["argv"] == ["--isa=rv64gc", "{elf}"]
+
+
+def test_explicit_contract_storage_budget_reaches_ordinary_harness_without_prospective_override(selection):
+    program = _program()
+    program['tensors']['Y'].update(shape=[4_194_305], dtype='i32')
+    original = copy.deepcopy(program)
+    selection[0]['logical_harness'] = {'storage_budget_bytes': 32 << 20}
+    selection[0]['harness_abi']['fence_symbol'] = 'done'
+    text = _bound(selection).render_harness(program, target='synthetic', inputs={'X': [[1, 2]]})
+    assert 'entry(tensor_0, tensor_1);' in text
+    assert 'done();' in text
+    assert '16777220' in text
+    assert program == original
+    with pytest.raises(ValueError, match='storage budget'):
+        _bound(selection).render_harness(program, target='synthetic', inputs={'X': [[1, 2]]},
+                                        host_storage_limit_bytes=16 << 20)

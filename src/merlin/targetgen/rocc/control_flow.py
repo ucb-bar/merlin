@@ -92,6 +92,29 @@ def constant_control_operand_witness(
     found = False
     unresolved = False
 
+    # The complete control/poison proof can summarize closed counted command
+    # loops. These selected result-free instructions cannot produce SSA control
+    # values; their memory effects do not turn unknown loads into constants.
+    # Validate every transport before permitting such a summary.
+    assembly = tuple(op for block in function.body.blocks for op in block.ops
+                     if op.name == "llvm.inline_asm")
+    for op in assembly:
+        template = _asm_template(op)
+        if (template == "fence" and not op.operands and not op.results
+                and isinstance(op.has_side_effects, UnitAttr)):
+            continue
+        parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
+        if (op.results or len(op.operands) != 2 or len(template.split(",")) != 6
+                or any(char in template for char in (";", "\n", "\r"))
+                or not isinstance(op.has_side_effects, UnitAttr)
+                or parsed is None or not parsed[1]
+                or parsed[0] not in isa["FUNCT_CLASS"]
+                or [s.strip() for s in template.split(",")[-2:]] != ["$0", "$1"]):
+            return None
+
+    class _FoundWitness(Exception):
+        pass
+
     def visit(op, args):
         nonlocal found, unresolved
         if op.name != "llvm.inline_asm":
@@ -119,12 +142,23 @@ def constant_control_operand_witness(
                 unresolved = True
             elif type(observed) is type(value) and observed == value:
                 found = True
+                raise _FoundWitness
 
     try:
+        # A positive prefix observation is useful only after this independent
+        # full-path proof succeeds. Unknown later branches, poison or exhausted
+        # bounds still discard every witness, including an earlier one.
+        constant_control_counts(
+            function, max_operations=max_operations, max_blocks=max_blocks,
+            observe=lambda op, args: None, observed_operations=frozenset(),
+            summarizable_assembly=assembly,
+        )
         constant_control_counts(function, max_operations=max_operations,
                                 max_blocks=max_blocks, observe=visit,
                                 observed_operations=frozenset(op for block in function.body.blocks
                                     for op in block.ops if op.name == "llvm.inline_asm"))
+    except _FoundWitness:
+        return True
     except (ValueError, KeyError, TypeError, IndexError):
         return None  # Partial observations never establish the requested witness.
     return True if found else None if unresolved else False

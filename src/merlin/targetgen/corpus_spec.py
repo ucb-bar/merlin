@@ -22,6 +22,7 @@ from typing import Any
 from merlin.targetgen.capsule_dram import dtype_bits
 
 from .capsule_intent import _semantic_block as _semantic_block
+from .corpus_pool import build as build_maxpool2d
 
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
 # on a target — a target selects its dtypes via its compute-unit contract.
@@ -899,9 +900,9 @@ def _pool_epilogue(entry: dict, *, rows: int, in_dims: tuple[int, int] | None, o
 
     Pooling on this class of target is FUSED onto the store path -- the store config carries
     ``pool_size``/``pool_stride``/``pool_out_dim``/``porows``/``pocols``/``orows``/``ocols``/``upad``/
-    ``lpad`` and the mvout writes the pooled window -- so a standalone pooling capsule is not the
-    honest capsule for it (the eligibility oracle refuses one as a false fallback). The geometry
-    therefore rides on the fused op's own attributes, in the ABI's own vocabulary.
+    ``lpad`` and the mvout writes the pooled window. Geometry therefore rides on the readout's
+    attributes. A standalone source pool can use movement plus this readout when the capability
+    oracle admits that composition; it does not require an independent pooling engine.
 
     ``in_dims`` is the spatial extent the committed ROWS unflatten to. A conv2d DERIVES it (it is the
     conv's own ``Ho x Wo``); a contraction has no spatial extent of its own, so its entry must DECLARE
@@ -1458,6 +1459,17 @@ def build_residual_add(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "bound_lsb": entry.get("bound_lsb"),
     }
     lhs_scale, rhs_scale, bound = residual_add_params(attrs, op=str(entry.get("name", "residual_add")))
+    ordered_scales = entry.get("source_scales")
+    ordered_text = ""
+    if ordered_scales is not None:
+        import math
+
+        if (type(ordered_scales) is not list or len(ordered_scales) != 3
+                or any(type(value) not in (int, float) or not math.isfinite(value) or value <= 0
+                       for value in ordered_scales)):
+            raise ValueError("residual source_scales requires three positive finite ordered scalars")
+        attrs["source_scales"] = list(ordered_scales)
+        ordered_text = "source_scales = [" + ", ".join(f"{float(value)!r} : f32" for value in ordered_scales) + "], "
     idt, midt = binding.cap_dtype(binding.operand_dtype), binding.mlir_dtype(binding.operand_dtype)
     attrs["output_dtype"] = idt
     if entry.get("semantic"):
@@ -1491,6 +1503,7 @@ def build_residual_add(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'  %{rhs} = merlin_iface.tensor {{name = "{rhs}", role = "input"}} : tensor<{M}x{N}x{midt}>',
         f'  %{out} = merlin_iface.residual_add %{lhs}, %{rhs} {{name = "{out}", epilogue = [{epi}], '
         f"lhs_scale = {lhs_scale} : f32, rhs_scale = {rhs_scale} : f32, bound_lsb = {bound} : i64, "
+        f"{ordered_text}"
         f'output_dtype = "{idt}"}} : (tensor<{M}x{N}x{midt}>, tensor<{M}x{N}x{midt}>) '
         f"-> tensor<{M}x{N}x{midt}>",
         "}",
@@ -2378,6 +2391,7 @@ def build_scope_chain(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 # op -> builder, for the driver to dispatch on the entry's declared op.
 BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
+    "maxpool2d": build_maxpool2d,
     "matmul": build_matmul,
     "linear": build_matmul,
     "fused_matmul_bias": build_matmul,
@@ -2392,9 +2406,8 @@ BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     #
     # It is the one family of the four the ABI contract's `host_refusal_evidence` adjudicates with a
     # FACET (`readout_facet.operand_sum`) rather than with an epilogue stage -- i.e. the one that has a
-    # standalone witness on the device and therefore earns a standalone builder. The other three
-    # (quantize, minmax, pool) are readout STAGES there, and a standalone builder for them would
-    # declare a capability no target in this repo evidences.
+    # standalone witness on the device. Quantize, minmax and pool are readout stages;
+    # maxpool2d above composes movement with readout, rather than claiming a pool engine.
     "add": build_residual_add,
     "residual_seam": build_residual_seam,
     "resident_reuse": build_resident_reuse,
@@ -2419,6 +2432,16 @@ def build_component_program(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 
 
 BUILDERS["component_program"] = build_component_program
+
+
+def build_spatial_producer_pool(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Two separately rounded original source operations; no coefficient collapse."""
+    from .corpus_spatial_pair import build as build_pair
+
+    return build_pair(entry, binding)
+
+
+BUILDERS["spatial_producer_pool"] = build_spatial_producer_pool
 
 
 def activation_matmul_program(entry: dict, binding: CorpusBinding) -> dict:

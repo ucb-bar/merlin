@@ -472,6 +472,11 @@ class BoundRoCCBackend:
         self.harness_build_recipe()
         return {engine: self._engine_identity(engine) for engine in self._block()["engines"]}
 
+    def logical_storage_budget_bytes(self):
+        from merlin.runtime.harness_render import selected_storage_budget
+
+        return selected_storage_budget(self._data()["contract"])
+
     def render_harness(
         self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=(), blobs=None,
         host_storage_limit_bytes=None,
@@ -482,7 +487,12 @@ class BoundRoCCBackend:
         from merlin.runtime.harness_render import render_harness
 
         contract = self._data()["contract"]
+        # Preserve the existing explicit source-owned host limit when no
+        # contract budget was selected. An ordinary caller still uses the
+        # neutral renderer's unchanged default.
         budget = (contract.get("logical_harness") or {}).get("storage_budget_bytes")
+        if budget is not None:
+            budget = self.logical_storage_budget_bytes()
         if host_storage_limit_bytes is not None:
             _require(type(host_storage_limit_bytes) is int and 0 < host_storage_limit_bytes <= 256 << 20,
                      "prospective logical host storage exceeds its fixed software ceiling")
@@ -912,6 +922,9 @@ class BoundRoCCBackend:
             cwd=cwd,
             env=block["environment"],
             inputs=tuple(process_inputs),
+            # The manifest is an input above. Only the dump is produced by
+            # this actual simulator invocation; completion seals its bytes.
+            outputs=(export.output_path,) if export is not None else (),
             dependencies=dependencies,
         ) as observed:
             from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot

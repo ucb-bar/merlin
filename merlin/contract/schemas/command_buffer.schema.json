@@ -385,6 +385,8 @@
               "RESIDUAL_ADD",
               "CONV2D",
               "MOVEMENT",
+              "MAXPOOL2D",
+              "ROW_MAJOR_VIEW",
               "ATTENTION_PV",
               "K_CHAIN",
               "DEPTHWISE_CONV2D"

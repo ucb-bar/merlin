@@ -51,6 +51,7 @@ SCHEMA = "whole_program_v1"
 #: enum ``merlin/contract/schemas/command_buffer.schema.json`` admits. An op in neither is refused by
 #: name rather than mapped to the nearest thing, which would emit a command computing something else.
 _OPCODE_OF_OP = {
+    "maxpool2d": "MAXPOOL2D",
     "matmul": "MATMUL",
     "conv2d": "CONV2D",
     "residual_add": "RESIDUAL_ADD",
@@ -328,6 +329,10 @@ def group_binder(te, datapath: Mapping[str, Any] | None, *, contract=None, facts
 
 def group_interface(entry: Mapping[str, Any], binder, *, source_reference: str) -> str:
     """The interface MLIR a package is asked to lower for one stated group, through the one path."""
+    if entry.get("schema") == "connected_spatial_entry_v1":
+        from merlin.llvmlower.connected_spatial import spatial_pair_interface
+
+        return spatial_pair_interface(entry, binder, source_reference=source_reference)
     if binder is None:
         raise UnboundGroupCapsule(
             "no group binding was supplied (whole_program_buffer(binder=...)); a group is stated only "
@@ -400,6 +405,8 @@ def _ask_package(
     bound: dict[str, tuple[str, ...]] = {}
     if pinned is None:
         bound["output"] = (operands["dst"],)
+        if "src" in operands:
+            bound["input"] = (operands["src"],)
         # AN ACTIVATION IN THE STATIONARY SLOT binds where a weight would: the capsule states the
         # contraction's right operand in the weight role (the operand the unit holds), and the kernel's
         # argument for it is whatever buffer the program hands it at run time. This is checked FIRST and
@@ -1098,7 +1105,17 @@ def whole_program_buffer(
         operands: dict[str, str] = {}
         bias_divisor: float | None = None
         weight_refusal = ""
-        if group.operand_sum is not None:
+        if group.window_pool is not None:
+            source = group.members[0].operands[0]
+            name = consume(source, why=f"group {group.index}")
+            want = [int(entry["M"]), int(entry["N"])]
+            if list(tensors[name]["shape"]) != want:
+                raise WholeProgramError(
+                    f"pool group {group.index} needs positions/channels layout {want}; "
+                    "use ordinary host/device rewriting to materialize its input layout"
+                )
+            operands["src"] = name
+        elif group.operand_sum is not None:
             # Two activations and no stored side. The operands are the integer tensors behind each
             # summand's own dequantize, in the order the entry states its two scales in.
             for key, operand in zip(("lhs", "rhs"), list(group.root.operands)[:2], strict=False):

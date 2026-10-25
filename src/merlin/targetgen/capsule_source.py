@@ -2114,102 +2114,10 @@ class ModelDemandIncomplete(ValueError):
 def model_op_demands_checked(
     linalg_mlir: str, in_fmt: str, weight_fmt: str | None = None, *, source_kind: str = "captured_provenance_v1"
 ) -> list:
-    """Verify complete, ordered contraction identity and shapes.
+    """Verify complete ordered contraction identity and declared source formats."""
+    from .source_demand_inventory import model_op_demands_checked as checked
 
-    Captured mode requires provenance plus independent body/shape agreement.
-    Typed mode reads exact initialized integer dots without provenance or admission.
-    """
-    if type(source_kind) is not str or source_kind != "captured_provenance_v1":
-        from .model_coverage import typed_static_integer_demands
-
-        return typed_static_integer_demands(linalg_mlir, in_fmt, weight_fmt, source_kind=source_kind)
-    from collections import Counter
-    from math import prod
-
-    from merlin.common import mlir_query as mq
-    from merlin.kernels import shapes as ks
-    from merlin.xdsl_dialects.lowering import contraction_coverage as cc
-
-    try:
-        module = mq.parse(linalg_mlir)
-    except Exception as exc:
-        raise ModelDemandIncomplete(f"cannot parse whole-model MLIR for demand completeness: {exc}") from exc
-
-    structural = []
-    for ordinal, op in enumerate(mq.walk(module)):
-        name = mq.op_name(op)
-        if name in cc.MATMUL_OPS:
-            structural.append((ordinal, op, name))
-        elif name == "linalg.generic":
-            try:
-                if cc.classify_generic(op) == "contraction":
-                    structural.append((ordinal, op, name))
-            except Exception as exc:
-                raise ModelDemandIncomplete(f"cannot classify linalg.generic at operation {ordinal}: {exc}") from exc
-
-    # The shape observer is independent of the provenance-tag reader. It deliberately may decline a
-    # structural contraction whose maps/extent are undecidable; that is an explicit refusal here.
-    observed = {id(op): shape for op, shape in ks.observe_contractions(module)}
-    expected: Counter = Counter()
-    expected_sequence: list[tuple[str, int, int, int, int]] = []
-    unshaped: list[str] = []
-    untagged: list[str] = []
-    for ordinal, op, name in structural:
-        marker = f"operation {ordinal} ({name})"
-        tag = getattr((op.attributes or {}).get("prov.op"), "data", None)
-        if not isinstance(tag, str) or not tag:
-            untagged.append(marker)
-            continue
-        shape = observed.get(id(op))
-        if shape is None or len(shape.parallel) < 2 or not shape.reduction:
-            unshaped.append(f"{marker}, prov.op={tag!r}")
-            continue
-        parallel = tuple(int(x) for x in shape.parallel)
-        reduction = tuple(int(x) for x in shape.reduction)
-        identity = (tag, prod(parallel[:-2]), parallel[-2], prod(reduction), parallel[-1])
-        expected[identity] += 1
-        expected_sequence.append(identity)
-
-    if untagged or unshaped:
-        raise ModelDemandIncomplete(
-            f"structural contraction inventory incomplete: {len(structural)} contraction(s); "
-            f"untagged={untagged[:8]}, unshaped={unshaped[:8]}"
-        )
-
-    demands = model_op_demands(linalg_mlir, in_fmt, weight_fmt)
-    actual: Counter = Counter()
-    actual_sequence: list[tuple[str, int, int, int, int]] = []
-    missing_shape: list[str] = []
-    for index, demand in enumerate(demands):
-        if demand.family != "contraction":
-            continue
-        if not demand.has_shape or demand.batch is None:
-            missing_shape.append(f"demand {index} ({demand.op})")
-            continue
-        identity = (demand.op, demand.batch, demand.m, demand.k, demand.n)
-        actual[identity] += 1
-        actual_sequence.append(identity)
-    absent = expected - actual
-    excess = actual - expected
-    out_of_order = [
-        {"ordinal": i, "structural": want, "demand": got}
-        for i, (want, got) in enumerate(zip(expected_sequence, actual_sequence))
-        if want != got
-    ]
-    if missing_shape or absent or excess or out_of_order:
-
-        def _rows(counter: Counter) -> list[dict]:
-            return [
-                {"op": op, "batch": batch, "M": m, "K": k, "N": n, "count": count}
-                for (op, batch, m, k, n), count in sorted(counter.items())[:8]
-            ]
-
-        raise ModelDemandIncomplete(
-            f"contraction demands differ from parsed MLIR: structural={sum(expected.values())}, "
-            f"demands={sum(actual.values())}, missing_shape={missing_shape[:8]}, "
-            f"missing={_rows(absent)}, extra={_rows(excess)}, out_of_order={out_of_order[:8]}"
-        )
-    return demands
+    return checked(linalg_mlir, in_fmt, weight_fmt, source_kind=source_kind)
 
 
 def linalg_to_iface(linalg_mlir: str, entry: dict, binding):

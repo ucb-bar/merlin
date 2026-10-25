@@ -702,14 +702,17 @@ def _kernel_identity(entry: dict[str, Any]) -> str:
 
 
 def _entry_extents(entry: dict[str, Any]) -> tuple[int, ...]:
-    """``(M, N, K)`` when the stated entry declares all three, otherwise ``()``.
+    """Declared matrix extents, including the empty reduction of an elementwise residual.
 
     An extent triple is what a caller that only knows contractions can read off a program. A
-    convolution states its geometry instead (``ci``/``kh``/``kw``/``stride``) and an elementwise sum
-    reduces over nothing, so for those the honest answer is that there is no triple -- not a
-    synthesized one. Consumers are expected to read the ENTRY when there is one; the triple exists so
+    convolution states its geometry instead (``ci``/``kh``/``kw``/``stride``), so it has no triple.
+    An elementwise sum declares exactly ``(M, N)`` and no reduction axis. Retaining those two
+    extents lets its original source signature join the compiled call without inventing a K.
+    Consumers are expected to read the ENTRY when there is one; the triple exists so
     a signature map stays meaningful to the contraction-granular consumers that predate this route.
     """
+    if entry.get("op") == "residual_add" and all(k in entry for k in ("M", "N")):
+        return tuple(int(entry[k]) for k in ("M", "N"))
     return tuple(int(entry[k]) for k in ("M", "N", "K")) if all(k in entry for k in ("M", "N", "K")) else ()
 
 
@@ -768,7 +771,7 @@ def _device_operands(group, stated) -> tuple[tuple[Any, Any] | None, str]:
     float with no dequantize behind it is refused rather than handed to an integer datapath.
     """
     root = group.root
-    if group.window_mean is not None:
+    if group.window_mean is not None or group.window_pool is not None:
         from merlin.xdsl_dialects.lowering import compute_groups as CG
 
         dequantizes = [
@@ -1005,6 +1008,10 @@ def _rewrite_groups_to_device(
     skipped: list[tuple[str, str]] = []
     placed: list = []  # the groups that actually became calls, for the prepack record
 
+    # Layout inference may follow an earlier producer. State every group while
+    # the original graph is intact; replacing that producer with a call erases
+    # the contraction maps needed to infer a later residual's feature axis.
+    stated_groups = []
     for group in groups:
         name = (
             f"{''.join(c if (c.isalnum() or c == '_') else '_' for c in model)}_group{group.index}"
@@ -1018,6 +1025,9 @@ def _rewrite_groups_to_device(
         except CG.NoCapsuleForm as error:
             skipped.append((name, f"no device form: {error}"))
             continue
+        stated_groups.append((group, name, stated))
+
+    for group, name, stated in stated_groups:
         # The placement is keyed on EXTENTS, so the group is offered to `select` as the shape its root
         # makes. A root the shape observer cannot read (a reduce that the group states as a window
         # mean, say) still HAS extents -- the ones its own statement declares -- so the statement is
@@ -1075,6 +1085,9 @@ def _rewrite_groups_to_device(
             skipped.append(
                 (name, "this group escapes as a float value, which the integer datapath it states cannot commit")
             )
+            continue
+        if group.window_pool is not None and not logical:
+            skipped.append((name, "a standalone window pool needs the single-input logical ABI"))
             continue
         if group.window_mean is not None and not logical:
             skipped.append((name, "a window mean needs the logical ABI's constant-one operand"))
@@ -1148,7 +1161,7 @@ def _rewrite_groups_to_device(
                 constants = [*image_ops, *constants]
                 operands[0] = image_ops[-1].results[0]
             elementwise = False
-            if entry.get("op") == "residual_add" and all(
+            if entry.get("op") in ("residual_add", "maxpool2d") and all(
                 len(_shape(v)) == 4
                 and _shape(v)[0] == 1
                 and _shape(v)[1] == int(entry.get("N", -1))
@@ -1233,7 +1246,12 @@ def _rewrite_groups_to_device(
                 symbol=sym,
                 parallel=tuple(int(v) for v in shape.parallel),
                 reduction=tuple(int(v) for v in shape.reduction),
-                dtypes=tuple(_element_token(t) for t in (operands[0].type, operands[1].type, result_type)),  # type: ignore[arg-type]
+                # The legacy datapath triple repeats the input format for a unary
+                # operation; its actual arity is in signatures/arg_access.
+                dtypes=tuple(  # type: ignore[arg-type]
+                    _element_token(t)
+                    for t in (operands[0].type, operands[min(1, len(operands) - 1)].type, result_type)
+                ),
                 fqn=str(entry.get("source_reference", "")),
                 group=int(group.index),
                 source_region_id=region_id,

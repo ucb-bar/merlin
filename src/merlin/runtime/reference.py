@@ -21,6 +21,7 @@ from .commandbuffer import (
     materialize_inputs,
     pool_params,
     residual_add_params,
+    row_major_view_shape,
 )
 from .tensor import Tensor
 
@@ -43,6 +44,8 @@ MODELED_OPCODES = frozenset(
         "ATTENTION_PV",
         "CONV2D",
         "MOVEMENT",
+        "MAXPOOL2D",
+        "ROW_MAJOR_VIEW",
         "BATCHED_MATMUL",
     }
 )
@@ -448,6 +451,24 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             t = Tensor(geometry.output_shape, flat, output_dtype)
             env[dst] = t
             outputs[dst] = t.to_list()
+        elif op == "ROW_MAJOR_VIEW":
+            name = ops.get("src")
+            if name not in env:
+                raise ValueError("ROW_MAJOR_VIEW source is undefined")
+            value = env[name]
+            shape = row_major_view_shape(cb, ops, attrs, value.shape, value.dtype, produced=outputs)
+            viewed = Tensor(shape, list(value.data), value.dtype)
+            env[name] = viewed
+            outputs[name] = viewed.to_list()
+
+        elif op == "MAXPOOL2D":
+            value = env[ops["src"]]
+            if attrs.get("epilogue") != ["acc_scale", "maxpool"] or attrs.get("output_dtype") != "i8":
+                raise ValueError("MAXPOOL2D requires explicit acc_scale then maxpool")
+            value = apply_declared_acc_scale(Tensor(value.shape, list(value.data), "i32"), attrs, op=op).to_i8()
+            value = apply_pool_stage(value, "maxpool", attrs, op=op)
+            env[ops["dst"]] = value
+            outputs[ops["dst"]] = value.to_list()
         elif op == "MOVEMENT":
             if "src" not in ops:
                 raise ValueError("MOVEMENT needs operands src/dst")

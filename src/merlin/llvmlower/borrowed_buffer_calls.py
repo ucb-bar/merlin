@@ -15,6 +15,9 @@ from pathlib import Path
 
 from merlin.common.digest import is_sha256, sha256_file
 
+from .borrowed_effects import BorrowedBufferEffects as BorrowedBufferEffects
+from .borrowed_effects import validate_effects as validate_effects
+
 SCHEMA = "merlin.borrowed_buffer_calls.v1"
 RESULTS_SCHEMA = "merlin.borrowed_buffer_calls.v2"
 ROSTER = "borrowed-buffer-calls.json"
@@ -27,30 +30,6 @@ def _sha(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-@dataclass(frozen=True)
-class BorrowedBufferEffects:
-    """Explicit original implementation premises, not a derived qualification."""
-
-    qualification_identity: str
-    no_retained_aliases: bool
-    no_releases: bool
-    complete_before_return: bool
-
-    def __post_init__(self):
-        if (
-            type(self.qualification_identity) is not str
-            or not self.qualification_identity.strip()
-            or len(self.qualification_identity) > 4096
-            or any(
-                value is not True
-                for value in (
-                    self.no_retained_aliases,
-                    self.no_releases,
-                    self.complete_before_return,
-                )
-            )
-        ):
-            raise ValueError("borrowed ABI requires explicit noescape, no-release and synchronous effects")
 
 
 @dataclass(frozen=True)
@@ -115,13 +94,6 @@ class BorrowedBufferResults:
 
 def _schema(calls):
     return RESULTS_SCHEMA if any(type(call) is BorrowedBufferResults for call in calls) else SCHEMA
-
-
-def validate_effects(effects):
-    if effects is not None:
-        if type(effects) is not BorrowedBufferEffects:
-            raise ValueError("explicit typed borrowed ABI implementation effects required")
-        effects.__post_init__()
 
 
 def validate_calls(calls):

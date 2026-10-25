@@ -74,6 +74,22 @@ def test_group_arguments_preserve_every_original_statement(tmp_path):
     assert sidecar == before
 
 
+def test_elementwise_signature_retains_declared_axes_without_inventing_a_reduction(tmp_path):
+    entry = {"op": "residual_add", "M": 12, "N": 48, "epilogue": ["relu"]}
+    extents = DO._entry_extents(entry)
+    assert extents == (12, 48)
+    rewritten = DO.DeviceRewrite(
+        device="independent_fixture", granularity=DO.BY_GROUP, signatures={"sum": extents},
+        entries={"sum": entry}, routed=(DO.Routed("sum", (12, 48), (), ("i8", "i8", "i8"), group=0),),
+    )
+    rewritten.write_sidecar(tmp_path)
+    arguments = DO.build_arguments(DO.load_sidecar(tmp_path))
+    assert arguments["signatures"]["sum"] == (12, 48)
+    result, provenance, refusal = kernel_entry("sum", extents, arguments["entries"]["sum"], rewritten.device)
+    assert result == {"name": "sum", **entry} and provenance == FROM_GROUP and not refusal
+    assert "K" not in result
+
+
 @pytest.mark.parametrize("damage", ["absent", "null", "empty", "partial", "extra"])
 def test_group_arguments_refuse_missing_or_changed_statement_roster(tmp_path, damage):
     _rewrite_value, sidecar = _sidecar(tmp_path)

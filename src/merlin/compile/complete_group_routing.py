@@ -23,9 +23,11 @@ def routing(target, source, package, *, capture, model, linked_elf_admission):
     for group in admitted:
         if group.weight_dtype is not None:
             pair = group.in_dtype, group.weight_dtype
-        elif group.operand_sum is not None or group.window_mean is not None:
+        elif group.operand_sum is not None or group.window_mean is not None or group.window_pool is not None:
             # These closed source forms explicitly restate same-format integer
-            # inputs or a same-format generated unit-weight reduction.
+            # inputs, a same-format generated unit-weight reduction, or the
+            # finite-domain-proved integer window readout. Its captured floating
+            # pool root is internal to that admitted closed integer source form.
             pair = group.in_dtype, group.in_dtype
         elif group.root is not None and len(group.root.operands) >= 2:
             pair = tuple(CG._dtype_token(mq.type_shape_dtype(value.type)[1])  # noqa: PLC2701 -- source format owner

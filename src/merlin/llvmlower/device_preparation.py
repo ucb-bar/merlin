@@ -18,12 +18,19 @@ class _DeviceOffloadInvocation:
     sources: tuple[tuple[Path, str], ...] = ()
     llvm_transform: tuple | None = None
     target_schedule: tuple | None = None
+    connected_spatial: tuple | None = None
+    spatial_host: object | None = None
+    sibling_source: tuple | None = None
+    sibling_host: object | None = None
 
 
 def device_route_requested(device):
     return device is not None and any(
         getattr(device, name, None) is not None
-        for name in ("select", "exact_selection", "catalog_manifest", "catalog_builder", "offload_selection")
+        for name in (
+            "select", "exact_selection", "catalog_manifest", "catalog_builder", "offload_selection",
+            "connected_spatial", "sibling_source"
+        )
     )
 
 
@@ -62,14 +69,30 @@ def retain_device_offload_source(frozen, path, *, compilation=None):
     if pin not in frozen.sources:
         frozen.sources = (*frozen.sources, pin)
     if compilation is not None:
-        for index, (source, _) in enumerate(frozen.sources):
+        for index, (source, digest) in enumerate(frozen.sources):
+            # Checked weight preparation can already own this exact realized
+            # model dependency. Retain its original role/pin and the explicit
+            # source-chain pin above, rather than minting a duplicate recipe
+            # identity. A path match never permits changed bytes.
+            preparation = getattr(compilation, "record", {}).get("preparation", {})
+            existing = [pin for pin in preparation.values() if pin.get("path") == str(source)]
+            if existing:
+                if (len(existing) != 1 or existing[0].get("sha256") != digest
+                        or existing[0].get("bytes") != source.stat().st_size):
+                    raise ValueError("device source differs from its already retained preparation identity")
+                continue
             compilation.bind_preparation(f"device_offload_source_{index}", source)
         if frozen.sidecar is not None:
             compilation.bind_preparation("device_offload_sidecar", frozen.sidecar[0])
 
 
 def require_supported_device_preparation(frozen, transform):
-    if frozen is not None and frozen.selection is not None and transform is not None:
+    if (
+        frozen is not None and (
+            frozen.selection is not None or frozen.connected_spatial is not None or frozen.sibling_source is not None
+        )
+        and transform is not None
+    ):
         raise ValueError("source-bound device selection does not support a later opaque prepared-model rewrite")
 
 
@@ -86,7 +109,10 @@ def finish_device_offload_selection(
     original = (
         None
         if frozen is None
-        else (frozen.selection, frozen.sources, frozen.sidecar, frozen.llvm_transform, frozen.target_schedule)
+        else (
+            frozen.selection, frozen.sources, frozen.sidecar, frozen.llvm_transform, frozen.target_schedule,
+            frozen.connected_spatial, frozen.spatial_host, frozen.sibling_source, frozen.sibling_host,
+        )
     )
     custody = (
         None
@@ -103,13 +129,17 @@ def finish_device_offload_selection(
     if custody is not None:
         revalidate_device_elf_custody(device, admission, custody)
     if frozen is not None:
-        selected, sources, sidecar, transform, target_schedule = original
+        selected, sources, sidecar, transform, target_schedule, spatial, spatial_host, sibling, sibling_host = original
         if (
             frozen.selection is not selected
             or getattr(device, "offload_selection", None) is not selected
             or (frozen.sources, frozen.sidecar) != (sources, sidecar)
             or frozen.llvm_transform is not transform
             or frozen.target_schedule is not target_schedule
+            or frozen.connected_spatial is not spatial
+            or frozen.spatial_host is not spatial_host
+            or frozen.sibling_source is not sibling
+            or frozen.sibling_host is not sibling_host
         ):
             raise ValueError("device offload selection or realized artifact pins changed during final admission")
         if selected is not None:
@@ -117,6 +147,19 @@ def finish_device_offload_selection(
     require_device_offload_artifacts(frozen)
     _require_device_llvm_transform(device, frozen)
     _require_device_target_schedule(device, frozen)
+    # No provider/package callback follows this final original-owner check.
+    from .connected_spatial_route import require_host, require_route
+
+    spatial = require_route(device, frozen.connected_spatial if frozen is not None else None)
+    if spatial is not None:
+        require_host(frozen.spatial_host, spatial)
+    from .sibling_source_route import require_host as require_sibling_host
+    from .sibling_source_route import require_route as require_sibling
+
+    sibling = require_sibling(device, frozen.sibling_source if frozen is not None else None)
+    if sibling is not None:
+        require_sibling_host(frozen.sibling_host, sibling)
+    require_device_offload_artifacts(frozen)
 
 
 def _require_device_llvm_transform(device, frozen):
@@ -151,6 +194,12 @@ def _require_device_target_schedule(device, frozen):
 
 
 def freeze_device_offload_selection(device):
+    from .connected_spatial_route import freeze_route
+
+    spatial = freeze_route(device)
+    from .sibling_source_route import freeze_route as freeze_sibling
+
+    sibling = freeze_sibling(device)
     schedule = _freeze_target_schedule(getattr(device, "target_schedule", None), getattr(device, "device", None))
     if schedule is not None and getattr(device, "target_configuration", None) is not None:
         raise ValueError("target schedule and configuration selections are mutually exclusive")
@@ -166,8 +215,11 @@ def freeze_device_offload_selection(device):
     if selected is None:
         result = (
             None
-            if transform is None and schedule is None
-            else _DeviceOffloadInvocation(None, None, llvm_transform=transform, target_schedule=schedule)
+            if transform is None and schedule is None and spatial is None and sibling is None
+            else _DeviceOffloadInvocation(
+                None, None, llvm_transform=transform, target_schedule=schedule, connected_spatial=spatial,
+                sibling_source=sibling
+            )
         )
         _require_device_target_schedule(device, result)
         return result
@@ -187,6 +239,16 @@ def freeze_device_offload_selection(device):
 
 
 def require_device_offload_selection(device, frozen):
+    from .connected_spatial_route import require_host, require_route
+    from .sibling_source_route import require_host as require_sibling_host
+    from .sibling_source_route import require_route as require_sibling
+
+    sibling = require_sibling(device, frozen.sibling_source if type(frozen) is _DeviceOffloadInvocation else None)
+    if sibling is not None and frozen.sibling_host is not None:
+        require_sibling_host(frozen.sibling_host, sibling)
+    spatial = require_route(device, frozen.connected_spatial if type(frozen) is _DeviceOffloadInvocation else None)
+    if spatial is not None and frozen.spatial_host is not None:
+        require_host(frozen.spatial_host, spatial)
     _require_device_target_schedule(device, frozen)
     _require_device_llvm_transform(device, frozen)
     selected = getattr(device, "offload_selection", None)
@@ -246,9 +308,18 @@ def prepare_device_route(device, prepared, work, *, early_complete_groups=False,
         catalog_manifest, catalog_object = device.catalog_builder(Path(prepared), Path(work) / "device_catalog")
     selected = require_device_offload_selection(device, selection)
     options = {} if selected is None else dict(offload_selection=selected, routing=device)
+    spatial = getattr(device, "connected_spatial", None)
+    if spatial is not None:
+        snapshot = Path(work) / "connected_spatial" / "original-input.mlir"
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        snapshot.write_bytes(Path(prepared).read_bytes())
+        retain_device_offload_source(selection, snapshot)
+    sibling = getattr(device, "sibling_source", None)
+    if sibling is not None and selection.sibling_host is None:
+        raise ValueError("sibling route lost its original early host preparation")
     moved = (
-        None
-        if early_complete_groups
+        selection.sibling_host.rewrite if sibling is not None else None
+        if early_complete_groups or sibling is not None
         else rewrite_prepared_file(
             prepared,
             work,
@@ -263,7 +334,23 @@ def prepare_device_route(device, prepared, work, *, early_complete_groups=False,
             **options,
         )
     )
-    if selected is not None:
+    if spatial is not None:
+        from .connected_spatial_route import prepare_host, restore_group_rewrite
+
+        if early_complete_groups:
+            from .device_offload import load_sidecar
+
+            moved = restore_group_rewrite(load_sidecar(work))
+
+        prepared, selection.spatial_host = prepare_host(
+            device, spatial, prepared, moved, Path(work) / "connected_spatial"
+        )
+        moved = selection.spatial_host.rewrite
+        moved.write_sidecar(work)
+        retain_device_offload_source(selection, prepared)
+    if sibling is not None:
+        moved.write_sidecar(work)
+    if selected is not None or spatial is not None or sibling is not None:
         from merlin.common.strict_json import loads
 
         path = (Path(work) / SIDECAR_NAME).absolute()
@@ -284,6 +371,28 @@ def prepare_device_route(device, prepared, work, *, early_complete_groups=False,
             + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else "")
         )
     return prepared
+
+
+
+def prepare_sibling_device_host(device, source, work, selection):
+    """Prepare original sibling SSA before ordinary host normalization/offload."""
+    selected = getattr(device, "sibling_source", None)
+    if selected is None:
+        return source
+    from .sibling_source_route import prepare_host
+
+    require_device_offload_selection(device, selection)
+    if selection.sibling_host is not None:
+        raise ValueError("sibling original host was prepared more than once")
+    path, host = prepare_host(device, selected, source, Path(work) / "sibling_source")
+    selection.sibling_host = host
+    host.rewrite.write_sidecar(work)
+    retain_device_offload_source(selection, Path(source).absolute())
+    retain_device_offload_source(selection, path.absolute())
+    for name in ("core.mlir", "interface.mlir", "receipt.json"):
+        retain_device_offload_source(selection, (path.parent / name).absolute())
+    require_device_offload_selection(device, selection)
+    return path
 
 
 def build_prepared_device_objects(
@@ -317,6 +426,11 @@ def build_prepared_device_objects(
     selected_chain = _require_device_llvm_transform(device, offload_selection)
     selected_schedule = _require_device_target_schedule(device, offload_selection)
     _dev_side = _load_device_sidecar(work)
+    if getattr(device, "connected_spatial", None) is not None and (
+        not _dev_side.get("signatures") or _dev_side.get("catalog_manifest") is not None
+        or offload_selection.spatial_host is None
+    ):
+        raise ValueError("connected spatial route requires its actual original host and package-emitted objects")
     if selected_chain is not None and (
         not _dev_side.get("signatures") or _dev_side.get("catalog_manifest") is not None
     ):
@@ -417,6 +531,14 @@ def build_prepared_device_objects(
                     {"target_schedule": _require_device_target_schedule(device, offload_selection)}
                     if selected_schedule is not None
                     else {}
+                ),
+                **(
+                    {"sibling_source": (device.sibling_source, offload_selection.sibling_host)}
+                    if getattr(device, "sibling_source", None) is not None else {}
+                ),
+                **(
+                    {"connected_spatial": (device.connected_spatial, offload_selection.spatial_host)}
+                    if getattr(device, "connected_spatial", None) is not None else {}
                 ),
             )
         require_device_target_configuration(device, target_configuration_selection)

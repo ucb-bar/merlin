@@ -23,6 +23,10 @@ Statistics come from one pass over the calibration inputs on the float graph, be
 absmax of each scaled operand, and per (head, row) of a smoothed operand its min, max, sum and count over
 the other axes. The minmax of ``B - c`` per head is then ``max_k max(|min - c|, |max - c|)``, exact.
 Nothing here imports merlin, names a model or a target.
+
+The explicit ``int8_value_grid`` context variant instead quantizes normalized
+probabilities on 1/127 and narrows each P×V product to INT8 on V's static grid.
+It retains softmax before the contraction and has no post-contraction division.
 """
 
 from __future__ import annotations
@@ -83,12 +87,16 @@ def plan(node: Any, block: dict) -> dict:
     # smaller than V's range (most of P on one small row) and needs a finer grid than other operands.
     operand = RESIDUAL_OPERAND if RESIDUAL_OPERAND in selected else OPERAND
     digits = int(selected.get(SOFTMAX_PARTNER if context else operand, selected.get(operand, 1)))
+    output = block.get("context_output")
+    if output is not None and (output != "int8_value_grid" or planes != 1 or digits != 1):
+        raise ValueError("native context readout requires int8_value_grid and one plane per operand")
     return {
         "context": context,
         "smooth": smooth,
         "planes": planes,
         "digits": digits,
         "residual_digits": RESIDUAL_OPERAND in selected or context and SOFTMAX_PARTNER in selected,
+        "native_context": context and output == "int8_value_grid",
     }
 
 
@@ -318,6 +326,14 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
         ]
         rank = max(rank_a, rank_b)
         total = None
+    elif site.get("native_context"):
+        # Keep the source's normalized probabilities. The legacy exp-plane
+        # formulation instead divides after contraction and cannot be narrowed
+        # at this boundary without changing which quantity is represented.
+        a = DC._f32(emit, lhs)
+        grid = emit(aten.clamp.default, emit(aten.round.default, emit(aten.mul.Tensor, a, float(qmax))), 0, qmax)
+        lhs_planes = [(emit(aten._to_copy.default, grid, dtype=torch.int8), torch.ones_like(rhs_scale) / qmax)]
+        rank, total = max(a.meta["val"].dim(), rank_b), None
     else:
         softmax = lhs
         while softmax.target not in (aten._softmax.default, aten.softmax.int):
@@ -342,11 +358,18 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
     result = None
     for plane, lhs_weight in lhs_planes:
         for other, rhs_weight in rhs_planes:
-            acc = DC._int_matmul(emit, plane, other)
+            native = bool(site.get("native_context"))
+
+            def narrow(acc):
+                scaled = emit(aten.mul.Tensor, emit(aten.to.dtype, acc, torch.float32), 1.0 / qmax)
+                return emit(torch.ops.quantized_decomposed.quantize_per_tensor.default,
+                            scaled, 1.0, 0, low, high, torch.int8)
+
+            acc = DC._int_matmul(emit, plane, other, output_transform=narrow if native else None)
             out = acc.meta["val"]
             census["int8_macs"] += math.prod(out.shape) * int(plane.meta["val"].shape[-1])
             census["device_calls"] += math.prod(out.shape[:-2]) if out.dim() > 2 else 1
-            scale = _shaped(lhs_weight * rhs_scale * rhs_weight, rank, 2)
+            scale = _shaped(rhs_scale if native else lhs_weight * rhs_scale * rhs_weight, rank, 2)
             term = emit(
                 aten.mul.Tensor,
                 emit(aten.to.dtype, acc, torch.float32),
@@ -366,6 +389,8 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
         **row,
         "scales": "static_heads",
         "shift_folded": folded,
+        **({"output_dtype": "int8", "probability_form": "normalized", "output_grid": "value_operand"}
+           if site.get("native_context") else {}),
         **({"operand_encoding": "bounded_residual"} if residual_digits else {}),
     }
 

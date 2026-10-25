@@ -9,7 +9,7 @@ service, not evidence that an experiment has passed its independent gates.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -52,12 +52,21 @@ class OwnedHostModelCompiler:
         readback="full",
         materialized_inputs=None,
         group_profile=False,
+        require_all_accelerator_groups=False,
+        connected_spatial=None,
+        sibling_source=None,
+        prepack_weights=False,
     ):
         """Build original source; the candidate supplies closed device groups only.
 
         The caller must independently select the accelerator contract and linked
         ELF admission. The resulting ordinary receipt retains the actual source,
         provider, device objects, and complete-output execution evidence.
+        An explicit full-source contract selects every independently admitted
+        accelerator group; ordinary host-only groups retain their placement.
+        An original caller may select the existing typed connected-spatial route;
+        normal preparation checks its source pair, ordered readouts, workspace
+        ownership and closed helper before the ordinary host/object build.
         """
         from merlin.compile.baremetal_model import compile_saved_model
         from merlin.compile.route_before_build import plan_before_build
@@ -65,6 +74,20 @@ class OwnedHostModelCompiler:
 
         if linked_elf_admission is None:
             raise ValueError("an independently selected linked-ELF admission is required")
+        if connected_spatial is not None:
+            from merlin.llvmlower.connected_spatial_route import ConnectedSpatialRoute
+
+            if type(connected_spatial) is not ConnectedSpatialRoute:
+                raise TypeError("owned model connected lowering requires an original typed spatial route")
+            connected_spatial.record()
+        if sibling_source is not None:
+            from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+
+            if type(sibling_source) is not SiblingSourceRoute:
+                raise TypeError("owned model sibling lowering requires an original typed sibling route")
+            sibling_source.record()
+            if connected_spatial is not None:
+                raise ValueError("original sibling and spatial routes are mutually exclusive")
         candidate = Path(candidate_package)
         if candidate.is_symlink():
             raise ValueError("candidate device package must not be a symlink")
@@ -86,10 +109,29 @@ class OwnedHostModelCompiler:
             capture=source / "model.mlir",
             granularity=BY_GROUP,
             linked_elf_admission=linked_elf_admission,
+            require_all_accelerator_groups=require_all_accelerator_groups,
         )
         device = routed.get("device_routing")
         if device is None or routed.get("offload") is None:
             raise ValueError(f"no buildable source-bound device route: {routed.get('device_routing_why')}")
+        if connected_spatial is not None:
+            from merlin.llvmlower.device_build import DeviceRouting
+
+            if type(device) is not DeviceRouting:
+                raise TypeError("owned model connected lowering requires ordinary device routing")
+            if device.connected_spatial is not None and device.connected_spatial is not connected_spatial:
+                raise ValueError("owned model already has a distinct connected spatial selection")
+            # Dataclass construction runs the existing route/freeze validation.
+            # Source/plan/readout/workspace checks run in normal preparation.
+            device = replace(device, connected_spatial=connected_spatial)
+        if sibling_source is not None:
+            from merlin.llvmlower.device_build import DeviceRouting
+
+            if type(device) is not DeviceRouting:
+                raise TypeError("owned model sibling lowering requires ordinary device routing")
+            if device.sibling_source is not None and device.sibling_source is not sibling_source:
+                raise ValueError("owned model already has a distinct sibling source selection")
+            device = replace(device, sibling_source=sibling_source)
         receipt = compile_saved_model(
             capture=source,
             package=self.host_package,
@@ -110,6 +152,7 @@ class OwnedHostModelCompiler:
             materialized_inputs=materialized_inputs,
             respect_captured_quantization_scope=True,
             group_profile=group_profile,
+            prepack_weights=prepack_weights,
         )
         if strict_tree_sha256(self.host_package) != self.host_package_identity:
             raise ValueError("selected owned host provider changed during compilation")

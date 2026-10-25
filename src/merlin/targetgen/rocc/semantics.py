@@ -357,6 +357,43 @@ def _extract(raw: int | None, step: dict) -> int | None:
     return (raw >> step["offset"]) & ((1 << step["width"]) - 1)
 
 
+def _known_bits(operand, *, word_bits=None):
+    known = operand.get("known_bits")
+    if known is None:
+        return None
+    if (operand.get("kind") != "unknown" or operand.get("raw") is not None
+            or type(known) is not dict or set(known) != {"mask", "value", "width"}):
+        raise ValueError("partial register observation requires explicit unknown-word bit identities")
+    width, mask, value = known["width"], known["mask"], known["value"]
+    if (type(width) is not int or not 0 < width <= 256 or (word_bits is not None and width != word_bits)
+            or type(mask) is not int or type(value) is not int or not 0 <= mask < (1 << width)
+            or not 0 <= value < (1 << width) or value & ~mask):
+        raise ValueError("partial register observation exceeds its proved width or mask")
+    return width, mask, value
+
+
+def _extract_operand(operand, step, *, flag_mask=None):
+    raw = operand.get("raw") if operand.get("kind") == "const" else None
+    if raw is not None:
+        return _extract(raw, step)
+    known = _known_bits(operand)
+    if known is None or step.get("offset") is None:
+        return None
+    width, mask, value = known
+    offset, field_width = step["offset"], step["width"]
+    if offset + field_width > width:
+        return None
+    needed = (1 << field_width) - 1
+    if flag_mask is not None:
+        if type(flag_mask) is not int or flag_mask <= 0 or flag_mask & ~needed:
+            return None
+        needed = flag_mask
+    required = needed << offset
+    if mask & required != required:
+        return None
+    return (value >> offset) & needed
+
+
 def _decode_fields(program: dict, rs1: dict, rs2: dict) -> dict:
     ops = {"rs1": rs1, "rs2": rs2}
     raws = {k: (v.get("raw") if v.get("kind") == "const" else None) for k, v in ops.items()}
@@ -382,7 +419,8 @@ def _decode_fields(program: dict, rs1: dict, rs2: dict) -> dict:
         elif kind == "raw":
             value = raws[step["operand"]]
         else:
-            bits = _extract(raws[step["operand"]], step)
+            bits = _extract_operand(ops[step["operand"]], step,
+                                    flag_mask=step.get("mask") if kind in ("flag", "flag_choice") else None)
             if bits is None:
                 value = None
             elif kind == "int":
@@ -407,8 +445,7 @@ def decode_instruction(funct: int, rs1: dict, rs2: dict, isa: dict) -> tuple[str
     if base != "UNKNOWN" and base == isa.get("CONFIG_CLASS"):
         selector = isa.get("CONFIG_SELECTOR")
         operand = {"rs1": rs1, "rs2": rs2}.get((selector or {}).get("operand"), rs1)
-        raw = operand.get("raw") if operand.get("kind") == "const" else None
-        code = _extract(raw, selector) if selector else None
+        code = _extract_operand(operand, selector) if selector else None
         sub = isa["CONFIG_SUBTYPE"].get(code) if code is not None else None
         if sub is None:
             return "UNKNOWN", {}
@@ -592,12 +629,16 @@ class BoundSemantics:
             if type(operand) is not dict:
                 raise ValueError("operand observation must retain its register slot")
             raw = operand.get("raw")
+            _known_bits(operand, word_bits=self._width)
             if type(raw) is int and -(1 << (self._width - 1)) <= raw < 0:
                 raw += 1 << self._width
             if raw is not None and not _uint(raw, self._width):
                 raise ValueError("operand observation exceeds the selected register width")
             for name, (offset, width) in fields.get(slot, {}).items():
-                decoded[f"{slot}.{name}"] = None if raw is None else (raw >> offset) & ((1 << width) - 1)
+                decoded[f"{slot}.{name}"] = (
+                    (raw >> offset) & ((1 << width) - 1) if raw is not None
+                    else _extract_operand(operand, {"offset": offset, "width": width})
+                )
         return label, decoded
 
     def instruction_funct(self, name, rs1, isa):

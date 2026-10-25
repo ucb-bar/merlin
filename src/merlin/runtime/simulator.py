@@ -29,6 +29,7 @@ from .commandbuffer import (
     materialize_inputs,
     pool_params,
     residual_add_params,
+    row_major_view_shape,
     validate_command_buffer,
 )
 from .metrics import Metrics
@@ -566,6 +567,31 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             metrics.bytes_moved += ifm.nbytes + t.nbytes
             metrics.cycles += len(cols.data) + base_matmul_cycles(p, kdim, co)
             trace.append({"name": "conv2d", "object": dst, "count": 1})
+
+        elif op == "ROW_MAJOR_VIEW":
+            name = ops.get("src")
+            if name not in env:
+                raise ValueError("ROW_MAJOR_VIEW source is undefined")
+            value = env[name]
+            shape = row_major_view_shape(cb, ops, attrs, value.shape, value.dtype, produced=outputs)
+            viewed = Tensor(shape, list(value.data), value.dtype)
+            env[name] = viewed
+            outputs[name] = viewed.to_list()
+            trace.append({"name": "row_major_view", "object": name, "count": 1})
+
+        elif op == "MAXPOOL2D":
+            src, dst = env[ops["src"]], ops["dst"]
+            if attrs.get("epilogue") != ["acc_scale", "maxpool"] or attrs.get("output_dtype") != "i8":
+                raise SimulationError("MAXPOOL2D requires explicit acc_scale then maxpool")
+            value = apply_declared_acc_scale(Tensor(src.shape, list(src.data), "i32"), attrs, op=op).to_i8()
+            value = _pool(value, "maxpool", attrs, op)
+            env[dst] = value
+            outputs[dst] = value.to_list()
+            metrics.bytes_read += src.nbytes
+            metrics.bytes_written += value.nbytes
+            metrics.bytes_moved += src.nbytes + value.nbytes
+            metrics.cycles += len(src.data)
+            trace.append({"name": "maxpool2d", "object": dst, "count": len(value.data)})
 
         elif op == "MOVEMENT":
             # A load->store round-trip through the accelerator: values are carried unchanged, only the
