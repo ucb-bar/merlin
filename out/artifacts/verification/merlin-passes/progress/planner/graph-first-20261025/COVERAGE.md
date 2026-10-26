@@ -8,7 +8,7 @@ is inferred. Evidence counts are recorded earlier qualifications, not new runs.
 
 | Registered kind | Existing evidence and actual domain | Remaining paper obligation |
 | --- | --- | --- |
-| shape_view_normalization | Old host broker emits local identity/static-dimension obligations after trusted actual-IR validation. Identical memref casts and statically known dimensions only. | This local result is not a new whole-module memory/descriptor/observer theorem. Audit actual IR mapping and bridge to the claimed domain; do not silently borrow older MerlinVerify tensor semantics. |
+| shape_view_normalization | NEW qualified standalone whole-module descriptor/SSA/heap-world result:78 originals plus one78-test replay,35/41 std3 roots,22 source files. Actual identical casts/static dimensions, calls and surrounding context are bound by a trusted full-tree matcher. | Runtime descriptor/primitive fidelity and independent mapping review remain explicit. Rich typed/full-heap→old epoch/public semantic adapter is unproved; exact shape→reuse→segment join is refused. No ordinary compiler gating. |
 | exact_integer_simplification | Local fixed-width add/sub/mul constant-ring/neutral identities, unflagged signless scalars; old validation checks actual change. | Identify complete source-context theorem and mapping for this registered route. Existing MerlinVerify integer components use a separately identified semantics; no implicit equivalence. |
 | scalar_redundancy_elimination | Qualified Scalar.check_sound/normalize_sound: complete typed SSA, total pure nodes and retained partial opaque steps, full returned/world/error observation. | Review primitive/projection/control contracts, supported variants and actual host admission; retain model/native limits. |
 | scalar_loop_invariant_motion | Same qualified scalar framework; positive constant stride, nested/empty finite iteration sequences, scoped captures/carries/yields and total speculation. | Concrete control interpretation is a premise. Active pipeline worker derives index/range/scope correspondence and composed loop transformations. |
@@ -61,3 +61,16 @@ F continues additive source-only proof/binding work; execution/qualification is
 held pending honestly established context. Other workers retain their own
 explicit fixed bindings; this observation does not establish global toolchain
 innocence or invalidate every unrelated artifact.
+
+## Independent pure frontend development context
+
+The old oracle/failed stronger-wrapper profiles remain held. A separate root
+diagnostic now checks a literal Init-only theorem with zero axioms after matching
+3294 unique original SDK/runtime refs and retaining actual loader traces. Original
+F SDK and W runtime pin provenance is explicit; no expected runtime hashes changed.
+The first diagnostic's known main-fini namespace parser error was repaired offline;
+its import command was not rerun. This permits a NEW guarded development context
+for captured-literal proof compilation/audits under explicit trusted OS/kernel,
+loader/module reporting and host transport. It does not qualify a graph checker,
+repair an old stale reference or prove formal denial of all OS fallback/late loads.
+See frontend-pure-development-context/README.md and minimal-pure-probe-v2.

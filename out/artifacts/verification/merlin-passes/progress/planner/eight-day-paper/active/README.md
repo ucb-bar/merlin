@@ -1,3 +1,22 @@
+**CURRENT W MODEL — USER-AUTHORIZED SWITCH, 2026-10-26 02:22 UTC.**
+Repeated GPT-6.1-Sol capacity failures/pending retry were superseded by the user's
+"Switch models if needed" instruction. Same W conversation now runs GPT-6-Astra,
+turn01a17604-5f2a-79a2-90dd-8a107d23672f; multiple work commands and a source edit
+were observed. Effective effort is xhigh (no explicit effort override sent).
+Graph-shape-normalization task/checkpoint and all scope/ownership holds remain.
+Model defaults are now Astra for this worker; don't restore old numerical tasks
+or the stalled Sol turn. Normal development command failures are distinct from
+model capacity. Full switch/activity record: graph-first-20261025/
+w8a8-authorized-model-switch-20261026T022240Z.json (planner-relative).
+
+**LATEST W CONTINUATION — 2026-10-26 02:11 UTC.** User explicitly requested
+W8A8 worker continue after a selected-model capacity error. Same existing worker
+and model restarted successfully; current turn01a175f9-cad4-7151-8ca4-c140cf97661a
+is ACTIVE and has executed a command on graph-shape-normalization. Its prior
+turn01a1759c-c5ac-7cf2-a40d-b50b7a9654d2 FAILED due to capacity, not a user stop.
+Current graph assignment/ownership remains; numerics deferred. Relay record:
+planner/graph-first-20261025/w8a8-capacity-resume-20261026T021107Z.json.
+
 **LATEST GRAPH MILESTONE:** memory-scf-mode-v1 is sealed (71+one71 replay,
 61/63 std3 roots). W now owns the NEW graph-shape-normalization assignment;
 all72 old W sources/seals are read-only. F declared-call and Q scalar-pipeline

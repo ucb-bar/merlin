@@ -228,3 +228,22 @@ A later matching hash is not an explanation or an approval. Do not rerun/rehash
 the failed profile to promote it. An independently identified environment can
 provide separately attributed reproduction; preserve the original failure. F is
 continuing source-only captured-literal/closure proof work.
+
+## Qualified shape row and pure-development context now available
+
+The shape worker's standalone-mode-v1 is sealed:22 new sources,78 originals and
+one78-test replay,35 main/41 witness standard-three roots. Its paper-evidence
+includes complete actual before/after IR, checker output and a wrong-buffer
+counterexample. The coordinator matched1001 evidence files and94 current/prior
+source identities. Audit this new registered shape_view_normalization row in
+packages1–3. The typed/full-heap→old epoch/public adapter is still UNPROVED;
+COMPOSITION_REFUSAL.json preserves that actual join. New adapter source is outside
+this qualification. Descriptor/primitive truth, mapping review and compiler gating
+remain separate.
+
+For frontend proof development only, the coordinator also retained a separate
+original-bound minimal Init diagnostic (zero axioms), startup/late-library traces
+and SDK/runtime pre/post checks. frontend-pure-development-context/README.md
+states its exact trust and scope. The held MLIR-full oracle and stronger failed
+wrapper are not reopened by it. This narrower context enables checking candidate
+mathematical sources; it is not actual capture qualification or an OS-loader proof.
