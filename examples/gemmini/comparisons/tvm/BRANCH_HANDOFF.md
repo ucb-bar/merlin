@@ -1,60 +1,72 @@
-# Clone the handoff branches and copy the ELF inputs
+# Run the committed FireSim ELFs
 
-Source branches:
-
-- Merlin: `ucb-bar/merlin`, **`comparisons/tvm-workload-tuning`**.
-- Companion TVM: `grammy117/tvm`, **`gemmini/firesim-chunks`**, pinned at
-  **`3423bd6818ab752ddd9cdb5d5773743e48c65f1d`**.
-
-These branches already contain the changes. Do not apply the older handoff
-source patches on top of them. No PR or merge is required to run the handoff.
-
-## Copy two archives separately
-
-Generated binaries and workload payloads stay outside Git. A branch checkout
-alone does **not** contain the ELFs or prepared tuning inputs. Transfer these
-archives from the sender, verify their hashes, and unpack both into one directory:
-
-| Archive | Bytes | SHA256 |
-| --- | ---: | --- |
-| `elfs.tar.gz` | 57762342 | `01fe62d14e69c04189b7aa9bb66efc8a1448c2cd2b51d98bced635f44b289cf2` |
-| `tuning-inputs.tar.gz` | 3049348 | `042bf82d63f5c7f3a5a6b9c38ab69c111d8d46f2401c0057419cece3bbfa9c87` |
-
-`elfs.tar.gz` contains ResNet baseline/current-tuned/profiled ELFs and the three
-small TinyLlama chunk ELFs. `tuning-inputs.tar.gz` contains the semantic chunks,
-input/reference fixtures, replayable database hints, job order and runner
-integration templates. Its retained provenance describes the original numerical
-release; old absolute paths are historical metadata, not paths the launcher
-must use. New actual-export chunks receive fresh independent references.
+The prepared ELFs are now **committed to the Merlin handoff branch**. Clone
+only Merlin to run them; no separate ELF download or TVM checkout is required.
 
 ```bash
 git clone --branch comparisons/tvm-workload-tuning https://github.com/ucb-bar/merlin.git merlin
-git clone --branch gemmini/firesim-chunks https://github.com/grammy117/tvm.git tvm
-git -C tvm checkout 3423bd6818ab752ddd9cdb5d5773743e48c65f1d
-mkdir -p delivery
-tar -xzf elfs.tar.gz -C delivery
-tar -xzf tuning-inputs.tar.gz -C delivery
-export MERLIN="$PWD/merlin" TVM="$PWD/tvm" DELIVERY="$PWD/delivery"
+export MERLIN="$PWD/merlin"
+export DELIVERY="$MERLIN/out/artifacts/handoff/gemmini-firesim-elfs/v1/latest"
+cd "$DELIVERY"
+sha256sum -c SHA256SUMS
 ```
 
-The FireSim launcher only needs the requested ELF. Its supplied bitstream already
-sets the expected DDR3 memory model. Source/native-library/Python setup is for
-building new candidates, not for executing the already prepared ELFs. For DSE,
-use the matching native TVM library identified in
-[FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md), or build that exact source.
-The observed environment and original source pins accompany the tuning inputs.
+Use the existing ELF launcher and supplied **DDR3** FireSim bitstream. Its memory
+model is already set. No compiler, Python environment, bitstream rebuild or
+memory configuration is needed to execute these binaries.
 
-## Execute
+## Included binaries
+
+| File relative to DELIVERY | Role |
+| --- | --- |
+| ELFS/resnet-baseline.elf | Full ResNet with default schedules |
+| ELFS/resnet-tuned.elf | Full ResNet with our current validated tuned values |
+| ELFS/resnet-tuned-profiled.elf | Optional stage/operator attribution |
+| ELFS/tinyllama-decode-kv.elf | Small decode K/V pair, full K=2048 |
+| ELFS/tinyllama-prefill-kv.elf | Small 32-row prefill K/V pair, full K=2048 |
+| ELFS/tinyllama-decode-down-panel.elf | Small output panel, full K=5632 |
+
+See the [committed payload manifest](../../../../out/artifacts/handoff/gemmini-firesim-elfs/v1/handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10/elf-manifest.json) for
+sizes, hashes and scope. ELF bytes are unchanged from the positive/wrong-oracle
+Spike checks. No new FireSim performance result is claimed.
+
+The TinyLlama files are trained-weight W8A8 chunks, not full-model ELFs or the
+calibrated EL4 numerical release. Full TinyLlama baseline/tuned E2E ELFs must
+still be supplied or built from the actual remote exports.
+
+## Run order and timing policy
 
 1. TinyLlama baseline plus **ResNet baseline and our current tuned ResNet**.
-2. TinyLlama chunk **EvolutionarySearch + XGBoost** DSE.
+2. TinyLlama chunk ML DSE.
 3. TinyLlama tuned E2E with the same inputs/protocol as its baseline.
 
-Parallelize independent jobs across actually available slots. Stop a DSE
-candidate when its active measured cycles reach the current best; exclude
-startup/loading/initialization/warmup and tighten in-flight limits. Respect the
-shared four-hour maximum DSE deadline. No F2 specification or runtime is inferred.
+Run independent ready jobs on available slots. For DSE, stop a candidate when
+active measured cycles reach the current best, excluding startup/loading/
+initialization/warmup and tightening live limits. Keep the shared four-hour
+maximum DSE deadline. No F2 specification or execution duration is assumed.
+See [FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md) for the full protocol.
 
-Full TinyLlama baseline/tuned E2E ELFs must be supplied or built from the actual
-remote calibrated exports; the local chunk ELFs are not full-model replacements.
-Follow [FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md) for the details.
+## Compiler sources are optional for these runs
+
+The TVM branch is only needed to generate/re-tune candidates, not to run the
+committed ELFs. It is a **custom Gemmini fork**, not unmodified upstream TVM.
+
+- Upstream machinery: task extraction, EvolutionarySearch, gradient task
+  scheduling, XGBoost, schedule traces and JSONDatabase.
+- Custom extensions: Gemmini intrinsics/schedule rules, mathematical feature
+  adapter, static packaging, profiling and measurement adapters. These use
+  TVM extension APIs; they are not upstream Gemmini support. The fork also
+  carries earlier framework correctness fixes described in GENERATION.md.
+- Recent fork changes: optional profiling, prepared-graph equality audits,
+  compact search/host admission, and a scalar input-binding fix.
+- A historical Verilator-only watchdog rewrites a generated C guest template
+  using string replacement. That brittle instrumentation is not enabled in the
+  FireSim builder and is not part of executing this ELF handoff. Do not use it
+  as a FireSim mechanism or runtime-patch TVM optimizer methods.
+
+The published companion source is grammy117/tvm, branch gemmini/firesim-chunks,
+commit 3423bd6818ab752ddd9cdb5d5773743e48c65f1d. Its supported extension APIs are
+different from claiming that the whole integration is stock/upstream.
+For future DSE, prepare actual model slices and the matching compiler separately.
+The earlier tuning-input archive remains optional; it is not required for these
+ELF runs. Do not apply old source patches on top of the published branches.

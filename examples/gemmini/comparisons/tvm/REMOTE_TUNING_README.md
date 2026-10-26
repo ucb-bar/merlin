@@ -1,7 +1,8 @@
 # Remote handoff: TVM/Gemmini tuning audit
 
-For the published source branches and required separate payload transfers,
-start with [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md).
+Start with [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md). The prepared ELFs are now
+committed on the Merlin branch and run without a TVM checkout. Source/fixture
+transfers are only needed for generating further tuning candidates.
 
 ## Current next-machine FireSim delivery
 
@@ -11,8 +12,8 @@ TinyLlama chunk DSE, then tuned TinyLlama E2E. Independent jobs may overlap on
 available slots. Full TinyLlama ELFs must be supplied/built on the new machine.
 
 The supplied bitstream already sets the memory model; **DDR3 is expected**.
-Deliver the prepared executables from `ELFS/` or `elfs.tar.gz` in
-`out/artifacts/handoff/gemmini-tvm-firesim-refresh/v1/latest/` to the existing
+Deliver the committed executables from `ELFS/` in
+`out/artifacts/handoff/gemmini-firesim-elfs/v1/latest/` to the existing
 ELF launcher. No bitstream setup or inferred F2 specifications are required.
 
 DSE is stock TVM **EvolutionarySearch + XGBoost**, with measured feedback and

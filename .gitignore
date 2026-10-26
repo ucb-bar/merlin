@@ -366,3 +366,11 @@ merlin/tests/data/lit/.lit_test_times.txt
 /merlin/experiments/voyager_h2h/LESSONS.md
 /merlin/experiments/voyager_h2h/STATUS.md
 /merlin/experiments/voyager_h2h/PLANE_B.md
+
+# User-requested FireSim ELF handoff; only this reviewed release is tracked.
+!/out/artifacts/handoff/gemmini-firesim-elfs/v1/handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10/manifest.yaml
+!/out/artifacts/handoff/gemmini-firesim-elfs/v1/handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10/README.md
+!/out/artifacts/handoff/gemmini-firesim-elfs/v1/handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10/elf-manifest.json
+!/out/artifacts/handoff/gemmini-firesim-elfs/v1/handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10/SHA256SUMS
+!/out/artifacts/handoff/gemmini-firesim-elfs/v1/handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10/ELFS/*.elf
+!/out/artifacts/handoff/gemmini-firesim-elfs/v1/latest

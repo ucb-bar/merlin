@@ -1,0 +1,45 @@
+{
+  "schema": "gemmini_firesim_elf_delivery_v1",
+  "expected_memory_model": "DDR3",
+  "configure_memory": false,
+  "execution_requires_tvm": false,
+  "files": [
+    {
+      "path": "ELFS/resnet-baseline.elf",
+      "sha256": "b9cbc4d1599d828edcc2a9b8c759bec9f319e6527134f60891fdfc3ee73deaa1",
+      "bytes": 26556640
+    },
+    {
+      "path": "ELFS/resnet-tuned.elf",
+      "sha256": "b3ad9f6979e7d4e8cc946ef68ef775c55e6f64e8d9edcfe69553b2ccabf08786",
+      "bytes": 26556952
+    },
+    {
+      "path": "ELFS/resnet-tuned-profiled.elf",
+      "sha256": "5df9c608b215be433ac5292277cdcb0628d99be3f19a5ede73fc2e0309644c0f",
+      "bytes": 26573912
+    },
+    {
+      "path": "ELFS/tinyllama-decode-kv.elf",
+      "sha256": "11bf61e5116cd20b6ead36048814a5815faeaf24c7f7e1155a5ec04a2f8e52db",
+      "bytes": 1085752
+    },
+    {
+      "path": "ELFS/tinyllama-prefill-kv.elf",
+      "sha256": "e250d42fa3f752164880f4432c39de8bb7fd1c949e6d13e8cb26be2ad31276a8",
+      "bytes": 1404280
+    },
+    {
+      "path": "ELFS/tinyllama-decode-down-panel.elf",
+      "sha256": "8a9778063e84830cf1166dcd65185500939f2ac531c8b8cdfca70313dab9853a",
+      "bytes": 768240
+    }
+  ],
+  "numerical_scope": "ResNet full fresh local numerical release; TinyLlama trained-weight W8A8 chunks, not the calibrated full EL4 model",
+  "pending_full_tinyllama": "Full baseline/tuned E2E ELFs are generated from actual remote exports",
+  "functional_controls": "All six prepared guests passed positive/wrong-oracle Spike controls; these executable bytes are unchanged",
+  "source_product": "out/artifacts/handoff/gemmini-tvm-firesim-refresh/v1/handoff_gemmini-tvm-firesim-refresh_v1_20261026T041430Z_431485b",
+  "hardware_execution": "NOT_RUN",
+  "hardware_specs": "Not inferred",
+  "runtime_estimates": "Not provided"
+}

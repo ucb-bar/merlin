@@ -1,8 +1,9 @@
 # FireSim handoff: baseline runs, TinyLlama DSE, then E2E
 
-For a clean remote checkout use [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md): fetch
-both source branches and copy the separate ELF/tuning-input archives. The
-branch already includes the code; do not apply the old patches again.
+For a clean remote checkout use [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md). The
+prepared ELFs are committed on the Merlin branch. Running them requires no
+TVM checkout, compiler setup or separate ELF archive. Compiler sources are only
+needed when generating new candidates; do not apply old patches again.
 
 The supplied FireSim bitstream already contains the memory model. **DDR3 is the
 expected memory model.** Deliver and run ELFs with the existing launcher; do not
@@ -10,11 +11,11 @@ configure memory latencies, rebuild the bitstream, or infer F2 specifications.
 No runtime estimate, F2 clock, memory capacity, bandwidth or slot count is assumed.
 No new FPGA execution has happened locally.
 
-The delivery is `out/artifacts/handoff/gemmini-tvm-firesim-refresh/v1/latest/`.
-Its `ELFS/` folder and `elfs.tar.gz` contain the prepared executables;
-`elf-manifest.json` records their actual sizes and hashes. The source, databases
-and fixtures elsewhere in the delivery are for generating further DSE candidates,
-not inputs the FireSim launcher must load.
+The committed delivery is
+`out/artifacts/handoff/gemmini-firesim-elfs/v1/latest/`. Its `ELFS/` folder
+contains the prepared executables; `elf-manifest.json` and `SHA256SUMS` record
+their actual sizes/hashes. Model fixtures and compiler inputs are separate
+optional inputs for generating new candidates, not runtime dependencies.
 
 ## Requested run order
 
@@ -106,9 +107,15 @@ information; retain `cost-model.json` and `trials.jsonl` when assessing progress
   capacity is inferred here. Native batching does not combine variants into one
   ELF. Full-model cache dependencies remain serial within each session.
 
-## Generate and tune candidates remotely
+## Optional: generate and tune candidates remotely
 
-Use the source pins in `SOURCE_PINS.json`: TVM `tvm-firesim-chunks`, base
+This section concerns building new candidates, not executing the committed ELFs.
+The Gemmini backend/feature adapter/packaging are custom extensions; the search
+and XGBoost algorithms are upstream. No runtime replacement of optimizer methods
+is required. The historical Verilator C-template rewrite is not enabled here.
+
+For compiler reconstruction use the original full handoff source pins in
+`SOURCE_PINS.json`: TVM `tvm-firesim-chunks`, base
 `c50c4e26992eb79ea4fc1c693d3aa16f62aaea43` plus its delivered patch/overlay,
 and matching native library SHA256
 `6fc46068a7dc3b231e7fd3fec5be7041c703149b26f292cdf0d330e2dc3995fd`.

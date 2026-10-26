@@ -1,8 +1,9 @@
 # TVM comparison: ResNet50, TinyLlama and SmolVLA FireSim handoff
 
 For a fresh checkout, start at [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md).
-It names both published source branches and the two separately transferred
-archives; generated ELFs and tuning inputs are not in Git.
+The six prepared ELFs are committed on this Merlin branch. Initial execution
+needs only this checkout and the existing DDR3 ELF launcher; a TVM checkout is
+optional and only needed for generating new candidates.
 
 For the **current next-machine run**, follow
 [FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md): TinyLlama baseline plus

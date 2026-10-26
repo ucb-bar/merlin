@@ -1,0 +1,18 @@
+artifacts:
+- ELFS/resnet-baseline.elf
+- ELFS/resnet-tuned-profiled.elf
+- ELFS/resnet-tuned.elf
+- ELFS/tinyllama-decode-down-panel.elf
+- ELFS/tinyllama-decode-kv.elf
+- ELFS/tinyllama-prefill-kv.elf
+- README.md
+- SHA256SUMS
+- elf-manifest.json
+git_sha: 04f3e10
+notes: 'User-authorized tracked ELF handoff: prepared ResNet baseline/tuned/profiled and TinyLlama chunks; supplied DDR3 bitstream; no TVM required for execution'
+run_id: handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10
+sources: []
+target: gemmini-firesim-elfs
+timestamp: 20261026T045007Z
+topic: handoff
+version: 1
