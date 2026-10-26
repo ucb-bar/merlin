@@ -19,8 +19,9 @@ merge review-generated test results into a new qualification.
 
 ## Ownership and delivery
 
-Primary: `/home/jeremy/Projects/merlin`, `feat/pass-verification`, current published
-58dbc7c00. Preserve every other worker's dirty work. The original producer at
+Primary: `/home/jeremy/Projects/merlin`, `feat/pass-verification`; the guide and
+coordination docs are published at337ff1afd, while historical qualified proof
+source remains58dbc7c00. Preserve every other worker's dirty work. The original producer at
 `/home/jeremy/Projects/merlin-graph-proof-intake` remains READONLY at4499eebb9.
 A separate corrective producer checkout is available at
 `out/build/graph-paper-deadline/producer-corrections`, branch
@@ -34,6 +35,8 @@ wholesale experimental-branch merge. Record base+patch/new revision honestly.
 | Q / GraphState | [Compiler gate repair](gate.md), D1-G09/D3-G10 | Corrective producer lean_checker.py and pipeline enforcement/tests; new primary lean_graph_pipeline_gate* modules/tests. Pause scheduling feature expansion. |
 | F / Frontend | [Input-admission fixes](capture.md), D2-G01/G02 | Primary shared admission helper and capture entry hooks; corrective producer certificates.py and matching helper/tests. No gate or W emitter/model edits. |
 | W / GraphLoops | [Actual after-program binding](after-binding.md), D2-G03 | Shape/memory model and emitter wrapper, new pair-binding modules/tests; current composition and its evidence. No shared admission or corrective producer edits. |
+| New independent reviewer | [Proof/mapping/gate review](independent-proof-review.md) | Own review reports/probes only; review common context first, then gate, actual IR mapping and exact theorem/claim rows. No implementation edits or native authorization. |
+| New reproduction worker | [Original delivery and reproduction](independent-reproduction.md) | Own independent archive verifier, evidence/dependency inventories, portable worked-example packet and reproduction protocol. No implementation or runtime-provider edits. |
 | Coordinator | Runtime recovery investigation, immutable evidence delivery, claim text and integration | Original-runtime snapshot provenance; full original bundles/exact parser identity for Graham; daily status and paper table. |
 
 After the admission regression batch, F also owns the new common
