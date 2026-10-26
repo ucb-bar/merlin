@@ -384,7 +384,7 @@ def summarize(args, corpus, report, block, timings):
         numeric_overloads[case["overload"]][grade.get("status", "unavailable")] += 1
         numeric_lanes[evidence.get("lane", "unassigned")][grade.get("status", "unavailable")] += 1
         for axis, buckets in partitions.items():
-            buckets[case["partition_assignment"].get(axis, "unspecified")][status] += 1
+            buckets[case.get("partition_assignment", {}).get(axis, "unspecified")][status] += 1
         if status != "pass":
             reason = item.get("reason", "")
             family, owner, cause = failure_family(status, reason, case["overload"])
@@ -531,6 +531,12 @@ def main():
     p.add_argument("--dram-mb", type=int, help="Packed executable DRAM extent in MiB")
     p.add_argument("--baseline", type=Path)
     p.add_argument("--limit", type=int)
+    p.add_argument("--case-ids", type=Path, help="JSON list of case keys to run; others stay not_run")
+    p.add_argument(
+        "--skip-evaluation",
+        action="store_true",
+        help="capture and execute only; the shards are consumed by Phase 0 spec validation",
+    )
     p.add_argument("--worker", choices=["capture", "execute"])
     p.add_argument("--case", type=Path)
     p.add_argument("--evaluate-only", action="store_true")
@@ -579,6 +585,12 @@ def main():
     if args.limit:
         # Spread smoke selection across overloads, layouts, and dtype partitions.
         cases = [cases[int(i * len(cases) / args.limit)] for i in range(args.limit)]
+    if args.case_ids:
+        wanted = json.loads(args.case_ids.read_text())
+        keyed = {str(case.get("case_id") or case["overload"]): case for case in cases}
+        if not isinstance(wanted, list) or set(wanted) - set(keyed):
+            p.error("--case-ids must be a JSON list of case keys present in the suite")
+        cases = [keyed[key] for key in dict.fromkeys(wanted)]
     timings = {}
     start = time.time()
     if not args.evaluate_only:
@@ -602,6 +614,9 @@ def main():
     document = response(args, corpus, block)
     if not args.evaluate_only:
         atomic_json(args.output / args.label / "timings.json", timings)
+    if args.skip_evaluation:
+        print("execution complete; evaluation skipped", flush=True)
+        return
     if args.limit:
         counts = Counter(document["results"][c["case_id"]]["status"] for c in cases)
         atomic_json(

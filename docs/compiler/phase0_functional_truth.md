@@ -12,8 +12,10 @@ in the semantic classifier implements the user-reviewed truth derivations.
 
 The vendored truth belongs to the strict Phase 0 checker only. It lives in the
 experiments distribution (`packages/merlin-experiments/src/merlin/targetgen/`) and
-is imported by `build_tools/scripts/make_bounded_phase0.py` (lane commitments)
-and `core_aten_capsules.py` (lane check). The compiler (`src/merlin`) never reads
+is imported by `core_aten_capsules.py` (lane check). Phase 0 no longer commits
+Core ATen lanes into a recipe: `build_tools/scripts/make_spec_validation_selection.py`
+writes only the spec-validation case selection, and truth lanes are a non-gating
+audit of that validation. The compiler (`src/merlin`) never reads
 it: placement comes only from native families, their constraints, the provider
 proof and the excluded-construction detectors, and the numeric contract comes
 from the IR (`floating_contract.py`).

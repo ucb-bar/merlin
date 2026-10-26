@@ -293,6 +293,9 @@ def generate_target(
 
     if output_root is None:
         raise ValueError("Phase 0 requires an explicit output_root; generated capsules must not default to source data")
+    from .core_aten_stage import refuse_retained_stage
+
+    refuse_retained_stage(recipe)
     from .operator_exclusion import PublicationRefusal
     from .operator_exclusion import require_selection as require_operator_exclusion
 
@@ -379,35 +382,13 @@ def generate_target(
     te = load_target_experiment(descriptor)
     _require_distinct_corpus_destinations(te, output_root=output_root, evidence_root=evidence_root)
     hardware_target = te.target if explicit_descriptor else target
-    if recipe is not None:
-        from .core_aten_stage import declaration, generate
-
-        if declaration(Path(recipe)) is not None:
-            if any(value is not None for value in (software_spec, evidence_input, hidden_profile)):
-                raise ValueError("retained Core ATen stage cannot mix other generation or evidence inputs")
-            if conformance_spec is not None or synth_profile is not None:
-                from .profiles import verify_selected_synthesis
-
-                status = verify_selected_synthesis(
-                    synth_profile, conformance_spec=conformance_spec, recipe=recipe, descriptor=descriptor
-                )
-                if status.get("status") != "verified":
-                    raise ValueError("Core ATen generation requires verified selected synthesis")
-            if evidence_mode == "verified" or prohibited_instruction_roles:
-                raise ValueError(
-                    "retained Core ATen packaging is diagnostic; instruction policy needs execution evidence"
-                )
-            return generate(
-                Path(recipe),
-                Path(output_root),
-                target=hardware_target,
-                capability_contract=Path(capability_contract) if capability_contract else None,
-                rtl_facts=Path(rtl_facts) if rtl_facts else None,
-            )
     profile = load_profile(
         target,
         descriptor=descriptor,
         diagnostic=evidence_mode == "diagnostic",
+        rtl_facts=rtl_facts,
+        capability_contract=capability_contract,
+        hardware_spec=hardware_spec,
         **({"include_holdouts": False} if component_only else {}),
         **{key: value for key, value in profile_inputs.items() if value is not None},
     )

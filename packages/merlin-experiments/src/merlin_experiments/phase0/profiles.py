@@ -155,6 +155,9 @@ def verify_selected_synthesis(
     software_spec: str | Path | None = None,
     document: dict | None = None,
     diagnostic: bool = False,
+    rtl_facts: str | Path | None = None,
+    capability_contract: str | Path | None = None,
+    hardware_spec: str | Path | None = None,
 ) -> dict:
     """Verify a reviewed synth sidecar against its selected, frozen inputs.
 
@@ -162,6 +165,9 @@ def verify_selected_synthesis(
     diagnostics, but are explicitly *unverified*, never upgraded by an ambient
     checkout reference. Verified execution needs newly frozen selected inputs.
     """
+    from .core_aten_stage import refuse_retained_stage
+
+    refuse_retained_stage(recipe)
     if synth_profile is None or not Path(synth_profile).is_file():
         return {"status": "absent"}
     selected = document if document is not None else yaml.safe_load(Path(synth_profile).read_text(encoding="utf-8"))
@@ -209,16 +215,6 @@ def verify_selected_synthesis(
     spec_doc = yaml.safe_load(Path(conformance_spec).read_text(encoding="utf-8")) or {}
     if not isinstance(spec_doc, dict):
         raise ValueError(f"{conformance_spec}: conformance spec must be a mapping")
-    from .core_aten_stage import declaration as core_declaration
-    from .core_aten_stage import verify_synthesis
-
-    if core_declaration(Path(recipe)) is not None:
-        if applications:
-            raise ValueError("retained Core ATen selection cannot satisfy whole-application requirements")
-        if spec_doc.get("target") != descriptor_doc.get("target"):
-            raise ValueError("Core ATen conformance names a different descriptor target")
-        binding = verify_synthesis(Path(recipe), spec_doc, profile_document)
-        return {"status": "verified", "selected_inputs": dict(identity), **binding}
     demands = spec_doc.get("application_demands") or {}
     if not isinstance(demands, dict):
         raise ValueError(f"{conformance_spec}: application_demands must be a mapping")
@@ -391,6 +387,34 @@ def verify_selected_synthesis(
     coverage_status = demands.get("coverage_status", "unverified")
     if applications and coverage_status != "unverified":
         raise ValueError(f"{conformance_spec}: application-demand coverage must remain explicitly unverified")
+    from .spec_validation import evidence_identity, gate_required, verify_binding
+
+    current_inputs = None
+    binding = spec_doc.get("spec_validation")
+    if (
+        gate_required(descriptor_doc.get("workload_spec"))
+        and isinstance(binding, dict)
+        and binding.get("status") == "bound"
+    ):
+        from .evidence import select_evidence
+
+        if rtl_facts is None:
+            raise ValueError("spec-validation verification requires current RTL facts; pass rtl_facts")
+        current = select_evidence(
+            descriptor_doc.get("target") or spec_doc.get("target") or spec_doc.get("name"),
+            descriptor=descriptor,
+            software_spec=selected_software_spec_path(recipe, software_spec),
+            facts_path=rtl_facts,
+            capability_contract_path=capability_contract,
+            hardware_spec=hardware_spec,
+        )
+        current_inputs = evidence_identity(current)
+    verify_binding(
+        spec_doc.get("spec_validation"),
+        software_spec_sha256=identity.get("software_spec_sha256"),
+        workload_spec=descriptor_doc.get("workload_spec"),
+        input_identity=current_inputs,
+    )
     status = "incomplete_diagnostic" if applications and demands.get("status") == "incomplete" else "verified"
     return {"status": status, "selected_inputs": dict(identity), "application_coverage_status": coverage_status}
 
@@ -993,6 +1017,9 @@ def load_profile(
     descriptor: str | Path | None = None,
     software_spec: str | Path | None = None,
     diagnostic: bool = False,
+    rtl_facts: str | Path | None = None,
+    capability_contract: str | Path | None = None,
+    hardware_spec: str | Path | None = None,
 ) -> dict:
     """The target's functional profile plus shared perf and the private holdout sidecar.
 
@@ -1098,6 +1125,9 @@ def load_profile(
             software_spec=selected_spec,
             document=doc,
             diagnostic=diagnostic,
+            rtl_facts=rtl_facts,
+            capability_contract=capability_contract,
+            hardware_spec=hardware_spec,
         )
         extra = list(doc.get("capsules") or ())
         for entry in extra:

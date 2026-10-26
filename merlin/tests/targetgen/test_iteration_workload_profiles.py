@@ -13,7 +13,7 @@ import pytest
 from merlin.common.paths import repo_root
 
 _SCHEMA = "merlin.iteration_workload_profile.v1"
-_WORKLOADS = ("residual_cnn", "causal_decoder", "multimodal_policy")
+_WORKLOADS = ("residual_cnn", "causal_decoder", "multimodal_policy", "core_aten_coverage")
 
 
 def _load(tmp_path, monkeypatch, workload, profile=None):
@@ -159,6 +159,15 @@ def test_policy_profile_keys_are_strictly_typed(tmp_path, monkeypatch):
     for key, value in (("tokens", 0), ("tokens", 33), ("queries", True), ("gelu_mlp", 1), ("time_embedding", None)):
         with pytest.raises(ValueError, match=f"invalid {key}"):
             module.validate_profile({**chosen, key: value})
+
+
+def test_coverage_profile_selects_one_spec_family(tmp_path, monkeypatch):
+    module = _load(tmp_path, monkeypatch, "core_aten_coverage")
+    for group in module.GROUPS:
+        assert module.validate_profile(_profile("core_aten_coverage", group=group)) == {"groups": (group,)}
+    for value in ("all", None, ["reduction"], 1):
+        with pytest.raises(ValueError, match="invalid group"):
+            module.validate_profile(_profile("core_aten_coverage", group=value))
 
 
 @pytest.mark.parametrize("workload", _WORKLOADS)

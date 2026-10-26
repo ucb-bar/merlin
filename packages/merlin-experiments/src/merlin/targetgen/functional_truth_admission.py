@@ -183,4 +183,11 @@ def select_admission(target: str, *, rtl_facts: Path, software_spec: Path, host_
 
     facts = json.loads(Path(rtl_facts).read_text())
     selection = select_spec(target, facts, Path(software_spec), Path(host_capabilities))
-    return {"spec": selection["spec"], "identities": selection["identities"], "target": target}
+    return {
+        "spec": selection["spec"],
+        "identities": selection["identities"],
+        "target": target,
+        "rtl_facts": facts,
+        "capability_contract": selection["capability_contract"],
+        "host_capabilities": selection["host"],
+    }

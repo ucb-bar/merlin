@@ -4,7 +4,7 @@ kind: reference
 status: current
 owner: core
 last_verified: 2026-10-19
-code_refs: [src/merlin/targetgen/core_aten_admission.py, src/merlin/targetgen/native_payload_carriers.py, src/merlin/targetgen/native_quant_boundary.py, build_tools/scripts/make_bounded_phase0.py]
+code_refs: [src/merlin/targetgen/core_aten_admission.py, src/merlin/targetgen/native_payload_carriers.py, src/merlin/targetgen/native_quant_boundary.py, build_tools/scripts/make_spec_validation_selection.py]
 ---
 
 # Functional native placement
@@ -23,8 +23,10 @@ use plain exact rational arithmetic with one host ties-to-even rounding;
 requant-A certificates, threshold tables and multiply-shift specializations
 are absent. The independent convolution reference uses scalar Fraction MACs.
 
-`make_bounded_phase0.py` retains every selected case and assigns visibility
-independently of placement. During capsule construction, `lane: admission`
+`make_spec_validation_selection.py` retains every case identity of the Core
+ATen suites as a Phase 0 spec-validation selection; it assigns no visibility,
+cohort or lane, and Phase 0 refuses recipes with a `core_aten:` block. In the
+retained capsule builder, `lane: admission`
 replays ordinary numeric admission: admitted cases require device instructions;
 other cases become unscored host guards and retain the raw call ABI. The private
 packaging ledger retains each complete admission decision. There is no support

@@ -507,6 +507,7 @@ def derive(
     performance_captures: dict[str, Path] | None = None,
     performance_preselections: dict[str, tuple[Path, str]] | None = None,
     heldout_layers: str | Path | None = None,
+    spec_validation: str | Path | None = None,
 ) -> dict:
     """Write a byte-bound requirement, complete census and diagnostic candidate plan.
 
@@ -519,19 +520,12 @@ def derive(
     ``performance_source_programs`` selection, complete connected dev members.
     """
     declaration = from_definition(definition)
+    from .core_aten_stage import refuse_retained_stage
+
+    refuse_retained_stage(getattr(declaration, "recipe", None))
     independent_public = _independent_public_sources(getattr(declaration, "recipe", None))
     if independent_public and heldout_layers is not None:
         raise ValueError("functional v3 derives from public sources only; private layer shapes are not inputs")
-    from .core_aten_stage import declaration as core_declaration
-    from .core_aten_stage import derive as derive_core
-
-    recipe = getattr(declaration, "recipe", None)  # Only a declared recipe can select the retained stage.
-    if recipe is not None and core_declaration(recipe) is not None:
-        if captures or native_qualifications or capture_preselections or quantization_policies:
-            raise ValueError("Core ATen uses only recipe-declared case selections and retained captures")
-        return derive_core(
-            declaration.recipe, Path(output_root), target=declaration.target, descriptor=declaration.descriptor
-        )
     if rtl_facts is None:
         raise ValueError("model derivation requires explicit --rtl-facts")
     te = load_target_experiment(declaration.descriptor)
@@ -618,6 +612,9 @@ def derive(
     hardware = spec.resolve(config["hardware_spec"]) if config.get("hardware_spec") else None
     if software is None:
         raise ValueError("deterministic derivation requires an explicit software spec in the recipe")
+    from .spec_validation import bind as bind_spec_validation
+    from .spec_validation import evidence_identity
+
     recipe_doc = None
     planned_tiers = None
     certification_floor = None
@@ -633,6 +630,12 @@ def derive(
         hardware_spec=hardware,
         facts_path=rtl_facts,
         prohibited_roles=spec.prohibited_instruction_roles,
+    )
+    validation = bind_spec_validation(
+        spec_validation,
+        software_spec=software,
+        workload_spec=te.workload_spec,
+        input_identity=evidence_identity(selected) if spec_validation is not None else None,
     )
     options = {
         "capability_contract": selected.contract,
@@ -906,6 +909,7 @@ def derive(
         "headline_workloads": "held out",
         **selected.derivation_identity,
     }
+    requirement["spec_validation"] = validation
     root = Path(output_root).absolute()
     outputs = {
         "requirements.yaml": yaml.safe_dump(requirement, sort_keys=False).encode(),

@@ -238,27 +238,23 @@ def test_unattested_legacy_capture_contract_is_refused(tmp_path):
     assert not (tmp_path / "derive").exists()
 
 
-def test_selected_synthesis_binds_finite_conformance_without_execution_claim(tmp_path):
+def test_selected_synthesis_refuses_retained_stage_even_when_bindings_match(tmp_path):
+    """A retained Core ATen recipe is spec-validation input; selected synthesis refuses it."""
     from merlin_experiments.phase0.profiles import verify_selected_synthesis
 
     recipe = fixture_recipe(tmp_path)
     derived = stage.derive(recipe, tmp_path / "derived", target="synthetic", descriptor=tmp_path / "descriptor.yaml")
-    status = verify_selected_synthesis(
-        derived["synth_profile"],
-        conformance_spec=derived["conformance_spec"],
-        recipe=derived["recipe"],
-        descriptor=tmp_path / "descriptor.yaml",
-    )
-    assert status["status"] == "verified"
-    assert status["execution_coverage_status"] == "unverified"
-    requirement = yaml.safe_load(Path(derived["conformance_spec"]).read_bytes())
-    assert requirement["cohorts"]["hidden"]["count"] == 1
-    assert not requirement["cohorts"]["host_guard"]["scored"]
-    assert "hidden-captures" not in Path(derived["conformance_spec"]).read_text()
+    with pytest.raises(ValueError, match="spec-validation evidence, not capsules"):
+        verify_selected_synthesis(
+            derived["synth_profile"],
+            conformance_spec=derived["conformance_spec"],
+            recipe=derived["recipe"],
+            descriptor=tmp_path / "descriptor.yaml",
+        )
 
 
 @pytest.mark.parametrize("changed", ["recipe", "conformance_spec", "descriptor", "receipt", "capture", "synthesis"])
-def test_selected_synthesis_refuses_changed_selection(tmp_path, changed):
+def test_selected_synthesis_refuses_retained_stage_before_staleness(tmp_path, changed):
     from merlin_experiments.phase0.profiles import verify_selected_synthesis
 
     recipe = fixture_recipe(tmp_path)
@@ -278,7 +274,7 @@ def test_selected_synthesis_refuses_changed_selection(tmp_path, changed):
         document = yaml.safe_load(path.read_bytes())
         document["core_aten_selection"]["selection_sha256"] = "0" * 64
         path.write_text(yaml.safe_dump(document))
-    with pytest.raises(ValueError, match="stale selected synthesis|selection changed|synthesis differs"):
+    with pytest.raises(ValueError, match="spec-validation evidence, not capsules"):
         verify_selected_synthesis(
             derived["synth_profile"],
             conformance_spec=derived["conformance_spec"],

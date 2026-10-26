@@ -13,6 +13,8 @@ from pathlib import Path
 from yaml import YAMLError
 
 from merlin.common.digest import sha256_file as _sha
+from merlin_experiments.runner_records import _read_json as _read_json
+from merlin_experiments.runner_records import _write_json as _write_json
 
 from .adapters import ADAPTERS, PHASE0_MODULE, PHASE1_MODULE, phase0_sources, phase0_startup_inputs, phase1_entrypoint
 from .phase1.source_inputs import fingerprint
@@ -21,9 +23,6 @@ from .runner_process import _process_group_active as _process_group_active
 from .runner_process import _stop_process_group as _stop_process_group
 from .spec import ExperimentSpec, SpecError, read_yaml
 from .spec import default_run_dir as default_run_dir
-
-from merlin_experiments.runner_records import _write_json as _write_json
-from merlin_experiments.runner_records import _read_json as _read_json
 
 
 def _now() -> str:
@@ -241,14 +240,12 @@ def _phase0_operator_inputs(command: dict) -> dict[str, dict | None]:
         )
     recipe = inputs.get("recipe")
     if recipe and Path(recipe).is_file():
-        from .phase0.core_aten_stage import declaration, input_paths
+        from .phase0.core_aten_stage import refuse_retained_stage
 
-        if declaration(Path(recipe)) is not None:
-            try:
-                for index, path in enumerate(input_paths(Path(recipe))):
-                    observed[f"phase0:operator:core_aten:{index:06d}"] = {"path": str(path), "present": True}
-            except (OSError, ValueError) as exc:
-                raise SpecError(f"invalid Core ATen stage inputs: {exc}") from exc
+        try:
+            refuse_retained_stage(recipe)
+        except (OSError, ValueError, YAMLError) as exc:
+            raise SpecError(str(exc)) from exc
     return observed
 
 
@@ -270,6 +267,9 @@ def _phase0_synthesis_status(plan: dict) -> dict:
                 descriptor=selected.get("descriptor"),
                 **({"software_spec": selected["software_spec"]} if selected.get("software_spec") else {}),
                 diagnostic=diagnostic,
+                rtl_facts=selected.get("rtl_facts"),
+                capability_contract=selected.get("capability_contract"),
+                hardware_spec=selected.get("hardware_spec"),
             )
         except (OSError, ValueError, YAMLError) as exc:
             raise SpecError(f"phase-0 selected synthesis is invalid: {exc}") from exc

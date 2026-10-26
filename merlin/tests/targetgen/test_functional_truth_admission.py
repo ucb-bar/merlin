@@ -98,7 +98,12 @@ def test_lane_selection_reopens_authority_at_the_same_paths(tmp_path, monkeypatc
 
     # Supply capability derivation at its boundary; selection still reads the real spec and facts.
     def select_spec(target, facts, software_spec, host_capabilities):
-        return {"spec": resolve_spec(load_software_spec(software_spec), facts)[0], "identities": {}}
+        return {
+            "spec": resolve_spec(load_software_spec(software_spec), facts)[0],
+            "identities": {},
+            "capability_contract": {},
+            "host": {},
+        }
 
     monkeypatch.setattr(core_aten_spec_int8, "select_spec", select_spec)
     spec_path, facts_path = tmp_path / "software.yaml", tmp_path / "facts.json"

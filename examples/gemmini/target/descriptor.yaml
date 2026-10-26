@@ -202,6 +202,11 @@ workload_spec:
     - causal_decoder
     - causal_decoder_decode_step
     - multimodal_policy
+    # Admitted Core ATen overloads the workloads above never reach (one label per family).
+    - core_aten_coverage_reduce
+    - core_aten_coverage_movement
+    - core_aten_coverage_affine
+    - core_aten_coverage_contraction
   # Independent public source workloads for the Phase 2 form scope. Explicit
   # connected-source policies can also derive public source capsules; v3
   # constructs fresh bounded functional probes for Phase 1 from their graphs.

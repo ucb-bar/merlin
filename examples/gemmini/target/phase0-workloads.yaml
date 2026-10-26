@@ -57,6 +57,30 @@ applications:
       queries: 3
       gelu_mlp: true
       time_embedding: true
+  core_aten_coverage_reduce:
+    loader: ../../workloads/core_aten_coverage/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: core_aten_coverage
+      group: reduction
+  core_aten_coverage_movement:
+    loader: ../../workloads/core_aten_coverage/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: core_aten_coverage
+      group: movement
+  core_aten_coverage_affine:
+    loader: ../../workloads/core_aten_coverage/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: core_aten_coverage
+      group: elementwise_map
+  core_aten_coverage_contraction:
+    loader: ../../workloads/core_aten_coverage/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: core_aten_coverage
+      group: contraction
 performance_applications:
   # Phase 2 only: the existing functional CNN already checks bottleneck
   # correctness. This independent larger profile exposes 1x1/layout/readout

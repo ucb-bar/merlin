@@ -445,6 +445,12 @@ def main(argv: list[str] | None = None) -> int:
         help="optional exact generated native-host qualification receipt; never grants RVV support",
     )
     derive.add_argument("--rtl-facts", type=Path, help="exact extraction artifact; required for model derivation")
+    derive.add_argument(
+        "--spec-validation",
+        type=Path,
+        help="sealed merlin.phase0.spec_validation.v1 record for the selected software spec; "
+        "mandatory when the descriptor sets workload_spec.phase0_spec_validation: required",
+    )
     derive.add_argument("--output", type=Path, required=True, help="new immutable artifact root")
     capture = operations.add_parser("capture", help="preselect and issue one fresh sealed CPU capture")
     capture_ops = capture.add_subparsers(dest="capture_operation", required=True)
@@ -745,6 +751,7 @@ def main(argv: list[str] | None = None) -> int:
                         performance_captures=capture_selections(args.performance_capture),
                         performance_preselections=capture_selection_specs(args.performance_capture_selection),
                         heldout_layers=args.heldout_layer_shapes,
+                        spec_validation=args.spec_validation,
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
