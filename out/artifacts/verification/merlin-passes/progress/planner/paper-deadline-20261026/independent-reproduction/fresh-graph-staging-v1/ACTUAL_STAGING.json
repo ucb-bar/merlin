@@ -1,0 +1,8 @@
+{
+  "status": "MATERIALIZED_DATA_INTEGRITY_MATCHED",
+  "files": 337,
+  "data_only": true,
+  "native_authorization": false,
+  "graph_approval": false,
+  "compile_audit_qualification": "UNEXECUTED"
+}

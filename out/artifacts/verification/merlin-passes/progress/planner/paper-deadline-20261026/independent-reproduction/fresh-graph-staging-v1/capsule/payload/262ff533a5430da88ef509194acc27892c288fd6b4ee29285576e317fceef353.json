@@ -1,0 +1,94 @@
+{
+  "schema": "merlin.graph-staging-roots.v1",
+  "profile": "Q-schedule-successor-v1",
+  "case": "unchanged_order",
+  "module": "Query",
+  "query_pin": {
+    "sha256": "1a4600d2fbd1571a811cb5655b529df1dc879a72ad2e806b100409058e180b3c",
+    "bytes": 4659
+  },
+  "final_root": "merlin_schedule_transform",
+  "support_roots": [
+    "Merlin.GraphState.Scalar.check_sound",
+    "Merlin.GraphState.Scalar.check_typed",
+    "Merlin.GraphState.Scalar.normalize_sound",
+    "Merlin.GraphStateScalarInstance.F2.accepted",
+    "Merlin.GraphStateScalarInstance.F2.actual",
+    "Merlin.GraphStateScalarInstance.F2.typed",
+    "Merlin.GraphStateScalarInstance.F2.initialized",
+    "Merlin.GraphStateScalarInstance.F2.operands_initialized",
+    "Merlin.GraphStateScalarInstance.F3.accepted",
+    "Merlin.GraphStateScalarInstance.F3.actual",
+    "Merlin.GraphStateScalarInstance.F3.typed",
+    "Merlin.GraphStateScalarInstance.F3.initialized",
+    "Merlin.GraphStateScalarInstance.F3.operands_initialized",
+    "Merlin.GraphState.GateEntries.entries_cons",
+    "Merlin.GraphState.GateEntries.entries_nil",
+    "Merlin.GraphPipelineGateInstance.complete"
+  ],
+  "exact_final_declaration": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries",
+  "domain": "complete_regionfree_scalar_order_equal_outcome_v1",
+  "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+  "assumptions": [
+    "trusted complete xDSL parsing, projection, exact source and host binding",
+    "same frozen Scalar.Program/Model/evalProgram and complete-entry dispatcher",
+    "closed total deterministic state-free primitive interpretation; not inferred from dependency hints",
+    "same ordered opaque descriptor interpretation on explicit operands and entire persistent world",
+    "opaque calls may fail; local successful result arity only; no source-success premise",
+    "region-free scalar word bodies, explicit external declarations; no internal-call/CFG/region bridge",
+    "private SSA stacks unobserved; native, alias/allocator/completion/poison/numerical fidelity separate"
+  ],
+  "expected_protocol": "IDENTITY_SOURCE_CANDIDATE_NOT_CHANGED_OPTIMIZATION",
+  "model_metadata": {
+    "profile": "sequential_scalar_schedule_source_v1",
+    "changed": false,
+    "kind": "sequential_dependency_schedule",
+    "query_contract": "pure_declarations_separate_root_audit_v1",
+    "exact_statement": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries :=\n  Merlin.GraphPipelineGateInstance.complete model\n",
+    "compiler_pass_chain": "not_established",
+    "selection": null,
+    "boundary_label": "unchanged_order_identity"
+  },
+  "buffers_external_to_capsule": [
+    {
+      "label": "after.mlir",
+      "source_packet_ref": {
+        "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+        "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+        "bytes": 1139
+      },
+      "materialized": false
+    },
+    {
+      "label": "before.mlir",
+      "source_packet_ref": {
+        "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+        "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+        "bytes": 1139
+      },
+      "materialized": false
+    }
+  ],
+  "source_plan_identity": "029e99406077ff9c5455a14b1d4f019870d5162561ff22f63d0560cfa3c34552",
+  "original_source_data_provenance": {
+    "request_metadata": {
+      "file": "payload/9cf7f0cf7849102b04d2848d27897b9696cbe3ddb9a68ebd1b6b05df17bf6888.json",
+      "sha256": "9cf7f0cf7849102b04d2848d27897b9696cbe3ddb9a68ebd1b6b05df17bf6888",
+      "bytes": 9752
+    },
+    "prepared_metadata": {
+      "file": "payload/79696c3e290f4fbf51060bf24faf171e59d0e97638bd7b4aea9a2faced4e7386.json",
+      "sha256": "79696c3e290f4fbf51060bf24faf171e59d0e97638bd7b4aea9a2faced4e7386",
+      "bytes": 239426
+    },
+    "refs_base": "source-data handoff packet, NOT the closed materialization capsule"
+  },
+  "native_context_request": "UNSELECTED",
+  "compile": "UNEXECUTED",
+  "audit": "UNEXECUTED",
+  "qualification": "UNEXECUTED",
+  "query_status": "UNCOMPILED",
+  "native_authorization": false,
+  "graph_approval": false,
+  "human_review": false
+}

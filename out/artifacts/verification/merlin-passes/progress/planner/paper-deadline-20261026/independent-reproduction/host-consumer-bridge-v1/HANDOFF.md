@@ -1,0 +1,15 @@
+# Completed inert host-consumer bridge v1
+
+All five requested deliverables are complete. New work is confined to this packet and out/build/graph-paper-deadline/host-consumer-bridge-v1; prior service/canonical packets and actual primary/producer/shared sources remain unchanged.
+
+The exact4499 trace includes37 source/package consumers, not only src. Primary at0d9 has29 absent/8 different import locations; those37 paths are unchanged at new proposal base 9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e. Brokers serialize/adorn advisory results; original launchers omit live graph binding and exact work_root injection. Original compiler-import scopes authorize source leaves rather than graph deliveries. No global ordinary-compilation guarantee is claimed.
+
+The new trusted bridge accepts service/binding/compiler only from its trusted constructor. consume accepts closed request data, runs actual service.apply, calls actual compiler_eligible with the SAME output dict and captured original source, checks original/final/binding stability and calls the trusted callback once with exactly the final IR. It neither creates Context/native authority nor serializes/recreates it. Exclusive trusted ownership during a call is required; other compile routes and callback behavior remain outside its guarantee.
+
+Six new bounded methods pass with explicit custody/kernel mocks; callbackcount1 positive and0 for refusal/copy/edit/held/foreign/plan/legacy/unsupported/request-capability controls. Minimal fixedQ fixture has no old test methods; final new3-file cut passes lint. All probe failures/intermediate cuts are preserved. No Q46/Prepare12/archive campaign, SDK/runtime/native/install/numerical action or real compiler/kernel run occurred.
+
+Three-file source/fixture proposal and grouped patches pass3 copied-private-index CHECKS against9d7; copied index is unchanged, no actual apply/stage/commit/push. Canonical and primary admission are already present and not reapplied. The older0d9 proposal remains separately preserved.44 of the inherited66 selected service/dependency sources remain absent/different at9d7; this bridge packet does not silently integrate them. Root owns source selection, original import prerequisite, launcher/callback/profile/consumer wiring and publication.
+
+Start with CONSUMER_TRACE.md, PREREQUISITES_AND_PLACEMENT.md, TESTS_AND_LIMITS.md and RUNBOOK.md. SOURCE_PATCH_INVENTORY.json pins the proposed new sources; INPUT_INVENTORY.json/ADDITIONAL_COMPILER_IMPORT_CONSUMERS.json pin original/current trace inputs; CURRENT_PRIMARY_DEPENDENCY_OBSERVATIONS.json records already published admission. CALL_TRACE_SUMMARY.json and worked-input/final retain the SDK-free mocked worked example. TRANSFER_INDEX.json distinguishes small required review files from retained raw/intermediate evidence. FILE_INDEX.json pins packet files except itself and final validation receipt.
+
+Runtime incident UNKNOWN; old native profiles held. All Lean candidates UNCOMPILED; fresh source builds/root audits/qualification/human review UNEXECUTED. Mocked positive Python behavior is not kernel, native or compiler correctness.

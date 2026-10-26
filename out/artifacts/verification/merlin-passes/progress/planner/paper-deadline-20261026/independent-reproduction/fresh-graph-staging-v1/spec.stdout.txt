@@ -1,0 +1,1 @@
+{"profiles": 4, "cases": 33, "unique_capsule_payloads": 202, "capsule_payload_bytes": 8435611, "raw_bindings": 66, "shared_conflicts": 0}

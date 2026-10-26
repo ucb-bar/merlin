@@ -1,0 +1,14 @@
+{
+  "status": "PASSED_UNRELATED_CWD_SAME_FILE_RELOCATION",
+  "same_file_associations": 337,
+  "result": {
+    "status": "MATERIALIZED_DATA_INTEGRITY_MATCHED",
+    "files": 337,
+    "data_only": true,
+    "native_authorization": false,
+    "graph_approval": false,
+    "compile_audit_qualification": "UNEXECUTED"
+  },
+  "actual_materialization_runs": 1,
+  "native_execution": false
+}

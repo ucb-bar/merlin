@@ -1,0 +1,81 @@
+{
+  "role": "Assign",
+  "latest_assignment": "fresh-graph-staging-v1",
+  "state": "STOPPED_EXPLICIT_USER_5_PERCENT",
+  "branch": "feat/pass-verification",
+  "proposal_base": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "owned_sources": [
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/materialize_plan.py",
+      "sha256": "3d5a36d660153fa656b7d5c16044399326b54089d2d6774ff0f9ddbbfaee1e24",
+      "bytes": 15540,
+      "status": "FROZEN_SDK_FREE_DATA_VALIDATED",
+      "native_qualification": false
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/plan_core.py",
+      "sha256": "98ddc01714c539289503ef7befc3eea14b219727ab10ec5525301e4c44d23685",
+      "bytes": 20024,
+      "status": "FROZEN_SDK_FREE_DATA_VALIDATED",
+      "native_qualification": false
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/validate_staging.py",
+      "sha256": "69cfcc7bb4a76297de9f8c6e0e3fc0fc0fa478f7122b66581f137cd47d33f774",
+      "bytes": 6978,
+      "status": "FROZEN_SDK_FREE_DATA_VALIDATED",
+      "native_qualification": false
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/assemble_successors.py",
+      "sha256": "b15fe2d8ca26cf91bc06be17c49fb0cc18a6f37e2e8714a8d2e113a8986547c8",
+      "bytes": 9203,
+      "status": "FROZEN_SOURCE_DATA_ASSEMBLY_EXECUTED",
+      "native_qualification": false
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/make_staging_spec.py",
+      "sha256": "c184d0b5b35b6bd58a7b89d7abc55a27d8b63bd82d61a03358af4a882dae068d",
+      "bytes": 5604,
+      "status": "FROZEN_SOURCE_DATA_ASSEMBLY_EXECUTED",
+      "native_qualification": false
+    }
+  ],
+  "owned_patch": {
+    "path": "OWNED_CODE.patch",
+    "sha256": "d7eb18bd50eded1fc2b190b09323f9c3e36ce5fb5a49ebbe77be57f4ae9be9cf",
+    "bytes": 59365,
+    "applied_staged_committed": false,
+    "check_after_stop": "UNEXECUTED"
+  },
+  "qualified_data_batch": {
+    "status": "PASSED_SOURCE_STAGING_DATA_BATCH",
+    "actual_materialization_runs": 1,
+    "profiles": 4,
+    "query_cases": 33,
+    "files": 337,
+    "tiny_controls": 10,
+    "all_tiny_controls_expected": true,
+    "relocation_associations": 337,
+    "SDK_provider_controller_Lean_native_execution": false,
+    "compile_audit_qualification": "UNEXECUTED",
+    "materializer_source": {
+      "sha256": "3d5a36d660153fa656b7d5c16044399326b54089d2d6774ff0f9ddbbfaee1e24",
+      "bytes": 15540
+    },
+    "plan_core_source": {
+      "sha256": "98ddc01714c539289503ef7befc3eea14b219727ab10ec5525301e4c44d23685",
+      "bytes": 20024
+    },
+    "spec": {
+      "sha256": "74463f68ec13f631d70d7da02857ccc577c64709e0710b6d2f71fb8f93e514bb",
+      "bytes": 120006
+    }
+  },
+  "unfinished": [
+    "polished per-profile staging/qualification report and final acceptance/transfer package beyond current stop handoff",
+    "optional additional owner-interface hardening; no new campaign authorized by STOP"
+  ],
+  "all_native_compile_audit_qualification": "UNEXECUTED",
+  "live_jobs": []
+}

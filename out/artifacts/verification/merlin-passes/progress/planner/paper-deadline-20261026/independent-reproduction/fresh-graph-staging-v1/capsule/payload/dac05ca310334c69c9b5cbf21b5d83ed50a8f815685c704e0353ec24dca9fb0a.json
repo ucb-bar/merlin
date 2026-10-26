@@ -1,0 +1,114 @@
+{
+  "schema": "merlin.graph-staging-roots.v1",
+  "profile": "Q-unroll-tail-successor-v1",
+  "case": "nonzero_nonunit_two",
+  "module": "Query",
+  "query_pin": {
+    "sha256": "4a238e76c052593f6d83fbf37145251099e6151989b079103a4f2b6309df9c46",
+    "bytes": 17616
+  },
+  "final_root": "merlin_unroll_tail_transform",
+  "support_roots": [
+    "Merlin.GraphState.Pipeline.Tail.progression_append",
+    "Merlin.GraphState.Pipeline.Tail.loop_append",
+    "Merlin.GraphState.Pipeline.Tail.ordered_bulk_tail",
+    "Merlin.GraphState.Pipeline.Scope.check_sound",
+    "Merlin.GraphState.Pipeline.unroll_loop",
+    "Merlin.GraphState.Scalar.loopEval_congr",
+    "Merlin.GraphState.Pipeline.entries_cons",
+    "Merlin.GraphStatePipelineTailInstance.controlAccepted",
+    "Merlin.GraphStatePipelineTailInstance.literalsAccepted",
+    "Merlin.GraphStatePipelineTailInstance.literalsFit",
+    "Merlin.GraphStatePipelineTailInstance.naturalRange",
+    "Merlin.GraphStatePipelineTailInstance.F3.typed2",
+    "Merlin.GraphStatePipelineTailInstance.F3.typed3",
+    "Merlin.GraphStatePipelineTailInstance.F3.form2",
+    "Merlin.GraphStatePipelineTailInstance.F3.form3",
+    "Merlin.GraphStatePipelineTailInstance.F3.body_group",
+    "Merlin.GraphStatePipelineTailInstance.F3.tailScopeChecked",
+    "Merlin.GraphStatePipelineTailInstance.F3.tail_body",
+    "Merlin.GraphStatePipelineTailInstance.F3.suffixScopeChecked",
+    "Merlin.GraphStatePipelineTailInstance.F3.suffix_same",
+    "Merlin.GraphStatePipelineTailInstance.F3.after_bulk",
+    "Merlin.GraphStatePipelineTailInstance.F3.boundsChecked",
+    "Merlin.GraphStatePipelineTailInstance.F3.constantsFit",
+    "Merlin.GraphStatePipelineTailInstance.F3.lanesFit",
+    "Merlin.GraphStatePipelineTailInstance.F3.tailIndicesFit",
+    "Merlin.GraphStatePipelineTailInstance.F3.actual_inputs",
+    "Merlin.GraphStatePipelineTailInstance.F3.actual",
+    "Merlin.GraphStatePipelineTailInstance.F4.typed2",
+    "Merlin.GraphStatePipelineTailInstance.F4.typed3",
+    "Merlin.GraphStatePipelineTailInstance.F4.actual",
+    "Merlin.GraphStatePipelineTailInstance.originalEntriesChecked",
+    "Merlin.GraphStatePipelineTailInstance.finalEntriesChecked",
+    "Merlin.GraphStatePipelineTailInstance.complete"
+  ],
+  "exact_final_declaration": "theorem merlin_unroll_tail_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineTailInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineTailInstance.M primitive external)\n      Merlin.GraphStatePipelineTailInstance.originalEntries Merlin.GraphStatePipelineTailInstance.finalEntries",
+  "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+  "relation": null,
+  "assumptions": [
+    "trusted complete xDSL parser/projection and exact source delivery binding",
+    "one common frozen Scalar evaluator/registry/total pure primitive/partial external interpretation",
+    "concrete finite indexIterations and checked signed control/literal bounds; no backend fidelity claim",
+    "external successful-result arity contract only; no source success or whole-run equality premise",
+    "private SSA stacks unobserved; full returns/fault/terminal world retained",
+    "one changed top-level loop per two-argument entry; one/two carries; region-free body; explicit external calls only",
+    "native fidelity, runtime value typing/poison, model relevance and review remain separate"
+  ],
+  "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+  "model_metadata": {
+    "profile": "ordered_unroll_bulk_remainder_source_v1",
+    "changed": null,
+    "kind": "ordered_loop_unrolling",
+    "query_contract": "pure_declarations_separate_root_audit_v1",
+    "exact_statement": "theorem merlin_unroll_tail_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineTailInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineTailInstance.M primitive external)\n      Merlin.GraphStatePipelineTailInstance.originalEntries Merlin.GraphStatePipelineTailInstance.finalEntries :=\n  Merlin.GraphStatePipelineTailInstance.complete primitive external\n",
+    "compiler_pass_chain": "not_established",
+    "selection": {
+      "factor": 2,
+      "index_bits": 64
+    },
+    "boundary_label": null
+  },
+  "buffers_external_to_capsule": [
+    {
+      "label": "after.mlir",
+      "source_packet_ref": {
+        "file": "payload/248e272e95d389468bd9b306531f522a571289a811e096b7be469f99af22f8eb.mlir",
+        "sha256": "248e272e95d389468bd9b306531f522a571289a811e096b7be469f99af22f8eb",
+        "bytes": 1846
+      },
+      "materialized": false
+    },
+    {
+      "label": "before.mlir",
+      "source_packet_ref": {
+        "file": "payload/3d06593fec2d6ce9b4c7a69fb553a92fe641b5738341c691842b9a778e925c54.mlir",
+        "sha256": "3d06593fec2d6ce9b4c7a69fb553a92fe641b5738341c691842b9a778e925c54",
+        "bytes": 1196
+      },
+      "materialized": false
+    }
+  ],
+  "source_plan_identity": "6d110db5c99c5b3ad45009694655cf537d5d29a342413e807b6dfeced9962213",
+  "original_source_data_provenance": {
+    "request_metadata": {
+      "file": "payload/658e78f0a4588d142072c6c69455137767ffb85f4d925308d40d41f35eefeb96.json",
+      "sha256": "658e78f0a4588d142072c6c69455137767ffb85f4d925308d40d41f35eefeb96",
+      "bytes": 71803
+    },
+    "prepared_metadata": {
+      "file": "payload/bf934afccab0419066299c8854f94a684c0d3b6c52daad9440986e1197022c17.json",
+      "sha256": "bf934afccab0419066299c8854f94a684c0d3b6c52daad9440986e1197022c17",
+      "bytes": 63500
+    },
+    "refs_base": "source-data handoff packet, NOT the closed materialization capsule"
+  },
+  "native_context_request": "UNSELECTED",
+  "compile": "UNEXECUTED",
+  "audit": "UNEXECUTED",
+  "qualification": "UNEXECUTED",
+  "query_status": "UNCOMPILED",
+  "native_authorization": false,
+  "graph_approval": false,
+  "human_review": false
+}

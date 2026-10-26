@@ -1,0 +1,439 @@
+--- /dev/null
++++ b/src/merlin/targetgen/graph_consumer_bridge.py
+@@ -0,0 +1,72 @@
++"""Inert trusted-host prototype for one graph service → compiler handoff.
++
++The trusted caller selects a live binding, the real service and a compiler
++callback. Only request data crosses consume(). No context is constructed, no
++native hold is released, and no serialized report recreates authority. This
++entry point cannot constrain compiler calls made elsewhere by the host.
++"""
++
++from __future__ import annotations
++
++from pathlib import Path
++
++from merlin.verify.lean_graph_pipeline_gate_service import GraphServiceBinding, validate_binding
++
++from .common_transforms import CommonTransformService
++
++
++class ConsumerRefused(ValueError):
++    """The chosen consumer path has no eligible exact live service delivery."""
++
++
++class GraphConsumerBridge:
++    """Trusted wiring only; compiler must consume exactly the supplied IR text.
++
++    Own the instance/request/service exclusively during consume(). Callbacks
++    are trusted host capabilities, never request fields. This prototype does
++    not claim atomicity against other Python threads changing host objects.
++    """
++
++    __slots__ = ("_service", "_binding", "_compiler")
++
++    def __init__(self, *, service, binding, compiler):
++        if type(service) is not CommonTransformService or type(binding) is not GraphServiceBinding:
++            raise ConsumerRefused("exact selected service and live graph binding required")
++        if service.graph_binding is not binding or not callable(compiler):
++            raise ConsumerRefused("trusted service/binding/compiler selection differs")
++        validate_binding(binding, compiler_profile_sha256=service.profile["sha256"])
++        self._service, self._binding, self._compiler = service, binding, compiler
++
++    def consume(self, request):
++        """Apply the actual service, then hand off only the SAME eligible dict.
++
++        Refusal/exception propagates before the compiler callback. Each successful
++        invocation calls that callback once with the exact final immutable text.
++        It does not prove what a callback compiles or constrain other entrypoints.
++        """
++        if (
++            type(request) is not dict
++            or set(request) != {"schema", "source_ir", "options"}
++            or type(request["source_ir"]) is not str
++            or type(request["options"]) is not dict
++        ):
++            raise ConsumerRefused("closed transformation request data required")
++        service, binding = self._service, self._binding
++        original = request["source_ir"]
++        if service.graph_binding is not binding:
++            raise ConsumerRefused("trusted binding changed before service execution")
++        document = CommonTransformService.apply(service, request, work_root=Path(binding.workspace))
++        if type(document) is not dict or type(document.get("transformed_ir")) is not str:
++            raise ConsumerRefused("actual service output dict and final IR required")
++        final = document["transformed_ir"]
++        if request["source_ir"] != original or service.graph_binding is not binding:
++            raise ConsumerRefused("original source or trusted binding changed")
++        if CommonTransformService.compiler_eligible(service, document, source_ir=original) is not True:
++            raise ConsumerRefused("same live original/final service delivery is not eligible")
++        if (
++            request.get("source_ir") != original
++            or document.get("transformed_ir") != final
++            or service.graph_binding is not binding
++        ):
++            raise ConsumerRefused("source/final/binding changed during eligibility revalidation")
++        return self._compiler(final)
+--- /dev/null
++++ b/merlin/tests/targetgen/test_graph_consumer_bridge.py
+@@ -0,0 +1,188 @@
++"""Six NEW SDK-free handoff tests; real service/gate/pipeline, explicit mocks.
++
++Fixed Q fixture setup utilities are loaded by the isolated driver. None of Q's
++original46 tests or Prepare's service matrix are run. Positive kernel/custody
++completions are mocked and the compiler callback only records a string.
++"""
++
++import copy
++import json
++import unittest
++from dataclasses import replace
++from unittest.mock import patch
++
++import fixed_q_fixture as Q
++
++from merlin.targetgen.graph_consumer_bridge import ConsumerRefused, GraphConsumerBridge
++
++
++class ConsumerTests(unittest.TestCase):
++    def fixture(self):
++        case = Q.ServiceBoundary()
++        case.setUp()
++        self.addCleanup(case.doCleanups)
++        return case
++
++    def bridge(self, case):
++        calls = []
++        bridge = GraphConsumerBridge(
++            service=case.service,
++            binding=case.binding,
++            compiler=lambda text: calls.append(text) or "mock_compiler_recorded",
++        )
++        return bridge, calls
++
++    def test_01_supported_cse_delivers_exact_final_once(self):
++        case = self.fixture()
++        case.activate_mock_methods()
++        bridge, calls = self.bridge(case)
++        source = case.request["source_ir"]
++        result = bridge.consume(case.request)
++        self.assertEqual(result, "mock_compiler_recorded")
++        self.assertEqual(len(calls), 1)
++        recorded = next(row for row in reversed(case.selection._DELIVERIES.values()) if row[2] is case.binding)
++        document = recorded[0]
++        self.assertEqual(calls[0], document["transformed_ir"])
++        self.assertNotEqual(calls[0], source)
++        self.assertEqual(recorded[3], source)
++        self.assertEqual(recorded[4][-1].after_ir, calls[0])
++        self.assertIs(document, recorded[0])
++        self.assertEqual(document["compiler_pass_chain"], "not_established")
++        # Observation only: this is not a real compiler output or proof receipt.
++        globals()["WORKED_OBSERVATION"] = {
++            "original_ir": source,
++            "final_ir": calls[0],
++            "service_document": document,
++            "callback_calls": len(calls),
++            "same_live_document": True,
++            "mocks": [
++                "original profile/custody",
++                "Context.check_query",
++                "Context.revalidate",
++                "native dispatch temporarily mapped to inactive adapter with mocked Context",
++            ],
++            "real_compiler_or_kernel_executed": False,
++            "native_authorization": False,
++        }
++
++    def test_02_service_and_second_boundary_refusal_call_compiler_zero(self):
++        case = self.fixture()
++        bridge, calls = self.bridge(case)
++        with self.assertRaisesRegex(ValueError, "held"):
++            bridge.consume(case.request)
++        self.assertEqual(calls, [])
++        checked_calls = []
++        provider = __import__("merlin.verify.lean_graph_pipeline_gate_provider", fromlist=["selected"])
++
++        def checked(*args, **kwargs):
++            checked_calls.append(args[0])
++            if len(checked_calls) == 2:
++                raise provider.selected()[0].ProofRefused("mocked second-boundary refusal")
++            return case.checked(*args, **kwargs)
++
++        case.activate_mock_methods(checked)
++        source = Q.LOOP.replace(
++            "%x = arith.addi %a, %b : i8",
++            """%x = arith.addi %a, %b : i8
++      %duplicate = arith.addi %a, %b : i8
++      %dead = arith.muli %x, %duplicate : i8""",
++        )
++        request = {
++            **case.request,
++            "source_ir": source,
++            "options": {**case.request["options"], "hoist_invariants": True},
++        }
++        with self.assertRaisesRegex(ValueError, "second-boundary"):
++            bridge.consume(request)
++        self.assertEqual(len(checked_calls), 2)
++        self.assertEqual(calls, [])
++
++    def test_03_copied_or_altered_service_output_call_compiler_zero(self):
++        case = self.fixture()
++        case.activate_mock_methods()
++        bridge, calls = self.bridge(case)
++        owner = type(case.service)
++        apply = owner.apply
++        for mode in ("copy", "alter-final", "alter-description"):
++
++            def intercepted(service, request, **kwargs):
++                document = apply(service, request, **kwargs)
++                if mode == "copy":
++                    return json.loads(json.dumps(document))
++                if mode == "alter-final":
++                    document["transformed_ir"] += "\n"
++                else:
++                    document["status"] = "spoofed"
++                return document
++
++            with self.subTest(mode=mode), patch.object(owner, "apply", intercepted):
++                with self.assertRaises(ConsumerRefused):
++                    bridge.consume(case.request)
++            self.assertEqual(calls, [])
++
++    def test_04_original_or_final_change_during_handoff_call_compiler_zero(self):
++        case = self.fixture()
++        case.activate_mock_methods()
++        bridge, calls = self.bridge(case)
++        owner = type(case.service)
++        eligible = owner.compiler_eligible
++        for mode in ("original", "final"):
++            request = copy.deepcopy(case.request)
++
++            def intercepted(service, document, *, source_ir):
++                accepted = eligible(service, document, source_ir=source_ir)
++                self.assertIs(accepted, True)
++                if mode == "original":
++                    request["source_ir"] += "\n"
++                else:
++                    document["transformed_ir"] += "\n"
++                return accepted
++
++            with self.subTest(mode=mode), patch.object(owner, "compiler_eligible", intercepted):
++                with self.assertRaisesRegex(ConsumerRefused, "during eligibility"):
++                    bridge.consume(request)
++            self.assertEqual(calls, [])
++
++    def test_05_held_foreign_or_recreated_binding_call_compiler_zero(self):
++        case = self.fixture()
++        case.activate_mock_methods()
++        bridge, calls = self.bridge(case)
++        case.context.held = True
++        with self.assertRaises(ValueError):
++            bridge.consume(case.request)
++        case.context.held = False
++        foreign = case.selection.bind_service_context(
++            case.context, compiler_profile_sha256=case.profile["sha256"], timeout_s=120
++        )
++        case.service.graph_binding = foreign
++        with self.assertRaisesRegex(ConsumerRefused, "binding changed"):
++            bridge.consume(case.request)
++        case.service.graph_binding = case.binding
++        for selected in (replace(case.binding), case.binding.describe(), None):
++            with self.subTest(binding=type(selected).__name__), self.assertRaises(ValueError):
++                GraphConsumerBridge(service=case.service, binding=selected, compiler=calls.append)
++        self.assertEqual(calls, [])
++
++    def test_06_plan_legacy_unsupported_or_request_capability_call_compiler_zero(self):
++        case = self.fixture()
++        case.activate_mock_methods()
++        bridge, calls = self.bridge(case)
++        for options in ({"plan_only": True}, {"normalize_shapes": True}, {"tile_iterations": [2]}):
++            request = {**case.request, "options": {**case.request["options"], **options}}
++            with self.subTest(options=options), self.assertRaises(ValueError):
++                bridge.consume(request)
++        for field in ("graph_binding", "context", "compiler", "callback"):
++            with self.subTest(request_field=field), self.assertRaises(ConsumerRefused):
++                bridge.consume({**case.request, field: "request-selected-capability"})
++        with self.assertRaises(ValueError):
++            bridge.consume({**case.request, "schema": "merlin.common_check_request.v1"})
++        # An actual plan_only result is DATA, not the SAME service output dict.
++        planned = case.case.pipeline(case.case.parse(Q.SCALAR), case.case.options, plan_only=True)
++        with patch.object(type(case.service), "apply", return_value=planned):
++            with self.assertRaises(ConsumerRefused):
++                bridge.consume(case.request)
++        legacy = object.__new__(case.case.checker.LeanTransformReceipt)
++        with patch.object(case.case.checker, "verify_pipeline_change", return_value=legacy):
++            with self.assertRaisesRegex(ValueError, "not established"):
++                bridge.consume(case.request)
++        self.assertEqual(calls, [])
+--- /dev/null
++++ b/merlin/tests/fixtures/graph_consumer_bridge_fixture.py
+@@ -0,0 +1,170 @@
++"""Minimal fixed-Qv9 fixture utilities only; original test methods excluded.
++Custody/kernel are mocked by explicit setup/activation; no native authority.
++"""
++
++import unittest
++from pathlib import Path
++from unittest.mock import patch
++
++SCALAR = """builtin.module {
++  func.func private @observe(i8) -> i8
++  func.func @main(%a: i8, %b: i8) -> i8 {
++    %x = arith.addi %a, %b : i8
++    %y = arith.addi %a, %b : i8
++    %z = arith.muli %x, %y : i8
++    %r = func.call @observe(%z) : (i8) -> i8
++    func.return %r : i8
++  }
++  func.func @other(%a: i8) -> i8 {
++    func.return %a : i8
++  }
++}"""
++
++LOOP = """builtin.module {
++  func.func @main(%a: i8, %b: i8) -> i8 {
++    %lb = arith.constant 0 : index
++    %ub = arith.constant 3 : index
++    %st = arith.constant 1 : index
++    %r = scf.for %i = %lb to %ub step %st iter_args(%c = %a) -> (i8) {
++      %x = arith.addi %a, %b : i8
++      %v = arith.muli %c, %x : i8
++      scf.yield %v : i8
++    }
++    func.return %r : i8
++  }
++}"""
++
++
++class WholeBoundary(unittest.TestCase):
++    def setUp(self):
++        from merlin.transforms.certificates import parse_ir
++        from merlin.transforms.pipeline import PipelineOptions, apply_common_pipeline
++        from merlin.verify import lean_checker
++        from merlin.verify import lean_graph_pipeline_gate as gate
++        from merlin.verify import lean_graph_pipeline_gate_projection as projection
++
++        self.gate, self.mapping, self.checker = gate, projection, lean_checker
++        self.parse, self.pipeline = parse_ir, apply_common_pipeline
++        self.options = PipelineOptions(
++            index_bits=64,
++            normalize_shapes=False,
++            simplify_integers=False,
++            reuse_buffers=False,
++            eliminate_redundancy=True,
++        )
++        self.change = self.pipeline(self.parse(SCALAR), self.options, plan_only=True).changes[0]
++
++    def context_fixture(self):
++        from merlin.verify import lean_graph_pipeline_gate_provider as provider
++
++        controller, data, _ = provider.selected()
++        Context, CheckedQuery, FileRef = controller.Context, controller.CheckedQuery, data.FileRef
++        prepared = self.mapping.prepare(self.change)
++        request = self.gate.native.request(prepared)
++        context = object.__new__(Context)  # No from_review, filesystem or SDK reads.
++        context.context_id = "1" * 64
++        context.held = False
++        context.workspace = Path("/mock/graph-context")
++        context.compile_audit_roots = dict(provider._COMPILE_ROOTS)
++        context.review = {
++            role: FileRef(str(Path(provider.__file__).resolve().parents[3] / path), digest, size)
++            for role, (path, digest, size) in provider._REVIEW_PINS.items()
++        }
++        context.controls = tuple(
++            FileRef(str(provider._DIRECTORY / (name + ".py")), digest, size) for name, digest, size in provider._PINS
++        )
++        context.originals = {name: FileRef(path, digest, size) for name, path, digest, size in request.project_sources}
++
++        def checked(module, query, *, final_root, support_roots):
++            return CheckedQuery(
++                context.context_id,
++                module,
++                FileRef("/mock/query.lean", self.mapping.sha(query), len(query)),
++                FileRef("/mock/query.olean", "2" * 64, 1),
++                final_root,
++                support_roots,
++                tuple((name, ("propext",)) for name in (final_root, *support_roots)),
++                FileRef("/mock/audit.json", "3" * 64, 1),
++                FileRef("/mock/types.txt", "4" * 64, 1),
++                FileRef("/mock/imports.json", "5" * 64, 1),
++                (),
++                object(),
++            )
++
++        return Context, prepared, context, checked
++
++
++class ServiceBoundary(unittest.TestCase):
++    def setUp(self):
++        import contextlib
++        import tempfile
++
++        from merlin.targetgen import common_transforms as service
++        from merlin.verify import lean_graph_pipeline_gate_service as selection
++
++        self.case = WholeBoundary()
++        self.case.setUp()
++        self.Context, _, self.context, self.checked = self.case.context_fixture()
++        self.service_module, self.selection = service, selection
++        self.stack = contextlib.ExitStack()
++        self.addCleanup(self.stack.close)
++        directory = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
++        self.manifest = directory / "host-bundle.yaml"
++        self.manifest.write_text("{}\n")
++        self.workspace = directory / "workspace"
++        self.profile = {
++            "sha256": "a" * 64,
++            "host_index_bits": 64,
++            "common_substrate": "merlin.common_compiler_substrate.v2",
++            "common_sources": [],
++            "automatic_checker_sources": [],
++        }
++        self.stack.enter_context(patch.object(service, "verify_tool_profile", return_value=self.profile))
++        self.stack.enter_context(
++            patch.object(service.BW, "verify_bundle_snapshot", return_value={"content_sha256": "b" * 64})
++        )
++        self.stack.enter_context(patch.object(service.BW, "snapshot_marker_digest", return_value="c" * 64))
++        self.stack.enter_context(
++            patch.object(service.BW, "verified_snapshot_scope", side_effect=lambda *a, **k: contextlib.nullcontext())
++        )
++        self.stack.enter_context(
++            patch.object(
++                service.CommonTransformService, "_toolchain", side_effect=AssertionError("no legacy SDK fallback")
++            )
++        )
++        self.stack.enter_context(
++            patch.object(self.Context, "from_review", side_effect=AssertionError("no service context construction"))
++        )
++        self.stack.enter_context(patch.object(self.Context, "_guard", side_effect=AssertionError("no runtime reads")))
++        self.binding = selection.bind_service_context(
++            self.context, compiler_profile_sha256=self.profile["sha256"], timeout_s=120
++        )
++        self.service = self.make_service(self.binding)
++        self.request = {
++            "schema": service.SCHEMA,
++            "source_ir": SCALAR,
++            "options": {
++                "normalize_shapes": False,
++                "simplify_integers": False,
++                "reuse_buffers": False,
++                "eliminate_redundancy": True,
++            },
++        }
++
++    def make_service(self, binding):
++        return self.service_module.CommonTransformService(
++            workspace=self.workspace,
++            bundle_manifest=self.manifest,
++            repo=Path(self.case.mapping.__file__).resolve().parents[3],
++            graph_binding=binding,
++        )
++
++    def activate_mock_methods(self, check=None):
++        self.stack.enter_context(patch.object(self.Context, "check_query", side_effect=check or self.checked))
++        self.stack.enter_context(patch.object(self.Context, "revalidate", side_effect=lambda value: value))
++        self.stack.enter_context(
++            patch.object(self.case.gate.native, "check", self.case.gate.native._check_with_context)
++        )
++        self.stack.enter_context(
++            patch.object(self.case.gate.native, "revalidate", self.case.gate.native._revalidate_with_context)
++        )
