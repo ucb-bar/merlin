@@ -1,0 +1,18 @@
+artifacts:
+- README.md
+- authority/numerics/models.yaml
+- authority/protocol/README.md
+- authority/protocol/experiment.yaml
+- report.json
+- smolvla-chunks.pending.json
+git_sha: 2ac14a1
+notes: Read-only source/input audit; blocked SmolVLA definitions; synthetic TinyLlama diagnostic excluded from selected-profile queue.
+run_id: audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1
+sources:
+- origin/el4-core-aten@f6f1e499565f7cb766da1b680f490cbc3dc0b54b
+- examples/gemmini/protocol/experiment.yaml
+- examples/gemmini/numerics/models.yaml
+target: gemmini-el4-input-conformance
+timestamp: 20261026T191206Z
+topic: audits
+version: 1

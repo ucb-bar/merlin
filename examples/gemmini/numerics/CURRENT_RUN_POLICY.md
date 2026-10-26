@@ -97,3 +97,10 @@ Preserve the historical capture and its receipts.
 The existing tuning driver does not prove numerical-policy conformance from
 arbitrary IR. Review the release and layer ledger before submitting paid work.
 Do not fabricate calibrated scales from a tuning input to bypass preparation.
+
+The fresh local synthetic TinyLlama preparation retains basic static/group16
+arithmetic, but also changes selected calibration, cache ABI, attention recipe,
+host math and reference producer. It is a **nonconforming diagnostic**, not a
+replacement for the selected EL4 profile or its missing numerical release.
+See [the input audit](../comparisons/tvm/EL4_INPUT_AUDIT.md). Synthetic inputs were
+authorized; further numerical/ABI changes are not selected by this audit.

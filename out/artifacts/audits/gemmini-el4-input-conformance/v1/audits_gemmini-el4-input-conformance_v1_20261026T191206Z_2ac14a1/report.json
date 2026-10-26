@@ -1,0 +1,210 @@
+{
+  "authority": {
+    "branch": "el4-core-aten",
+    "commit": "f6f1e499565f7cb766da1b680f490cbc3dc0b54b",
+    "files": {
+      "protocol/experiment.yaml": {
+        "sha256": "6ebbc846ffdbc57608e9842ee1ac7466de0ef4444afeb11d9a58aa22d7f4b3ca",
+        "matches_latest_el4": true
+      },
+      "protocol/README.md": {
+        "sha256": "bc0e832e2050980d915c0c264889405bb3fbf688bf5b5f209d9928f0469690b8",
+        "matches_latest_el4": true
+      },
+      "numerics/models.yaml": {
+        "sha256": "7b9addd43b87e4ee1f72e78449d3a29760369699d304d8359be794382fcb9d13",
+        "matches_latest_el4": true
+      }
+    }
+  },
+  "resnet": {
+    "input_archive_sha256": "aef47b171c1132f1aaec18a957499f85bc5c80bfbfde197121c8255709311263",
+    "input_array_matches": true,
+    "input_shape": [
+      1,
+      3,
+      224,
+      224
+    ],
+    "input_array_sha256": "1060b3ccba279d6d1a700fa37ae4c2d81388d11610003edfc9629ab30f06be32",
+    "capture_checkpoint": "8bea63dc89b0700f2acbc5b170ed0b4637daed4ab748949eefe50ebe95149ac0",
+    "capture_recipe": "b840ae04104798799670015e39d2a5be692a70bc2a6ada42eb75d6878dd2ffbd",
+    "calibration_samples": 260,
+    "integerization": 54,
+    "sealed_selected_oracle": "UNVERIFIED",
+    "fixed_set_quality": "NOT_RUN"
+  },
+  "tinyllama": {
+    "selected_token_archive_sha256": "065d978c1f302bc4c2ee8f74dc6823d72b81224baf30a51b877919cbfa450629",
+    "synthetic_protocol_status": "FAIL_SELECTED_EL4_PROFILE",
+    "synthetic_paid_campaigns_added": 0,
+    "selected_prepared_release": "UNAVAILABLE_IN_AUDITED_HANDOFFS"
+  },
+  "smolvla": {
+    "checkpoints": {
+      "smolvla": {
+        "weights_sha256": "7cd549ac2351fb069c0ddb3c34ad2d09cfc92b56a15dccdfc2e41467aaca01eb",
+        "bytes": 906712520,
+        "config_sha256": "650584b56c104720f7a3c91d1ec6bec9e8de8ac11e60c92ba2fa82d93eda147d",
+        "selected_parameter_shapes": {
+          "model.action_in_proj.bias": [
+            720
+          ],
+          "model.action_in_proj.weight": [
+            720,
+            32
+          ],
+          "model.action_out_proj.bias": [
+            32
+          ],
+          "model.action_out_proj.weight": [
+            32,
+            720
+          ],
+          "model.action_time_mlp_in.bias": [
+            720
+          ],
+          "model.action_time_mlp_in.weight": [
+            720,
+            1440
+          ],
+          "model.action_time_mlp_out.bias": [
+            720
+          ],
+          "model.action_time_mlp_out.weight": [
+            720,
+            720
+          ],
+          "model.state_proj.bias": [
+            960
+          ],
+          "model.state_proj.weight": [
+            960,
+            32
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.self_attn.k_proj.weight": [
+            320,
+            320
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.self_attn.v_proj.weight": [
+            320,
+            320
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.input_layernorm.weight": [
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.mlp.down_proj.weight": [
+            720,
+            2048
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.mlp.gate_proj.weight": [
+            2048,
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.mlp.up_proj.weight": [
+            2048,
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.post_attention_layernorm.weight": [
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.self_attn.k_proj.weight": [
+            320,
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.self_attn.o_proj.weight": [
+            720,
+            960
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.self_attn.q_proj.weight": [
+            960,
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.0.self_attn.v_proj.weight": [
+            320,
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.input_layernorm.weight": [
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.mlp.down_proj.weight": [
+            720,
+            2048
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.mlp.gate_proj.weight": [
+            2048,
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.mlp.up_proj.weight": [
+            2048,
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.post_attention_layernorm.weight": [
+            720
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.self_attn.o_proj.weight": [
+            720,
+            960
+          ],
+          "model.vlm_with_expert.lm_expert.layers.1.self_attn.q_proj.weight": [
+            960,
+            720
+          ]
+        },
+        "actual_layers": {
+          "lm_expert.layers.": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "text_model.layers.": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        }
+      },
+      "smolvlm": {
+        "weights_sha256": "b9bfd456c9472c0acd5719d6e514c4b859891af205ee1a736552fd3497b8b0c3",
+        "bytes": 2029990624,
+        "config_sha256": "ea6bc1237e96247f6258de3e202e2e62b93d6f386dc47e7b36b5588bf3a15e17",
+        "selected_parameter_shapes": {}
+      }
+    },
+    "expected_observation_sha256": "8c4c0dca184abf8da7af74c187531cecc172c3eb50f51aa7b6d6d0c61fef3daf",
+    "recovered_observation_sha256": "e4863c12cb7f9ae9bdf9f20ec48d6788083a81f29bb680738f420daed5405414",
+    "selected_ready_chunks": 0,
+    "selected_export_scales_reference_readiness": "BLOCKED",
+    "source_shapes_implementation": {
+      "modeling_smolvla.py": "be4463140f1abc5bce61f8a8c849ba6ba23f37777d19ad9159c2e1ffff60c1c5",
+      "smolvlm_with_expert.py": "b70356145870c7da1e92a2195ee4626f7e9f9387576c6bed5ba2bfefae2a38d9"
+    }
+  },
+  "hardware_jobs_launched": 0
+}

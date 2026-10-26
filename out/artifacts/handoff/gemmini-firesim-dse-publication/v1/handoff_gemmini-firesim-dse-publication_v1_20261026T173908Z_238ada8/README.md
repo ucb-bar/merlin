@@ -1,5 +1,18 @@
 # Published FireSim DSE handoff
 
+**Current input admission:** read the [EL4 input audit](../../../../../../examples/gemmini/comparisons/tvm/EL4_INPUT_AUDIT.md)
+before submitting work. ResNet's v00 image and capture provenance match; its
+selected-reference and quality gates remain open. SmolVLA has actual parameters
+and blocked chunk definitions, but lacks finalized admitted inputs/numerics.
+Those definitions are included in the audit and are not runnable campaigns.
+
+**TinyLlama diagnostic:** its frozen calibration, activation/cache fixtures, all99 source
+outputs, generator and two native chunk ELF controls are in the
+[synthetic TinyLlama handoff](../../../gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/README.md).
+It changes recipe/ABI as well as inputs and **does not conform to selected EL4**.
+Do not use it to fill the original bundle's pending selected-profile TinyLlama
+campaigns or promote its records to that E2E model. Preserve its diagnostic scope.
+
 **Execution scope: do not implement the proposed optimization knobs.** They
 were ideas to investigate. Use the previously agreed existing TVM/Gemmini
 contraction DSE, graph fusion fixed at level 2, meaningful chunks, parallel jobs,
@@ -70,9 +83,12 @@ FireSim execution and application accuracy remain NOT_RUN for this new source.
 - Use stock TVM EvolutionarySearch/XGB through the published Gemmini fork and
   supported adapter APIs. Independent campaigns share physical slot locks,
   batch submissions and bounded host builds. There is no new TVM source patch.
-- TinyLlama still lacks current-policy calibrated exports. Q/O, gate/up, full
-  down projection and QK/PV/cache/context coverage are recorded as pending.
-  The older dynamic-row probes do not replace these inputs.
+- The original archive's shared TinyLlama exports remain absent. The synthetic
+  handoff provides diagnostic controls, with its differences recorded in the
+  audit. Selected-release preparation and matched PPL qualification remain pending.
+- SmolVLA's proposed extraction definitions retain 50 action rows and complete
+  MLP/attention/action-update regions. They have zero proposal allocation while
+  observation hash, prepared exports/scales and admitted references are missing.
 - Before paid DSE, demonstrate startup/warmup exclusion, an actual measured
   cycle cutoff, in-flight tightening and real remote cancellation. Stop at
   `active_cycles >= incumbent` for the same workload. The previous adapter's

@@ -7,6 +7,14 @@ the shared deadline/incumbent-cycle policy, then connected and E2E confirmation.
 Do not add host scheduling, producer placement, panelized packing or other new
 compiler optimization/search work during this handoff.
 
+The [latest EL4 input audit](EL4_INPUT_AUDIT.md) verifies the ResNet v00 array
+and records its remaining reference/quality gates. It also defines blocked
+SmolVLA chunks with actual checkpoint dimensions and explains schedule mapping
+back to E2E operations. The fresh synthetic TinyLlama source has 14 checked
+chunks and native Spike controls, but changes numerics/ABI beyond the approved
+input substitution. It remains a diagnostic, excluded from the selected-profile
+campaign queue. That input gap is not closed. No new FireSim timing is implied.
+
 The proposed additional decisions and their actual implementation status are
 in [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md). ResNet selects the initial
 profile-driven experiments; every optimization must apply by IR semantics and

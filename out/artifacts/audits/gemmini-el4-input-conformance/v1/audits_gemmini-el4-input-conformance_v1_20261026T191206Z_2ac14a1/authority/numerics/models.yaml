@@ -1,0 +1,131 @@
+# Models judged by `python -m merlin.model_check` for this target.
+# Contract: docs/reference/model_check.md. Each program lists its @forward model inputs (in0, in1, ...) in
+# order, each taken from:
+#   {from: input, key: K}                         the input's model-ready array K
+#   {from: tokens, slice: prefill|next}            token ids [1, prefill_tokens] / the step's next token [1, 1]
+#   {from: output, program: P, output: i}          output i of program P's last step
+#   {from: constant, value: [...], dtype: D}       a fixed tensor
+# plus `carry: j` -- from the second step on, the program's own output j of the previous step (a state).
+# The bindings restate each capture's session contract (session_contract.yaml); a program with `steps`
+# runs that many times.
+schema: merlin.model_check.models.v1
+target: gemmini
+
+# The only shared numerical-report policy. Per-model quality bars stay in judged.admission.
+# Historical sealed configs are immutable; offline reports pin this policy separately.
+numerics:
+  version: merlin.model_check.numerics.v1
+  report_only: true
+  functional:
+    atol: 0.000002
+    rtol: 0.00001
+    equal_nan: false
+    finite_required: true
+    integer_boolean: exact
+    outputs: all_declared_every_step
+  reporting:
+    input_manifest: MANIFEST.json
+    reduction_dtype: float64
+    errors: [reference_rms, rmse, mae, max_abs_error, relative_l2]
+    zero_reference_energy: relative_l2_unavailable_report_absolute_errors
+    sections: [program, step, output, channel, kernel_group, capture_attention_site]
+    percentile: linear
+    missing_data: unavailable_never_pass
+    mixed_units: no_cross_tensor_error_average
+  # Definitions/labels only: this never alters the compiled-vs-quantized gate.
+  quality_rules: models.*.judged.admission
+
+# check --mode full: how each program's whole-model image is built and run (contract §2). Paths are
+# repo-relative or ${ENV}-expanded; each model adds its arena (`full.arena_mb`) and its differential
+# (`full.differential`): `required` (default) runs the host twin on a twin-cache miss; `cached` leaves
+# that step pending. SmolVLA's and TinyLlama's twins take hours per input on Spike, so their official
+# grade is exact kernels + a completed chain until the per-call check lands (user decision, 2026-10-16).
+# The selected successor uses explicit direct quantized-reference comparison externally, with
+# all declared arrays checked; see ../protocol/README.md. Its per-model host_math_policy overrides
+# are bound in the sealed run config, not implied by this default file.
+full:
+  board: firesim_gemmini_rocket_u250_30mhz
+  board_catalog: examples/gemmini/platform/board-catalog.yaml
+  host_dts: ${MERLIN_CHIPYARD_GEMMINI_ROCKET}/sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimGemminiRocketConfig/firechip.chip.FireSim.FireSimGemminiRocketConfig.dts
+  datapath: int8
+
+models:
+  resnet50:
+    workload: resnet50_v1_5
+    chain: {kind: single}
+    full: {arena_mb: 128}
+    programs:
+      - name: model
+        stage: null
+        inputs: [{from: input, key: in0}]
+    judged:
+      kind: logits
+      outputs: [{program: model, output: 0}]
+      topk: [1, 5]
+      reporting:
+        labels: {path: 'inputs/resnet50/{split}.json', field: imagenet_label, namespace: ImageNet_1k}
+      admission:                         # contract §4.5 (approved 1.7)
+        - {metric: top1_agree, aggregate: mean, min: 0.9375}   # per split: with 8 B1 cases this requires 8/8
+        - {metric: cosine, aggregate: mean, min: 0.98}  # user-approved successor; historical results unchanged
+
+  smolvla:
+    workload: smolvla
+    chain: {kind: flow, steps: 10}       # checkpoint config num_steps; t = 1.0, dt = -0.1 inside the program
+    full: {arena_mb: 8192, differential: cached}
+    programs:
+      - name: prefix_encode
+        stage: prefix_encode
+        inputs:
+          - {from: input, key: image}
+          - {from: input, key: image_mask}
+          - {from: input, key: language_tokens}
+          - {from: input, key: language_mask}
+          - {from: input, key: state}
+      - name: flow_denoise
+        stage: flow_denoise
+        steps: 10
+        inputs:
+          - {from: output, program: prefix_encode, output: 0}
+          - {from: output, program: prefix_encode, output: 1, carry: 1}
+          - {from: input, key: noise, carry: 0}
+          - {from: constant, value: [1.0], dtype: float32, carry: 2}
+      - name: action_decode
+        stage: action_decode
+        inputs: [{from: output, program: flow_denoise, output: 0}]
+    judged:
+      kind: per_channel
+      outputs: [{program: action_decode, output: 0}]
+      channel_axis: -1
+      channels: {first: 0, last: 5}      # the checkpoint's action feature shape is [6]; 6..31 are padding
+      reference:                         # FP reference in f32; the bf16 model is the baseline
+        precision: float32
+        baseline: native
+        seeds: {input: noise, count: 4}  # each input under 4 initial-noise draws: the 10-step flow is chaotic
+      admission:                         # contract §4.5 (approved 1.9, 1.13): within 2x the bf16 model's own error
+        - {metric: rel_rmse_worst, aggregate: mean, max_ratio_to_baseline: 2.0}
+        - {metric: rel_rmse_worst, aggregate: p90, max_ratio_to_baseline: 2.0}
+        - {metric: rel_rmse_worst, aggregate: max, max_ratio_to_baseline: 2.0, report_only: true}
+
+  tiny_llama:
+    workload: tiny_llama
+    chain: {kind: causal, prefill_tokens: 32, decode_steps: 32}
+    full: {arena_mb: 512, differential: cached}
+    programs:
+      - name: prefill
+        stage: prefill
+        inputs: [{from: tokens, slice: prefill}]
+      - name: decode
+        stage: decode
+        steps: 32                          # teacher-forced on the input's next tokens
+        inputs:
+          - {from: tokens, slice: next}
+          - {from: output, program: prefill, output: 1, carry: 1}
+          - {from: output, program: prefill, output: 2, carry: 2}
+    judged:
+      kind: next_token_distribution
+      outputs: [{program: prefill, output: 0}, {program: decode, output: 0}]
+      reporting:
+        perplexity: {targets: teacher_forced_continuation, score_tokens: decode_steps, exclude_final_decode_logit: true, padding: none, threshold: report_only}
+      admission:                         # contract §4.5 (approved 1.15): KL in nats; corpus PPL is a separate metric
+        - {metric: kl_mean, aggregate: mean, max: 0.075}
+        - {metric: top1_agree, aggregate: mean, min: 0.90}

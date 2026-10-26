@@ -21,6 +21,14 @@ unreported CPU fallback for eligible Gemmini contractions. Distinguish frontend
 import coverage from actual device support and bind prior E2E claims to their
 specific exports/ELFs.
 
+Read [EL4_INPUT_AUDIT.md](EL4_INPUT_AUDIT.md) for the latest fetched EL4 binding,
+actual conformance findings, blocked SmolVLA chunk definitions and E2E mapping.
+The user authorized local synthetic TinyLlama inputs, but the fresh preparation
+also changed the recipe/ABI. Preserve it as a diagnostic; do not auto-enqueue it
+as selected-profile DSE or promote its traces to that E2E model. No further
+numerical/ABI changes are authorized by this audit. SmolVLA definitions remain
+blocked until final admitted observation/exports/scales/references are available.
+
 Read root `AGENT.md`/`CLAUDE.md`, this directory's [README.md](README.md),
 [EL4_ASSETS.md](EL4_ASSETS.md), [UPSTREAM_AUDIT.md](UPSTREAM_AUDIT.md), and the
 companion TVM `apps/gemmini/{README,OWNERSHIP,TUNING,FIRESIM,AGENTS}.md`.

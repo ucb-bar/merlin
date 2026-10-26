@@ -1,5 +1,10 @@
 # TVM comparison: ResNet50, TinyLlama and SmolVLA FireSim handoff
 
+Read [EL4_INPUT_AUDIT.md](EL4_INPUT_AUDIT.md) for the latest fetched EL4 files,
+ResNet/TinyLlama/SmolVLA conformance, blocked SmolVLA chunk definitions and the
+mapping of TVM schedule records to E2E operators. The synthetic TinyLlama
+diagnostic must not replace the selected-profile campaigns.
+
 The current DSE preparation is [FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md):
 18 ResNet chunks, structural tuning ownership, TinyLlama coverage gaps, parallel
 campaign budgets and live active-cycle observer qualification.

@@ -1,5 +1,12 @@
 # Next ResNet and TinyLlama FireSim handoff
 
+**Latest input audit:** read [EL4_INPUT_AUDIT.md](EL4_INPUT_AUDIT.md) before
+using any prepared workload. It binds the latest fetched EL4 files, verifies
+the ResNet v00 array and records selected-reference gaps. SmolVLA chunk
+definitions are included there and in [smolvla-chunks.pending.json](smolvla-chunks.pending.json),
+but are blocked on final admitted inputs/exports/references. They are not
+runnable study rows and receive no extra proposal allocation.
+
 **Scope instruction: do not implement the proposed optimization knobs.** They
 were research ideas only. This handoff uses the existing TVM/Gemmini contraction
 schedules and knobs, graph fusion fixed at 2, meaningful chunks, parallel jobs,
@@ -30,22 +37,22 @@ scales are unchanged. This prepares a new numerical identity. Hardware output
 checks and fixed-set accuracy remain separate requirements under
 [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md).
 
-TinyLlama's previous F2 coverage was K/V and a down-projection output panel.
-Missing coverage includes Q/O, gate/up, full-output down, attention QK/PV and
-context/cache effects in both prefill and decode. Connected attention and MLP
-chunks must include their host math, conversions and state edges. Current-policy
-calibrated prefill/decode exports are missing locally; the bundle records real
-checkpoint dimensions and preparation commands, with these campaigns pending.
-Do not silently run the older dynamic-row/per-channel probes instead.
-
-The missing TinyLlama inputs are: frozen-policy prefill/decode exports with
-calibrated per-tensor activation and grouped-16 weight scales; actual activation
-and cache/state fixtures for the selected chunks; and independent expected
-outputs for chunk and complete 32+32 sessions. The model revision and dimensions
-are already known. A matched FP32 WikiText-2 test PPL baseline/settings is a
-separate missing input to the final quality evaluation, not a prerequisite to
-every correctness-checked chunk experiment. Preparing these inputs does not
-authorize the proposed compiler optimizations.
+TinyLlama's previous F2 DSE coverage was K/V and a down-projection output panel.
+The user now authorizes **local synthetic inputs, separate from the team
+benchmark**. The [synthetic TinyLlama handoff](../../../../out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/README.md)
+contains frozen static/group16 calibration, actual activation/cache fixtures,
+all99 full-source output references and a generator for both full exports and
+14 meaningful full-N/K chunks. All14 host checks have zero error. Connected
+decode MLP/attention ELFs passed positive/wrong-oracle Spike controls and retain
+Gemmini matmuls. **This source is diagnostic only and does not conform to the
+selected EL4 profile.** Its calibration, cache ABI, attention decomposition,
+host math and reference producer differ beyond the authorized synthetic input
+substitution. See the input audit for the exact differences. Preserve its
+code/results, but do not use its compose helper to fill selected-profile study
+rows or promote its schedule records to that E2E model. The selected release,
+full FireSim and matched WikiText-2 test PPL remain pending. Do not silently
+substitute older dynamic-row/per-channel probes either. No new numerical
+profile or additional compiler/hardware work is selected by this audit.
 
 `run_firesim_study.py` launches independent native TVM campaigns across a shared
 physical-slot pool. TVM owns EvolutionarySearch, XGB, scheduling and database

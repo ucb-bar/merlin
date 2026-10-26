@@ -1,0 +1,25 @@
+{
+  "schema": "merlin.tvm.pending_chunk_definitions.v1",
+  "status": "BLOCKED_NOT_A_RUNNABLE_STUDY",
+  "authority": "EL4_INPUT_AUDIT.md",
+  "protocol_commit": "f6f1e499565f7cb766da1b680f490cbc3dc0b54b",
+  "stage": "flow_denoise",
+  "proposal_allocation": 0,
+  "blockers": [
+    "Selected processed observation hash mismatch",
+    "Selected prepared exports and frozen scale/integerized-IR realization unavailable",
+    "All 33 admitted selected-chain reference arrays unavailable"
+  ],
+  "fixed_dimensions": {"batch": 1, "action_rows": 50, "action_channels": 32, "expert_hidden": 720, "expert_mlp": 2048, "query_heads": 15, "kv_heads": 5, "head_dim": 64, "prefix_positions": 113},
+  "fixed_numerics": "Selected static-heads-softmax2-bounded-operands2; portable_neural_f32 with captured exceptions. Do not derive integer IR from weight shapes alone.",
+  "chunks": [
+    {"id": "smolvla-action-embedding", "scope": "one full 50-row suffix embedding", "linear_mkn": [[50, 32, 720], [50, 1440, 720], [50, 720, 720]], "retain": ["time embedding", "concatenation", "SiLU", "biases", "quantization and selected planes"], "source_modules": ["action_in_proj", "action_time_mlp_in", "action_time_mlp_out"]},
+    {"id": "smolvla-expert-mlp", "scope": "one full 50-row expert-layer MLP", "linear_mkn": [[50, 720, 2048], [50, 720, 2048], [50, 2048, 720]], "retain": ["norm", "gate/up", "SiLU and product", "down", "residual", "all selected planes"], "source_modules": ["lm_expert.layers.<layer>.mlp"]},
+    {"id": "smolvla-expert-self-attention", "scope": "one even-index expert layer; 50 queries and full 163-key context", "linear_mkn": [[50, 720, 960], [50, 720, 320], [50, 720, 320], [50, 960, 720]], "attention_per_query_head_mkn": {"qk": [50, 64, 163], "pv": [50, 163, 64]}, "retain": ["all heads", "113-position prefix cache", "50 action positions", "masks", "RoPE", "softmax", "selected planes", "residual and output projection"]},
+    {"id": "smolvla-expert-cross-attention", "scope": "one odd-index expert layer; 50 queries and full 113-key context", "linear_mkn": [[50, 720, 960], [113, 320, 320], [113, 320, 320], [50, 960, 720]], "attention_per_query_head_mkn": {"qk": [50, 64, 113], "pv": [50, 113, 64]}, "retain": ["all heads", "actual prefix cache", "masks", "RoPE", "softmax", "selected planes", "residual and output projection"]},
+    {"id": "smolvla-action-update", "scope": "one full 50-row action projection plus actual Euler update", "linear_mkn": [[50, 720, 32]], "retain": ["INT32 bias", "selected reconstruction", "actions + dt * velocity", "all 32 channels"], "source_modules": ["action_out_proj"]}
+  ],
+  "mapping": "Extract from selected prepared parent IR, bind live edges and fixtures, match full-parent tasks by structural TIR equality and target/measurement compatibility, replay TVM traces, then confirm connected and E2E windows.",
+  "coverage_limit": "Definitions cover selected flow regions only; prefix vision/VLM tasks are not covered. action_decode is identity/slice and has no contraction task.",
+  "shape_authority": "Source/checkpoint-derived starting definitions; actual selected prepared IR cache/mask extents and decomposition must be verified before extraction. Refuse mismatches."
+}
