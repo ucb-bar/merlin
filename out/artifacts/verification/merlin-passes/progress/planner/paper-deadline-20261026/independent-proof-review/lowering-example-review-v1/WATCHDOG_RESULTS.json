@@ -1,0 +1,191 @@
+{
+  "status": "PASS",
+  "cases": 7,
+  "actual_owned_python_children": 4,
+  "all_actual_children_reaped": true,
+  "signal_events": [
+    {
+      "pid": 236381,
+      "signal": 15
+    },
+    {
+      "pid": 236382,
+      "signal": 15
+    },
+    {
+      "pid": 236382,
+      "signal": 9
+    }
+  ],
+  "foreign_signal_attempts": [],
+  "forbidden_actions": [],
+  "real_network_or_sdk_or_native_compiler": false,
+  "results": [
+    {
+      "id": "completed",
+      "evidence": {
+        "command": [
+          "/usr/bin/python",
+          "-I",
+          "-S",
+          "-B",
+          "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/lowering-example-review-v1/watchdog-fixtures/complete.py"
+        ],
+        "budget_seconds": 0.25,
+        "terminate_grace_seconds": 0.1,
+        "kill_reap_grace_seconds": 0.3,
+        "retry": false,
+        "native_authorized": false,
+        "old_holds_cleared": false,
+        "signals": [],
+        "status": "CHILD_COMPLETED",
+        "owned_pid": 236380,
+        "child_exit_code": 0,
+        "child_reaped": true,
+        "forced_stop": false,
+        "elapsed_seconds": 0.02845637199789053
+      },
+      "ok": true,
+      "elapsed_seconds": 0.03802975900180172
+    },
+    {
+      "id": "blocking-cleanup",
+      "evidence": {
+        "command": [
+          "/usr/bin/python",
+          "-I",
+          "-S",
+          "-B",
+          "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/lowering-example-review-v1/watchdog-fixtures/blocking_close.py"
+        ],
+        "budget_seconds": 0.25,
+        "terminate_grace_seconds": 0.1,
+        "kill_reap_grace_seconds": 0.3,
+        "retry": false,
+        "native_authorized": false,
+        "old_holds_cleared": false,
+        "signals": [
+          {
+            "signal": "SIGTERM",
+            "owned_pid": 236381
+          }
+        ],
+        "status": "COMPLETE_INTAKE_BUDGET_EXCEEDED",
+        "owned_pid": 236381,
+        "forced_stop": true,
+        "error": "owned complete intake, including cleanup, exceeded parent budget",
+        "in_memory_evidence": "Unavailable child buffers/first exception may be lost on forced stop; retained files are not deleted",
+        "stop_attempted": true,
+        "child_exit_code": -15,
+        "child_reaped": true,
+        "elapsed_seconds": 0.26499053800216643
+      },
+      "ok": true,
+      "elapsed_seconds": 0.27477694700064603
+    },
+    {
+      "id": "kill-and-reap",
+      "evidence": {
+        "command": [
+          "/usr/bin/python",
+          "-I",
+          "-S",
+          "-B",
+          "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/lowering-example-review-v1/watchdog-fixtures/ignores_term.py"
+        ],
+        "budget_seconds": 0.25,
+        "terminate_grace_seconds": 0.1,
+        "kill_reap_grace_seconds": 0.3,
+        "retry": false,
+        "native_authorized": false,
+        "old_holds_cleared": false,
+        "signals": [
+          {
+            "signal": "SIGTERM",
+            "owned_pid": 236382
+          },
+          {
+            "signal": "SIGKILL",
+            "owned_pid": 236382
+          }
+        ],
+        "status": "COMPLETE_INTAKE_BUDGET_EXCEEDED",
+        "owned_pid": 236382,
+        "forced_stop": true,
+        "error": "owned complete intake, including cleanup, exceeded parent budget",
+        "in_memory_evidence": "Unavailable child buffers/first exception may be lost on forced stop; retained files are not deleted",
+        "stop_attempted": true,
+        "child_exit_code": -9,
+        "child_reaped": true,
+        "elapsed_seconds": 0.3652520760006155
+      },
+      "ok": true,
+      "elapsed_seconds": 0.3751823059938033
+    },
+    {
+      "id": "failed-child",
+      "evidence": {
+        "command": [
+          "/usr/bin/python",
+          "-I",
+          "-S",
+          "-B",
+          "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/lowering-example-review-v1/watchdog-fixtures/nonzero.py"
+        ],
+        "budget_seconds": 0.25,
+        "terminate_grace_seconds": 0.1,
+        "kill_reap_grace_seconds": 0.3,
+        "retry": false,
+        "native_authorized": false,
+        "old_holds_cleared": false,
+        "signals": [],
+        "status": "CHILD_FAILED",
+        "owned_pid": 236383,
+        "child_exit_code": 2,
+        "child_reaped": true,
+        "forced_stop": false,
+        "elapsed_seconds": 0.023962548999406863
+      },
+      "ok": true,
+      "elapsed_seconds": 0.03345877600077074
+    },
+    {
+      "id": "existing-workspace-refusal",
+      "evidence": "no child launched, old data untouched",
+      "ok": true,
+      "elapsed_seconds": 0.00019698100368259475
+    },
+    {
+      "id": "external-command-refusal",
+      "evidence": "foreign executable prefix refused before Popen",
+      "ok": true,
+      "elapsed_seconds": 9.260002116207033e-06
+    },
+    {
+      "id": "unreaped-hold-protocol",
+      "evidence": {
+        "label": "MOCKED no-process reap branch only",
+        "result": {
+          "signals": [
+            {
+              "signal": "SIGTERM",
+              "owned_pid": -1
+            },
+            {
+              "signal": "SIGKILL",
+              "owned_pid": -1
+            }
+          ],
+          "stop_attempted": true,
+          "child_reaped": false,
+          "status": "OWNED_CHILD_UNREAPED_HOLD",
+          "live_owned_pid": -1,
+          "no_retry": true
+        },
+        "no_real_PID": true
+      },
+      "ok": true,
+      "elapsed_seconds": 2.630099334055558e-05
+    }
+  ]
+}

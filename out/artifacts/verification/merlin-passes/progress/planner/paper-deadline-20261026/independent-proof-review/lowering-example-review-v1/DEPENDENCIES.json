@@ -1,0 +1,68 @@
+[
+  {
+    "origin": "src/merlin/verify/merlin_iface_semantics.py",
+    "snapshot": "source/src/merlin/verify/merlin_iface_semantics.py",
+    "sha256": "9149a171f5c048ffdafd8bd122c30af7514a736b1997e4f12b8add88f57805ed",
+    "bytes": 9155
+  },
+  {
+    "origin": "src/merlin/verify/cb_semantics.py",
+    "snapshot": "source/src/merlin/verify/cb_semantics.py",
+    "sha256": "b082d578fc46992e7596e92ed3d0078a4c15ae067fb325c8fddcf86482565ccc",
+    "bytes": 30141
+  },
+  {
+    "origin": "src/merlin/verify/smt_export.py",
+    "snapshot": "source/src/merlin/verify/smt_export.py",
+    "sha256": "c29a118833244e4cbad21b38563eaaa5c7eb499378de45bcc670e27f014c58f3",
+    "bytes": 6867
+  },
+  {
+    "origin": "src/merlin/verify/smt_ops.py",
+    "snapshot": "source/src/merlin/verify/smt_ops.py",
+    "sha256": "5eb5aa527e2c6f6f84e6767d6081e2175db7bfd899151f342117f002e4446729",
+    "bytes": 5360
+  },
+  {
+    "origin": "src/merlin/frontends/linalg_patterns.py",
+    "snapshot": "source/src/merlin/frontends/linalg_patterns.py",
+    "sha256": "dd7547f77a9feb8b6e116971b7d2d7b7f7e55a85d0e8ed52ca20f857b42a91c8",
+    "bytes": 30358
+  },
+  {
+    "origin": "src/merlin/targetgen/contract/interface_emit.py",
+    "snapshot": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "sha256": "97cba61dcb391dd64d02e377f06f3eb51c000ad37b5fed79e269a542b8f58262",
+    "bytes": 39074
+  },
+  {
+    "origin": "src/merlin/xdsl_dialects/lowering/pipeline.py",
+    "snapshot": "source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+    "sha256": "8762461db26bec2d9c8fd9d1793c3b39aa6ec3fed29d2b1033b9b10a1577ac31",
+    "bytes": 9512
+  },
+  {
+    "origin": "src/merlin/verify/evaluate.py",
+    "snapshot": "source/src/merlin/verify/evaluate.py",
+    "sha256": "4514dbf6a5b7adf40ee50e8752a33faab9642e6ca7432e1d285a1421dde681ef",
+    "bytes": 20953
+  },
+  {
+    "origin": "src/merlin/verify/faults.py",
+    "snapshot": "source/src/merlin/verify/faults.py",
+    "sha256": "098b6e990c217388a3b50837212778c719ba8ac2bfcb689d12c2222c1bc8506e",
+    "bytes": 8578
+  },
+  {
+    "origin": "src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "snapshot": "source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "sha256": "eb0bb6770b6450da37eb6ac58f86d4b3bf6b691c7607977e91b3b933770291ec",
+    "bytes": 6791
+  },
+  {
+    "origin": "src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+    "snapshot": "source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+    "sha256": "b58badf1c495a4d989ec57252524e4ac96d73156c0774da39d003b4972b3838a",
+    "bytes": 5803
+  }
+]

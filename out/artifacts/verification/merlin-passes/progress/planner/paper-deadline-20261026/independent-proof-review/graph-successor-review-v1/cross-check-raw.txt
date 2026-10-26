@@ -1,0 +1,1 @@
+{"kind": "ONE_BOUNDED_STDLIB_SOURCE_REF_ROOT_CLAIM_CROSSCHECK", "status": "PASS", "data_checks": 4315, "failures": [], "all_new_graph_lean": "UNCOMPILED", "graph_kernel_acceptance": "UNOBSERVED", "native_or_producer_or_parser_runs": 0}

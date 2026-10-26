@@ -1,0 +1,1916 @@
+{
+  "status": "PASS",
+  "checks": 477,
+  "failed": [],
+  "scope": "OWNED SOURCE/DATA INVENTORY ONLY; no parser/solver/project imports/probes executed; source counts not theorem count",
+  "details": [
+    {
+      "check": "18 selected sources",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/docs/guides/verification.md",
+      "ok": true
+    },
+    {
+      "check": "hash source/docs/guides/verification.md",
+      "ok": true
+    },
+    {
+      "check": "size source/docs/guides/verification.md",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/linalg_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/linalg_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/linalg_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/smt_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/smt_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/smt_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/receipts.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/receipts.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/receipts.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/refine.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/refine.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/refine.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/merlin/tests/ir/test_verify_linalg_generic.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/merlin/tests/ir/test_verify_linalg_generic.py",
+      "ok": true
+    },
+    {
+      "check": "size source/merlin/tests/ir/test_verify_linalg_generic.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/merlin/tests/ir/test_transform_receipts.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/merlin/tests/ir/test_transform_receipts.py",
+      "ok": true
+    },
+    {
+      "check": "size source/merlin/tests/ir/test_transform_receipts.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/merlin_iface_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/merlin_iface_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/merlin_iface_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/cb_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/cb_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/cb_semantics.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/smt_export.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/smt_export.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/smt_export.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/smt_ops.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/smt_ops.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/smt_ops.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/frontends/linalg_patterns.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/frontends/linalg_patterns.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/frontends/linalg_patterns.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/targetgen/contract/interface_emit.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/targetgen/contract/interface_emit.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/targetgen/contract/interface_emit.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/evaluate.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/evaluate.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/evaluate.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/verify/faults.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/verify/faults.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/verify/faults.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+      "ok": true
+    },
+    {
+      "check": "hash source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+      "ok": true
+    },
+    {
+      "check": "size source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+      "ok": true
+    },
+    {
+      "check": "15 retained texts",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/source-original16.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/source-original16.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/source-original16.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/oot-original16.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/oot-original16.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/oot-original16.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/source-small2.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/source-small2.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/source-small2.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/oot-small2.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/oot-small2.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/oot-small2.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/source-case-0-refuted.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/source-case-0-refuted.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/source-case-0-refuted.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/source-case-1-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/source-case-1-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/source-case-1-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/source-case-2-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/source-case-2-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/source-case-2-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/source-case-3-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/source-case-3-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/source-case-3-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/source-case-4-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/source-case-4-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/source-case-4-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/oot-case-0-refuted.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/oot-case-0-refuted.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/oot-case-0-refuted.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/oot-case-1-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/oot-case-1-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/oot-case-1-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/oot-case-2-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/oot-case-2-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/oot-case-2-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/oot-case-3-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/oot-case-3-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/oot-case-3-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/oot-case-4-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/oot-case-4-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/oot-case-4-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin examples/oot-case-5-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "hash examples/oot-case-5-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "size examples/oot-case-5-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact saved OOT diagnostic pin",
+      "ok": true
+    },
+    {
+      "check": "small source textual reshape",
+      "ok": true
+    },
+    {
+      "check": "11 expectations only",
+      "ok": true
+    },
+    {
+      "check": "exact mutation source-case-0-refuted.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation source-case-1-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation source-case-2-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation source-case-3-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation source-case-4-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation oot-case-0-refuted.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation oot-case-1-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation oot-case-2-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation oot-case-3-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation oot-case-4-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "exact mutation oot-case-5-unsupported.mlir",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_verify_linalg_generic.py:51",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_verify_linalg_generic.py:63",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_verify_linalg_generic.py:71",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_verify_linalg_generic.py:77",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_verify_linalg_generic.py:95",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_verify_linalg_generic.py:102",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_verify_linalg_generic.py:119",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_verify_linalg_generic.py:157",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:27",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:72",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:77",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:98",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:113",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:133",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:155",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:174",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:189",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:210",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:229",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/merlin/tests/ir/test_transform_receipts.py:249",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/linalg_semantics.py:59",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/linalg_semantics.py:75",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/linalg_semantics.py:84",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/linalg_semantics.py:96",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/linalg_semantics.py:136",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/linalg_semantics.py:154",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/linalg_semantics.py:166",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_semantics.py:37",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_semantics.py:42",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_semantics.py:54",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_semantics.py:68",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_semantics.py:77",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_semantics.py:333",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_semantics.py:345",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:34",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:38",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:51",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:72",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:82",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:90",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:97",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:124",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:155",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/receipts.py:254",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:47",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:69",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:113",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:211",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:271",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:299",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:334",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:358",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:388",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/refine.py:406",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/merlin_iface_semantics.py:20",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/merlin_iface_semantics.py:38",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/merlin_iface_semantics.py:47",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/merlin_iface_semantics.py:51",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/merlin_iface_semantics.py:59",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/merlin_iface_semantics.py:73",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/cb_semantics.py:107",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/cb_semantics.py:126",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/cb_semantics.py:500",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/cb_semantics.py:526",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/cb_semantics.py:545",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/cb_semantics.py:558",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_export.py:32",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_export.py:37",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_export.py:64",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_export.py:77",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_export.py:115",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_export.py:127",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_export.py:132",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/smt_export.py:164",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:46",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:67",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:80",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:97",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:115",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:140",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:154",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:174",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:187",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:267",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:321",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:366",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/evaluate.py:392",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:24",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:34",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:39",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:46",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:52",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:58",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:66",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:73",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:84",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:93",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:108",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:176",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:182",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:188",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/verify/faults.py:198",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:15",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:20",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:30",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:39",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:51",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:60",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:69",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:82",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:203",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:210",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:217",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:235",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:244",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:293",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:314",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:385",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:395",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:409",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:477",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:511",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:517",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/frontends/linalg_patterns.py:523",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/pipeline.py:41",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/pipeline.py:68",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/pipeline.py:90",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/pipeline.py:185",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/pipeline.py:211",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/input_workload.py:15",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/input_workload.py:50",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/input_workload.py:87",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/input_workload.py:140",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/input_workload.py:151",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/input_workload.py:161",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/input_workload.py:166",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py:18",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py:32",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py:37",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py:64",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py:79",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:30",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:105",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:115",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:128",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:153",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:223",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:274",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:294",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:306",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:347",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:372",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:378",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:407",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:430",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:469",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:479",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:509",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:566",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:572",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:698",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:741",
+      "ok": true
+    },
+    {
+      "check": "source AST ref source/src/merlin/targetgen/contract/interface_emit.py:762",
+      "ok": true
+    },
+    {
+      "check": "false verified",
+      "ok": true
+    },
+    {
+      "check": "false qualified",
+      "ok": true
+    },
+    {
+      "check": "false solver_ran",
+      "ok": true
+    },
+    {
+      "check": "false parser_ran",
+      "ok": true
+    },
+    {
+      "check": "false native_fidelity",
+      "ok": true
+    },
+    {
+      "check": "false model_coverage",
+      "ok": true
+    },
+    {
+      "check": "false lean_evidence_applicable",
+      "ok": true
+    },
+    {
+      "check": "unobserved solver_status",
+      "ok": true
+    },
+    {
+      "check": "unobserved query_identity",
+      "ok": true
+    },
+    {
+      "check": "unobserved translator_identity",
+      "ok": true
+    },
+    {
+      "check": "unobserved solver_identity",
+      "ok": true
+    },
+    {
+      "check": "unobserved retained_exact_receipt",
+      "ok": true
+    },
+    {
+      "check": "unobserved in_tree_interface_bytes",
+      "ok": true
+    },
+    {
+      "check": "unobserved command_buffer_bytes",
+      "ok": true
+    },
+    {
+      "check": "bounded no matching receipt",
+      "ok": true
+    },
+    {
+      "check": "source findings not observed solver failures",
+      "ok": true
+    },
+    {
+      "check": "eight file digest formula",
+      "ok": true
+    },
+    {
+      "check": "recognizer not in digest file list",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/MANIFEST.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/MANIFEST.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/MANIFEST.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/PACKET.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/PACKET.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/PACKET.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/PLAN-REF.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/PLAN-REF.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/PLAN-REF.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/README.md",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/README.md",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/README.md",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/WATCHDOG-REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/WATCHDOG-REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/WATCHDOG-REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/context_schema.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/context_schema.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/context_schema.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/own_child_control.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/own_child_control.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/own_child_control.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/test_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/test_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/test_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/test_watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/test_watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/test_watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "fixed watchdog manifest",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/PLAN-REF.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/PLAN-REF.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/PLAN-REF.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/README.md",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/README.md",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/README.md",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/WATCHDOG-REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/WATCHDOG-REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/WATCHDOG-REVIEW-REQUEST.json",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/context_schema.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/context_schema.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/context_schema.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/own_child_control.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/own_child_control.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/own_child_control.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/test_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/test_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/test_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/test_watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/test_watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/test_watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/watchdog.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/watchdog_runner.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/child_bootstrap.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/run_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/fdio.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/policy.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/http_fetch.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/zip_intake.py",
+      "ok": true
+    },
+    {
+      "check": "relative owned pin watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "hash watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "size watchdog-fixed/outer_deadline.py",
+      "ok": true
+    },
+    {
+      "check": "closed parent10 child7 sources",
+      "ok": true
+    },
+    {
+      "check": "child refs parent subset",
+      "ok": true
+    },
+    {
+      "check": "bound child authorization",
+      "ok": true
+    },
+    {
+      "check": "exact parent budget",
+      "ok": true
+    },
+    {
+      "check": "no parent authority",
+      "ok": true
+    },
+    {
+      "check": "retained 7 controls passed",
+      "ok": true
+    },
+    {
+      "check": "four actual own children reaped",
+      "ok": true
+    },
+    {
+      "check": "no foreign signals or forbidden action",
+      "ok": true
+    },
+    {
+      "check": "unreaped branch marked mocked",
+      "ok": true
+    }
+  ]
+}

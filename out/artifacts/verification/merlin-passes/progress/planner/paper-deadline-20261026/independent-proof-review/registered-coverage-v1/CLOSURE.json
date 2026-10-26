@@ -1,0 +1,137 @@
+{
+  "status": "ORDERED_QUEUE_COMPLETE_SOURCE_DATA_AND_MOCK_SERVICE",
+  "files": [
+    {
+      "path": "REGISTERED_COVERAGE.json",
+      "sha256": "7ca2c9cb800d6abb2fc51931c9d7826f14614f6a4ce73a340f81380e25ac6255",
+      "bytes": 215351
+    },
+    {
+      "path": "INPUTS.json",
+      "sha256": "0bd70d4db6ebef916b93a9e69b92b2f37be63802bc3b7f3104ed8660c252c52e",
+      "bytes": 5086
+    },
+    {
+      "path": "LEDGER_INPUTS.json",
+      "sha256": "9ce6724739ff041f59d88ace9ef6b465ace0303a2c46d6991a1ac1e7db41dea9",
+      "bytes": 17633
+    },
+    {
+      "path": "OBLIGATIONS.json",
+      "sha256": "26174591dc9332894db7407db396daf30f1c7fd2b0f9067f898ff7b5cd37f977",
+      "bytes": 5747
+    },
+    {
+      "path": "OBLIGATIONS.md",
+      "sha256": "916391f26bb863273404b5ff9f4c0c2eb2adcc7ece5db7b7cb332c330b3f5f8f",
+      "bytes": 4469
+    },
+    {
+      "path": "APPENDIX_TABLE.md",
+      "sha256": "41f29ab4430fe7c0aaf1b1c7067af7d9d388ca0bc0f5bde00107607465a9420e",
+      "bytes": 6074
+    },
+    {
+      "path": "SERVICE_CASES.json",
+      "sha256": "41b4a153666cdd7b9396942787f34feac738b5f11367bf2191fe58644967291a",
+      "bytes": 5634
+    },
+    {
+      "path": "SERVICE_DEPENDENCY.json",
+      "sha256": "23562aba490908b9ea38f53c5b11e721a8de4e250ce9420a114628a385cd2056",
+      "bytes": 1199
+    },
+    {
+      "path": "RESULT.json",
+      "sha256": "caba4326f098fa3ba232189dce61a7f7b911d180edd5fa939514f5a18913f273",
+      "bytes": 912
+    },
+    {
+      "path": "VALIDATION.json",
+      "sha256": "269f2faf625968f8384aaeccbd9d8a3a1625b8e938f8683172e465dfa02ea0a0",
+      "bytes": 364
+    },
+    {
+      "path": "HANDOFF.md",
+      "sha256": "314d04147355153c70e1cd73d55d2c6da57f8ec6754db6f5dc6e5c46be2b7787",
+      "bytes": 2811
+    },
+    {
+      "path": "build_join.py",
+      "sha256": "ae1d5c9e139f3fecfaba5d530b4960dbac7a2ed4a610ae7d88e0bd03ac04154e",
+      "bytes": 12542
+    },
+    {
+      "path": "generate_appendix.py",
+      "sha256": "7dabe93962a3efbe0e334abc2eaf91881ed04030db4cfed361678afb6eee0f87",
+      "bytes": 6141
+    },
+    {
+      "path": "validate_coverage.py",
+      "sha256": "9bc36d0f420d1428cffc5a6bb080afc3b23b37ec1fdf4d1c752b9e88ef0b2330",
+      "bytes": 8930
+    },
+    {
+      "path": "finish_service.py",
+      "sha256": "05681507dacd387b43f87bbd8cb210db58c80643a556b9901b61300c4c661275",
+      "bytes": 9207
+    },
+    {
+      "path": "service/OBSERVED_SOURCE.json",
+      "sha256": "8efcb0e70b18abd925d383ea62d35e283e75c8daed2fbb5484768c0af127bc28",
+      "bytes": 3648
+    },
+    {
+      "path": "service/SELECTED_COMPARISON.json",
+      "sha256": "ba3a342d14d83c1222778df85928ff9f5f76b3dc803835ced9697dfe4c56b482",
+      "bytes": 2524
+    },
+    {
+      "path": "service/CONTROL_FLOW_AUDIT.json",
+      "sha256": "1a1a4dcfd76b3d5fa75f1f72957200ec255499675aa66a45e79c3779944a9eaf",
+      "bytes": 7182
+    },
+    {
+      "path": "service/CONTROL_FLOW_AUDIT.md",
+      "sha256": "683a87fa3663eae7646dc4079e8c174a1c402b800f6bd34bcab64a9d2239983d",
+      "bytes": 1353
+    },
+    {
+      "path": "service/run_fixed12.py",
+      "sha256": "8dcda9bd024c9a4f36dd656b7ce87b638c29f0d2a43b8644d260a1ecfedf4489",
+      "bytes": 9188
+    },
+    {
+      "path": "service/RAW_RESULTS.json",
+      "sha256": "48a826d65f89ef605835756835fe1547efc9a5f4facc50794222aa0ec663b625",
+      "bytes": 5795
+    },
+    {
+      "path": "service/RESULT.json",
+      "sha256": "e946eb3a2efe6d2d64fe34db7c6481379d7ef27c7f71c24f8df523646517fca5",
+      "bytes": 607
+    },
+    {
+      "path": "service/EVIDENCE_TABLE.md",
+      "sha256": "32c57c49739631fa44582e1915545dd693a87b3b2058cb53c6499a5ef6be74bd",
+      "bytes": 3433
+    },
+    {
+      "path": "service/stdout.txt",
+      "sha256": "e8abe82dcfa82de31da81a63c810cf9cd0decd23c4037c0a99cdc7818bafb4af",
+      "bytes": 565
+    },
+    {
+      "path": "service/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "service/OLD_CommonTransformService.py",
+      "sha256": "18a46b9b2f53e426f6119e6ac56981875211fd64e343f239e5dd8f99f19645a6",
+      "bytes": 22126
+    }
+  ],
+  "input_closure": "INPUTS/LEDGER_INPUTS bind joined data; service selected manifest binds77 copied source/data members and66 external Python refs checked by guarded harness. Earlier blocked checkpoint preserved.",
+  "self_inclusion": false
+}

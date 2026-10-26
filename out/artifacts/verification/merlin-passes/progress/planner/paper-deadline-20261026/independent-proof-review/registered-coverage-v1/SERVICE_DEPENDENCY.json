@@ -1,0 +1,20 @@
+{
+  "status": "RESOLVED_SELECTED_Q_PACKET_RECEIVED",
+  "selected_existing_checkpoint": {
+    "path": "service/source-checkpoint-v8-INVENTORY.json",
+    "sha256": "2d5d316468f1fbdba1cb1d4658db8a77c698c5c9c29bdad2e09d6c0d0f6bef65",
+    "bytes": 27146
+  },
+  "selected_checkpoint_source_count": 10,
+  "service_sources_in_that_packet": [],
+  "required_input": "Q frozen CommonTransformService and explicit graph-binding helper source packet, exact source/API identity, and SDK-free host-binding fixture or documented construction API.",
+  "fixed_service_cases": 12,
+  "service_API_calls_executed": "12 fixed cases",
+  "unknown_service_results": false,
+  "root_notified": true,
+  "no_independent_source_join_work_remaining": true,
+  "no_runtime_or_legacy_fallback": "No service constructor/apply/toolchain path was executed; all native permissions remain held.",
+  "selected_packet": "service/selected-packet/MANIFEST.json",
+  "selected_manifest_sha256": "e1645944da5dbcccc1cc8fe429d5eb53194787ab66f18800b358e115819d75f0",
+  "resolution": "Q immutable service-route-review-v1 delivered; all8 observed source digests match; actual service harness ran once. Previous missing-input checkpoint preserved."
+}

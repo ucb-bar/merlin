@@ -1,0 +1,74 @@
+[
+  {
+    "id": "GSR01",
+    "priority": "P0",
+    "state": "NEW_LEAN_ACCEPTANCE_UNKNOWN",
+    "source": "all selected Query/Entries.lean and support source cuts",
+    "finding": "Exact roots/types/finite obligations are emitted, not compiled or audited. Historical conditional-check records do not transfer qualification.",
+    "design": "Root-reviewed new source/import/object/runtime context then actual positive/valid negative and infrastructure classification; no worker launch.",
+    "observed_failure": false
+  },
+  {
+    "id": "GSR02",
+    "priority": "P1",
+    "state": "CONFIRMED_DOMAIN_LIMIT",
+    "source": "q-schedule/source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_schedule_projection.py:describe/match_step; owner test_partial_empty_effect_arithmetic_is_not_total_or_commutative",
+    "finding": "Empty effects does not imply totality. divsi remains ordered opaque; standalone raw hashes unavailable and owner confirmed.",
+    "design": "Observe then may-fail pure partial operation; motion before observer changes terminal world if failure occurs. Model DESIGN only, no native bug claim.",
+    "observed_failure": false
+  },
+  {
+    "id": "GSR03",
+    "priority": "P1",
+    "state": "CANONICAL_RELATION_NOT_UNRESTRICTED",
+    "source": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py:_query; GraphStateIntegerProgram.EntryDomain/compose_suffix",
+    "finding": "Integer-prefix result is PreservesEntriesCanonical with local successful-result typing; suffix generality cannot erase canonical premise.",
+    "design": "Preserve old noncanonical/provider representation counterexamples; correct-arity noncanonical word input is outside claimed domain. No numerical rerun.",
+    "observed_failure": false
+  },
+  {
+    "id": "GSR04",
+    "priority": "P1",
+    "state": "NO_TAIL_ADAPTER_SCOPE",
+    "source": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py:_domain",
+    "finding": "New adapter explicitly excludes tail/empty/inline/dynamic/unsupported unchanged SCF entries and other arities/settings.",
+    "design": "Static3-trip loop/factor2 exercises nondivisible host-domain exclusion; not a semantic pass counterexample or run.",
+    "observed_failure": false
+  },
+  {
+    "id": "GSR05",
+    "priority": "P1",
+    "state": "W_CONTEXT_BOUNDARY_EXPLICIT",
+    "source": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean; evidence/wrapper",
+    "finding": "Actual wrapper reaching changed kernel is refused; equal quotient public observations are not complete caller congruence.",
+    "design": "Unchanged wrapper calls changed kernel then continuation uses allocation/private-state relation; contextual proof/domain transport needed, outside fixed cut.",
+    "observed_failure": false
+  },
+  {
+    "id": "GSR06",
+    "priority": "P1",
+    "state": "W_LITERAL_NONVACUITY_LIMIT",
+    "source": "GraphLoopsMemorySCFAfterEntriesMeaning/Witness.lean and emitted entry2_source_execution",
+    "finding": "Shared partial effect-free literal extension resolves old missing scalar-constant interpretation only as new declared model; Unit execution witness only untouched, typed domains all3.",
+    "design": "Empty literal relation shows universal per-model success is not entailed; Unit True relation supplies one explicit abstract inhabitant. No observed semantic failure.",
+    "observed_failure": false
+  },
+  {
+    "id": "GSR07",
+    "priority": "P1",
+    "state": "OBSERVATION_RELATIONS_DIFFER",
+    "source": "Q GateEntries/IntegerProgram versus W Epoch.graphOutcomes/Observation",
+    "finding": "Q complete errors/terminal world vs W possible finite successes/private heap-clock quotient cannot share one unqualified all-graph claim.",
+    "design": "Absent read or allocation-capacity/native fault outside W success relation must not be counted as preserved classified errors. Keep old counterexamples.",
+    "observed_failure": false
+  },
+  {
+    "id": "GSR08",
+    "priority": "P2",
+    "state": "READ_INTERRUPTION_TESTED_CLEANUP_GAPS_OPEN",
+    "source": "f-deadline/outer_deadline.py and intake.py",
+    "finding": "POSIX timer interrupts blocking read/open and restores/refuses in12 controls; a one-shot expired timer does not bound later blocking close, and primary exception cleanup notes are dropped from durable intake failure JSON.",
+    "design": "Retained bounded fake-close counterexample and fake HTTP500/cancel-report evidence show gaps; owner must bound/qualify cleanup and serialize structured diagnostics without replacing primary. No real network failure observed.",
+    "observed_failure": true
+  }
+]

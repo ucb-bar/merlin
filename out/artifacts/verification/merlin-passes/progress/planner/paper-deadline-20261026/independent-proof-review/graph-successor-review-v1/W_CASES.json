@@ -1,0 +1,2655 @@
+[
+  {
+    "case": "positive",
+    "raw_source": {
+      "path": "w-source/evidence/positive/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/positive/final.mlir",
+      "sha256": "3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525",
+      "bytes": 4494
+    },
+    "query": {
+      "path": "w-source/evidence/positive/Entries.lean",
+      "sha256": "e7da67fce8324e21090a9fd8321e382a1b9ae7f755a5fbc2a3b6523802cd7947",
+      "bytes": 265387
+    },
+    "report": {
+      "path": "w-source/evidence/positive/PREPARATION.json",
+      "sha256": "4884c6fc568fb6886e0a305d8000a0b82e63e398525231a3cf39e42b2c22986d",
+      "bytes": 455532
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": true,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [],
+    "roster_coverage": "ALL_LISTED_DEFINITIONS_CANDIDATE",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "untouched_return",
+    "raw_source": {
+      "path": "w-source/evidence/untouched_return/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/untouched_return/final.mlir",
+      "sha256": "6f8c038174923abe5114cd1e42e2877b106dc4bf38cc6c3794dd5725a1ca60c2",
+      "bytes": 4493
+    },
+    "query": {
+      "path": "w-source/evidence/untouched_return/Entries.lean",
+      "sha256": "d0cb1b778fd1c34ef8e46075beb37e2286846eade2020c0ca72c0bf7efaf2b1a",
+      "bytes": 265387
+    },
+    "report": {
+      "path": "w-source/evidence/untouched_return/PREPARATION.json",
+      "sha256": "3a09db83e24c48f2fae8c79479e0a9da817ccdc56882f9ac204a73e1fad1465f",
+      "bytes": 455541
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [],
+    "roster_coverage": "ALL_LISTED_DEFINITIONS_CANDIDATE",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "wrapper",
+    "raw_source": {
+      "path": "w-source/evidence/wrapper/source.mlir",
+      "sha256": "5469a2b1b015bdf986d40152011df0c72a8bc8791f661a8780131e290d379920",
+      "bytes": 4635
+    },
+    "raw_final": {
+      "path": "w-source/evidence/wrapper/final.mlir",
+      "sha256": "06b67b65e7b8471642d07089043b9d63748ec2bf402220dc4bb7ac2216664c0a",
+      "bytes": 4817
+    },
+    "query": {
+      "path": "w-source/evidence/wrapper/Entries.lean",
+      "sha256": "e9f21d1176d1d1b510bd9d2a92cb5d36bfc80658056bd354159e69894af95495",
+      "bytes": 270803
+    },
+    "report": {
+      "path": "w-source/evidence/wrapper/PREPARATION.json",
+      "sha256": "e2e6908d809999043970e055365cac96550821fb390ea8dc66050760f224c0bc",
+      "bytes": 479705
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [
+      {
+        "code": "unproved_changed_kernel_caller_context",
+        "entry": "wrapper",
+        "reachable": [
+          "wrapper",
+          "kernel",
+          "touch"
+        ]
+      }
+    ],
+    "roster_coverage": "REFUSED_DOMAIN",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "wrapper",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "wrapper",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "arity",
+    "raw_source": {
+      "path": "w-source/evidence/arity/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/arity/final.mlir",
+      "sha256": "00490715d8c0d256bfd4661bd97e4a1ec89fbe368c1ce20dd04dc114cb6e1ea1",
+      "bytes": 4512
+    },
+    "query": {
+      "path": "w-source/evidence/arity/Entries.lean",
+      "sha256": "59a0db8c2ed3ed8493a2fe6fd3e3ea2ee896c2f182a6557a690b33929b475463",
+      "bytes": 265485
+    },
+    "report": {
+      "path": "w-source/evidence/arity/PREPARATION.json",
+      "sha256": "bd27f74226cbfe7c171be674a2b2083e33d376db704370112516e64806eb74a6",
+      "bytes": 456375
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [
+      {
+        "code": "boundary_roster_or_interface_changed",
+        "detail": "complete ordered headers differ"
+      }
+    ],
+    "roster_coverage": "REFUSED_DOMAIN",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "literal",
+    "raw_source": {
+      "path": "w-source/evidence/literal/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/literal/final.mlir",
+      "sha256": "de5663c9101e31b420636536b52704ec8e231e3df5db777ffd0aef5e80892313",
+      "bytes": 4494
+    },
+    "query": {
+      "path": "w-source/evidence/literal/Entries.lean",
+      "sha256": "9804b797521f068f4a88d054f7a64c7ff9f0ae551ac34878f0865d6b61bc1e1c",
+      "bytes": 265589
+    },
+    "report": {
+      "path": "w-source/evidence/literal/PREPARATION.json",
+      "sha256": "47ee71d8f1b4f15f8aae241741fcdfc37460f9a7a9ecd95f87524c524baa650f",
+      "bytes": 455772
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [],
+    "roster_coverage": "ALL_LISTED_DEFINITIONS_CANDIDATE",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "callee",
+    "raw_source": {
+      "path": "w-source/evidence/callee/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/callee/final.mlir",
+      "sha256": "e315f3b4319b49b505b85f19c6179b5b9e5d3f7db767fb5b795109051962f494",
+      "bytes": 4402
+    },
+    "query": {
+      "path": "w-source/evidence/callee/Entries.lean",
+      "sha256": "ce94be54784122cdd010233f94ce3d8c61a9103980887c4215ed1d03c87ac988",
+      "bytes": 265293
+    },
+    "report": {
+      "path": "w-source/evidence/callee/PREPARATION.json",
+      "sha256": "831e5ddef5ae10a5c5507e1aa239d5ed74129b2e52c7bc133e342af931545d26",
+      "bytes": 454653
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [],
+    "roster_coverage": "ALL_LISTED_DEFINITIONS_CANDIDATE",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "caller_buffer",
+    "raw_source": {
+      "path": "w-source/evidence/caller_buffer/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/caller_buffer/final.mlir",
+      "sha256": "18f34e0542c33e88455e1364b06d0a018680060c995dd1ddeaa6b356b15cc5ad",
+      "bytes": 4580
+    },
+    "query": {
+      "path": "w-source/evidence/caller_buffer/Entries.lean",
+      "sha256": "d243f6e1a9f2ea0162f7dccc55181996b27cd81d444eb2c9e67dac3d1940c3ae",
+      "bytes": 265677
+    },
+    "report": {
+      "path": "w-source/evidence/caller_buffer/PREPARATION.json",
+      "sha256": "1b38621e009c328fb12cd549734c5f42a4e942a92c20dbcf26fe14cfc5e60299",
+      "bytes": 458452
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [],
+    "roster_coverage": "ALL_LISTED_DEFINITIONS_CANDIDATE",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "interface",
+    "raw_source": {
+      "path": "w-source/evidence/interface/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/interface/final.mlir",
+      "sha256": "acb417f7a02dc1bc86f8a96d21b80fc69483757bb4d1e75fd60a76eecd29dc17",
+      "bytes": 4522
+    },
+    "query": {
+      "path": "w-source/evidence/interface/Entries.lean",
+      "sha256": "fe4c9e737a50584b12f6aeb1dec4f3e7f12fad1225b3436a7b383a7f28ae9acc",
+      "bytes": 265423
+    },
+    "report": {
+      "path": "w-source/evidence/interface/PREPARATION.json",
+      "sha256": "4aad1ee6c0de5fb5b368dab8a9203d7b13b441ca5fc83f32ee7ea6a6f78ce0a8",
+      "bytes": 455820
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [
+      {
+        "code": "boundary_roster_or_interface_changed",
+        "detail": "complete ordered headers differ"
+      }
+    ],
+    "roster_coverage": "REFUSED_DOMAIN",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "\"private\"",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "observer",
+    "raw_source": {
+      "path": "w-source/evidence/observer/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/observer/final.mlir",
+      "sha256": "a04f497888e692ab8cb2edf65be6ec54a4820c6da0ce8f42d1f6d73e994951e3",
+      "bytes": 4492
+    },
+    "query": {
+      "path": "w-source/evidence/observer/Entries.lean",
+      "sha256": "c213fc7895007398e4fbcf8cef2e021f84663ca0b8e55d3886623e7bafd299ef",
+      "bytes": 265387
+    },
+    "report": {
+      "path": "w-source/evidence/observer/PREPARATION.json",
+      "sha256": "715566b9c0b9197eb02f893cc53a6d1560df17d745bc6880b5ab88529f412c71",
+      "bytes": 455533
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [],
+    "roster_coverage": "ALL_LISTED_DEFINITIONS_CANDIDATE",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "kernel_return",
+    "raw_source": {
+      "path": "w-source/evidence/kernel_return/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/kernel_return/final.mlir",
+      "sha256": "bae4fa9ceea234d642685cee6f4b063f976feda76b5a20157ec1068b9418d7c6",
+      "bytes": 4493
+    },
+    "query": {
+      "path": "w-source/evidence/kernel_return/Entries.lean",
+      "sha256": "b8209d749b6fea0c7750be602fcebe95adfd11443a752cbe6bb5e8c0d0769c88",
+      "bytes": 265386
+    },
+    "report": {
+      "path": "w-source/evidence/kernel_return/PREPARATION.json",
+      "sha256": "6b876c849f05faa23766770d504c64b29d4bfe5e7e2ee4a30a5a9e632ff04eac",
+      "bytes": 455535
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [],
+    "roster_coverage": "ALL_LISTED_DEFINITIONS_CANDIDATE",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "missing_entry",
+    "raw_source": {
+      "path": "w-source/evidence/missing_entry/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/missing_entry/final.mlir",
+      "sha256": "d7f4e8947399bdb8e504ff5546cc283d331d22cee8e5140f08d92b659fbd9521",
+      "bytes": 4175
+    },
+    "query": {
+      "path": "w-source/evidence/missing_entry/Entries.lean",
+      "sha256": "60227b5b5438d675361cd0dd4dfe09a70278efb6b8eb4d15f5105970eb732a4e",
+      "bytes": 264210
+    },
+    "report": {
+      "path": "w-source/evidence/missing_entry/PREPARATION.json",
+      "sha256": "2ffd8bbb5cd2cf41dc96e2869c22adb7204399034382d3d2f98b59d05781bc5f",
+      "bytes": 447292
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [
+      {
+        "code": "boundary_roster_or_interface_changed",
+        "detail": "complete ordered headers differ"
+      }
+    ],
+    "roster_coverage": "REFUSED_DOMAIN",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  },
+  {
+    "case": "declaration",
+    "raw_source": {
+      "path": "w-source/evidence/declaration/source.mlir",
+      "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+      "bytes": 2659
+    },
+    "raw_final": {
+      "path": "w-source/evidence/declaration/final.mlir",
+      "sha256": "b24704c0c003c5c9b58f73ca396f13a3c9a7612b638448babf486d8a2f20c039",
+      "bytes": 4295
+    },
+    "query": {
+      "path": "w-source/evidence/declaration/Entries.lean",
+      "sha256": "25260efd62c7cd0e0711b869df261f4e32fee7a86f6bd7dfc97366145eed5925",
+      "bytes": 264713
+    },
+    "report": {
+      "path": "w-source/evidence/declaration/PREPARATION.json",
+      "sha256": "9b4210606db037774f4d309ad0a42fc939fa2dee22bce247d97342fceca1aed1",
+      "bytes": 449373
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "expected_finite_binding_acceptance": false,
+    "xdsl_verified_owner_report": true,
+    "llvm_verified": false,
+    "semantic_counterexample_proved": false,
+    "refusals": [
+      {
+        "code": "boundary_roster_or_interface_changed",
+        "detail": "complete ordered headers differ"
+      },
+      {
+        "code": "declaration_not_supported",
+        "entry": "untouched"
+      }
+    ],
+    "roster_coverage": "REFUSED_DOMAIN",
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "\"private\"",
+        "declaration": true,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "execution_witness_roots": [
+      "entry2_literal_selection",
+      "entry2_binary_selection",
+      "entry2_source_execution",
+      "entry2_source_outcome",
+      "entry2_final_outcome"
+    ]
+  }
+]

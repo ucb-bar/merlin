@@ -1,0 +1,1 @@
+Initial source-only suffix allowlist refused historical text 3-kernel.stdout before SELECTION was written. Existing copies preserved; resumed copy required all existing bytes unchanged and explicitly allowed retained stdout/stderr text. No binary/object or runtime path was read.

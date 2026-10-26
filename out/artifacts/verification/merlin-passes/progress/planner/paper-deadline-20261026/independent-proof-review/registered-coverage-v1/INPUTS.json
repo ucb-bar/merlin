@@ -1,0 +1,90 @@
+{
+  "schema": "merlin.registered-coverage.inputs.v1",
+  "graham_commit": "5a7f872db33d378d6b0c4a294e4099e80efd4956",
+  "inputs": {
+    "registry": {
+      "path": "inputs/registry/certificates.py",
+      "origin": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/certificates.py",
+      "sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+      "bytes": 9448
+    },
+    "pipeline": {
+      "path": "inputs/pipeline/pipeline.py",
+      "origin": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline.py",
+      "sha256": "e665f6370c27a6d82509d42679c778b79b7983a56ebb6697bbbe96c2c183b73f",
+      "bytes": 8788
+    },
+    "ledger": {
+      "path": "inputs/ledger/CLAIM_LEDGER.json",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/claim-ledger-v1/CLAIM_LEDGER.json",
+      "sha256": "63eb422af4af7c153022e2138f9670d9b3448ca04800d1591c34a4abd5730bc2",
+      "bytes": 95328
+    },
+    "ledger_inputs": {
+      "path": "inputs/ledger_inputs/INPUTS.json",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/claim-ledger-v1/INPUTS.json",
+      "sha256": "ed5a65f9aa1c3ac7f679887b715e7869a5587a58eaf0cd565109c168b005a916",
+      "bytes": 19271
+    },
+    "ledger_validation": {
+      "path": "inputs/ledger_validation/VALIDATION.json",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/claim-ledger-v1/VALIDATION.json",
+      "sha256": "f14dff9b2fe88e48950b1ca9d33fa6af5596aa4a0584c7f4a80e110b23e3925e",
+      "bytes": 379
+    },
+    "matrix": {
+      "path": "inputs/matrix/MATRIX.json",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/admission-matrix-v1/MATRIX.json",
+      "sha256": "79e45f738a50d9af45ea20dd488c6852b0716ee40d25d3e2bdb6df7ca5aaadfe",
+      "bytes": 15917
+    },
+    "matrix_result": {
+      "path": "inputs/matrix_result/RESULT.json",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/admission-matrix-v1/RESULT.json",
+      "sha256": "419d4673bf725d4dc783d5ea6f79577bf3bdc37ff74415915404dde78f85ce6f",
+      "bytes": 2093
+    },
+    "graham_coverage": {
+      "path": "inputs/graham_coverage/coverage.csv",
+      "origin": "out/artifacts/verification/graham-graph-review/deliverable-1/coverage.csv",
+      "sha256": "e782a16e1ab39e3a321f50c58d09d23ad6fba513cf1c398d84d153639b9c7e73",
+      "bytes": 288590
+    },
+    "graham_review": {
+      "path": "inputs/graham_review/coverage-review.md",
+      "origin": "out/artifacts/verification/graham-graph-review/deliverable-1/coverage-review.md",
+      "sha256": "496d9ca4a3e1d81e137d93ef052f56560c83602b50f75ac3b3564e33f67bcd4f",
+      "bytes": 24119
+    },
+    "graham_gaps": {
+      "path": "inputs/graham_gaps/gaps.md",
+      "origin": "out/artifacts/verification/graham-graph-review/deliverable-1/gaps.md",
+      "sha256": "60ba85249666302ab85b6ef74a1ec94505809fa7cd87eb7c45524017cbbfb7b3",
+      "bytes": 8671
+    },
+    "gate_projection": {
+      "path": "inputs/gate_projection/lean_graph_pipeline_gate_projection.py",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/admission-matrix-v1/scratch/primary/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "bytes": 12573
+    },
+    "service_manifest": {
+      "path": "service/selected-packet/MANIFEST.json",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/registered-coverage-v1/service/selected-packet/MANIFEST.json",
+      "sha256": "e1645944da5dbcccc1cc8fe429d5eb53194787ab66f18800b358e115819d75f0",
+      "bytes": 46446
+    },
+    "service_result": {
+      "path": "service/RESULT.json",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/registered-coverage-v1/service/RESULT.json",
+      "sha256": "e946eb3a2efe6d2d64fe34db7c6481379d7ef27c7f71c24f8df523646517fca5",
+      "bytes": 607
+    },
+    "service_comparison": {
+      "path": "service/SELECTED_COMPARISON.json",
+      "origin": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-proof-review/registered-coverage-v1/service/SELECTED_COMPARISON.json",
+      "sha256": "ba3a342d14d83c1222778df85928ff9f5f76b3dc803835ced9697dfe4c56b482",
+      "bytes": 2524
+    }
+  }
+}

@@ -1,0 +1,1 @@
+Report packaging first attempt raised SyntaxError: unterminated string literal at line70 (unescaped apostrophe in prose). Failed source preserved as build_reports-failed-v1.py; corrected only owned report prose and reran packaging. No project parser, solver, compiler or checker was executed.
