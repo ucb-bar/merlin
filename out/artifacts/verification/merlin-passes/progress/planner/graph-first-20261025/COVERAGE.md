@@ -77,6 +77,18 @@ loader/module reporting and host transport. It does not qualify a graph checker,
 repair an old stale reference or prove formal denial of all OS fallback/late loads.
 See frontend-pure-development-context/README.md and minimal-pure-probe-v2.
 
+The subsequent whole-SDK pure-development-v9 stopped at a POSTCHECK mismatch for
+libclang-cpp.so.23.1 after a source-header command returned0. Cause is UNKNOWN;
+no suspect reread, hash refresh or retry followed. Nine captured-source modules
+had compiled earlier; the complete capture extension is still unqualified.
+A separate offline-reviewed original module/runtime selection now contains all
+five files of every653 Init module plus11 original runtime refs (3276 total).
+All1959 compiled Init refs also match the pre-existing W selection;18 auxiliary
+tool/alternative-runtime files are outside the rule. This permits NEW guarded
+development after offline membership tests, retaining selected-file checks and
+host trust. It does not repair v9 or qualify a graph/capture. See
+frontend-original-module-runtime-context/README.md and its exact metadata record.
+
 ## Newly qualified scalar/loop composition
 
 Graph-state-pipeline/review/sealed-v1 checks the actual CSE/DCE→LICM→unroll→

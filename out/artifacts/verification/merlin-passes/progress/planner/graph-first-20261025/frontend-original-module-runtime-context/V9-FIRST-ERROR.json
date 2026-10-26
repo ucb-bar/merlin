@@ -1,0 +1,34 @@
+{
+  "details": {
+    "descriptor_stats": {
+      "after": {
+        "st_ctime_ns": 1791933098985654239,
+        "st_dev": 46,
+        "st_ino": 1318569,
+        "st_mtime_ns": 1791822263000000000,
+        "st_size": 67766536
+      },
+      "before": {
+        "st_ctime_ns": 1791933098985654239,
+        "st_dev": 46,
+        "st_ino": 1318569,
+        "st_mtime_ns": 1791822263000000000,
+        "st_size": 67766536
+      }
+    },
+    "observed_bytes": 67766536,
+    "observed_digest_is_not_a_new_expected_pin": true,
+    "observed_sha256": "c01b49c0976bf814efb0da28f39f346470fcbb116f24721ea0de1019e8f2fe90",
+    "original_reference": {
+      "bytes": 67766536,
+      "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libclang-cpp.so.23.1",
+      "sha256": "d7adb9dfd7170742a0dce7773e4ffe5903830b11c2af316908058516017fcc92"
+    }
+  },
+  "error": "ORIGINAL pin mismatch; expected unchanged: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libclang-cpp.so.23.1; observed=c01b49c0976bf814efb0da28f39f346470fcbb116f24721ea0de1019e8f2fe90",
+  "error_type": "Unavailable",
+  "graph_qualification": false,
+  "old_failed_profile_rerun": false,
+  "original_runtime_hashes_refreshed": false,
+  "status": "PARTIAL/UNQUALIFIED"
+}

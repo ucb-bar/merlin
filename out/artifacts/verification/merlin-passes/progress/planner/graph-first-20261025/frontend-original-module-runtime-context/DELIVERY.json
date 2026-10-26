@@ -1,0 +1,15 @@
+{
+  "thread_id": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "expected_turn_id": "01a1756b-d4a7-7fa0-aa56-6827056e5960",
+  "phase": "accepted",
+  "prompt": "Continue the SAME captured-parent/full-graph batch. The coordinator completed an OFFLINE dependency-selection review: read out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/frontend-original-module-runtime-context/README.md and SELECTION.json. This is the latest reviewed development direction, superseding source-only restrictions ONLY for the distinctly named NEW context described there. Existing failed profiles/v9 remain stopped and PARTIAL; no suspect file reread, expected-hash refresh, SDK repair, old oracle or qualification retry.\n\nThe rule selects ALL five ORIGINAL files of EVERY653 Init module plus original11 runtime refs:3276 total. All1959 compiled Init refs independently match the pre-existing W context. Eighteen unused auxiliary/alternative-runtime files are outside this rule, not individually skipped after failing. Metadata-only review found no conflicting pins; no SDK/runtime files were opened. Actual prior loader trace uses original ten initialized libraries, no libclang. Cause of the v9 mismatch remains UNKNOWN.\n\nImplement NEW exact-membership selection support without changing old capsules. FIRST pass isolated stdlib-only membership/conflict/missing/extra/held/wrong-pin tests; THEN compile/audit remaining CaptureActualGraph/Fusion/Projection/Refusals/Examples and complete all-site parent/prefix/cache/graph correspondence. Keep actual imports/objects, closed environment, original runtime/loader traces, finite bound initializer symbols and pre/post guards. Selected mismatch/unknown signal/load stops NEW context. No clang/LLVM/MLIR/Lake/download/toolchain writes. Preserve every first failure, new/old source copies and explicit host trust. This allows guarded DEVELOPMENT and data-only binding tests, not actual-capture/native qualification or policy approval.\n\nKeep working through the complete existing graph assignment after compaction until a NEW genuine user stop. Do not stop after the offline test or partial packet. Coordinator alone stages/publishes; other workers and old sources remain untouched.",
+  "model_override": false,
+  "prior_status": {
+    "type": "active",
+    "activeFlags": []
+  },
+  "method": "turn/steer",
+  "result": {
+    "turnId": "01a1756b-d4a7-7fa0-aa56-6827056e5960"
+  }
+}

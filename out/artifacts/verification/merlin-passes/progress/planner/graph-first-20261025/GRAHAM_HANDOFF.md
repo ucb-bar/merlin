@@ -260,3 +260,22 @@ shape-to-epoch adapter; F now checks captured-literal proof candidates in the
 separately documented original-bound pure development context. The old F oracle/
 failed-wrapper holds remain. Update packages1–3 and the paper claim matrix using
 these sealed rows; do not sum overlapping tests/theorems or grant full coverage.
+
+## Candidate manuscript text and latest development-context limit
+
+Review [PAPER_VERIFICATION_DRAFT.md](PAPER_VERIFICATION_DRAFT.md) as proposed text
+for both FIXMEs, with the sealed four-pass example as its evidence. Check each
+observation relation and admitted variant against the exact roots; the draft is
+not approved merely because it is published.
+
+Frontend's later whole-SDK pure-development-v9 stopped at a libclang postcheck
+digest mismatch after its third source-header command returned0. Its cause is
+UNKNOWN; the suspect file was not reread and v9 stays PARTIAL/UNQUALIFIED. The
+separate frontend-original-module-runtime-context selects all five original
+files for every653 Init module plus11 original runtime refs (3276 pins), using
+retained metadata only. All1959 compiled Init refs also match the pre-existing
+W context;18 auxiliary/alternative-runtime files are outside that dependency
+rule. Offline membership tests precede NEW guarded development. Review this
+selection, actual imports/runtime reporting and explicit host trust separately
+from the mathematics. It does not promote any old failed profile or qualify a
+captured graph; do not rerun held profiles as a review shortcut.

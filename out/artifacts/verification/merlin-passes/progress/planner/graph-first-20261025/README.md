@@ -58,6 +58,11 @@ separate obligations.
   explicit host/observer trust; it does not qualify an actual capture or repair
   the unknown stale reference. Known optional project-initializer trace matching
   is extended only by exact bound module/object tables; arbitrary errors refuse.
+  The whole-SDK development-v9 subsequently stopped on an UNKNOWN libclang
+  postcheck mismatch. A separately reviewed [original module/runtime context](frontend-original-module-runtime-context/README.md)
+  selects all653 Init module families plus the original11 runtime refs (3276
+  pins), excluding auxiliary tools as a class. Offline membership tests must
+  pass before new guarded development; v9 and older failed profiles stay held.
 
 The older completed task rows below are history, not reassignment instructions.
 All three continue large graph batches after compaction; only a NEW user stop wins.

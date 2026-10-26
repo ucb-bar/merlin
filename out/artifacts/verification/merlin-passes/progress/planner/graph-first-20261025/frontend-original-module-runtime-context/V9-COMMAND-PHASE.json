@@ -1,0 +1,32 @@
+{
+  "phase": "POSTCHECK after third source-import invocation 0002-CaptureFusion returned0; PRECHECK passed, POSTCHECK original SDK mismatch, runtime parser was not reached",
+  "commands": [
+    {
+      "command": "0000-Merlin.GraphRegionsDeclaredCaptureRefusals-source-imports",
+      "PRECHECK.json": true,
+      "PROCESS.json": true,
+      "POSTCHECK.json": true,
+      "RUNTIME.json": true,
+      "returncode": 0
+    },
+    {
+      "command": "0001-Merlin.GraphRegionsDeclaredCaptureProjection-source-imports",
+      "PRECHECK.json": true,
+      "PROCESS.json": true,
+      "POSTCHECK.json": true,
+      "RUNTIME.json": true,
+      "returncode": 0
+    },
+    {
+      "command": "0002-Merlin.GraphRegionsDeclaredCaptureFusion-source-imports",
+      "PRECHECK.json": true,
+      "PROCESS.json": true,
+      "POSTCHECK.json": false,
+      "RUNTIME.json": false,
+      "returncode": 0
+    }
+  ],
+  "additional_runtime_or_sdk_reads": 0,
+  "cause": "UNKNOWN",
+  "correction": "Prior initial/precheck prose was incorrect; phase follows retained PRECHECK/PROCESS present and POSTCHECK/RUNTIME absent. No extra runtime read."
+}
