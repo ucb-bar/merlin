@@ -3,7 +3,9 @@ The new user instruction supersedes the historical stop below. Graph
 transformations remain the priority before numerics. Read the current resume
 and claim criteria in `graph-first-20261025/README.md` (planner-relative).
 Continue each existing graph batch after compaction; no stale numerical tasks.
-All publication, frozen-source and failed-context holds remain in force.
+The latest coordinator publication authorization and current assignments in that
+file supersede historical publication holds and completed task rows below.
+Frozen-source, specification-review and failed-context holds remain in force.
 
 **PAUSED BY NEW USER STOP — 2026-10-24 06:12 UTC (Oct23 US/Pacific).**
 The user returned and explicitly requested ALL agents stop, document progress and

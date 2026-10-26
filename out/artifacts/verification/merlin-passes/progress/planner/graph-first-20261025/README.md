@@ -44,6 +44,9 @@ separate obligations.
 - W/GraphLoops (user-authorized GPT-6-Astra) sealed standalone shape normalization:
   22 sources,78 originals +one78 replay,35/41 std3 roots. Its typed/full-heap to
   old epoch/public adapter remains active and unproved; preserve the refused join.
+  The [authorized model-switch record](w8a8-authorized-model-switch-20261026T022240Z.json)
+  confirms actual commands and source edits after the capacity failures; the
+  existing thread/checkpoint and graph assignment are preserved.
 - Q/GraphState sealed the20-source scalar→unroll→segment pipeline:64 tests,8
   actual all-four-changed chains +8 fresh replays. CURRENT next task is
   [exact-integer whole-boundary normalization](../assignments/graph-exact-integer-normalization/README.md);
@@ -59,7 +62,7 @@ separate obligations.
 The older completed task rows below are history, not reassignment instructions.
 All three continue large graph batches after compaction; only a NEW user stop wins.
 
-## Latest completed batch and next worker task
+## Earlier completed memory batch
 
 The loop/memory worker sealed memory-scf-mode-v1: the exact retained two-initializer
 reuse→segment chain has a common operational complete-outcome relation,71 tests
@@ -68,18 +71,20 @@ Independent review, parser/primitive/allocator truth and ordinary compiler gatin
 remain open. The coordinator checks/publishes the exact owned source; this does
 not complete the full graph roster or categorized failure/divergence semantics.
 
-W's CURRENT next task is [whole-boundary shape normalization](../assignments/graph-shape-normalization/README.md),
-extending the registered identity-cast/static-dimension pass and composing with
-existing memory roots. The older W row below is completed history. Frontend and
-scalar-pipeline tasks remain unchanged; no numerical work is resumed.
+The subsequent [whole-boundary shape normalization](../assignments/graph-shape-normalization/README.md)
+batch has also qualified its standalone relation. Its semantic memory adapter
+continues, as recorded at the CURRENT frontier above. The scalar pipeline is
+qualified and its worker now owns the exact-integer prefix. No numerical work
+is resumed.
 
-## Three substantial, disjoint implementation batches
+## Original Oct25 resume batches — historical
 
-All workers continue the existing primary checkout `/home/jeremy/Projects/merlin`,
-`feat/pass-verification`, observed HEAD
-`229f42c627854c49476a101cb393d0b15044fab8`. The index is empty; the same five
-intentional tracked changes and existing untracked families remain preserved.
-Worker branches are allowed, with final code/dependencies delivered to primary.
+All workers use the existing primary checkout `/home/jeremy/Projects/merlin`,
+`feat/pass-verification`. The original intake HEAD and dirty-file counts have
+advanced; publication journals record exact delivered cuts, while workers retain
+their subsequent owned edits. Worker branches are allowed, with final
+code/dependencies delivered to primary. The task rows below record the initial
+resume, not the current assignment; read the CURRENT frontier above.
 The production reference remains detached/read-only at
 `4499eebb959c0f92cefd92cc6d80646ba66474ed`.
 

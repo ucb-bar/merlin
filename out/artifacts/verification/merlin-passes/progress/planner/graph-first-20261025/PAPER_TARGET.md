@@ -34,6 +34,9 @@ solely to regenerate an old printed result.
 The coordinator selects the clearest verified example and assembles the final
 claim table. Graham can independently review its IR projection and assumptions;
 he does not duplicate current implementation work or grant numerical approval.
+The [candidate manuscript text and evidence map](PAPER_VERIFICATION_DRAFT.md)
+uses the newly sealed scalar/loop example and keeps review and integration gaps
+explicit. It is a review input, not an approved final claim.
 
 ## Claim wording boundaries
 

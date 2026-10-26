@@ -9,11 +9,11 @@ is inferred. Evidence counts are recorded earlier qualifications, not new runs.
 | Registered kind | Existing evidence and actual domain | Remaining paper obligation |
 | --- | --- | --- |
 | shape_view_normalization | NEW qualified standalone whole-module descriptor/SSA/heap-world result:78 originals plus one78-test replay,35/41 std3 roots,22 source files. Actual identical casts/static dimensions, calls and surrounding context are bound by a trusted full-tree matcher. | Runtime descriptor/primitive fidelity and independent mapping review remain explicit. Rich typed/full-heap→old epoch/public semantic adapter is unproved; exact shape→reuse→segment join is refused. No ordinary compiler gating. |
-| exact_integer_simplification | Local fixed-width add/sub/mul constant-ring/neutral identities, unflagged signless scalars; old validation checks actual change. | Identify complete source-context theorem and mapping for this registered route. Existing MerlinVerify integer components use a separately identified semantics; no implicit equivalence. |
+| exact_integer_simplification | Existing fixed-width add/sub/mul identities; NEW whole-context development derives canonical runtime values from entries and local result contracts, and checks an actual all-five-changed six-buffer integer→CSE/DCE→LICM→unroll→segment chain. | Current worker owns width/region/adversarial/witness coverage, receipts and frozen qualification. The new chain is UNQUALIFIED. Poison/native fidelity and the bridge to separately identified MerlinVerify semantics are not implicit. |
 | scalar_redundancy_elimination | Qualified Scalar.check_sound/normalize_sound: complete typed SSA, total pure nodes and retained partial opaque steps, full returned/world/error observation. | Review primitive/projection/control contracts, supported variants and actual host admission; retain model/native limits. |
-| scalar_loop_invariant_motion | Same qualified scalar framework; positive constant stride, nested/empty finite iteration sequences, scoped captures/carries/yields and total speculation. | Concrete control interpretation is a premise. Active pipeline worker derives index/range/scope correspondence and composed loop transformations. |
+| scalar_loop_invariant_motion | Same qualified scalar framework; positive constant stride, nested/empty finite iteration sequences, scoped captures/carries/yields and total speculation. The sealed scalar/loop pipeline derives index/range/scope correspondence for its narrower static no-tail bulk domain. | Primitive/control fidelity and independent review remain explicit; do not generalize the qualified composed domain to arbitrary SCF. |
 | ordered_loop_segmentation | Qualified complete ordered body/carry/state relation for the checked static signed-control domain;88 tests and one88-test replay. | Raw-IR/Python/body interpretation and review remain explicit. The sealed memory-SCF packet covers its admitted actual nested/multiple initializer boundaries; arbitrary SCF is not covered. |
-| ordered_loop_unrolling | Qualified inline/empty and grouped bulk/tail modes,151 tests and one151-test replay; actual same-SCF unroll→segment composition. | Connect to scalar operational errors/world and scoped SSA via the active pipeline bridge. Native rendering and unsupported regions remain outside. |
+| ordered_loop_unrolling | Qualified inline/empty and grouped bulk/tail modes,151 tests and one151-test replay; actual same-SCF unroll→segment composition. The newly sealed pipeline also derives complete scalar/error/world/scoped-SSA correspondence for static no-tail bulk. | Broader unroll variants need their own composed bridge. Native rendering, primitive fidelity and unsupported regions remain outside. |
 | buffer_reuse | Qualified live initialized epoch→slot/public complete outcomes in both directions,214 tests and one214-test replay, total/private/unobservable allocation premise. | Qualified memory-SCF packet derives operational initialization and the actual two-initializer reuse→segment composition (71 tests plus one71-test replay;61/63 std3 roots). Actual8→16-byte resource counterexample limits allocator claims; independent review/gating remain open. |
 | sequential_dependency_schedule | Old broker accepts a narrow single scalar-function route; new qualified StateEffects graph projections prove actual supported effect exchanges/configuration chains under declared complete frames. | Enumerate supported original-IR scheduling routes; generic SSA/topological legality or Python validation alone is insufficient. No general opaque-memory/asynchronous action semantics. |
 
@@ -28,7 +28,7 @@ row batching, recomputation, connected regions and host/runtime binding.
 
 | Family | Current honest status |
 | --- | --- |
-| Logical region/fusion and observers | Qualified logical complete-context result plus historical declared-call v1 qualification:46 originals and one fresh replay batch, two actual typed boundaries. Per-instruction/packing/ABI/Action contracts remain explicit. Stronger ABI/full-after-effect wrapper is UNQUALIFIED after pre-oracle stale-host-reference gate; no fresh replay. Source-only capture/closure work continues. |
+| Logical region/fusion and observers | Qualified logical complete-context result plus historical declared-call v1 qualification:46 originals and one fresh replay batch, two actual typed boundaries. Per-instruction/packing/ABI/Action contracts remain explicit. Stronger ABI/full-after-effect wrapper is UNQUALIFIED after pre-oracle stale-host-reference gate; no fresh replay. Capture/closure candidates now compile in a separate guarded pure DEVELOPMENT context; no capture qualification follows. |
 | Configuration hoisting / effect exchanges | Qualified conditional StateEffects packets and actual two-pass chains. Locality/effect/alias/completion contracts and host projection remain review obligations. |
 | Configuration elimination | Source/diagnostic candidate UNQUALIFIED after fifth original Lean SIGSEGV; zero qualified originals/replays. Do not count94 passing tests as qualification. |
 | Source tensor→graph bridge | PARTIAL/UNQUALIFIED after external Std.Time.Format.Basic binding discrepancy, despite53 passing corrected tests. No silent promotion or numerical/native admission. |
@@ -43,9 +43,10 @@ result with the intended paper scope and recorded actual artifact coverage.
 
 The worked CSE/DCE→LICM example is supported conditional graph evidence now;
 the memory chain now has its own qualified scoped packet and paper example. The
-four-pass scalar chain and declaration/call bridge remain active development
-until their binding/audit/qualification completes. Shape normalization is the
-loop worker's next whole-boundary graph task.
+four-pass scalar chain now has its own qualified scoped packet. Standalone shape
+normalization is also qualified, while its full semantic memory adapter remains
+unproved. The integer prefix and frontend captured-literal extension are active
+development; they are not yet qualified.
 All-graph, numerical, native, full-pass/pipeline/model and policy approval flags
 remain false. Publication is source delivery, not semantic approval.
 
@@ -57,8 +58,9 @@ UNKNOWN; the error did not retain that identity. A single owner comparison found
 no current mismatches; the coordinator did not repeat it or run the failed
 profile. The original46-case v1 seal remains historical, not a live new
 attestation. New stronger-wrapper dependent failures are not semantic refusals.
-F continues additive source-only proof/binding work; execution/qualification is
-held pending honestly established context. Other workers retain their own
+F continues additive proof/binding work using the separate pure DEVELOPMENT
+context below; old oracle-dependent execution/qualification remains held.
+Other workers retain their own
 explicit fixed bindings; this observation does not establish global toolchain
 innocence or invalidate every unrelated artifact.
 
