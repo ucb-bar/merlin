@@ -1,0 +1,2044 @@
+{
+  "schema": "merlin.graph-state-scalar.actual-projection.v1",
+  "projection_checked": true,
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "producer_mode": "supplied-actual-result",
+  "genuine_changed_boundary": true,
+  "diagnostic_witnesses": [],
+  "inputs": [
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-boundary/indirect-local-call/projection/before.mlir",
+      "sha256": "b5b5f861ef11da7a49f623673f53f1e4e8176239f07250c039442cbc8c1d32a0",
+      "bytes": 805
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-boundary/indirect-local-call/projection/after.mlir",
+      "sha256": "57680a24e960a2d145aec224ff8acbe87ad74ac8f63d561252475e8b0eff0ee8",
+      "bytes": 716
+    }
+  ],
+  "producer_sources": [
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "bytes": 742
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "bytes": 144
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "bytes": 4227
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "bytes": 1017
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "bytes": 9294
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "bytes": 4572
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "bytes": 4097
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "bytes": 8634
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "bytes": 12317
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pure_scalar.py",
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "bytes": 6617
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/scalar_witness.py",
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "bytes": 2083
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145
+    }
+  ],
+  "external_runtime": {
+    "python": {
+      "path": "/usr/bin/python3.12",
+      "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "bytes": 8020928
+    },
+    "sources": [
+      {
+        "path": "/etc/python3.12/sitecustomize.py",
+        "sha256": "43d81125d92376b1a69d53a71126a041cc9a18d8080e92dea0a2ae23be138b1e",
+        "bytes": 155
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/_distutils_hack/__init__.py",
+        "sha256": "ced72e54431ecf2d8d7dbd8a1e27724f1b171af3ca1503c304bf11c59a7fe861",
+        "bytes": 6800
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/_virtualenv.py",
+        "sha256": "cfb3db86aaa53bb62b5ff764970bec2d71c9228590a0ebec57f6ec926cc0bf1a",
+        "bytes": 5246
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/immutabledict/__init__.py",
+        "sha256": "7ac43f32fc5a4403600263055dca00f644a41238cf5d50e8040acbd8391d472b",
+        "bytes": 7093
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/typing_extensions.py",
+        "sha256": "433d11d170d3a24d2eb065ebc1bfe848cea7e3d7ce68567ab52bea2d4c2f7ed8",
+        "bytes": 160429
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/__init__.py",
+        "sha256": "27a3162201d47a8e684ca7b6bc5b41d9410b5397d95abf7ae4161fcecec96e5a",
+        "bytes": 628
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/builder.py",
+        "sha256": "dea63cef9dfccd313c96491d69f041dd3975de66abc0805b1004e618445f0a8f",
+        "bytes": 11507
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/context.py",
+        "sha256": "398f6fe1a77cb940e30cb499f5ddd3e6d80073fb9d4e3b0ea5bc3f5fdc4b81de",
+        "bytes": 11751
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialect_interfaces/__init__.py",
+        "sha256": "0ce455fc728c51ade6e19ed26ff61c625b9b5f85af77f0976cc6de9504c25556",
+        "bytes": 549
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialect_interfaces/constant_materialization.py",
+        "sha256": "1d805e0a398ccea6bb05684210a22e106600146044902e431129a524eac433b3",
+        "bytes": 1069
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialect_interfaces/op_asm.py",
+        "sha256": "bed85ce5e1ea9c7c80af7a488a5773ef90a01e05ddf3a7cf2c4ffc615293c6ae",
+        "bytes": 3033
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/__init__.py",
+        "sha256": "255ced6eeb43824e086fdc37aeb026c47f687f06eb276cf863f256fb22019dd5",
+        "bytes": 10449
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/arith.py",
+        "sha256": "318f82e4edba5f4c0be4959f5e37000954895db56ad3d0c368e3c88040d9c3a9",
+        "bytes": 42947
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/builtin.py",
+        "sha256": "61e181fcc6bbf4244edc30e1545a370a387f602469d1db32f598bb93d2a80506",
+        "bytes": 99110
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/func.py",
+        "sha256": "8a0cb3d1cfb47bfea7f642decd5c4b6f742461c6fe89b283f0918e515e8b8f8e",
+        "bytes": 11699
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/memref.py",
+        "sha256": "8c062ebe6ab0771a5d01d148f4fcf458038ff67b4481be1c4a45f943d7942bf6",
+        "bytes": 39575
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/scf.py",
+        "sha256": "cc7ef2e48128af129e0dbd12abb38387d0b4cbc49361caa35458f38211d85f5c",
+        "bytes": 26855
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/utils/__init__.py",
+        "sha256": "b36e8ed19cc8abcbfa21bd39601edce1d43c03184c09bf10bff111aff2b8026b",
+        "bytes": 394
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/utils/bit_enum_attribute.py",
+        "sha256": "99d786487c42683c77db8016e2003d985d46d6b7899017a04ad35aeff83454da",
+        "bytes": 4898
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/utils/dimension_list.py",
+        "sha256": "ed9e45e1dfd30d4fe7900469d8641f0439cfdfee82b3e05a6089d0f0e833bc4c",
+        "bytes": 1571
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/utils/dynamic_index_list.py",
+        "sha256": "4a66f085641c551bc5eae570b3e029d4320a5fff4e83479bcff6c6ff4d00b39b",
+        "bytes": 9156
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/utils/fast_math.py",
+        "sha256": "6b5b526f36fcebd1afee8f3e8cd0e447f5240075885646edd9fbd84b79611b55",
+        "bytes": 684
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/utils/format.py",
+        "sha256": "40a3b0bab57d791177242d3d7436ffcbfa2da8e412cf82361aca3b7775ebc352",
+        "bytes": 17211
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/utils/reshape_ops_utils.py",
+        "sha256": "e52ba3362fa6055e9ac16d175438f6098f08dba431efdb3ee3bcbe330813b1e1",
+        "bytes": 5037
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/folder.py",
+        "sha256": "15ef06cf429d63dabae9853cc6d8798f41f35f318d0ae51f8520c3f38d915746",
+        "bytes": 3416
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/interfaces.py",
+        "sha256": "66a219f8cff8fdf8759426e3ab38f2fedfbd092b09b9daaa2d033831339dc300",
+        "bytes": 3803
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/__init__.py",
+        "sha256": "a3c892e6e6b7aa43212311bbbe459cf3c9527ce0958757455a3d91d8209aa6ca",
+        "bytes": 204
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/affine/__init__.py",
+        "sha256": "1defb1dab5f098264ce81e6318161a17100e5aeeb8c2fc966327203a5e5a26ba",
+        "bytes": 296
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/affine/affine_expr.py",
+        "sha256": "e52f3d8ffe8f36c050c9868f679e7bf254f25a64dd50e55f17e37a0c2e811061",
+        "bytes": 33741
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/affine/affine_map.py",
+        "sha256": "b7459de550eb7e16a58c54ef80f0cb799d8d4bdc125eb1aa1431265a2b20217c",
+        "bytes": 17632
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/affine/affine_set.py",
+        "sha256": "bf5fe3832e0b73c2d09280a92edb4bea307a24d8f81efdb59fbf09dc7892133b",
+        "bytes": 1605
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py",
+        "sha256": "be0a9bfcf62954ff7d0ce6f6eb44428dff6a9810be101351b0275db2ca4d030b",
+        "bytes": 90002
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/post_order.py",
+        "sha256": "214c01e0572c013b5de698e3568726c25deb4d641e9e08fd1111b795acac6fe3",
+        "bytes": 1400
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/irdl/__init__.py",
+        "sha256": "5cac03e289cfd95b58f728d2fe09fd069aec7990e05801d02e6c4b20e8a7e119",
+        "bytes": 302
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/irdl/attributes.py",
+        "sha256": "c9d7cf76e62871b640d4c05b867ca8a855ca70be49509b8ddcf714469adcba33",
+        "bytes": 22209
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/irdl/constraints.py",
+        "sha256": "3361d0ede9fbbd99bccb1e3551f5784220e6cb31f0a947273fa3a141fb712915",
+        "bytes": 45108
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/irdl/declarative_assembly_format.py",
+        "sha256": "631ac0f79c18899dad3c7447d41b3d5252c2cfefc9fc72c136fa3618dad92feb",
+        "bytes": 50617
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/irdl/declarative_assembly_format_parser.py",
+        "sha256": "fc5eedac983c34d9dbfae28300bc3ae540cddc59f86e2378a02c84dd12454dae",
+        "bytes": 37048
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/irdl/operations.py",
+        "sha256": "ee4f92d8e8a8dbeaba90c99fb19eb43589eb79f1fe5ed22188d4d35b0c70233f",
+        "bytes": 74153
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/__init__.py",
+        "sha256": "a8c23f2dc3bad21336cca3171afa34339dfabf90298dd19ed4e92798e17e823e",
+        "bytes": 466
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/affine_parser.py",
+        "sha256": "baefca5f5e7e84ce2edfc6e33246af40f6327a0da0bb2500e770209ca8cbf966",
+        "bytes": 10835
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/attribute_parser.py",
+        "sha256": "6a842a8ea9b71d541d4c0eacd576f0180a9a656a07774841e8c611a4426e1104",
+        "bytes": 62415
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/base_parser.py",
+        "sha256": "158558fb5b4fb9dc2a7438f0c6cc3cb5276b462a1adb7da44a1eaabe204b8bad",
+        "bytes": 12513
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py",
+        "sha256": "28e303d25ab83b14b0f9242f6552f0c4130c2ec637086e8ced33079d6e171c42",
+        "bytes": 40560
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/generic_parser.py",
+        "sha256": "badaa2593ec46f77c0856d62e100fe19195357a40c444dc0b4aed8e1376d92d7",
+        "bytes": 11901
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/passes.py",
+        "sha256": "f6833a451a2403c8565bd7688fcd9e862948d0d918c29ecca89c37e5488767c1",
+        "bytes": 6428
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/pattern_rewriter.py",
+        "sha256": "0b3e6759e5ad2e252af49413a46d19c64b19f3b82c08ede6760aa5acd6c67379",
+        "bytes": 29359
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/printer.py",
+        "sha256": "1f7375fb7a293428bfb37c251c2f23efc94c25146e1318ce157caea0864574d3",
+        "bytes": 25555
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/rewriter.py",
+        "sha256": "ecb85c0cd62c5fdf04fb72291cab1c0145bce8c6cafedf7b2d7eba21121deb47",
+        "bytes": 11614
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/traits.py",
+        "sha256": "b0be12a0a58966b26591ba3906be88c36a7ece8daa0dc776eae35ca6c726419a",
+        "bytes": 29278
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/transforms/__init__.py",
+        "sha256": "51826412b912542f294b7b681cf32e5ba21d3d070c171cb164716e1c71ee7254",
+        "bytes": 30499
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/transforms/common_subexpression_elimination.py",
+        "sha256": "9e10dbdc2cedfc0dae55f2adaf3c7fd16c02079a8dfb0bcbe5f9b18edaaab0e6",
+        "bytes": 8648
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/transforms/dead_code_elimination.py",
+        "sha256": "9a8ed817c6b407be7afca9733a9f8038e00422b448192da55dd58e52f4f197dc",
+        "bytes": 5372
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/transforms/loop_invariant_code_motion.py",
+        "sha256": "6014e7b190213fb952a24cc5376a7f02b28cad6c372d3712b89ab37f3fefb47d",
+        "bytes": 3364
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/__init__.py",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/arg_spec.py",
+        "sha256": "9c5a92e7bb89715ff72bc30d5f0108c9f501b49986633dbb5fe00e822a11f134",
+        "bytes": 19193
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/base_printer.py",
+        "sha256": "e481727cfc8d6f5019b3e7d0341e25607c6f64c19cabf27c029cdd7ef2c57a9b",
+        "bytes": 5606
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/bitwise_casts.py",
+        "sha256": "39719b03d08916913a54a3c2d6d4374626325eae0af2806cd53a96655b3bf896",
+        "bytes": 1901
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/classvar.py",
+        "sha256": "75817d634d44001d56dc60cf2142e0fc186c7f4c1bacac124c59380350c90627",
+        "bytes": 1129
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/comparisons.py",
+        "sha256": "d457aaed334bf384daa7aa70238300f39ad9c8ecc636291b5c8cb6bd07e224ac",
+        "bytes": 3799
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/diagnostic.py",
+        "sha256": "fdcb80084e612ae2b1b75cd7ecf1c79796e4c912c58fa3ae612fae97447fe0f3",
+        "bytes": 1901
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/dialect_loader.py",
+        "sha256": "fc7fbe1d9ea015f6b9caa764797a0849c9cc972efb778d258baee6b0f8bbb9ec",
+        "bytes": 3966
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/dialect_stub.py",
+        "sha256": "517ea1d7005cec945d74ecd5507dededff1ebcc3a08fc0c5420ed77857962ecf",
+        "bytes": 10949
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/exceptions.py",
+        "sha256": "adda3024199a81d89e4b9d328e23f384ccefbb56f47eb0e6a1e5e763f22d5c02",
+        "bytes": 3382
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/hints.py",
+        "sha256": "46b3c8cf7674b2cbc1f4e2005b7ad853f8dae909edb0ba834172937dbce8e67a",
+        "bytes": 7282
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/lexer.py",
+        "sha256": "d2d6d2f8e2bf110426e7663c28eb0626de5334ecbc27e74cec92c21af69fefef",
+        "bytes": 5454
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/mlir_lexer.py",
+        "sha256": "d2d2b59b9a09d18e2edde2d6ccc2fa49f4e063e19672eab4c158e35d44b32e36",
+        "bytes": 18808
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/runtime_final.py",
+        "sha256": "37edf56a59a7f385128f5864f07560d2e2535644260141f0f1893bf28a83e7d5",
+        "bytes": 812
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/str_enum.py",
+        "sha256": "3a5fa8d24f075b14a95a56146f832980d666da690e8c4eb7e5d491c3e813456e",
+        "bytes": 356
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/type.py",
+        "sha256": "9c4c1ac090bd0da004fd7db64e4c95e96a2803b1b078e49f669085cbbc74fbce",
+        "bytes": 1540
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/worklist.py",
+        "sha256": "dea6f7332e611bea48493d6ce60a478a0f484238ab4ddbe24c84e3f63764d842",
+        "bytes": 2081
+      },
+      {
+        "path": "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+        "sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+        "bytes": 20214
+      },
+      {
+        "path": "/usr/lib/python3.12/__future__.py",
+        "sha256": "981d4c398849f9ebcab72300d9c1fe288fd6d7f28957b3b3fa3a493a5836d95c",
+        "bytes": 5218
+      },
+      {
+        "path": "/usr/lib/python3.12/_collections_abc.py",
+        "sha256": "90324ee3e1c4ca5319f7242d4b7c1e90eb8418b3f999d07c853aa488356282e6",
+        "bytes": 32082
+      },
+      {
+        "path": "/usr/lib/python3.12/_compression.py",
+        "sha256": "3ad5d60627477a60939ee44fc1bb3a05dbe8fb52f0f75039b8f5d8f1a278b981",
+        "bytes": 5681
+      },
+      {
+        "path": "/usr/lib/python3.12/_sitebuiltins.py",
+        "sha256": "b9388bc1d6d12ed6be12da420ab1feca40f99c0e33ec315d92b1e01cb69b25bc",
+        "bytes": 3128
+      },
+      {
+        "path": "/usr/lib/python3.12/_weakrefset.py",
+        "sha256": "91895a451d06e9f521a1171b31b9b19bc9740f35af00d4fa106338ab7167c9ac",
+        "bytes": 5893
+      },
+      {
+        "path": "/usr/lib/python3.12/abc.py",
+        "sha256": "e558702a95cdce3febd289da021715d2b92bc43995b8a1bc58dfa1c3d8010287",
+        "bytes": 6538
+      },
+      {
+        "path": "/usr/lib/python3.12/argparse.py",
+        "sha256": "29395feb61bc376ca4ff9d44069af8d914ec2a1f25a4bd7978f6e2afef5bc07f",
+        "bytes": 101750
+      },
+      {
+        "path": "/usr/lib/python3.12/ast.py",
+        "sha256": "d16626aa5c054bcc45221e56f84e55051b046caf0f8be1fe4902ea71534fb735",
+        "bytes": 64260
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/__init__.py",
+        "sha256": "61102f2b5f8fb832f0558cb66391f227970b3dd34ea2a621455587b4295e89a1",
+        "bytes": 1220
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/base_events.py",
+        "sha256": "4bf27730499a68f6a5b726204670590cb3425c9331941dd2036a0ad101af39cb",
+        "bytes": 77971
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/base_futures.py",
+        "sha256": "2f3798c4b82f5ac77647908b157c924f734f36871d98970e72849ea9a9a07856",
+        "bytes": 1974
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/base_subprocess.py",
+        "sha256": "d69ba8f97bf8c89564cadce49427574ddb98103a5db6f04b98798240332e7adf",
+        "bytes": 8869
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/base_tasks.py",
+        "sha256": "56efac65b63db927af336fa55eb5bda93c97a2defa4734ea8d695ed20fd6712a",
+        "bytes": 2672
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/constants.py",
+        "sha256": "873fc2f9e66313c3c19c337269e704f204b59f9e91d6ecbec59f68335484d338",
+        "bytes": 1413
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/coroutines.py",
+        "sha256": "2feec17557c230a80cc2a6391bbb1c44b9f3341820b05667e36a4eb12b749436",
+        "bytes": 3342
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/events.py",
+        "sha256": "6a18b7eee5926622c146e61a7eb39726b4656e07ca41d36b06936ffb2354f0ed",
+        "bytes": 29339
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/exceptions.py",
+        "sha256": "a5971f88be14cd1417d59adf539ae48c5d818f95362a4e0eb00017e3690ab37b",
+        "bytes": 1752
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/format_helpers.py",
+        "sha256": "6377b672b3f4ba8b6f0f7a5f0ea00cde24c8cddc0ca764e3329f302763477f59",
+        "bytes": 2404
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/futures.py",
+        "sha256": "7308533f98987fd96acb2cef27d16e2b05ff3efad406db4b0d4d39a2a8f6971d",
+        "bytes": 14210
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/locks.py",
+        "sha256": "808bece72e0a4c6ab34299ffe555c927a8db475066ce8dc4ba614588fff720db",
+        "bytes": 18994
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/log.py",
+        "sha256": "80e4cc3ded4b138baba486519e7444801a23d6ac35f229d336a407a96af7e8d2",
+        "bytes": 124
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/mixins.py",
+        "sha256": "8f4a3e16eca845ebfba422550cbcee7340ec8166d2bff6b750a8ed0de6b9ae3c",
+        "bytes": 481
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/protocols.py",
+        "sha256": "1d1b49988c338b4ef06e30f9e92d9db2e00080c341f0a3f573bb8312deb8aff6",
+        "bytes": 6957
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/queues.py",
+        "sha256": "8f020744ebd1f557dcb051a1530b504447660df906c2127a94bbcc8450ea7ef9",
+        "bytes": 7974
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/runners.py",
+        "sha256": "005535b70acf976133dda890b7c7f9076401fd7b532afeb27a1a68e863219072",
+        "bytes": 7159
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/selector_events.py",
+        "sha256": "245aa4847860755514fbf3de9494da4156b9cc57ca1e17f046744db37be6214d",
+        "bytes": 48282
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/sslproto.py",
+        "sha256": "c747273038c3d27d0447f84eace19faf6c0e2730a0aa89639f9a40af41b5d180",
+        "bytes": 31739
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/staggered.py",
+        "sha256": "ff289bdc20a50ad9620393479d785bc653e71c2e3298f53ab27907cd136498e9",
+        "bytes": 5992
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/streams.py",
+        "sha256": "6ec5c70fd95b0d51cc1e81cd21e8abe8c1b69650148d6bb75ab4aa4797319bd4",
+        "bytes": 27619
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/subprocess.py",
+        "sha256": "7b70605716334f63cc482123b2aaa3b7c5bb7138eeab63a037bd8068d43307c1",
+        "bytes": 7737
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/taskgroups.py",
+        "sha256": "04895039b4870219ba5b94d42f3dccf996b4bf26108a54c47f30326eae4af0cc",
+        "bytes": 8747
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/tasks.py",
+        "sha256": "6f6aad82d597fea1800004075b9a2481604da0035f1143af1eb267823ec460e3",
+        "bytes": 37362
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/threads.py",
+        "sha256": "39d37295383641565f0c08bd992e2f661dc8051eb17e890b834fce96bde0910e",
+        "bytes": 790
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/timeouts.py",
+        "sha256": "3e40ca0dca3e54776579797837cd4936d73d04aae09fe0cf83ce1e5449d00163",
+        "bytes": 5321
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/transports.py",
+        "sha256": "940108bc133de399f38928cad3274f463096168d8a3ee5148f2478d3cb636f1c",
+        "bytes": 10722
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/trsock.py",
+        "sha256": "c0eac37debcc51b702b808f6b7ed3e417343f5ff5f57125dad600a27eb082328",
+        "bytes": 2475
+      },
+      {
+        "path": "/usr/lib/python3.12/asyncio/unix_events.py",
+        "sha256": "1fff06cce78763800f05f4d2bebfcdbc07ebf9564ca7e7222e0d91e39dee08c9",
+        "bytes": 53124
+      },
+      {
+        "path": "/usr/lib/python3.12/base64.py",
+        "sha256": "65c70b5b6361c6f7a71ecc2df0f55315474b669221dd8d81d7c1ae8d56748ada",
+        "bytes": 20602
+      },
+      {
+        "path": "/usr/lib/python3.12/bisect.py",
+        "sha256": "f1cf7b85fc36b5da249813fc5ab97d9464f8cc1bc817f7146206fa2713e35999",
+        "bytes": 3423
+      },
+      {
+        "path": "/usr/lib/python3.12/bz2.py",
+        "sha256": "76ab3252924e71e859d7d90e8d3db13b6554975cfcac0fdadced4de7f8779330",
+        "bytes": 11847
+      },
+      {
+        "path": "/usr/lib/python3.12/codecs.py",
+        "sha256": "7b7839e53a77961153240aecfe11edc8054d05b1dedd83894450dae21ec05785",
+        "bytes": 36870
+      },
+      {
+        "path": "/usr/lib/python3.12/collections/__init__.py",
+        "sha256": "0af967cd58036507b3d0fbc33b7a996c61dbb52a94b0b738c8bef12cd4cc7dd4",
+        "bytes": 52378
+      },
+      {
+        "path": "/usr/lib/python3.12/collections/abc.py",
+        "sha256": "9cb4208f99128a0489b6c8e6c61637617dd7d4250c59e065491957eda084dd10",
+        "bytes": 119
+      },
+      {
+        "path": "/usr/lib/python3.12/concurrent/__init__.py",
+        "sha256": "87ad5c8954dd56fbbca04517bf87477ff4dce575170c7dd1281d7ef1f4214ac8",
+        "bytes": 38
+      },
+      {
+        "path": "/usr/lib/python3.12/concurrent/futures/__init__.py",
+        "sha256": "9bcec785db3eddc6d462883957ba6d3ff4370501fece505101444bae542883e8",
+        "bytes": 1558
+      },
+      {
+        "path": "/usr/lib/python3.12/concurrent/futures/_base.py",
+        "sha256": "8c6d5f09f7c535d40fa1c30ebfcb35e0601c2abf32286a82cf151af7ddf72473",
+        "bytes": 22833
+      },
+      {
+        "path": "/usr/lib/python3.12/contextlib.py",
+        "sha256": "8b7a477f978a8532852fd81e241c78182516bc4975d672d580a5848a76e11eb6",
+        "bytes": 27637
+      },
+      {
+        "path": "/usr/lib/python3.12/contextvars.py",
+        "sha256": "5ed260be8d1f4fe92261b7810b4bb1e8539c42093d7493f677d076e1a87f459a",
+        "bytes": 129
+      },
+      {
+        "path": "/usr/lib/python3.12/copy.py",
+        "sha256": "cbd25547933176fcf6bb05c2adc9f4796d15ac20b9b82dcf890daea7203daeab",
+        "bytes": 8412
+      },
+      {
+        "path": "/usr/lib/python3.12/copyreg.py",
+        "sha256": "c8eda41f05c6bf95a4da4726a530409d2485ae060b8d019b3a8034389a15d3e9",
+        "bytes": 7614
+      },
+      {
+        "path": "/usr/lib/python3.12/ctypes/__init__.py",
+        "sha256": "0782592567ad71097198a3afe985ac3e2ea0b9b5e75452402c9460c89a86318a",
+        "bytes": 18182
+      },
+      {
+        "path": "/usr/lib/python3.12/ctypes/_endian.py",
+        "sha256": "c5d692bdce10dfee242752620061bab684633bc72445a3def484961ef1bdbf3a",
+        "bytes": 2535
+      },
+      {
+        "path": "/usr/lib/python3.12/dataclasses.py",
+        "sha256": "0e449d55d6206b0022f541ba32be88fafc934ff71d9aa65f31f101ca6147f2ae",
+        "bytes": 61753
+      },
+      {
+        "path": "/usr/lib/python3.12/dis.py",
+        "sha256": "f6f02f5966fed0b1ce95768dc59d7905c64f60f454d79eed67fbeaa724069031",
+        "bytes": 30209
+      },
+      {
+        "path": "/usr/lib/python3.12/encodings/__init__.py",
+        "sha256": "78c4744d407690f321565488710b5aaf6486b5afa8d185637aa1e7633ab59cd8",
+        "bytes": 5884
+      },
+      {
+        "path": "/usr/lib/python3.12/encodings/aliases.py",
+        "sha256": "6fdcc49ba23a0203ae6cf28e608f8e6297d7c4d77d52e651db3cb49b9564c6d2",
+        "bytes": 15677
+      },
+      {
+        "path": "/usr/lib/python3.12/encodings/utf_8.py",
+        "sha256": "ba0cac060269583523ca9506473a755203037c57d466a11aa89a30a5f6756f3d",
+        "bytes": 1005
+      },
+      {
+        "path": "/usr/lib/python3.12/enum.py",
+        "sha256": "c8ead615c159598370295649eb296819ad4b40d50b200c4fec2d4269bf7af9ae",
+        "bytes": 81636
+      },
+      {
+        "path": "/usr/lib/python3.12/fnmatch.py",
+        "sha256": "6683da36e47af523f3f41e18ad244d837783e19e98911cc0b7415dea81494ebc",
+        "bytes": 5999
+      },
+      {
+        "path": "/usr/lib/python3.12/functools.py",
+        "sha256": "cca971c456e1bec8b751aecdf41466f34dbf72321ee0840627280ba2ccf9d033",
+        "bytes": 38126
+      },
+      {
+        "path": "/usr/lib/python3.12/genericpath.py",
+        "sha256": "2b0b35d2206778af4081cf81dd9b513876e72c35a55bec941402e1fa62b1f1aa",
+        "bytes": 5572
+      },
+      {
+        "path": "/usr/lib/python3.12/gettext.py",
+        "sha256": "1cc6fd33bdce3bb29c0c37ec9a2f5bf15a315e9776b329247e6675c028a8af39",
+        "bytes": 21747
+      },
+      {
+        "path": "/usr/lib/python3.12/hashlib.py",
+        "sha256": "6dbdebf270868b391080e21dc9687eddfaf321c965ad979f68d3f5c423c613ab",
+        "bytes": 9349
+      },
+      {
+        "path": "/usr/lib/python3.12/heapq.py",
+        "sha256": "6d43277e5c76fc0f073cd388fcff852d14d068f6bb6d4886c340f8b75a1229a9",
+        "bytes": 23024
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/__init__.py",
+        "sha256": "c9e1b3dbc619ac31e7017ac43668a20200872c1c0e79ae379c0dab6ed399b730",
+        "bytes": 4774
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/_abc.py",
+        "sha256": "80aab7931dc999dee581c8b8b56fcd973fe156335a96ceeaf6acfc03cebf10e8",
+        "bytes": 1354
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/_bootstrap.py",
+        "sha256": "9653944363a4773cc32bbb34426024597a9d2ee4cd42e7912b4daf8cadfb53ed",
+        "bytes": 57056
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/_bootstrap_external.py",
+        "sha256": "97c6211750d63067712ad2cd74d50be33337f1fb1cd2c769022ced9b401edd92",
+        "bytes": 69197
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/abc.py",
+        "sha256": "5f9cb36ca1bce9d5df00bc8d4d7f46b7ea2353dfa99292ad7f099affddfb5d03",
+        "bytes": 7612
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/machinery.py",
+        "sha256": "d045cd7ecf2a12b6ecbfbef79eb114e87ef2ebd756f5b705f73e6f3266e3dede",
+        "bytes": 880
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/resources/__init__.py",
+        "sha256": "7af3e6d7690b818a939bea5bce6eb46cebae9ae993f08a41356169d2e332af31",
+        "bytes": 506
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/resources/_adapters.py",
+        "sha256": "be9ac919b51e1db6a35fa5c2b8c3fa27794caea0a2f8ffcc4e5ce225447b8df9",
+        "bytes": 4482
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/resources/_common.py",
+        "sha256": "9bfef8de14579936e96c0e921e934a3f4f56b4e32d3cfacc12f3e24436fc37b4",
+        "bytes": 5459
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/resources/_legacy.py",
+        "sha256": "d1329d662c712d603ec70b40670e07729a899a3e17a6bc7566472dcb48134596",
+        "bytes": 3481
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/resources/abc.py",
+        "sha256": "a726c48590b21ba5532f0c654735991571bc0ecafe88145cb8891d82cd364e5e",
+        "bytes": 5203
+      },
+      {
+        "path": "/usr/lib/python3.12/importlib/util.py",
+        "sha256": "ca54e6458dbe521d591e5b8d9bb651ef929bfae946706c98470cdd569041a64f",
+        "bytes": 10840
+      },
+      {
+        "path": "/usr/lib/python3.12/inspect.py",
+        "sha256": "13945f061d93cf7b8f812d2afc279ff0b3aea799c7146b1c0c58c6e644bbc3e1",
+        "bytes": 125420
+      },
+      {
+        "path": "/usr/lib/python3.12/io.py",
+        "sha256": "7cec3cb8ac004058dd0a5af246e6d950fb59c7ddd0058fda48bcb3fcb98d8822",
+        "bytes": 3582
+      },
+      {
+        "path": "/usr/lib/python3.12/ipaddress.py",
+        "sha256": "cc9831e239bd81c1480a12733bded744002d93815fd0d083c77aea348c956e67",
+        "bytes": 78294
+      },
+      {
+        "path": "/usr/lib/python3.12/json/__init__.py",
+        "sha256": "d5d41e2c29049515d295d81a6d40b4890fbec8d8482cfb401630f8ef2f77e4d5",
+        "bytes": 14020
+      },
+      {
+        "path": "/usr/lib/python3.12/json/decoder.py",
+        "sha256": "9f02654649816145bc76f8c210a5fe3ba1de142d4d97a1c93105732e747c285b",
+        "bytes": 12473
+      },
+      {
+        "path": "/usr/lib/python3.12/json/encoder.py",
+        "sha256": "af7bd40a0d0d0a3e726a9b4b3a2a543019f6ab97a340d0162a9c29ca9da97869",
+        "bytes": 16070
+      },
+      {
+        "path": "/usr/lib/python3.12/json/scanner.py",
+        "sha256": "8604d9d03786d0d509abb49e9f069337278ea988c244069ae8ca2c89acc2cb08",
+        "bytes": 2425
+      },
+      {
+        "path": "/usr/lib/python3.12/keyword.py",
+        "sha256": "18c2be738c04ad20ad375f6a71db34b3823c7f40b0340f5294d0e89f3c9b093b",
+        "bytes": 1073
+      },
+      {
+        "path": "/usr/lib/python3.12/lib-dynload/_asyncio.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "bf62de8aaab17955c9164e582ae7ea0aae3a704e2d8068ff6da12dbf29f784e5",
+        "bytes": 82184
+      },
+      {
+        "path": "/usr/lib/python3.12/lib-dynload/_bz2.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "eff8df23cdc54d38ce9ca600d07c21ccfd7f22bd52a0720e599e6828d3e2eb76",
+        "bytes": 32112
+      },
+      {
+        "path": "/usr/lib/python3.12/lib-dynload/_contextvars.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "da24b21e136402103121806aa5b031bc50e1576a44cd4a0e1f60bc16fd936706",
+        "bytes": 14560
+      },
+      {
+        "path": "/usr/lib/python3.12/lib-dynload/_ctypes.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "aad3e24f186e6c0a1c7efa8f16004f951f527db86f6451d30118657384a456c1",
+        "bytes": 137968
+      },
+      {
+        "path": "/usr/lib/python3.12/lib-dynload/_hashlib.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "8dc6cda6dd9495b95a2bfb5b26e8cf06b72f36dc0213d958b9277a958287f0fe",
+        "bytes": 64368
+      },
+      {
+        "path": "/usr/lib/python3.12/lib-dynload/_json.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "ca8e35c58f7bc8e27258c4af43651c941413bc6318903621253485b0395758a3",
+        "bytes": 48952
+      },
+      {
+        "path": "/usr/lib/python3.12/lib-dynload/_lzma.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "cb298120e40f064dc047e638d911f8b3b0abf625bf1d6bd07902b46efd820fd7",
+        "bytes": 49256
+      },
+      {
+        "path": "/usr/lib/python3.12/lib-dynload/_ssl.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "80c755c80688b92e0f32af9168a605f1283256077f35d30f6cf518252f2a6660",
+        "bytes": 221360
+      },
+      {
+        "path": "/usr/lib/python3.12/linecache.py",
+        "sha256": "c985113d9219c02950916e75090158bccf44cacac09014741b1c59b07968d111",
+        "bytes": 5649
+      },
+      {
+        "path": "/usr/lib/python3.12/locale.py",
+        "sha256": "d1134b7212bad37b7b81339061dc37a19a194aa183ec2cb60412cf365993b151",
+        "bytes": 78562
+      },
+      {
+        "path": "/usr/lib/python3.12/logging/__init__.py",
+        "sha256": "43f86bbc08fdd5c7b6e697abffe1381f534a92bb32e1f1aee8360d6a142592a1",
+        "bytes": 83437
+      },
+      {
+        "path": "/usr/lib/python3.12/lzma.py",
+        "sha256": "58fb9d2fdc8a8af7b25e218f17ea3b51bdfa53bdf40f440ab33c605974ca5c2e",
+        "bytes": 13277
+      },
+      {
+        "path": "/usr/lib/python3.12/ntpath.py",
+        "sha256": "c4dd79bf103677daaad873952b89fc1f973425e7b250006cc35af4c164181da8",
+        "bytes": 30027
+      },
+      {
+        "path": "/usr/lib/python3.12/opcode.py",
+        "sha256": "192f6008508f28d3273bff42eaea9b01c8394dab1607cd36aea778bdd166c3a6",
+        "bytes": 13174
+      },
+      {
+        "path": "/usr/lib/python3.12/operator.py",
+        "sha256": "b2af20f67667203c1730e686cc5d0427becc94db4c97f1d3efe3ed2158473f6a",
+        "bytes": 10965
+      },
+      {
+        "path": "/usr/lib/python3.12/os.py",
+        "sha256": "316d1b7307fd851bded3423c9d437e0a383c725d993f0fcff2e8b749fe560b62",
+        "bytes": 39786
+      },
+      {
+        "path": "/usr/lib/python3.12/pathlib.py",
+        "sha256": "b43e134bf7479759838b4ecec3d78e0e67fdfde2d671c5c2d7886a47da93885d",
+        "bytes": 51153
+      },
+      {
+        "path": "/usr/lib/python3.12/pkgutil.py",
+        "sha256": "44300bc77f6f52ef2ad74d26e5053309c04f49eaa91c099356eb61426cde504f",
+        "bytes": 18281
+      },
+      {
+        "path": "/usr/lib/python3.12/posixpath.py",
+        "sha256": "c443d7b8afad1717e7060ce49b3e04423058de56cd4246ee6bcc1ac962eb5c2b",
+        "bytes": 17623
+      },
+      {
+        "path": "/usr/lib/python3.12/random.py",
+        "sha256": "0693d4ded36916f5b07d6c395cc331dbf1011bb70e90daaa29eaa32490a09425",
+        "bytes": 34683
+      },
+      {
+        "path": "/usr/lib/python3.12/re/__init__.py",
+        "sha256": "8ff3c37c63b917fcf8dc8d50993a502292a3dc159e41de4f4018c72a53d1c07b",
+        "bytes": 16315
+      },
+      {
+        "path": "/usr/lib/python3.12/re/_casefix.py",
+        "sha256": "41572ac50cf96b04496e676d8a6708898bb8e752e06dad34ed4c50c5d8f1fe40",
+        "bytes": 5446
+      },
+      {
+        "path": "/usr/lib/python3.12/re/_compiler.py",
+        "sha256": "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
+        "bytes": 26089
+      },
+      {
+        "path": "/usr/lib/python3.12/re/_constants.py",
+        "sha256": "fa4fdb200f238f9e7817b63892b0d69833d8165134801e775e10cc113348a375",
+        "bytes": 5930
+      },
+      {
+        "path": "/usr/lib/python3.12/re/_parser.py",
+        "sha256": "a51a85b37cf3f44ba7ff25754da5f31306e4ccfa6eb3c017f9d37bdf4e770840",
+        "bytes": 41201
+      },
+      {
+        "path": "/usr/lib/python3.12/reprlib.py",
+        "sha256": "8da31054076803065758311f54b18b8a616824941977d907dc3ee729228e9015",
+        "bytes": 6569
+      },
+      {
+        "path": "/usr/lib/python3.12/selectors.py",
+        "sha256": "1eeb102373e18c96311203f30c516e785bd8642275aa0bd66e43a284c9692385",
+        "bytes": 19671
+      },
+      {
+        "path": "/usr/lib/python3.12/shutil.py",
+        "sha256": "819e518cb7a539d09b2526138015541b34d2646afb9c2f6ae4ffd476d6a0fcf4",
+        "bytes": 58120
+      },
+      {
+        "path": "/usr/lib/python3.12/signal.py",
+        "sha256": "0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a",
+        "bytes": 2495
+      },
+      {
+        "path": "/usr/lib/python3.12/site.py",
+        "sha256": "619436355cbe91c3b29681ab486ee63f5f2e0a7d6274dfae747bdb94e60bca55",
+        "bytes": 23903
+      },
+      {
+        "path": "/usr/lib/python3.12/socket.py",
+        "sha256": "b59366f7c35583a274c8031351c146d9c64c4e680adf45d99a3335536a20a6cc",
+        "bytes": 37411
+      },
+      {
+        "path": "/usr/lib/python3.12/ssl.py",
+        "sha256": "ca7dd38c7d39af5112b9669abffcef3f1bb374fb8fa0a2cd071aea09fce203da",
+        "bytes": 50822
+      },
+      {
+        "path": "/usr/lib/python3.12/stat.py",
+        "sha256": "052af0327eae6941b69b05c088b3e748f79995635f80ac4cc7125eb333eb4c77",
+        "bytes": 5485
+      },
+      {
+        "path": "/usr/lib/python3.12/string.py",
+        "sha256": "24aeae1f0526250f442022022bf98df9a823b1cb330543ee79e70e44907462e9",
+        "bytes": 11786
+      },
+      {
+        "path": "/usr/lib/python3.12/struct.py",
+        "sha256": "9c231f9497caf513a22dee8f790b07f969b0e45854a0bdd6dd84b492e08c2856",
+        "bytes": 257
+      },
+      {
+        "path": "/usr/lib/python3.12/subprocess.py",
+        "sha256": "baa9f9138d8d20df6284f67e7d2e790f847f65e2c5370de322d54cccd737f2d9",
+        "bytes": 88725
+      },
+      {
+        "path": "/usr/lib/python3.12/tempfile.py",
+        "sha256": "8c8033ed1426ace79e07a6608887d2a1694d817d63d61b04c3d59339f24b4269",
+        "bytes": 37334
+      },
+      {
+        "path": "/usr/lib/python3.12/textwrap.py",
+        "sha256": "62867e40cdea6669b361f72af4d7daf0359f207c92cbeddfc7c7506397c1f31c",
+        "bytes": 19718
+      },
+      {
+        "path": "/usr/lib/python3.12/threading.py",
+        "sha256": "8273b4cf5b6f274b4993f5cae08634dd272c6952af9867ff9aa13ed446f1549b",
+        "bytes": 60123
+      },
+      {
+        "path": "/usr/lib/python3.12/token.py",
+        "sha256": "fc76ed1a1cbdb2c961d27cd67acee766abcfcdab06661701db4d9524efb5bd41",
+        "bytes": 2479
+      },
+      {
+        "path": "/usr/lib/python3.12/tokenize.py",
+        "sha256": "a39cd5ee895abc085117448fba78ccc18bea3faf073ac18c5365b26e0dd1fe7c",
+        "bytes": 21214
+      },
+      {
+        "path": "/usr/lib/python3.12/traceback.py",
+        "sha256": "a96b7d5bfe46a8be9b90613b1555dbd795d51f46aec6b769af06cec465bee39e",
+        "bytes": 46325
+      },
+      {
+        "path": "/usr/lib/python3.12/types.py",
+        "sha256": "345474ef027a1273f353da9bdc1f7c18f65335e72e681bcc0376774cc51f2405",
+        "bytes": 10993
+      },
+      {
+        "path": "/usr/lib/python3.12/typing.py",
+        "sha256": "c45d935c17234b1d6ae42d2d5499d3e03b4e2548fae0c4fce15477e23502214d",
+        "bytes": 117428
+      },
+      {
+        "path": "/usr/lib/python3.12/urllib/__init__.py",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "/usr/lib/python3.12/urllib/parse.py",
+        "sha256": "a67b5694763137dbac085adbf0c22821d435ec8ca22d3bd3786d2c9f4ee748d5",
+        "bytes": 45591
+      },
+      {
+        "path": "/usr/lib/python3.12/warnings.py",
+        "sha256": "8eb1bb88d0beb82ebecfe7ee5cf54ed9b77b4a7acee1989e392a65de42017c49",
+        "bytes": 21760
+      },
+      {
+        "path": "/usr/lib/python3.12/weakref.py",
+        "sha256": "56f8d313fb74019e53eb9287400702fbce788b7fe30e097b0b6e06296f3f080c",
+        "bytes": 21513
+      },
+      {
+        "path": "/usr/lib/python3.12/zipimport.py",
+        "sha256": "4ac94d92219c2e1c0d67ad3fff3753ec3a3756af62a36a2f696f02cd12d518f0",
+        "bytes": 28132
+      }
+    ]
+  },
+  "owned_projection": {
+    "path": "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+    "sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+    "bytes": 20214
+  },
+  "registry": [
+    {
+      "descriptor": {
+        "attributes": [
+          "dictionary",
+          [
+            [
+              "op_name__",
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.StringAttr",
+                "string",
+                [
+                  "str",
+                  "func.call_indirect"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "class": "xdsl.dialects.builtin.UnregisteredOp.with_name.<locals>.UnregisteredOpWithNameOp",
+        "name": "builtin.unregistered",
+        "operand_types": [
+          [
+            "attribute",
+            "xdsl.dialects.builtin.FunctionType",
+            "fun",
+            [
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.ArrayAttr",
+                "array",
+                [
+                  "tuple",
+                  [
+                    [
+                      "attribute",
+                      "xdsl.dialects.builtin.IntegerType",
+                      "integer_type",
+                      [
+                        [
+                          "data-attribute",
+                          "xdsl.dialects.builtin.IntAttr",
+                          "builtin.int",
+                          [
+                            "int",
+                            8
+                          ]
+                        ],
+                        [
+                          "data-attribute",
+                          "xdsl.dialects.builtin.SignednessAttr",
+                          "builtin.signedness",
+                          [
+                            "xdsl.dialects.builtin.Signedness",
+                            "SIGNLESS",
+                            [
+                              "int",
+                              0
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.ArrayAttr",
+                "array",
+                [
+                  "tuple",
+                  [
+                    [
+                      "attribute",
+                      "xdsl.dialects.builtin.IntegerType",
+                      "integer_type",
+                      [
+                        [
+                          "data-attribute",
+                          "xdsl.dialects.builtin.IntAttr",
+                          "builtin.int",
+                          [
+                            "int",
+                            8
+                          ]
+                        ],
+                        [
+                          "data-attribute",
+                          "xdsl.dialects.builtin.SignednessAttr",
+                          "builtin.signedness",
+                          [
+                            "xdsl.dialects.builtin.Signedness",
+                            "SIGNLESS",
+                            [
+                              "int",
+                              0
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          [
+            "attribute",
+            "xdsl.dialects.builtin.IntegerType",
+            "integer_type",
+            [
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.IntAttr",
+                "builtin.int",
+                [
+                  "int",
+                  8
+                ]
+              ],
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.SignednessAttr",
+                "builtin.signedness",
+                [
+                  "xdsl.dialects.builtin.Signedness",
+                  "SIGNLESS",
+                  [
+                    "int",
+                    0
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ],
+        "properties": [
+          "dictionary",
+          []
+        ],
+        "result_types": [
+          [
+            "attribute",
+            "xdsl.dialects.builtin.IntegerType",
+            "integer_type",
+            [
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.IntAttr",
+                "builtin.int",
+                [
+                  "int",
+                  8
+                ]
+              ],
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.SignednessAttr",
+                "builtin.signedness",
+                [
+                  "xdsl.dialects.builtin.Signedness",
+                  "SIGNLESS",
+                  [
+                    "int",
+                    0
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "inputs": [
+        {
+          "opaque": 0
+        },
+        {
+          "bits": 8
+        }
+      ],
+      "outputs": [
+        {
+          "bits": 8
+        }
+      ],
+      "index_constant": null
+    },
+    {
+      "descriptor": {
+        "attributes": [
+          "dictionary",
+          [
+            [
+              "op_name__",
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.StringAttr",
+                "string",
+                [
+                  "str",
+                  "func.constant"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "class": "xdsl.dialects.builtin.UnregisteredOp.with_name.<locals>.UnregisteredOpWithNameOp",
+        "name": "builtin.unregistered",
+        "operand_types": [],
+        "properties": [
+          "dictionary",
+          [
+            [
+              "value",
+              [
+                "attribute",
+                "xdsl.dialects.builtin.SymbolRefAttr",
+                "symbol_ref",
+                [
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.StringAttr",
+                    "string",
+                    [
+                      "str",
+                      "callee"
+                    ]
+                  ],
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.ArrayAttr",
+                    "array",
+                    [
+                      "tuple",
+                      []
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ],
+        "result_types": [
+          [
+            "attribute",
+            "xdsl.dialects.builtin.FunctionType",
+            "fun",
+            [
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.ArrayAttr",
+                "array",
+                [
+                  "tuple",
+                  [
+                    [
+                      "attribute",
+                      "xdsl.dialects.builtin.IntegerType",
+                      "integer_type",
+                      [
+                        [
+                          "data-attribute",
+                          "xdsl.dialects.builtin.IntAttr",
+                          "builtin.int",
+                          [
+                            "int",
+                            8
+                          ]
+                        ],
+                        [
+                          "data-attribute",
+                          "xdsl.dialects.builtin.SignednessAttr",
+                          "builtin.signedness",
+                          [
+                            "xdsl.dialects.builtin.Signedness",
+                            "SIGNLESS",
+                            [
+                              "int",
+                              0
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.ArrayAttr",
+                "array",
+                [
+                  "tuple",
+                  [
+                    [
+                      "attribute",
+                      "xdsl.dialects.builtin.IntegerType",
+                      "integer_type",
+                      [
+                        [
+                          "data-attribute",
+                          "xdsl.dialects.builtin.IntAttr",
+                          "builtin.int",
+                          [
+                            "int",
+                            8
+                          ]
+                        ],
+                        [
+                          "data-attribute",
+                          "xdsl.dialects.builtin.SignednessAttr",
+                          "builtin.signedness",
+                          [
+                            "xdsl.dialects.builtin.Signedness",
+                            "SIGNLESS",
+                            [
+                              "int",
+                              0
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "opaque": 0
+        }
+      ],
+      "index_constant": null
+    }
+  ],
+  "types": [
+    [
+      "attribute",
+      "xdsl.dialects.builtin.FunctionType",
+      "fun",
+      [
+        [
+          "data-attribute",
+          "xdsl.dialects.builtin.ArrayAttr",
+          "array",
+          [
+            "tuple",
+            [
+              [
+                "attribute",
+                "xdsl.dialects.builtin.IntegerType",
+                "integer_type",
+                [
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.IntAttr",
+                    "builtin.int",
+                    [
+                      "int",
+                      8
+                    ]
+                  ],
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.SignednessAttr",
+                    "builtin.signedness",
+                    [
+                      "xdsl.dialects.builtin.Signedness",
+                      "SIGNLESS",
+                      [
+                        "int",
+                        0
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ],
+        [
+          "data-attribute",
+          "xdsl.dialects.builtin.ArrayAttr",
+          "array",
+          [
+            "tuple",
+            [
+              [
+                "attribute",
+                "xdsl.dialects.builtin.IntegerType",
+                "integer_type",
+                [
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.IntAttr",
+                    "builtin.int",
+                    [
+                      "int",
+                      8
+                    ]
+                  ],
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.SignednessAttr",
+                    "builtin.signedness",
+                    [
+                      "xdsl.dialects.builtin.Signedness",
+                      "SIGNLESS",
+                      [
+                        "int",
+                        0
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    [
+      "attribute",
+      "xdsl.dialects.builtin.IntegerType",
+      "integer_type",
+      [
+        [
+          "data-attribute",
+          "xdsl.dialects.builtin.IntAttr",
+          "builtin.int",
+          [
+            "int",
+            8
+          ]
+        ],
+        [
+          "data-attribute",
+          "xdsl.dialects.builtin.SignednessAttr",
+          "builtin.signedness",
+          [
+            "xdsl.dialects.builtin.Signedness",
+            "SIGNLESS",
+            [
+              "int",
+              0
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "functions": [
+    {
+      "name": "callee",
+      "header": {
+        "class": "xdsl.dialects.func.FuncOp",
+        "name": "func.func",
+        "attributes": [
+          "dictionary",
+          []
+        ],
+        "properties": [
+          "dictionary",
+          [
+            [
+              "function_type",
+              [
+                "attribute",
+                "xdsl.dialects.builtin.FunctionType",
+                "fun",
+                [
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.ArrayAttr",
+                    "array",
+                    [
+                      "tuple",
+                      [
+                        [
+                          "attribute",
+                          "xdsl.dialects.builtin.IntegerType",
+                          "integer_type",
+                          [
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.IntAttr",
+                              "builtin.int",
+                              [
+                                "int",
+                                8
+                              ]
+                            ],
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.SignednessAttr",
+                              "builtin.signedness",
+                              [
+                                "xdsl.dialects.builtin.Signedness",
+                                "SIGNLESS",
+                                [
+                                  "int",
+                                  0
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ],
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.ArrayAttr",
+                    "array",
+                    [
+                      "tuple",
+                      [
+                        [
+                          "attribute",
+                          "xdsl.dialects.builtin.IntegerType",
+                          "integer_type",
+                          [
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.IntAttr",
+                              "builtin.int",
+                              [
+                                "int",
+                                8
+                              ]
+                            ],
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.SignednessAttr",
+                              "builtin.signedness",
+                              [
+                                "xdsl.dialects.builtin.Signedness",
+                                "SIGNLESS",
+                                [
+                                  "int",
+                                  0
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ],
+            [
+              "sym_name",
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.StringAttr",
+                "string",
+                [
+                  "str",
+                  "callee"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "operand_types": [],
+        "result_types": []
+      },
+      "inputs": [
+        {
+          "bits": 8
+        }
+      ],
+      "outputs": [
+        {
+          "bits": 8
+        }
+      ],
+      "before": [
+        {
+          "pure": {
+            "kind": "sub",
+            "width": 8
+          },
+          "arguments": [
+            0,
+            0
+          ]
+        },
+        {
+          "ret": [
+            0
+          ]
+        }
+      ],
+      "after": [
+        {
+          "pure": {
+            "kind": "sub",
+            "width": 8
+          },
+          "arguments": [
+            0,
+            0
+          ]
+        },
+        {
+          "ret": [
+            0
+          ]
+        }
+      ],
+      "declaration": false
+    },
+    {
+      "name": "k",
+      "header": {
+        "class": "xdsl.dialects.func.FuncOp",
+        "name": "func.func",
+        "attributes": [
+          "dictionary",
+          []
+        ],
+        "properties": [
+          "dictionary",
+          [
+            [
+              "function_type",
+              [
+                "attribute",
+                "xdsl.dialects.builtin.FunctionType",
+                "fun",
+                [
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.ArrayAttr",
+                    "array",
+                    [
+                      "tuple",
+                      [
+                        [
+                          "attribute",
+                          "xdsl.dialects.builtin.IntegerType",
+                          "integer_type",
+                          [
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.IntAttr",
+                              "builtin.int",
+                              [
+                                "int",
+                                8
+                              ]
+                            ],
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.SignednessAttr",
+                              "builtin.signedness",
+                              [
+                                "xdsl.dialects.builtin.Signedness",
+                                "SIGNLESS",
+                                [
+                                  "int",
+                                  0
+                                ]
+                              ]
+                            ]
+                          ]
+                        ],
+                        [
+                          "attribute",
+                          "xdsl.dialects.builtin.IntegerType",
+                          "integer_type",
+                          [
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.IntAttr",
+                              "builtin.int",
+                              [
+                                "int",
+                                8
+                              ]
+                            ],
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.SignednessAttr",
+                              "builtin.signedness",
+                              [
+                                "xdsl.dialects.builtin.Signedness",
+                                "SIGNLESS",
+                                [
+                                  "int",
+                                  0
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ],
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.ArrayAttr",
+                    "array",
+                    [
+                      "tuple",
+                      [
+                        [
+                          "attribute",
+                          "xdsl.dialects.builtin.IntegerType",
+                          "integer_type",
+                          [
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.IntAttr",
+                              "builtin.int",
+                              [
+                                "int",
+                                8
+                              ]
+                            ],
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.SignednessAttr",
+                              "builtin.signedness",
+                              [
+                                "xdsl.dialects.builtin.Signedness",
+                                "SIGNLESS",
+                                [
+                                  "int",
+                                  0
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ],
+            [
+              "sym_name",
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.StringAttr",
+                "string",
+                [
+                  "str",
+                  "k"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "operand_types": [],
+        "result_types": []
+      },
+      "inputs": [
+        {
+          "bits": 8
+        },
+        {
+          "bits": 8
+        }
+      ],
+      "outputs": [
+        {
+          "bits": 8
+        }
+      ],
+      "before": [
+        {
+          "effect": 1,
+          "arguments": [],
+          "outputs": [
+            {
+              "opaque": 0
+            }
+          ]
+        },
+        {
+          "pure": {
+            "kind": "add",
+            "width": 8
+          },
+          "arguments": [
+            1,
+            2
+          ]
+        },
+        {
+          "pure": {
+            "kind": "add",
+            "width": 8
+          },
+          "arguments": [
+            2,
+            3
+          ]
+        },
+        {
+          "pure": {
+            "kind": "mul",
+            "width": 8
+          },
+          "arguments": [
+            1,
+            0
+          ]
+        },
+        {
+          "effect": 0,
+          "arguments": [
+            3,
+            0
+          ],
+          "outputs": [
+            {
+              "bits": 8
+            }
+          ]
+        },
+        {
+          "ret": [
+            0
+          ]
+        }
+      ],
+      "after": [
+        {
+          "effect": 1,
+          "arguments": [],
+          "outputs": [
+            {
+              "opaque": 0
+            }
+          ]
+        },
+        {
+          "pure": {
+            "kind": "add",
+            "width": 8
+          },
+          "arguments": [
+            1,
+            2
+          ]
+        },
+        {
+          "pure": {
+            "kind": "mul",
+            "width": 8
+          },
+          "arguments": [
+            0,
+            0
+          ]
+        },
+        {
+          "effect": 0,
+          "arguments": [
+            2,
+            0
+          ],
+          "outputs": [
+            {
+              "bits": 8
+            }
+          ]
+        },
+        {
+          "ret": [
+            0
+          ]
+        }
+      ],
+      "declaration": false
+    }
+  ],
+  "module_header": {
+    "class": "xdsl.dialects.builtin.ModuleOp",
+    "name": "builtin.module",
+    "attributes": [
+      "dictionary",
+      []
+    ],
+    "properties": [
+      "dictionary",
+      []
+    ],
+    "operand_types": [],
+    "result_types": []
+  },
+  "operation_budget_used": 15,
+  "trust": [
+    "pinned xDSL parser/verification and actual scalar producer execution",
+    "primary complete typed SSA/metadata projection into the checked graph language",
+    "eligible primitives have the selected total deterministic pure value meaning",
+    "opaque descriptors share the same partial persistent-world interpretation and successful result arity",
+    "SCF bound values/control interpretation matches a common finite iteration sequence on its admitted domain",
+    "local calls, CFG and opaque regions outside the supported model are refused"
+  ],
+  "primitive_fidelity_proved": false,
+  "source_success_proved": false,
+  "poison_freedom_proved": false,
+  "public_acceptance_issued": false,
+  "review_approved": false,
+  "native_fidelity_proved": false
+}

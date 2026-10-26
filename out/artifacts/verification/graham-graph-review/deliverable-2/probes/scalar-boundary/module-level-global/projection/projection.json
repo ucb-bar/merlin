@@ -1,0 +1,8 @@
+{
+  "projection_checked": false,
+  "reason": {
+    "type": "ValueError",
+    "detail": "unsupported module-level operation; no missing surrounding context"
+  },
+  "public_acceptance_issued": false
+}

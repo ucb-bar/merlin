@@ -1,0 +1,8 @@
+{
+  "projection_checked": false,
+  "reason": {
+    "type": "ValueError",
+    "detail": "unsupported/dropped function CFG blocks"
+  },
+  "public_acceptance_issued": false
+}

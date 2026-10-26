@@ -1,0 +1,283 @@
+{
+  "reviewer": "Graham independent review (agent)",
+  "date": "2026-10-26",
+  "verification_commit": "58dbc7c00acdb6770d440b773cc2954328c78472",
+  "producer_commit": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "producer_checkout": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+  "lean": {
+    "path": "/home/grammy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38"
+  },
+  "lean_library_used_read_only": "out/build/verification-setup/20261025/graph-smoke-MJ63mO/lib/lean",
+  "python": "/home/grammy/blast/merlin-pass-verification/.venv/bin/python (3.12, xdsl 0.68.0)",
+  "reviewed": [
+    {
+      "path": "src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+      "bytes": 20214
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_scalar.py",
+      "sha256": "d1cb71af342dd09008bade5b8d56a4c039781a0bbf37bf7813d508acacb50e43",
+      "bytes": 15186
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_scalar_chain.py",
+      "sha256": "710ca7a0341e5f0e42a42c63ee1323a84e9c9fa5f31750e60b69ade52d87f986",
+      "bytes": 4106
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state.py",
+      "sha256": "8568b83e5c6bb92b927136e90f18412b8c6912a35b23aa5d27d9c6ede073f1c1",
+      "bytes": 15961
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "bytes": 4654
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "bytes": 8229
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "bytes": 6170
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "bytes": 6614
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "sha256": "3d522ee9d47732e009a9c0e46932e91bba2896b07fcdf4c40dc5d3806054e6b8",
+      "bytes": 13383
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+      "sha256": "f065b5d82adbaee702bedd60c08d165e0ca81eae030484d18806a971c9f32ae6",
+      "bytes": 8638
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+      "sha256": "c14ceb21489b6ffaf862ceb21554de43f3de5da92e3c155764f2b518f16bbe83",
+      "bytes": 4763
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf.py",
+      "sha256": "5a17f1932da0ddd1bbfe9be92a464ba7fd2dac849ad45878433a3c4241eb4da7",
+      "bytes": 7112
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_reuse_projection.py",
+      "sha256": "fcf75ecc44039a2a5b6a8a69cff1b7a8a9a23ac449100fe21c88464a56266102",
+      "bytes": 18764
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+      "sha256": "2479ffd848dfac16aa3946f4fdb74d7ff3717c584f95e8692355743caf21d258",
+      "bytes": 6509
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_segment_projection.py",
+      "sha256": "c522dcd9b440f5deb3d9147aeabb3fea36fd69d129bb60fc1533185cd33d1ae8",
+      "bytes": 12966
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+      "sha256": "ab8b6b45b64cd20100cfe53eb84d9d27ba5b0997433db7e1ed4f9f94baf64669",
+      "bytes": 6485
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+      "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+      "bytes": 6316
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+      "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+      "bytes": 5453
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "bytes": 7091
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean",
+      "sha256": "538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0",
+      "bytes": 6086
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_projection.py",
+      "sha256": "e98a10afc170db23b378488450b874f6178bdaa6ce1f0115cb09a02d12e5414c",
+      "bytes": 13895
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_model.py",
+      "sha256": "24650e08cac546b7bd9ffaad2fdbf979d766728675a92f15fa129999087ff320",
+      "bytes": 8067
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+      "sha256": "8a92666910b573f37941594d04de202d48628fc3e5246ed8359b15fe864cd97a",
+      "bytes": 6202
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean",
+      "sha256": "38952ca358eebd28a5a8103a18f002c86ecbcc76b3e82b2642e8f5a4245f6371",
+      "bytes": 3342
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_pipeline_capture.py",
+      "sha256": "3960c5ffdb65e70f104a16fb4328eeffde22906afe199719403f0053850ff9be",
+      "bytes": 11606
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_integer_capture.py",
+      "sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5",
+      "bytes": 8060
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_state_scalar.py",
+      "sha256": "3496470747c0f7819197188859cd1517d77b6adf7c590c118802f36f3f782426",
+      "bytes": 9875
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/GRAHAM_HANDOFF.md",
+      "sha256": "14446420b085cd991b8b2d4ff99ebcb819701bb08921b413bb49b962c032a491",
+      "bytes": 19203
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/MANIFEST.json",
+      "sha256": "3b56b5e71e280eadd1f48e88bb237cce83936c0f947bcd1b917bec57bce53287",
+      "bytes": 21452
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/kernel/GraphStateScalarInstance.lean",
+      "sha256": "544b1dfd1230805af931d3a32f0b7923acd78a404cd0918fcb162b1ae0ddbabc",
+      "bytes": 4039
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/projection/projection.json",
+      "sha256": "8f5e83638203e5d621495c614253b547892505f878fdddc9c095f5532260acc5",
+      "bytes": 92574
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/Check.lean",
+      "sha256": "a4abc04170b9ecdc1041dd7d427b4ce517258fbb7d855db82f99a48b63c2835f",
+      "bytes": 26321
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/Check.lean",
+      "sha256": "ad924392a0dff9860bb799f138ed390bdd0578dc1a70bb4c5e2fce0f006d7ab9",
+      "bytes": 26489
+    },
+    {
+      "path": "out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/EVIDENCE_INDEX.json",
+      "sha256": "b20607f60d9ffa2361e23d26a535d3d814e46399dfc4e8c369774fc106c9fc4e",
+      "bytes": 303016
+    },
+    {
+      "path": "out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/EXAMPLE.json",
+      "sha256": "71cf6169e07ab027dcd2692f68b98a72c54748a41f3c60cd0dc9b68d86b8c1ab",
+      "bytes": 1850
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-scalar/review/sealed-v1/MANIFEST.json",
+      "sha256": "6d30bf2d41962d1110edac2a63e8f2eea27dc4e5dcea1f759bb0ea4a09c8ad65",
+      "bytes": 2909918
+    },
+    {
+      "path": "out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/before.mlir",
+      "sha256": "bb5d985ac001a8c9e3b04ff889003965c798796f2b3bc351f0eabf5610190110",
+      "bytes": 2151
+    },
+    {
+      "path": "out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/after.mlir",
+      "sha256": "9e2a5e8315002c1ad00e57508729112d4a5e01871e41ced4ecca1a10bf259ff5",
+      "bytes": 3526
+    },
+    {
+      "path": "out/artifacts/verification/graph-buffer-reuse/actual-neighbor-segment-v1/after.mlir",
+      "sha256": "a98bd7576316e4ad9b4ba873beb9dfe5440e9db1f37460cf52628833f3134773",
+      "bytes": 4238
+    }
+  ],
+  "producer": [
+    {
+      "path": "producer:src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "matches_commit": true
+    },
+    {
+      "path": "producer:src/merlin/transforms/pure_scalar.py",
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "matches_commit": true
+    },
+    {
+      "path": "producer:src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "matches_commit": true
+    },
+    {
+      "path": "producer:src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "matches_commit": true
+    },
+    {
+      "path": "producer:src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "matches_commit": true
+    }
+  ],
+  "deliverable_scripts": [
+    {
+      "path": "audit/audit_declared.py",
+      "sha256": "0f646d573b133a124f4bc5709911bd3d9758933d5ffd0a71d158ff7476d814a0"
+    },
+    {
+      "path": "audit/audit_memory_scf.py",
+      "sha256": "2950ea32f66b89678c47abc243f524d0a806a66f0e77edc6ca6a848ad3fb5372"
+    },
+    {
+      "path": "audit/audit_scalar.py",
+      "sha256": "1b101fc04f9c9b3305b5008c441da424fdf810d792be970baa935315da7a12e9"
+    },
+    {
+      "path": "audit/audit_scalar_sensitivity.py",
+      "sha256": "93437211fa4dcb429a64b43463b526882f346a6f51bff6cf9c85ec5834c008f6"
+    },
+    {
+      "path": "audit/mlir_subset.py",
+      "sha256": "6a393a5b133ae5700dc6ef0c65792ab13fe9d837018b1cd78a905690ccf9f5c3"
+    },
+    {
+      "path": "audit/probe_memory_scf.py",
+      "sha256": "b82d223a0b3c8e22011702bf6cfe3e24fccd0b1cf239b8d41f2f6b90aeca31bb"
+    },
+    {
+      "path": "audit/probe_parser_keys.py",
+      "sha256": "1f80522740caa4bab5ba214821823adec189030d2f2fa586834f6a1720c27a2b"
+    },
+    {
+      "path": "audit/probe_pipeline_indirect.py",
+      "sha256": "eee65a9e6aef18b7a2b0cafde4c950320ac2357b3aabd30c1b4edf89facf7e04"
+    },
+    {
+      "path": "audit/probe_scalar_boundary.py",
+      "sha256": "1acfe5065241e9d61498fea1dcd1849ad8861aa496d500ad322e3cbef3774758"
+    },
+    {
+      "path": "audit/regen_memory_scf.py",
+      "sha256": "668967299d8314330b0f1981289a2f9a2dc568ed53a834ef6ca0c8e6d353e4e1"
+    },
+    {
+      "path": "audit/regen_scalar_variants.py",
+      "sha256": "4ce5dbfa27096acdea809dac8d4161548572f87c3d5c4226dae85c11529e8b18"
+    }
+  ]
+}

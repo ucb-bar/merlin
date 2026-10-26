@@ -1,0 +1,54 @@
+[
+  {
+    "mutation": "after-operand-order",
+    "verdict": "MISMATCH",
+    "problems": [
+      "F0.after>opaque>opaque>opaque: operands (3, 4) vs (4, 3)"
+    ],
+    "serializer_problems": [
+      "F0.after records != Lean term"
+    ],
+    "differential_mismatches": 0
+  },
+  {
+    "mutation": "after-upper-step-descriptor-swap",
+    "verdict": "MISMATCH",
+    "problems": [
+      "F0.after>opaque: descriptor arith.constant mapped to ids 3 and 2",
+      "F0.after>opaque>opaque: descriptor arith.constant mapped to ids 2 and 3"
+    ],
+    "serializer_problems": [
+      "F0.after records != Lean term"
+    ],
+    "differential_mismatches": 81
+  },
+  {
+    "mutation": "registry-width",
+    "verdict": "MISMATCH",
+    "problems": [
+      "registry[0].inputs: type ('bits', 8) vs ('bits', 16)"
+    ],
+    "serializer_problems": [],
+    "differential_mismatches": 0
+  },
+  {
+    "mutation": "middle-observer-operand",
+    "verdict": "MISMATCH",
+    "problems": [
+      "F0.middleRight>opaque>opaque>opaque>body>pure>pure: opaque operands (1, 2) vs (2, 1)"
+    ],
+    "serializer_problems": [
+      "F0.middleRight records != Lean term"
+    ],
+    "differential_mismatches": 81
+  },
+  {
+    "mutation": "projection-record-return",
+    "verdict": "MISMATCH",
+    "problems": [],
+    "serializer_problems": [
+      "F0.after records != Lean term"
+    ],
+    "differential_mismatches": 0
+  }
+]

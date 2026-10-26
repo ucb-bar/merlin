@@ -1,0 +1,8 @@
+{
+  "projection_checked": false,
+  "reason": {
+    "type": "ValueError",
+    "detail": "complete nonempty function/declaration roster required"
+  },
+  "public_acceptance_issued": false
+}

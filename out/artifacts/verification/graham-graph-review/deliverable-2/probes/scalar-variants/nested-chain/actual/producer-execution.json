@@ -1,0 +1,50 @@
+{
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "mode": "chain",
+  "diagnostic_witnesses": [
+    {
+      "producer": "merlin.transforms.pure_scalar.eliminate_scalar_redundancy",
+      "witnesses": [
+        {
+          "operation_index": 8,
+          "operation": "arith.muli",
+          "rule": "cse",
+          "width": 8,
+          "operation_sha256": "c28803ef015e59ffa7afba234c1e26be0d85c7c94de387c3914ad15787ac7047",
+          "representative_index": 7,
+          "loop_index": null
+        }
+      ]
+    },
+    {
+      "producer": "merlin.transforms.pure_scalar.hoist_scalar_invariants",
+      "witnesses": [
+        {
+          "operation_index": 7,
+          "operation": "arith.muli",
+          "rule": "licm",
+          "width": 8,
+          "operation_sha256": "51b4ff62f846c53174d35336bfe09cace65f547448cb431307a54768a9291ad4",
+          "representative_index": null,
+          "loop_index": 6
+        },
+        {
+          "operation_index": 7,
+          "operation": "arith.muli",
+          "rule": "licm",
+          "width": 8,
+          "operation_sha256": "51b4ff62f846c53174d35336bfe09cace65f547448cb431307a54768a9291ad4",
+          "representative_index": null,
+          "loop_index": 5
+        }
+      ]
+    }
+  ],
+  "owned_generator": {
+    "path": "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+    "sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+    "bytes": 20214
+  },
+  "complete_raw_outputs_retained_before_projection": true,
+  "public_acceptance_issued": false
+}

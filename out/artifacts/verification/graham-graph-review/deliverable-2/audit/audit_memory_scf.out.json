@@ -1,0 +1,270 @@
+{
+  "reviewer": "Graham independent review (agent)",
+  "date": "2026-10-26",
+  "script_sha256": "2950ea32f66b89678c47abc243f524d0a806a66f0e77edc6ca6a848ad3fb5372",
+  "reader_sha256": "6a393a5b133ae5700dc6ef0c65792ab13fe9d837018b1cd78a905690ccf9f5c3",
+  "imports_implementation": false,
+  "buffers": {
+    "before": {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/before.mlir",
+      "sha256": "bb5d985ac001a8c9e3b04ff889003965c798796f2b3bc351f0eabf5610190110"
+    },
+    "middle": {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/after.mlir",
+      "sha256": "9e2a5e8315002c1ad00e57508729112d4a5e01871e41ced4ecca1a10bf259ff5"
+    },
+    "after": {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-buffer-reuse/actual-neighbor-segment-v1/after.mlir",
+      "sha256": "a98bd7576316e4ad9b4ba873beb9dfe5440e9db1f37460cf52628833f3134773"
+    }
+  },
+  "operation_counts": {
+    "before": 43,
+    "middle": 41,
+    "after": 51
+  },
+  "functions": {
+    "before": [
+      "\"kernel\"",
+      "\"touch\"",
+      "\"untouched\""
+    ],
+    "middle": [
+      "\"kernel\"",
+      "\"touch\"",
+      "\"untouched\""
+    ],
+    "after": [
+      "\"kernel\"",
+      "\"touch\"",
+      "\"untouched\""
+    ]
+  },
+  "reuse_spec_vs_retained_middle": "equal",
+  "segment_spec_vs_retained_after": "equal",
+  "untouched_functions_equal_across_stages": true,
+  "differential": {
+    "runs": 18,
+    "mismatches": [],
+    "sample": [
+      {
+        "seeds": [
+          -7,
+          5
+        ],
+        "caller": 0,
+        "before": "(('ok', (4294967278, 2)), 4294967292, (('touch', (4294967282, 'buffer')), ('touch', (10, 'buffer'))))"
+      },
+      {
+        "seeds": [
+          -7,
+          5
+        ],
+        "caller": 3,
+        "before": "(('ok', (4294967284, 2)), 4294967295, (('touch', (4294967282, 'buffer')), ('touch', (10, 'buffer'))))"
+      },
+      {
+        "seeds": [
+          -7,
+          5
+        ],
+        "caller": -11,
+        "before": "(('ok', (4294967256, 2)), 4294967281, (('touch', (4294967282, 'buffer')), ('touch', (10, 'buffer'))))"
+      }
+    ],
+    "model": "i32 wrapping; index unbounded nonnegative; fresh allocation cells poisoned (read traps); freed buffer access traps; func.call executes the local callee"
+  },
+  "implementation_query": {
+    "model_sha256": "0f1f9ff5d06e84d8dfb132abcbc40610e5dc8c7ac35a3821810f68f68620f885",
+    "query_sha256": "afd557e3947928aa4ee187750ec647ffe22daba059704a59d5610deda623dfd6",
+    "segments": [
+      {
+        "object": 0,
+        "sourceBody==targetBody(identical python strings)": true,
+        "sourceContext==targetContext(identical python strings)": true,
+        "middleInitializer==key-derived": true,
+        "after-derived naturals": {
+          "targetLower": 0,
+          "targetUpper": 2,
+          "targetStride": 2,
+          "targetInnerStep": 1,
+          "outerIV": 9,
+          "strideValue": 8,
+          "upperValue": 5,
+          "addResult": 10,
+          "minResult": 11
+        },
+        "after-derived lists": {
+          "addOperands": [
+            9,
+            8
+          ],
+          "minOperands": [
+            10,
+            5
+          ],
+          "innerOperands": [
+            9,
+            11,
+            4
+          ],
+          "outerYield": []
+        },
+        "lean_occurrences_of_sourceContext_string": 8
+      },
+      {
+        "object": 1,
+        "sourceBody==targetBody(identical python strings)": true,
+        "sourceContext==targetContext(identical python strings)": true,
+        "middleInitializer==key-derived": true,
+        "after-derived naturals": {
+          "targetLower": 0,
+          "targetUpper": 2,
+          "targetStride": 2,
+          "targetInnerStep": 1,
+          "outerIV": 20,
+          "strideValue": 19,
+          "upperValue": 5,
+          "addResult": 21,
+          "minResult": 22
+        },
+        "after-derived lists": {
+          "addOperands": [
+            20,
+            19
+          ],
+          "minOperands": [
+            21,
+            5
+          ],
+          "innerOperands": [
+            20,
+            22,
+            4
+          ],
+          "outerYield": []
+        },
+        "lean_occurrences_of_sourceContext_string": 8
+      }
+    ],
+    "reuse_contexts_identical": true,
+    "reuse_context_in_query": false,
+    "instructions": [
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)"
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":1,\"location\":\"loc(unknown)"
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)"
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":3,\"location\":\"loc(unknown)"
+      },
+      {
+        "kind": "allocate",
+        "object": 0,
+        "retained": true,
+        "key_prefix": ""
+      },
+      {
+        "kind": "initialize",
+        "object": 0,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "load",
+        "object": 0,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "store",
+        "object": 0,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "load",
+        "object": 0,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "dimension",
+        "object": 0,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "release",
+        "object": 0,
+        "retained": false,
+        "key_prefix": ""
+      },
+      {
+        "kind": "allocate",
+        "object": 1,
+        "retained": false,
+        "key_prefix": ""
+      },
+      {
+        "kind": "initialize",
+        "object": 1,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "load",
+        "object": 1,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "store",
+        "object": 1,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "load",
+        "object": 1,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "dimension",
+        "object": 1,
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "release",
+        "object": 1,
+        "retained": true,
+        "key_prefix": ""
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      },
+      {
+        "kind": "retained",
+        "key_prefix": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unkno"
+      }
+    ],
+    "reuseMiddle_emitted_twice_from_one_value": true
+  }
+}

@@ -1,0 +1,241 @@
+{
+  "reviewer": "Graham independent review (agent)",
+  "date": "2026-10-26",
+  "script_sha256": "1acfe5065241e9d61498fea1dcd1849ad8861aa496d500ad322e3cbef3774758",
+  "capture_sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+  "lean_sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+  "lean_library": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/20261025/graph-smoke-MJ63mO/lib/lean",
+  "parser_environment": "local .venv xDSL 0.68.0 / Python 3.12 (differs from the original qualification's recorded xDSL files)",
+  "cases": [
+    {
+      "case": "control-cse",
+      "expectation": "admit+accept",
+      "capture_returncode": 0,
+      "before_sha256": "8ab17bdc2403ce08c60f4c3367f7d9a318ad8130d6860a0371baa52647489a63",
+      "after_sha256": "a1449a4fa7e4271d9508f846a3638b4372b651857151f1c2f86464a6f129bf7a",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 0,
+      "outcome": "lean_accepted",
+      "registry_size": 0
+    },
+    {
+      "case": "resource-blob-changed",
+      "expectation": "refuse: returned tensor contents differ (1,2) vs (1,3)",
+      "capture_returncode": 0,
+      "before_sha256": "a48e70660901a186c08ff8fbf875d747c99dc266d14075da4e2da67dde987fb0",
+      "after_sha256": "b03e0a41a966cbddc67fbba082c664d0bdb312aae8527675693338352dc18599",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 1,
+      "outcome": "lean_rejected",
+      "registry_size": 2
+    },
+    {
+      "case": "resource-blob-dropped",
+      "expectation": "refuse: after has no resource payload",
+      "capture_returncode": 0,
+      "before_sha256": "a48e70660901a186c08ff8fbf875d747c99dc266d14075da4e2da67dde987fb0",
+      "after_sha256": "d3e57e34c57f6b2a84b51443df7eeef68140237a00d34452583432c4f4efe76d",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 1,
+      "outcome": "lean_rejected",
+      "registry_size": 2
+    },
+    {
+      "case": "dense-literal-changed",
+      "expectation": "refuse (control for the resource case)",
+      "capture_returncode": 0,
+      "before_sha256": "2f506668d01a05448cead2535e6e65383bbf4fb6071a5e506353d366afc5e28c",
+      "after_sha256": "808103fe1be6017444734f27f2ad1d2157f0f2d3bfacb1b95c8737dc04f5d84c",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 1,
+      "outcome": "lean_rejected",
+      "registry_size": 2
+    },
+    {
+      "case": "producer-cse-on-resource-module",
+      "expectation": "producer output must retain the resource payload; boundary must not certify its loss",
+      "capture_returncode": 0,
+      "before_sha256": "4bf4a9325d7550d609a70fabdd6123385db123da228375c8d3eb0e22be7a023f",
+      "after_sha256": null,
+      "genuine_changed_boundary": true,
+      "producer_after_sha256": "1defd0e69ed09cf93feed6a7df6121fda66a9d5e564b523409cb05acc2e63de1",
+      "producer_after_has_resource_section": false,
+      "lean_returncode_no_output_object": 0,
+      "outcome": "lean_accepted",
+      "registry_size": 1
+    },
+    {
+      "case": "indirect-local-call",
+      "expectation": "refuse: call to a locally defined function (claimed refused)",
+      "capture_returncode": 0,
+      "before_sha256": "b5b5f861ef11da7a49f623673f53f1e4e8176239f07250c039442cbc8c1d32a0",
+      "after_sha256": "57680a24e960a2d145aec224ff8acbe87ad74ac8f63d561252475e8b0eff0ee8",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 0,
+      "outcome": "lean_accepted",
+      "registry_size": 2
+    },
+    {
+      "case": "direct-local-call",
+      "expectation": "refuse (implementation states local calls refused)",
+      "capture_returncode": 0,
+      "before_sha256": "2024c09bad5617e4c092d2a6ac9e63a32738641ce035315cd84c5a91ed07241e",
+      "after_sha256": "63fd7d22814fad1b43b687b154fe1d75e0d355163ae1f2b9694d43e9c211bfd1",
+      "outcome": "projection_refused",
+      "reason": {
+        "type": "ValueError",
+        "detail": "internal-call/fuel composition bridge unavailable; external contracts only"
+      }
+    },
+    {
+      "case": "scf-if-region",
+      "expectation": "refuse whole boundary",
+      "capture_returncode": 0,
+      "before_sha256": "5539ce4c23d7b6fb0657c0172fce8ff573b2bb8d61c815ccdb8a8b7f2d1eb232",
+      "after_sha256": "01e2caa6e69fe53f71ac66a18e1df909610238e01c3d3d00f624fc6db350bc1b",
+      "outcome": "projection_refused",
+      "reason": {
+        "type": "ValueError",
+        "detail": "unsupported region semantics; entire boundary refused"
+      }
+    },
+    {
+      "case": "unregistered-region-op",
+      "expectation": "refuse whole boundary",
+      "capture_returncode": 0,
+      "before_sha256": "e565b263a95244fe124210fd5795f5761ca9a1a6ee918011f74f2787dfc114b0",
+      "after_sha256": "4bea5333698a23ba0d9949580f915371221912f471e721d4793bd61697c6599e",
+      "outcome": "projection_refused",
+      "reason": {
+        "type": "ValueError",
+        "detail": "unsupported region semantics; entire boundary refused"
+      }
+    },
+    {
+      "case": "module-level-global",
+      "expectation": "refuse whole boundary",
+      "capture_returncode": 0,
+      "before_sha256": "beffd47cbc1cfe7ce83fce77aadaa5f0e1dfca2ce1365c538c89185024bed1b4",
+      "after_sha256": "267adbf9d4088e38058a8ea976eedd1be39149c480e226499939f77b772b475b",
+      "outcome": "projection_refused",
+      "reason": {
+        "type": "ValueError",
+        "detail": "unsupported module-level operation; no missing surrounding context"
+      }
+    },
+    {
+      "case": "module-attribute-changed",
+      "expectation": "refuse",
+      "capture_returncode": 0,
+      "before_sha256": "7d43305d5b9084735911f02da53a7b083eeaa87e4693e867b0f02a7b90587307",
+      "after_sha256": "13e6e8082470a0d63e7799822ed950ef478dc97d7b2ef0c8d8b4ce43e6f241b4",
+      "outcome": "projection_refused",
+      "reason": {
+        "type": "ValueError",
+        "detail": "complete surrounding module metadata changed"
+      }
+    },
+    {
+      "case": "function-visibility-changed",
+      "expectation": "refuse",
+      "capture_returncode": 0,
+      "before_sha256": "8ab17bdc2403ce08c60f4c3367f7d9a318ad8130d6860a0371baa52647489a63",
+      "after_sha256": "276c9335bc6bb85dfa022b0846c5d6745a1a14d84a3243c6f392f785ff39365d",
+      "outcome": "projection_refused",
+      "reason": {
+        "type": "ValueError",
+        "detail": "complete function interface/attributes changed"
+      }
+    },
+    {
+      "case": "opaque-attribute-changed",
+      "expectation": "refuse (different observer)",
+      "capture_returncode": 0,
+      "before_sha256": "d8671663ac0c348cb2c25b322e9d6a7a822955924f51b9122097dc31027e5c16",
+      "after_sha256": "005abccbe76bad9276937583104f97f84831d73e1167e9a585f55f8fed4056c3",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 1,
+      "outcome": "lean_rejected",
+      "registry_size": 2
+    },
+    {
+      "case": "observer-dropped",
+      "expectation": "refuse",
+      "capture_returncode": 0,
+      "before_sha256": "57fdd28a15783ad7b174ba3f7355a74f0520b36b726bd65723922375e4391ea4",
+      "after_sha256": "a1449a4fa7e4271d9508f846a3638b4372b651857151f1c2f86464a6f129bf7a",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 1,
+      "outcome": "lean_rejected",
+      "registry_size": 1
+    },
+    {
+      "case": "flag-introduced",
+      "expectation": "refuse (poison-introducing flag)",
+      "capture_returncode": 0,
+      "before_sha256": "8ab17bdc2403ce08c60f4c3367f7d9a318ad8130d6860a0371baa52647489a63",
+      "after_sha256": "f9faa0b56ff1c64c377e7dd60c3ad857564ed42f495ab272279c36362d7ea364",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 1,
+      "outcome": "lean_rejected",
+      "registry_size": 1
+    },
+    {
+      "case": "index-constant-changed",
+      "expectation": "refuse",
+      "capture_returncode": 0,
+      "before_sha256": "4b8570eb933be1fe34bdf8d93b5dda7ee89177b6760b261e81fc88cc93927910",
+      "after_sha256": "5561f24b07f0f82ae8512c4ae8fe774b48200d3b1f1c1403a70e96fd6e8892db",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 1,
+      "outcome": "lean_rejected",
+      "registry_size": 3
+    },
+    {
+      "case": "location-only",
+      "expectation": "admit+accept (locations are not semantic)",
+      "capture_returncode": 0,
+      "before_sha256": "8ab17bdc2403ce08c60f4c3367f7d9a318ad8130d6860a0371baa52647489a63",
+      "after_sha256": "7cdad7379535c659923c702c38a17619661a4077eba85fb29360c234f9f6da27",
+      "genuine_changed_boundary": true,
+      "lean_returncode_no_output_object": 0,
+      "outcome": "lean_accepted",
+      "registry_size": 0
+    },
+    {
+      "case": "unsigned-for-generic",
+      "expectation": "refuse; a parse/verify failure is unavailable, not a semantic refusal",
+      "capture_returncode": 1,
+      "before_sha256": "48f704aacf6ffcd7f59bf33daefc39728144ca15ffae8b8d27cda6e6c1114f9a",
+      "after_sha256": "a1449a4fa7e4271d9508f846a3638b4372b651857151f1c2f86464a6f129bf7a",
+      "outcome": "capture_unavailable (not a semantic refusal)",
+      "stderr_tail": [
+        "}) : () -> ()"
+      ]
+    },
+    {
+      "case": "multi-block-cfg",
+      "expectation": "refuse",
+      "capture_returncode": 0,
+      "before_sha256": "c57678e52e124a28efdd52931db55775e4eea39066f3669d0c07d84a1502f1e2",
+      "after_sha256": "a1449a4fa7e4271d9508f846a3638b4372b651857151f1c2f86464a6f129bf7a",
+      "outcome": "projection_refused",
+      "reason": {
+        "type": "ValueError",
+        "detail": "unsupported/dropped function CFG blocks"
+      }
+    },
+    {
+      "case": "extra-function-in-after",
+      "expectation": "refuse",
+      "capture_returncode": 0,
+      "before_sha256": "8ab17bdc2403ce08c60f4c3367f7d9a318ad8130d6860a0371baa52647489a63",
+      "after_sha256": "9185fd89053ed7c81c4ec3b1eca0c605838796e2453a496f32dee5dd6f320294",
+      "outcome": "projection_refused",
+      "reason": {
+        "type": "ValueError",
+        "detail": "complete nonempty function/declaration roster required"
+      }
+    }
+  ]
+}
