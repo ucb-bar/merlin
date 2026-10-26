@@ -1,0 +1,41 @@
+{
+  "case": "segment-nonempty",
+  "kind": "ordered_loop_segmentation",
+  "options": {
+    "tile_iterations": [
+      3
+    ]
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "structural"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 1193,
+      "sha256": "a976493ae3021bbd0e334861f2fad611211fb0f628b3205c655e7cd5e0962178"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 809,
+      "sha256": "95487501ba6b77b8f2276a49ac7136597246ff2b4feed0ee2fbe719abe791c15"
+    },
+    {
+      "path": "change.json",
+      "bytes": 3059,
+      "sha256": "581c0f424f71cd4ffdea536f57673224f869c78c5e43dd9e84a4ae6a3326956c"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 461,
+      "sha256": "34f2c548a9306265771582ad33578f76da58f4529ef7db94bc0c4421957e5958"
+    }
+  ]
+}

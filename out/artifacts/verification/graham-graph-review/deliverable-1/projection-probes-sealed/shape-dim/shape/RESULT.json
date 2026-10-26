@@ -1,0 +1,11 @@
+{
+  "case": "shape-dim",
+  "route": "shape",
+  "returncode": 0,
+  "status": "projection_emitted_not_kernel_checked",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "model": "projection-probes-sealed/shape-dim/shape/model.json",
+  "sha256": "aa03ba81c2b28ab37e324bc0f50dc7cf2a3cff25f11ed023d65842be934bde3a"
+}

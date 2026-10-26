@@ -1,0 +1,10 @@
+{
+  "case": "scalar-cse",
+  "route": "scalar",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/scalar-cse/scalar.model.json",
+  "sha256": "5649ee101b3e977d301dc208f9f570657652deaf7160752ada68dab396ba6c25"
+}

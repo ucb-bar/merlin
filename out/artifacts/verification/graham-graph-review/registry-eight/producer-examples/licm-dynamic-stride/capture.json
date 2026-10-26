@@ -1,0 +1,39 @@
+{
+  "case": "licm-dynamic-stride",
+  "kind": "scalar_loop_invariant_motion",
+  "options": {
+    "hoist_invariants": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "licm"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 761,
+      "sha256": "a777884120063c096b66df01f8a0c1b192155acef75d0d1f4390e5639a04b46b"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 763,
+      "sha256": "6f23f99e174e8c4389026ae7506f702a89a413002786a48d09b408460af2f748"
+    },
+    {
+      "path": "change.json",
+      "bytes": 2488,
+      "sha256": "473e575e5972b6cb53a3a97defae37d0f55e2af8e41efeb4fcc8d4a467a140fd"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 442,
+      "sha256": "9a31f3d8d4d5003e07ba8535b1ca84ec0a6b7e37971edd6e624112ace7c827a8"
+    }
+  ]
+}

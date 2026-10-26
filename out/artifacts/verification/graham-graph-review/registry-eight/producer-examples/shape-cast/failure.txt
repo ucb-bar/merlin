@@ -1,0 +1,59 @@
+Traceback (most recent call last):
+  File "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/registry-eight/capture-producer-examples.py", line 128, in <module>
+    before=parse_ir(source)
+           ^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/certificates.py", line 34, in parse_ir
+    module = DenseFloatParser(context, text).parse_module()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 134, in parse_module
+    if (parsed_op := self.parse_optional_operation()) is not None:
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 696, in parse_optional_operation
+    return self.parse_operation()
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 726, in parse_operation
+    op = op_type.parse(self)
+         ^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/builtin.py", line 2474, in parse
+    region = parser.parse_region()
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 613, in parse_region
+    region = self.parse_optional_region(arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 567, in parse_optional_region
+    self._parse_block_body(block)
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 224, in _parse_block_body
+    while (op := self.parse_optional_operation()) is not None:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 696, in parse_optional_operation
+    return self.parse_operation()
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 726, in parse_operation
+    op = op_type.parse(self)
+         ^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/func.py", line 176, in parse
+    ) = parse_func_op_like(
+        ^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/dialects/utils/format.py", line 494, in parse_func_op_like
+    region = parser.parse_optional_region(entry_args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 558, in parse_optional_region
+    self._parse_block_body(entry_block)
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 224, in _parse_block_body
+    while (op := self.parse_optional_operation()) is not None:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 696, in parse_optional_operation
+    return self.parse_operation()
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/core.py", line 726, in parse_operation
+    op = op_type.parse(self)
+         ^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 1311, in parse
+    parser.raise_error(f"Operation {cls.name} does not have a custom format.")
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/parser/generic_parser.py", line 94, in raise_error
+    raise ParseError(at_position, msg)
+xdsl.utils.exceptions.ParseError: <unknown>:3:20
+  %r = memref.cast %a : memref<4xi8> to memref<4xi8>
+                   ^^
+                   Operation memref.cast does not have a custom format.
+

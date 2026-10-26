@@ -1,0 +1,39 @@
+{
+  "case": "integer-neutral-add-left",
+  "kind": "exact_integer_simplification",
+  "options": {
+    "simplify_integers": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "neutral_operand"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 243,
+      "sha256": "fb4fa4744b360b68bf75501fd664b584ee2d039fd64d5ec4aa2ffb044e477ddb"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 332,
+      "sha256": "47b61efed55306992586dad30ee10c5c8f41c93bdd8bd0d9b3ec0d1d7227ac76"
+    },
+    {
+      "path": "change.json",
+      "bytes": 1352,
+      "sha256": "6a02f1f7e792b58cf3c36974bb1724fcda39df22fb2e5a6ccff1d1eea23db45e"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 136,
+      "sha256": "b055c770c9ca722fd48c8c013dd1b403d862e797ef233a91f8b5cc202a474643"
+    }
+  ]
+}

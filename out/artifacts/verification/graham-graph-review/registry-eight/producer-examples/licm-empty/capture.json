@@ -1,0 +1,39 @@
+{
+  "case": "licm-empty",
+  "kind": "scalar_loop_invariant_motion",
+  "options": {
+    "hoist_invariants": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "licm"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 807,
+      "sha256": "76486fd83280a7290ba0513e3db2b3ab0d428551acdd7c0c7609e1aee5a9dd73"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 809,
+      "sha256": "767233c500c23bd1def05e2c3f595e49ad77f9c7a90381983b03d4b157a1114d"
+    },
+    {
+      "path": "change.json",
+      "bytes": 2586,
+      "sha256": "0b92d0b12ad976871c9d748abeba3e8dddae942978e3913b62f3640fc01044a4"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 461,
+      "sha256": "c2da8bc5c5b67277831c6a2bb4981884e611e46131a50832e65e3a2d48656b95"
+    }
+  ]
+}

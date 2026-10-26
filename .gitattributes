@@ -19,3 +19,5 @@ CMakeLists.txt text eol=lf
 # Archived evidence is content-addressed. Preserve original bytes (including CSV CRLF)
 # across relocation and checkout rather than silently changing recorded hashes.
 experiments/reference-data/** -text -eol
+# Independent graph-pass review: manifests and audits hash these files, including CSV CRLF.
+out/artifacts/verification/graham-graph-review/** -text -eol

@@ -1,0 +1,39 @@
+{
+  "case": "reuse-dynamic-access",
+  "kind": "buffer_reuse",
+  "options": {
+    "reuse_buffers": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "structural"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 3065,
+      "sha256": "b6cf968c4ea9469f7270fbb45309f1741718784975adcb7642afa5cecef0b0e2"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 3239,
+      "sha256": "477b5410f1c71ebbab1dcc32b35ad9cd06b636cf599daea8d9f7b1803e437bda"
+    },
+    {
+      "path": "change.json",
+      "bytes": 7783,
+      "sha256": "98f012223ed2e279ce6029c45013747e2d3be761fd02794e5243b2e3bc124a6c"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 1913,
+      "sha256": "eec22bfe1304083e2ad9076283ac67fe886deb3552dd4cc4c9d900a1bdb0fc68"
+    }
+  ]
+}

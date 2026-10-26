@@ -1,0 +1,45 @@
+{
+  "kind": "ordered_loop_unrolling",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i32, i32, i32, i32, memref<?xi32>) -> (i32, i32, i32)}> ({\n  ^bb0(%input0: i32, %input1: i32, %input2: i32, %capture: i32, %memory: memref<?xi32>):\n    %lower = \"arith.constant\"() <{value = 1 : index}> : () -> index\n    %upper = \"arith.constant\"() <{value = 8 : index}> : () -> index\n    %step = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %result, %result_1, %result_2 = \"scf.for\"(%lower, %upper, %step, %input0, %input1, %input2) ({\n    ^bb1(%iv: index, %carry0: i32, %carry1: i32, %carry2: i32):\n      %next0 = \"arith.addi\"(%carry0, %capture) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n      %next1 = \"arith.addi\"(%carry1, %next0) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n      %next2 = \"arith.addi\"(%carry2, %next1) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n      \"memref.store\"(%next0, %memory, %iv) : (i32, memref<?xi32>, index) -> ()\n      \"scf.yield\"(%next0, %next1, %next2) : (i32, i32, i32) -> ()\n    }) : (index, index, index, i32, i32, i32) -> (i32, i32, i32)\n    %observer = \"arith.addi\"(%result, %capture) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"func.return\"(%observer, %result_1, %result_2) : (i32, i32, i32) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i32) -> i32}> ({\n  ^bb0(%value: i32):\n    %one = \"arith.constant\"() <{value = 1 : i32}> : () -> i32\n    %result = \"arith.addi\"(%value, %one) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"func.return\"(%result) : (i32) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i32, i32, i32, i32, memref<?xi32>) -> (i32, i32, i32)}> ({\n  ^bb0(%input0: i32, %input1: i32, %input2: i32, %capture: i32, %memory: memref<?xi32>):\n    %lower = \"arith.constant\"() <{value = 1 : index}> : () -> index\n    %upper = \"arith.constant\"() <{value = 8 : index}> : () -> index\n    %step = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %result = \"arith.constant\"() <{value = 1 : index}> : () -> index\n    %next0 = \"arith.addi\"(%input0, %capture) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %next1 = \"arith.addi\"(%input1, %next0) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %next2 = \"arith.addi\"(%input2, %next1) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"memref.store\"(%next0, %memory, %result) : (i32, memref<?xi32>, index) -> ()\n    %result_1 = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %next0_1 = \"arith.addi\"(%next0, %capture) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %next1_1 = \"arith.addi\"(%next1, %next0_1) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %next2_1 = \"arith.addi\"(%next2, %next1_1) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"memref.store\"(%next0_1, %memory, %result_1) : (i32, memref<?xi32>, index) -> ()\n    %result_2 = \"arith.constant\"() <{value = 5 : index}> : () -> index\n    %next0_2 = \"arith.addi\"(%next0_1, %capture) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %next1_2 = \"arith.addi\"(%next1_1, %next0_2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %next2_2 = \"arith.addi\"(%next2_1, %next1_2) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"memref.store\"(%next0_2, %memory, %result_2) : (i32, memref<?xi32>, index) -> ()\n    %result_3 = \"arith.constant\"() <{value = 7 : index}> : () -> index\n    %next0_3 = \"arith.addi\"(%next0_2, %capture) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %next1_3 = \"arith.addi\"(%next1_2, %next0_3) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %next2_3 = \"arith.addi\"(%next2_2, %next1_3) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"memref.store\"(%next0_3, %memory, %result_3) : (i32, memref<?xi32>, index) -> ()\n    %observer = \"arith.addi\"(%next0_3, %capture) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"func.return\"(%observer, %next1_3, %next2_3) : (i32, i32, i32) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i32) -> i32}> ({\n  ^bb0(%value: i32):\n    %one = \"arith.constant\"() <{value = 1 : i32}> : () -> i32\n    %result = \"arith.addi\"(%value, %one) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"func.return\"(%result) : (i32) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {
+    "factors": [
+      7
+    ],
+    "index_bits": 64,
+    "max_added_operations": 4096
+  },
+  "certificate": {
+    "kind": "ordered_loop_unrolling",
+    "before_ir_sha256": "dc0991b1ab1ce956d24527f66783c81e9b5242db7647d24e3362992e33348ab6",
+    "after_ir_sha256": "d73b3c71619d811a9f2adad7d0b2e5483e58a299ebf30657f1df4abdaabed003",
+    "witnesses": [
+      {
+        "kind": "unroll",
+        "operation_index": 5,
+        "lower": 1,
+        "upper": 8,
+        "step": 2,
+        "factor": 7,
+        "index_bits": 64,
+        "iterations": 4,
+        "full_groups": 0,
+        "remainder": 4,
+        "source_sha256": "9ac13f80102887084bd63525cd16df8ee1ba6d20a9ff7a37d7508817631d8319",
+        "carried_types": [
+          "i32",
+          "i32",
+          "i32"
+        ]
+      }
+    ],
+    "scope": [
+      "static_nonnegative_index_bounds",
+      "positive_step",
+      "exact_iteration_order",
+      "forwarded_loop_carried_state",
+      "bounded_operation_growth"
+    ],
+    "schema": "merlin.shared_transform.v2"
+  }
+}

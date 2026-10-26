@@ -1,0 +1,1252 @@
+{
+  "schema": "graham.registry-eight.producer-examples.v1",
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "verification_revision": "c399e441e86042752c407a4ba917d4510b16585b",
+  "new_lean_qualification": false,
+  "new_lean_tests_run": false,
+  "method": "Pinned actual common pipeline in explicit plan_only mode; private module clones; original sources and evidence unchanged",
+  "case_results": [
+    {
+      "case": "shape-cast",
+      "kind": "shape_view_normalization",
+      "options": {
+        "normalize_shapes": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "capture_failed",
+      "error_type": "ParseError",
+      "error": "<unknown>:3:20\n  %r = memref.cast %a : memref<4xi8> to memref<4xi8>\n                   ^^\n                   Operation memref.cast does not have a custom format.\n",
+      "files": [
+        {
+          "path": "failure.txt",
+          "bytes": 4360,
+          "sha256": "eeac9c250549b613406f222d090e4ad95a84b87a31a5322120c4c2b46faa6e26"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 158,
+          "sha256": "9a965010fb9313d78b155247ead8d3c51033f32dc828b74a98ee25ec1b095774"
+        }
+      ]
+    },
+    {
+      "case": "shape-dim",
+      "kind": "shape_view_normalization",
+      "options": {
+        "normalize_shapes": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "static_memref_dimension"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 327,
+          "sha256": "a9e7c0458b9c6bf8d889d7cd8c94db7d12b6f3be80a79ab2be12284dbed9f0a3"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 326,
+          "sha256": "2c33747171877b1a96f13289aa1cd7b57a91d9002c5f8b27272a044a9f81b954"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1358,
+          "sha256": "930e90a63cffaa26f375bf51a40982b0ad567434384e896b289d79b82d29b444"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 163,
+          "sha256": "41fa7b7a0a45ea6cfc16fb5711991846362b7fed5452be493743a0b0d9d972df"
+        }
+      ]
+    },
+    {
+      "case": "integer-fold-add",
+      "kind": "exact_integer_simplification",
+      "options": {
+        "simplify_integers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "constant_ring"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 364,
+          "sha256": "4088202b123823b4f250b70b3c4a665500f9c564dc61b0b6110f55d114fd47c0"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 392,
+          "sha256": "37ca8f75299e55dc754f612c0af07c06a884565debf66628943ce961af117485"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1542,
+          "sha256": "ebc2b620d70848a4ff8dc58a1207f51fa10d5da3019c7286c070bd57ff06bae3"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 165,
+          "sha256": "60e89e9a1dd9b8b19c33ce5cbab0c07ac203ab0bc72be606c3d04a50e5a71183"
+        }
+      ]
+    },
+    {
+      "case": "integer-fold-sub",
+      "kind": "exact_integer_simplification",
+      "options": {
+        "simplify_integers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "constant_ring"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 363,
+          "sha256": "f7513096268450ea4fb0cdcea677d8f0ae15ef9ca2e9b6c95061f8c15c61aef5"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 392,
+          "sha256": "19575b652769be6c2a03dcab379cbe63220f61fd4aadc2988c87715d425c581b"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1540,
+          "sha256": "bf121663d1423439a3cd98eb6518ee53649c28a2bee54aaa41383d403dabbdfe"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 165,
+          "sha256": "01f937b83c042cd8d822401754d3437fa670788548c1b2246a0a9e998e23cdf1"
+        }
+      ]
+    },
+    {
+      "case": "integer-fold-mul",
+      "kind": "exact_integer_simplification",
+      "options": {
+        "simplify_integers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "constant_ring"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 363,
+          "sha256": "11a24e105ffbd078cdddfdbdce74de3ba9e4762c2e6c91408d738e4fcc3a2b86"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 392,
+          "sha256": "4d497c1ce4a5a6c28d4f635fb4c13a88bf14e4cdd0f4ed0aca8f9664198d3fdf"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1540,
+          "sha256": "eb55986e0a7d5d5614e35503eba39227f145536795c7e2a803a510fd24361a00"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 165,
+          "sha256": "f3e412926e81ebd9e0a201b5b0fc470e2b49da1ae609a566c9aa681383699840"
+        }
+      ]
+    },
+    {
+      "case": "integer-neutral-add-left",
+      "kind": "exact_integer_simplification",
+      "options": {
+        "simplify_integers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "neutral_operand"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 243,
+          "sha256": "fb4fa4744b360b68bf75501fd664b584ee2d039fd64d5ec4aa2ffb044e477ddb"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 332,
+          "sha256": "47b61efed55306992586dad30ee10c5c8f41c93bdd8bd0d9b3ec0d1d7227ac76"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1352,
+          "sha256": "6a02f1f7e792b58cf3c36974bb1724fcda39df22fb2e5a6ccff1d1eea23db45e"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 136,
+          "sha256": "b055c770c9ca722fd48c8c013dd1b403d862e797ef233a91f8b5cc202a474643"
+        }
+      ]
+    },
+    {
+      "case": "integer-neutral-add-right",
+      "kind": "exact_integer_simplification",
+      "options": {
+        "simplify_integers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "neutral_operand"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 243,
+          "sha256": "fb4fa4744b360b68bf75501fd664b584ee2d039fd64d5ec4aa2ffb044e477ddb"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 332,
+          "sha256": "d7b6981ed150dfdcf61489823332d67dadd87abbcd3f86b26709192bde101673"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1352,
+          "sha256": "ef3479283764a15e68f4ca2e7ee895fdc56f6159031020f4e3a98d2e5f2b8df8"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 136,
+          "sha256": "691befab053ceac70c8a194a83f1dccff7ee7022c3733f78123bedc53366c6ec"
+        }
+      ]
+    },
+    {
+      "case": "integer-neutral-sub-right",
+      "kind": "exact_integer_simplification",
+      "options": {
+        "simplify_integers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "neutral_operand"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 243,
+          "sha256": "fb4fa4744b360b68bf75501fd664b584ee2d039fd64d5ec4aa2ffb044e477ddb"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 332,
+          "sha256": "b2fbc45dc1f0b7e948988a059554be3659b78f3fdf9573eabc5e0234aa62c88d"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1352,
+          "sha256": "f801dca6cada61f004e76b091417281c8e8dc91686b0a7940b8a4737ea411bf0"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 136,
+          "sha256": "9fba54ed8abde459cf13cf6006633c02ebc6760925dc451fe777ffc4bfc49e92"
+        }
+      ]
+    },
+    {
+      "case": "integer-neutral-mul-left",
+      "kind": "exact_integer_simplification",
+      "options": {
+        "simplify_integers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "neutral_operand"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 243,
+          "sha256": "86074e2373cb2a40e3ca12cc19584a397dabb8cb7ec47390efb705d01b9614ca"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 332,
+          "sha256": "b4494bcbb841b42389fa7e9729ad2386330ebf22238d2975c96fe193c1b081ef"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1352,
+          "sha256": "f3329520d8264591e3fe305f1d946f6bd0f7d4ff2818bdf8b1f928fe182d5882"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 136,
+          "sha256": "0a35f18521c20626788d71ac92160250eb8cca45693dc85fd15a085a092a9bc7"
+        }
+      ]
+    },
+    {
+      "case": "integer-neutral-mul-right",
+      "kind": "exact_integer_simplification",
+      "options": {
+        "simplify_integers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "neutral_operand"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 243,
+          "sha256": "86074e2373cb2a40e3ca12cc19584a397dabb8cb7ec47390efb705d01b9614ca"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 332,
+          "sha256": "3e83714d3a1ffd26cb4ee04032a3eb6d343c1c80af88f0b91fde42ad5e48dd2b"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1352,
+          "sha256": "7614ffcb824e880ccc248ad09f4bfc330357a2f2ae8c31f7ac2535b4bc52a3b4"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 136,
+          "sha256": "49f95de7dc9b41e623d65effb290fcefcf183fd8c1ec401aef0251dad6886a89"
+        }
+      ]
+    },
+    {
+      "case": "scalar-cse",
+      "kind": "scalar_redundancy_elimination",
+      "options": {
+        "eliminate_redundancy": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "cse"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 375,
+          "sha256": "c62200490470fa8917fb5c9fe57995f2ee38f4a21d148ecbae7d21f6afe4d9d2"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 476,
+          "sha256": "f1d6ec5d809faf68d7fd6959720ede30bcbfd4a347c433eac82b6111a65b2600"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1764,
+          "sha256": "1d0243e51622c397c79df3cee5ff542dc26b332cae026d6ede9ce20e6d40f36a"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 189,
+          "sha256": "274cd9a84ea1798bc63aa409cc77e6023c0e5990fdc0fe9e9325f92295758392"
+        }
+      ]
+    },
+    {
+      "case": "scalar-dce",
+      "kind": "scalar_redundancy_elimination",
+      "options": {
+        "eliminate_redundancy": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "dce"
+      ],
+      "witness_count": 2,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 185,
+          "sha256": "c6d7f6fed6ea375eff3bd1d8eb0f78537e7a95bbf1918632cff7c8d0be890a8d"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 373,
+          "sha256": "fb592d1ab54a180cc16e653c6cb6e512b077f99d51695af9115a4ff2404c9caa"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1785,
+          "sha256": "77033eeb2d350497542766ebc7ed1d5573e2d63c56940afebd504d678c0cac8a"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 147,
+          "sha256": "9cad71705a270efe49ac4ebb27d1b0acb265548708e414a0d3f075c916efafa0"
+        }
+      ]
+    },
+    {
+      "case": "licm-nonempty",
+      "kind": "scalar_loop_invariant_motion",
+      "options": {
+        "hoist_invariants": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "licm"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 807,
+          "sha256": "b71665c59da66c640bba8f4169a2a3f153216f42b0cdac11cbf9edf64ba34351"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 809,
+          "sha256": "95487501ba6b77b8f2276a49ac7136597246ff2b4feed0ee2fbe719abe791c15"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2586,
+          "sha256": "94c9f4245281a53036af0223849c5b835e8a4a5ad6fddf1d50fe8c2fc9a27bc7"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 461,
+          "sha256": "34f2c548a9306265771582ad33578f76da58f4529ef7db94bc0c4421957e5958"
+        }
+      ]
+    },
+    {
+      "case": "licm-empty",
+      "kind": "scalar_loop_invariant_motion",
+      "options": {
+        "hoist_invariants": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "licm"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 807,
+          "sha256": "76486fd83280a7290ba0513e3db2b3ab0d428551acdd7c0c7609e1aee5a9dd73"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 809,
+          "sha256": "767233c500c23bd1def05e2c3f595e49ad77f9c7a90381983b03d4b157a1114d"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2586,
+          "sha256": "0b92d0b12ad976871c9d748abeba3e8dddae942978e3913b62f3640fc01044a4"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 461,
+          "sha256": "c2da8bc5c5b67277831c6a2bb4981884e611e46131a50832e65e3a2d48656b95"
+        }
+      ]
+    },
+    {
+      "case": "licm-dynamic",
+      "kind": "scalar_loop_invariant_motion",
+      "options": {
+        "hoist_invariants": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "licm"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 761,
+          "sha256": "4e6f9b9e7e53d4b7b2888908cce0c928a038799c90effe2da7de91ab022ea42c"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 763,
+          "sha256": "bda97b3c85664fcf6b884a3ca151cb8ca083af143cef53cd7e1d01c960580357"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2488,
+          "sha256": "a6180624005304962ffd8f6d606b6e19f5a6f7c890601af21861fcdcbe11cddf"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 442,
+          "sha256": "345f5fde20dd18766bd8ac8f9096096495db2c314e5b8b8ab064db17465143d4"
+        }
+      ]
+    },
+    {
+      "case": "licm-nested",
+      "kind": "scalar_loop_invariant_motion",
+      "options": {
+        "hoist_invariants": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "licm"
+      ],
+      "witness_count": 2,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 1000,
+          "sha256": "6cd5fc19fbbaf802b79aee18a5ae7454f67eb0cca04b36a1b59f5e8dcf0379b0"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 1004,
+          "sha256": "89ca177b6d73cd740a273df54a43e9a11b3a586c54e0f4e2d468a4914e0b8c00"
+        },
+        {
+          "path": "change.json",
+          "bytes": 3308,
+          "sha256": "79064b87a4b210896184f7cb1eebabee35498c72e6d6664f30d885bbdf85b155"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 606,
+          "sha256": "7dc55933da7550ef9ef3885d4ef7040cfc214ae9c498181f9965819ad9b7db18"
+        }
+      ]
+    },
+    {
+      "case": "segment-nonempty",
+      "kind": "ordered_loop_segmentation",
+      "options": {
+        "tile_iterations": [
+          3
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 1193,
+          "sha256": "a976493ae3021bbd0e334861f2fad611211fb0f628b3205c655e7cd5e0962178"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 809,
+          "sha256": "95487501ba6b77b8f2276a49ac7136597246ff2b4feed0ee2fbe719abe791c15"
+        },
+        {
+          "path": "change.json",
+          "bytes": 3059,
+          "sha256": "581c0f424f71cd4ffdea536f57673224f869c78c5e43dd9e84a4ae6a3326956c"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 461,
+          "sha256": "34f2c548a9306265771582ad33578f76da58f4529ef7db94bc0c4421957e5958"
+        }
+      ]
+    },
+    {
+      "case": "segment-empty",
+      "kind": "ordered_loop_segmentation",
+      "options": {
+        "tile_iterations": [
+          3
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 1193,
+          "sha256": "ccb049713eb4e3b7f0225a8ca0ca2b4b989bfe29ed805e432ee361e51fda84e6"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 809,
+          "sha256": "767233c500c23bd1def05e2c3f595e49ad77f9c7a90381983b03d4b157a1114d"
+        },
+        {
+          "path": "change.json",
+          "bytes": 3059,
+          "sha256": "83626d47b4d00dab4b76f9cf4d25bf3f76974e95d564fb363a2802aaf631b212"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 461,
+          "sha256": "c2da8bc5c5b67277831c6a2bb4981884e611e46131a50832e65e3a2d48656b95"
+        }
+      ]
+    },
+    {
+      "case": "segment-nested",
+      "kind": "ordered_loop_segmentation",
+      "options": {
+        "tile_iterations": [
+          3,
+          2
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 2,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 1824,
+          "sha256": "c7cff7cf9f287211bcd6a542a11e1d08cafe60817e7ab3b18660814c057be1d3"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 1004,
+          "sha256": "89ca177b6d73cd740a273df54a43e9a11b3a586c54e0f4e2d468a4914e0b8c00"
+        },
+        {
+          "path": "change.json",
+          "bytes": 4256,
+          "sha256": "2d1c65da1abcfc3f4d12604870332bd6187484a5f808a19028bb72b811efca61"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 606,
+          "sha256": "7dc55933da7550ef9ef3885d4ef7040cfc214ae9c498181f9965819ad9b7db18"
+        }
+      ]
+    },
+    {
+      "case": "unroll-inline_empty",
+      "kind": "ordered_loop_unrolling",
+      "options": {
+        "unroll_factors": [
+          5
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 920,
+          "sha256": "d94a46f2384641a587b5aa78f99df87df080169eab41cb5774d5fc69aff3402d"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 1454,
+          "sha256": "6fe9f4fa29f2411d0545d9d613a6c773969a803f97092da3278b14c46a3a28a6"
+        },
+        {
+          "path": "change.json",
+          "bytes": 3577,
+          "sha256": "5a7fbe306b0a57ebc32d7dbd19d2c09129646b1a16152109843b3524cc5a7d98"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 786,
+          "sha256": "332d1c1e30fd8e802ea15814931d5454396de9eb892a53c3e50c8e7fb88302cb"
+        }
+      ]
+    },
+    {
+      "case": "unroll-inline_many",
+      "kind": "ordered_loop_unrolling",
+      "options": {
+        "unroll_factors": [
+          7
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 2880,
+          "sha256": "d73b3c71619d811a9f2adad7d0b2e5483e58a299ebf30657f1df4abdaabed003"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 1658,
+          "sha256": "dc0991b1ab1ce956d24527f66783c81e9b5242db7647d24e3362992e33348ab6"
+        },
+        {
+          "path": "change.json",
+          "bytes": 5821,
+          "sha256": "da4f3ccaa08c8e257f588ccf1e1ed66246f8e1dcf43f78d3f7eb1b41816ae920"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 903,
+          "sha256": "560e8c324fda0116e0aee602a25c4f55575a6bd36f4606d9a82388001f192952"
+        }
+      ]
+    },
+    {
+      "case": "unroll-bulk_exact",
+      "kind": "ordered_loop_unrolling",
+      "options": {
+        "unroll_factors": [
+          3
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 2523,
+          "sha256": "ad08b0949e4c9993486f696594ac746c301e54625f5e26a959707fdb108a09f2"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 1455,
+          "sha256": "ce9db4ae9d8c272f8c44ef9fdf2dd4366a6ee2369efc1b90414883b04e8ec57d"
+        },
+        {
+          "path": "change.json",
+          "bytes": 5236,
+          "sha256": "355ff96f484522861cc27035c1ff722a068abe6fb69c6c90de997bab6aa20f5c"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 787,
+          "sha256": "39d5d1d615119fdb3362fe1641e50dcd9520ef8f9f459ddb0ee67c53365112c9"
+        }
+      ]
+    },
+    {
+      "case": "unroll-bulk_tail",
+      "kind": "ordered_loop_unrolling",
+      "options": {
+        "unroll_factors": [
+          3
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 3054,
+          "sha256": "e0bb622b8a52216ae5c8724f876f85d078a26a7b24deb87e9037d5b5e1baf604"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 1455,
+          "sha256": "117a641c0eb3b476ad25e961f1780cfa60fadeb61bc9a5fbef1e32c0dec9d992"
+        },
+        {
+          "path": "change.json",
+          "bytes": 5784,
+          "sha256": "747c3f656f41b5d49b4f3400c94a52dcd9bbe61a32d90cdbd5ecfb184a4e45af"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 787,
+          "sha256": "ce327a461207b8309b919caf18a6076be728231ff182f6fd91197fa61705b80e"
+        }
+      ]
+    },
+    {
+      "case": "unroll-nested",
+      "kind": "ordered_loop_unrolling",
+      "options": {
+        "unroll_factors": [
+          2,
+          2
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 2,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 2973,
+          "sha256": "a1d0a9cd22570674d014c8241d4be7f5e9285fa00e70dbf86da39ef5a5ff1267"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 1004,
+          "sha256": "89ca177b6d73cd740a273df54a43e9a11b3a586c54e0f4e2d468a4914e0b8c00"
+        },
+        {
+          "path": "change.json",
+          "bytes": 5636,
+          "sha256": "4af101353d58ed22a2db952290f531b0bf07ad3c5cd01ac134823b414000fc24"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 606,
+          "sha256": "7dc55933da7550ef9ef3885d4ef7040cfc214ae9c498181f9965819ad9b7db18"
+        }
+      ]
+    },
+    {
+      "case": "reuse-epochs",
+      "kind": "buffer_reuse",
+      "options": {
+        "reuse_buffers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 3526,
+          "sha256": "5f8b5f2b9515003df093f22c04903c257d610240ee80b1dc4fa81a76dbdbd16a"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 3704,
+          "sha256": "d0f6906705b0c123a17c0065672b92b7a5eedc03418887c6eb76cd799fcd4f1c"
+        },
+        {
+          "path": "change.json",
+          "bytes": 8783,
+          "sha256": "4a17d31614ede88c326743d38ec5ba863ef283e6da9897ed738d598aa567be97"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 2152,
+          "sha256": "e60d0751f0057b9f24d7549af9213dde7ecfcd89a7c89f29b05b6e6c53780b4b"
+        }
+      ]
+    },
+    {
+      "case": "reuse-wide",
+      "kind": "buffer_reuse",
+      "options": {
+        "reuse_buffers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 3091,
+          "sha256": "08cdd9cb3347941df7282581b5057c51dda14a2086983c1c86e598046c7ae421"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 3267,
+          "sha256": "8e32d351fa10392463a81a3cfdd0f6f21ba2244b7f05da7a8fe1458ad7970b87"
+        },
+        {
+          "path": "change.json",
+          "bytes": 7841,
+          "sha256": "7b04a9282a6dbf1261f44b7c06a3cbebbebc302db432a8d98290358fc00b8e88"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 1926,
+          "sha256": "3350e78d0a611d6e0817627c17bbe6bdb303a07d9d378b3f198609fd89b9dd73"
+        }
+      ]
+    },
+    {
+      "case": "schedule-pure",
+      "kind": "sequential_dependency_schedule",
+      "options": {
+        "dependency_orders": [
+          [
+            1,
+            [
+              1,
+              0,
+              2,
+              3
+            ]
+          ]
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 452,
+          "sha256": "a5eed65ca896b05538ca0f271e06ea1a727ccc23044ba98a4466dba0c19185d3"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 452,
+          "sha256": "01e7c176a97c9636a030344058fc4ca8419989e91aa8f3364d72eeee69e7f307"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2376,
+          "sha256": "a690ad1a364f066d919dc806119042d41554a8b732012e7eba03efc52928a3ac"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 165,
+          "sha256": "c366efd520530633a02bc0bfd828af1d29c10f089ae9c91c230059196e81045e"
+        }
+      ]
+    },
+    {
+      "case": "schedule-opaque",
+      "kind": "sequential_dependency_schedule",
+      "options": {
+        "dependency_orders": [
+          [
+            1,
+            [
+              1,
+              0,
+              2,
+              3,
+              4
+            ]
+          ]
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 490,
+          "sha256": "0dbb6f96f3b076a2987ce36a558f866f0874e240e9f25ac6fee56e1a783122f8"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 490,
+          "sha256": "229c528e1990e4e7450c4148237f489ed1bc7de1354ab60d009e0d3072d7ed03"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2633,
+          "sha256": "e1fc925979ce8d482286ec8a863fd5fcbe887263e45f1745db0f13ded1adc880"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 199,
+          "sha256": "b010c82470ba5e83ad162ff6a926875facba9e2c052b5b74c8afe540324017c9"
+        }
+      ]
+    },
+    {
+      "case": "schedule-multiple",
+      "kind": "sequential_dependency_schedule",
+      "options": {
+        "dependency_orders": [
+          [
+            1,
+            [
+              1,
+              0,
+              2,
+              3
+            ]
+          ]
+        ]
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 593,
+          "sha256": "b94811d88e8eeb4c8f2e6efb1e19eeaf8929ebd363d269f6bdd3ea9b49857391"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 593,
+          "sha256": "20dc637e3ae6c6d16ba149314007fc0a8e324af128fecd53882ada3100674b3a"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2678,
+          "sha256": "3f8dab94476d13d4ad6234dea153a53856fbc54e6587c651a37ca21cb056bd8e"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 221,
+          "sha256": "515275d3ca12ff1a1859a0a0dd18cca3a1c2a47ebaa017cce0efc1f03bd5ac95"
+        }
+      ]
+    }
+  ],
+  "loaded_producer_sources": [
+    {
+      "module": "merlin",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086"
+    },
+    {
+      "module": "merlin.common",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e"
+    },
+    {
+      "module": "merlin.common.dense_float_ir",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505"
+    },
+    {
+      "module": "merlin.transforms.certificates",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b"
+    },
+    {
+      "module": "merlin.transforms.normalization",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84"
+    },
+    {
+      "module": "merlin.transforms.loops",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e"
+    },
+    {
+      "module": "merlin.transforms.pipeline_state",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652"
+    },
+    {
+      "module": "merlin.transforms.planning",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39"
+    },
+    {
+      "module": "merlin.transforms.validation",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159"
+    },
+    {
+      "module": "merlin.transforms.pipeline",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0"
+    },
+    {
+      "module": "merlin.transforms",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39"
+    },
+    {
+      "module": "merlin.transforms.scalar_witness",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/scalar_witness.py",
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31"
+    },
+    {
+      "module": "merlin.transforms.pure_scalar",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pure_scalar.py",
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06"
+    },
+    {
+      "module": "merlin.transforms.unrolling",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f"
+    }
+  ],
+  "fixture_sources": [
+    "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_loops_reuse_cases.py",
+    "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_loops_unroll_cases.py"
+  ]
+}

@@ -1,0 +1,418 @@
+{
+  "bits": 64,
+  "sourceContext": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32, i32, memref<?xi32>) -> (i32, index)\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"i32\"],[1,\"i32\"],[2,\"memref<?xi32>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[3,\"index\"]]},{\"attributes\":[],\"index_constant\":1,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"1 : index\"]],\"regions\":[],\"results\":[[4,\"index\"]]},{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"2 : index\"]],\"regions\":[],\"results\":[[5,\"index\"]]},{\"attributes\":[],\"index_constant\":3,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"3 : index\"]],\"regions\":[],\"results\":[[6,\"index\"]]},{\"private_allocate\":0},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[8,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[9,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[0,7,8,9],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[7,3,3],\"properties\":[],\"regions\":[],\"results\":[[10,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[10,0],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[11,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[11,7,3,3],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[7,3,3],\"properties\":[],\"regions\":[],\"results\":[[12,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[7,3],\"properties\":[],\"regions\":[],\"results\":[[13,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operands\":[12,2],\"properties\":[[\"callee\",\"@touch\"]],\"regions\":[],\"results\":[[14,\"i32\"]]},{\"private_release\":0},{\"private_allocate\":1},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[16,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[17,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[1,15,16,17],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[15,3,3],\"properties\":[],\"regions\":[],\"results\":[[18,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[18,1],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[19,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[19,15,3,3],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[15,3,3],\"properties\":[],\"regions\":[],\"results\":[[20,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[15,3],\"properties\":[],\"regions\":[],\"results\":[[21,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operands\":[20,2],\"properties\":[[\"callee\",\"@touch\"]],\"regions\":[],\"results\":[[22,\"i32\"]]},{\"private_release\":1},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[14,22],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[23,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[23,21],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32, memref<?xi32>) -> i32\"],[\"sym_name\",\"\\\"touch\\\"\"]],\"regions\":[[{\"arguments\":[[24,\"i32\"],[25,\"memref<?xi32>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[26,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[25,26],\"properties\":[],\"regions\":[],\"results\":[[27,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[27,24],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[28,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[28,25,26],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[28],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32) -> i32\"],[\"sym_name\",\"\\\"untouched\\\"\"]],\"regions\":[[{\"arguments\":[[29,\"i32\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"1 : i32\"]],\"regions\":[],\"results\":[[30,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[29,30],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[31,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[31],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "targetContext": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32, i32, memref<?xi32>) -> (i32, index)\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"i32\"],[1,\"i32\"],[2,\"memref<?xi32>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[3,\"index\"]]},{\"attributes\":[],\"index_constant\":1,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"1 : index\"]],\"regions\":[],\"results\":[[4,\"index\"]]},{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"2 : index\"]],\"regions\":[],\"results\":[[5,\"index\"]]},{\"attributes\":[],\"index_constant\":3,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"3 : index\"]],\"regions\":[],\"results\":[[6,\"index\"]]},{\"private_allocate\":0},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[8,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[9,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[0,7,8,9],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[7,3,3],\"properties\":[],\"regions\":[],\"results\":[[10,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[10,0],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[11,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[11,7,3,3],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[7,3,3],\"properties\":[],\"regions\":[],\"results\":[[12,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[7,3],\"properties\":[],\"regions\":[],\"results\":[[13,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operands\":[12,2],\"properties\":[[\"callee\",\"@touch\"]],\"regions\":[],\"results\":[[14,\"i32\"]]},{\"private_release\":0},{\"private_allocate\":1},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[16,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[17,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[1,15,16,17],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[15,3,3],\"properties\":[],\"regions\":[],\"results\":[[18,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[18,1],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[19,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[19,15,3,3],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[15,3,3],\"properties\":[],\"regions\":[],\"results\":[[20,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[15,3],\"properties\":[],\"regions\":[],\"results\":[[21,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operands\":[20,2],\"properties\":[[\"callee\",\"@touch\"]],\"regions\":[],\"results\":[[22,\"i32\"]]},{\"private_release\":1},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[14,22],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[23,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[23,21],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32, memref<?xi32>) -> i32\"],[\"sym_name\",\"\\\"touch\\\"\"]],\"regions\":[[{\"arguments\":[[24,\"i32\"],[25,\"memref<?xi32>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[26,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[25,26],\"properties\":[],\"regions\":[],\"results\":[[27,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[27,24],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[28,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[28,25,26],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[28],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32) -> i32\"],[\"sym_name\",\"\\\"untouched\\\"\"]],\"regions\":[[{\"arguments\":[[29,\"i32\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"1 : i32\"]],\"regions\":[],\"results\":[[30,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[29,30],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[31,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[31],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "objects": [
+    {
+      "slot": 0,
+      "shape": [
+        2,
+        3
+      ],
+      "elementBits": 32,
+      "alignment": 16
+    },
+    {
+      "slot": 0,
+      "shape": [
+        2,
+        3
+      ],
+      "elementBits": 32,
+      "alignment": 16
+    }
+  ],
+  "instructions": [
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[3,\"index\"]]}"
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":1,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"1 : index\"]],\"regions\":[],\"results\":[[4,\"index\"]]}"
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"2 : index\"]],\"regions\":[],\"results\":[[5,\"index\"]]}"
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":3,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"3 : index\"]],\"regions\":[],\"results\":[[6,\"index\"]]}"
+    },
+    {
+      "kind": "allocate",
+      "object": 0,
+      "retained": true
+    },
+    {
+      "kind": "initialize",
+      "object": 0,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[8,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[9,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[0,7,8,9],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}"
+    },
+    {
+      "kind": "load",
+      "object": 0,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[7,3,3],\"properties\":[],\"regions\":[],\"results\":[[10,\"i32\"]]}"
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[10,0],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[11,\"i32\"]]}"
+    },
+    {
+      "kind": "store",
+      "object": 0,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[11,7,3,3],\"properties\":[],\"regions\":[],\"results\":[]}"
+    },
+    {
+      "kind": "load",
+      "object": 0,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[7,3,3],\"properties\":[],\"regions\":[],\"results\":[[12,\"i32\"]]}"
+    },
+    {
+      "kind": "dimension",
+      "object": 0,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[7,3],\"properties\":[],\"regions\":[],\"results\":[[13,\"index\"]]}"
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operands\":[12,2],\"properties\":[[\"callee\",\"@touch\"]],\"regions\":[],\"results\":[[14,\"i32\"]]}"
+    },
+    {
+      "kind": "release",
+      "object": 0,
+      "retained": false
+    },
+    {
+      "kind": "allocate",
+      "object": 1,
+      "retained": false
+    },
+    {
+      "kind": "initialize",
+      "object": 1,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[16,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[17,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[1,15,16,17],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}"
+    },
+    {
+      "kind": "load",
+      "object": 1,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[15,3,3],\"properties\":[],\"regions\":[],\"results\":[[18,\"i32\"]]}"
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[18,1],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[19,\"i32\"]]}"
+    },
+    {
+      "kind": "store",
+      "object": 1,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[19,15,3,3],\"properties\":[],\"regions\":[],\"results\":[]}"
+    },
+    {
+      "kind": "load",
+      "object": 1,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[15,3,3],\"properties\":[],\"regions\":[],\"results\":[[20,\"i32\"]]}"
+    },
+    {
+      "kind": "dimension",
+      "object": 1,
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[15,3],\"properties\":[],\"regions\":[],\"results\":[[21,\"index\"]]}"
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operands\":[20,2],\"properties\":[[\"callee\",\"@touch\"]],\"regions\":[],\"results\":[[22,\"i32\"]]}"
+    },
+    {
+      "kind": "release",
+      "object": 1,
+      "retained": true
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[14,22],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[23,\"i32\"]]}"
+    },
+    {
+      "kind": "retained",
+      "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[23,21],\"properties\":[],\"regions\":[],\"results\":[]}"
+    }
+  ],
+  "epochs": [
+    {
+      "source_value": 7,
+      "slot": 0,
+      "shape": [
+        2,
+        3
+      ],
+      "elementBits": 32,
+      "alignment": 16,
+      "allocation": 4,
+      "initialization": 5,
+      "release": 12,
+      "initializer": {
+        "path": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          5
+        ],
+        "controls": [
+          [
+            0,
+            2,
+            1
+          ],
+          [
+            0,
+            3,
+            1
+          ]
+        ],
+        "store_path": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "indices": [
+          8,
+          9
+        ],
+        "loop_ivs": [
+          8,
+          9
+        ],
+        "value": 0,
+        "body": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[8,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[9,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[0,7,8,9],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}",
+        "target_body": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[8,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[9,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[0,7,8,9],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}"
+      },
+      "uses": [
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[0,7,8,9],\"properties\":[],\"regions\":[],\"results\":[]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            6
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[7,3,3],\"properties\":[],\"regions\":[],\"results\":[[10,\"i32\"]]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            8
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[11,7,3,3],\"properties\":[],\"regions\":[],\"results\":[]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            9
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[7,3,3],\"properties\":[],\"regions\":[],\"results\":[[12,\"i32\"]]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            10
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[7,3],\"properties\":[],\"regions\":[],\"results\":[[13,\"index\"]]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            12
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dealloc\",\"operands\":[7],\"properties\":[],\"regions\":[],\"results\":[]}"
+        }
+      ],
+      "retainedAllocation": true,
+      "retainedRelease": false
+    },
+    {
+      "source_value": 15,
+      "slot": 0,
+      "shape": [
+        2,
+        3
+      ],
+      "elementBits": 32,
+      "alignment": 16,
+      "allocation": 13,
+      "initialization": 14,
+      "release": 21,
+      "initializer": {
+        "path": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          14
+        ],
+        "controls": [
+          [
+            0,
+            2,
+            1
+          ],
+          [
+            0,
+            3,
+            1
+          ]
+        ],
+        "store_path": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          14,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "indices": [
+          16,
+          17
+        ],
+        "loop_ivs": [
+          16,
+          17
+        ],
+        "value": 1,
+        "body": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[16,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[17,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[1,15,16,17],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}",
+        "target_body": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,5,4],\"properties\":[],\"regions\":[[{\"arguments\":[[16,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.for\",\"operands\":[3,6,4],\"properties\":[],\"regions\":[[{\"arguments\":[[17,\"index\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[1,15,16,17],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}"
+      },
+      "uses": [
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            14,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[1,15,16,17],\"properties\":[],\"regions\":[],\"results\":[]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            15
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[15,3,3],\"properties\":[],\"regions\":[],\"results\":[[18,\"i32\"]]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            17
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[19,15,3,3],\"properties\":[],\"regions\":[],\"results\":[]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            18
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.load\",\"operands\":[15,3,3],\"properties\":[],\"regions\":[],\"results\":[[20,\"i32\"]]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            19
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[15,3],\"properties\":[],\"regions\":[],\"results\":[[21,\"index\"]]}"
+        },
+        {
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            21
+          ],
+          "operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dealloc\",\"operands\":[15],\"properties\":[],\"regions\":[],\"results\":[]}"
+        }
+      ],
+      "retainedAllocation": false,
+      "retainedRelease": true
+    }
+  ],
+  "structural_nodes": 86,
+  "actual_slot_values": [
+    7
+  ],
+  "allocator_mode": "total_private_unobservable",
+  "initializer_semantics": "partial_complete_rectangular_pure",
+  "raw_SCF_bridge_proved": false
+}

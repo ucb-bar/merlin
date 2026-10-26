@@ -1,0 +1,22 @@
+{
+  "choices": {
+    "broadcast_math": true,
+    "contraction": true,
+    "squared_sum": true
+  },
+  "hardware_cycles": "not_measured",
+  "output_sha256": "803bf618acd02cdd093971606298bac8ebe2207918459aeb1ada9c6c586957e8",
+  "rewrites": {
+    "broadcast_math": 0,
+    "contraction": 0,
+    "squared_sum": 0
+  },
+  "schema": "merlin.automatic_host_features.v1",
+  "selection_basis": "typed_source_exactness_and_reduced_recurrence_materialization",
+  "source_sha256": "803bf618acd02cdd093971606298bac8ebe2207918459aeb1ada9c6c586957e8",
+  "unselected_cost_alternatives": [
+    "packet_widths",
+    "reduction_unrolling",
+    "lookup_tables"
+  ]
+}

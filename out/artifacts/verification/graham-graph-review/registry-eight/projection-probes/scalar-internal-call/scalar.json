@@ -1,0 +1,10 @@
+{
+  "case": "scalar-internal-call",
+  "route": "scalar",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_refused",
+  "reason_type": "ValueError",
+  "reason": "internal-call/fuel composition bridge unavailable; external contracts only"
+}

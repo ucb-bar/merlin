@@ -1,0 +1,118 @@
+{
+  "method": "local admission probes of sealed shape/integer projections; shipped projections are subjects, not oracles",
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "verification_revision": "58dbc7c00acdb6770d440b773cc2954328c78472",
+  "new_lean_qualification": false,
+  "cases": [
+    {
+      "case": "integer-fold-add",
+      "route": "integer",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/integer-fold-add/integer/actual/CAPTURE.json",
+      "sha256": "7c5940a36a4cf11542395fbe6b353083930ee8626538b8f8df93a02b3eb73281"
+    },
+    {
+      "case": "integer-fold-mul",
+      "route": "integer",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/integer-fold-mul/integer/actual/CAPTURE.json",
+      "sha256": "2a69cbc80e9e0b378af68d783410a17569e2a91769538fd196ace6d1e165fbde"
+    },
+    {
+      "case": "integer-fold-sub",
+      "route": "integer",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/integer-fold-sub/integer/actual/CAPTURE.json",
+      "sha256": "6b0dedb6d4f1126c895883daffc06388296dc9252f2a2d5f257e9728a2744419"
+    },
+    {
+      "case": "integer-neutral-add-left",
+      "route": "integer",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/integer-neutral-add-left/integer/actual/CAPTURE.json",
+      "sha256": "29588bc86e8e373b8348f2c7dbf5f9124e67e0a5a9be7da1b2118e44680a1527"
+    },
+    {
+      "case": "integer-neutral-add-right",
+      "route": "integer",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/integer-neutral-add-right/integer/actual/CAPTURE.json",
+      "sha256": "fe35d4e8545719103fd9bdec4c50853316a80e0bd743e8cacc575160fe3abc85"
+    },
+    {
+      "case": "integer-neutral-mul-left",
+      "route": "integer",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/integer-neutral-mul-left/integer/actual/CAPTURE.json",
+      "sha256": "7c3f8a6df9023f3f9fa050f9ddddf5dd334d3566e6141b728028980eb0b7ca26"
+    },
+    {
+      "case": "integer-neutral-mul-right",
+      "route": "integer",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/integer-neutral-mul-right/integer/actual/CAPTURE.json",
+      "sha256": "bec64d8e11aaf0c562fee5ac87a24edcbf43a015b0b6d6db5334695a6ccdda07"
+    },
+    {
+      "case": "integer-neutral-sub-right",
+      "route": "integer",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/integer-neutral-sub-right/integer/actual/CAPTURE.json",
+      "sha256": "5fe18a63fbd569866e34fad3920e825e6191936c739ba10beab4ad4cc01e5471"
+    },
+    {
+      "case": "shape-cast-generic",
+      "route": "shape",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/shape-cast-generic/shape/model.json",
+      "sha256": "afc3dd58a694c83580c8111dd3ece571ef32ab32a081451d80c621dbdc1e8a75"
+    },
+    {
+      "case": "shape-dim",
+      "route": "shape",
+      "returncode": 0,
+      "status": "projection_emitted_not_kernel_checked",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "model": "projection-probes-sealed/shape-dim/shape/model.json",
+      "sha256": "aa03ba81c2b28ab37e324bc0f50dc7cf2a3cff25f11ed023d65842be934bde3a"
+    }
+  ]
+}

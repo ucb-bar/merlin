@@ -1,0 +1,28 @@
+{
+  "checked_at_utc": "2026-10-26T01:13:48.384056+00:00",
+  "registered_kinds": 8,
+  "review_rows": 34,
+  "rows_by_kind": {
+    "shape_view_normalization": 2,
+    "scalar_redundancy_elimination": 3,
+    "scalar_loop_invariant_motion": 5,
+    "ordered_loop_segmentation": 3,
+    "ordered_loop_unrolling": 5,
+    "buffer_reuse": 5,
+    "sequential_dependency_schedule": 3,
+    "exact_integer_simplification": 8
+  },
+  "fresh_changed_producer_examples": 34,
+  "preserved_invalid_fixture": "producer-examples/shape-cast; parser setup failure, not semantic refusal",
+  "projection_admission_observations": {
+    "projection_emitted_not_kernel_checked": 16,
+    "projection_refused": 11
+  },
+  "reviewed_source_hashes_match": true,
+  "capture_and_projection_hashes_match": true,
+  "csv_complete_and_unique": true,
+  "retained_worked_packet_copy_integrity": true,
+  "tracked_worktrees_clean": true,
+  "new_lean_qualification": false,
+  "broader_inventory": "deferred by user"
+}

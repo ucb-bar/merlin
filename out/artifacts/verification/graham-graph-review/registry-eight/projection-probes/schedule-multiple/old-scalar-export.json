@@ -1,0 +1,10 @@
+{
+  "case": "schedule-multiple",
+  "route": "old-scalar-export",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_refused",
+  "reason_type": "UnsupportedLeanIR",
+  "reason": "formal scalar input requires exactly one defined entry function"
+}

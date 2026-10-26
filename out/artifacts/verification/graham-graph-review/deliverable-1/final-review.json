@@ -1,0 +1,20 @@
+{
+  "local_markdown_links_checked": 51,
+  "broken_or_absolute_links": [],
+  "matrix_gap_ids_missing_from_gaps_md": [],
+  "gaps_md_ids_unused_by_matrix": [],
+  "audit_checks": 31,
+  "audit_passed": true,
+  "open_gaps": [
+    "D1-G01",
+    "D1-G02",
+    "D1-G03",
+    "D1-G04",
+    "D1-G05",
+    "D1-G06",
+    "D1-G07",
+    "D1-G08",
+    "D1-G09"
+  ],
+  "no_new_Lean_qualification": true
+}

@@ -1,0 +1,10 @@
+{
+  "case": "scalar-dce",
+  "route": "scalar",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/scalar-dce/scalar.model.json",
+  "sha256": "e71986f6dc6b32b3980b478a43478a160ca99c4d12b01b35b16c69ebcd603543"
+}

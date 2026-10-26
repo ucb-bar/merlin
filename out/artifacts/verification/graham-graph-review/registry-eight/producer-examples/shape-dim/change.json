@@ -1,0 +1,27 @@
+{
+  "kind": "shape_view_normalization",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (memref<4xi8>) -> index}> ({\n  ^bb0(%a: memref<4xi8>):\n    %z = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %r = \"memref.dim\"(%a, %z) : (memref<4xi8>, index) -> index\n    \"func.return\"(%r) : (index) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (memref<4xi8>) -> index}> ({\n  ^bb0(%a: memref<4xi8>):\n    %z = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %r = \"arith.constant\"() <{value = 4 : index}> : () -> index\n    \"func.return\"(%r) : (index) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {},
+  "certificate": {
+    "kind": "shape_view_normalization",
+    "before_ir_sha256": "2c33747171877b1a96f13289aa1cd7b57a91d9002c5f8b27272a044a9f81b954",
+    "after_ir_sha256": "a9e7c0458b9c6bf8d889d7cd8c94db7d12b6f3be80a79ab2be12284dbed9f0a3",
+    "witnesses": [
+      {
+        "kind": "shape",
+        "operation_index": 3,
+        "rule": "static_memref_dimension",
+        "shape": [
+          4
+        ],
+        "axis": 0
+      }
+    ],
+    "scope": [
+      "identical_memref_cast",
+      "static_dimensions"
+    ],
+    "schema": "merlin.shared_transform.v1"
+  }
+}

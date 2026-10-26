@@ -1,0 +1,10 @@
+{
+  "case": "unroll-bulk_tail",
+  "route": "unroll",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/unroll-bulk_tail/unroll.model.json",
+  "sha256": "b55109faa22076130f7ba02252f37a7a3f31aa65b7656d77cca7a8115d20f102"
+}

@@ -1,0 +1,273 @@
+{
+  "schema": "graham.deliverable-1.audit.v1",
+  "checked_at_utc": "2026-10-26T06:37:19.848406+00:00",
+  "scope": "All direct Python modules in transforms and compile/scheduling, all reference-document code_refs, plus explicitly followed connected-region and host-arithmetic dependencies; not a transitive whole-repository inventory",
+  "passed": true,
+  "checks": {
+    "unique_nonempty_rows": {
+      "passed": true,
+      "detail": 91
+    },
+    "registry_matches_actual_dispatch_and_rows": {
+      "passed": true,
+      "detail": [
+        "buffer_reuse",
+        "exact_integer_simplification",
+        "ordered_loop_segmentation",
+        "ordered_loop_unrolling",
+        "scalar_loop_invariant_motion",
+        "scalar_redundancy_elimination",
+        "sequential_dependency_schedule",
+        "shape_view_normalization"
+      ]
+    },
+    "excluded_common_analysis_stages": {
+      "passed": true,
+      "detail": [
+        "dependency_analysis",
+        "final_analyses",
+        "final_verification",
+        "storage_analysis"
+      ]
+    },
+    "dependency_schedule_actual_apply_order_present": {
+      "passed": true,
+      "detail": null
+    },
+    "policy_dispatches_registered_actions_without_own_proof_authority": {
+      "passed": true,
+      "detail": "Caller-provided RegisteredPass mapping; no hardcoded call to apply_common_pipeline"
+    },
+    "schedule_stage_roster": {
+      "passed": true,
+      "detail": [
+        {
+          "stage": "semantic_admission",
+          "mutates_session_ir": false,
+          "line": 748
+        },
+        {
+          "stage": "storage",
+          "mutates_session_ir": true,
+          "line": 749
+        },
+        {
+          "stage": "completion",
+          "mutates_session_ir": false,
+          "line": 757
+        },
+        {
+          "stage": "emission",
+          "mutates_session_ir": false,
+          "line": 765
+        },
+        {
+          "stage": "final_program",
+          "mutates_session_ir": false,
+          "line": 773
+        },
+        {
+          "stage": "fusion",
+          "mutates_session_ir": false,
+          "line": 784
+        },
+        {
+          "stage": "configuration",
+          "mutates_session_ir": false,
+          "line": 799
+        },
+        {
+          "stage": "prefetch",
+          "mutates_session_ir": false,
+          "line": 824
+        },
+        {
+          "stage": "post_storage.name",
+          "mutates_session_ir": true,
+          "line": 838
+        }
+      ]
+    },
+    "candidate_stages_not_miscounted_by_mutation_flag": {
+      "passed": true,
+      "detail": null
+    },
+    "all_document_code_refs_accounted": {
+      "passed": true,
+      "detail": 65
+    },
+    "all_direct_transform_and_scheduling_modules_accounted": {
+      "passed": true,
+      "detail": 86
+    },
+    "source_inventory_exactly_matches_index": {
+      "passed": true,
+      "detail": 125
+    },
+    "document_sections_reconciled": {
+      "passed": true,
+      "detail": 33
+    },
+    "reviewed_source_and_proof_reference_hashes": {
+      "passed": true,
+      "detail": []
+    },
+    "matrix_source_locations_exist": {
+      "passed": true,
+      "detail": {
+        "locations": 672,
+        "invalid": []
+      }
+    },
+    "registry_eight_original_manifest_intact": {
+      "passed": true,
+      "detail": {
+        "entries": 230,
+        "invalid": []
+      }
+    },
+    "all_registry_rows_have_changed_unqualified_producer_bytes": {
+      "passed": true,
+      "detail": {
+        "count": 34,
+        "invalid": []
+      }
+    },
+    "projection_probes_not_promoted_to_proofs": {
+      "passed": true,
+      "detail": {
+        "projection_emitted_not_kernel_checked": 16,
+        "projection_refused": 11
+      }
+    },
+    "portable_worked_chain_copy_integrity": {
+      "passed": true,
+      "detail": {
+        "entries": 120,
+        "invalid": [],
+        "fresh_historical_replay": false
+      }
+    },
+    "later_elision_failure_controls_status": {
+      "passed": true,
+      "detail": null
+    },
+    "region_plan_is_not_claimed_as_changed_MLIR": {
+      "passed": true,
+      "detail": null
+    },
+    "geometry_not_claimed_as_program_equivalence": {
+      "passed": true,
+      "detail": null
+    },
+    "support_qualification_composition_separate": {
+      "passed": true,
+      "detail": null
+    },
+    "configured_behavioral_suite": {
+      "passed": true,
+      "detail": {
+        "tests": 530,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "native_toolchain_identities": {
+      "passed": true,
+      "detail": "Exact locally built pinned LLVM23; original Python compiler driver; no guard changes"
+    },
+    "native_changed_pair_products_and_owners": {
+      "passed": true,
+      "detail": {
+        "copied_files": 61,
+        "owner_and_product_hashes": 80,
+        "Lean_qualification": false
+      }
+    },
+    "sealed_packets_disclaim_review_and_gating": {
+      "passed": true,
+      "detail": {
+        "shape": {
+          "review_complete": false,
+          "ordinary_compiler_gating": false,
+          "adapter_proved": false
+        },
+        "memory_scf": {},
+        "declared": {
+          "ordinary_compiler_gating": false,
+          "engineering_qualified": true
+        },
+        "declared_bound": {
+          "engineering_qualified": false
+        }
+      }
+    },
+    "sealed_packet_local_presence_recounted": {
+      "passed": true,
+      "detail": {
+        "shape": true,
+        "integer": true,
+        "pipeline": true,
+        "memory_scf": true,
+        "declared": true
+      }
+    },
+    "shape_and_integer_cite_sealed_route_not_review": {
+      "passed": true,
+      "detail": null
+    },
+    "sealed_route_probes_not_promoted_to_proofs": {
+      "passed": true,
+      "detail": {
+        "projection_emitted_not_kernel_checked": 10
+      }
+    },
+    "live_gate_admits_shape_on_identity_statement": {
+      "passed": true,
+      "detail": "producer lean_checker.py shape branch; D1-G09"
+    },
+    "producer_pin_and_clean_tracked_tree": {
+      "passed": true,
+      "detail": {
+        "head": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+        "tracked_changes": ""
+      }
+    },
+    "verification_pin_and_clean_tracked_tree": {
+      "passed": true,
+      "detail": {
+        "head": "58dbc7c00acdb6770d440b773cc2954328c78472",
+        "tracked_changes": ""
+      }
+    }
+  },
+  "errors": [],
+  "rows_by_category": {
+    "registered_common_transformation": 34,
+    "selector": 1,
+    "broader_transformation": 41,
+    "helper_plan": 8,
+    "candidate_transformation": 2,
+    "extension_point": 2,
+    "analysis_admission": 1,
+    "target_implementation_boundary": 1,
+    "emission_boundary": 1
+  },
+  "test_results": {
+    "tests": 530,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "test_run": "behavioral-tests/suite.json",
+  "all_tests_passed": true,
+  "new_lean_qualification": false,
+  "independent_semantic_projection_proof": false,
+  "human_review_approval": false,
+  "limits": [
+    "Missing raw qualification bundles remain missing; reports are not original-bound replay",
+    "No all-model, all-target, or transitive whole-repository coverage claim",
+    "Test totals and matrix row totals are not proof totals"
+  ]
+}

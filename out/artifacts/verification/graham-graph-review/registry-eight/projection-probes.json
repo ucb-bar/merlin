@@ -1,0 +1,276 @@
+{
+  "method": "local admission probes only; shipped projections are the subjects, not independent oracles",
+  "new_lean_qualification": false,
+  "cases": [
+    {
+      "case": "licm-dynamic",
+      "route": "scalar",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/licm-dynamic/scalar.model.json",
+      "sha256": "c9a8104d0a1a6cf837c4393cfd3c06784454a83e0c0bbf565c0b0f187119acb7"
+    },
+    {
+      "case": "licm-dynamic-stride",
+      "route": "scalar",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "ValueError",
+      "reason": "supported actual SCF control needs a checked positive constant stride"
+    },
+    {
+      "case": "licm-empty",
+      "route": "scalar",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/licm-empty/scalar.model.json",
+      "sha256": "84cb9cc187441c3d53282e6523b1abbf88225ffa212817637e9d4ddf2830818e"
+    },
+    {
+      "case": "licm-nested",
+      "route": "scalar",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/licm-nested/scalar.model.json",
+      "sha256": "8b4d2e18ff61a9741447a38ad72c47f06366621407021b5803790d91317b4452"
+    },
+    {
+      "case": "licm-nonempty",
+      "route": "scalar",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/licm-nonempty/scalar.model.json",
+      "sha256": "512463c69b09bca148caf1733bed598640828fdde3f2ffce287dcd8f838301cf"
+    },
+    {
+      "case": "reuse-dynamic-access",
+      "route": "reuse",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "ValueError",
+      "reason": "this mode requires static nonnegative access/control indices"
+    },
+    {
+      "case": "reuse-epochs",
+      "route": "reuse",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/reuse-epochs/reuse.model.json",
+      "sha256": "a5e20eb48dd8aa52cdc7d946eadd158abf399311f9d5d3cd0e9a876ca24d5b83"
+    },
+    {
+      "case": "reuse-memory-space",
+      "route": "reuse",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "ValueError",
+      "reason": "unsupported allocation shape/type/layout/alignment/space or metadata"
+    },
+    {
+      "case": "reuse-rank-zero",
+      "route": "reuse",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "ValueError",
+      "reason": "unsupported allocation shape/type/layout/alignment/space or metadata"
+    },
+    {
+      "case": "reuse-wide",
+      "route": "reuse",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "ValueError",
+      "reason": "unsupported allocation shape/type/layout/alignment/space or metadata"
+    },
+    {
+      "case": "scalar-cse",
+      "route": "scalar",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/scalar-cse/scalar.model.json",
+      "sha256": "5649ee101b3e977d301dc208f9f570657652deaf7160752ada68dab396ba6c25"
+    },
+    {
+      "case": "scalar-dce",
+      "route": "scalar",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/scalar-dce/scalar.model.json",
+      "sha256": "e71986f6dc6b32b3980b478a43478a160ca99c4d12b01b35b16c69ebcd603543"
+    },
+    {
+      "case": "scalar-internal-call",
+      "route": "scalar",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "ValueError",
+      "reason": "internal-call/fuel composition bridge unavailable; external contracts only"
+    },
+    {
+      "case": "schedule-multiple",
+      "route": "old-scalar-export",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "UnsupportedLeanIR",
+      "reason": "formal scalar input requires exactly one defined entry function"
+    },
+    {
+      "case": "schedule-multiple",
+      "route": "state-effects",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/schedule-multiple/state-effects.model.json",
+      "sha256": "8e652a5bf3d735e0633e18306fffb5a242cf365e85a198836c1c74640a2cff11"
+    },
+    {
+      "case": "schedule-opaque",
+      "route": "old-scalar-export",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "UnsupportedLeanIR",
+      "reason": "formal scalar operations require one result and no regions or successors"
+    },
+    {
+      "case": "schedule-opaque",
+      "route": "state-effects",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "UnsupportedStateEffects",
+      "reason": "unknown operation effects or opaque region semantics"
+    },
+    {
+      "case": "schedule-pure",
+      "route": "old-scalar-export",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/schedule-pure/old-scalar-export.model.json",
+      "sha256": "426c033b235b5b7b5f321441c95814c1af0ede8b7c5f52fd8ff10488e464a70c"
+    },
+    {
+      "case": "schedule-pure",
+      "route": "state-effects",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/schedule-pure/state-effects.model.json",
+      "sha256": "94014b13e87949cb97d0ce1f5cdbae0cc91b54bd3708341b57565df394f91fda"
+    },
+    {
+      "case": "segment-empty",
+      "route": "segment",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/segment-empty/segment.model.json",
+      "sha256": "f8ce4a21dc54a7c41023931205aa48f5daef3a72df273907656ec8cee8befc0b"
+    },
+    {
+      "case": "segment-nested",
+      "route": "segment",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "ValueError",
+      "reason": "nested source body regions require a separate admitted semantics"
+    },
+    {
+      "case": "segment-nonempty",
+      "route": "segment",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/segment-nonempty/segment.model.json",
+      "sha256": "2a400cdccf20138b5aca5fa34d68f1e10c701c2f6288b82e7c90c97cfa0964c7"
+    },
+    {
+      "case": "unroll-bulk_exact",
+      "route": "unroll",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/unroll-bulk_exact/unroll.model.json",
+      "sha256": "3f4bf4f6caa8af2d06f80e75c9cb03053e6071fe62d8edb1c5137d275182dc5b"
+    },
+    {
+      "case": "unroll-bulk_tail",
+      "route": "unroll",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/unroll-bulk_tail/unroll.model.json",
+      "sha256": "b55109faa22076130f7ba02252f37a7a3f31aa65b7656d77cca7a8115d20f102"
+    },
+    {
+      "case": "unroll-inline_empty",
+      "route": "unroll",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/unroll-inline_empty/unroll.model.json",
+      "sha256": "37ba59fba56515fdece8244cc9c3d8eeae1d9af00608429bba9140c283b48dd1"
+    },
+    {
+      "case": "unroll-inline_many",
+      "route": "unroll",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_emitted_not_kernel_checked",
+      "model": "projection-probes/unroll-inline_many/unroll.model.json",
+      "sha256": "7641df50e70165fcb932fbbd939e20c1efdb863df45e3b67b3efaec29d5cfd1e"
+    },
+    {
+      "case": "unroll-nested",
+      "route": "unroll",
+      "lean_run": false,
+      "qualification_issued": false,
+      "independent_correspondence_review": false,
+      "status": "projection_refused",
+      "reason_type": "ValueError",
+      "reason": "region-free complete original body required"
+    }
+  ]
+}

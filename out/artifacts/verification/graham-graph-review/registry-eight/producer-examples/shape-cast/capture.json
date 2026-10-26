@@ -1,0 +1,25 @@
+{
+  "case": "shape-cast",
+  "kind": "shape_view_normalization",
+  "options": {
+    "normalize_shapes": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "capture_failed",
+  "error_type": "ParseError",
+  "error": "<unknown>:3:20\n  %r = memref.cast %a : memref<4xi8> to memref<4xi8>\n                   ^^\n                   Operation memref.cast does not have a custom format.\n",
+  "files": [
+    {
+      "path": "failure.txt",
+      "bytes": 4360,
+      "sha256": "eeac9c250549b613406f222d090e4ad95a84b87a31a5322120c4c2b46faa6e26"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 158,
+      "sha256": "9a965010fb9313d78b155247ead8d3c51033f32dc828b74a98ee25ec1b095774"
+    }
+  ]
+}

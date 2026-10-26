@@ -1,0 +1,52 @@
+{
+  "purpose": "Selected pinned-producer behavioral tests in the configured native environment; not Lean qualification",
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "verification_revision": "58dbc7c00acdb6770d440b773cc2954328c78472",
+  "command": [
+    "/home/grammy/blast/merlin-pass-verification/.venv/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "merlin/tests/infra/test_schedule_pipeline.py",
+    "merlin/tests/infra/test_configuration_elimination.py",
+    "merlin/tests/infra/test_configuration_loops.py",
+    "merlin/tests/infra/test_private_copy_elimination.py",
+    "merlin/tests/infra/test_copy_coalescing.py",
+    "merlin/tests/infra/test_copy_pipeline.py",
+    "merlin/tests/infra/test_temporary_storage.py",
+    "merlin/tests/infra/test_device_spills.py",
+    "merlin/tests/infra/test_physical_fusion.py",
+    "merlin/tests/infra/test_program_limits.py",
+    "merlin/tests/infra/test_command_compaction.py",
+    "merlin/tests/infra/test_staged_dense_tile_order.py",
+    "merlin/tests/infra/test_effect_cleanup.py",
+    "merlin/tests/infra/test_dead_payload_writes.py",
+    "merlin/tests/ir/test_recomputation.py",
+    "merlin/tests/ir/test_dense_row_batching.py",
+    "-q",
+    "--basetemp",
+    "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z",
+    "-o",
+    "tmp_path_retention_policy=all",
+    "--junitxml",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-1/behavioral-tests/suite.xml"
+  ],
+  "cwd": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+  "environment": {
+    "MERLIN_COMPILER_DRIVER": "python",
+    "MERLIN_COMPILER_PYTHON": "/home/grammy/blast/merlin-pass-verification/out/build/lean/mlir-venv/bin/python",
+    "MERLIN_MLIR_INSTALL": "/home/grammy/blast/merlin/third_party/llvm-build",
+    "MERLIN_MLIR_TRANSLATE": "/home/grammy/blast/merlin/third_party/llvm-build/bin/mlir-translate",
+    "MERLIN_CLANG": "/home/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+    "PYTHONPATH": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src"
+  },
+  "start_utc": "2026-10-26T06:32:36.410956+00:00",
+  "end_utc": "2026-10-26T06:33:01.399091+00:00",
+  "returncode": 0,
+  "results": {
+    "tests": 530,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

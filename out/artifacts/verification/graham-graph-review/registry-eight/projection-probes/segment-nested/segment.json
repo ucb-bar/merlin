@@ -1,0 +1,10 @@
+{
+  "case": "segment-nested",
+  "route": "segment",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_refused",
+  "reason_type": "ValueError",
+  "reason": "nested source body regions require a separate admitted semantics"
+}

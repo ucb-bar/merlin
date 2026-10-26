@@ -1,0 +1,39 @@
+{
+  "case": "reuse-wide",
+  "kind": "buffer_reuse",
+  "options": {
+    "reuse_buffers": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "structural"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 3091,
+      "sha256": "08cdd9cb3347941df7282581b5057c51dda14a2086983c1c86e598046c7ae421"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 3267,
+      "sha256": "8e32d351fa10392463a81a3cfdd0f6f21ba2244b7f05da7a8fe1458ad7970b87"
+    },
+    {
+      "path": "change.json",
+      "bytes": 7841,
+      "sha256": "7b04a9282a6dbf1261f44b7c06a3cbebbebc302db432a8d98290358fc00b8e88"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 1926,
+      "sha256": "3350e78d0a611d6e0817627c17bbe6bdb303a07d9d378b3f198609fd89b9dd73"
+    }
+  ]
+}

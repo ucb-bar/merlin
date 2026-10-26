@@ -1,0 +1,10 @@
+{
+  "case": "unroll-nested",
+  "route": "unroll",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_refused",
+  "reason_type": "ValueError",
+  "reason": "region-free complete original body required"
+}

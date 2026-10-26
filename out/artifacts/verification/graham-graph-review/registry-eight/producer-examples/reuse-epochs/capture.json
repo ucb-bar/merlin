@@ -1,0 +1,39 @@
+{
+  "case": "reuse-epochs",
+  "kind": "buffer_reuse",
+  "options": {
+    "reuse_buffers": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "structural"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 3526,
+      "sha256": "5f8b5f2b9515003df093f22c04903c257d610240ee80b1dc4fa81a76dbdbd16a"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 3704,
+      "sha256": "d0f6906705b0c123a17c0065672b92b7a5eedc03418887c6eb76cd799fcd4f1c"
+    },
+    {
+      "path": "change.json",
+      "bytes": 8783,
+      "sha256": "4a17d31614ede88c326743d38ec5ba863ef283e6da9897ed738d598aa567be97"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 2152,
+      "sha256": "e60d0751f0057b9f24d7549af9213dde7ecfcd89a7c89f29b05b6e6c53780b4b"
+    }
+  ]
+}

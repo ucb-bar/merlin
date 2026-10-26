@@ -1,0 +1,10 @@
+{
+  "case": "reuse-epochs",
+  "route": "reuse",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/reuse-epochs/reuse.model.json",
+  "sha256": "a5e20eb48dd8aa52cdc7d946eadd158abf399311f9d5d3cd0e9a876ca24d5b83"
+}

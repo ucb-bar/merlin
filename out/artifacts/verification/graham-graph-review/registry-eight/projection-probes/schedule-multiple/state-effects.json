@@ -1,0 +1,10 @@
+{
+  "case": "schedule-multiple",
+  "route": "state-effects",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/schedule-multiple/state-effects.model.json",
+  "sha256": "8e652a5bf3d735e0633e18306fffb5a242cf365e85a198836c1c74640a2cff11"
+}

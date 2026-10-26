@@ -1,0 +1,27 @@
+{
+  "kind": "shape_view_normalization",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (memref<4xi8>) -> memref<4xi8>}> ({\n  ^bb0(%a: memref<4xi8>):\n    %r = \"memref.cast\"(%a) : (memref<4xi8>) -> memref<4xi8>\n    \"func.return\"(%r) : (memref<4xi8>) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (memref<4xi8>) -> memref<4xi8>}> ({\n  ^bb0(%a: memref<4xi8>):\n    \"func.return\"(%a) : (memref<4xi8>) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {},
+  "certificate": {
+    "kind": "shape_view_normalization",
+    "before_ir_sha256": "9c65ded51d692dd8aaf08a5cf64b7ceb45214152ce8b9acf1a46478c5008beeb",
+    "after_ir_sha256": "abfe941ebc8549a87c187ae332ebe85229d9566187127776195a7ab4bb5da565",
+    "witnesses": [
+      {
+        "kind": "shape",
+        "operation_index": 2,
+        "rule": "identity_memref_cast",
+        "shape": [
+          4
+        ],
+        "axis": null
+      }
+    ],
+    "scope": [
+      "identical_memref_cast",
+      "static_dimensions"
+    ],
+    "schema": "merlin.shared_transform.v1"
+  }
+}

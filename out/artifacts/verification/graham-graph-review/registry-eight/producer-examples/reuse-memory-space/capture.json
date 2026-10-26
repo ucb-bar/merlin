@@ -1,0 +1,39 @@
+{
+  "case": "reuse-memory-space",
+  "kind": "buffer_reuse",
+  "options": {
+    "reuse_buffers": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "structural"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 3143,
+      "sha256": "009ca7982ef641e71828cc130554cc619c818ddfdea8cf94ace297c7194b6816"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 3335,
+      "sha256": "624adf38a9f3d0522efaac67313ec61057cdc5748ecbce6451ecf393c81a3bc7"
+    },
+    {
+      "path": "change.json",
+      "bytes": 7957,
+      "sha256": "d6c9dd1bfd6695d9ec50d02d19728580483c164bcd334baca14741213f5a2874"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 1933,
+      "sha256": "944f01a172c4aa1cd29744388c3b834c0218e4348f621045e65b9e7554393cb7"
+    }
+  ]
+}

@@ -1,0 +1,281 @@
+{
+  "schema": "graham.registry-eight.producer-examples.v1",
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "verification_revision": "c399e441e86042752c407a4ba917d4510b16585b",
+  "new_lean_qualification": false,
+  "new_lean_tests_run": false,
+  "method": "Pinned actual common pipeline in explicit plan_only mode; private module clones; original sources and evidence unchanged",
+  "case_results": [
+    {
+      "case": "licm-dynamic-stride",
+      "kind": "scalar_loop_invariant_motion",
+      "options": {
+        "hoist_invariants": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "licm"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 761,
+          "sha256": "a777884120063c096b66df01f8a0c1b192155acef75d0d1f4390e5639a04b46b"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 763,
+          "sha256": "6f23f99e174e8c4389026ae7506f702a89a413002786a48d09b408460af2f748"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2488,
+          "sha256": "473e575e5972b6cb53a3a97defae37d0f55e2af8e41efeb4fcc8d4a467a140fd"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 442,
+          "sha256": "9a31f3d8d4d5003e07ba8535b1ca84ec0a6b7e37971edd6e624112ace7c827a8"
+        }
+      ]
+    },
+    {
+      "case": "scalar-internal-call",
+      "kind": "scalar_redundancy_elimination",
+      "options": {
+        "eliminate_redundancy": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "dce"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 487,
+          "sha256": "88a756ecf44ad4ec95538c152763b65bbdacfe151f80f554d9bc264acfc58f1e"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 580,
+          "sha256": "833c186691f003db4c01d9278078e56ed938d32add58c8aaa7d4ff5994c01acb"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2003,
+          "sha256": "9e6302813394cdfa7f06cda3539b0e5ee7baec5eb45f6be84f59ad3f2b35aa1b"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 250,
+          "sha256": "08234f16f78011b7839de7382fd909e0566c7dae57e783622fc619e476fc54d0"
+        }
+      ]
+    },
+    {
+      "case": "reuse-memory-space",
+      "kind": "buffer_reuse",
+      "options": {
+        "reuse_buffers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 3143,
+          "sha256": "009ca7982ef641e71828cc130554cc619c818ddfdea8cf94ace297c7194b6816"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 3335,
+          "sha256": "624adf38a9f3d0522efaac67313ec61057cdc5748ecbce6451ecf393c81a3bc7"
+        },
+        {
+          "path": "change.json",
+          "bytes": 7957,
+          "sha256": "d6c9dd1bfd6695d9ec50d02d19728580483c164bcd334baca14741213f5a2874"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 1933,
+          "sha256": "944f01a172c4aa1cd29744388c3b834c0218e4348f621045e65b9e7554393cb7"
+        }
+      ]
+    },
+    {
+      "case": "reuse-dynamic-access",
+      "kind": "buffer_reuse",
+      "options": {
+        "reuse_buffers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 3065,
+          "sha256": "b6cf968c4ea9469f7270fbb45309f1741718784975adcb7642afa5cecef0b0e2"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 3239,
+          "sha256": "477b5410f1c71ebbab1dcc32b35ad9cd06b636cf599daea8d9f7b1803e437bda"
+        },
+        {
+          "path": "change.json",
+          "bytes": 7783,
+          "sha256": "98f012223ed2e279ce6029c45013747e2d3be761fd02794e5243b2e3bc124a6c"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 1913,
+          "sha256": "eec22bfe1304083e2ad9076283ac67fe886deb3552dd4cc4c9d900a1bdb0fc68"
+        }
+      ]
+    },
+    {
+      "case": "reuse-rank-zero",
+      "kind": "buffer_reuse",
+      "options": {
+        "reuse_buffers": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "structural"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 622,
+          "sha256": "36f4c2a3727b7cca9beae4cfda402cf00f1691c2e4b7b86e81e1585c3170b42b"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 758,
+          "sha256": "1e4954c7e73d0b56cfd276fe3dbe734cc136108fe2e50ea8de64c0467799fb5b"
+        },
+        {
+          "path": "change.json",
+          "bytes": 2609,
+          "sha256": "7b545c99e7682ca875dc3c092054f3739f276f818431ad3e4081f54ca06395d3"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 400,
+          "sha256": "5520c121e32a370730dca84022246224f5084e2da19997bf1ea417f87592b0f9"
+        }
+      ]
+    }
+  ],
+  "loaded_producer_sources": [
+    {
+      "module": "merlin",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086"
+    },
+    {
+      "module": "merlin.common",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e"
+    },
+    {
+      "module": "merlin.common.dense_float_ir",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505"
+    },
+    {
+      "module": "merlin.transforms.certificates",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b"
+    },
+    {
+      "module": "merlin.transforms.normalization",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84"
+    },
+    {
+      "module": "merlin.transforms.loops",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e"
+    },
+    {
+      "module": "merlin.transforms.pipeline_state",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652"
+    },
+    {
+      "module": "merlin.transforms.planning",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39"
+    },
+    {
+      "module": "merlin.transforms.validation",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159"
+    },
+    {
+      "module": "merlin.transforms.pipeline",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0"
+    },
+    {
+      "module": "merlin.transforms",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39"
+    },
+    {
+      "module": "merlin.transforms.scalar_witness",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/scalar_witness.py",
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31"
+    },
+    {
+      "module": "merlin.transforms.pure_scalar",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pure_scalar.py",
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06"
+    },
+    {
+      "module": "merlin.transforms.unrolling",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f"
+    }
+  ],
+  "fixture_sources": [
+    "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_loops_reuse_cases.py",
+    "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_loops_unroll_cases.py"
+  ]
+}

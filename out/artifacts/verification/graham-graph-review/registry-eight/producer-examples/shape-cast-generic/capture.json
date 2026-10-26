@@ -1,0 +1,39 @@
+{
+  "case": "shape-cast-generic",
+  "kind": "shape_view_normalization",
+  "options": {
+    "normalize_shapes": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "identity_memref_cast"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 213,
+      "sha256": "abfe941ebc8549a87c187ae332ebe85229d9566187127776195a7ab4bb5da565"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 273,
+      "sha256": "9c65ded51d692dd8aaf08a5cf64b7ceb45214152ce8b9acf1a46478c5008beeb"
+    },
+    {
+      "path": "change.json",
+      "bytes": 1182,
+      "sha256": "1243c8e22fd5dcf597b809d70545d9b7649b121fb1111a3a460fdcb45e0cb4fe"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 163,
+      "sha256": "cbe6bfa710172602ef837c446af8a52505538d7657d061ce106974403028b81e"
+    }
+  ]
+}

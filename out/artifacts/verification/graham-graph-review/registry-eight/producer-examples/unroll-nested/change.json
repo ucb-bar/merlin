@@ -1,0 +1,60 @@
+{
+  "kind": "ordered_loop_unrolling",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %lower = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %upper = \"arith.constant\"() <{value = 7 : index}> : () -> index\n    %step = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %r = \"scf.for\"(%lower, %upper, %step, %a) ({\n    ^bb1(%i: index, %acc: i8):\n      %inner = \"scf.for\"(%lower, %upper, %step, %acc) ({\n      ^bb2(%j: index, %state: i8):\n        %invariant = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"opaque.observe\"(%invariant, %i, %j) : (i8, index, index) -> ()\n        %next = \"arith.subi\"(%state, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"scf.yield\"(%next) : (i8) -> ()\n      }) : (index, index, index, i8) -> i8\n      \"scf.yield\"(%inner) : (i8) -> ()\n    }) : (index, index, index, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %lower = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %upper = \"arith.constant\"() <{value = 7 : index}> : () -> index\n    %step = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %r = \"arith.constant\"() <{value = 4 : index}> : () -> index\n    %r_1 = \"arith.constant\"() <{value = 8 : index}> : () -> index\n    %r_2 = \"scf.for\"(%lower, %r_1, %r, %a) ({\n    ^bb1(%0: index, %1: i8):\n      %inner = \"arith.constant\"() <{value = 4 : index}> : () -> index\n      %inner_1 = \"arith.constant\"() <{value = 8 : index}> : () -> index\n      %inner_2 = \"scf.for\"(%lower, %inner_1, %inner, %1) ({\n      ^bb2(%2: index, %3: i8):\n        %invariant = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"opaque.observe\"(%invariant, %0, %2) : (i8, index, index) -> ()\n        %next = \"arith.subi\"(%3, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        %4 = \"arith.constant\"() <{value = 2 : index}> : () -> index\n        %5 = \"arith.addi\"(%2, %4) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n        %invariant_1 = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"opaque.observe\"(%invariant_1, %0, %5) : (i8, index, index) -> ()\n        %next_1 = \"arith.subi\"(%next, %invariant_1) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"scf.yield\"(%next_1) : (i8) -> ()\n      }) : (index, index, index, i8) -> i8\n      %6 = \"arith.constant\"() <{value = 2 : index}> : () -> index\n      %7 = \"arith.addi\"(%0, %6) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n      %inner_3 = \"arith.constant\"() <{value = 4 : index}> : () -> index\n      %inner_4 = \"arith.constant\"() <{value = 8 : index}> : () -> index\n      %inner_5 = \"scf.for\"(%lower, %inner_4, %inner_3, %inner_2) ({\n      ^bb3(%8: index, %9: i8):\n        %invariant_2 = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"opaque.observe\"(%invariant_2, %7, %8) : (i8, index, index) -> ()\n        %next_2 = \"arith.subi\"(%9, %invariant_2) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        %10 = \"arith.constant\"() <{value = 2 : index}> : () -> index\n        %11 = \"arith.addi\"(%8, %10) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n        %invariant_3 = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"opaque.observe\"(%invariant_3, %7, %11) : (i8, index, index) -> ()\n        %next_3 = \"arith.subi\"(%next_2, %invariant_3) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"scf.yield\"(%next_3) : (i8) -> ()\n      }) : (index, index, index, i8) -> i8\n      \"scf.yield\"(%inner_5) : (i8) -> ()\n    }) : (index, index, index, i8) -> i8\n    \"func.return\"(%r_2) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {
+    "factors": [
+      2,
+      2
+    ],
+    "index_bits": 64,
+    "max_added_operations": 4096
+  },
+  "certificate": {
+    "kind": "ordered_loop_unrolling",
+    "before_ir_sha256": "89ca177b6d73cd740a273df54a43e9a11b3a586c54e0f4e2d468a4914e0b8c00",
+    "after_ir_sha256": "a1d0a9cd22570674d014c8241d4be7f5e9285fa00e70dbf86da39ef5a5ff1267",
+    "witnesses": [
+      {
+        "kind": "unroll",
+        "operation_index": 5,
+        "lower": 0,
+        "upper": 7,
+        "step": 2,
+        "factor": 2,
+        "index_bits": 64,
+        "iterations": 4,
+        "full_groups": 2,
+        "remainder": 0,
+        "source_sha256": "fd4f8c03f2275d99a906666cdd8384583ee5ae5420b4424d8d677ad595ab9e27",
+        "carried_types": [
+          "i8"
+        ]
+      },
+      {
+        "kind": "unroll",
+        "operation_index": 6,
+        "lower": 0,
+        "upper": 7,
+        "step": 2,
+        "factor": 2,
+        "index_bits": 64,
+        "iterations": 4,
+        "full_groups": 2,
+        "remainder": 0,
+        "source_sha256": "9e168d7253ae9e709f2498f06eebca9e5cf845f1e203783873655f766b6e1728",
+        "carried_types": [
+          "i8"
+        ]
+      }
+    ],
+    "scope": [
+      "static_nonnegative_index_bounds",
+      "positive_step",
+      "exact_iteration_order",
+      "forwarded_loop_carried_state",
+      "bounded_operation_growth"
+    ],
+    "schema": "merlin.shared_transform.v2"
+  }
+}

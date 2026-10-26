@@ -1,0 +1,34 @@
+{
+  "checks": [],
+  "context": {
+    "execution": "serial_host_tensor;guarded_reads;upstream_bufferization_ownership",
+    "hardware": null,
+    "library": "5b5294af9477a0c4f1d68cfdbe7aa680caf64a996108b8dbcbc04be9b609e023",
+    "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+    "resources": "index_bits=64;added_ops=4096"
+  },
+  "cost_policy": "explicit storage/traffic-only selection; guarded read latency unknown",
+  "diagnostic": "disabled or selected lowering family lacks the checked serial index route",
+  "library_sources_sha256": {
+    "_common.py": "557e2516de71b6e8b7a169257a53cfdfaf8f6650b513954c1b084f85d6bb1566",
+    "automatic_gathers.py": "606dca82ddf854a8d10b7f442a3ed2959cb74753c8d6bf7c0ad84f0926c9c7d4",
+    "certificates.py": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+    "dense_float_ir.py": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+    "im2col_pack.py": "52888f51cb9d5d5251a5efd9bf5b2ec81e95b5a27cffe991380c0f1ed9139565",
+    "im2col_padding.py": "809ffd7af46bf1814f0e2cccc56b30e8433a90daf2475b036a50665519fbf772",
+    "im2col_padding_check.py": "ed35df1d0ea1f41505b225b97af7d9abdc3b621892f08829abc1b685a4b6dc59",
+    "linalg_mlir.py": "c871a6a47e746f92e26831b0b34ba4599dd2a67e5fb0bd33d079e858e091911e",
+    "lower.py": "9a5193e8895d01f41494422db2a9491935a77b85bdc3bc3a1d902b63cacb6c89",
+    "mlir_query.py": "614db4d0d4c4deff199919f43d045cbc95768f1c2a16e12cd490add292ed3909",
+    "optional_passes.py": "d5b3c249000c7c26df315013c90dd512561b89f56664084c873de7b1536df508",
+    "pipeline_state.py": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+    "source_optimization_request.py": "ac80d7429016b44a748a5ce26b4a2b3ca25c6a9094409c9c9249cc3db8fb2fb9",
+    "source_optimization_selection.py": "4cd7ce48ccd11549fabc3484fb8640c7283d5e51b27e9a4a1b025a95568442e6"
+  },
+  "machine_conformance": "not_established",
+  "output_file_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+  "rewrites": 0,
+  "schema": "merlin.automatic_host_gathers.v1",
+  "source_file_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+  "timing": "UNKNOWN"
+}
