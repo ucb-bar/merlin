@@ -96,7 +96,7 @@ def _aliasing(raw: Mapping) -> str:
     return "disjoint_inputs_outputs"
 
 
-def _representation(case, arithmetic: str, numerics: Mapping) -> dict:
+def _representation(case, arithmetic: str, numerics: Mapping, *, components=False) -> dict:
     """The operand formats the construction computes in, from the spec's declared numeric policy.
 
     Movement keeps the storage bytes. Arithmetic over floating storage is the declared quantized
@@ -111,10 +111,18 @@ def _representation(case, arithmetic: str, numerics: Mapping) -> dict:
     fields = {"accum_dtype": numerics.get("accumulator_dtype"), "readout_dtype": numerics.get("readout_dtype")}
     domain = numerics.get("component_domain") or {}
     classes = {dclass(tensor.dtype) for tensor in case.ins} or {dclass(storage)}
-    if classes <= {"float", "complex"} and domain.get("floating_storage_arithmetic") == "declared_quantized_model":
+    storage_rule = numerics.get("quantized_native_fallback") or {}
+    quantized = (
+        classes <= {"float"}
+        and domain.get("floating_storage_arithmetic") == "declared_quantized_model"
+        and all(element(tensor.dtype) in storage_rule.get("operand_storage", []) for tensor in case.ins)
+    )
+    if quantized and components and domain.get("native_admission") == "structural_per_dtype_semantic_proof":
+        return {**fields, "operand_dtype": operand, "arithmetic": "integer_components", "numerical_family": "F2"}
+    if quantized:
         return {**fields, "operand_dtype": operand}
     if classes <= {"int", "bool"} and storage is not None:
-        if element(storage) == element(_storage_name(operand)):
+        if not components and element(storage) == element(_storage_name(operand)):
             return {**fields, "operand_dtype": operand}
         if domain.get("native_admission") == "structural_per_dtype_semantic_proof":
             # rewrite_integer_components emits balanced radix-256 signed bytes
@@ -126,6 +134,8 @@ def _representation(case, arithmetic: str, numerics: Mapping) -> dict:
                 "arithmetic": "integer_components",
                 "numerical_family": "F5" if "bool" in classes else "F2",
             }
+        if element(storage) == element(_storage_name(operand)):
+            return {**fields, "operand_dtype": operand}
     return {**fields, "operand_dtype": element(storage)}
 
 
@@ -139,7 +149,7 @@ def _storage_name(operand: str | None) -> str | None:
     return None
 
 
-def source_signature(case, raw: Mapping, family_code: str, spec: Mapping) -> tuple[str, dict] | None:
+def source_signature(case, raw: Mapping, family_code: str, spec: Mapping, *, components=False) -> tuple[str, dict] | None:
     """The observed admission signature of a native construction, or ``None`` when it has none."""
     construction = CONSTRUCTIONS.get(family_code)
     if construction is None:
@@ -153,7 +163,7 @@ def source_signature(case, raw: Mapping, family_code: str, spec: Mapping) -> tup
         "rank": rank,
         "layout": _layout([*case.ins, *case.outs]),
         "aliasing": _aliasing(raw),
-        **_representation(case, arithmetic, spec.get("numerical_semantics") or {}),
+        **_representation(case, arithmetic, spec.get("numerical_semantics") or {}, components=components),
     }
     if signature.get("arithmetic") == "integer_components":
         form = "bilinear" if family == "contraction" else "linear"
@@ -197,16 +207,70 @@ def _component_refusal(signature: Mapping, spec: Mapping) -> dict | None:
     return None
 
 
-def admit(case, raw: Mapping, family_code: str, admission: Mapping) -> dict:
+def _storage_only(module, *, arithmetic=()) -> bool:
+    """A normalized source containing only storage selectors and index arithmetic."""
+    from xdsl.dialects.builtin import IndexType
+
+    structural = {
+        "builtin.module", "func.func", "func.return", "linalg.generic", "linalg.yield", "linalg.index",
+        "arith.constant", "tensor.empty", "tensor.cast", "tensor.collapse_shape", "tensor.expand_shape",
+        "tensor.extract_slice", "tensor.insert_slice", "tensor.concat", "tensor.splat",
+    }
+    for op in module.walk():
+        if op.name in structural or op.name in arithmetic:
+            continue
+        if op.name.startswith("arith.") and op.operands and all(isinstance(v.type, IndexType) for v in op.operands):
+            continue
+        if op.name == "arith.select":
+            condition = op.operands[0].owner
+            if getattr(condition, "name", None) == "arith.cmpi" and all(isinstance(v.type, IndexType) for v in condition.operands):
+                continue
+        return False
+    return True
+
+
+def admit(case, raw: Mapping, family_code: str, admission: Mapping, *, source_module=None) -> dict:
     """Screen one native construction against the selected spec at accelerator placement."""
     from merlin.targetgen.software_spec import admit_operation
 
     spec = admission["spec"]
+    if source_module is not None:
+        from merlin.llvmlower.entry_weight_projection import _pure_dce
+        from merlin.targetgen.core_aten_numeric import normalize_closed_identities
+
+        normalized = source_module.clone()
+        normalize_closed_identities(normalized)
+        for function in normalized.walk():
+            if function.name == "func.func":
+                _pure_dce(function)
+        if _storage_only(normalized):
+            from merlin.targetgen.native_unit_policy import construction_evidence
+
+            excluded = (spec.get("numerical_semantics", {}).get("native_unit_contract") or {}).get("excluded_constructions")
+            if construction_evidence(normalized, excluded=excluded)["status"] == "eligible":
+                family_code = "N4"
+        elif (
+            {dclass(tensor.dtype) for tensor in case.ins} <= {"int", "bool"}
+            and _storage_only(source_module, arithmetic={"arith.addi", "arith.subi", "arith.extsi", "arith.extui", "arith.trunci"})
+            and any(
+                op.name == "linalg.generic" and any(it.data.value == "reduction" for it in op.get_iterator_types())
+                for op in source_module.walk()
+            )
+        ):
+            # A masked additive scan is linear in its inputs. Its hypothetical
+            # triangular-matrix construction does not impose a bilinear rank.
+            family_code = "N2"
     observed = source_signature(case, raw, family_code, spec)
     if observed is None:
         return {"status": "not_native", "reason": f"{family_code} is not a native construction"}
     _family, signature = observed
     decision = _component_refusal(signature, spec) or admit_operation(spec, case.ov, signature, "accelerator")
+    if source_module is not None and decision["status"] != "admitted":
+        alternative = source_signature(case, raw, family_code, spec, components=True)[1]
+        if alternative.get("arithmetic") == "integer_components" and alternative != signature:
+            represented = _component_refusal(alternative, spec) or admit_operation(spec, case.ov, alternative, "accelerator")
+            if represented["status"] == "admitted":
+                signature, decision = alternative, represented
     if (
         decision["status"] == "admitted"
         and signature.get("arithmetic") == "integer_components"

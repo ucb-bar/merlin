@@ -137,6 +137,10 @@ def prepare_integer_components(
         return None
     if any(key.startswith("prov.quant.") for op in module.walk() for key in op.attributes):
         return None
+    from merlin.llvmlower.static_reshape_movement import flatten_internal_selectors
+
+    linear = next((row for row in selection["spec"].get("operations", []) if row["id"] == "component_linear"), {})
+    flatten_internal_selectors(module, ranks=linear.get("signature", {}).get("ranks", []))
     from merlin.targetgen.native_dtype_domain import component_semantics, dtype_domain
 
     functions = [op for op in module.walk() if op.name == "func.func" and op.sym_name.data == "forward"]
@@ -408,6 +412,9 @@ def prepare_integer_components(
         known_bounds=known_bounds,
     )
     observe("integer_components")
+    from merlin.llvmlower.static_reshape_movement import lift_scalar_producers
+
+    lift_scalar_producers(module, attribute=limb_attribute)
     if not plans:
         raise Refusal(
             code="native_component_producer_unavailable",

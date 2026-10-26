@@ -110,8 +110,10 @@ def semantic_observation(verdict: dict, evidence: dict) -> dict:
     status = verdict["status"]
     reason = verdict.get("reason") or json.dumps(verdict.get("results", []), sort_keys=True)
     if verdict.get("semantic_scope") in ("full", "values+mutation+observed-metadata") and status == "pass":
+        routing = verdict.get("routing") or {}
         return {
             **verdict["observation"],
+            "reason": verdict["observation"].get("reason") or routing.get("reason") or reason,
             "semantic_scope": verdict["semantic_scope"],
             "imposed_by_harness": verdict.get("imposed_by_harness", []),
             "evidence": {**verdict["observation"].get("evidence", {}), **evidence},

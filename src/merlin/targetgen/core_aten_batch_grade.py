@@ -378,6 +378,10 @@ def grade_core_aten_batch(
             routing_reason=routing.get("reason", ""),
             **{key: value for key, value in routing.items() if key != "reason"},
         )
+        if routing.get("lane") == "host" and not verdict.get("reason"):
+            if not routing.get("reason"):
+                raise ValueError("host retirement requires a routing reason")
+            verdict["reason"] = routing["reason"]
         verdict["numeric_execution_policy"] = verdict["numeric_policy"]
         if verdict["numeric_policy"] == "spec_int8":
             host = routing.get("lane") == "host"

@@ -232,8 +232,16 @@ def spec_expectation(directory: Path, case: Mapping[str, Any], admission: Mappin
     from merlin.targetgen.functional_truth_types import Case
 
     source = Case(case, "phase0")
+    # The captured original source, before any device preparation rewrote model.mlir, lets
+    # admission observe storage-only identities and component arithmetic as written.
+    source_path = directory / "model.source.mlir"
+    module = None
+    if source_path.is_file():
+        from merlin.frontends.linalg_mlir import parse_mlir_file
+
+        module = parse_mlir_file(source_path)
     # The functional rules name the construction; only shared spec admission decides placement.
-    decision = admit(source, case, derive(source).family, admission)
+    decision = admit(source, case, derive(source).family, admission, source_module=module)
     if decision.get("declaration"):
         decision["source"] = declaration_location(admission, "software", decision["declaration"])
     path = directory / "spec-int8-admission.json"
@@ -339,7 +347,7 @@ def observed(result: Mapping[str, Any]) -> dict:
         "host_floor": {"status": floor.get("status"), "comparison": floor.get("comparison")}
         if isinstance(floor, dict)
         else None,
-        "reason": observation.get("reason"),
+        "reason": observation.get("reason") or semantic.get("reason") or routing.get("reason"),
     }
 
 

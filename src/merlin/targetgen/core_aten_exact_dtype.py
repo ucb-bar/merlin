@@ -191,13 +191,29 @@ def prepare_bitwise(directory, report, selection, provider, package, module):
         return None
     sites = []
     operations = list(module.walk())
+    returned = next(op for op in module.walk() if op.name == "func.return")
+    logical_results = {}
+    for record in report["cases"]:
+        if record.get("status") not in {None, "bundled"}:
+            continue
+        boundary = record.get("semantic_boundary") or {}
+        indices = [*record.get("output_indices", []), *boundary.get("post_indices", [])]
+        abis = [*record.get("output_abi", []), *boundary.get("post_abi", [])]
+        for index, abi in zip(indices, abis, strict=True):
+            if index < len(returned.operands):
+                logical_results[returned.operands[index]] = abi
     for ordinal in roots:
         typ = operations[ordinal].results[0].type
+        logical = logical_results.get(operations[ordinal].results[0], {})
+        complex_word = (
+            logical.get("dtype") == f"complex<{typ.element_type}>"
+            and tuple(typ.get_shape()) == (*logical.get("shape", []), 2)
+        )
         signature = dict(
             family="movement",
             numerical_family="F1",
-            operand_dtype=str(typ.element_type),
-            rank=len(typ.get_shape()),
+            operand_dtype=logical["dtype"] if complex_word else str(typ.element_type),
+            rank=len(logical["shape"]) if complex_word else len(typ.get_shape()),
             layout="row_major_contiguous",
             aliasing="disjoint_inputs_outputs",
         )

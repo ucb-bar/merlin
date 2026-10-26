@@ -74,6 +74,37 @@ def test_a_native_zero_constant_needs_no_intermediate_integer_cast(dtype, zero, 
     assert not is_compare_select_relu(root)
 
 
+def test_activation_passes_the_selected_accumulator_precision_screen(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.targetgen import transfer_contracts
+    from merlin.targetgen.native_byte_activation import prepare
+
+    module = pointwise(["tensor<3xi8>"], "tensor<3xi8>", """%zero=arith.constant 0 : i8
+      %p=arith.cmpi slt,%a,%zero : i8
+      %v=arith.select %p,%zero,%a : i8""")
+    row = dict(
+        id="linear", status="reviewed", families=["elementwise_map"], placement="accelerator",
+        signature=dict(numerical_family=["F4"], operand_dtypes=["i8"], accumulator_dtype="i32", readout_dtype="i32"),
+    )
+    selection = dict(spec=dict(
+        status="reviewed", operations=[row], numerical_semantics=dict(native_unit_contract=dict(mesh_mac=dict(signed_bits=20))),
+    ))
+    calls = []
+
+    def catalog(*args, **kwargs):
+        calls.append(True)
+        raise ValueError("provider reached after precision admission")
+
+    monkeypatch.setattr(transfer_contracts, "screen_transfer_contract", lambda *a, **k: dict(status="admitted"))
+    assert prepare(tmp_path, dict(cases=[]), selection, SimpleNamespace(core_aten_catalog=catalog), None, module) is None
+    assert calls
+    row["signature"]["readout_dtype"] = "i16"
+    calls.clear()
+    assert prepare(tmp_path, dict(cases=[]), selection, SimpleNamespace(core_aten_catalog=catalog), None, module) is None
+    assert calls == []
+
+
 def test_catalog_normalization_is_sealed_before_component_identity_check(tmp_path, monkeypatch):
     import hashlib
     import json

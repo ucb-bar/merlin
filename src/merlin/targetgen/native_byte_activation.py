@@ -131,7 +131,54 @@ def prepare(directory, report, selection, provider, package, module):
         return None
     if any(v is not argument and v is not root.results[0] for v in returned.operands):
         return None
-    return compile_activation(directory, report, selection, provider, package, module, root, argument, {"func_arg": 0})
+    plan = compile_activation(directory, report, selection, provider, package, module, root, argument, {"func_arg": 0})
+    if plan is not None:
+        return plan
+    # A lossless byte -> f32 -> byte boundary exposes the actual code domain
+    # to providers whose public numeric dispatcher requires explicit Q/DQ.
+    # Every signed byte is exactly representable in f32; unit scale and zero
+    # point make both conversions identities over the complete source domain.
+    recoded = module.clone()
+    function = next(op for op in recoded.walk() if op.name == "func.func")
+    root = next(op for op in function.body.block.ops if op.name == "linalg.generic")
+    data = _expose_byte_codes(function, root)
+    operations = list(recoded.walk())
+    plan = compile_activation(
+        directory, report, selection, provider, package, recoded, root, data,
+        dict(op_ordinal=operations.index(data.owner), result=0),
+    )
+    if plan is not None:
+        plan["native_code_boundary"] = dict(method="lossless_signed_byte_f32_roundtrip", input_domain="all_storage_bit_patterns")
+    return plan
+
+
+def _expose_byte_codes(function, root):
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+
+    original = str(function.body.block.args[0].type)
+    wide = original.removesuffix("i8>") + "f32>"
+    attributes = '''prov.quant.storage_dtype="int8",prov.quant.quant_min=-128:i64,prov.quant.quant_max=127:i64,
+      prov.quant.granularity="tensor",prov.quant.scale_numerator=["1"],prov.quant.scale_denominator=["1"],
+      prov.quant.scale=1.0:f32,prov.quant.zero_point=0:i64'''
+    boundary = parse_mlir_text(f'''module {{func.func @codes(%x:{original}) -> {original} {{
+      %s=arith.constant dense<1.0> : tensor<f64>
+      %z=arith.constant dense<0> : tensor<i64>
+      %wide="quant_ext.dequantize_per_tensor"(%x,%s,%z)
+        <{{quant_min=-128:i64,quant_max=127:i64,input_dtype="int8"}}> {{{attributes}}}
+        : ({original},tensor<f64>,tensor<i64>) -> {wide}
+      %codes="quant_ext.quantize_per_tensor"(%wide,%s,%z)
+        <{{quant_min=-128:i64,quant_max=127:i64,output_dtype="int8"}}>
+        {{{attributes},prov.quant.rounding="half_to_even"}} : ({wide},tensor<f64>,tensor<i64>) -> {original}
+      return %codes : {original}
+    }} }}''')
+    block = next(op for op in boundary.walk() if op.name == "func.func").body.block
+    block.args[0].replace_all_uses_with(function.body.block.args[0])
+    data = block.last_op.operands[0]
+    for op in list(block.ops)[:-1]:
+        op.detach()
+        function.body.block.insert_op_before(op, root)
+    root.operands[0] = data
+    return data
 
 
 def compile_activation(
@@ -150,6 +197,8 @@ def compile_activation(
         family="elementwise_map",
         numerical_family="F4",
         operand_dtype="i8",
+        accum_dtype="i32",
+        readout_dtype="i32",
         rank=len(argument.type.get_shape()),
         expression="affine",
         tensor_operands=1,

@@ -75,6 +75,39 @@ def test_int32_sub_tensor_observes_component_arithmetic():
     }
 
 
+@pytest.mark.parametrize("dtype,element", [("float16", "f16"), ("bfloat16", "bf16"), ("int8", "i8")])
+def test_source_component_form_admits_inner_broadcast_without_widening_the_byte_affine_form(dtype, element):
+    from mlir_fixtures import pointwise
+
+    from merlin.targetgen.functional_truth_admission import admit
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _case("aten.add.Tensor")
+    for tensor, shape in zip(case["arguments"]["args"]["items"], [[2, 1], [1, 3]], strict=True):
+        tensor.update(dtype=dtype, shape=shape)
+    case["expected"].update(dtype=dtype, shape=[2, 3])
+    spec = {"spec": resolve_spec(load_software_spec(SPEC), {})[0]}
+    scalar = "addi" if element == "i8" else "addf"
+    module = pointwise([f"tensor<2x3x{element}>"] * 2, f"tensor<2x3x{element}>", f"%v=arith.{scalar} %a,%b : {element}")
+    decision = admit(Case(case, "test"), case, "N3", spec, source_module=module)
+    assert decision["status"] == "admitted"
+    assert decision["declaration"] == "component_linear"
+    assert decision["observed_signature"]["broadcasting"] == "inner"
+    assert decision["observed_signature"]["arithmetic"] == "integer_components"
+
+
+def test_complex_arithmetic_is_not_relabelled_as_a_validated_real_quantized_operand(authored):
+    from merlin.targetgen.functional_truth_admission import admit
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _case("aten.add.Scalar")
+    case["arguments"]["args"]["items"][0]["dtype"] = "complex64"
+    case["expected"]["dtype"] = "complex64"
+    decision = admit(Case(case, "test"), case, "N3c", authored)
+    assert decision["status"] != "admitted"
+    assert decision["observed_signature"]["operand_dtype"] == "complex<f32>"
+
+
 @pytest.mark.parametrize(
     "field, value",
     [

@@ -187,6 +187,30 @@ def prepare_spec_int8(
     receipts) are kept.
     """
     snapshot = {path.name: path.read_bytes() for path in directory.iterdir() if path.is_file()}
+    (directory / "model.source.mlir").write_bytes(snapshot["model.mlir"])
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.targetgen.floating_contract import requires_quantized_model
+
+    source_module = parse_mlir_file(directory / "model.mlir")
+    if requires_quantized_model(source_module)["quantized"]:
+        from merlin.targetgen.core_aten_spec_int8 import select_spec
+
+        selection = select_spec(kwargs["target"], kwargs["facts"], kwargs["software_spec"], kwargs["host_capabilities"])
+        numeric = selection["spec"].get("numerical_semantics") or {}
+        storage = (numeric.get("quantized_native_fallback") or {}).get("operand_storage", [])
+        unsupported = sorted({
+            abi["dtype"]
+            for record in report["cases"] if record.get("status") == "bundled"
+            for abi in record.get("input_abi", [])
+            if abi["dtype"].startswith("complex") and abi["dtype"] not in storage
+        })
+        if numeric.get("component_domain", {}).get("floating_storage_arithmetic") == "declared_quantized_model" and unsupported:
+            from merlin.targetgen.core_aten_exact_dtype import _host_plan
+
+            return _host_plan(
+                directory, report["cases"], selection, "quantized_operand_storage_unproved",
+                "declared quantized arithmetic has no validated operand storage: " + ", ".join(unsupported),
+            )
     result = _prepare_spec_int8_candidates(directory, report, **kwargs)
     if (result or {}).get("native_admission", {}).get("status") != "device":
         for name, data in snapshot.items():

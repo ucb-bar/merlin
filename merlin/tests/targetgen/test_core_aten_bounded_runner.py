@@ -194,6 +194,15 @@ def test_full_success_exports_observation_and_device_receipt():
     assert result["evidence"]["routing"] == evidence["routing"]
 
 
+def test_successful_host_observation_keeps_the_routing_refusal():
+    verdict = dict(
+        status="pass", semantic_scope="full", observation=dict(status="executed"),
+        routing=dict(lane="host", reason="source arithmetic has no exact producer"),
+    )
+    result = semantic_observation(verdict, dict(lane="host"))
+    assert result["reason"] == verdict["routing"]["reason"]
+
+
 def test_admission_uses_same_conversion_mutation_result_roles():
     source = """builtin.module {
   func.func @forward(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>) {
