@@ -199,3 +199,48 @@ exposes every band of the final actual wide transfer for subsequent hazard
 checking; it does not transfer an earlier epoch proof to a new access range.
 Decoded hardware bounds and independent target execution remain required.
 Historical library inventories and frozen exports do not gain this API.
+
+
+`convolution_exploration` exposes original counted spatial partitions, explicit
+ACC column lifetimes, and independent bounded load-issue choices through the
+ordinary pass registry. Targets reopen the original source and supply their own
+selected effect laws and real emit/completion callbacks. A conservative one-tile
+synchronous fallback is unchanged. No choice wins by default: deduplicate actual
+emitted bytes and compare complete same-source/model/window cycle observations.
+Prospective V22 includes the registry dependencies; frozen V21 membership stays
+unchanged, and new source selection still requires ordinary review.
+
+`merlin.compile.logical_abi` is the declaration-only owner shared by the runner
+and `FnBuilder.for_logical_kernel`. Read the selected public ABI declaration and
+use the returned name-to-pointer map; logical input order can differ from lhs/rhs
+semantic order. It derives implicit COMMIT/pool output shapes without importing
+tensor materialization or reference execution. An isolated SDK needs an explicit
+selected declaration path/document, not a guessed default ABI.
+
+Convolution RHS preparation is independent of column retention and issue epochs.
+`plan_convolution_rhs_residency` reuses the dense capacity planner for physical
+panel slots, keeping each kernel-position channel tail and original scalar-safe
+output interval distinct. Insufficient private capacity returns `None` and keeps
+the original emitter. Missing immutability/preservation/ownership laws refuse.
+`emit_convolution_schedule(..., rhs=checked_plan)` hoists actual transfers once
+per invocation, performs the caller's real preparation completion, and realizes
+actual compute RHS addresses. No cross-invocation lifetime is granted. The
+optional registry `rhs_modes` family calls `realize(schedule, rhs=plan)`; bind the
+actual emitted program to `plan.identity`, or `schedule.identity` for a fallback.
+
+
+`merlin.transforms.shape_policy` selects actual registered pass paths by typed
+shape/resource/semantic classes, independently of each path's legality checks.
+Use `explore_evaluated` to join real emitted alternatives to complete numerical
+and same-ROI cycle feedback. Freeze a `ValidationPartition` before observations;
+`assess_shape_policy` uses training ratios for selection and heldout/boundary
+pairs as regression vetoes. Finite cutoffs need their exact edge and adjacent
+outside geometry. Bind `ShapeCaseFeedback.implementation_sha256` to the ordinary selected full
+compiler source digest (including authored registry/callback overrides), and pass
+that same current digest to `PerformanceDomain.from_observation`. Each class
+keeps its own incumbent on missing/UNKNOWN cycles,
+regression or changed provider/facts/library/scope. `AssessedShapePolicy.execute`
+runs real passes against the current IR; it never returns a training kernel.
+This optional policy does not certify unseen shapes or impose an authoring gate.
+Normal author-library preparation accepts explicit inventory22 with individually
+reviewed new modules; prior default inventory21 and frozen selections stay intact.

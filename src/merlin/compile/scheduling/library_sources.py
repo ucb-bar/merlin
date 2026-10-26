@@ -234,13 +234,64 @@ LIBRARY_MODULES_V18 = (
     "merlin.compile.composition_catalog",
 )
 LIBRARY_MODULES_V19 = (*LIBRARY_MODULES_V18, "merlin.compile.scheduling.dense_ready_readout")
+LIBRARY_MODULES_V20 = (
+    *LIBRARY_MODULES_V19,
+    "merlin.sched.ir.events",
+    "merlin.compile.scheduling.scf_carried_events",
+    "merlin.sched.primitives.event_loops",
+    # Source-region preparation already uses these generic compiler owners.
+    # Close their current imports explicitly instead of borrowing an installed
+    # full compiler or widening a namespace at import time.
+    "merlin.common.access",
+    "merlin.common.compile_trace",
+    "merlin.common.ir_audit",
+    "merlin.common.ir_lock",
+    "merlin.common.paths",
+    "merlin.common.provenance",
+    "merlin.common.provenance_lost",
+    "merlin.common.tree_hash",
+    "merlin.frontends",
+    "merlin.frontends.linalg_mlir",
+    "merlin.integrations",
+    "merlin.integrations.model2mlir",
+    "merlin.llvmlower.generic_form",
+    "merlin.llvmlower.normalization_reassociation",
+    "merlin.llvmlower.optional_passes",
+    "merlin.llvmlower.passes_xdsl",
+    "merlin.llvmlower.source_fma_batch",
+    "merlin.llvmlower.toolchain",
+    "merlin.runtime",
+    "merlin.runtime.host_arithmetic",
+    "merlin.xdsl_dialects.ir_inspection",
+    "merlin.xdsl_dialects.lowering",
+    "merlin.xdsl_dialects.lowering.outline",
+)
+# Prospective combined release; preceding inventories retain their membership.
+LIBRARY_MODULES_V21 = (
+    *LIBRARY_MODULES_V20,
+    "merlin.common.stat_memo",
+    "merlin.sched.primitives.loop_handles",
+    "merlin.compile.scheduling.completion_streams",
+    "merlin.compile.scheduling.configuration_motion",
+    "merlin.compile.scheduling.spatial_max_stripes",
+)
+LIBRARY_MODULES_V22 = (
+    *LIBRARY_MODULES_V21,
+    "merlin.compile.logical_abi",
+    "merlin.compile.scheduling.convolution_exploration",
+    "merlin.compile.scheduling.dense_rhs_residency",
+    "merlin.transforms.pipeline_policy",
+    "merlin.transforms.pass_exploration",
+    "merlin.transforms.evaluated_exploration",
+    "merlin.transforms.shape_policy",
+)
 LIBRARY_MODULES = LIBRARY_MODULES_V6
 
 
 def library_modules(version=6):
     """Select a closed reviewed inventory; this grants no import access."""
-    if type(version) is not int or version not in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
-        raise ValueError("shared compiler inventory requires version 6 through 19")
+    if type(version) is not int or version not in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22):
+        raise ValueError("shared compiler inventory requires version 6 through 22")
     return {
         6: LIBRARY_MODULES_V6,
         7: LIBRARY_MODULES_V7,
@@ -256,6 +307,9 @@ def library_modules(version=6):
         17: LIBRARY_MODULES_V17,
         18: LIBRARY_MODULES_V18,
         19: LIBRARY_MODULES_V19,
+        20: LIBRARY_MODULES_V20,
+        21: LIBRARY_MODULES_V21,
+        22: LIBRARY_MODULES_V22,
     }[version]
 
 

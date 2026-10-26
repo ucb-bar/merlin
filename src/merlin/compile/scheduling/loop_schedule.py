@@ -3,8 +3,8 @@
 Split/unroll/ordered partitions preserve command order. Reorder/fuse/fission need final independent
 source and dependence verification; proposal construction alone never admits them.
 They are proposals for the existing source/effect verifier, not target admission.
-Completion-token body duplication currently refuses; the SSA command bridge is
-needed for alpha-renamed event and loop-carried completion semantics.
+Ordered carried-completion split/unroll/partitions thread actual event binders;
+dependency-changing moves require a separate completion transport proof.
 """
 
 from __future__ import annotations
@@ -89,6 +89,12 @@ def _size(body):
 
 def _split(kernel, path, factor, names=()):
     target = _loop_at(kernel.body, path)
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events((target,)):
+        from merlin.sched.primitives.event_loops import split_event_loop
+
+        return split_event_loop(kernel, path, factor, names or (target.var + "o", target.var + "i"))
     full, remainder = divmod(target.extent, factor)
     if not full:
         raise NotApplicable("split/unroll factor exceeds current loop extent")
@@ -176,6 +182,11 @@ def propose_loop_transforms(kernel, transforms, *, index_bits=64, max_static_ope
     actual = kernel
     for request in transforms:
         target = _loop_at(actual.body, request.path)
+        from merlin.sched.ir.events import has_carried_events
+
+        if request.action in ("reorder", "fuse", "fission", "hoist") and has_carried_events((target,)):
+            raise NotApplicable("completion-carrying order/placement changes need a separate "
+                                "dependency transport proof")
         # Conservative preflight before cloning: work depends on the explicit
         # factor and static body, never the dynamic loop trip count.
         growth = (len(request.cuts) + 1 if request.action == "partition" else (request.factor or 1) + 1) * (
@@ -202,6 +213,12 @@ def propose_loop_transforms(kernel, transforms, *, index_bits=64, max_static_ope
                         used.add(name)
                 names = tuple(fresh)
             boundaries = (0, *request.cuts, target.extent)
+            if has_carried_events((target,)):
+                from merlin.sched.primitives.event_loops import partition_event_loop
+
+                actual = partition_event_loop(actual, request.path, boundaries, names)
+                check_integer_domain(actual, index_bits)
+                continue
             parts = []
             for name, start, stop in zip(names, boundaries[:-1], boundaries[1:], strict=True):
                 # Shift on the old variable first, then rename: the existing
@@ -280,6 +297,8 @@ def propose_loop_transforms(kernel, transforms, *, index_bits=64, max_static_ope
             if position + 1 >= len(siblings) or type(siblings[position + 1]) is not Loop:
                 raise NotApplicable("fuse requires an immediately adjacent following loop")
             second = siblings[position + 1]
+            if has_carried_events((second,)):
+                raise NotApplicable("completion-carrying fusion needs a separate dependency transport proof")
             if target.extent != second.extent:
                 raise NotApplicable("fuse requires identical iteration extents")
             renamed = _map_calls(second.body, lambda call: _subst_call(call, second.var, Var(target.var)))

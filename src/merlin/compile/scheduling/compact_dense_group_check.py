@@ -151,6 +151,54 @@ def _views(problems, storages, adapter, *, reject_aliases=True):
     return views, maximum
 
 
+def _group_output_contracts(count, selected, readouts, qualifications, *, require_selected=True):
+    """Bind every independent exit to its original source declaration."""
+    from .dense_contracts import DenseIntegerReadout
+    from .selected_contracts import SelectedSchedulingContracts, _parse
+
+    contracts = selected if type(selected) is tuple else (selected,) * count
+    readouts = (None,) * count if readouts is None else readouts
+    qualifications = (None,) * count if qualifications is None else qualifications
+    if (
+        type(contracts) is not tuple
+        or len(contracts) != count
+        or type(readouts) is not tuple
+        or len(readouts) != count
+        or type(qualifications) is not tuple
+        or len(qualifications) != count
+        or any(c is not None and type(c) is not SelectedSchedulingContracts for c in contracts)
+        or (type(selected) is tuple and any(c is None for c in contracts))
+    ):
+        raise ValueError("shared LHS exits require one complete original member contract roster")
+    for contract, readout, qualification in zip(contracts, readouts, qualifications, strict=True):
+        if readout is None:
+            if qualification is not None:
+                raise ValueError("shared LHS readout qualification lacks its selected output path")
+            continue
+        if (
+            type(readout) is not DenseIntegerReadout
+            or (require_selected and contract is None)
+            or type(qualification) is not str
+            or not qualification.strip()
+        ):
+            raise ValueError("each shared LHS readout needs original selected semantics and qualification")
+        if contract is not None:
+            original = _parse(contract.facts_bytes, contract.software_bytes, contract.target)[4]
+            if original is None or original.output_readout != readout:
+                raise ValueError("shared LHS member readout differs from its original source declaration")
+        else:
+            graph = readout.graph()
+            if graph.input_bits != (32,) or graph.output_bits != 8 or readout.output_dtype != "i8":
+                raise ValueError("conditional shared LHS readout requires exact unary i32 to i8 semantics")
+    return contracts, readouts, qualifications
+
+
+def _group_contract_record(selected):
+    if selected is None:
+        return None
+    return tuple(c.record() for c in selected) if type(selected) is tuple else selected.record()
+
+
 def verify_compact_dense_group(
     kernel,
     problems,
@@ -167,8 +215,16 @@ def verify_compact_dense_group(
     max_members=8,
     selected_contracts=None,
     reservations=(),
+    output_readouts=None,
+    readout_qualification_identities=None,
 ):
-    """Reconstruct all actual member effects, coverage, retention and final outputs."""
+    """Reconstruct actual effects, coverage, retention and each final output.
+
+    Like the single-member verifier, this low-level checker may consume a
+    caller-owned scalar readout. That conditional arithmetic result does not
+    establish original source selection or physical readout qualification. The
+    scheduling entry requires original selected contracts for every typed exit.
+    """
     from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
     if (
@@ -192,6 +248,9 @@ def verify_compact_dense_group(
         or len(dtypes) != 3
     ):
         raise ValueError("shared LHS checking needs original qualified synchronous typed contracts and bounded work")
+    contracts, readouts, qualifications = _group_output_contracts(
+        len(problems), selected_contracts, output_readouts, readout_qualification_identities, require_selected=False
+    )
     retention_law.__post_init__()
     resources.__post_init__()
     first = problems[0]
@@ -205,10 +264,12 @@ def verify_compact_dense_group(
         raise ValueError("shared LHS complete reduction does not fit the selected K panel domain")
     if tuple(DTYPE_BYTES.get(t) for t in dtypes) != (first.lhs_bytes, first.rhs_bytes, first.accumulator_bytes):
         raise ValueError("shared LHS boundary formats differ from the original arithmetic widths")
+    output_dtypes = tuple(dtypes[2] if r is None else r.output_dtype for r in readouts)
+    output_widths = tuple(DTYPE_BYTES[t] for t in output_dtypes)
     expected = (
         TensorArg("lhs", (first.m, first.k), dtypes[0], "read"),
         *(TensorArg(f"rhs{i}", (p.k, p.n), dtypes[1], "read") for i, p in enumerate(problems)),
-        *(TensorArg(f"output{i}", (p.m, p.n), dtypes[2], "write") for i, p in enumerate(problems)),
+        *(TensorArg(f"output{i}", (p.m, p.n), output_dtypes[i], "write") for i, p in enumerate(problems)),
     )
     work, nodes = [(kernel.body, 0)], 0
     while work:
@@ -244,13 +305,18 @@ def verify_compact_dense_group(
             adapter.synchronous_completion,
             adapter.exact_accumulator_continuation,
             adapter.index_bits,
+            tuple(None if r is None else asdict(r) for r in readouts),
+            qualifications,
         )
 
     before = snapshot()
 
     def callbacks():
-        return (adapter.encode, adapter.project, project_member) + (
-            () if selected_contracts is None else (selected_contracts.revalidate, selected_contracts.record)
+        return (adapter.encode, adapter.project, project_member) + tuple(
+            callback
+            for contract in contracts
+            if contract is not None
+            for callback in (contract.revalidate, contract.record)
         )
 
     frozen_callbacks = tuple(
@@ -271,15 +337,16 @@ def verify_compact_dense_group(
             raise ValueError("original group source, adapter or projection changed during checking")
 
     static_fresh()
-    selection = None if selected_contracts is None else selected_contracts.record()
+    selection = _group_contract_record(selected_contracts)
     static_fresh()
 
     def fresh():
         static_fresh()
         if selected_contracts is not None:
-            selected_contracts.revalidate()
+            for contract in contracts:
+                contract.revalidate()
             static_fresh()
-            current_selection = selected_contracts.record()
+            current_selection = _group_contract_record(selected_contracts)
             static_fresh()
             if current_selection != selection:
                 raise ValueError("original group selected contracts changed during checking")
@@ -333,11 +400,11 @@ def verify_compact_dense_group(
                 rhs_loads += site.instances
                 rhs_bytes += payload
         elif type(op) is Store:
-            if ptrs != [Ptr(f"output{member}", (as_expr(op.dram_row) * p.n + op.dram_col) * p.accumulator_bytes)]:
+            if ptrs != [Ptr(f"output{member}", (as_expr(op.dram_row) * p.n + op.dram_col) * output_widths[member])]:
                 raise ValueError("actual group store pointer does not identify the original member output buffer")
             spans.append((storage.accumulator, op.accumulator_row, op.rows, op.cols, p.accumulator_bytes))
             stores += site.instances
-            output_bytes += _requested_elements(site, op.rows, op.cols) * p.accumulator_bytes
+            output_bytes += _requested_elements(site, op.rows, op.cols) * output_widths[member]
         elif type(op) is Preload:
             if ptrs or op.weight_row is None or op.weight_rows is None:
                 raise ValueError("group preload has an unsupported retained descriptor or external pointer")
@@ -414,7 +481,7 @@ def verify_compact_dense_group(
             args=(
                 expected[0],
                 TensorArg("rhs", (p.k, p.n), dtypes[1], "read"),
-                TensorArg("output", (p.m, p.n), dtypes[2], "write"),
+                TensorArg("output", (p.m, p.n), output_dtypes[index], "write"),
             ),
             body=body(kernel.body),
         )
@@ -422,20 +489,29 @@ def verify_compact_dense_group(
         if remaining <= 0:
             raise DenseVerificationUnavailable("shared LHS verification budget exhausted")
         member_adapter = replace(adapter, project=lambda call: operations[id(call)])
-        if selected_contracts is not None:
-            _, member_adapter = selected_contracts.dense.bind(
+        contract = contracts[index]
+        if contract is not None:
+            _, member_adapter = contract.dense.bind(
                 p,
                 storage,
                 member_adapter,
                 dtypes=dtypes,
-                hardware=selected_contracts.hardware_identity,
-                policy=selected_contracts.numerical_policy,
+                hardware=contract.hardware_identity,
+                policy=contract.numerical_policy,
                 resources=resources,
                 reservations=reservations,
+                output_readout=readouts[index],
             )
         member_reports.append(
             verify_compact_dense(
-                view, p, resources, storage, member_adapter, static_budget=static_budget, timeout_ms=remaining
+                view,
+                p,
+                resources,
+                storage,
+                member_adapter,
+                static_budget=static_budget,
+                timeout_ms=remaining,
+                output_readout=readouts[index],
             )
         )
     fresh()
@@ -450,6 +526,10 @@ def verify_compact_dense_group(
         "requested_lhs_bytes": lhs_bytes,
         "requested_rhs_bytes": rhs_bytes,
         "requested_output_bytes": output_bytes,
+        "output_dtypes": output_dtypes,
+        "output_readouts": tuple(None if r is None else r.identity for r in readouts),
+        "readout_qualifications": qualifications,
+        "readout_source_binding": "selected_original" if selected_contracts is not None else "caller_owned_conditional",
         "private_high_water_bytes": used,
         "member_realizations": member_reports,
         "retention_law": retention_law.record(),

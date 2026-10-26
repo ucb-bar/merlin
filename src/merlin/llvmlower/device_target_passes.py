@@ -64,6 +64,8 @@ def _sources():
         for path in (
             Path(__file__).resolve(),
             Path(__file__).with_name("device_build.py").resolve(),
+            Path(__file__).with_name("device_routing_placement.py").resolve(),
+            Path(__file__).with_name("device_seam_buildability.py").resolve(),
             Path(__file__).with_name("device_preparation.py").resolve(),
         )
     )

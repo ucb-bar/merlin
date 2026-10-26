@@ -133,6 +133,8 @@ def freeze_transform_chain(chain):
             Path(H.__file__),
             Path(__file__).with_name("device_build.py"),
             Path(__file__).with_name("device_build_jobs.py"),
+            Path(__file__).with_name("device_routing_placement.py"),
+            Path(__file__).with_name("device_seam_buildability.py"),
         )
     )
     return chain, stages, sources

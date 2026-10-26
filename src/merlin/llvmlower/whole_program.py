@@ -253,8 +253,9 @@ def _prepack_rows(groups, capture) -> tuple[dict[int, Mapping[str, Any]], str]:
         return {}, "no capture was given, so no weights manifest could be read and no weight laid out"
     beside = Path(capture)
     beside = beside if beside.is_dir() else beside.parent
-    manifest = next(iter(sorted(beside.glob("*.manifest.json"))), None)
-    weights = next(iter(sorted(beside.glob("*.safetensors"))), None)
+    from .weights_pack import weight_files_beside
+
+    manifest, weights = weight_files_beside(capture)
     if manifest is None or weights is None:
         return {}, f"no weights manifest and safetensors pair beside {beside}"
     from merlin.xdsl_dialects.lowering import group_prepack as GP

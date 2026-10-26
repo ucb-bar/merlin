@@ -562,7 +562,8 @@ def test_required_batch_reuse_refuses_lost_custody(payload):
     break_lease(payload)
     with pytest.raises(RuntimeError, match="lease custody changed"):
         L.reuse([payload], required=True)
-    assert L._CACHE.disabled and L.reuse([payload]) is None
+    # Only the changed member is refused; other members keep their own custody.
+    assert L.reuse([payload]) is None and L.digest(payload) is None
 
 
 def test_validate_batches_only_exact_owner_leases(payload,tmp_path,monkeypatch):
@@ -635,3 +636,84 @@ def test_snapshot_batch_revalidates_leases_after_uncached_reads(payload,tmp_path
     monkeypatch.setattr(S.hashlib,'file_digest',interrupted)
     with pytest.raises(RuntimeError,match='lease custody changed'):
         S._payload_content(members)
+
+
+def test_writer_on_one_member_never_voids_another_members_custody(payload, tmp_path):
+    # One SIGIO used to release every lease, failing concurrent grades that never read the file.
+    other = tmp_path / "other.bin"
+    other.write_bytes(b"o" * 8192)
+    require_lease(payload)
+    expected = require_lease(other)
+    break_lease(payload)
+    with L.verification():
+        assert L.digest(other) == expected
+    assert fcntl_lease(other) and L.reuse([other], required=True) == {other: expected}
+    with pytest.raises(RuntimeError, match="lease custody changed"):
+        with L.verification():
+            L.digest(payload)
+    assert L.digest(payload) is None and not L._CACHE.disabled
+
+
+def fcntl_lease(path):
+    import fcntl
+
+    key = path.stat().st_dev, path.stat().st_ino
+    return fcntl.fcntl(L._CACHE.entries[key][0], fcntl.F_GETLEASE) == fcntl.F_RDLCK
+
+
+def test_refusal_in_one_thread_keeps_a_concurrent_scope_on_other_files(payload, tmp_path):
+    other = tmp_path / "other.bin"
+    other.write_bytes(b"o" * 8192)
+    require_lease(payload)
+    expected = require_lease(other)
+    used, refused = threading.Event(), threading.Event()
+
+    def unaffected():
+        with L.verification():
+            value = L.digest(other)
+            used.set()
+            assert refused.wait(3)
+        return value
+
+    def changed():
+        assert used.wait(3)
+        try:
+            with L.verification():
+                L.digest(payload)
+                break_lease(payload)
+        finally:
+            refused.set()
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        kept, broken = workers.submit(unaffected), workers.submit(changed)
+        with pytest.raises(RuntimeError, match="lease custody changed"):
+            broken.result(timeout=5)
+        assert kept.result(timeout=5) == expected
+
+
+def test_custodian_reply_timeout_declines_without_refusing_admitted_members(payload, tmp_path, monkeypatch):
+    import socket
+
+    expected = require_lease(payload)
+    late = tmp_path / "late.bin"
+    late.write_bytes(b"l" * 8192)
+    cache = L._CACHE
+
+    class Starved:
+        def __init__(self, channel):
+            self.channel = channel
+
+        def sendmsg(self, *args):
+            return self.channel.sendmsg(*args)
+
+        def recv(self, *_):
+            raise socket.timeout("custodian reply late under CPU starvation")
+
+        def close(self):
+            self.channel.close()
+
+    monkeypatch.setattr(cache, "channel", Starved(cache.channel))
+    with L.verification():
+        assert L.digest(payload) == expected
+        assert L.digest(late) is None  # the caller's ordinary full read
+    assert not cache.disabled and not cache.admitting and L.digest(payload) == expected

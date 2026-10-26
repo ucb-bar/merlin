@@ -51,6 +51,12 @@ static void *const MERLIN_OUTPUT_PTR[]={output,count,flag};
 int main(void) { return (int)(MERLIN_ARGS[0].dims[0] + (char *)MERLIN_INPUT_PTR[0] - (char *)MERLIN_OUTPUT_PTR[0]); }
 """,
         }
+        if mode.get("assert_no_transport"):
+            code["model.c"] = code["model.c"].replace(
+                "void forward(void **d) {",
+                "extern int fixture_transport_started;\nvoid forward(void **d) {\n"
+                " if (fixture_transport_started) __builtin_trap();",
+            )
         substitutions = {
             "nan": "out[0]=0.0f/0.0f; count[0]=0;",
             "inf": "out[0]=1.0f/0.0f; count[0]=0;",
@@ -163,7 +169,9 @@ void merlin_group_profile_dump(uint64_t start, uint64_t end) {
     }
     plan = {"programs": programs, "schedule": schedule, "float_policy": {"atol": 2e-6, "rtol": 1e-5}}
 
-    def compile_guest(*, compact=True, mutate_reference=None, source_extra=""):
+    def compile_guest(*, compact=True, timing_only=False, mutate_reference=None, source_extra=""):
+        transport = "timing_only_v1" if timing_only else (
+            "all_element_comparison_v1" if compact else "full_arrays_v1")
         if mutate_reference:
             data = bytearray(references.read_bytes())
             mutate_reference(data)
@@ -174,7 +182,7 @@ void merlin_group_profile_dump(uint64_t start, uint64_t end) {
                 names,
                 layout,
                 {"offsets": locations},
-                transport="all_element_comparison_v1" if compact else "full_arrays_v1",
+                transport=transport,
                 counter_symbol="merlin_chain_p0_fixture_counter",
                 group_profiles=[{"reset": n["prefix"] + "merlin_group_profile_reset",
                                  "dump": n["prefix"] + "merlin_group_profile_dump"} for n in names]
@@ -191,6 +199,14 @@ unsigned long long merlin_memref_rank_mismatches(void) { return 0; }
 """
             + source_extra
         )
+        if mode.get("assert_no_transport"):
+            wrapper.write_text(
+                "int fixture_transport_started;\n" + wrapper.read_text().replace(
+                    "{ fputs(s,stdout); }", "{ fixture_transport_started=1; fputs(s,stdout); }"
+                ).replace(
+                    "{ putchar((unsigned char)c); }", "{ fixture_transport_started=1; putchar((unsigned char)c); }"
+                )
+            )
         if mode.get("runtime_errors"):
             wrapper.write_text(
                 wrapper.read_text().replace(
@@ -235,7 +251,7 @@ unsigned long long merlin_memref_rank_mismatches(void) { return 0; }
         result = subprocess.run([str(elf)], capture_output=True, timeout=5)
         result.image = {
             "group_profile": {"enabled": bool(mode.get("profile"))},
-            "transport": "all_element_comparison_v1" if compact else "full_arrays_v1",
+            "transport": transport,
             "plan": plan,
             "reference": {"blob": pin(references), "offsets": locations},
             "chain_steps": 4,
@@ -306,6 +322,57 @@ def test_full_array_transport_still_emits_every_typed_array(guest):
     assert len(outputs) == len(frames) == 12
     assert frames["p1_s2_out1"].signed
     assert outputs["p1_s2_out0"][0] == [struct.unpack("<I", struct.pack("<f", x))[0] for x in (33, 66)]
+
+
+@pytest.mark.parametrize("guest", [{"assert_no_transport": True}], indirect=True)
+def test_continuous_timing_buffers_observations_and_never_claims_numerics(guest):
+    from merlin.model_check.chain_image_readback import decode
+
+    result = guest(timing_only=True)
+    assert result.returncode == 0, result.stderr
+    assert b"OUT_BIN" not in result.stdout and b"CHAIN_ARRAY" not in result.stdout
+    report = decode(result.image, result.stdout)
+    assert report["numerical_status"] == "not_evaluated_timing_only"
+    assert report["runtime_status"] == "pass"
+    assert report["output_array_count"] == 0 and report["declared_output_array_count"] == 12
+    # The source counter advances once per read. Eight reads surround four
+    # forwards; total also encloses the session boundaries, unlike their sum.
+    assert report["timing"]["whole_chain"] == 9
+    assert report["timing"]["forward_sum"] == 4
+    assert report["timing"]["session_overhead"] == 5
+    assert report["timing"]["readback_transport"] == 1
+    lines = result.stdout.splitlines(keepends=True)
+    timing = next(line for line in lines if line.startswith(b"CHAIN_TIMING"))
+    step = lines[0]
+    for changed in (
+        result.stdout.replace(timing, b""),
+        result.stdout.replace(timing, timing * 2),
+        result.stdout.replace(timing, b"CHAIN_TIMING v1 3 4 1\n"),
+        result.stdout.replace(timing, b"CHAIN_TIMING v1 9 3 1\n"),
+        result.stdout.replace(step, step * 2),
+        result.stdout + b"CHAIN_ARRAY v1 0 0 0\n",
+        result.stdout + b"OUT_BIN_BEGIN bad\n",
+        result.stdout.replace(b"CHAIN_END v1 4 0 0", b"CHAIN_END v1 4 12 0"),
+    ):
+        with pytest.raises(ValueError):
+            decode(result.image, changed)
+
+
+@pytest.mark.parametrize("guest", [{"runtime_errors": True}], indirect=True)
+def test_timing_preserves_earlier_runtime_failure_without_numeric_verdict(guest):
+    from merlin.model_check.chain_image_readback import decode
+
+    result = guest(timing_only=True)
+    assert result.returncode == 2
+    report = decode(result.image, result.stdout)
+    assert report["runtime_status"] == "fail"
+    assert report["numerical_status"] == "not_evaluated_timing_only"
+
+
+@pytest.mark.parametrize("guest", [{"profile": True}], indirect=True)
+def test_timing_refuses_between_forward_profile_transport(guest):
+    with pytest.raises(ValueError, match="between forwards"):
+        guest(timing_only=True)
 
 
 @pytest.mark.parametrize("guest", [{"actual": "nan"}, {"actual": "inf"}, {"actual": "bool"}], indirect=True)

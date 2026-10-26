@@ -406,9 +406,9 @@ def test_an_accepted_offset_reproduces_every_output_by_brute_force():
     root = next(g.root for g in first if g.placement != CG.HOST)
     values = OF.Values()
     chain = OF.source_chain(root, values)
-    from merlin.targetgen import model_coverage as MC
+    from merlin.compile.analysis.contraction_shapes import contraction_extents
 
-    decision = OF.decide(chain, _path(), values, MC._contraction_extents(module))
+    decision = OF.decide(chain, _path(), values, contraction_extents(module))
     offsets = np.asarray(decision.proof["offsets"], dtype=np.int64)
     scale = np.asarray(decision.proof["device_scale"])
     lo, hi = decision.proof["accumulator_bound"]

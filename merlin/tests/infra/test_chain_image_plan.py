@@ -134,6 +134,18 @@ def test_actual_prepare_and_native_absent_policy_reference(case):
     assert Path(result["blob"]["path"]).read_bytes() == np.asarray([1, 2], np.float32).tobytes()
 
 
+def test_timing_only_has_no_reference_or_transferred_numerical_authority(case):
+    selected, plan, root, _ = case
+    selected = {k: v for k, v in selected.items() if k not in ("reference", "reference_identity", "bundle")}
+    selected["transport"] = "timing_only_v1"
+    result = data.references(selected, plan, root)
+    assert result["source_pins"] == [] and result["seal_binding"] is None
+    assert result["offsets"] == [[0]] and result["blob"]["bytes"] == 1
+    selected["reference"] = {"path": "not-an-admitted-reference"}
+    with pytest.raises(ValueError, match="no reference"):
+        data.references(selected, plan, root)
+
+
 @pytest.mark.parametrize("changed", ["portable", "sealed", "output", "shape", "input", "identity"])
 def test_reference_does_not_transfer_other_policy_or_bytes(case, changed):
     selected, plan, root, manifest = case

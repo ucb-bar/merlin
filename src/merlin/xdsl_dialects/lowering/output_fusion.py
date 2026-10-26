@@ -81,10 +81,9 @@ class Values:
     def __init__(self, capture: str | Path | None = None):
         self.manifest, self.weights = None, None
         if capture is not None:
-            beside = Path(capture)
-            beside = beside if beside.is_dir() else beside.parent
-            manifest = next(iter(sorted(beside.glob("*.manifest.json"))), None)
-            weights = next(iter(sorted(beside.glob("*.safetensors"))), None)
+            from merlin.llvmlower.weights_pack import weight_files_beside
+
+            manifest, weights = weight_files_beside(capture)
             if manifest is not None and weights is not None:
                 self.manifest, self.weights = json.loads(manifest.read_text(encoding="utf-8")), weights
 
@@ -820,9 +819,9 @@ def declared_path(target: str) -> dict[str, Any] | None:
 
 def decisions(groups, module, path: Mapping[str, Any], values: Values) -> dict[int, Decision]:
     """``id(root) -> Decision`` for every accelerator contraction group, from ONE matching rule."""
-    from merlin.targetgen import model_coverage as MC
+    from merlin.compile.analysis.contraction_shapes import contraction_extents
 
-    extents = MC._contraction_extents(module)  # noqa: SLF001 -- the shared extent reader
+    extents = contraction_extents(module)
     out: dict[int, Decision] = {}
     for group in groups:
         if group.root is None or group.placement == CG.HOST or CG.classify(group.root).kind != CG.CONTRACTION:

@@ -99,7 +99,7 @@ def schedule(model, **kwargs):
     )
 
 
-def run(kernel, model):
+def run(kernel, model, *, output_transforms=None, expected_transforms=None):
     p, _, storages, _, _, _, projector = model
     inputs = {"lhs": [[(i * 7 + j * 13) % 31 - 15 for j in range(p[0].k)] for i in range(p[0].m)]}
     for member, problem in enumerate(p):
@@ -164,9 +164,11 @@ def run(kernel, model):
         elif type(op) is Store:
             for i in range(value(op.rows)):
                 for j in range(value(op.cols)):
-                    outputs[member][value(op.dram_row) + i][value(op.dram_col) + j] = memory[
-                        key(storage.accumulator, value(op.accumulator_row) + i, j, 4)
-                    ]
+                    total = memory[key(storage.accumulator, value(op.accumulator_row) + i, j, 4)]
+                    transform = (output_transforms or {}).get(call.instr)
+                    outputs[member][value(op.dram_row) + i][value(op.dram_col) + j] = (
+                        total if transform is None else transform(total)
+                    )
     for member, problem in enumerate(p):
         expected = []
         for i in range(problem.m):
@@ -177,7 +179,8 @@ def run(kernel, model):
                     total = (total + inputs["lhs"][i][k] * inputs[f"rhs{member}"][k][j] + (1 << 31)) % (1 << 32) - (
                         1 << 31
                     )
-                row.append(total)
+                transform = (expected_transforms or {}).get(member)
+                row.append(total if transform is None else transform(total))
             expected.append(row)
         assert outputs[member] == expected
     return lhs_bytes
@@ -266,7 +269,7 @@ def test_original_inputs_and_code_stale_after_success_refuse():
         result.revalidate()
 
 
-def selected_fixture(tmp_path):
+def selected_fixture(tmp_path, *, mutate=None):
     from test_dense_pointer_contracts import pointer_inputs
 
     def union(facts, software, dense):
@@ -296,6 +299,9 @@ def selected_fixture(tmp_path):
                         fixed=ref("origin"),
                     )
                 )
+
+        if mutate is not None:
+            mutate(facts, software, dense)
 
     selected, p, s, adapter = pointer_inputs(tmp_path, shape=(5, 5, 5), mutate=union)
     model = fixture()

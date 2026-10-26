@@ -36,8 +36,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.compile.analysis.disassembly import nm_bin, objdump_bin, undefined_symbols
+
 from .cca import RUNTIME_ESCAPE_SYMBOLS
-from .decode.objdump import nm_bin, objdump_bin, undefined_symbols
 
 
 @dataclass(frozen=True)
@@ -244,7 +245,8 @@ def _backedge_spans(insns: list[tuple[int, str, list[str]]]) -> list[tuple[int, 
     """Back-edge spans ``(target, branch)`` within ONE function: branches whose resolved target is a
     lower address inside the same function. Reuses the decoder's branch-target resolution so both
     objdump spellings (bare hex, and hex with a ``<sym+off>`` annotation) are handled."""
-    from .decode.objdump import RawInsn
+    from merlin.compile.analysis.disassembly import RawInsn
+
     from .decode.rvv import _branch_target
 
     lo_addr = min((a for a, _, _ in insns), default=0)

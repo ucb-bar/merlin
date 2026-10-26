@@ -170,7 +170,7 @@ def catalog_source_contractions(
 
 
 def _contractions_for_dtypes(module, device_name, triples, *, require_zero_init: bool):
-    from merlin.kernels.shapes import observe_contractions
+    from merlin.compile.analysis.contraction_shapes import observe_contractions
 
     ranks = device_contraction_ranks(device_name)
 
@@ -179,7 +179,7 @@ def _contractions_for_dtypes(module, device_name, triples, *, require_zero_init:
         if why_not(shape, triples=triples, ranks=ranks) is not None:
             continue
         if require_zero_init:
-            from merlin.kernels.shapes import zero_initialised
+            from merlin.compile.analysis.contraction_shapes import zero_initialised
 
             if not zero_initialised(op):
                 continue

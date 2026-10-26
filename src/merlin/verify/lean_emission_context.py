@@ -231,6 +231,9 @@ def original_emission_checks(service):
         COMMON_SUBSTRATE_V10,
         COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
     )
 
     if type(service) is not CommonTransformService:
@@ -253,6 +256,9 @@ def original_emission_checks(service):
         COMMON_SUBSTRATE_V10,
         COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
     }:
         yield
         return
@@ -438,10 +444,13 @@ def _operation_snapshot(scope):
     operation = None
     try:
         with (
-            (refresh(service) if callable(refresh) else contextlib.nullcontext()) as entry,
+            refresh(service) if callable(refresh) else contextlib.nullcontext() as entry,
             verified_snapshot_scope(
-                service.workspace, service.bundle, repo=service.repo,
-                entry=entry, guarded_exit=entry is not None,
+                service.workspace,
+                service.bundle,
+                repo=service.repo,
+                entry=entry,
+                guarded_exit=entry is not None,
             ),
         ):
             scope.verify()
@@ -560,8 +569,17 @@ def observe_emission(function):
                 # fresh publication check and retaining its bookkeeping. Avoid
                 # a second complete payload traversal for the same admission.
                 scope._retain_verified(
-                    _Pending(package, source, products[0], artifact, call, pin,
-                             _manifest_identity(package), values["timeout"], product)
+                    _Pending(
+                        package,
+                        source,
+                        products[0],
+                        artifact,
+                        call,
+                        pin,
+                        _manifest_identity(package),
+                        values["timeout"],
+                        product,
+                    )
                 )
             return output[0], product
         return output

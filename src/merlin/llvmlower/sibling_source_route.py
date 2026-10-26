@@ -235,9 +235,7 @@ def prepare_host(device, selected, source, directory):
 
 def borrowed_bridge_source(symbol, borrowed_symbol, call, result_arguments):
     """Emit stock descriptor transport, reproducible from the source-bound ABI."""
-    import re
-
-    if any(type(value) is not str or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value) is None
+    if any(type(value) is not str or not value.isascii() or not value.isidentifier()
            for value in (symbol, borrowed_symbol)):
         raise ValueError("sibling descriptor bridge needs closed C symbols")
     outputs = [index for index, row in enumerate(call) if row["role"].startswith("out_")]

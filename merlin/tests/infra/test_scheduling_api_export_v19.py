@@ -12,7 +12,7 @@ from merlin.compile.scheduling.api_catalog import scheduling_capabilities
 from merlin.compile.scheduling.export import public_modules
 from merlin.compile.scheduling.library_sources import library_modules
 from merlin.targetgen.compiler_library import CompilerLibraryError, freeze_compiler_library
-from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V12, attach_common_substrate, verify_tool_profile
+from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V13, attach_common_substrate, verify_tool_profile
 from merlin.targetgen.tool_profile_shared import prepare_shared_source_release, reviewed_shared_manifest
 
 
@@ -22,18 +22,20 @@ def test_v19_adds_only_ready_owner_and_old_refresh_cannot_acquire_it(tmp_path):
     assert public_modules(19) == (*public_modules(18), *new)
     assert library_modules() == library_modules(6)
     assert "final_k_causal_accumulator_readout_frontier" not in {
-        r["name"] for r in scheduling_capabilities(18)["capabilities"]}
+        r["name"] for r in scheduling_capabilities(18)["capabilities"]
+    }
     assert scheduling_capabilities(19)["capabilities"][:-1] == scheduling_capabilities(18)["capabilities"]
     assert scheduling_capabilities(19)["capabilities"][-1]["symbols"]
     old = tmp_path / "legacy-refresh"
-    m = prepare_shared_source_release(old, python_source_root=repo_root() / "src", license_directory=repo_root(),
-                                      version=18, source_binding=True)
+    m = prepare_shared_source_release(
+        old, python_source_root=repo_root() / "src", license_directory=repo_root(), version=18, source_binding=True
+    )
     # A new HEAD is not the old frozen source epoch. No implicit roster growth.
     with pytest.raises(CompilerLibraryError, match="unreviewed library dependency"):
         freeze_compiler_library(old, review_id="legacy-refresh-must-refuse", public_modules=tuple(m["public_modules"]),
                                 sources=tuple((r["path"], r["module"]) for r in m["members"])
                                 + tuple((r, None) for r in m["review_resources"]))
-    for version in (20, True, "19"):
+    for version in (23, True, "19"):
         with pytest.raises(ValueError):
             library_modules(version)
 
@@ -45,15 +47,15 @@ def test_v19_actual_exported_frontier_scf_llvm_and_original_check_guard(tmp_path
 
     root = tmp_path / "prospective"
     manifest = prepare_shared_source_release(
-        root, python_source_root=repo_root() / "src", license_directory=repo_root(), version=19, source_binding=True,
+        root, python_source_root=repo_root() / "src", license_directory=repo_root(), version=20, source_binding=True,
     )
-    assert reviewed_shared_manifest(root, version=19) == manifest
-    assert manifest["schema"] == "merlin.shared_scheduling_library.v13"
+    assert reviewed_shared_manifest(root, version=20) == manifest
+    assert manifest["schema"] == "merlin.shared_scheduling_library.v14"
     bundle = dict(arm="raw_baseline", tools=[], allowed=[], denied=[], host_inputs=[])
-    attach_common_substrate(bundle, version=COMMON_SUBSTRATE_V12, python_source_root=root, host_index_bits=64)
+    attach_common_substrate(bundle, version=COMMON_SUBSTRATE_V13, python_source_root=root, host_index_bits=64)
     profile = verify_tool_profile(bundle)
     assert supports_check(profile)
-    assert not supports_check({"common_substrate": "merlin.common_compiler_substrate.v13"})
+    assert not supports_check({"common_substrate": "merlin.common_compiler_substrate.v16"})
     service = object.__new__(CommonTransformService)
     service.profile = profile
     with pytest.raises(ValueError, match="cannot select semantics"):
@@ -64,7 +66,7 @@ def test_v19_actual_exported_frontier_scf_llvm_and_original_check_guard(tmp_path
         "sys.path.insert(0,str(root))",
         "sys.path.append(" + repr(str(Path(__file__).parent)) + ")",
         "from merlin.compile.scheduling.api_catalog import scheduling_capabilities",
-        "catalog=scheduling_capabilities(19)",
+        "catalog=scheduling_capabilities(20)",
         "for row in catalog['capabilities']:",
         " for symbol in row['symbols']:",
         "  module,name=symbol.rsplit('.',1)",
@@ -82,4 +84,4 @@ def test_v19_actual_exported_frontier_scf_llvm_and_original_check_guard(tmp_path
     completed = subprocess.run([sys.executable, "-I", "-B", "-c", code], text=True, capture_output=True)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "actual-final-K-source-SCF-LLVM-PASS"
-    assert json.loads((root / "shared-library.json").read_text())["inventory_version"] == 19
+    assert json.loads((root / "shared-library.json").read_text())["inventory_version"] == 20

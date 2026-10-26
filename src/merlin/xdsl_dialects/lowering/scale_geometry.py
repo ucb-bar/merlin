@@ -106,7 +106,7 @@ def _root_axes(root) -> tuple[set[int], set[int]] | None:
     is rank-1. Read from the indexing maps, so it holds for a matmul and a convolution alike.
     """
 
-    from merlin.kernels import shapes as KS
+    from merlin.compile.analysis import contraction_shapes as KS
 
     from .compute_groups import _NAMED_DIMS, _operand_dims
 

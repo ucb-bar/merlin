@@ -58,6 +58,22 @@ class FnBuilder:
         self.blk = self.entry
         self._consts: dict[tuple[int, str], SSAValue] = {}
 
+    @classmethod
+    def for_logical_kernel(cls, command_buffer, *, abi=None):
+        """Build pointer arguments in the selected logical ABI, addressed by source name.
+
+        Semantic roles such as lhs/rhs do not determine pointer position. Use the
+        returned name map when lowering operands; its insertion order is the
+        actual function argument order. The ordinary host shim uses the same
+        resolver. An explicit whole-program ABI remains the original caller's
+        selection, never an inference from this builder.
+        """
+        from merlin.compile.logical_abi import kernel_arg_order
+
+        names = kernel_arg_order(command_buffer, abi)
+        builder = cls([PTR] * len(names))
+        return builder, dict(zip(names, builder.entry.args, strict=True))
+
     # -- primitives --------------------------------------------------------------------------
     def add(self, op):
         self.blk.add_op(op)

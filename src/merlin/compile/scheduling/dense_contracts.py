@@ -379,7 +379,12 @@ class DenseSchedulingContract:
                 key = pointer_arguments[kind]
                 keys = [name for name, _ in call.args]
                 if key not in keys:
-                    position = tuple(name for name, _ in self.instruction_arguments[OPERATIONS.index(kind)]).index(key)
+                    arguments = (
+                        output_readout.instruction_arguments
+                        if kind == "store" and output_readout is not None
+                        else self.instruction_arguments[OPERATIONS.index(kind)]
+                    )
+                    position = tuple(name for name, _ in arguments).index(key)
                     call = replace(call, args=(*call.args[:position], (key, value), *call.args[position:]))
                 elif keys.count(key) != 1 or dict(call.args)[key] != value:
                     raise ValueError("dense encoded external pointer disagrees with its bound logical buffer")
@@ -433,8 +438,6 @@ def resolve_dense_contract(declaration, facts, isa):
         optional += ("external_pointer_arguments",)
         if "external_pointer_arguments" not in declaration:
             raise ValueError("dense v2 requires explicit external pointer arguments")
-        if "output_readout" in declaration:
-            raise DenseSchedulingUnavailable("dense v2 integer output readout pointer binding is not qualified")
     logical_pointer = _logical_pointer_abi(declaration.get("logical_pointer_abi"))
     if version == "merlin.dense_schedule.v2" and (
         logical_pointer is None
@@ -591,15 +594,18 @@ def resolve_dense_contract(declaration, facts, isa):
             )
         instruction = isa.instruction(item["instruction"])
         args = instruction.arguments()
+        pointer_name = pointer_bindings.get("store")
+        if pointer_name is not None and pointer_name not in {arg.name for arg in args}:
+            raise ValueError("dense output readout pointer is missing from its actual ISA instruction")
         for argument in args:
             fields = [field for field in instruction.fields if field.argument == argument.name]
-            if (
-                argument.type.kind != "integer"
-                or argument.alignment != 1
-                or len(fields) != 1
-                or fields[0].width != argument.type.bits
-            ):
-                raise ValueError("dense output readout requires full-width integer coordinate operands")
+            if argument.name == pointer_name:
+                if argument.type.kind != "address" or argument.type.space != external["output"]:
+                    raise ValueError("dense output readout pointer requires its declared output address space")
+            elif argument.type.kind != "integer":
+                raise ValueError("dense output readout requires integer coordinates and its declared pointer only")
+            if argument.alignment != 1 or len(fields) != 1 or fields[0].width != argument.type.bits:
+                raise ValueError("dense output readout requires full-width unaligned coordinate and pointer operands")
         effects = json.loads(instruction.effects_json)
         if effects != {"reads": [acc], "writes": [external["output"]]}:
             raise ValueError("dense output readout must read only its accumulator and write only its output")

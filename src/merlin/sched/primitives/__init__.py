@@ -29,9 +29,10 @@ this classification exists to surface, so the suite asserts each one can refuse.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import replace as _replace
-from typing import Any, Callable
+from typing import Any
 
 from merlin.sched.ir import Call, Kernel, Loop, Ptr, Stage
 from merlin.sched.ir.expr import Expr, Scaled, Sum, Var, add, as_expr, evaluate, free_vars, mul, render, select
@@ -344,6 +345,12 @@ def divide_loop(kernel: Kernel, cursor: Cursor, factor: int, *, names: tuple[str
     for name in (outer_name, inner_name):
         if name in _bound_vars(kernel.body):
             raise PrimitiveError(f"{name!r} is already a loop variable of this kernel")
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events((target,)):
+        from .event_loops import split_event_loop
+
+        return split_event_loop(kernel, cursor.loops, factor, (outer_name, inner_name))
     inner_body = _map_calls(
         target.body,
         lambda c: _divide_call(c, target.var, Var(outer_name), Var(inner_name), factor),
@@ -369,6 +376,12 @@ def unroll(kernel: Kernel, cursor: Cursor) -> Kernel:
             f"unrolling {target.var!r} would emit {target.extent} copies; a bound this large is a "
             "tiling decision, not an unroll"
         )
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events(kernel.body):
+        from .event_loops import unroll_event_loop
+
+        return unroll_event_loop(kernel, cursor.loops)
     flat: list[Any] = []
     for i in range(target.extent):
         flat.extend(
@@ -396,6 +409,10 @@ def reorder(kernel: Kernel, cursor: Cursor) -> Kernel:
     ``hazard_resolution`` and why a reordering there is graded on measured occupancy instead.
     """
     outer = _loop_at(kernel.body, cursor.loops)
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events((outer,)):
+        raise NotApplicable("completion-carrying loop reorder needs a separate dependency transport proof")
     inner = next((s for s in outer.body if isinstance(s, Loop)), None)
     if inner is None:
         raise NotApplicable(f"loop {outer.var!r} contains no loop to swap with")
@@ -426,6 +443,10 @@ def fuse(kernel: Kernel, cursor: Cursor) -> Kernel:
     first, second = body[index], body[index + 1]
     if not isinstance(first, Loop) or not isinstance(second, Loop):
         raise NotApplicable("fuse applies to two adjacent loops")
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events((first, second)):
+        raise NotApplicable("completion-carrying fusion needs a separate dependency transport proof")
     if first.extent != second.extent:
         raise NotApplicable(f"extents differ: {first.extent} and {second.extent}")
     renamed = _map_calls(second.body, lambda c: _subst_call(c, second.var, Var(first.var)))
@@ -860,6 +881,8 @@ def peel(kernel: Kernel, cursor: Cursor, *, at: str = "front") -> Kernel:
     if at not in ("front", "back"):
         raise PrimitiveError(f"peel at {at!r}: expected 'front' or 'back'")
     target = _loop_at(kernel.body, cursor.loops)
+    if target.iter_args or target.yields or target.results:
+        raise NotApplicable("peeling carried completions requires explicit ordered partition and unroll")
     if target.extent < 2:
         raise NotApplicable(
             f"loop {target.var!r} has extent {target.extent}; peeling it would leave nothing behind. "

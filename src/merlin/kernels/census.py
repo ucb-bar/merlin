@@ -35,8 +35,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from merlin.compile.analysis.contraction_shapes import ContractionShape
+
 from ..common import mlir_query as mq
-from .microkernel import ContractionShape
 
 __all__ = ["Census", "CensusRow", "Legality", "census", "census_bundle", "legality_of", "to_markdown"]
 
@@ -309,8 +310,9 @@ def census(
     WHICH IR this is (``capture`` / ``prepared``); it is recorded rather than inferred, because the
     element types — and therefore every legality verdict — depend on it.
     """
+    from merlin.compile.analysis.contraction_shapes import observe_contractions
+
     from . import work as wk
-    from .shapes import observe_contractions
 
     observed = observe_contractions(src)
     units, undecidable = _units_for(target)

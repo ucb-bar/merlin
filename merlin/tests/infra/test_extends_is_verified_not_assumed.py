@@ -12,7 +12,20 @@ from __future__ import annotations
 
 import importlib.util
 
+import pytest
+
 from merlin.common.paths import repo_root
+
+
+@pytest.fixture(autouse=True)
+def _no_operator_run_history(tmp_path, monkeypatch):
+    """The audit prices from every certification record under the output root, so unisolated these tests
+    examined whatever run shares the checkout. Measured on a checkout hosting a live Phase 1 campaign:
+    6,973 ``capsule_result.json`` files, 22.6 GB, the largest 1 GB each -- the tests ran past 180 s there
+    while passing in 5 s on a clean archive of the SAME code, which read as a regression of commits that
+    never touched this path. What they assert is a property of the corpus (which capsules declare an
+    ``extends`` and what an unverified one must carry), so they read the corpus and an empty history."""
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
 
 
 def _gate():

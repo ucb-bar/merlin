@@ -548,3 +548,54 @@ def test_unknown_host_math_policy_refuses_before_any_input_or_output_io(tmp_path
             output=output, target="sample", run="none", arena_mb=1, host_math_policy=policy,
         )
     assert not output.exists()
+
+
+def test_exact_preparation_sharing_reaches_normal_lowering_only_when_selected(tmp_path, monkeypatch):
+    from merlin.llvmlower.quant_scope import FEATURE as quant_scope
+    from merlin.llvmlower.tensor_provenance_cse import FEATURE as preparation_cse
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    observed = []
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default_cse", run="none",
+                                    respect_captured_quantization_scope=True)
+    selected = BM.compile_saved_model(**inputs, output=out / "selected_cse", run="none",
+                                     respect_captured_quantization_scope=True,
+                                     share_exact_tensor_preparations=True)
+    assert default["status"] == selected["status"] == "compiled"
+    assert observed[0]["features"] == frozenset({quant_scope})
+    assert observed[1] == {**observed[0], "features": frozenset({quant_scope, preparation_cse})}
+    assert "share_exact_tensor_preparations" not in default["inputs"]
+    assert selected["inputs"]["share_exact_tensor_preparations"] is True
+
+
+@pytest.mark.parametrize("choice", [0, 1, None, "true"])
+def test_non_boolean_preparation_sharing_refuses_before_capture_io(tmp_path, choice):
+    with pytest.raises(BM.BaremetalModelError, match="tensor preparation sharing"):
+        BM.compile_saved_model(capture=tmp_path / "missing", package=tmp_path / "missing",
+                               board_catalog=tmp_path / "missing", board="sample", dts=tmp_path / "missing",
+                               output=tmp_path / "out", target="sample", run="none", arena_mb=1,
+                               share_exact_tensor_preparations=choice)
+    assert not (tmp_path / "out").exists()
+
+
+def test_dense_input_views_reach_ordinary_build_only_when_selected(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    observed = []
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default_views", run="none")
+    selected = BM.compile_saved_model(**inputs, output=out / "selected_views", run="none", dense_input_views=True)
+    assert default["status"] == selected["status"] == "compiled"
+    assert "dense_input_views" not in observed[0] and "dense_input_views" not in default["inputs"]
+    assert observed[1] == {**observed[0], "dense_input_views": True}
+    assert selected["inputs"]["dense_input_views"] is True

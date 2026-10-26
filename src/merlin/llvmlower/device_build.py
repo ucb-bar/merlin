@@ -46,6 +46,14 @@ if TYPE_CHECKING:
     from .sibling_source_route import SiblingSourceRoute
     from .target_schedule import TargetScheduleSelection
 
+from .device_routing_placement import _accum_from_facts, routing_for_placement  # noqa: F401  (re-exported)
+from .device_seam_buildability import (  # noqa: F401  (re-exported)
+    _SEAM_EMITTERS,
+    BUILDABLE_TRANSPORTS,
+    boundary_buildable,
+    objects_buildable,
+)
+
 __all__ = [
     "FROM_EXTENTS",
     "FROM_GROUP",
@@ -404,97 +412,6 @@ def revalidate_device_elf_custody(device, selection, custody):
         raise ValueError("device linked ELF changed after original callback validation")
 
 
-def routing_for_placement(
-    placement,
-    device: str,
-    package_dir: str | Path,
-    *,
-    numeric_policy=None,
-    granularity: str = "contraction",
-    capture: str | Path | None = None,
-    model: str = "",
-    linked_elf_admission: LinkedElfAdmissionService | None = None,
-) -> DeviceRouting:
-    """The ``DeviceRouting`` a whole-model build needs, derived from a placement rather than declared.
-
-    This is the step that made the fused single-ELF path unreachable in production. Every piece of it
-    exists -- the rewrite, the shim, the per-extent kernel build, the link -- and all of it is inert
-    until a caller supplies ``select``, which nothing did. So a "compiled" whole model ran its
-    contractions through the Python interpreter while the artifact that would have run them on the
-    device was never asked for.
-
-    The operand and accumulate formats are read off the placement, NOT defaulted: they are what the
-    router matched the contraction against, and a build that assumed them would emit kernels in a
-    precision the placement never chose. Two consequences, both deliberate:
-
-    * a placement that put nothing on this device raises, because a routing with no work is a caller
-      error rather than an empty build;
-    * device placements that disagree about the datapath raise too. One ELF carries one device
-      datapath; picking the first and dropping the rest is how half a model gets computed in a
-      precision nobody selected.
-
-    The accumulate format has a SECOND derivation because a unit legitimately has no accumulate rule to
-    match: a contract that declares its formats without an accumulate matrix routes fine and reports
-    ``acc=None`` (measured: the reference systolic mesh does exactly this). That is a gap in the
-    contract, not in the hardware, so the format is then read off the device's own RTL datapath facts
-    for this operand pair -- the same source :mod:`merlin.system.offload` uses -- and it is still an
-    error when those facts name none, or name more than one.
-    """
-    from merlin.system.place import device_selector
-
-    on_dev = [p for p in placement.placed if p.on_device and p.device == device]
-    if not on_dev:
-        raise ValueError(f"this placement puts no work on {device!r}; there is nothing to build")
-    operands = {getattr(p.demand, "in_fmt", None) for p in on_dev}
-    weights = {getattr(p.demand, "weight_fmt", None) or getattr(p.demand, "in_fmt", None) for p in on_dev}
-    accums = {p.acc for p in on_dev}
-    if len(operands) != 1 or len(weights) != 1 or len(accums) != 1:
-        raise ValueError(
-            f"{device!r} placements disagree about the datapath (operands={sorted(map(str, operands))}, "
-            f"accumulate={sorted(map(str, accums))}); one image carries one device datapath, so the "
-            f"placement has to be split before it can be built"
-        )
-    operand, weight, accum = operands.pop(), weights.pop(), accums.pop()
-    if not operand:
-        raise ValueError(
-            f"{device!r} placements carry no operand format; the kernel precision is "
-            f"underivable and assuming one emits the wrong datapath"
-        )
-    accum = accum or _accum_from_facts(device, operand, weight)
-    return DeviceRouting(
-        device=device,
-        package_dir=package_dir,
-        operand_dtype=str(operand),
-        accum_dtype=str(accum),
-        select=device_selector(placement),
-        numeric_policy=numeric_policy,
-        granularity=str(granularity),
-        capture=capture,
-        model=str(model),
-        linked_elf_admission=linked_elf_admission,
-    )
-
-
-def _accum_from_facts(device: str, operand: str, weight: str) -> str:
-    """The accumulate format this device's RTL datapath declares for ``operand`` x ``weight``.
-
-    Fails closed in both directions. No matching triple means the device does not declare what it
-    accumulates this pair into, and more than one means it declares several -- and a build that picked
-    among them would be choosing the model's arithmetic on the strength of dictionary order.
-    """
-    from merlin.system.offload import device_dtype_triples
-    from merlin.targetgen.routing import _fmt_ok  # noqa: PLC2701 -- one format-equality predicate
-
-    found = {a for i, w, a in device_dtype_triples(device) if _fmt_ok(operand, (i,)) and _fmt_ok(weight, (w,))}
-    if len(found) != 1:
-        raise ValueError(
-            f"{device!r} declares {len(found)} accumulate format(s) for {operand} x {weight} "
-            f"({sorted(found) or 'none'}); the unit matched no accumulate rule either, so the kernel "
-            f"precision is underivable and assuming one emits the wrong datapath"
-        )
-    return found.pop()
-
-
 @dataclass(frozen=True)
 class DeviceBuild:
     """What was built, and what could not be."""
@@ -556,108 +473,6 @@ def _ar() -> str | None:
     if local.exists():
         return str(local)
     return shutil.which("llvm-ar") or shutil.which("ar")
-
-
-#: Transports whose package artifact THIS pipeline can turn into an object. `host_instruction` is a
-#: device the host drives with its own instructions (the artifact is LLVM-dialect MLIR); None is a
-#: unit that lowers through a stock LLVM target and has no separate device artifact at all.
-#:
-#: NOT the set of transports whose boundary this repo can emit -- see :func:`boundary_buildable`. A
-#: `device_native` boundary is not an object at all (it is a DRAM address contract), so it is emitted
-#: by :mod:`merlin.llvmlower.device_native` and would be wrong to list here: this constant gates
-#: `build_device_objects`, which really can only build the ones named.
-BUILDABLE_TRANSPORTS: frozenset = frozenset({"host_instruction", None})
-
-#: Transports with an emitter somewhere in this repo, and where it lives. Keyed on the derived
-#: transport, never on a target: two devices sharing a transport share an emitter by construction.
-_SEAM_EMITTERS: dict = {
-    "device_native": "merlin.llvmlower.device_native",
-}
-
-
-def boundary_buildable(device: str) -> str | None:
-    """Why no path in this repo can emit ``device``'s host/device boundary, or None when one can.
-
-    PUBLIC because the composition axis needs it. ``targetgen.boundary`` classifies a capsule's
-    accelerator/host seam from ELIGIBILITY alone, which silently claims a crossing on a target whose
-    seam nothing can compile -- so it has to be able to ask, and a private cross-package import is how
-    that drifts. Same predicate, one name.
-
-    A BOUNDARY IS NOT ALWAYS AN OBJECT, which is what this used to assume. Asking only whether
-    ``build_device_objects`` could compile the artifact answered "no" for every ``device_native``
-    device -- correctly at the time, because nothing emitted that boundary, and wrongly once something
-    did. A transport with its own emitter is delegated to it, and that emitter answers with its own
-    fail-closed reasons (an underivable DRAM window, an operand placement that is not an address
-    contract). So a target still reports UNKNOWN when its seam genuinely cannot be emitted; it stops
-    reporting UNKNOWN for the reason "this is not the transport I know how to build".
-    """
-    try:
-        from merlin.system.derive import link_for
-        from merlin.targetgen.target_experiment import load_capability_manifest
-
-        endpoint = getattr(load_capability_manifest(device), "endpoint_kind", None)
-        link = link_for(device, endpoint)
-    except Exception:  # noqa: BLE001 -- an unresolvable device is caught by the package load
-        return None
-    # DELEGATED TO `_SEAM_EMITTERS` ONLY BECAUSE A SEAM HAS NOW BEEN EMITTED. This line was held back on
-    # purpose while nothing had built one: turning it on flips the composition axis from UNDETERMINABLE
-    # to a shape for every `device_native` capsule, and doing that on the strength of a module that
-    # merely exists is exactly the move `boundary.profile_linalg` exists to prevent -- "the composition
-    # numbers would improve by argument alone". What changed is an artifact, not an argument:
-    # `merlin/tests/infra/test_device_native_seam_emits.py` builds a complete seam for a device_native
-    # target from its own backend package -- the package's emitted directives ASSEMBLED to the bytes the
-    # device fetches, the address contract read off the command buffer the same package emitted for the
-    # same capsule and converted to offsets in the device's own derived DRAM window, and the host stager
-    # compiled to an object -- then LINKS that object against a harness generated from the contract and
-    # runs it, checking each operand lands at its declared offset and each result is collected from
-    # its own. The emitter keeps its own fail-closed refusals (an underivable window, an operand
-    # placement that is not an address contract), so a target whose seam genuinely cannot be emitted
-    # still reports UNKNOWN; it stops reporting UNKNOWN for the reason "this is not the transport I
-    # know how to build".
-    emitter = _SEAM_EMITTERS.get(link.command_transport)
-    if emitter is not None:
-        from importlib import import_module
-
-        return import_module(emitter).seam_emittable(device)
-    if link.command_transport not in BUILDABLE_TRANSPORTS:
-        return (
-            f"{device!r} is reached by {link.command_transport!r}; this path compiles a device "
-            f"whose artifact is LLVM-dialect MLIR, and that transport's package emits "
-            f"{link.emitted_artifact or 'another artifact'} instead"
-        )
-    return None
-
-
-def objects_buildable(device: str) -> str | None:
-    """Why THIS pipeline cannot turn ``device``'s package artifact into linkable objects, or None.
-
-    Split from :func:`boundary_buildable` the moment a second transport gained an emitter. The two
-    questions had one answer while there was one emitter, and collapsing them again is a real hazard
-    in the direction that matters: a device whose boundary IS emittable (as an address contract) would
-    otherwise be let into the loop below, hand a stream of ``.word`` directives to ``mlir-translate``,
-    and fail obscurely -- or worse, produce a shim declaring extern kernel symbols nothing defines.
-    """
-    try:
-        from merlin.system.derive import link_for
-        from merlin.targetgen.target_experiment import load_capability_manifest
-
-        endpoint = getattr(load_capability_manifest(device), "endpoint_kind", None)
-        link = link_for(device, endpoint)
-    except Exception:  # noqa: BLE001 -- an unresolvable device is caught by the package load
-        return None
-    if link.command_transport not in BUILDABLE_TRANSPORTS:
-        return (
-            f"{device!r} is reached by {link.command_transport!r}; this path compiles a device "
-            f"whose artifact is LLVM-dialect MLIR, and that transport's package emits "
-            f"{link.emitted_artifact or 'another artifact'} instead"
-            + (
-                f". Its boundary IS emittable -- as a DRAM address contract, by "
-                f"{_SEAM_EMITTERS[link.command_transport]} -- just not as an object"
-                if link.command_transport in _SEAM_EMITTERS
-                else ""
-            )
-        )
-    return None
 
 
 def _objcopy() -> str | None:

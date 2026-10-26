@@ -146,8 +146,8 @@ def test_actual_wrong_hidden_or_duplicate_pointer_refuses(tmp_path):
         bound((*model[:3], poisoned)).encode(operation)
 
 
-def test_v2_readout_is_explicitly_unavailable(tmp_path):
-    with pytest.raises(DenseSchedulingUnavailable, match="readout pointer"):
+def test_v2_readout_requires_complete_source_declaration(tmp_path):
+    with pytest.raises(ValueError, match="integer output readout"):
         pointer_inputs(tmp_path, mutate=lambda f, s, d: d.update(output_readout={}))
 
 

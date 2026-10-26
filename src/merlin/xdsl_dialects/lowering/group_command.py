@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from merlin.common import mlir_query as mq
-from merlin.kernels import shapes as KS
+from merlin.compile.analysis import contraction_shapes as KS
 
 from . import compute_groups as CG
 from . import group_numerics as GN
@@ -489,9 +489,10 @@ def program(
 ) -> GroupProgram:
     """``group`` as a generator entry in device form. Raises ``NoCapsuleForm`` with the reason.
 
-    ``extents`` is the module's contraction-extent table (``model_coverage._contraction_extents``); a
-    caller stating every group of one module passes it, because without it each call walks the whole
-    module again (quadratic in the model: 69% of a 1551-group statement's time)."""
+    ``extents`` is the module's contraction-extent table
+    (:func:`merlin.compile.analysis.contraction_shapes.contraction_extents`); a caller stating every
+    group of one module passes it, because without it each call walks the whole module again
+    (quadratic in the model: 69% of a 1551-group statement's time)."""
     from merlin.runtime.commandbuffer import EPILOGUE_STAGES
 
     if group.window_pool is not None:

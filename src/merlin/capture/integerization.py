@@ -281,7 +281,7 @@ def dynamic_integerization_count(evidence: dict, *, emitted: int, exported: int,
     families, samples = evidence.get("families"), evidence.get("samples")
     if not isinstance(families, list) or not families or any(not isinstance(f, str) for f in families):
         raise ValueError("invalid selected dynamic contraction families")
-    if any(type(value) is not int or value <= 0 for value in (emitted, exported)):
+    if type(emitted) is not int or emitted < 0 or type(exported) is not int or exported < 1:
         raise ValueError("invalid integer contraction counts")
     weight, roster = evidence.get("weight_contractions"), evidence.get("dynamic_owners")
     if type(weight) is not int or weight < 0 or not isinstance(roster, list):

@@ -70,6 +70,8 @@ def implementation_paths():
         for name in (
             __name__,
             "merlin.llvmlower.device_build",
+            "merlin.llvmlower.device_routing_placement",
+            "merlin.llvmlower.device_seam_buildability",
             "merlin.llvmlower.device_offload",
             "merlin.llvmlower.device_preparation",
             "merlin.llvmlower.device_target_passes",

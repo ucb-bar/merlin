@@ -461,9 +461,8 @@ def test_native_commit_can_start_before_ledger_but_cannot_complete_before_public
     assert w.F.final_correspondence(w.run, snapshot, package)["native_final_publication"] == "different_compiler"
 
 
-@pytest.mark.parametrize("output_scope", ["legacy", "all_declared", "incomplete_all_declared"])
-def test_models_start_during_native_regrade_and_supervisor_waits_for_all_children(world, monkeypatch, output_scope):
-    w = world
+def native_regrade_with_models(w, monkeypatch, output_scope):
+    """A controller that publishes after 0.6 s and three model checks that report after 0.8 s."""
     if output_scope != "legacy":
         all_output_plan(w, incomplete=output_scope == "incomplete_all_declared")
     transcript = w.run / "rounds/round_00.transcript.jsonl"
@@ -507,6 +506,13 @@ pathlib.Path(p['finished']).write_text(str(time.monotonic()))
         return [sys.executable, "-c", worker, str(report), json.dumps(value)]
 
     monkeypatch.setattr(w.F, "model_command", command)
+    return finished
+
+
+@pytest.mark.parametrize("output_scope", ["legacy", "all_declared", "incomplete_all_declared"])
+def test_models_start_during_native_regrade_and_supervisor_waits_for_all_children(world, monkeypatch, output_scope):
+    w = world
+    finished = native_regrade_with_models(w, monkeypatch, output_scope)
     incomplete = output_scope == "incomplete_all_declared"
     assert w.supervisor.run(w.launch, w.prep, time.monotonic(), memory=lambda _: (0, 10000000), poll_s=0.02) == int(
         incomplete
@@ -524,6 +530,41 @@ pathlib.Path(p['finished']).write_text(str(time.monotonic()))
     if output_scope != "legacy":
         assert len((w.prep / "offline-calls.jsonl").read_text().splitlines()) == 3
         assert len(list(w.prep.glob("full-model-checks-*/*-all-outputs.json"))) == 3
+
+
+def test_supervisor_ends_on_the_exits_its_model_rows_recorded(world, monkeypatch):
+    """Every child exits AFTER a pass has judged it running but BEFORE that pass decides whether to stop.
+
+    The supervisor used to poll again for that decision, see nothing running, and end the campaign on rows
+    that still said the models were running: a complete campaign published as incomplete (exit 1). Under
+    load that window is real -- the test above failed about one run in four with a model row still at
+    ``exit_code: None``. Here it is forced: the correspondence read, which sits between the rows and the
+    decision, waits for every child first.
+    """
+    w = world
+    native_regrade_with_models(w, monkeypatch, "legacy")
+    started, forced = [], []
+    real_start, real_correspondence = w.supervisor.Processes.start, w.F.final_correspondence
+
+    def start(self, *args, **kwargs):
+        child = real_start(self, *args, **kwargs)
+        started.append(child["process"])
+        return child
+
+    def correspondence(*args, **kwargs):
+        if not forced and len(started) > 1:
+            for process in started:
+                process.wait(timeout=60)
+            forced.append(True)
+        return real_correspondence(*args, **kwargs)
+
+    monkeypatch.setattr(w.supervisor.Processes, "start", start)
+    monkeypatch.setattr(w.F, "final_correspondence", correspondence)
+    assert w.supervisor.run(w.launch, w.prep, time.monotonic(), memory=lambda _: (0, 10000000), poll_s=0.02) == 0
+    state = json.loads((w.prep / "status.json").read_text())
+    assert forced, "the children never ran inside the window this test forces"
+    assert all(row["exit_code"] == 0 and row["full_chain_complete"] for row in state["models"].values())
+    assert state["full_model_execution_complete"]
 
 
 @pytest.mark.parametrize("guard", ["deadline", "memory"])

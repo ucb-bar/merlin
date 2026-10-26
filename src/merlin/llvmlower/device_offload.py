@@ -892,8 +892,8 @@ def _rewrite_groups_to_device(
     from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr
     from xdsl.ir import Region
 
-    from merlin.kernels.microkernel import ContractionShape
-    from merlin.kernels.shapes import observe_contractions
+    from merlin.compile.analysis import contraction_shapes
+    from merlin.compile.analysis.contraction_shapes import ContractionShape, observe_contractions
     from merlin.system.offload import device_dtype_triples
     from merlin.xdsl_dialects.lowering import compute_groups as CG
     from merlin.xdsl_dialects.lowering import group_command as GC
@@ -962,12 +962,11 @@ def _rewrite_groups_to_device(
     # the decision is `select`'s; these shapes exist only to key the decision, which
     # `system.place.device_selector` does on extents.
     shape_of = {id(op): shape for op, shape in observe_contractions(module)}
-    from merlin.targetgen import model_coverage
 
     # Statements use this same original module. Replacements preserve SSA
     # types and the relative order of surviving original operations; neither
     # observation needs a full module/block walk for every routed group.
-    extents = model_coverage._contraction_extents(module)
+    extents = contraction_shapes.contraction_extents(module)
     orders = {
         block: {id(op): index for index, op in enumerate(block.ops)}
         for block in dict.fromkeys(g.root.parent for g in groups if g.root is not None)
@@ -1334,8 +1333,9 @@ def _prepack_for(groups, capture) -> tuple[dict[str, Any] | None, str]:
         return None, "no capture was given, so no weights manifest could be read and no bias folded"
     beside = Path(capture)
     beside = beside if beside.is_dir() else beside.parent
-    manifest = next(iter(sorted(beside.glob("*.manifest.json"))), None)
-    weights = next(iter(sorted(beside.glob("*.safetensors"))), None)
+    from .weights_pack import weight_files_beside
+
+    manifest, weights = weight_files_beside(capture)
     if manifest is None or weights is None:
         return None, f"no weights manifest and safetensors pair beside {beside}"
     from merlin.xdsl_dialects.lowering import group_prepack as GP

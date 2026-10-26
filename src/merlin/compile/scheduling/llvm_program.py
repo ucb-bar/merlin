@@ -69,6 +69,46 @@ class FnBuilderIndexAdapter:
             raise ValueError("LLVM index loop requires bounded ascending signed-i64 bounds and step")
         self.builder.for_loop(start, stop, step, callback, retain_loop=True)
 
+    def loop_carried(self, start, stop, step, initial, callback):
+        """Lower actual i64 completion handles through LLVM CFG block arguments.
+
+        The target must encode its real handle as i64 and implement the wait;
+        this method neither creates a completion nor substitutes a delay.
+        Nested callbacks leave their real exit block as the loop latch.
+        """
+        from xdsl.dialects import llvm
+        from xdsl.dialects.builtin import IntegerAttr, i64
+        from xdsl.ir import Block
+
+        from merlin.llvmlower.llvm_loop_metadata import disable_loop_unroll
+
+        if (any(type(v) is not int for v in (start, stop, step))
+                or not 0 <= start <= stop < 1 << 63 or not 0 < step < 1 << 63
+                or stop + step >= 1 << 63 or type(initial) is not tuple or not initial):
+            raise ValueError("LLVM carried loop requires explicit i64 handles and ascending static bounds")
+        values = tuple(self.value(v) for v in initial)
+        b = self.builder
+        header = Block(arg_types=[i64] * (len(values) + 1))
+        active = Block()
+        after = Block(arg_types=[i64] * len(values))
+        for block in (header, active, after):
+            b.region.add_block(block)
+        b.add(llvm.BrOp(header, b.const(start), *values))
+        b.blk = header
+        index, *carried = header.args
+        condition = b.add(llvm.ICmpOp(index, b.const(stop),
+            IntegerAttr(llvm.ICmpPredicateFlag.SLT.to_int(), i64))).results[0]
+        b.add(llvm.CondBrOp(condition, active, [], after, carried))
+        b.blk = active
+        result = callback(index, tuple(carried))
+        if not isinstance(result, (tuple, list)) or len(result) != len(values):
+            raise ValueError("LLVM carried loop callback changed its completion arity")
+        result = tuple(self.value(v) for v in result)
+        latch = b.add(llvm.BrOp(header, b.add_i(index, b.const(step)), *result))
+        disable_loop_unroll(latch)
+        b.blk = after
+        return tuple(after.args)
+
 
 class FnBuilderControlAdapter(FnBuilderIndexAdapter):
     """Ordinary typed LLVM control for checked spatial/convolution indices.
@@ -136,6 +176,8 @@ def emit_index_program(kernel, builder, lower_call):
     def validate(body):
         for statement in body:
             if isinstance(statement, Loop):
+                if statement.iter_args or statement.yields or statement.results:
+                    raise ValueError("raw index emission cannot erase carried completion; use the checked SCF bridge")
                 validate(statement.body)
             elif any((statement.unit, statement.produces, statement.awaits, statement.stages,
                       statement.sets, statement.assumes)):

@@ -27,6 +27,8 @@ _FORMS = {
     "clamp_upper_literal": (("f32", "f32", "f32"), 1, ()),
     "clamp_upper_literal_compare_select": (("f32", "f32", "f32"), 1, ()),
     "clamp_lower_literal": (("f32", "f32", "f32"), 1, ()),
+    "clamp_literal_interval_f32": (("f32", "f32", "f32"), 2, ()),
+    "fptosi_i8_of_rounded_literal_interval": (("f32", "i8", "i8"), 2, ()),
     "clamp_lower_f32_min_normal_compare_select": (("f32", "f32", "f32"), 1, ()),
     "clamp_symmetric_int8_grid_compare_select": (("f32", "f32", "f32"), 2, ()),
     "fptosi_i8_of_rounded_int8_grid_clamp": (("f32", "i8", "i8"), 2, ()),
@@ -155,6 +157,29 @@ def _recognize_clamp(body, source):
     return operation, (bits,)
 
 
+def _interval_values(bits, *, int8=False):
+    lower, upper = (unpack("<f", pack("<I", int(value[2:], 16)))[0] for value in bits)
+    if not (isfinite(lower) and isfinite(upper) and lower <= upper):
+        raise InvalidLinalgPattern("literal clamp needs an ordered finite interval")
+    if int8 and not (-128 <= lower <= upper <= 127 and lower.is_integer() and upper.is_integer()):
+        raise InvalidLinalgPattern("rounded cast needs integral bounds within signed i8")
+    return lower, upper
+
+
+def _recognize_interval_clamp(body, source):
+    from xdsl.dialects.arith import MaximumfOp, MinimumfOp
+
+    if len(body) != 5:
+        raise InvalidLinalgPattern("interval clamp needs two literals, maximum, minimum and yield")
+    lower, low_bits = _literal(body[0])
+    value = _scalar(body[1], MaximumfOp, (source, lower), "f32", frozenset({"fastmath"}))
+    upper, high_bits = _literal(body[2])
+    result = _scalar(body[3], MinimumfOp, (value, upper), "f32", frozenset({"fastmath"}))
+    _yield(body[4], result)
+    _interval_values((low_bits, high_bits))
+    return "clamp_literal_interval_f32", (low_bits, high_bits)
+
+
 def _predicate(op) -> object:
     predicate = op.properties.get("predicate")
     return getattr(getattr(predicate, "value", None), "data", None)
@@ -252,7 +277,12 @@ def _recognize_int8_grid_cast(op, body, source, shape: tuple[int, ...]):
     result = _scalar(body[0], FPToSIOp, (source,), "i8")
     _yield(body[1], result)
     clamp = _sole_result_of(op.inputs[0], shape)
-    if recognize_static_composite_math_body(clamp).operation != "clamp_symmetric_int8_grid_compare_select":
+    pattern = recognize_static_composite_math_body(clamp)
+    if pattern.operation == "clamp_literal_interval_f32":
+        _interval_values(pattern.literal_bits, int8=True)
+        _checked_roundeven(_sole_result_of(clamp.inputs[0], shape), shape)
+        return "fptosi_i8_of_rounded_literal_interval", pattern.literal_bits
+    if pattern.operation != "clamp_symmetric_int8_grid_compare_select":
         raise InvalidLinalgPattern("int8 cast operand is not the exact int8-grid clamp")
     _checked_roundeven(_sole_result_of(clamp.inputs[0], shape), shape)
     return "fptosi_i8_of_rounded_int8_grid_clamp", _INT8_GRID_BITS
@@ -344,7 +374,11 @@ def recognize_static_composite_math_body(op) -> StaticCompositeMathPattern:
     types = shell.ordered_types
     body = shell.body
     names = tuple(inner.name for inner in body)
-    if names[:2] in (("arith.constant", "arith.minimumf"), ("arith.constant", "arith.maximumf")):
+    if names == ("arith.constant", "arith.maximumf", "arith.constant", "arith.minimumf", "linalg.yield"):
+        if types != ("f32", "f32", "f32"):
+            raise InvalidLinalgPattern("interval clamp requires f32 input/init/result")
+        operation, literals = _recognize_interval_clamp(body, shell.args[0])
+    elif names[:2] in (("arith.constant", "arith.minimumf"), ("arith.constant", "arith.maximumf")):
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("literal clamp requires f32 input/init/result")
         operation, literals = _recognize_clamp(body, shell.args[0])
@@ -430,6 +464,8 @@ def validate_serialized_static_composite_math_pattern(record: object) -> StaticC
         raise InvalidLinalgPattern("serialized reciprocal does not use exact positive one")
     if operation in _EXACT_LITERALS and tuple(bits) != _EXACT_LITERALS[operation]:
         raise InvalidLinalgPattern("serialized quantization clamp bounds differ from their exact literals")
+    if operation in {"clamp_literal_interval_f32", "fptosi_i8_of_rounded_literal_interval"}:
+        _interval_values(bits, int8=operation == "fptosi_i8_of_rounded_literal_interval")
     if operation == "tanh_gelu_f32" and tuple(bits) != _TANH_GELU_LITERALS:
         raise InvalidLinalgPattern("serialized tanh GELU coefficient bits differ")
     listed = record.get("lowering_intrinsic_obligations")

@@ -48,3 +48,30 @@ def test_unknown_tensor_control_refuses_instead_of_selecting_a_member():
     f = llvm.FuncOp("opaque", llvm.LLVMFunctionType([PTR], llvm.LLVMVoidType()), body=b.finish())
     with pytest.raises(ValueError, match="tensor data"):
         project_finite_pointer_trace(f, observe=observe, pointer_bits=64)
+
+
+@pytest.mark.parametrize("displacement", [-3, 0, 7])
+def test_single_byte_gep_retains_original_abi_identity_and_signed_displacement(displacement):
+    from xdsl.dialects.builtin import i8
+
+    b = FnBuilder([PTR])
+    pointer = b.gep(b.entry.args[0], b.const(displacement), i8)
+    b.add(llvm.InlineAsmOp("actual_view $0", "r", [pointer], has_side_effects=True))
+    f = llvm.FuncOp("byte", llvm.LLVMFunctionType([PTR], llvm.LLVMVoidType()), body=b.finish())
+    assert project_finite_pointer_trace(f, observe=observe, pointer_bits=64) == (ArgumentAddress(0, displacement),)
+
+
+@pytest.mark.parametrize("assertion,word_elements", [(True, False), (False, True)])
+def test_gep_does_not_infer_unproved_layout_or_poison_assertions(assertion, word_elements):
+    from xdsl.dialects.builtin import IntegerAttr, i8
+
+    b = FnBuilder([PTR])
+    pointer = b.gep(b.entry.args[0], b.const(2), i64 if word_elements else i8)
+    if assertion:
+        pointer.owner.properties["noWrapFlags"] = IntegerAttr(1, 32)
+    b.add(llvm.InlineAsmOp("actual_view $0", "r", [pointer], has_side_effects=True))
+    f = llvm.FuncOp("unknown", llvm.LLVMFunctionType([PTR], llvm.LLVMVoidType()), body=b.finish())
+    seen = []
+    project_finite_pointer_trace(f, observe=lambda op, args: seen.append(args[0])
+                                 if op.name == "llvm.inline_asm" else None, pointer_bits=64)
+    assert seen == [None]

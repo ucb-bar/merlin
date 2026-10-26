@@ -344,3 +344,92 @@ def admit_ready_readout_tile_loads(original, proposal, problem, block, resources
         verifier=verifier, project=project, encode_band=encode_band,
         static_budget=static_budget, timeout_ms=timeout_ms, max_static_nodes=max_static_nodes,
     )
+
+def schedule_dense_pipeline(
+    problem, resources, storage, adapter, *, name, dtypes, source_identity=None,
+    external_buffers_disjoint, schedule_plan=None, pipeline_admission=None,
+    batch_readouts=False, readout_mode="separate", readout_admission=None,
+    readout_group_path=(), static_budget=128, timeout_ms=5000,
+    output_readout=None, bias_source=None, readout_qualification_identity=None,
+):
+    """Consume one source-bound decision through its original checked owner.
+
+    A compact backend can keep the same problem/resources/storage/adapter and
+    lowering callback while trying panel or segmented decisions. None retains
+    the ordinary compact planner. Explicit plans never silently choose another
+    block/family on a capacity, tail, proof or execution-law refusal.
+
+    The caller supplies independently selected target premises, never inferred
+    from capacity or the plan: panel/retained/segmented pipeline_admission and,
+    optionally, a separate causal-ready or disjoint-ACC readout_admission.
+    ``batch_readouts`` consumes only the pipeline law's existing store budget.
+    All original product, effect, alias, numerical, finite-epoch and completion
+    checks remain in the original owners. Returned results emit their checked
+    actual commands with ``emit_llvm`` or through their counted kernel. A common
+    lowering callback accepts (instruction, operands, metadata=None): ready
+    emission supplies its actual SCF metadata as the third argument. The target
+    must lower every explicit completion, not erase it or fence every data call.
+    No preferred schedule, performance score, simulator or new grant is added.
+    """
+    if (type(batch_readouts) is not bool or readout_mode not in ("separate", "ready", "disjoint")
+            or type(readout_group_path) is not tuple
+            or any(type(v) is not str or not v for v in readout_group_path)
+            or readout_mode == "separate" and (readout_admission is not None or readout_group_path)
+            or readout_mode == "ready" and (readout_admission is None or readout_group_path)
+            or readout_mode == "disjoint" and (readout_admission is None or not readout_group_path)):
+        raise ValueError("dense pipeline needs explicit consumed readout mode, law and group path")
+    from .schedule_ir import read_dense_schedule_plan
+
+    boundary = dict(output_readout=output_readout, bias_source=bias_source,
+                    readout_qualification_identity=readout_qualification_identity)
+    common = dict(name=name, dtypes=dtypes, source_identity=source_identity,
+                  external_buffers_disjoint=external_buffers_disjoint, static_budget=static_budget,
+                  schedule_plan=schedule_plan, **boundary)
+    decision = None if schedule_plan is None else read_dense_schedule_plan(
+        schedule_plan, problem, resources, storage, adapter, source_identity=source_identity,
+        dtypes=dtypes, static_budget=static_budget, output_readout=output_readout, bias_source=bias_source)
+    if decision is None or decision.pipeline_prefetch is None:
+        if pipeline_admission is not None or batch_readouts or readout_mode != "separate":
+            raise ValueError("compact decision cannot consume asynchronous pipeline or readout laws")
+        from .compact_dense import schedule_compact_dense
+
+        return schedule_compact_dense(problem, resources, storage, adapter,
+            verification_timeout_ms=timeout_ms, max_repairs=0 if decision is not None else 1, **common)
+    if pipeline_admission is None:
+        raise ValueError("advanced dense decision requires its independently selected pipeline law")
+    # Layout decisions may relocate the original assigned windows. Every later
+    # proof consumes this same checked actual layout, rather than stale bases.
+    chosen_storage = decision.storage
+    args = (problem, decision.block, resources, chosen_storage, adapter)
+    if decision.pipeline_kind == "retained_lhs_segmented_k":
+        from .dense_segmented_pipeline import batch_dense_segmented_readouts, schedule_dense_segmented_pipeline
+
+        result = schedule_dense_segmented_pipeline(problem, resources, storage, adapter,
+                                                    pipeline_admission, timeout_ms=timeout_ms, **common)
+        if batch_readouts:
+            result = batch_dense_segmented_readouts(result, *args, pipeline_admission,
+                                                    static_budget=static_budget, timeout_ms=timeout_ms)
+        if readout_mode == "ready":
+            from .dense_ready_readout import schedule_dense_ready_readout
+
+            result = schedule_dense_ready_readout(result, *args, readout_admission,
+                                                  static_budget=static_budget, timeout_ms=timeout_ms)
+        elif readout_mode == "disjoint":
+            from .dense_readout_overlap import schedule_dense_readout_overlap
+
+            result = schedule_dense_readout_overlap(result, *args, readout_admission,
+                group_path=readout_group_path, static_budget=static_budget, timeout_ms=timeout_ms)
+    else:
+        if readout_mode != "separate":
+            raise ValueError("ready/disjoint readout requires its original checked segmented pipeline")
+        from .dense_panel_pipeline import schedule_dense_panel_pipeline
+
+        result = schedule_dense_panel_pipeline(problem, resources, storage, adapter,
+                                               pipeline_admission, timeout_ms=timeout_ms, **common)
+        if batch_readouts:
+            from .dense_panel_readout import batch_dense_panel_readouts
+
+            result = batch_dense_panel_readouts(result, *args, pipeline_admission,
+                                                static_budget=static_budget, timeout_ms=timeout_ms)
+    result.revalidate()
+    return result

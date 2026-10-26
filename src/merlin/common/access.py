@@ -85,6 +85,35 @@ def module_matches(module: str, prefix: str) -> bool:
     return module == prefix or module.startswith(prefix + ".")
 
 
+#: Whole packages withheld from every compiler author, independent of arm and mode. One identity for
+#: the full-compiler copy boundary, the author SDK staging and the pre-launch acceptance suite.
+AUTHOR_WITHHELD_PREFIXES = (
+    "merlin.baselines",
+    "merlin.kernels",
+    "merlin.mining",
+    "merlin.model_check",
+    "merlin.validation",
+    "merlin.runtime.reference",
+    "merlin.runtime.simulator",
+    "merlin_experiments",
+    # Operator-only consumers of the withheld packages above. Each needs a mined schedule package, the
+    # mined host-action catalogue or an expert-corpus CCA lift (the bare-metal model build also needs
+    # declared oracle runtime backends). No public module imports one at module level; the operator
+    # host-model build reaches the bare-metal builder lazily. In the public tree each could only fail or
+    # report nothing. The generic analyses the withheld packages held live in merlin.compile.analysis
+    # and stay public.
+    "merlin.compile.baremetal_model",
+    "merlin.compile.scalar_host_qualification",
+    "merlin.llvmlower.host_policy",
+    "merlin.sched.expressiveness",
+)
+
+
+def author_withheld(module: str) -> bool:
+    """Whether a module lies inside a package withheld from every compiler author."""
+    return any(module_matches(module, prefix) for prefix in AUTHOR_WITHHELD_PREFIXES)
+
+
 def is_harness_module(module: str) -> bool:
     return any(module_matches(module, source.namespace) for source in PYTHON_SOURCE_ROOTS)
 
@@ -218,6 +247,8 @@ MODULE_ACCESS = (
     _module("merlin.runtime.reference", "oracle"),
     _module("merlin.runtime.simulator", "oracle"),
     _module("merlin.runtime.backends", "oracle", directory=True),
+    _module("merlin.targetgen._dynamic_integer_reference", "oracle"),
+    _module("merlin.targetgen.materialized_reference", "oracle"),
     _module(
         "merlin.targetgen.program_oracle",
         "oracle",
@@ -250,6 +281,7 @@ MODULE_ACCESS = (
             "merlin.targetgen.native_instruction_audit",
             "merlin.targetgen.native_numerical_audit",
             "merlin.targetgen.native_pointer_source_audit",
+            "merlin.targetgen.frozen_source_eligibility",
         ),
     ),
     _module(
@@ -263,7 +295,11 @@ MODULE_ACCESS = (
         aliases=("merlin_experiments.phase1.feedback.compiler_pass_parent_proof",),
     ),
     _module("merlin.targetgen.capsule_candidate_context", "grader"),
-    _module("merlin.targetgen.owned_host_model_execution", "grader"),
+    _module(
+        "merlin.targetgen.owned_host_model_execution",
+        "grader",
+        aliases=("merlin.targetgen.owned_host_dispatch_checks",),
+    ),
     _module("merlin.targetgen.owned_host_leaf_execution", "grader"),
     _module(
         "merlin.targetgen.native_component_execution", "grader", aliases=("merlin.targetgen.native_component_inputs",)
@@ -314,8 +350,11 @@ MODULE_ACCESS = (
     _module(
         "merlin.targetgen.capsule_runner",
         "grader",
-        aliases=("merlin.targetgen.oracle_policy", "merlin.targetgen._capsule_bundle_worker",
-                 "merlin.targetgen.capsule_diagnostics"),
+        aliases=(
+            "merlin.targetgen.oracle_policy",
+            "merlin.targetgen._capsule_bundle_worker",
+            "merlin.targetgen.capsule_diagnostics",
+        ),
     ),
     _module("merlin.targetgen.capsule_dram", "grader"),
     _module("merlin.targetgen.capsule_source_identity", "grader"),
@@ -327,6 +366,12 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.coverage_report", "grader"),
     _module("merlin.targetgen.eval", "grader", directory=True),
 )
+
+
+def author_inaccessible(module: str, *, items: tuple[ModuleAccess, ...] = MODULE_ACCESS) -> bool:
+    """Whether an author may not read or import ``module``: a withheld package, or a module the access
+    policy declares a grader/oracle surface (every reviewed spelling, including relocations)."""
+    return author_withheld(module) or any(module_matches(module, m) for item in items for m in item.modules)
 
 
 def declared_modules(origin: str, *, items: tuple[ModuleAccess, ...] = MODULE_ACCESS) -> tuple[str, ...]:

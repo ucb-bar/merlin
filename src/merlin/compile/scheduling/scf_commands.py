@@ -19,6 +19,8 @@ from xdsl.ir import Block, Region
 from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Stage, Sum, Var, check_structure
 from merlin.sched.ir.integer_domain import check_integer_domain
 
+from .scf_carried_events import CARRIED_EVENTS
+
 SCHEMA = "merlin.scf_commands.v1"
 ISSUE_GROUP = "merlin.scf_commands.issue_group.v1"
 PERSISTENT_STATE = "merlin.scf_commands.persistent_state.v1"
@@ -186,8 +188,8 @@ def _command(op, allow_persistent_state=False):
 def materialize_scf_commands(kernel, *, allow_persistent_state=False):
     """Keep counted loops and real command operands in standard SCF/arith/func.
 
-    Integer-index calls only. Events must close within each loop iteration;
-    carried events require a future explicit scf iter_arg contract. Tensor
+    Integer-index calls only. Loop-carried events require explicit inputs,
+    yields and results; other events close within each lexical scope. Tensor
     arguments stay with the target ABI; this module computes no tensor payload.
     Persistent declarations require explicit opt-in and closed i64 constants.
     They remain declarations: actual state visibility/clobbers/readout effects
@@ -197,6 +199,9 @@ def materialize_scf_commands(kernel, *, allow_persistent_state=False):
         raise ValueError("persistent state opt-in must be an explicit Boolean")
     if type(kernel) is not Kernel or check_structure(kernel) or kernel.attrs:
         raise ValueError("SCF command bridge requires a checked closed counted schedule")
+    from merlin.sched.ir.events import has_carried_events
+
+    carried_mode = has_carried_events(kernel.body)
     check_integer_domain(kernel, 64)
     declarations = []
     block = Block()
@@ -229,10 +234,23 @@ def materialize_scf_commands(kernel, *, allow_persistent_state=False):
             if type(statement) is Loop:
                 lb, ub, step = (_constant(v) for v in (0, statement.extent, 1))
                 out.add_ops((lb, ub, step))
-                inner = Block(arg_types=[builtin.i64])
-                body(statement.body, {**env, statement.var: inner.args[0]}, inner, dict(events))
-                inner.add_op(scf.YieldOp())
-                out.add_op(scf.ForOp(lb.result, ub.result, step.result, [], Region(inner)))
+                initial = [events[name] for _, name in statement.iter_args]
+                inner = Block(arg_types=[builtin.i64, *(_event_type() for _ in initial)])
+                # Preserve legacy completed-token capture exactly when no new
+                # lexical carry contract was requested. Opted-in programs use
+                # only explicitly declared block inputs, including captures.
+                local_events = (dict(zip((n for n, _ in statement.iter_args), inner.args[1:], strict=True))
+                                if carried_mode else dict(events))
+                body(statement.body, {**env, statement.var: inner.args[0]}, inner, local_events)
+                inner.add_op(scf.YieldOp(*(local_events[name] for name in statement.yields)))
+                op = scf.ForOp(lb.result, ub.result, step.result, initial, Region(inner))
+                if initial:
+                    op.attributes[CARRIED_EVENTS] = builtin.StringAttr(json.dumps(
+                        {"inputs": [n for n, _ in statement.iter_args], "results": statement.results}, sort_keys=True))
+                out.add_op(op)
+                for _, name in statement.iter_args:
+                    events.pop(name)
+                events.update(zip(statement.results, op.results, strict=True))
             elif type(statement) is Call:
                 operands = [expr(v, env, out) for _, v in statement.args]
                 try:
@@ -261,6 +279,8 @@ def materialize_scf_commands(kernel, *, allow_persistent_state=False):
     block.add_op(func.ReturnOp())
     entry = func.FuncOp("command_program", ([], []), Region(block))
     module = builtin.ModuleOp([*declarations, entry], attributes={SCHEMA: builtin.StringAttr(kernel.digest())})
+    if carried_mode:
+        module.attributes[CARRIED_EVENTS] = builtin.UnitAttr()
     verify_scf_commands(module, allow_persistent_state=allow_persistent_state)
     return module
 
@@ -280,8 +300,8 @@ def _entry(module):
 
 def _bounds(op):
     values = []
-    if op.iter_args or op.results or len(op.body.block.args) != 1:
-        raise ValueError("carried loop values/events are not supported by this bridge")
+    from .scf_carried_events import loop_event_names
+    loop_event_names(op)
     for value in (op.lb, op.ub, op.step):
         owner = value.owner
         if type(owner) is not arith.ConstantOp or type(owner.value) is not builtin.IntegerAttr:
@@ -363,6 +383,13 @@ def verify_scf_commands(module, *, max_operations=65536, allow_persistent_state=
     }
     known = set()
 
+    if CARRIED_EVENTS in module.attributes:
+        from .scf_carried_events import verify_carried_events
+        carried_report = verify_carried_events(module, max_operations=max_operations,
+                                               allow_persistent_state=allow_persistent_state)
+    else:
+        carried_report = None
+
     def body(block):
         pending = {}
         for op in block.ops:
@@ -428,13 +455,16 @@ def verify_scf_commands(module, *, max_operations=65536, allow_persistent_state=
         if pending:
             raise ValueError("every launched event must complete before loop/entry exit")
 
-    body(entry.body.block)
+    if carried_report is None:
+        body(entry.body.block)
     report = {
         "schema": SCHEMA,
         "source_schedule_sha256": module.attributes[SCHEMA].data,
         "command_ir_sha256": _digest(module),
         "target_execution": "NOT_ESTABLISHED",
     }
+    if carried_report is not None:
+        report["loop_carried_completion"] = carried_report
     if allow_persistent_state:
         required, written = _declared_state_summary(entry.body.block)
         if required:
@@ -502,6 +532,9 @@ def unroll_small_command_loops(
                 original.match_and_rewrite(op, rewriter)
 
     PatternRewriteWalker(BoundedUnroll()).rewrite_module(actual)
+    if CARRIED_EVENTS in actual.attributes:
+        from .scf_carried_events import rename_ssa_events
+        rename_ssa_events(actual)
     verify_scf_commands(actual, max_operations=max_operations, allow_persistent_state=allow_persistent_state)
     return actual
 
@@ -531,6 +564,10 @@ def emit_scf_commands(
         raise ValueError("SCF emission needs the ordinary index builder and target callback")
     if any(_event(v) for op in module.walk() for v in op.results) and not callable(await_events):
         raise ValueError("explicit events require an actual target completion callback")
+    if any(type(op) is scf.ForOp and op.iter_args for op in module.walk()) and not callable(
+        getattr(builder, "loop_carried", None)
+    ):
+        raise ValueError("loop-carried completion requires actual loop input/yield/result lowering")
 
     def emit(block, inherited):
         env = dict(inherited)
@@ -548,7 +585,19 @@ def emit_scf_commands(
                 grouped = ISSUE_GROUP in op.attributes
                 if grouped:
                     enter_issue_group(op)
-                builder.loop(low, high, step, lambda index: emit(op.body.block, {**env, op.body.block.args[0]: index}))
+                if op.iter_args:
+                    def iteration(index, carried):
+                        if len(carried) != len(op.iter_args):
+                            raise ValueError("actual builder changed completion input arity")
+                        return emit(op.body.block, {**env, op.body.block.args[0]: index,
+                                    **dict(zip(op.body.block.args[1:], carried, strict=True))})
+                    result = builder.loop_carried(low, high, step, tuple(env[v] for v in op.iter_args), iteration)
+                    if not isinstance(result, (tuple, list)) or len(result) != len(op.results):
+                        raise ValueError("actual builder changed completion result arity")
+                    env.update(zip(op.results, result, strict=True))
+                else:
+                    builder.loop(low, high, step,
+                                 lambda index: emit(op.body.block, {**env, op.body.block.args[0]: index}))
                 if grouped:
                     exit_issue_group(op)
             elif type(op) is func.CallOp:
@@ -564,6 +613,8 @@ def emit_scf_commands(
                     if result is None:
                         raise ValueError("asynchronous target launch did not return a completion handle")
                     env[op.results[0]] = result
+            elif type(op) is scf.YieldOp:
+                return tuple(env[v] for v in op.arguments)
 
     emit(entry.body.block, {})
     if verify_scf_commands(module, allow_persistent_state=allow_persistent_state) != before:

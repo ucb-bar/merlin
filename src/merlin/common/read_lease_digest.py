@@ -1,7 +1,9 @@
 """Bounded SHA-256 reuse while Linux read leases protect exact open files.
 
-Only a dedicated child receives SIGIO. Unsupported files retain ordinary full
-hashing; loss of an already issued lease refuses the current verification.
+Only a dedicated child receives SIGIO and it releases only the leases the
+kernel reports as breaking. Unsupported files retain ordinary full hashing;
+loss of an already issued lease refuses the verifications that used that file
+and that file's later reuse, while other members keep their own custody.
 This does not authenticate paths, archives, member rosters or compiler results.
 """
 
@@ -33,6 +35,7 @@ _FD_OVERHEAD = 4  # Custodian channel, pending input, hash duplicate and IPC set
 _LOCK = threading.RLock()
 _CHANGED = threading.Condition(_LOCK)
 _CACHE = None
+_CHANGED_MESSAGE = "original snapshot read lease custody changed"
 _VERIFICATION = contextvars.ContextVar("read_lease_digest_verification", default=None)
 
 
@@ -88,7 +91,11 @@ class _Cache:
         self.owner = os.getpid()
         self.entries, self.paths, self.unsupported = {}, {}, set()
         self.pending = set()
+        # Refused members: never admitted again. Their descriptors stay open until close():
+        # another scope may still hold the number, and a recycled number must not be rechecked.
+        self.refused, self.refused_paths, self.dropped = set(), set(), []
         self.process, self.channel, self.disabled = None, None, False
+        self.admitting = True
         self.capacity = _descriptor_budget()
         self.admissions_until_budget_check = 0
         self.minimum_bytes = minimum_bytes()
@@ -108,6 +115,10 @@ class _Cache:
             os.close(entry[0])
         for descriptor in self.pending:
             os.close(descriptor)
+        for descriptor in self.dropped:
+            os.close(descriptor)
+        self.dropped.clear()
+        self.refused_paths.clear()
         self.entries.clear()
         self.paths.clear()
         self.pending.clear()
@@ -125,7 +136,34 @@ class _Cache:
     def refuse(self):
         self.disabled = True
         self.close()
-        raise RuntimeError("original snapshot read lease custody changed")
+        raise RuntimeError(_CHANGED_MESSAGE)
+
+    def forget(self, keys):
+        """Refuse the current verification and exactly these members; callers hold _LOCK.
+
+        A writer, replacement or rename proves nothing about other leased files, so their
+        leases and the cache stay in custody for concurrent verifications. Custodian loss
+        still retires everything.
+        """
+        if self.process is None or self.process.poll() is not None:
+            self.refuse()
+        for key in keys:
+            entry = self.entries.pop(key, None)
+            if entry is not None:
+                self.dropped.append(entry[0])
+            self.refused.add(key)
+        for path in [path for path, key in self.paths.items() if key in keys]:
+            del self.paths[path]
+            if len(self.refused_paths) < maximum_files() * 16:
+                self.refused_paths.add(path)
+        raise RuntimeError(_CHANGED_MESSAGE)
+
+    def failed(self, members):
+        """The members of a failed batch that individually fail ``valid``; readers held."""
+        return {entry[2][:2] for path, entry in members if not self.valid(path, entry)}
+
+    def held(self):
+        return len(self.entries) + len(self.dropped)
 
     def start(self):
         parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
@@ -209,7 +247,15 @@ class _Cache:
     def digest(self, path, metadata, minimum_bytes=None):
         """Admit a miss under the creation lock; existing hits borrow outside it."""
         key = metadata.st_dev, metadata.st_ino
-        if self.disabled or self.retiring or key in self.unsupported or len(self.entries) >= self.capacity:
+        if (
+            self.disabled
+            or self.retiring
+            or not self.admitting
+            or key in self.unsupported
+            or key in self.refused
+            or path in self.refused_paths
+            or self.held() >= self.capacity
+        ):
             return None
         minimum = self.minimum_bytes if minimum_bytes is None else minimum_bytes
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < minimum:
@@ -219,41 +265,48 @@ class _Cache:
         # Recheck in bounded batches as other grader work opens descriptors.
         # Existing leases keep their custody; declined new members use full reads.
         if self.admissions_until_budget_check == 0:
-            self.capacity = min(self.capacity, len(self.entries) + _descriptor_budget())
+            self.capacity = min(self.capacity, self.held() + _descriptor_budget())
             self.admissions_until_budget_check = FD_RECHECK_INTERVAL
         self.admissions_until_budget_check -= 1
-        if len(self.entries) >= self.capacity:
+        if self.held() >= self.capacity:
             return None
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         self.pending.add(descriptor)
         try:
-            if self.process is None:
-                self.start()
-            elif self.process.poll() is not None:
+            if self.process is not None and self.process.poll() is not None:
                 self.refuse()
-            self.channel.sendmsg([b"add"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [descriptor]))])
-            response = self.channel.recv(32)
+            try:
+                if self.process is None:
+                    self.start()
+                self.channel.sendmsg([b"add"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [descriptor]))])
+                response = self.channel.recv(32)
+            except (OSError, subprocess.SubprocessError):
+                # Transport only (start, send or a reply late under CPU starvation): this file was
+                # never issued. Admitted members keep their leases and liveness checks; a late reply
+                # must never answer a later request, so this cache admits nothing more.
+                if not self.held():
+                    self.disabled = True
+                    self.close()
+                self.admitting = False
+                return None
             if response != b"ok":
                 if len(self.unsupported) < maximum_files() * 16:
                     self.unsupported.add(key)
                 return None
             entry = descriptor, None, _identity(os.fstat(descriptor))
             if not self.valid(path, entry):
-                self.refuse()
-            with os.fdopen(os.dup(descriptor), "rb") as stream:
-                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                self.forget({key})
+            try:
+                with os.fdopen(os.dup(descriptor), "rb") as stream:
+                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            except OSError:
+                return None  # The caller's full read reports its own error.
             if not self.valid(path, entry):
-                self.refuse()
+                self.forget({key})
             self.entries[key] = descriptor, digest, entry[2]
             self.paths[path] = key
             self.pending.remove(descriptor)
             return self.entries[key]
-        except (OSError, subprocess.SubprocessError):
-            if self.entries:
-                self.refuse()
-            self.disabled = True
-            self.close()
-            return None
         finally:
             if descriptor in self.pending:
                 self.pending.remove(descriptor)
@@ -282,7 +335,7 @@ def digest(path: Path, *, minimum_bytes: int | None = None):
             _CACHE = _Cache()
         cache = _CACHE
         if path in cache.paths and cache.paths[path] != key:
-            cache.refuse()
+            cache.forget({cache.paths[path]})
         entry = cache.entries.get(key)
         hit = entry is not None
         if hit:
@@ -294,7 +347,7 @@ def digest(path: Path, *, minimum_bytes: int | None = None):
         try:
             good = cache.valid(path, entry)
         finally:
-            _return(cache, good, path=path, key=key)
+            _return(cache, good, path=path, key=key, failed={key})
     owner = _VERIFICATION.get()
     if entry is not None and owner is not None and owner[:2] == (os.getpid(), threading.current_thread()):
         owner[2][path] = cache, entry
@@ -315,7 +368,7 @@ def reuse(paths, *, required: bool = False):
     """
     # Keep caller Path objects: rebuilding them discards their parsed form.
     paths = [path if isinstance(path, Path) else Path(path) for path in paths]
-    changed = "original snapshot read lease custody changed"
+    changed = _CHANGED_MESSAGE
     if not enabled():
         if required:
             raise RuntimeError(changed)
@@ -328,6 +381,10 @@ def reuse(paths, *, required: bool = False):
             return None
         members = []
         for path in paths:
+            if path in cache.refused_paths:
+                if required:
+                    raise RuntimeError(changed)
+                return None
             key = cache.paths.get(path)
             entry = None if key is None else cache.entries.get(key)
             if entry is not None:
@@ -337,16 +394,21 @@ def reuse(paths, *, required: bool = False):
         if not members:
             return {}
         cache.readers += 1
-    good = False
+    good, failed = False, set()
     try:
         good = cache.valid_batch(members)
+        if required and not good:
+            failed = cache.failed(members)
     finally:
         with _LOCK:
             cache.readers -= 1
             _CHANGED.notify_all()
-            good = good and cache is _CACHE and not cache.retiring and not cache.disabled
-            if required and not good:
+            live = cache is _CACHE and not cache.retiring and not cache.disabled
+            if required and not live:
                 cache.refuse()
+            good = good and live
+            if required and not good:
+                cache.forget(failed)
     if not good:
         return None
     owner = _VERIFICATION.get()
@@ -361,16 +423,18 @@ def _borrow(cache):
     if cache is not _CACHE or cache.owner != os.getpid():
         raise RuntimeError("original snapshot read lease owner changed")
     if cache.retiring or cache.disabled:
-        raise RuntimeError("original snapshot read lease custody changed")
+        raise RuntimeError(_CHANGED_MESSAGE)
     cache.readers += 1
 
 
-def _return(cache, good, *, path=None, key=None):
+def _return(cache, good, *, path=None, key=None, failed=()):
     with _LOCK:
         cache.readers -= 1
         _CHANGED.notify_all()
-        if not good or cache.retiring or cache.disabled or cache is not _CACHE:
+        if cache.retiring or cache.disabled or cache is not _CACHE:
             cache.refuse()
+        if not good:
+            cache.forget(set(failed))
         if path is not None and len(cache.paths) < maximum_files() * 16:
             cache.paths[path] = key
 
@@ -410,14 +474,17 @@ def validate(owner):
         if owner[:2] != (os.getpid(), threading.current_thread()) or any(row[1][0] is not cache for row in records):
             raise RuntimeError("original snapshot read lease owner changed")
         _borrow(cache)
-    good = False
+    good, failed = False, set()
+    members = [(path, entry) for path, (_, entry) in records]
     try:
         # These are precisely this scope's borrowed entries, not the cache's
         # full roster. The existing batch path checks every namespace/identity
         # and every held lease, then rechecks all leases after the name walk.
-        good = cache.valid_batch([(path, entry) for path, (_, entry) in records])
+        good = cache.valid_batch(members)
+        if not good:
+            failed = cache.failed(members)
     finally:
-        _return(cache, good)
+        _return(cache, good, failed=failed)
 
 
 def close():
@@ -444,8 +511,17 @@ def _custodian(channel_fd):
     held = set()
     capacity = _descriptor_budget()
 
-    def release(*_):
+    def release(*_, everything=False):
+        # SIGIO names no descriptor. Release exactly the leases the kernel reports as
+        # breaking (F_GETLEASE answers F_UNLCK once a break is pending); an intact lease
+        # still proves no writer opened its file, so one writer never voids the others.
         for descriptor in tuple(held):
+            if not everything:
+                try:
+                    if fcntl.fcntl(descriptor, fcntl.F_GETLEASE) == fcntl.F_RDLCK:
+                        continue
+                except OSError:
+                    pass
             held.discard(descriptor)
             try:
                 fcntl.fcntl(descriptor, fcntl.F_SETLEASE, fcntl.F_UNLCK)
@@ -484,7 +560,7 @@ def _custodian(channel_fd):
             else:
                 channel.send(b"ok")
     finally:
-        release()
+        release(everything=True)
         channel.close()
 
 

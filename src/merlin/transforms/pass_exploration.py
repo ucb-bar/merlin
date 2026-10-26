@@ -135,6 +135,31 @@ def rank_observed_metrics(observations, *, objectives):
                 unranked_unknown=tuple(unknown), performance_qualification=False)
 
 
+def rank_performance_variants(observations):
+    """Order same-domain cycle observations, without a static-count fallback.
+
+    The caller retains numerical checks and source/model/window custody. Modeled
+    latency is useful for exploration without becoming a hardware measurement.
+    Utilization, traffic and instruction counts explain a decision; they cannot
+    replace missing cycles or override a slower complete-call observation.
+    """
+    if (type(observations) is not tuple or not observations
+            or any(type(row) is not tuple or len(row) != 2
+                   or type(row[1]) is not ObservedMetrics for row in observations)):
+        raise ValueError('performance ranking requires explicit cycle observations')
+    if any(metrics.basis not in ('modeled_roi', 'measured_roi') for _, metrics in observations):
+        raise ValueError('static instruction or command counts cannot rank performance')
+    result = rank_observed_metrics(observations, objectives=('cycles',))
+    result.update(
+        decision_metric='complete_same_roi_cycles',
+        provisional=observations[0][1].basis == 'modeled_roi',
+        diagnostic_metrics=('utilization', 'roofline_gap', 'resource_activity',
+                            'traffic', 'commands', 'instructions'),
+        missing_cycles_policy='unranked; no instruction, command or utilization fallback',
+    )
+    return result
+
+
 def _identity(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 

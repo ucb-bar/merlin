@@ -16,6 +16,16 @@ from merlin.frontends.linalg_patterns import InvalidLinalgPattern
 # Frontend identity -> (registered Linalg root, reduction kind). Only exact forms.
 F32_REDUCTION_TARGETS = {"aten.sum.dim_IntList": ("linalg.reduce", "f32_sum")}
 F32_POSITIVE_ZERO_BITS = "0x00000000"
+STATIC_F32_SUM_SOURCE_BODY_SCHEMA = "merlin.static_f32_sum_source_body.v1"
+
+
+def validate_static_f32_sum_source_body(declaration):
+    """Select only the exact prepared addf sum, without numerical authority."""
+    if (type(declaration) is not dict or set(declaration) != {"schema", "operation"}
+            or declaration.get("schema") != STATIC_F32_SUM_SOURCE_BODY_SCHEMA
+            or declaration.get("operation") != "arith.addf"):
+        raise InvalidLinalgPattern("f32 sum source_body requires a closed addf declaration")
+    return dict(declaration)
 
 
 @dataclass(frozen=True)

@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 from merlin.common import mlir_query as mq
+from merlin.compile.analysis import contraction_shapes
 from merlin.llvmlower.device_offload import rewrite_groups_to_device
-from merlin.targetgen import model_coverage
 from merlin.xdsl_dialects.lowering import compute_groups as CG
 from merlin.xdsl_dialects.lowering import group_command as GC
 
@@ -73,14 +73,14 @@ def module():
 
 
 def test_source_statement_observation_is_shared_within_one_rewrite(monkeypatch):
-    original = model_coverage._contraction_extents
+    original = contraction_shapes.contraction_extents
     calls = []
 
     def observed(module):
         calls.append(module)
         return original(module)
 
-    monkeypatch.setattr(model_coverage, "_contraction_extents", observed)
+    monkeypatch.setattr(contraction_shapes, "contraction_extents", observed)
     source = module()
     result = rewrite_groups_to_device(source, "neutral", select=lambda _: True, oracle=Oracle(), weight_args={1, 3, 5})
     source.verify()

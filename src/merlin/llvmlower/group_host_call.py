@@ -24,8 +24,9 @@ def _prepack_arrays(groups, capture) -> tuple[dict | None, dict[int, dict[str, A
         return None, {}, {}, "no capture was given, so no weights manifest could be read and no bias folded"
     beside = Path(capture)
     beside = beside if beside.is_dir() else beside.parent
-    manifest = next(iter(sorted(beside.glob("*.manifest.json"))), None)
-    weights = next(iter(sorted(beside.glob("*.safetensors"))), None)
+    from .weights_pack import weight_files_beside
+
+    manifest, weights = weight_files_beside(capture)
     if manifest is None or weights is None:
         return None, {}, {}, f"no weights manifest and safetensors pair beside {beside}"
     from merlin.xdsl_dialects.lowering import group_prepack as GP

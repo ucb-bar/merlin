@@ -174,7 +174,7 @@ def module_extents(groups: Sequence[CG.Group]) -> dict[int, tuple] | None:
     """The contraction-extent table of the one module ``groups`` were formed over, read ONCE, so a
     caller stating every group does not walk the whole module per group. ``None`` (each group reads
     its own) when the groups do not name one module."""
-    from merlin.targetgen import model_coverage
+    from merlin.compile.analysis.contraction_shapes import contraction_extents
 
     modules = {
         id(module): module
@@ -184,7 +184,7 @@ def module_extents(groups: Sequence[CG.Group]) -> dict[int, tuple] | None:
     }
     if len(modules) != 1:
         return None
-    return model_coverage._contraction_extents(next(iter(modules.values())))
+    return contraction_extents(next(iter(modules.values())))
 
 
 def prepack(

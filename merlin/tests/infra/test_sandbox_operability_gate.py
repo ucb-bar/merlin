@@ -505,3 +505,48 @@ def test_the_operator_entry_point_answers_with_its_exit_status(
 
     monkeypatch.setattr(PF, "probe_sandbox", lambda *_a, **_k: _OK_PROBE)
     assert PF._main() == 0
+
+
+def _timeouts_then(monkeypatch: pytest.MonkeyPatch, timeouts: int, returncode: int = 0) -> list:
+    import subprocess
+
+    calls, waits = [], []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if len(calls) <= timeouts:
+            raise subprocess.TimeoutExpired(argv, kwargs.get("timeout"))
+        return subprocess.CompletedProcess(argv, returncode, "", "" if returncode == 0 else "denied")
+
+    monkeypatch.setattr(PF.subprocess, "run", run)
+    monkeypatch.setattr(PF.time, "sleep", waits.append)
+    return calls, waits
+
+
+def test_a_probe_that_times_out_once_asks_again_before_refusing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    binary = tmp_path / "bwrap"
+    binary.write_text("")
+    calls, waits = _timeouts_then(monkeypatch, timeouts=1)
+    probe = PF.probe_sandbox(binary, use_cache=False)
+    assert probe.status == PF.SANDBOX_OK and len(calls) == 2
+    assert waits == [PF.PROBE_TIMEOUT_RETRY_WAITS_S[0]]
+
+
+def test_a_probe_that_keeps_timing_out_stays_unknown_after_bounded_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binary = tmp_path / "bwrap"
+    binary.write_text("")
+    calls, waits = _timeouts_then(monkeypatch, timeouts=99)
+    probe = PF.probe_sandbox(binary, use_cache=False)
+    assert (probe.status, probe.reason) == (PF.SANDBOX_UNKNOWN, "probe_timed_out")
+    assert len(calls) == len(PF.PROBE_TIMEOUT_RETRY_WAITS_S) + 1
+    assert waits == list(PF.PROBE_TIMEOUT_RETRY_WAITS_S)
+
+
+def test_a_refusing_probe_is_not_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    binary = tmp_path / "bwrap"
+    binary.write_text("")
+    calls, waits = _timeouts_then(monkeypatch, timeouts=0, returncode=1)
+    probe = PF.probe_sandbox(binary, use_cache=False)
+    assert probe.status == PF.SANDBOX_INOPERABLE and len(calls) == 1 and not waits

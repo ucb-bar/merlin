@@ -54,9 +54,35 @@ def prove_loaded_sum(lhs_scale, rhs_scale, *, load_lhs_scale, load_rhs_scale, st
     not facts inferred from instruction names; independent execution is required.
     No error budget is invented and no coefficients are chosen by this check.
     """
+    return _prove_loaded_sum(
+        lhs_scale, rhs_scale, 1.0, load_lhs_scale=load_lhs_scale,
+        load_rhs_scale=load_rhs_scale, store_scale=store_scale, bound_lsb=bound_lsb, relu=relu,
+    )
+
+
+def prove_ordered_loaded_sum(
+    lhs_scale, rhs_scale, output_scale, *, load_lhs_scale, load_rhs_scale, store_scale, relu=False
+):
+    """Prove a zero-error loaded sum against the ORIGINAL ordered scale triple.
+
+    Effective coefficient ratios do not replace the separate source products,
+    addition and reciprocal multiply. Unsupported proposals raise; callers may
+    retain another independently checked lowering. This certificate supplies
+    no load/accumulate/readout implementation or target authority.
+    """
+    proof = _prove_loaded_sum(
+        lhs_scale, rhs_scale, output_scale, load_lhs_scale=load_lhs_scale,
+        load_rhs_scale=load_rhs_scale, store_scale=store_scale, bound_lsb=0, relu=relu,
+    )
+    return {**proof, "schema": "merlin.ordered_loaded_operand_sum.v1"}
+
+
+def _prove_loaded_sum(
+    lhs_scale, rhs_scale, output_scale, *, load_lhs_scale, load_rhs_scale, store_scale, bound_lsb, relu
+):
     if type(bound_lsb) is not int or not 0 <= bound_lsb <= 255:
         raise ValueError("explicit signed-i8 source error bound required")
-    source, _ = _scales(lhs_scale, rhs_scale, 1.0, relu)
+    source, _ = _scales(lhs_scale, rhs_scale, output_scale, relu)
     proposal = tuple(f32(x) for x in (load_lhs_scale, load_rhs_scale, store_scale))
     if any(not math.isfinite(x) or x <= 0 for x in proposal):
         raise ValueError("positive finite declared load/readout scales required")
@@ -254,7 +280,15 @@ def propose_exact_affine_pair(
             )
             plan.revalidate()
             accepted.append(plan)
-    return min(accepted, key=lambda plan: (len(plan.terms), plan.p + plan.q, plan.p, plan.q, plan.scale), default=None)
+    # After the real resource costs tie, prefer the original effective
+    # coefficients over a gratuitously perturbed neighboring-float witness.
+    # This only ranks already exhaustive-proved candidates: closeness is never
+    # an admission criterion or a substitute for the ordered binary32 table.
+    return min(accepted, key=lambda plan: (
+        len(plan.terms), plan.p + plan.q, plan.p, plan.q,
+        max(abs(plan.p * plan.scale - alpha), abs(plan.q * plan.scale - beta)),
+        plan.scale,
+    ), default=None)
 
 
 def _centered_guard(values):

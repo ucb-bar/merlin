@@ -247,7 +247,7 @@ def _source_owner_fixture(tmp_path, monkeypatch):
     from merlin.compile import owned_shared_source as owner
     from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
     from merlin.llvmlower.source_region_host import prepare_sibling_source_host, tensor_abi
-    from merlin.targetgen import native_model_execution
+    from merlin.targetgen import frozen_source_eligibility, native_model_execution
 
     module = sibling_source()
     raw = (text(module, generic=True) + "\n").encode()
@@ -299,6 +299,8 @@ def _source_owner_fixture(tmp_path, monkeypatch):
         "n_eligible": 2,
         "regions": [{"target_eligible": True, "semantic_family": "contraction", "carrier_op": "linalg.generic"}] * 2,
     }
+    # Core source routing reopens the census from its core module; the executor keeps a wrapper.
+    monkeypatch.setattr(frozen_source_eligibility, "census", lambda *a, **k: certificate)
     monkeypatch.setattr(native_model_execution, "independent_frozen_source_eligibility", lambda *a, **k: certificate)
     return {**cap, "__dir__": str(tmp_path)}, certificate
 

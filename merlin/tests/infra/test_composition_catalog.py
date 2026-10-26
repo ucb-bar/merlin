@@ -36,7 +36,10 @@ def test_discovery_preserves_explicit_original_sibling_owner_boundary():
 def test_catalog_is_detached_serializable_metadata_without_evidence_or_defaults():
     first = composition_capabilities()
     encoded = json.dumps(first)
-    assert all(word not in encoded for word in ("/work/", "resnet", "llama", "private-case", "cycles"))
+    assert all(word not in encoded for word in ("/work/", "resnet", "llama", "private-case"))
+    # Limitations may name absent cycle evidence; the catalog carries no scores.
+    for row in first["capabilities"]:
+        assert not {"estimated_cycles", "measured_cycles", "score", "default_pipeline"} & row.keys()
     first["capabilities"][0]["symbols"].clear()
     assert composition_capabilities()["capabilities"][0]["symbols"]
 

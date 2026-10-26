@@ -126,6 +126,10 @@ def emit_c_function(
     """
     if not symbol.isidentifier():
         raise IsaError(f"symbol {symbol!r} is not a C identifier")
+    from merlin.sched.ir.events import has_carried_events
+
+    if has_carried_events(kernel.body):
+        raise IsaError("loop-carried completion requires the checked SCF input/yield/result emitter")
     if index_bits is not None and (type(index_bits) is not int or index_bits not in (32, 64)):
         raise IsaError("C index width must be an explicitly selected 32 or 64 bits")
     if index_bits is not None:

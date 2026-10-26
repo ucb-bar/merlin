@@ -66,3 +66,15 @@ def test_positive_small_lhs_skips_zero_numerator_initial_rational_proposal():
     assert plan is not None
     assert (plan.p, plan.q) == (1, 8)
     assert plan.revalidate()["checked_pairs"] == 65536
+
+
+@pytest.mark.parametrize("scales,expected", [((1.0, 1.0, 1.0), 1.0), ((0.5, 0.25, 1.0), 0.25)])
+@pytest.mark.parametrize("relu", [False, True])
+def test_tied_resource_cost_prefers_unperturbed_source_coefficient(scales, expected, relu):
+    plan = propose(scales, relu=relu)
+    assert plan is not None
+    assert plan.scale == expected
+    assert plan.revalidate()["checked_pairs"] == 65536
+    assert np.array_equal(
+        source_table(*scales, relu=relu), predictor_table(plan.p, plan.q, plan.scale, relu=relu)
+    )

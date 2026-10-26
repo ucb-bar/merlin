@@ -30,7 +30,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from merlin.kernels.decode.objdump import UNKNOWN_MNEMONIC, word_of
+from merlin.compile.analysis.disassembly import UNKNOWN_MNEMONIC, word_of
 
 __all__ = ["DerivedIsaAudit", "DerivedIsaInsn", "audit", "decode_stream", "digest", "encoding_for", "fields_of"]
 
@@ -210,7 +210,7 @@ def audit(insns: Sequence[Any], target: str, endpoint=None) -> DerivedIsaAudit:
     encoding = encoding_for(target)
     spaces = ()
     if endpoint is not None:
-        from merlin.kernels import endpoints as _ep
+        from merlin.compile.analysis import compute_endpoints as _ep
 
         block = (_ep._spec().get("endpoints") or {}).get(endpoint.name) or {}
         spaces = tuple((block.get("encoding") or {}).get("spaces") or ())

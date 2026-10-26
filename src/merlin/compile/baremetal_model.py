@@ -124,7 +124,9 @@ def _full_references(
     """``[(name, reference or None)]`` in forward-result order for a full-readback execution.
 
     A capture that states every result (``output_order.json`` with one array each in ``goldens.npz``)
-    references them all. Otherwise result zero is held to the one explicit ``reference_file`` and any
+    references them all. An explicit ``integer-reference.json`` selects every typed result of
+    the captured quantized program, bound to both its receipt and actual forward ABI.
+    Otherwise result zero is held to the one explicit ``reference_file`` and any
     further result is recorded as having no capture reference (a caller may hold it to an independent
     host execution of the same program). Every file must be bound by the capture receipt or lie in the
     capture tree whose digest this compilation records."""
@@ -144,13 +146,30 @@ def _full_references(
             raise BaremetalModelError(f"reference {name!r} is not bound by the capture receipt")
         return path
 
-    results = len(_out_specs(capture / "model.mlir"))
+    result_specs = _out_specs(capture / "model.mlir")
+    results = len(result_specs)
     if (capture / "output_order.json").exists() or (capture / "goldens.npz").exists():
         names = [str(x) for x in json.loads(present("output_order.json", receipt_bound=False).read_text())]
         archive = np.load(present("goldens.npz", receipt_bound=False), allow_pickle=False)
         if len(names) != results or len(set(names)) != len(names) or set(names) != set(archive.files):
             raise BaremetalModelError("output_order.json and goldens.npz disagree with the forward's results")
         return [(name, np.asarray(archive[name])) for name in names]
+    if reference_file == "integer-reference.json":
+        from merlin.targetgen.materialized_reference import complete_outputs
+
+        metadata = json.loads(present("meta.json", receipt_bound=True).read_text())
+        actual_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in result_specs]
+        if metadata.get("output_abi") != actual_abi:
+            raise BaremetalModelError("complete reference ABI differs from the actual forward results")
+        try:
+            outputs = complete_outputs(
+                metadata, present(reference_file, receipt_bound=True).read_bytes()
+            )
+        except ValueError as exc:
+            raise BaremetalModelError(f"invalid complete quantized-program reference: {exc}") from exc
+        integers = {"i1": np.bool_, "i8": np.int8, "i16": np.int16, "i32": np.int32, "i64": np.int64}
+        return [(f"out{i}", np.asarray(value, dtype=integers.get(row["dtype"], np.float32)))
+                for i, (value, row) in enumerate(zip(outputs, actual_abi, strict=True))]
     if reference_file is None or Path(reference_file).name != reference_file or not reference_file.endswith(".npy"):
         raise BaremetalModelError("execution needs one explicit in-bundle .npy reference_file for result zero")
     first = np.load(present(reference_file, receipt_bound=True), allow_pickle=False)
@@ -163,6 +182,11 @@ def _agreement(value: np.ndarray, reference: np.ndarray, tolerance: dict[str, fl
     if value.size != reference.size:
         return {"passed": False, "note": f"printed {value.size} of {reference.size} elements"}
     flat, ref = value.reshape(-1), reference.reshape(-1)
+    if ref.dtype.kind in "iub":
+        if flat.dtype.kind not in "iub":
+            return {"passed": False, "note": "integer references require exact integer output"}
+        differ = int(np.count_nonzero(flat != ref))
+        return {"passed": differ == 0, "mismatched_elements": differ, "of": int(ref.size)}
     if tolerance is None:
         if flat.dtype == np.float32 and ref.dtype == np.float32:
             differ = int(np.count_nonzero(flat.view(np.uint32) != ref.view(np.uint32)))
@@ -339,6 +363,8 @@ def compile_saved_model(
     source_optimizations=None,
     source_recomputation=None,
     prepack_weights: bool = False,
+    share_exact_tensor_preparations: bool = False,
+    dense_input_views: bool = False,
     host_math_policy: str = "native",
     host_elementwise_fusion: bool = False,
     host_bounded_rne: bool = False,
@@ -366,6 +392,11 @@ def compile_saved_model(
     requires pure tensor source and original non-updated stored arguments;
     mutable state, unknown effects and unsupported layouts refuse the selection.
     False retains the original capture and performs no prepacking I/O.
+
+    ``share_exact_tensor_preparations=True`` explicitly selects the existing
+    immutable view/constant and exact integer-to-float preparation CSE. It keeps
+    provenance, arithmetic boundaries and independent output preparations; the
+    ordinary lowering receipt records each actual match. False is unchanged.
 
     ``readback="full"`` builds the image to print every forward result complete
     (:mod:`merlin.runtime.whole_model_readback`); execution then holds each result to the capture's
@@ -445,6 +476,10 @@ def compile_saved_model(
         raise BaremetalModelError("operation profiling must be an explicit Boolean")
     if type(prepack_weights) is not bool:
         raise BaremetalModelError("weight prepacking must be an explicit Boolean optimization choice")
+    if type(dense_input_views) is not bool:
+        raise BaremetalModelError("dense input views must be an explicit Boolean choice")
+    if type(share_exact_tensor_preparations) is not bool:
+        raise BaremetalModelError("tensor preparation sharing must be an explicit Boolean choice")
     if type(host_elementwise_fusion) is not bool:
         raise BaremetalModelError("host elementwise fusion must be an explicit Boolean optimization choice")
     if type(host_bounded_rne) is not bool:
@@ -668,6 +703,14 @@ def compile_saved_model(
             from merlin.llvmlower.weight_prepack import ensure_registered
 
             receipt["inputs"]["prepack_weights"] = True
+            build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
+        if dense_input_views:
+            receipt["inputs"]["dense_input_views"] = True
+            build_options["dense_input_views"] = True
+        if share_exact_tensor_preparations:
+            from merlin.llvmlower.tensor_provenance_cse import ensure_registered
+
+            receipt["inputs"]["share_exact_tensor_preparations"] = True
             build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
         if host_elementwise_fusion:
             from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME

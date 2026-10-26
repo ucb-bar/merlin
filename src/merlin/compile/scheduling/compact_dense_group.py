@@ -27,7 +27,13 @@ from .compact_dense import (
     _groups,
     _static_calls,
 )
-from .compact_dense_group_check import DenseLHSReuseLaw, _views, verify_compact_dense_group
+from .compact_dense_group_check import (
+    DenseLHSReuseLaw,
+    _group_contract_record,
+    _group_output_contracts,
+    _views,
+    verify_compact_dense_group,
+)
 from .compact_verification import DenseVerificationUnavailable
 
 
@@ -69,9 +75,10 @@ def _same_callback(function, frozen):
     )
 
 
-def emit_compact_dense_group(problems, blocks, storages, *, encode_member, name, dtypes):
+def emit_compact_dense_group(problems, blocks, storages, *, encode_member, name, dtypes, output_readouts=None):
     """One M outer nest, one LHS load panel, then complete ordered members."""
     first = problems[0]
+    readouts = (None,) * len(problems) if output_readouts is None else output_readouts
     serial = 0
 
     def variable(prefix):
@@ -99,7 +106,16 @@ def emit_compact_dense_group(problems, blocks, storages, *, encode_member, name,
         for member, (problem, block, storage) in enumerate(zip(problems, blocks, storages, strict=True)):
             for ng in _groups(problem.tiles[2], block.n, variable("outer_n")):
                 emitted = _emit_dense_tile_group(
-                    problem, block, storage, lambda op: call(member, op), variable, nest, mg, ng, include_lhs=False
+                    problem,
+                    block,
+                    storage,
+                    lambda op: call(member, op),
+                    variable,
+                    nest,
+                    mg,
+                    ng,
+                    include_lhs=False,
+                    output_readout=readouts[member],
                 )
                 body.extend((Loop(ng.var, ng.trips, emitted),) if ng.var else emitted)
         statements.extend((Loop(mg.var, mg.trips, tuple(body)),) if mg.var else body)
@@ -108,7 +124,12 @@ def emit_compact_dense_group(problems, blocks, storages, *, encode_member, name,
         (
             TensorArg("lhs", (first.m, first.k), dtypes[0], "read"),
             *(TensorArg(f"rhs{i}", (p.k, p.n), dtypes[1], "read") for i, p in enumerate(problems)),
-            *(TensorArg(f"output{i}", (p.m, p.n), dtypes[2], "write") for i, p in enumerate(problems)),
+            *(
+                TensorArg(
+                    f"output{i}", (p.m, p.n), dtypes[2] if readouts[i] is None else readouts[i].output_dtype, "write"
+                )
+                for i, p in enumerate(problems)
+            ),
         ),
         tuple(statements),
     )
@@ -170,6 +191,8 @@ def schedule_compact_dense_group(
     external_buffers_disjoint,
     selected_contracts=None,
     reservations=(),
+    output_readouts=None,
+    readout_qualification_identities=None,
     verification_timeout_ms=2000,
     max_members=8,
 ):
@@ -179,8 +202,6 @@ def schedule_compact_dense_group(
     pointers are required. A declaration or this result alone grants no effect
     permission. Missing retention/full-K capacity yields no candidate.
     """
-    from .selected_contracts import SelectedSchedulingContracts
-
     if (
         type(problems) is not tuple
         or type(max_members) is not int
@@ -195,6 +216,9 @@ def schedule_compact_dense_group(
         or verification_timeout_ms <= 0
     ):
         raise ValueError("shared LHS requires bounded typed group inputs")
+    contracts, readouts, qualifications = _group_output_contracts(
+        len(problems), selected_contracts, output_readouts, readout_qualification_identities
+    )
     if retention_law is None:
         return None
     if type(retention_law) is not DenseLHSReuseLaw:
@@ -220,12 +244,13 @@ def schedule_compact_dense_group(
         for b in assigned[:i]
     ):
         return None
-    if selected_contracts is not None and type(selected_contracts) is not SelectedSchedulingContracts:
-        raise ValueError("shared LHS needs an original selected dense contract")
 
     def callbacks():
-        return (encode_member, project_member, adapter.encode, adapter.project) + (
-            () if selected_contracts is None else (selected_contracts.revalidate, selected_contracts.record)
+        return (encode_member, project_member, adapter.encode, adapter.project) + tuple(
+            callback
+            for contract in contracts
+            if contract is not None
+            for callback in (contract.revalidate, contract.record)
         )
 
     frozen_callbacks = tuple(_callback(f) for f in callbacks())
@@ -238,6 +263,8 @@ def schedule_compact_dense_group(
             asdict(resources) if resources is not None else None,
             retention_law.record(),
             dtypes,
+            tuple(None if r is None else asdict(r) for r in readouts),
+            qualifications,
             name,
             static_budget,
             external_buffers_disjoint,
@@ -265,6 +292,8 @@ def schedule_compact_dense_group(
             _digest,
             _dense_library_sources,
             _views,
+            _group_output_contracts,
+            _group_contract_record,
             _groups,
             _emit_lhs_panel,
             _emit_dense_tile_group,
@@ -291,6 +320,8 @@ def schedule_compact_dense_group(
                 asdict(original_resources) if original_resources is not None else None,
                 retention_law.record(),
                 dtypes,
+                tuple(None if r is None else asdict(r) for r in readouts),
+                qualifications,
                 name,
                 static_budget,
                 external_buffers_disjoint,
@@ -318,27 +349,27 @@ def schedule_compact_dense_group(
 
     original_resources = resources
     static_fresh()
-    selection = None if selected_contracts is None else _digest(selected_contracts.record())
+    selection = _digest(_group_contract_record(selected_contracts))
     static_fresh()
 
     def fresh():
         static_fresh()
         if selected_contracts is not None:
-            selected_contracts.revalidate()
+            for contract in contracts:
+                contract.revalidate()
             static_fresh()
-            current_selection = _digest(selected_contracts.record())
+            current_selection = _digest(_group_contract_record(selected_contracts))
             static_fresh()
             if selection != current_selection:
                 raise ValueError("selected shared LHS contracts changed; reselect")
 
     fresh()
     if selected_contracts is not None:
-        if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.dense is None:
-            raise ValueError("shared LHS needs an original selected dense contract")
-        dense = selected_contracts.dense
-        if not dense.external_pointer_arguments:
+        if any(c.dense is None for c in contracts):
+            raise ValueError("shared LHS needs an original selected dense contract for every member")
+        if any(not c.dense.external_pointer_arguments for c in contracts):
             return None
-        limits = dense.block_limits
+        limits = tuple(min(c.dense.block_limits[i] for c in contracts) for i in range(3))
         views = (storages[0].lhs, *(s.rhs for s in storages), *(s.accumulator for s in storages))
         operands = sum(v.capacity * v.unit_bytes for v in views[: len(problems) + 1])
         accumulators = sum(v.capacity * v.unit_bytes for v in views[len(problems) + 1 :])
@@ -347,8 +378,8 @@ def schedule_compact_dense_group(
             accumulators,
             *limits,
             candidate_budget=resources.candidate_budget if resources is not None else 4096,
-            partial_output_tiles=dense.partial_output_tiles,
-            partial_output_blocks=dense.partial_output_blocks,
+            partial_output_tiles=all(c.dense.partial_output_tiles for c in contracts),
+            partial_output_blocks=all(c.dense.partial_output_blocks for c in contracts),
         )
         if resources is not None:
             derived = replace(
@@ -360,16 +391,17 @@ def schedule_compact_dense_group(
                 partial_output_tiles=resources.partial_output_tiles and derived.partial_output_tiles,
                 partial_output_blocks=resources.partial_output_blocks and derived.partial_output_blocks,
             )
-        for p, storage in zip(problems, storages, strict=True):
-            dense.bind(
+        for p, storage, contract, readout in zip(problems, storages, contracts, readouts, strict=True):
+            contract.dense.bind(
                 p,
                 storage,
                 adapter,
                 dtypes=dtypes,
-                hardware=selected_contracts.hardware_identity,
-                policy=selected_contracts.numerical_policy,
+                hardware=contract.hardware_identity,
+                policy=contract.numerical_policy,
                 resources=derived,
                 reservations=reservations,
+                output_readout=readout,
             )
         resources = derived
     elif resources is None or reservations:
@@ -397,7 +429,7 @@ def schedule_compact_dense_group(
 
     def emit(blocks):
         return emit_compact_dense_group(
-            problems, blocks, storages, encode_member=guarded_encode, name=name, dtypes=dtypes
+            problems, blocks, storages, encode_member=guarded_encode, name=name, dtypes=dtypes, output_readouts=readouts
         )
 
     def admits(blocks):
@@ -497,6 +529,8 @@ def schedule_compact_dense_group(
             max_members=max_members,
             selected_contracts=selected_contracts,
             reservations=reservations,
+            output_readouts=readouts,
+            readout_qualification_identities=qualifications,
         )
         return {"realization": report}
 
@@ -513,7 +547,7 @@ def schedule_compact_dense_group(
     report["pipeline"] = {
         "context": asdict(context),
         "passes": [asdict(r) for r in session.records],
-        "selected_contracts": None if selected_contracts is None else selected_contracts.record(),
+        "selected_contracts": _group_contract_record(selected_contracts),
         "library_sources_sha256": library,
     }
     kernel = state["kernel"]
@@ -537,7 +571,7 @@ def schedule_compact_dense_group(
         report,
         adapter.index_bits,
         tuple((p.m, p.n) for p in problems),
-        (dtypes[2],) * len(problems),
+        tuple(dtypes[2] if r is None else r.output_dtype for r in readouts),
         stamp,
         checked_guard,
         implementation_paths(),

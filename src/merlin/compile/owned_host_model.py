@@ -56,6 +56,9 @@ class OwnedHostModelCompiler:
         connected_spatial=None,
         sibling_source=None,
         prepack_weights=False,
+        share_exact_tensor_preparations=False,
+        dense_input_views=False,
+        host_math_policy="native",
     ):
         """Build original source; the candidate supplies closed device groups only.
 
@@ -67,10 +70,24 @@ class OwnedHostModelCompiler:
         An original caller may select the existing typed connected-spatial route;
         normal preparation checks its source pair, ordered readouts, workspace
         ownership and closed helper before the ordinary host/object build.
+        ``host_math_policy`` explicitly selects an existing supplied host recipe
+        for both ordinary single-forward and later chain composition; numerical
+        qualification remains required for the selected arithmetic.
+        ``share_exact_tensor_preparations`` selects the existing source-exact
+        view/constant preparation pass; no arithmetic or target effects are inferred.
         """
         from merlin.compile.baremetal_model import compile_saved_model
         from merlin.compile.route_before_build import plan_before_build
         from merlin.llvmlower.device_offload import BY_GROUP
+        from merlin.runtime.host_math import host_math_recipe
+
+        # Original-owner arithmetic choice, validated before routing/building.
+        # Changing it requires independent numerical qualification as usual.
+        host_math_recipe(host_math_policy)
+        if type(dense_input_views) is not bool:
+            raise ValueError("dense input views must be an explicit Boolean choice")
+        if type(share_exact_tensor_preparations) is not bool:
+            raise ValueError("tensor preparation sharing must be an explicit Boolean choice")
 
         if linked_elf_admission is None:
             raise ValueError("an independently selected linked-ELF admission is required")
@@ -153,6 +170,9 @@ class OwnedHostModelCompiler:
             respect_captured_quantization_scope=True,
             group_profile=group_profile,
             prepack_weights=prepack_weights,
+            share_exact_tensor_preparations=share_exact_tensor_preparations,
+            dense_input_views=dense_input_views,
+            host_math_policy=host_math_policy,
         )
         if strict_tree_sha256(self.host_package) != self.host_package_identity:
             raise ValueError("selected owned host provider changed during compilation")

@@ -108,12 +108,16 @@ def emit_cached_spatial_row_panel(
     rows,
     cache_destination_disjoint,
     maximum_panel_bytes,
+    factor_channel_guards=False,
 ):
     """Pack original kh/kw/channel taps from one resident producer row.
 
     The horizontal border mapping is precisely the existing clipped minimum-pad
     pool halo. It changes no conv padding, Q1, Q2, reduction order or observer.
     The cache must remain resident until the separate dense consumer completes.
+    ``factor_channel_guards`` explicitly hoists the invariant pixel lookup and
+    guard above its complete contiguous channel run. Channel order and byte
+    loads/stores remain unchanged; no cache lifetime or device effect follows.
     """
     from merlin.compile.scheduling.rolling_spatial import RollingPackedSpatialPlan
     from merlin.compile.scheduling.rolling_window import emit_rolling_window_lookup
@@ -126,7 +130,8 @@ def emit_cached_spatial_row_panel(
     ClippedSpatialHaloRows(source.spatial, output_pixels)
     w = source.producer.window
     if (
-        cache_destination_disjoint is not True
+        type(factor_channel_guards) is not bool
+        or cache_destination_disjoint is not True
         or type(rows) is not int
         or not 0 < rows <= plan.packed.panel_rows
         or type(maximum_panel_bytes) is not int
@@ -156,9 +161,8 @@ def emit_cached_spatial_row_panel(
 
         def ky_body(ky):
             def kx_body(kx):
-                def byte(channel):
-                    lookup = emit_rolling_window_lookup(plan.rolling, control, producer_y, x, ky, kx, channel)
-                    offset = control.op(
+                def destination_byte(channel):
+                    return control.op(
                         "add",
                         control.op("mul", row, plan.packed.reduction),
                         control.op(
@@ -169,20 +173,43 @@ def emit_cached_spatial_row_panel(
                             channel,
                         ),
                     )
-                    target = builder.gep(destination, offset, i8)
 
-                    def copy():
-                        origin = builder.gep(cache, control.value(lookup["cache_byte"]), i8)
-                        value = builder.add(llvm.LoadOp(origin, i8)).results[0]
-                        builder.add(llvm.StoreOp(value, target))
+                def copy_byte(channel, source_byte):
+                    target = builder.gep(destination, destination_byte(channel), i8)
+                    origin = builder.gep(cache, control.value(source_byte), i8)
+                    value = builder.add(llvm.LoadOp(origin, i8)).results[0]
+                    builder.add(llvm.StoreOp(value, target))
 
+                def zero_byte(channel):
+                    target = builder.gep(destination, destination_byte(channel), i8)
+                    builder.add(llvm.StoreOp(builder.const(0, i8), target))
+
+                if factor_channel_guards:
+                    # CI is positive by the original Window2D validation. The
+                    # lookup predicate's only channel-dependent term is c<CI;
+                    # it is true for every iteration of this exact [0,CI) loop.
+                    # The cache address is affine base+c within the same NHWC
+                    # pixel. Keep the original padding guard outside both runs;
+                    # a false guard does not read even the first cache byte.
+                    lookup = emit_rolling_window_lookup(plan.rolling, control, producer_y, x, ky, kx, 0)
                     control.branch(
                         control.op("and", valid, lookup["predicate"], "i1"),
-                        copy,
-                        lambda: builder.add(llvm.StoreOp(builder.const(0, i8), target)),
+                        lambda: control.loop(
+                            0, w.input_shape[-1], 1,
+                            lambda channel: copy_byte(channel, control.op("add", lookup["cache_byte"], channel)),
+                        ),
+                        lambda: control.loop(0, w.input_shape[-1], 1, zero_byte),
                     )
+                else:
+                    def byte(channel):
+                        lookup = emit_rolling_window_lookup(plan.rolling, control, producer_y, x, ky, kx, channel)
+                        control.branch(
+                            control.op("and", valid, lookup["predicate"], "i1"),
+                            lambda: copy_byte(channel, lookup["cache_byte"]),
+                            lambda: zero_byte(channel),
+                        )
 
-                control.loop(0, w.input_shape[-1], 1, byte)
+                    control.loop(0, w.input_shape[-1], 1, byte)
 
             control.loop(0, w.kernel[1], 1, kx_body)
 
@@ -193,5 +220,6 @@ def emit_cached_spatial_row_panel(
         panel_shape=[rows, plan.packed.reduction],
         source_reduction_order=["kernel_y", "kernel_x", "input_channel"],
         source="original resident rolling row cache",
+        channel_guard_scope="pixel" if factor_channel_guards else "byte",
         target_qualification=False,
     )

@@ -22,7 +22,12 @@ def fixture_service(tmp_path):
 
 
 @pytest.mark.parametrize("require_all_groups", [None, True])
-def test_original_source_and_fixed_host_reach_ordinary_build(tmp_path, monkeypatch, require_all_groups):
+@pytest.mark.parametrize("host_math", ["native", "portable_exp_trig"])
+@pytest.mark.parametrize("share_preparations", [False, True])
+@pytest.mark.parametrize("dense_views", [False, True])
+def test_original_source_and_fixed_host_reach_ordinary_build(
+    tmp_path, monkeypatch, require_all_groups, host_math, share_preparations, dense_views
+):
     from merlin.compile import baremetal_model, route_before_build
     from merlin.llvmlower.device_offload import BY_GROUP
 
@@ -43,10 +48,16 @@ def test_original_source_and_fixed_host_reach_ordinary_build(tmp_path, monkeypat
         assert kwargs["device"] is route
         assert kwargs["readback"] == "full"
         assert kwargs["respect_captured_quantization_scope"] is True
+        assert kwargs["host_math_policy"] == host_math
+        assert kwargs["share_exact_tensor_preparations"] is share_preparations
+        assert kwargs["dense_input_views"] is dense_views
         return {"status": "compiled"}
     monkeypatch.setattr(baremetal_model, "compile_saved_model", build)
     assert service.compile(capture=capture, candidate_package=candidate, datapath="int8",
                            linked_elf_admission=admission, output=tmp_path / "out", arena_mb=1,
+                           host_math_policy=host_math,
+                           share_exact_tensor_preparations=share_preparations,
+                           dense_input_views=dense_views,
                            **({} if require_all_groups is None else
                               {"require_all_accelerator_groups": require_all_groups})) == {"status": "compiled"}
 
@@ -64,3 +75,29 @@ def test_untrusted_provider_substitution_refuses_before_build(tmp_path, case):
     with pytest.raises(ValueError):
         service.compile(capture=capture, candidate_package=candidate, datapath="int8",
                         linked_elf_admission=admission, output=tmp_path / "out", arena_mb=1)
+
+
+def test_unknown_math_policy_refuses_before_source_routing(tmp_path):
+    service, candidate, capture = fixture_service(tmp_path)
+    with pytest.raises(ValueError, match="host_math_policy"):
+        service.compile(capture=capture, candidate_package=candidate, datapath="int8",
+                        linked_elf_admission=object(), output=tmp_path / "out", arena_mb=1,
+                        host_math_policy="invented")
+
+
+@pytest.mark.parametrize("choice", [0, 1, None, "true"])
+def test_tensor_preparation_choice_refuses_before_source_routing(tmp_path, choice):
+    service, candidate, capture = fixture_service(tmp_path)
+    with pytest.raises(ValueError, match="tensor preparation sharing"):
+        service.compile(capture=capture, candidate_package=candidate, datapath="int8",
+                        linked_elf_admission=object(), output=tmp_path / "out", arena_mb=1,
+                        share_exact_tensor_preparations=choice)
+
+
+@pytest.mark.parametrize("choice", [0, 1, None, "true"])
+def test_dense_input_view_choice_refuses_before_source_routing(tmp_path, choice):
+    service, candidate, capture = fixture_service(tmp_path)
+    with pytest.raises(ValueError, match="dense input views"):
+        service.compile(capture=capture, candidate_package=candidate, datapath="int8",
+                        linked_elf_admission=object(), output=tmp_path / "out", arena_mb=1,
+                        dense_input_views=choice)

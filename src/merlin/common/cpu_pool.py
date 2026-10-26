@@ -31,6 +31,36 @@ from pathlib import Path
 from merlin.common.invocation_record import timed_event
 
 _ACTIVE_LEASE = ContextVar("selected_cpu_lease", default=None)
+#: Set in a process whose caller holds a slot for it and is blocked until it answers (see
+#: :func:`refuse_slot_waits`); a slot request there raises instead of queueing.
+_SLOT_WAITS_REFUSED: str | None = None
+_SLOT_WAIT_REFUSALS = 0
+
+
+class SlotWaitRefused(RuntimeError):
+    """A process serving a slot holder asked for a CPU slot of its own."""
+
+
+def refuse_slot_waits(reason: str) -> None:
+    """Make every new slot acquisition in this process raise :class:`SlotWaitRefused`.
+
+    For a worker that computes on behalf of a caller that holds a CPU slot and waits for the reply:
+    the caller's slot already accounts for the work. A slot request in the worker can only queue
+    behind other holders that are themselves waiting on workers -- measured as one capsule per 15
+    minutes with every slot held -- so it refuses at once and the caller runs the step in its own
+    thread, where nested steps reuse the lease it holds.
+    """
+    global _SLOT_WAITS_REFUSED
+    _SLOT_WAITS_REFUSED = str(reason)
+
+
+def slot_wait_refusals() -> int:
+    """How many slot requests :func:`refuse_slot_waits` has refused in this process.
+
+    A step may catch the refusal and return a degraded answer, so a caller compares this count
+    around the step rather than relying on the exception reaching it.
+    """
+    return _SLOT_WAIT_REFUSALS
 _ISSUED_LEASES = weakref.WeakKeyDictionary()
 # Linux UAPI values; some supported CPython builds omit the fcntl names.
 _SEALS = 0x000F
@@ -116,8 +146,28 @@ def _parse_priority(raw: object) -> int:
     raise ValueError(f"{PRIORITY_ENV} must be one of {', '.join(map(str, _PRIORITIES))}")
 
 
+class MutablePriority:
+    """A lease class its owner may lower while work under it runs; it is never raised past its start.
+
+    A grade of a compiler snapshot that a newer one has superseded still has to finish what it
+    started, but its remaining steps should not take free slots ahead of the newer grade. Lowering
+    only reorders waiters, like every class: it preempts nothing and changes no result."""
+
+    def __init__(self, level: int):
+        self._level = _parse_priority(level)
+
+    @property
+    def level(self) -> int:
+        return self._level
+
+    def lower(self, level: int) -> None:
+        self._level = max(self._level, _parse_priority(level))
+
+
 def _explicit_priority(environ: Mapping[str, str] | None = None) -> int | None:
     level = _PRIORITY.get()
+    if isinstance(level, MutablePriority):
+        return level.level
     if level is not None:
         return level
     raw = (os.environ if environ is None else environ).get(PRIORITY_ENV, "").strip()
@@ -138,19 +188,20 @@ def lease_priority(environ: Mapping[str, str] | None = None) -> int:
 
 
 @contextmanager
-def cpu_priority(level: int, *, export: bool = False):
-    """Lease shared compute at ``level`` inside this context.
+def cpu_priority(level: int | MutablePriority, *, export: bool = False):
+    """Lease shared compute at ``level`` inside this context (a :class:`MutablePriority` is read per lease).
 
     ``export`` also publishes the class to this process environment so every
     child inherits it; the environment is process-wide, so export only at a
     single-purpose process entrypoint. :func:`worker_pool_command` carries a
     context-only class into the workers it launches.
     """
-    level = _parse_priority(level)
+    if not isinstance(level, MutablePriority):
+        level = _parse_priority(level)
     token = _PRIORITY.set(level)
     previous = os.environ.get(PRIORITY_ENV)
     if export:
-        os.environ[PRIORITY_ENV] = str(level)
+        os.environ[PRIORITY_ENV] = str(level.level if isinstance(level, MutablePriority) else level)
     try:
         yield
     finally:
@@ -826,6 +877,10 @@ def selected_pool(
     chosen = set(cpus)
     try:
         if slot_root is not None:
+            if _SLOT_WAITS_REFUSED is not None:
+                global _SLOT_WAIT_REFUSALS
+                _SLOT_WAIT_REFUSALS += 1
+                raise SlotWaitRefused(_SLOT_WAITS_REFUSED)
             if not slot_root.is_absolute() or slot_root.is_symlink():
                 raise ValueError("CPU slot directory must be an absolute ordinary path")
             slot_root.mkdir(parents=True, exist_ok=True)

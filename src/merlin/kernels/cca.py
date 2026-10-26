@@ -941,7 +941,7 @@ def lift_asm_roles(
     resolves every branch to its own address, finds no span, and would otherwise collapse every
     loop-scoped count to a confident zero.
     """
-    from . import roles as _roles
+    from merlin.compile.analysis import instruction_roles as _roles
 
     counts: dict[str, int] = {}
     for d in decoded:
@@ -1140,8 +1140,9 @@ def lift_coverage(model_mlir, claimed_ops, *, op: str = "model", source: str = "
     ``linalg-specialize-generic-ops`` before the schedule runs, so counting op names would report every
     such contraction as an unclaimed ``linalg.generic`` and invent a loss that is not there.
     """
+    from merlin.compile.analysis.contraction_shapes import contraction_shapes
+
     from ..common.mlir_query import op_name, parse
-    from .shapes import contraction_shapes
 
     claimed = {str(c) for c in claimed_ops}
     module = parse(model_mlir)

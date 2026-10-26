@@ -107,7 +107,7 @@ def _read(capsule, *, target):
     # Reopen independent source eligibility. No emitted field may create a
     # placement, dtype or supporting-device grant. This initial route supports
     # exactly the source's signed integer sibling roots as accelerator work.
-    from merlin.targetgen.native_model_execution import independent_frozen_source_eligibility
+    from merlin.targetgen.frozen_source_eligibility import census as independent_frozen_source_eligibility
 
     certificate = independent_frozen_source_eligibility({**declaration, "__dir__": str(root)}, target=target)
     eligible = [row for row in certificate.get("regions", []) if row.get("target_eligible") is True]

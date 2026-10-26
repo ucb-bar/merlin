@@ -139,7 +139,8 @@ def test_native_counted_initial_frontier_and_modulo_lookup_match_independent_ori
     assert receipt["target_qualification"] is False
 
 
-def test_native_cached_dense_panels_keep_original_k_order_and_pool_border_duplication(tmp_path):
+@pytest.mark.parametrize("factor_channel_guards", [False, True])
+def test_native_cached_dense_panels_keep_original_k_order_and_pool_border_duplication(tmp_path, factor_channel_guards):
     from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
     from merlin.compile.scheduling.rolling_spatial import RollingPackedSpatialPlan
     from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
@@ -182,6 +183,7 @@ def test_native_cached_dense_panels_keep_original_k_order_and_pool_border_duplic
             rows=4,
             cache_destination_disjoint=True,
             maximum_panel_bytes=4 * 27,
+            factor_channel_guards=factor_channel_guards,
         )
         return object()
 
@@ -238,3 +240,70 @@ def test_native_cached_dense_panels_keep_original_k_order_and_pool_border_duplic
     assert list(outputs)[8:-8] == expected
     assert list(outputs)[:8] == list(outputs)[-8:] == [241] * 8
     assert list(storage)[:8] == list(storage)[-8:] == [239] * 8
+
+
+@pytest.mark.parametrize("channels,invalid_row", [(1, False), (3, False), (17, False), (3, True)])
+def test_factored_channel_run_actual_pointer_coverage_and_padding(channels, invalid_row):
+    """Walk real emitted CFG; no shape declaration substitutes for its operands."""
+    from collections import Counter
+
+    from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
+    from merlin.compile.scheduling.rolling_spatial import RollingPackedSpatialPlan
+    from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
+    from merlin.compile.scheduling.spatial_readout import RoundedReadout, SpatialReadoutChain
+    from merlin.compile.scheduling.window_transfer import CountedConvolutionPlan
+    from merlin.perf.finite_pointer_trace import ArgumentAddress, project_finite_pointer_trace
+
+    window = Window2D((1, 5, 6, channels), (3, 2), dilation=(2, 1), padding=(2, 1, 2, 0))
+    producer = CountedConvolutionPlan(window, 5, 4, 4, 4, min(4, channels), 64, 128, 0, 8, 3, True)
+    chain = SpatialReadoutChain(RoundedReadout((0.5,), True), RoundedReadout((0.75,)), None)
+    source = SpatialProducerPlan(
+        producer, SpatialMaxReadout(window.output_spatial, (3, 3), (2, 2), (1, 1, 1, 1), -128),
+        (chain, chain), 1, readout_mode="staged_readouts", intermediate=AddressWindow("old", 0, 128),
+    )
+    packed = PackedSpatialProducerPlan(source, 4, AddressWindow("owned", 16, 65536), 8)
+    plan = RollingPackedSpatialPlan(packed)
+    plan = RollingPackedSpatialPlan(replace(packed, workspace=replace(packed.workspace, size=plan.required_bytes)))
+    y = window.output_spatial[0] + 2 if invalid_row else 0
+    expected = []
+    # Original NHWC reduction order, independent integer address calculation.
+    for row in range(4):
+        x = min(max(row - 1, 0), window.output_spatial[1] - 1)
+        for ky in range(3):
+            iy = y - 2 + ky * 2
+            for kx in range(2):
+                ix = x - 1 + kx
+                for channel in range(channels):
+                    output = (row * 6 + ky * 2 + kx) * channels + channel
+                    if row < 3 and 0 <= y < window.output_spatial[0] and 0 <= iy < 5 and 0 <= ix < 6:
+                        offset = (plan.rolling.cache.start
+                                  + ((y + ky * 2) % plan.rolling.slots) * plan.rolling.row_stride_bytes
+                                  + ix * channels + channel)
+                        expected.append(("load", ArgumentAddress(0, offset)))
+                    expected.append(("store", ArgumentAddress(1, output)))
+    branches = []
+    for factored in (False, True):
+        builder = FnBuilder([PTR, PTR])
+        emit_cached_spatial_row_panel(
+            plan, builder, *builder.entry.args, producer_y=y, output_x=0, output_pixels=1,
+            first_halo_column=0, rows=4, cache_destination_disjoint=True,
+            maximum_panel_bytes=4 * 6 * channels, factor_channel_guards=factored,
+        )
+        fn = llvm.FuncOp("pack", llvm.LLVMFunctionType([PTR, PTR], llvm.LLVMVoidType()),
+                         linkage=llvm.LinkageAttr("external"), body=builder.finish())
+        counts = Counter()
+
+        def observe(op, args):
+            counts[op.name] += 1
+            if op.name == "llvm.load":
+                return "load", args[0]
+            if op.name == "llvm.store":
+                return "store", args[1]
+            return None
+
+        actual = project_finite_pointer_trace(fn, observe=observe, pointer_bits=64)
+        assert actual == tuple(expected)
+        assert len([row for row in actual if row[0] == "store"]) == 4 * 6 * channels
+        branches.append(counts["llvm.cond_br"])
+    if channels > 1:
+        assert branches[1] < branches[0]

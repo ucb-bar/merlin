@@ -21,8 +21,96 @@ class SourceSSARegion:
     receipt: dict
 
 
+@dataclass(frozen=True)
+class SourceObservations:
+    """Additional original SSA results for a caller-owned diagnostic build."""
+
+    module: object
+    receipt: dict
+
+
+def append_source_observations(module, values, *, function="forward", max_elements=1 << 20):
+    """Clone a source function and append bounded original tensor observations.
+
+    Existing arguments, operations, result order and callees remain unchanged.
+    Returning an intermediate extends its lifetime: this is a distinct diagnostic
+    artifact, not evidence that its allocation or timing equals the original.
+    No input/reference binding, source admission or execution authority is granted.
+    """
+    from math import prod
+
+    from xdsl.dialects import func
+    from xdsl.dialects.builtin import FunctionType, TensorType
+    from xdsl.ir import OpResult
+
+    from merlin.xdsl_dialects._common import text
+
+    if (type(function) is not str or not function or type(values) is not tuple
+            or not values or len(values) > 32 or len(set(values)) != len(values)
+            or type(max_elements) is not int or max_elements < 1):
+        raise ValueError("source observations require distinct bounded original SSA results")
+    module.verify()
+    before = text(module, generic=True)
+    owners = [op for op in module.body.block.ops if type(op) is func.FuncOp
+              and op.sym_name.data == function and len(op.body.blocks) == 1]
+    if len(owners) != 1:
+        raise ValueError("source observations require one original single-block function")
+    owner = owners[0]
+    block = owner.body.block
+    terminator = block.last_op
+    if type(terminator) is not func.ReturnOp:
+        raise ValueError("source observations require the original return")
+    original_results = tuple(terminator.operands)
+    positions = {op: i for i, op in enumerate(block.ops)}
+    records, elements = [], 0
+    for value in values:
+        if (not isinstance(value, OpResult) or value.owner.parent is not block
+                or value in original_results or not isinstance(value.type, TensorType)):
+            raise ValueError("observation is not a distinct top-level original tensor result")
+        shape = tuple(value.type.get_shape())
+        if any(d < 1 for d in shape):
+            raise ValueError("source observations require positive static tensor extents")
+        elements += prod(shape)
+        if elements > max_elements:
+            raise ValueError("source observations exceed the explicit element bound")
+        records.append({"operation_ordinal": positions[value.owner],
+                        "result_index": value.index, "type": str(value.type)})
+    mapping = {}
+    observed = module.clone(value_mapper=mapping)
+    copied = next(op for op in observed.body.block.ops if type(op) is func.FuncOp
+                  and op.sym_name.data == function)
+    result_values = (*tuple(copied.body.block.last_op.operands), *(mapping[v] for v in values))
+    copied.body.block.erase_op(copied.body.block.last_op)
+    copied.body.block.add_op(func.ReturnOp(*result_values))
+    copied.properties["function_type"] = FunctionType.from_lists(
+        tuple(copied.function_type.inputs), [v.type for v in result_values]
+    )
+    observed.verify()
+    if text(module, generic=True) != before:
+        raise ValueError("source observation changed the original module")
+    return SourceObservations(observed, {
+        "schema": "merlin.original_ssa_observations.v1",
+        "source_ir_sha256": hashlib.sha256(before.encode()).hexdigest(),
+        "observed_ir_sha256": hashlib.sha256(text(observed, generic=True).encode()).hexdigest(),
+        "function": function, "original_result_count": len(original_results),
+        "observations": records, "observed_elements": elements,
+        "original_operation_order_preserved": True,
+        "original_results_preserved": True, "intermediate_lifetimes_extended": True,
+        "effect_or_target_admission": False, "source_closure_verified": False,
+        "target_execution": False, "timing_equivalence": False,
+    })
+
+
 def extract_source_region(
-    module, operations, *, symbol="forward", capture_constants=False, capture_views=False, max_constant_bytes=1 << 20
+    module,
+    operations,
+    *,
+    symbol="forward",
+    capture_constants=False,
+    capture_views=False,
+    max_constant_bytes=1 << 20,
+    capture_literal_splats=False,
+    max_literal_splat_elements=1 << 20,
 ):
     """Clone one complete contiguous current block span, retaining every observer.
 
@@ -30,6 +118,12 @@ def extract_source_region(
     replace an epilogue. Direct callees retain their original definitions and
     declarations recursively. Unknown symbol-bearing operations are refused
     rather than silently importing a different global/runtime environment.
+
+    Explicit literal-splat capture keeps original constant accumulator seeds in
+    the source instead of turning them into unproved runtime inputs. Only the
+    original scalar arith.constant -> tensor.splat chain qualifies. Its complete
+    static logical extent is independently bounded; this is a source-analysis
+    budget, not storage, alias, or device admission.
     """
     from xdsl.dialects import arith, func
     from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr, UnitAttr
@@ -54,6 +148,11 @@ def extract_source_region(
         or type(capture_views) is not bool
         or type(max_constant_bytes) is not int
         or max_constant_bytes < 1
+        or type(capture_literal_splats) is not bool
+        or capture_literal_splats
+        and not capture_constants
+        or type(max_literal_splat_elements) is not int
+        or max_literal_splat_elements < 1
     ):
         raise ValueError("source literal capture requires a Boolean choice and positive byte bound")
     module.verify()
@@ -74,13 +173,36 @@ def extract_source_region(
         raise ValueError("source span has no original function owner")
     from merlin.transforms.tensor_views import _key as tensor_view_key
 
-    prefix, seen = [], set()
+    prefix, seen, literal_splats = [], set(), set()
+    splat_elements = 0
 
     def capture(value):
+        nonlocal splat_elements
         op = value.owner
         if not isinstance(op, Operation) or op in seen or op in operations:
             return
         literal = capture_constants and type(op) is arith.ConstantOp
+        if capture_literal_splats and op.name == "tensor.splat" and len(op.operands) == len(op.results) == 1:
+            from xdsl.dialects.builtin import TensorType
+
+            source = op.operands[0].owner
+            result_type = op.results[0].type
+            if (
+                type(source) is arith.ConstantOp
+                and not isinstance(op.operands[0].type, TensorType)
+                and isinstance(result_type, TensorType)
+                and op.operands[0].type == result_type.element_type
+            ):
+                import math
+
+                shape = result_type.get_shape()
+                if any(d < 0 for d in shape):
+                    raise ValueError("literal splat capture requires complete static extents")
+                splat_elements += math.prod(shape)
+                if splat_elements > max_literal_splat_elements:
+                    raise ValueError("original literal splats exceed the logical element bound")
+                literal = True
+                literal_splats.add(op)
         view = capture_views and tensor_view_key(op) is not None
         if not literal and not view:
             return
@@ -91,7 +213,7 @@ def extract_source_region(
 
     for value in _free_values(operations):
         capture(value)
-    constants = tuple(op for op in prefix if type(op) is arith.ConstantOp)
+    constants = tuple(op for op in prefix if type(op) is arith.ConstantOp or op in literal_splats)
     if sum(len(text(op, generic=True).encode()) for op in constants) > max_constant_bytes:
         raise ValueError("original literal dependencies exceed the source capture byte bound")
     inputs = tuple(_free_values((*prefix, *operations)))

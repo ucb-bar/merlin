@@ -8,7 +8,6 @@ would silently ignore requested transformations. No target is discovered here.
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import asdict, dataclass, replace
 from io import StringIO
 
@@ -51,7 +50,8 @@ def _binding(
 ):
     from .compact_dense import _digest
 
-    if type(source_identity) is not str or re.fullmatch(r"[0-9a-f]{64}", source_identity) is None:
+    if (type(source_identity) is not str or len(source_identity) != 64
+            or any(c not in "0123456789abcdef" for c in source_identity)):
         raise ValueError("dense schedule needs the original source SHA256 identity")
     context = (
         asdict(problem),

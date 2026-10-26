@@ -2,14 +2,16 @@
 import importlib.util
 
 import pytest
+from merlin_experiments.phase2.compiler_library_guidance import selected_inventory
 
 from merlin.common.paths import repo_root
 from merlin.compile.scheduling.export import export_shared_scheduling
 from merlin.compile.scheduling.library_sources import library_modules
 from merlin.targetgen.compiler_library import (
-    CompilerLibrarySelection, freeze_compiler_library, scoped_compiler_library,
+    CompilerLibrarySelection,
+    freeze_compiler_library,
+    scoped_compiler_library,
 )
-from merlin_experiments.phase2.compiler_library_guidance import selected_inventory
 
 ROOT = repo_root()
 SPEC = importlib.util.spec_from_file_location(
@@ -36,7 +38,7 @@ def test_view_selection_requires_explicit_review_and_existing_closure():
 
 def test_exact_view_source_is_admitted_and_has_callable_inventory(tmp_path):
     root = tmp_path / "reviewed"
-    manifest = export_shared_scheduling(root, version=8, source_binding=True)
+    manifest = export_shared_scheduling(root, version=20, source_binding=True)
     sources = tuple((row["path"], row["module"]) for row in manifest["members"])
     requested = PREP.reviewed_view_modules(
         (), existing=manifest["public_modules"],
