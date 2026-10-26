@@ -102,12 +102,171 @@ def test_every_output_stage_is_read_from_the_design(tmp_path):
     activation = record["activation"]
     assert activation["functions"]["relu"]["codes"] == [1]
     assert activation["unrecognized_codes"] == [] and activation["before_scale"] is True
+    assert activation["identity"]["code"] == 0
     assert record["pool"]["reductions"] == ["max"]
     assert record["pool"]["padding"] == OE.UNKNOWN
     assert "not derived" in record["unknown"]["pool.padding"]
     assert record["output_path"]["readout"][-1]["padding"] == "unknown"
     assert record["accumulate"]["status"] == OE.UNKNOWN
     assert "accumulate" in record["unknown"]
+
+
+def test_activation_identity_refuses_an_unbound_guard(tmp_path):
+    path = _fir(tmp_path)
+    path.write_text(path.read_text().replace("and(UInt<1>(0h1), _is_rect)", "or(io.unknown, _is_rect)"))
+    record = OE.derive(_facts(path), contract=_contract())
+    assert record["activation"]["status"] == OE.DERIVED
+    assert "identity" not in record["activation"]
+
+
+_POOL = """
+  module Store :
+    input clock : Clock
+    input cfg : UInt<3>
+    input bad : UInt<1>
+    input row : UInt<8>
+    input column : UInt<8>
+    input rows : UInt<8>
+    input columns : UInt<8>
+    reg step : UInt<3>, clock
+    connect step, cfg
+    node enabled = neq(step, UInt<3>(0h7))
+    node row_out = geq(row, rows)
+    node column_out = geq(column, columns)
+    node outside = or(row_out, column_out)
+    wire address : { tag : UInt<3> }
+    connect address.tag, UInt<3>(0h0)
+    when outside :
+      connect address.tag, UInt<3>(0h6)
+  module Writer :
+    input io : { address : { tag : UInt<3> }, configurable : UInt<8> }
+    output data : UInt<8>
+    node sentinel = eq(io.address.tag, UInt<3>(0h6))
+    node tap = mux(sentinel, UInt<8>(0h0), io.configurable)
+    connect data, tap
+"""
+
+
+def _pool_contract():
+    contract = _contract()
+    contract["rtl_extraction"][OE.FIELD].update(
+        {
+            "pool_disable": {"module": "Store", "selector": "step", "configured_by": "cfg", "enabled": "enabled"},
+            "pool_padding": {
+                "address": {
+                    "module": "Store",
+                    "out_of_bounds": "outside",
+                    "value": "address",
+                    "fields": ["tag"],
+                    "out_of_bounds_checks": ["geq(row, rows)", "geq(column, columns)"],
+                },
+                "tap": {"module": "Writer", "address": "io.address", "sentinel": "sentinel", "data": "data"},
+            },
+        }
+    )
+    return contract
+
+
+def test_pool_disable_and_zero_padding_follow_the_selected_rtl(tmp_path):
+    path = _fir(tmp_path)
+    path.write_text(path.read_text() + _POOL)
+    record = OE.derive(_facts(path), contract=_pool_contract())
+    assert record["pool"]["disable"]["code"] == 7
+    assert record["pool"]["padding"] == "zero_tap"
+    assert record["pool"]["padding_evidence"]["sentinel"] == {"address.tag": 6}
+    assert record["output_path"]["readout"][-1]["padding"] == "zero_tap"
+    assert "pool.padding" not in record["unknown"]
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "bad",
+        "row_out",
+        "geq(row, columns)",
+        "and(row_out, column_out)",
+        "not(or(row_out, column_out))",
+        "eq(row_out, column_out)",
+        "xor(row_out, column_out)",
+    ],
+)
+def test_padding_predicate_must_retain_both_image_bound_comparisons(tmp_path, replacement):
+    path = _fir(tmp_path)
+    path.write_text(path.read_text() + _POOL.replace("or(row_out, column_out)", replacement))
+    record = OE.derive(_facts(path), contract=_pool_contract())
+    assert record["pool"]["padding"] == OE.UNKNOWN
+    assert "bound comparisons" in record["unknown"]["pool.padding"]
+
+
+def test_padding_temporary_can_be_renamed_with_its_verified_cone(tmp_path):
+    path = _fir(tmp_path)
+    path.write_text(path.read_text() + _POOL.replace("outside", "_T_99"))
+    contract = _pool_contract()
+    address = contract["rtl_extraction"][OE.FIELD]["pool_padding"]["address"]
+    address["out_of_bounds"] = "_T_99"
+    assert OE.derive(_facts(path), contract=contract)["pool"]["padding"] == "zero_tap"
+    del address["out_of_bounds_checks"]
+    record = OE.derive(_facts(path), contract=contract)
+    assert record["pool"]["padding"] == OE.UNKNOWN
+
+
+def test_pool_evidence_bytes_ignore_contract_key_order(tmp_path):
+    from merlin.common.jsonio import canonical_json
+
+    def reordered(value):
+        if isinstance(value, dict):
+            return {key: reordered(item) for key, item in reversed(list(value.items()))}
+        if isinstance(value, list):
+            return [reordered(item) for item in value]
+        return value
+
+    path = _fir(tmp_path)
+    path.write_text(path.read_text() + _POOL)
+    contract = _pool_contract()
+    reverse = reordered(contract)
+    assert canonical_json(contract) == canonical_json(reverse)
+    first = OE.derive(_facts(path), contract=contract)
+    second = OE.derive(_facts(path), contract=reverse)
+    assert first["pool"]["padding"] == second["pool"]["padding"] == "zero_tap"
+    assert first["pool"]["evidence"] == second["pool"]["evidence"]
+    assert canonical_json(first) == canonical_json(second)
+
+
+@pytest.mark.parametrize("replacement", ["UInt<8>(0h1)", "io.configurable"])
+def test_nonzero_or_configurable_padding_is_not_claimed_as_zero(tmp_path, replacement):
+    path = _fir(tmp_path)
+    path.write_text(path.read_text() + _POOL.replace("mux(sentinel, UInt<8>(0h0)", "mux(sentinel, " + replacement))
+    record = OE.derive(_facts(path), contract=_pool_contract())
+    assert record["pool"]["padding"] == OE.UNKNOWN
+    assert "constant zero" in record["unknown"]["pool.padding"]
+
+
+@pytest.mark.parametrize("missing", ["pool_disable", "pool_padding"])
+def test_missing_pool_probe_leaves_a_reason(tmp_path, missing):
+    path = _fir(tmp_path)
+    path.write_text(path.read_text() + _POOL)
+    contract = _pool_contract()
+    del contract["rtl_extraction"][OE.FIELD][missing]
+    record = OE.derive(_facts(path), contract=contract)
+    assert "pool." + missing.removeprefix("pool_") in record["unknown"]
+
+
+def test_a_pool_gate_without_a_disabling_value_refuses(tmp_path):
+    path = _fir(tmp_path)
+    path.write_text(path.read_text() + _POOL.replace("neq(step, UInt<3>(0h7))", "UInt<1>(0h1)"))
+    record = OE.derive(_facts(path), contract=_pool_contract())
+    assert "disable" not in record["pool"]
+    assert "no compared" in record["unknown"]["pool.disable"]
+
+
+def test_a_changed_padding_sentinel_refuses(tmp_path):
+    path = _fir(tmp_path)
+    path.write_text(
+        path.read_text() + _POOL.replace("eq(io.address.tag, UInt<3>(0h6))", "eq(io.address.tag, UInt<3>(0h5))")
+    )
+    record = OE.derive(_facts(path), contract=_pool_contract())
+    assert record["pool"]["padding"] == OE.UNKNOWN
+    assert "pool.padding" in record["unknown"]
 
 
 def test_without_a_probe_the_firrtl_stages_are_unknown(tmp_path):
@@ -318,3 +477,14 @@ def test_an_underived_record_is_well_formed_and_claims_nothing():
     assert record["stages"] == {"acc_scale": False, "relu": False, "maxpool": False}
     assert record["unknown"] == {"derivation": "no facts", "pool.padding": "no facts"}
     assert record["pool"]["padding"] == OE.UNKNOWN
+
+
+def test_the_scalar_abi_is_read_from_the_contracts_readout_semantics(tmp_path):
+    contract = _contract()
+    abi = contract.pop("runner")["chipyard_rocc"]["readout"]["scalar_abi"]
+    contract["readout_semantics"] = {"scalar_abi": abi}
+    record = OE.derive(_facts(_fir(tmp_path)), contract=contract)
+    assert record["scale"]["rounding"] == "half_even" and record["scale"]["saturation"] == [-128, 127]
+    assert record["output_path"]["exits"]["requant"] is True
+    del contract["readout_semantics"]
+    assert "scale.rounding" in OE.derive(_facts(_fir(tmp_path)), contract=contract)["unknown"]

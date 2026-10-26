@@ -1,0 +1,740 @@
+{
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "merlin.fusion_candidates.v1"
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "merlin.fusion_enumeration_profile.minimal.v1"
+        },
+        "max_producers": {
+          "const": 2
+        },
+        "fractional_controls": {
+          "const": [
+            "-1/2",
+            "1/2"
+          ]
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "serial_edges": {
+          "const": "out_of_profile"
+        },
+        "incompatible_node_extensions": {
+          "const": "pruned_with_witness"
+        },
+        "dataflow_variants": {
+          "const": "mesh_product_graphs_only"
+        },
+        "coefficient_tiles": {
+          "const": "derived_from_k_and_prefix_bounds"
+        },
+        "case_parameters": {
+          "const": [
+            "shapes",
+            "tails",
+            "edge_values",
+            "output_scales"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "max_producers",
+        "fractional_controls",
+        "max_rows",
+        "serial_edges",
+        "incompatible_node_extensions",
+        "dataflow_variants",
+        "coefficient_tiles",
+        "case_parameters"
+      ],
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "facts_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "spec_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "contract_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "generator_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scheme_resolution_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "facts_sha256",
+        "spec_sha256",
+        "contract_sha256",
+        "generator_sha256",
+        "scheme_resolution_sha256",
+        "profile_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "normalized_facts": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "merlin.fusion_facts.v1"
+        },
+        "output_path": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "value": {},
+              "evidence": {
+                "type": "array",
+                "items": {}
+              }
+            },
+            "required": [
+              "status",
+              "value",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "output_path",
+        "fields"
+      ],
+      "additionalProperties": false
+    },
+    "scheme_resolution": {
+      "type": "object"
+    },
+    "enumeration_complete": {
+      "const": true
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "extension_bounds": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "derived",
+            "unknown"
+          ]
+        },
+        "T_max": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coefficient_bound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "digit_max": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "representative": {
+          "type": "object"
+        },
+        "partitions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sign": {
+                "enum": [
+                  -1,
+                  1
+                ]
+              },
+              "tiles": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "abs_min": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "abs_max": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "sign",
+              "tiles",
+              "abs_min",
+              "abs_max"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "boundary_proofs": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "derived"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "T_max",
+              "coefficient_bound",
+              "digit_max",
+              "representative",
+              "partitions",
+              "boundary_proofs"
+            ]
+          },
+          "else": {
+            "required": [
+              "missing"
+            ]
+          }
+        }
+      ]
+    },
+    "summary": {
+      "type": "object"
+    },
+    "campaign": {
+      "type": "object",
+      "properties": {
+        "per_stratum": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "order": {
+          "const": "candidate_id"
+        },
+        "stratum_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stratification": {
+          "const": "merlin.fusion_campaign.required_regime_strata.v1"
+        },
+        "required_regimes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "composition": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "scheme": {
+                "type": "string"
+              },
+              "axes": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "composition",
+              "scheme",
+              "axes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "regime_coverage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "regime": {
+                "type": "object"
+              },
+              "eligible": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "executed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "strata": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "regime",
+              "eligible",
+              "executed",
+              "strata"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "per_stratum",
+        "order",
+        "stratum_count",
+        "stratification",
+        "required_regimes",
+        "regime_coverage"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "target",
+    "profile",
+    "identity",
+    "normalized_facts",
+    "scheme_resolution",
+    "enumeration_complete",
+    "candidate_count",
+    "rows",
+    "extension_bounds",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fusion_candidates.schema.json",
+  "title": "Complete bounded fusion candidate denominator",
+  "$defs": {
+    "node": {
+      "type": "object",
+      "properties": {
+        "form": {
+          "enum": [
+            "contraction",
+            "operand_sum",
+            "window_movement"
+          ]
+        },
+        "realization": {
+          "enum": [
+            "matmul",
+            "conv_as_matmul",
+            "scaled_loads",
+            "pool",
+            "mean"
+          ]
+        },
+        "readout": {
+          "type": "object",
+          "properties": {
+            "pool_padding": {
+              "enum": [
+                "unpadded_only",
+                "zero_or_padded"
+              ]
+            },
+            "pool_padding_class": {
+              "enum": [
+                "unpadded",
+                "padded"
+              ]
+            },
+            "exit": {
+              "enum": [
+                "accumulator",
+                "requant",
+                "UNKNOWN"
+              ]
+            },
+            "stage_indices": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "stages": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "required": [
+            "exit",
+            "stage_indices",
+            "stages"
+          ],
+          "additionalProperties": false
+        },
+        "seed": {
+          "type": "boolean"
+        },
+        "seed_source": {
+          "enum": [
+            "constant",
+            "runtime_argument"
+          ]
+        },
+        "residual": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "integer_constant"
+                },
+                "domain": {
+                  "const": "extension_bounds"
+                },
+                "T_max": {
+                  "oneOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "const": "UNKNOWN"
+                    }
+                  ]
+                },
+                "coefficient_bound": {
+                  "oneOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "const": "UNKNOWN"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "domain",
+                "T_max",
+                "coefficient_bound"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "fractional"
+                },
+                "values": {
+                  "const": [
+                    "-1/2",
+                    "1/2"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "values"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "scheme": {
+          "type": "string",
+          "minLength": 1
+        },
+        "regime": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "form",
+        "realization",
+        "readout",
+        "seed",
+        "residual",
+        "scheme",
+        "regime"
+      ],
+      "additionalProperties": false
+    },
+    "row": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "semantic": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "profile": {
+                  "const": "merlin.fusion_enumeration_profile.minimal.v1"
+                },
+                "structure": {
+                  "enum": [
+                    "single",
+                    "shared_input"
+                  ]
+                },
+                "nodes": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 2,
+                  "items": {
+                    "$ref": "#/$defs/node"
+                  }
+                },
+                "dataflow": {
+                  "enum": [
+                    "WS",
+                    "OS",
+                    "not_applicable"
+                  ]
+                },
+                "shared_leaf": {
+                  "enum": [
+                    "immutable_input_0",
+                    null
+                  ]
+                },
+                "guards": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "profile",
+                "structure",
+                "nodes",
+                "dataflow",
+                "shared_leaf",
+                "guards"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profile": {
+                  "const": "merlin.fusion_enumeration_profile.minimal.v1"
+                },
+                "structure": {
+                  "const": "serial"
+                },
+                "producer_forms": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              "required": [
+                "profile",
+                "structure",
+                "producer_forms"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "candidate",
+            "pending_facts",
+            "incompatible",
+            "out_of_profile",
+            "deferred_by_stratification"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "enum": [
+                  "pending_facts",
+                  "incompatible",
+                  "out_of_profile"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "missing_fact": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "state",
+              "reason",
+              "evidence"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "state": {
+                      "const": "pending_facts"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "missing_fact"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "pruning_scope": {
+          "enum": [
+            "row",
+            "node_extensions",
+            "all_extensions"
+          ]
+        },
+        "negative_control": {
+          "type": "boolean"
+        },
+        "stratum_key": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "semantic",
+        "state",
+        "reasons",
+        "pruning_scope",
+        "negative_control"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "candidate",
+                  "deferred_by_stratification"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reasons": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "reasons": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "deferred_by_stratification"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "stratum_key"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

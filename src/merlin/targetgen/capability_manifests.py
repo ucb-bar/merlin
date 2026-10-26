@@ -583,6 +583,32 @@ def _derived_output_epilogue(name: str, manifest: dict[str, Any], facts: dict[st
         return _oe.underived(f"{type(exc).__name__}: {exc}")
 
 
+def derived_output_path(
+    name: str, *, facts: dict[str, Any] | None = None, contract: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """``name``'s ordered contraction output path, derived exactly as contract derivation derives it.
+
+    A contract already carrying a derived ``output_epilogue`` answers with its path. Otherwise the
+    record is derived here from ``facts`` (the target's selected facts when omitted), ``contract``
+    (its selected contract when omitted) and the behavioural ``accumulate_on_load`` fact, so the
+    accumulator stages are read rather than left UNKNOWN. ``None`` when nothing can be derived.
+    """
+    from .quant_methodology import output_path_of
+
+    if contract is None:
+        from .target_registry import load_contract
+
+        contract = load_contract(name)
+    declared = output_path_of(contract)
+    if declared is not None:
+        return declared
+    if facts is None:
+        from .rtl.facts import load_facts
+
+        facts = load_facts(name)
+    return _derived_output_epilogue(name, dict(contract), facts).get("output_path")
+
+
 def derive_manifest(
     descriptor: Any, facts: dict[str, Any], *, residual: dict[str, Any] | None = None
 ) -> dict[str, Any]:

@@ -315,3 +315,23 @@ def test_dialect_plan_derived_from_units():
     assert plan["target"] == "radiance" and plan["dialect_name"] == "radiance"
     assert {t["name"] for t in plan["types"]} == {"simt_cluster_tensor", "mx_pe_tensor"}
     assert {o["name"] for o in plan["ops"]} >= {"matmul", "elementwise"}
+
+
+def test_derived_output_path_prefers_a_declared_record_then_derives_with_semantic_facts(monkeypatch):
+    from merlin.targetgen import capability_manifests as CM
+    from merlin.targetgen.rtl import semantic_facts
+
+    declared = {"schema": "output_path_v1", "accumulator": {"dtype": "i32"}, "readout": [], "exits": {}}
+    contract = {"output_epilogue": {"output_path": declared}}
+    assert CM.derived_output_path("synthetic", facts={}, contract=contract) == declared
+
+    asked = []
+
+    def derive(name, only=None):
+        asked.append((name, tuple(only or ())))
+        return {"facts": {"accumulate_on_load": {"status": "UNKNOWN"}}}
+
+    monkeypatch.setattr(semantic_facts, "derive", derive)
+    path = CM.derived_output_path("synthetic", facts={}, contract={"name": "synthetic"})
+    assert asked == [("synthetic", ("accumulate_on_load",))]
+    assert path is not None and path["exits"] == {"accumulator": False, "requant": False}

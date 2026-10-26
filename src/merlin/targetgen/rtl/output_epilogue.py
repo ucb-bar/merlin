@@ -43,6 +43,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.common.jsonio import canonical_json
+
 SCHEMA = "output_epilogue_v1"
 #: The contract key the derived record is declared under, and the ``rtl_extraction`` probe key.
 FIELD = "output_epilogue"
@@ -188,10 +190,28 @@ def _activation(module, probe: Mapping[str, Any]) -> dict[str, Any]:
             found.setdefault(code, cite)
     if not found:
         raise _Unreadable(f"no node of {module.name} selects max({value}, 0) by an equality on {field}")
-    return {
+    result = {
         "functions": {RECTIFIER: {"codes": sorted(found), "applied_to": value, "cite": found[min(found)]}},
         "unrecognized_codes": sorted(compared - set(found)),
     }
+    from .firrtl_scalar_cutpoints import ScalarCutpoints
+
+    root, path = _path(field)
+    typ = F.field_type(_declared_type(module, root), path)
+    if typ and typ[0] == "uint" and type(typ[1]) is int and 0 < typ[1] <= 8:
+        # Prove the selector takes the unchanged arm, rather than assigning a
+        # meaning to an unused encoding by its spelling or numeric value.
+        for code in range(1 << typ[1]):
+            try:
+                guards = [module.nodes[cite["node"]][0].args[0] for cite in found.values()]
+                if all(isinstance(g, F.Ref) for g in guards) and all(
+                    v == 0 for v in ScalarCutpoints(module).evaluate({field: code}, [g.text() for g in guards]).values()
+                ):
+                    result["identity"] = {"code": code, "cite": found[min(found)]}
+                    break
+            except ValueError:
+                break
+    return result
 
 
 def _scale_format(module, probe: Mapping[str, Any]) -> dict[str, Any]:
@@ -497,6 +517,99 @@ class _Unreadable(Exception):
     """A rung could not read its fact; the message is the reason."""
 
 
+def _pool_controls(body, probe):
+    """Disable code of the contract-anchored pooling gate, read as data."""
+    from . import firrtl_struct as F
+    from .firrtl_scalar_cutpoints import ScalarCutpoints
+
+    modules, provenance, why = _load(body, [probe["module"]])
+    if why:
+        raise _Unreadable(why)
+    module = modules[probe["module"]]
+    selector, enabled = probe["selector"], probe["enabled"]
+    drivers = [c for c in module.connects if c.lhs.text() == selector]
+    if not drivers or any(c.rhs != F.parse_expr(probe["configured_by"]) for c in drivers):
+        raise _Unreadable("pool selector is not written by the declared register field")
+    _leaves, prims, _lines = F.Cone(module).walk(F.parse_expr(enabled))
+    codes = sorted(
+        {
+            arg.value
+            for prim in prims
+            if prim.op in ("eq", "neq") and F.parse_expr(selector) in prim.args
+            for arg in prim.args
+            if isinstance(arg, F.Lit)
+        }
+    )
+    for code in codes:
+        if ScalarCutpoints(module).evaluate({selector: code}, [enabled])[enabled] == 0:
+            return {"code": code, "probe": dict(probe), "source": provenance}
+    raise _Unreadable("no compared pool selector value disables the elaborated pooling gate")
+
+
+def _pool_padding(body, probe):
+    """Follow the out-of-image address sentinel to the numeric writer-data mux."""
+    from . import firrtl_struct as F
+    from .firrtl_scalar_cutpoints import ScalarCutpoints
+
+    address, tap = probe["address"], probe["tap"]
+    modules, provenance, why = _load(body, sorted({address["module"], tap["module"]}))
+    if why:
+        raise _Unreadable(why)
+    source, sink = modules[address["module"]], modules[tap["module"]]
+    # Only positive OR leaves establish that either declared bound triggers padding.
+    checks = {F.parse_expr(check) for check in address.get("out_of_bounds_checks", [])}
+    leaves = set()
+    work = [F.parse_expr(address["out_of_bounds"])]
+    seen = set()
+    while work:
+        expr = work.pop()
+        if expr in seen:
+            continue
+        seen.add(expr)
+        expr = _resolve(source, expr)
+        if isinstance(expr, F.Prim) and expr.op == "or" and len(expr.args) == 2:
+            work.extend(expr.args)
+        else:
+            leaves.add(expr)
+    if not checks or not checks <= leaves:
+        raise _Unreadable("the out-of-image predicate does not OR the declared bound comparisons")
+    fields = address["fields"]
+    values = ScalarCutpoints(source).evaluate(
+        {address["out_of_bounds"]: 1}, [address["value"] + "." + field for field in fields]
+    )
+    # The sentinel travels through address-metadata queues. Read their actual
+    # port types; a field missing from either end must refuse the join.
+    root = F.parse_expr(tap["address"]).root
+    declaration = sink.decls.get(root)
+    children = {}
+    if declaration and declaration[0] == "inst":
+        children, _, why = _load(body, [declaration[1]])
+        if why:
+            raise _Unreadable(why)
+    cuts = {tap["address"] + "." + field: values[address["value"] + "." + field] for field in fields}
+    sentinel = ScalarCutpoints(sink, modules=children).evaluate(cuts, [tap["sentinel"]])
+    drivers = [c for c in sink.connects if c.lhs.text() == tap["data"]]
+    if len(drivers) != 1 or drivers[0].guards:
+        raise _Unreadable("the padding tap has no unique unconditional data driver")
+    expr = _resolve(sink, drivers[0].rhs)
+    if not (
+        isinstance(expr, F.Prim)
+        and expr.op == "mux"
+        and len(expr.args) == 3
+        and expr.args[0] == F.parse_expr(tap["sentinel"])
+        and sentinel[tap["sentinel"]] == 1
+        and _zero(_resolve(sink, expr.args[1]))
+    ):
+        raise _Unreadable("the out-of-image sentinel does not select a constant zero numeric tap")
+    return {
+        "value": "zero_tap",
+        "probe": dict(probe),
+        "source": provenance,
+        "sentinel": values,
+        "firrtl_line": drivers[0].line,
+    }
+
+
 def _firrtl_modules(body: Mapping[str, Any], module: str) -> tuple[Any | None, dict[str, Any], str | None]:
     """The probed module, the provenance of the bytes read, and why it could not be read."""
     from . import firrtl_struct as F
@@ -532,9 +645,17 @@ def _probe(contract: Mapping[str, Any] | None) -> tuple[Mapping[str, Any] | None
 
 
 def _scalar_abi(contract: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
-    readout = (((contract or {}).get("runner") or {}).get("chipyard_rocc") or {}).get("readout")
-    abi = (readout or {}).get("scalar_abi") if isinstance(readout, Mapping) else None
-    return abi if isinstance(abi, Mapping) else None
+    """The contract's scalar readout ABI: its ``readout_semantics`` record (the one the runtime reads),
+    else the older runner-scoped readout block."""
+    contract = contract or {}
+    for readout in (
+        contract.get("readout_semantics"),
+        ((contract.get("runner") or {}).get("chipyard_rocc") or {}).get("readout"),
+    ):
+        abi = readout.get("scalar_abi") if isinstance(readout, Mapping) else None
+        if isinstance(abi, Mapping):
+            return abi
+    return None
 
 
 def derive(
@@ -717,9 +838,8 @@ def derive(
 
     # --- pool ------------------------------------------------------------------------------------
     pool = record["pool"]
-    # A build gate and window geometry do not establish the value contributed by
-    # an out-of-bounds lane. That requires the complete store-to-reduction data
-    # cone, including sentinel handling, which this reader does not observe.
+    # A build gate and window geometry do not establish an out-of-image value.
+    # Keep it unknown until the address-sentinel and numeric tap probes agree.
     pool["padding"] = UNKNOWN
     unknown["pool.padding"] = (
         "the padded store-to-reduction value is not derived; pooling gates and "
@@ -748,6 +868,22 @@ def derive(
     if pool["status"] == DERIVED and not pool.get("carriers"):
         pool["status"] = UNKNOWN
         unknown["pool"] = "pooling is built, but no command-register field carries the pool role"
+    for key, reader in (("disable", _pool_controls), ("padding", _pool_padding)):
+        anchor = (probe or {}).get("pool_" + key)
+        if pool["status"] != DERIVED or not anchor:
+            unknown.setdefault("pool." + key, "the contract declares no pooling " + key + " probe")
+            continue
+        try:
+            derived = reader(body, anchor)
+            if key == "padding":
+                pool[key] = derived["value"]
+                pool["padding_evidence"] = derived
+            else:
+                pool[key] = derived
+            unknown.pop("pool." + key, None)
+            _note(record, "pool", "firrtl_structural", canonical_json(derived).decode())
+        except (ValueError, KeyError, _Unreadable) as exc:
+            unknown["pool." + key] = str(exc)
 
     record["stages"] = {
         stage: record[capability]["status"] == DERIVED for stage, capability in STAGE_CAPABILITY.items()
