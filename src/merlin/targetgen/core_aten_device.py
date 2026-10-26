@@ -2,20 +2,380 @@
 
 from __future__ import annotations
 
+import ast
+import builtins
 import hashlib
+import importlib
 import json
 import os
+import sys
+import threading
 from contextlib import contextmanager, nullcontext
+from importlib.machinery import all_suffixes
+from importlib.metadata import packages_distributions
+from importlib.util import find_spec
 from pathlib import Path
+from types import ModuleType
 from typing import Any
+from uuid import uuid4
 
 from merlin.targetgen.native_cpu_errors import NativeCPUCertificateUnavailable
 from merlin.targetgen.plugins import load_module
 from merlin.targetgen.rtl.facts import ensure_facts, load_facts, observed_facts
 
 
-def load_execution_provider(target: str, path: Path | None = None):
-    """Select target-edge support explicitly; no compiler policy lives in this adapter."""
+def _provider_dependency(name, path, roots, installed):
+    top = name.split(".", 1)[0]
+    if top == path.parent.name or any(
+        (root / top).exists() or any((root / f"{top}{suffix}").exists() for suffix in all_suffixes()) for root in roots
+    ):
+        raise ValueError("pinned execution provider cannot import unpinned package siblings")
+    if top not in installed:
+        raise ValueError("pinned execution provider requires absolute installed dependencies")
+    # An installed namespace can still contain this provider's unpinned
+    # siblings. Inspect dependency locations without importing parents.
+    spec = find_spec(top)
+    if spec is None:
+        raise ValueError("pinned execution provider dependency is unavailable")
+    locations = [Path(root).resolve() for root in spec.submodule_search_locations or ()]
+    local_origin = spec.origin not in {None, "built-in", "frozen"} and Path(spec.origin).resolve().is_relative_to(
+        path.parent
+    )
+    if local_origin or any(path.is_relative_to(root) for root in locations):
+        raise ValueError("pinned execution provider cannot import unpinned package siblings")
+
+
+def _provider_imports(source: bytes, path: Path, guard) -> None:
+    """A single-file pin grants no package initializers or sibling Python modules.
+
+    Providers may import absolute installed dependencies (including Merlin).
+    Package-local dependencies, whether relative or named absolutely, require
+    a separately pinned closure and are unsupported by this single-file format.
+    Inspect deferred imports too, before any provider code can run.
+    """
+    roots = [path.parent]
+    while (roots[-1] / "__init__.py").is_file():
+        roots.append(roots[-1].parent)
+    installed = {*sys.stdlib_module_names, "merlin", *packages_distributions()}
+    for node in ast.walk(ast.parse(source, filename=str(path))):
+        if isinstance(node, ast.ImportFrom):
+            if node.level:
+                raise ValueError("pinned execution provider cannot import unpinned package siblings")
+            names = [node.module]
+        elif isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        else:
+            continue
+        for name in names:
+            guard.check_cached(name)
+            _provider_dependency(name, path, roots, installed)
+
+
+_SYMLINK_HOPS = 40
+
+
+def _path_forms(location):
+    """The lexical path, every symlink resolution passes through, and the resolved path.
+
+    Each symlink is named by the resolved directory that holds it, so a link
+    anywhere on the chain under a candidate root refuses the location, even
+    when it currently points at a trusted file and could be retargeted later.
+    Non-link components lie on a prefix of a later form, so they need no entry.
+    """
+    lexical = os.path.abspath(location)
+    forms, current, hops = [lexical], os.sep, 0
+    pending = lexical.split(os.sep)[::-1]
+    while pending:
+        component = pending.pop()
+        if component in {"", "."}:
+            continue
+        if component == "..":
+            current = os.path.dirname(current)
+            continue
+        path = os.path.join(current, component)
+        if not os.path.islink(path):
+            current = path
+            continue
+        hops += 1
+        if hops > _SYMLINK_HOPS:
+            raise ValueError("pinned execution provider dependency has a symlink loop or overlong chain")
+        forms.append(path)
+        target = os.readlink(path)
+        if os.path.isabs(target):
+            current = os.sep
+        pending.extend(target.split(os.sep)[::-1])
+    forms.append(current)
+    return forms
+
+
+# Path forms of locations of modules that have already executed, keyed by
+# location; root membership is still decided per index on every check.
+_loaded_forms = {}
+
+
+def _location_parts(location, *, loaded):
+    forms = _loaded_forms.get(location) if loaded else None
+    if forms is None:
+        forms = tuple(Path(form).parts for form in _path_forms(location))
+        if loaded:
+            _loaded_forms[location] = forms
+    return forms
+
+
+class _CandidateRoots:
+    """Candidate-writable roots and their component trie.
+
+    Neither changes after construction: extending the roots builds a new index
+    that the guard publishes with one reference assignment, so a hook that reads
+    ``guard.index`` once checks against a consistent snapshot without a lock.
+    ``_clean`` only memoizes executed-module locations found outside the roots.
+    """
+
+    def __init__(self, roots):
+        self.roots = frozenset(roots)
+        self._trie = {}
+        for root in self.roots:
+            node = self._trie
+            for component in root.parts:
+                node = node.setdefault(component, {})
+            node[None] = True
+        self._clean = set()
+
+    def union(self, roots):
+        return self if roots <= self.roots else _CandidateRoots(self.roots | roots)
+
+    def _match(self, parts):
+        """``(writable, visited)``: whether ``parts`` lie under a root, and trie nodes visited."""
+        node, visited = self._trie, 1
+        for component in parts:
+            if None in node:
+                return True, visited
+            node = node.get(component)
+            if node is None:
+                return False, visited
+            visited += 1
+        return None in node, visited
+
+    def check_locations(self, locations, *, loaded=False):
+        # Locations about to load are resolved afresh: the filesystem may change before exec.
+        for location in locations:
+            if location in {None, "built-in", "frozen"} or (loaded and location in self._clean):
+                continue
+            if any(self._match(parts)[0] for parts in _location_parts(location, loaded=loaded)):
+                raise ValueError("pinned execution provider dependency lies under a candidate-writable root")
+            if loaded:
+                self._clean.add(location)
+
+    def check_spec(self, spec):
+        # The loader executes ``cached`` bytecode instead of ``origin`` when it validates.
+        self.check_locations([spec.origin, spec.cached])
+        self.check_locations(spec.submodule_search_locations or ())
+
+    def check_module(self, module):
+        if not isinstance(module, ModuleType):
+            return
+        attributes = vars(module)
+        spec = attributes.get("__spec__")
+        locations = [attributes.get("__file__"), attributes.get("__cached__")]
+        locations += [getattr(spec, "origin", None), getattr(spec, "cached", None)]
+        self.check_locations(locations, loaded=True)
+        self.check_locations(attributes.get("__path__", ()), loaded=True)
+        self.check_locations(getattr(spec, "submodule_search_locations", None) or (), loaded=True)
+
+    def check_cached(self, name):
+        parts = name.split(".")
+        for end in range(1, len(parts) + 1):
+            self.check_module(sys.modules.get(".".join(parts[:end])))
+
+    def check_fromlist(self, name, fromlist):
+        self.check_cached(name)
+        parent = sys.modules.get(name)
+        if not isinstance(parent, ModuleType):
+            return
+        for child in fromlist or ():
+            if child == "*":
+                children = vars(parent).get("__all__", vars(parent))
+                for member in children:
+                    self.check_module(vars(parent).get(member))
+            else:
+                self.check_cached(f"{name}.{child}")
+                self.check_module(vars(parent).get(child))
+
+
+_RECHECKED = "_provider_import_guard_rechecks"
+
+
+def _module_spec(module):
+    return getattr(module, "__spec__", None)
+
+
+class _ProviderImportGuard:
+    """Check resolution and cache hits before dependencies can execute.
+
+    Hooks take no lock, so they never wait on a thread blocked in the import system.
+    """
+
+    def __init__(self, index):
+        self.index = index
+        self.importer = builtins.__import__
+        self.import_module = importlib.import_module
+
+    @property
+    def writable_roots(self):
+        return self.index.roots
+
+    def check_cached(self, name):
+        self.index.check_cached(name)
+
+    def find_spec(self, fullname, path=None, target=None):
+        index = self.index
+        index.check_cached(fullname)
+        index.check_locations(path or ())
+        for finder in tuple(sys.meta_path):
+            if finder is self:
+                continue
+            spec = finder.find_spec(fullname, path, target)
+            if spec is not None:
+                index.check_spec(spec)
+                self._recheck_before_running(spec.loader)
+                return spec
+        return None
+
+    def _recheck_before_running(self, loader):
+        """Recheck the spec against the index current when the loader runs code.
+
+        Roots published after resolution still refuse execution. Extension
+        modules run code in ``create_module``, source and bytecode in
+        ``exec_module``; the module's ``__spec__`` is set before the latter.
+        Shadowing the methods on the instance keeps the loader's type and identity.
+        """
+        if loader is None or isinstance(loader, type):
+            return
+        # A legacy ``load_module`` loader creates and runs the module in one call,
+        # leaving no point to recheck before its code runs.
+        if not callable(getattr(loader, "exec_module", None)):
+            raise ValueError("pinned execution provider dependency loader has no exec_module to recheck")
+        if not hasattr(loader, "__dict__"):
+            raise ValueError("pinned execution provider dependency loader cannot be rechecked before it runs")
+        if vars(loader).get(_RECHECKED):
+            return
+        for name, spec_of in (("create_module", lambda spec: spec), ("exec_module", _module_spec)):
+            method = getattr(loader, name, None)
+            if method is not None:
+                setattr(loader, name, self._rechecked(method, spec_of))
+        vars(loader)[_RECHECKED] = True
+
+    def _rechecked(self, method, spec_of):
+        def run(argument):
+            spec = spec_of(argument)
+            if spec is not None:
+                self.index.check_spec(spec)
+            return method(argument)
+
+        return run
+
+    def guarded_import(self, name, globals=None, locals=None, fromlist=(), level=0):
+        package = (globals or {}).get("__package__")
+        absolute = importlib.util.resolve_name("." * level + name, package) if level else name
+        self.index.check_fromlist(absolute, fromlist)
+        result = self.importer(name, globals, locals, fromlist, level)
+        index = self.index
+        index.check_fromlist(absolute, fromlist)
+        index.check_module(result)
+        return result
+
+    def guarded_import_module(self, name, package=None):
+        self.index.check_cached(importlib.util.resolve_name(name, package))
+        result = self.import_module(name, package)
+        self.index.check_module(result)
+        return result
+
+
+# Guards the published root index against the count of verified provider loads
+# still executing. Held only briefly; never across provider exec or import hooks.
+_provider_state_lock = threading.Lock()
+_provider_loads_in_flight = 0
+_provider_import_guard = None
+
+
+def _reset_provider_state():
+    global _provider_state_lock, _provider_loads_in_flight
+    _provider_state_lock = threading.Lock()
+    _provider_loads_in_flight = 0
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_provider_state)
+
+
+def _publish_provider_roots(writable_roots):
+    """Validate and publish the union of candidate roots; the caller holds the state lock."""
+    global _provider_import_guard
+    roots = frozenset(Path(form) for root in writable_roots for form in (os.path.abspath(root), os.path.realpath(root)))
+    guard = _provider_import_guard
+    index = _CandidateRoots(roots) if guard is None else guard.index.union(roots)
+    if _provider_loads_in_flight and index is not guard.index:
+        raise ValueError("cannot extend candidate-writable roots while a provider load is in flight")
+    # The guard is permanent; validate before publishing hooks or replacing its index.
+    for module in tuple(sys.modules.values()):
+        index.check_module(module)
+    if guard is None:
+        guard = _ProviderImportGuard(index)
+        _provider_import_guard = guard
+        builtins.__import__ = guard.guarded_import
+        importlib.import_module = guard.guarded_import_module
+    guard.index = index
+    if not sys.meta_path or sys.meta_path[0] is not guard:
+        sys.meta_path[:] = [guard, *(finder for finder in sys.meta_path if finder is not guard)]
+    return guard
+
+
+@contextmanager
+def _provider_load(writable_roots):
+    """Publish the roots and count this load as in flight until its exec finishes."""
+    global _provider_loads_in_flight
+    lock = _provider_state_lock
+    with lock:
+        guard = _publish_provider_roots(writable_roots)
+        _provider_loads_in_flight += 1
+    try:
+        yield guard
+    finally:
+        # A forked child starts from a fresh lock and count; its inherited lock may be held.
+        if lock is _provider_state_lock:
+            with lock:
+                _provider_loads_in_flight -= 1
+
+
+def _load_bound_execution_provider(backend, selected: Path, candidate_writable_roots):
+    writable_roots = backend.execution_provider_writable_roots(candidate_writable_roots)
+    path, source = backend.core_aten_execution_provider_source(selected, writable_roots)
+    with _provider_load(writable_roots) as guard:
+        guard.index.check_locations([path])
+        digest = hashlib.sha256(source).hexdigest()
+        module = ModuleType(f"core_aten_execution_{digest}_{uuid4().hex}")
+        module.__file__, module.__package__ = str(path), ""
+        # Dataclasses may look up their defining module; register only this fresh identity.
+        if module.__name__ in sys.modules:
+            raise ValueError("pinned execution provider module name is already registered")
+        sys.modules[module.__name__] = module
+        try:
+            _provider_imports(source, path, guard)
+            exec(compile(source, str(path), "exec", dont_inherit=True), module.__dict__)
+        except BaseException:
+            del sys.modules[module.__name__]
+            raise
+        return module
+
+
+def load_execution_provider(target: str, path: Path | None = None, *, candidate_writable_roots):
+    """Load the selected provider with an explicit candidate write boundary.
+
+    Phase 0 operators pass ``()`` for their frozen reference package. Phase 1
+    callers name the submitted package and workspaces. Data-bound backends also
+    retain the contract and environment workspace exclusions; support-selected
+    providers keep their existing package import and cache behavior.
+    """
     if not target or Path(target).name != target or target in {".", ".."}:
         raise ValueError("target must be a single name")
     explicit = path or os.environ.get("MERLIN_CORE_ATEN_EXECUTION_PROVIDER")
@@ -25,6 +385,15 @@ def load_execution_provider(target: str, path: Path | None = None):
             "pass --execution-provider or set MERLIN_CORE_ATEN_EXECUTION_PROVIDER"
         )
     selected = Path(explicit)
+    from merlin.runtime.backends import base
+
+    backend = base._contract_backend(target)
+    if backend is not None:
+        module = _load_bound_execution_provider(backend, selected, candidate_writable_roots)
+        if getattr(module, "TARGET", None) != target:
+            sys.modules.pop(module.__name__, None)
+            raise ValueError("execution provider does not declare the selected target")
+        return module
     if not selected.is_file():
         raise ValueError(f"selected Core ATen execution provider does not exist: {selected}")
     from merlin.targetgen.target_registry import resolve
@@ -503,7 +872,7 @@ def run_spike_bundle(
         with selected_facts(target, rtl_facts) if target else nullcontext(None) as facts:
             routing, reason, options = None, "scalar mode", {}
             if target:
-                provider = load_execution_provider(target, execution_provider)
+                provider = load_execution_provider(target, execution_provider, candidate_writable_roots=())
                 selected_provider = Path(provider.__file__)
                 if numeric_policy == "spec_int8":
                     stage = "numeric_preparation"
@@ -532,7 +901,7 @@ def run_spike_bundle(
                         directory, report, triples=device_dtype_triples(target), ranks=device_contraction_ranks(target)
                     )
                 stage = "routing"
-                provider = load_execution_provider(target, execution_provider)
+                provider = load_execution_provider(target, execution_provider, candidate_writable_roots=())
                 selected_provider = Path(provider.__file__)
                 prepare = getattr(provider, "prepare_bundle", None)
                 if prepare is not None and numeric_policy != "spec_int8":

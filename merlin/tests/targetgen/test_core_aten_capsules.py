@@ -406,7 +406,7 @@ def synthetic_execution_provider(tmp_path, monkeypatch):
     )
     # Exercise explicit provider selection even when no external provider is installed.
     monkeypatch.setenv("MERLIN_CORE_ATEN_EXECUTION_PROVIDER", str(path))
-    return load_execution_provider("test_target")
+    return load_execution_provider("test_target", candidate_writable_roots=())
 
 
 def test_two_snapshot_backends_grade_consecutively_in_one_process(

@@ -282,7 +282,7 @@ def _qualify_full_call(
                 "selected_contract_binding_changed",
             )
             paths[key] = path
-        provider = load_execution_provider(target, execution_provider)
+        provider = load_execution_provider(target, execution_provider, candidate_writable_roots=(package_dir, bundle))
         verifier = getattr(provider, "verify_numeric_execution_artifacts", None)
         _require(callable(verifier), "actual_numeric_artifact_verifier_unavailable")
         with selected_facts(target, rtl_facts) as facts:
@@ -446,7 +446,15 @@ def full_call_adapter(
                     selected_facts,
                 )
 
-                provider = load_execution_provider(target, execution_provider)
+                provider = load_execution_provider(
+                    target,
+                    execution_provider,
+                    candidate_writable_roots=(
+                        package_dir,
+                        build_dir,
+                        candidate_transport.workspace_root if candidate_transport else None,
+                    ),
+                )
                 with selected_facts(target, rtl_facts) as facts:
                     prepare = getattr(provider, "prepare_bundle", None)
                     if prepare is not None and not numeric_flow:
@@ -677,10 +685,12 @@ def _isolated_build(
     lane = capsule.get("lane_expectation")
     report = load_private(capsule)["batch_map"]
     plan = report.get("numeric_preparation") if report.get("numeric_policy") == "spec_int8" else None
-    provider = load_execution_provider(target, execution_provider)  # support code only; no submitted module
+    work = Path(bundle).parent / f".isolated-{build_dir.name}"
+    provider = load_execution_provider(
+        target, execution_provider, candidate_writable_roots=(package_dir, build_dir, work)
+    )  # no submitted module
     region_capable = callable(getattr(provider, "core_aten_offload", None))
     route, reason = source_route(Path(bundle), report, plan, region_capable=region_capable)
-    work = Path(bundle).parent / f".isolated-{build_dir.name}"
     reported = build_in_sandbox(
         {**request, "target": target, "route": route, "reason": reason, "validate": lane == "any"}
         | {"require_device": lane != "any"},
@@ -874,11 +884,13 @@ def selected(target: str):
     contract declares one.
 
     ``MERLIN_CORE_ATEN_EXECUTION_PROVIDER`` already selects the provider that routes submitted device
-    catalogs; it must be an ordinary file inside the selected support root. Its ``runner_options``
-    selects the Spike extension; the Spike ISA is read from each linked image.
+    catalogs; a data-bound backend must pin its path and SHA256, otherwise it must be an ordinary
+    file inside the selected support root. Its ``runner_options`` selects the Spike extension;
+    the Spike ISA is read from each linked image.
     """
     import os
 
+    from merlin.runtime.backends import base
     from merlin.targetgen.core_aten_device import load_execution_provider
     from merlin.targetgen.plugins import resolve_support
     from merlin.targetgen.rtl.facts import ensure_facts
@@ -887,10 +899,17 @@ def selected(target: str):
     if not explicit:
         return None
     path = Path(explicit)
-    root = resolve_support(target).base.resolve()
-    if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
-        raise ValueError("selected execution provider must be an ordinary file inside the selected support")
-    options = getattr(load_execution_provider(target, path.resolve()), "runner_options", None)
+    backend = base._contract_backend(target)
+    if backend is None:
+        root = resolve_support(target).base.resolve()
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
+            raise ValueError("selected execution provider must be an ordinary file inside the selected support")
+    # Operator configuration lookup precedes submission; grading adds its package and workspaces.
+    options = getattr(
+        load_execution_provider(target, path if backend is not None else path.resolve(), candidate_writable_roots=()),
+        "runner_options",
+        None,
+    )
     return full_call_adapter(
         target,
         isa=None,

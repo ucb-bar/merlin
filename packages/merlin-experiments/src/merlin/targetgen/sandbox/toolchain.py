@@ -430,6 +430,8 @@ def sandbox_env(
     parts.append(f"export LD_LIBRARY_PATH={ld}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}; ")
     if not ws.is_absolute() or ":" in str(ws) or "\0" in str(ws):
         raise ValueError("sandbox workspace must be an absolute Python import root")
+    # Carry the exact writable import root to trusted provider import guards.
+    parts.append(f"export MERLIN_SANDBOX_WORKSPACE={shlex.quote(str(ws))}; ")
     # The controller sets PYTHONSAFEPATH=1, so python -c never adds the working
     # directory implicitly. The broker clients are staged here, and candidate
     # modules also need this explicit, writable import root inside the box.

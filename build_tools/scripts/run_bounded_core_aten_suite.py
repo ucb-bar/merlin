@@ -565,7 +565,7 @@ def main():
         from merlin.targetgen.core_aten_device import load_execution_provider
 
         try:
-            provider = load_execution_provider(args.target, args.execution_provider)
+            provider = load_execution_provider(args.target, args.execution_provider, candidate_writable_roots=())
         except ValueError as exc:
             p.error(str(exc))
         args.execution_provider = Path(provider.__file__)

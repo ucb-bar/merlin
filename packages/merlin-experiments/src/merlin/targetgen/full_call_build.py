@@ -90,7 +90,9 @@ def main(argv=None) -> int:
 
         target, bundle, package = request["target"], Path(request["bundle"]), Path(request["package"])
         build_dir = Path(request["build"])
-        provider = load_execution_provider(target, Path(request["provider"]))
+        provider = load_execution_provider(
+            target, Path(request["provider"]), candidate_writable_roots=(package, build_dir, Path(argv[0]).parent)
+        )
         routing, reason = None, request["reason"]
         with selected_facts(target, Path(request["facts"])) as facts:
             prepare = getattr(provider, "prepare_bundle", None)

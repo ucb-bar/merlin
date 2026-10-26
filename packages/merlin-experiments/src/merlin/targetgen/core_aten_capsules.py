@@ -362,7 +362,7 @@ def prepare_numeric_fixture(bundle: Path, report: dict, flow: dict, *, require_d
 
     if flow["policy"] != "spec_int8":
         raise ValueError("unsupported full-call numeric fixture policy; explicit conformant preparation required")
-    provider = load_execution_provider(flow["target"], Path(flow["execution_provider"]))
+    provider = load_execution_provider(flow["target"], Path(flow["execution_provider"]), candidate_writable_roots=())
     with selected_facts(flow["target"], Path(flow["rtl_facts"])) as facts:
         plan = prepare_spec_int8(
             bundle,

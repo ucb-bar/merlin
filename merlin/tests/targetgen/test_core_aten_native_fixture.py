@@ -38,7 +38,11 @@ def prepared(monkeypatch):
     def facts(target, path):
         yield {}
 
-    monkeypatch.setattr(core_aten_device, "load_execution_provider", lambda target, path: object())
+    def load_provider(target, path, *, candidate_writable_roots):
+        assert candidate_writable_roots == ()
+        return object()
+
+    monkeypatch.setattr(core_aten_device, "load_execution_provider", load_provider)
     monkeypatch.setattr(core_aten_device, "selected_facts", facts)
     monkeypatch.setattr(core_aten_numeric, "prepare_spec_int8", lambda *args, **kwargs: plans.pop(0))
     return plans

@@ -84,8 +84,7 @@ def select_model_spike_timeout(contract, timeout_s):
     )
     block = runner.get("chipyard_rocc")
     backend._require(
-        type(block) is dict and type(block.get("engines")) is dict
-        and type(block["engines"].get("spike")) is dict,
+        type(block) is dict and type(block.get("engines")) is dict and type(block["engines"].get("spike")) is dict,
         "model Spike resource selection requires a declared Spike engine",
     )
     resources = dict(block.get("execution_resources", {}))
@@ -184,13 +183,16 @@ def relocate_operand_protocol(contract, selection):
     previous = contract.get("rocc_operand_selection")
     if any(type(row) is not dict or set(row) != {"original_facts", "sidecar"} for row in (previous, selection)):
         raise ValueError("observer relocation requires the complete original and relocated selections")
-    originals = {key: _read_pin(previous[key], limit) for key, limit in
-                 (("original_facts", 16 * 1024 * 1024), ("sidecar", 2 * 1024 * 1024))}
+    originals = {
+        key: _read_pin(previous[key], limit)
+        for key, limit in (("original_facts", 16 * 1024 * 1024), ("sidecar", 2 * 1024 * 1024))
+    }
     for key, raw in originals.items():
         if _read_pin(selection[key], 16 * 1024 * 1024 if key == "original_facts" else 2 * 1024 * 1024) != raw:
             raise ValueError("observer relocation cannot change facts or sidecar bytes")
-    original = BoundSemantics(target=contract.get("name"), contract=contract,
-                              facts=_json(originals["original_facts"], 16 * 1024 * 1024))
+    original = BoundSemantics(
+        target=contract.get("name"), contract=contract, facts=_json(originals["original_facts"], 16 * 1024 * 1024)
+    )
     bind_selected_observer(original, selection)
     for key, raw in originals.items():
         if _read_pin(previous[key], 16 * 1024 * 1024 if key == "original_facts" else 2 * 1024 * 1024) != raw:
@@ -216,6 +218,13 @@ def prepare_contract(*, target, contract, facts):
     )
     block = runner.get("chipyard_rocc")
     backend._require(type(block) is dict, "deployment requires an explicit execution block")
+    if backend._full_call_selected(block):
+        backend._require(
+            block.get("core_aten_execution_provider") is not None,
+            "selected Core ATen execution provider has no contract pin",
+        )
+        _pin(block["core_aten_execution_provider"])
+        backend._provider_placement(selected, backend._path(block["core_aten_execution_provider"]["path"]))
     toolchain = block.get("toolchain")
     backend._require(type(toolchain) is dict, "deployment requires an explicit toolchain")
     for name in ("compiler", "link_script"):

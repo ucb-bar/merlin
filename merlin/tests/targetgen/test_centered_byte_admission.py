@@ -101,7 +101,7 @@ def test_centered_source_refuses_an_i8_only_provider_and_accepts_exact_planes(so
     package = os.environ.get("GMLIR")
     if not provider_path or not package:
         pytest.skip("real provider required for emitted byte-plane proof")
-    provider = load_execution_provider("gemmini", Path(provider_path))
+    provider = load_execution_provider("gemmini", Path(provider_path), candidate_writable_roots=())
     proof = provider.admit_numeric_schedule(str(module), package=Path(package), numeric_policy=selection["spec"])
     if proof["status"] != "proven":
         # Providers may conservatively decline a layout. Merlin must preserve

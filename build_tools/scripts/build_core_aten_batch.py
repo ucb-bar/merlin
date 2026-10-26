@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--dram-mb must be positive")
     if args.target:
         try:
-            load_execution_provider(args.target, args.execution_provider)
+            load_execution_provider(args.target, args.execution_provider, candidate_writable_roots=())
         except ValueError as exc:
             parser.error(str(exc))
         if args.max_cases_per_shard not in (0, 1):

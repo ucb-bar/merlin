@@ -107,7 +107,7 @@ def source_adapter(tmp_path, monkeypatch):
     provider_path = tmp_path / "provider.py"
     provider_path.write_text("# selected support\n")
     provider = SimpleNamespace(prepare_bundle=lambda *a, **k: None, validate_package=lambda *a, **k: None)
-    monkeypatch.setattr(core_aten_device, "load_execution_provider", lambda *a: provider)
+    monkeypatch.setattr(core_aten_device, "load_execution_provider", lambda *a, **kw: provider)
     monkeypatch.setattr(core_aten_device, "selected_facts", lambda *a: nullcontext({}))
     monkeypatch.setattr(core_aten_provenance, "batch_provenance", lambda *a, **k: {"scope": "test"})
     builds = []
@@ -142,10 +142,9 @@ def source_adapter(tmp_path, monkeypatch):
 def child_in_process(request, *, bundle, work, package, provider, facts, denied, timeout):
     """The sandboxed child's own code, run in-process so routing semantics stay unit-testable."""
     import json
+    import shutil
 
     from merlin.targetgen import full_call_build
-
-    import shutil
 
     shutil.rmtree(work, ignore_errors=True)  # a fresh work directory per build, as the sandbox runner makes
     produced = work / "out" / "build"
@@ -169,6 +168,7 @@ def test_selected_transport_validates_inventory_before_host_fallback(tmp_path, m
 
     adapter, builds = source_adapter
     transport = object.__new__(CandidateProductTransport)
+    transport.workspace_root = tmp_path / "candidate-workspace"
     events = []
     prepared = tmp_path / "prepared.mlir"
     prepared.write_text("module {}")
@@ -198,7 +198,7 @@ def test_selected_transport_validates_inventory_before_host_fallback(tmp_path, m
         candidate_catalog_products=lambda *, inventory_only: names if inventory_only else (),
         candidate_catalog_command=lambda **kwargs: ("{python}", "-m", "selected.compiler"),
     )
-    monkeypatch.setattr(core_aten_device, "load_execution_provider", lambda *a: provider)
+    monkeypatch.setattr(core_aten_device, "load_execution_provider", lambda *a, **kw: provider)
 
     def decline(*args, **kwargs):
         assert callable(kwargs["compile_products"])
@@ -309,7 +309,7 @@ def test_optional_fallback_requires_independent_validation(tmp_path, monkeypatch
         return True
 
     provider = SimpleNamespace(validate_package=validate if validation else None)
-    monkeypatch.setattr(core_aten_device, "load_execution_provider", lambda *a: provider)
+    monkeypatch.setattr(core_aten_device, "load_execution_provider", lambda *a, **kw: provider)
     monkeypatch.setattr(
         core_aten_device, "routing_for_bundle", lambda *a: pytest.fail("validation must precede decline")
     )
@@ -419,7 +419,9 @@ def test_selected_execution_provider_must_be_support_owned(tmp_path, monkeypatch
     (support / "provider.py").write_text("# selected\n")
     (tmp_path / "outside.py").write_text("# foreign\n")
     monkeypatch.setattr(plugins, "resolve_support", lambda target: SimpleNamespace(base=support))
-    monkeypatch.setattr(core_aten_device, "load_execution_provider", lambda *a: SimpleNamespace(runner_options=dict))
+    monkeypatch.setattr(
+        core_aten_device, "load_execution_provider", lambda *a, **kw: SimpleNamespace(runner_options=dict)
+    )
     monkeypatch.setattr(facts, "ensure_facts", lambda target: tmp_path / "facts.json")
     monkeypatch.delenv("MERLIN_CORE_ATEN_EXECUTION_PROVIDER", raising=False)
     assert spike_full_call.selected("t") is None
@@ -429,6 +431,13 @@ def test_selected_execution_provider_must_be_support_owned(tmp_path, monkeypatch
     monkeypatch.setenv("MERLIN_CORE_ATEN_EXECUTION_PROVIDER", str(support / "provider.py"))
     oracle = spike_full_call.selected("t")
     assert oracle.compiles_source_bundle and callable(oracle.qualify_full_call)
+    # Support ownership retains its original trust rule without a contract hash.
+    (support / "provider.py").write_text("# selected provider updated\n")
+    assert spike_full_call.selected("t").compiles_source_bundle
+    (support / "link.py").symlink_to(support / "provider.py")
+    monkeypatch.setenv("MERLIN_CORE_ATEN_EXECUTION_PROVIDER", str(support / "link.py"))
+    with pytest.raises(ValueError, match="inside the selected support"):
+        spike_full_call.selected("t")
 
 
 @pytest.mark.parametrize("rtl_config", ["SelectedConfig", None])

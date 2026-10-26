@@ -145,6 +145,35 @@ def _check_pin(pin, *, executable=False):
     return path
 
 
+def _full_call_selected(block):
+    return "core_aten_execution_provider" in block or bool(os.environ.get("MERLIN_CORE_ATEN_EXECUTION_PROVIDER"))
+
+
+def _provider_writable_roots(contract, candidate_writable_roots=()):
+    """Exclude every operator-declared candidate write grant and workspace.
+
+    These are absolute roots, independent of target and authoring layout. The
+    deployment owner supplies the complete union as contract data; filesystem
+    mode bits describe the operator's access, not the candidate's permissions.
+    """
+    roots = contract.get("candidate_writable_roots", [])
+    _require(type(roots) is list, "candidate writable roots must be an explicit path list")
+    roots = [*roots, *(str(Path(root).absolute()) for root in candidate_writable_roots if root is not None)]
+    for variable in ("MERLIN_COMMON_WORKSPACE", "MERLIN_SANDBOX_WORKSPACE"):
+        workspace = os.environ.get(variable)
+        if workspace:
+            roots.append(workspace)
+    return tuple(_path(root).resolve() for root in roots)
+
+
+def _provider_placement(contract, path, candidate_writable_roots=()):
+    for writable in _provider_writable_roots(contract, candidate_writable_roots):
+        _require(
+            not path.resolve().is_relative_to(writable),
+            "pinned Core ATen execution provider lies under a candidate-writable root",
+        )
+
+
 def _resource(identifier, roster):
     # Do not honor runtime/repo overrides that could turn an ID into vendor code.
     owner = checkout_root()
@@ -495,13 +524,50 @@ class BoundRoCCBackend:
     def gcc_path(self):
         return _check_pin(self._block()["toolchain"]["compiler"], executable=True)
 
+    def core_aten_execution_provider(self):
+        """Reopen the explicitly pinned full-call provider before trusting executable code."""
+        return self.core_aten_execution_provider_source()[0]
+
+    def execution_provider_writable_roots(self, candidate_writable_roots=()):
+        return _provider_writable_roots(self._data()["contract"], candidate_writable_roots)
+
+    def core_aten_execution_provider_source(self, selected=None, candidate_writable_roots=()):
+        """Return the path and exact verified source bytes from one read, never bytecode."""
+        pin = self._block().get("core_aten_execution_provider")
+        _require(pin is not None, "selected Core ATen execution provider has no contract pin")
+        path = _path(pin["path"])
+        _require(
+            selected is None or Path(selected) == path,
+            "selected Core ATen execution provider path differs from the contract pin",
+        )
+        _provider_placement(self._data()["contract"], path, candidate_writable_roots)
+        try:
+            _regular(path)
+            source = path.read_bytes()
+        except (OSError, RoCCExecutionError) as exc:
+            raise RoCCExecutionError("pinned Core ATen execution provider file is unavailable") from exc
+        _require(
+            hashlib.sha256(source).hexdigest() == pin["sha256"], "pinned Core ATen execution provider SHA256 mismatch"
+        )
+        return path, source
+
     def verify_execution_inputs(self):
         """Check selected build and engine identities without executing tools."""
         self.harness_build_recipe()
+        if _full_call_selected(self._block()):
+            self.core_aten_execution_provider()
         return {engine: self._engine_identity(engine) for engine in self._block()["engines"]}
 
     def render_harness(
-        self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=(), blobs=None,
+        self,
+        cb,
+        *,
+        target,
+        inputs=None,
+        readback_policy=None,
+        warm_profile=None,
+        source_owned_mutables=(),
+        blobs=None,
         host_storage_limit_bytes=None,
     ):
         _require(target == self.target, "logical harness target differs from the selected backend")
@@ -512,8 +578,10 @@ class BoundRoCCBackend:
         contract = self._data()["contract"]
         budget = (contract.get("logical_harness") or {}).get("storage_budget_bytes")
         if host_storage_limit_bytes is not None:
-            _require(type(host_storage_limit_bytes) is int and 0 < host_storage_limit_bytes <= 256 << 20,
-                     "prospective logical host storage exceeds its fixed software ceiling")
+            _require(
+                type(host_storage_limit_bytes) is int and 0 < host_storage_limit_bytes <= 256 << 20,
+                "prospective logical host storage exceeds its fixed software ceiling",
+            )
             budget = min(budget, host_storage_limit_bytes) if budget is not None else host_storage_limit_bytes
         return render_harness(
             cb,
@@ -663,6 +731,8 @@ class BoundRoCCBackend:
         identity = self._engine_identity(engine)
         block = self._engine(engine)
         paths = {_path(block["binary"]["path"]), _path(block["cwd"])}
+        if _full_call_selected(self._block()):
+            paths.add(self.core_aten_execution_provider())
         for token in block["argv"]:
             value = token.partition("=")[2] if "=" in token else token
             if value.startswith("/") and "{" not in value and Path(value).exists():
@@ -1097,7 +1167,14 @@ def bind(*, target, contract, facts):
     _require(type(runner) is dict and runner.get("backend") == "chipyard_rocc", "RoCC execution family is not selected")
     _require(not contract.get("plugin"), "data-bound runtime selection cannot grant executable provider hooks")
     block = runner.get("chipyard_rocc")
-    _fields(block, {"version", "config", "toolchain", "engines"}, {"readout", "execution_resources"})
+    _fields(
+        block,
+        {"version", "config", "toolchain", "engines"},
+        {"readout", "execution_resources", "core_aten_execution_provider"},
+    )
+    if "core_aten_execution_provider" in block:
+        _pin_shape(block["core_aten_execution_provider"])
+        _provider_placement(contract, _path(block["core_aten_execution_provider"]["path"]))
     _require(
         type(block["version"]) is int and block["version"] == 1 and type(block["config"]) is str and block["config"],
         "RoCC execution requires a supported version and explicit configuration",

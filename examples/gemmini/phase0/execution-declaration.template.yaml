@@ -34,6 +34,10 @@ runner:
   chipyard_rocc:
     version: 1
     config: GemminiGsimFireSimAlignedConfig
+    # Optional for full-call execution selected by MERLIN_CORE_ATEN_EXECUTION_PROVIDER.
+    # Its absolute path must match that selection. Preparation fills a missing
+    # sha256 and checks an existing one; prepared contracts require both fields.
+    core_aten_execution_provider: {path: /REVIEWED_INPUTS/core-aten-execution-provider.py}
     toolchain:
       compiler: {path: /REVIEWED_TOOLCHAIN/riscv64-unknown-elf-gcc}
       link_script: {path: /REVIEWED_INPUTS/logical-layout.ld}

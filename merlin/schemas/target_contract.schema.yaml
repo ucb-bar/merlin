@@ -125,6 +125,16 @@ validation_notes: >-
   retains 600 for each engine class. Native and Spike engine `max_timeout_s` must
   not exceed their corresponding selected ceilings.
   gSIM requires its existing strict-v3 build receipt; Spike requires a pinned extension.
+  Core ATen full-call execution additionally requires `core_aten_execution_provider:
+  {path: <absolute canonical .py file>, sha256: <source bytes digest>}` in this block.
+  The loader reads this file once and executes only those verified source bytes in a fresh
+  digest-named module, bypassing ordinary-name modules, package initializers and bytecode.
+  The single-file pin admits absolute installed dependencies, including Merlin, but no
+  relative or absolute provider-package sibling imports; a package closure is not pinned.
+  OPTIONAL top-level `candidate_writable_roots: [<absolute path>, ...]` declares the complete
+  union of candidate workspace roots and writable grants. A provider at or below any such
+  root refuses, including through a root alias. Callers also supply their selected candidate
+  package/build roots; `MERLIN_COMMON_WORKSPACE`, when selected, adds its workspace root.
   No selected tool is executed during metadata binding, and no missing field inherits a
   provider or environment default. See docs/reference/neutral_runtime_tooling.md.
 

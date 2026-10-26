@@ -250,7 +250,7 @@ def test_device_bundle_records_attribution_and_rejects_missing_trace(
     monkeypatch.setattr(
         D,
         "load_execution_provider",
-        lambda *a: SimpleNamespace(
+        lambda *a, **kw: SimpleNamespace(
             __file__=str(facts), runner_options=lambda: {"extension": "synthetic"}, prepare_bundle=prepare_bundle,
         ),
     )
@@ -381,13 +381,13 @@ def test_execution_provider_selection_refuses_legacy_default(tmp_path, monkeypat
     legacy.write_text('TARGET = "synthetic"\n')
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="explicit target-owned execution provider"):
-        D.load_execution_provider("synthetic")
+        D.load_execution_provider("synthetic", candidate_writable_roots=())
     with pytest.raises(ValueError, match="does not exist"):
-        D.load_execution_provider("synthetic", tmp_path / "missing.py")
+        D.load_execution_provider("synthetic", tmp_path / "missing.py", candidate_writable_roots=())
     monkeypatch.setenv("MERLIN_CORE_ATEN_EXECUTION_PROVIDER", str(legacy))
-    assert D.load_execution_provider("synthetic").TARGET == "synthetic"
+    assert D.load_execution_provider("synthetic", candidate_writable_roots=()).TARGET == "synthetic"
     other = tmp_path / "explicit.py"
     other.write_text('TARGET = "other"\n')
-    assert D.load_execution_provider("other", other).TARGET == "other"
+    assert D.load_execution_provider("other", other, candidate_writable_roots=()).TARGET == "other"
     with pytest.raises(ValueError, match="selected target"):
-        D.load_execution_provider("synthetic", other)
+        D.load_execution_provider("synthetic", other, candidate_writable_roots=())
