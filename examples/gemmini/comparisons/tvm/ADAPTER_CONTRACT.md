@@ -1,5 +1,11 @@
 # FireSim active-cycle limit contract
 
+Use the pinned hardware's existing capabilities. Unsupported hardware operations
+remain unsupported; do not invent support, alter the image or hide an eligible
+device contraction in CPU code. A frontend's unsupported Torch spelling is an
+import-coverage issue, separate from device support. Record permitted host
+operations and bind E2E claims to the exact source and ELF that ran.
+
 `firesim_job_pool.py` sends `gemmini_firesim_probe_request_v3`. The supplied
 bitstream already sets memory; DDR3 is expected. The adapter loads the exact
 ELF, preserves boot evidence, compares every output and returns the guest's

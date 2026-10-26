@@ -1,5 +1,13 @@
 # General TVM optimization and DSE scope
 
+**Current handoff instruction: do not implement the proposed optimization
+knobs.** Host producer placement, CPU loop tiling/order/unrolling and bounded
+input packing are research notes only. They are not approved implementation
+work or additional search axes for this run. Use the existing TVM/Gemmini
+contraction choices on the prepared chunks, fixed graph fusion level 2,
+parallel jobs, incumbent active-cycle pruning and connected/E2E confirmation.
+Do not expand that scope based on the suggestions below.
+
 The 70.64% host / 29.36% Gemmini numbers are **elapsed mcycle intervals by
 function**, including memory and other stalls. They do not establish a
 compute-bound CPU, a memory-bound system or Gemmini array utilization. The
@@ -23,23 +31,21 @@ validate the operation family beyond the motivating model before promoting it.
 | GEMM M/N/K reuse groups, traversal and OS/WS | DMA/command overhead and reuse versus accumulator/scratchpad pressure | Existing traced MetaSchedule decisions; most ResNet shapes remain untuned | Convolutions lowered to contractions, linear layers, attention matmuls |
 | Cache hoisting and software pipeline | Retained data/overlap versus capacity, buffering and extra staging | Existing traced MetaSchedule decisions, subject to legality | Supported contraction shapes across models |
 | Graph fusion boundary | Intermediate traffic and dispatch versus recomputation, live storage and a larger scheduling problem | Existing TVM FuseOps choice; now exposed as `--graph-fusion-level` in the FireSim tuning driver and saved as a Relax Trace | Quantize/layout/pointwise/epilogue chains in any graph |
-| Host producer placement/materialization | Produce shared data once versus recompute near consumers to avoid storing intermediates | **Proposed integration** of stock AutoInline/RandomComputeLocation and producer scheduling; excluded from the current contraction-only FireSim search | Shared activation conversion, padding, layout transforms and pointwise chains |
-| Host loop tiling/order and bounded unrolling | Contiguous accesses/cache locality versus indexing and instruction-cache pressure | **Proposed integration** of stock CPU schedule rules for the host tasks, with explicit resource/compile budgets | CPU loops accompanying any accelerator graph |
-| Input-packing granularity | Full im2col/gather materialization versus bounded spatial panels or tile-local production | **Additional compiler work**, then expose legal producer placements/tile sizes to TVM; not an implemented flag | Convolution/gather-to-GEMM patterns, independently of the model |
+| Host producer placement/materialization | Produce shared data once versus recompute near consumers to avoid storing intermediates | **Research only; do not implement for this handoff.** Potential stock AutoInline/RandomComputeLocation integration | Shared activation conversion, padding, layout transforms and pointwise chains |
+| Host loop tiling/order and bounded unrolling | Contiguous accesses/cache locality versus indexing and instruction-cache pressure | **Research only; do not implement for this handoff.** Potential stock CPU schedule-rule integration | CPU loops accompanying any accelerator graph |
+| Input-packing granularity | Full im2col/gather materialization versus bounded spatial panels or tile-local production | **Research only; do not implement for this handoff.** Requires additional compiler work; not an existing flag | Convolution/gather-to-GEMM patterns, independently of the model |
 | Epilogue materialization/readout placement | Intermediate INT32/FP32 traffic versus fusing a proven bias/ReLU/scale/requant path | Existing backend support for recognized integer patterns; the retained ResNet capture's FP32-bias chain does **not** currently qualify | Eligible integer contraction epilogues |
 
 The host is the existing single-hart RV64GC target. Do not introduce vector or
 intra-guest parallel-loop choices without matching hardware support. Multiple
 independent FireSim jobs can still run concurrently across physical slots.
 
-The first new knob to exercise is the **existing general fusion level**. The
-prepared study audits levels 0 and 2 with packing enabled, groups equivalent
-prepared IR before allocating paid jobs, and preserves replayable choices.
-Fusion is fixed within each inner EvolutionarySearch/XGB campaign. This is not
-a joint ML optimizer over graph structure and schedules; the graph controls
-are explicitly separate from the ML-guided operator DSE.
+The existing general fusion-level control is available in the driver. The
+earlier preparation audited levels 0 and 2. **The agreed campaign fixes level 2;
+do not add a graph-fusion sweep to this handoff.** Preserve its replayable graph
+choice while TVM searches the existing contraction schedules.
 
-Before investing in additional host tiling/unrolling, use the ELF and a diagnostic
+For a future investigation of host tiling/unrolling, use the ELF and a diagnostic
 profile with retired-instruction, available CPU memory-hierarchy and Gemmini
 activity/wait counters to identify the limiting cost. LLVM already optimizes
 these functions. Host producer scheduling and bounded input packing remain
@@ -106,7 +112,8 @@ independent slot under shared physical locks. DDR3 remains in the bitstream.
 Score complete measured active windows; preserve input/constant identities and
 independent all-output checks. Full-model quality is a separate recorded gate.
 
-Promoting a scheduling/lowering change requires independent shapes, tails,
+The following are background requirements for any separately approved future
+work, not tasks for this handoff. Promoting a scheduling/lowering change requires independent shapes, tails,
 shared producers/residual live-outs and refusal tests. Include at least another
 convolution family plus M=1 and M>1 linear shapes for changes that also affect
 contractions. Reuse existing TVM frontend/TIR/backend tests. Measure other models

@@ -1,5 +1,11 @@
 # Next ResNet and TinyLlama FireSim handoff
 
+**Scope instruction: do not implement the proposed optimization knobs.** They
+were research ideas only. This handoff uses the existing TVM/Gemmini contraction
+schedules and knobs, graph fusion fixed at 2, meaningful chunks, parallel jobs,
+incumbent active-cycle limits and connected/E2E confirmation. No new host
+scheduling, producer placement or bounded-packing implementation is requested.
+
 The [published delivery README](../../../../out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/README.md)
 is the fresh-machine entry point on `comparisons/tvm-workload-tuning`. It includes
 the baseline ELF and checksum-verified parts of the complete portable archive.
@@ -32,6 +38,15 @@ calibrated prefill/decode exports are missing locally; the bundle records real
 checkpoint dimensions and preparation commands, with these campaigns pending.
 Do not silently run the older dynamic-row/per-channel probes instead.
 
+The missing TinyLlama inputs are: frozen-policy prefill/decode exports with
+calibrated per-tensor activation and grouped-16 weight scales; actual activation
+and cache/state fixtures for the selected chunks; and independent expected
+outputs for chunk and complete 32+32 sessions. The model revision and dimensions
+are already known. A matched FP32 WikiText-2 test PPL baseline/settings is a
+separate missing input to the final quality evaluation, not a prerequisite to
+every correctness-checked chunk experiment. Preparing these inputs does not
+authorize the proposed compiler optimizations.
+
 `run_firesim_study.py` launches independent native TVM campaigns across a shared
 physical-slot pool. TVM owns EvolutionarySearch, XGB, scheduling and database
 selection. Initial ResNet campaigns reserve 48 proposals; optional continuation
@@ -53,4 +68,5 @@ measures host work in connected confirmation but does not implement the proposed
 CPU loop schedules or panelized packing. The historical 70.64% host-function
 latency includes memory/instruction stalls; it is not CPU compute utilization.
 Contraction-only gains must therefore be assessed against whole-chunk and E2E
-cycles. See [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md) for remaining work.
+cycles. [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md) retains research context
+only; its proposed additions must not be implemented in this handoff.

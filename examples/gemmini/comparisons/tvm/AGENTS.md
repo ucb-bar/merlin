@@ -8,6 +8,19 @@ explicitly authorized. Follow [FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md)
 and [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md); the October 26 remote adapter
 did not implement live active-cycle pruning despite its old boolean fields.
 
+**Handoff scope:** do not implement the proposed knobs in
+[OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md). Host producer scheduling,
+CPU loop tiling/order/unrolling and bounded input packing were suggestions to
+investigate, not approved work. Run the previously agreed existing TVM/Gemmini
+contraction DSE on meaningful ResNet/TinyLlama chunks, keeping graph fusion at
+level 2. Prepare the missing numerical inputs, use parallel physical slots and
+the shared budget/cycle policy, then confirm connected chunks and E2E. Do not
+add new compiler optimization passes or search axes as part of this handoff.
+Unsupported hardware remains unsupported. Do not add capability claims or an
+unreported CPU fallback for eligible Gemmini contractions. Distinguish frontend
+import coverage from actual device support and bind prior E2E claims to their
+specific exports/ELFs.
+
 Read root `AGENT.md`/`CLAUDE.md`, this directory's [README.md](README.md),
 [EL4_ASSETS.md](EL4_ASSETS.md), [UPSTREAM_AUDIT.md](UPSTREAM_AUDIT.md), and the
 companion TVM `apps/gemmini/{README,OWNERSHIP,TUNING,FIRESIM,AGENTS}.md`.

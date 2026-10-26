@@ -1,5 +1,17 @@
 # Published FireSim DSE handoff
 
+**Execution scope: do not implement the proposed optimization knobs.** They
+were ideas to investigate. Use the previously agreed existing TVM/Gemmini
+contraction DSE, graph fusion fixed at level 2, meaningful chunks, parallel jobs,
+incumbent active-cycle limits and connected/E2E confirmation. Do not add host
+loop scheduling, producer placement, panelized packing or new search axes.
+
+Use only capabilities supported by the pinned hardware. Do not invent hardware
+support or silently move an eligible Gemmini contraction to the CPU. Existing
+permitted host work must remain explicit. A frontend import failure is distinct
+from unsupported hardware; an earlier E2E result qualifies its actual ELF and
+source path, not every fresh export.
+
 Everything needed to restore the prepared inputs is committed on
 `comparisons/tvm-workload-tuning`. The source changes are already in the
 branch. The frozen 170,024,497-byte input archive is stored in five

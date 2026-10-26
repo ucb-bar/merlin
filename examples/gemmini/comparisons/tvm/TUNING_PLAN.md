@@ -1,5 +1,12 @@
 # Tuning after the F2 runs
 
+**Current scope: do not implement the proposed optimization knobs.** They were
+ideas to investigate. Execute the agreed existing contraction DSE with graph
+fusion fixed at level 2, meaningful ResNet/TinyLlama chunks, parallel jobs and
+the shared deadline/incumbent-cycle policy, then connected and E2E confirmation.
+Do not add host scheduling, producer placement, panelized packing or other new
+compiler optimization/search work during this handoff.
+
 The proposed additional decisions and their actual implementation status are
 in [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md). ResNet selects the initial
 profile-driven experiments; every optimization must apply by IR semantics and

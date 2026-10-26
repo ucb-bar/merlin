@@ -1,5 +1,10 @@
 # TVM Gemmini Generation
 
+For the current handoff, the proposed optimization knobs are research notes
+only: do not implement them or expand the agreed search space. Use existing
+contraction DSE with graph fusion fixed at level 2; follow
+[FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md).
+
 For additional optimization/DSE proposals use
 [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md): it separates existing traced
 decisions from proposed integration and requires general IR-derived rules.
