@@ -178,6 +178,11 @@ def prepare_integer_components(
 
         literal_folds = fold_uniform_numeric_literals(module)
         semantics = component_semantics(module)
+        if semantics.get("code") == "native_cpu_certificate_unavailable":
+            # Other candidates can still supply an independent exact reference.
+            # The final admission boundary decides whether this prevents routing.
+            report["native_certificate"] = "unavailable"
+            report["native_certificate_refusal"] = semantics
         if semantics["status"] != "proven":
             raise Refusal(**semantics)
         from merlin.llvmlower.boolean_components import rewrite_boolean_components

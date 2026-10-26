@@ -6,9 +6,12 @@ import hashlib
 import json
 from pathlib import Path
 
+from merlin.targetgen.native_cpu_errors import NativeCPUCertificateUnavailable, require_certificate_available
+
 
 def bitwise_catalog_coverage(module, manifest):
     """Require complete selector lineage, not a token device copy beside host math."""
+    require_certificate_available(manifest)
     if manifest.get("source_sha256") != hashlib.sha256(str(module).encode()).hexdigest():
         raise ValueError("bitwise provider proof is for different source bytes")
     operations = list(module.walk())
@@ -181,6 +184,8 @@ def prepare_bitwise(directory, report, selection, provider, package, module):
         manifest_path, _ = provider.core_aten_catalog(path, stage, package=package)
         manifest = json.loads(Path(manifest_path).read_text())
         roots = bitwise_catalog_coverage(module, manifest)
+    except NativeCPUCertificateUnavailable:
+        raise
     except (ValueError, RuntimeError) as exc:
         (stage / "refusal.json").write_text(json.dumps({"reason": str(exc)}) + "\n")
         return None

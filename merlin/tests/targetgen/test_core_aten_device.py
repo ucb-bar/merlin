@@ -202,7 +202,11 @@ def test_routing_admits_only_fact_eligible_source_and_source_bound_provider(tmp_
         assert result is None and "dtypes" in reason and len(calls) == 1
 
 
-def test_device_bundle_records_attribution_and_rejects_missing_trace(tmp_path, facts, monkeypatch):
+@pytest.mark.parametrize("certificate_unavailable", [False, True])
+@pytest.mark.parametrize("numeric_policy", ["fp32", "spec_int8"])
+def test_device_bundle_records_attribution_and_rejects_missing_trace(
+    tmp_path, facts, monkeypatch, certificate_unavailable, numeric_policy,
+):
     from merlin.llvmlower import device_offload
 
     record = _record()
@@ -212,12 +216,45 @@ def test_device_bundle_records_attribution_and_rejects_missing_trace(tmp_path, f
     elf.write_bytes(_elf(opcode))
     report = {"cases": [record], "output_count": 1}
     selected = SimpleNamespace()
+
+    def prepare_bundle(directory, **kwargs):
+        if certificate_unavailable:
+            from mlir_fixtures import pointwise
+
+            from merlin.targetgen.core_aten_components import prepare_integer_components
+
+            def missing():
+                raise FileNotFoundError("optional native certificate missing")
+
+            monkeypatch.setattr("merlin.targetgen.native_ieee_certificate.certificate", missing)
+            source = pointwise(["tensor<4xf16>"], "tensor<4xf16>", "%v=arith.addf %a,%a:f16")
+            assert prepare_integer_components(
+                directory, report, {}, SimpleNamespace(admit_numeric_schedule=lambda *a, **kw: None),
+                None, source, limb_attribute="test.limb",
+            ) is None
+        return {}
+
+    def prepare_numeric(directory, report, **kwargs):
+        prepare_bundle(directory)
+        plan = dict(
+            status="admitted", native_admission=dict(status="device"), native_contractions=1,
+            integer_reference=dict(
+                status="prepared", engine="independent_test_reference",
+                expected_output_bytes={"0": np.array([7], np.int32).tobytes().hex()},
+            ),
+        )
+        record["numeric_admission"] = plan
+        return plan
+
+    monkeypatch.setattr("merlin.targetgen.core_aten_numeric.prepare_spec_int8", prepare_numeric)
     monkeypatch.setattr(
         D,
         "load_execution_provider",
-        lambda *a: SimpleNamespace(__file__=str(facts), runner_options=lambda: {"extension": "synthetic"}),
+        lambda *a: SimpleNamespace(
+            __file__=str(facts), runner_options=lambda: {"extension": "synthetic"}, prepare_bundle=prepare_bundle,
+        ),
     )
-    monkeypatch.setattr(D, "routing_for_bundle", lambda *a: (selected, "source-bound provider"))
+    monkeypatch.setattr(D, "select_source_routing", lambda *a: (selected, "source-bound provider"))
     monkeypatch.setattr(device_offload, "load_sidecar", lambda *a: {"routed": [{"source_region": "region-a"}]})
 
     def build(*a, **kw):
@@ -232,14 +269,29 @@ def test_device_bundle_records_attribution_and_rejects_missing_trace(tmp_path, f
     monkeypatch.setattr(spike_model, "build", build)
     monkeypatch.setattr(spike_model, "run", run)
     execution, verdict = D.run_spike_bundle(
-        tmp_path, report, arena_mb=1, timeout=1, target=target, device_package=tmp_path, rtl_facts=facts
+        tmp_path, report, arena_mb=1, timeout=1, target=target, device_package=tmp_path, rtl_facts=facts,
+        numeric_policy=numeric_policy, software_spec=facts, host_capabilities=facts,
     )
     assert execution["status"] == "ran" and verdict["passed_by_lane"]["device"] == 1
+    if numeric_policy == "spec_int8":
+        assert verdict["cases"][record["case_id"]]["integer_reference"]["status"] == "pass"
+    if certificate_unavailable:
+        assert execution["native_certificate"] == "unavailable"
+        assert verdict["cases"][record["case_id"]]["native_certificate"] == "unavailable"
+        for filename in ("core_aten_batch_map.json", "spike-execution.json"):
+            assert json.loads((tmp_path / filename).read_text())["native_certificate"] == "unavailable"
+        saved = json.loads((tmp_path / "core_aten_batch_verdict.json").read_text())
+        assert saved["cases"][record["case_id"]]["native_certificate_refusal"]["code"] == (
+            "native_cpu_certificate_unavailable"
+        )
+    else:
+        assert "native_certificate" not in execution
     assert record["routing"]["routed_operations"][0]["source_region"] == "region-a"
     (tmp_path / "spike-trace.log").unlink()
     monkeypatch.setattr(spike_model, "run", lambda *a, **kw: {"output_bytes": [b""], "console": "DONE\n"})
     execution, verdict = D.run_spike_bundle(
-        tmp_path, report, arena_mb=1, timeout=1, target=target, device_package=tmp_path, rtl_facts=facts
+        tmp_path, report, arena_mb=1, timeout=1, target=target, device_package=tmp_path, rtl_facts=facts,
+        numeric_policy=numeric_policy, software_spec=facts, host_capabilities=facts,
     )
     assert execution["status"] == "failed" and verdict["passed_count"] == 0
 

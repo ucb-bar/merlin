@@ -30,6 +30,7 @@ from merlin.targetgen.core_aten_bounded_runner import (
     semantic_observation,
 )
 from merlin.targetgen.core_aten_capture import case_capture_name
+from merlin.targetgen.native_cpu_errors import NativeCPUCertificateUnavailable
 
 
 def git(path, *args):
@@ -271,6 +272,13 @@ def execute(args, case, block):
                 "directory": str(directory),
             }
             observation = semantic_observation(grade, evidence)
+        except NativeCPUCertificateUnavailable as exc:
+            observation = {
+                "status": "harness_error",
+                "code": exc.code,
+                "reason": f"{type(exc).__name__}: {exc}",
+                "evidence": {"lane": "unassigned", "native_certificate": "unavailable"},
+            }
         except Exception as exc:
             observation = {
                 "status": "bundle_unavailable",

@@ -44,7 +44,14 @@ def test_native_sign_theorem_is_about_all_input_words(dtype):
 
 
 @pytest.mark.parametrize("dtype", ["f16", "bf16"])
-def test_reduced_precision_nan_dispatch_requires_its_own_theorem(dtype):
+def test_reduced_precision_nan_dispatch_requires_its_own_theorem(dtype, monkeypatch):
+    import json
+    from pathlib import Path
+
+    from merlin.targetgen import native_ieee_certificate as native
+
+    certificate = json.loads(Path(native.__file__).with_suffix(".json").read_text())
+    monkeypatch.setattr(native, "certificate", lambda: certificate)
     proof = component_semantics(unary(dtype, f"%v=arith.negf %a : {dtype}"))
     assert proof["status"] == "proven"
     assert proof["method"] == "closed_typed_pointwise_IEEE_composition_v1"
@@ -53,13 +60,15 @@ def test_reduced_precision_nan_dispatch_requires_its_own_theorem(dtype):
 
 
 @pytest.mark.parametrize("dtype", ["f16", "bf16", "f32", "f64"])
-def test_finite_inputs_cannot_replace_the_general_ieee_certificate(dtype, monkeypatch):
+@pytest.mark.parametrize("error", [FileNotFoundError, KeyError, ValueError])
+def test_finite_inputs_cannot_replace_the_general_ieee_certificate(dtype, error, monkeypatch):
     def unavailable():
-        raise ValueError("missing full-domain certificate")
+        raise error("missing full-domain certificate")
 
     monkeypatch.setattr("merlin.targetgen.native_ieee_certificate.certificate", unavailable)
     module = unary(dtype, f"%v=arith.addf %a,%a : {dtype}")
-    assert component_semantics(module)["code"] == "native_cpu_certificate_unavailable"
+    expected = "native_binary64_arithmetic_form_unproved" if dtype == "f64" else "native_cpu_certificate_unavailable"
+    assert component_semantics(module)["code"] == expected
 
 
 def test_modular_ring_keeps_dtype_and_promotion_boundaries():

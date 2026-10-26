@@ -118,6 +118,13 @@ def test_source_literal_folding_preserves_typed_rne_and_zero_sign(operation, lef
 def resealed_certificate(tmp_path, monkeypatch, edit):
     """Install a copy of the native IEEE certificate with ``edit`` applied and its digest resealed."""
     document = json.loads(Path(checker.__file__).with_suffix(".json").read_text())
+    # Validation controls need local artifacts even on hosts without certified torch.
+    library = tmp_path / "libtorch_cpu.so"
+    library.write_bytes(b"test certificate library")
+    document["host"].update(library=str(library), library_sha256=hashlib.sha256(library.read_bytes()).hexdigest())
+    header = tmp_path / "TensorIterator.h"
+    header.write_bytes(b"test certificate header")
+    document["loop_profile"]["source_files"] = {str(header): hashlib.sha256(header.read_bytes()).hexdigest()}
     edit(document)
     document.pop("content_sha256")
     document["content_sha256"] = checker.digest(document)

@@ -9,6 +9,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
+from merlin.targetgen.native_cpu_errors import NativeCPUCertificateUnavailable
 from merlin.targetgen.plugins import load_module
 from merlin.targetgen.rtl.facts import ensure_facts, load_facts, observed_facts
 
@@ -645,6 +646,8 @@ def run_spike_bundle(
             "build_hash": build.get("build_hash"),
             "output_count": len(output_bytes),
         }
+    except NativeCPUCertificateUnavailable:
+        raise
     except Exception as exc:  # each stage failure remains an explicit artifact
         execution = {"status": "failed", "stage": stage, "error": f"{type(exc).__name__}: {exc}"}
         for case in report["cases"]:
@@ -661,6 +664,9 @@ def run_spike_bundle(
         execution_provider=selected_provider,
     )
     execution["provenance"] = report["provenance"]
+    if report.get("native_certificate") == "unavailable":
+        execution["native_certificate"] = "unavailable"
+        execution["native_certificate_refusal"] = report["native_certificate_refusal"]
     _write_json(directory / "core_aten_batch_map.json", report)
     _write_json(directory / "spike-execution.json", execution)
     verdict = grade_core_aten_batch(
@@ -671,8 +677,14 @@ def run_spike_bundle(
         execution_error=execution.get("error") if execution["status"] != "ran" else None,
     )
     for case_verdict in verdict["cases"].values():
+        if report.get("native_certificate") == "unavailable":
+            case_verdict["native_certificate"] = "unavailable"
+            case_verdict["native_certificate_refusal"] = report["native_certificate_refusal"]
         observation = case_verdict.get("observation")
         if observation is not None:
+            if report.get("native_certificate") == "unavailable":
+                observation["evidence"]["native_certificate"] = "unavailable"
+                observation["evidence"]["native_certificate_refusal"] = report["native_certificate_refusal"]
             observation["evidence"].update(
                 target=target,
                 numeric_policy=numeric_policy,

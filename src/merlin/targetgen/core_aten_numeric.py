@@ -191,6 +191,21 @@ def prepare_spec_int8(
     if (result or {}).get("native_admission", {}).get("status") != "device":
         for name, data in snapshot.items():
             (directory / name).write_bytes(data)
+    if report.get("native_certificate") == "unavailable":
+        result["native_certificate"] = "unavailable"
+        result["native_certificate_refusal"] = report["native_certificate_refusal"]
+        admission = result.get("native_admission", {})
+        # A native component refusal is decisive only when it supplies the
+        # final host reason. Construction/ABI policy can independently require
+        # host execution, and an exact quantized candidate needs no IEEE proof.
+        if (
+            admission.get("status") != "device"
+            and admission.get("reason_code") == "native_dtype_exact_components_unavailable"
+        ):
+            from merlin.targetgen.native_cpu_errors import require_certificate_available
+
+            require_certificate_available(result.get("refusal_details"))
+        (directory / "spec-int8-admission.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 
 

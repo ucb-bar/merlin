@@ -1,11 +1,23 @@
 """Native invalid-result NaN bits require an explicit source policy."""
 
+import json
+from pathlib import Path
+
 import numpy as np
+import pytest
 from mlir_fixtures import forward, generic, pointwise
 from targetgen_fixtures import assert_host_refusal
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.targetgen import native_ieee_certificate as native
 from merlin.targetgen.native_dtype_domain import component_semantics
+
+
+@pytest.fixture
+def supplied_certificate(monkeypatch):
+    # These tests exercise composition; certificate identity is checked separately.
+    certificate = json.loads(Path(native.__file__).with_suffix(".json").read_text())
+    monkeypatch.setattr(native, "certificate", lambda: certificate)
 
 
 def division_module(literal):
@@ -15,13 +27,13 @@ def division_module(literal):
     return forward("%x: tensor<1xi32>", "tensor<1xf32>", prelude + generic(ins, "tensor<1xf32>", body))
 
 
-def test_certified_integer_conversion_zero_division():
+def test_certified_integer_conversion_zero_division(supplied_certificate):
     proof = component_semantics(division_module("0.0"))
     assert proof["status"] == "proven"
     assert proof["method"] == "closed_typed_pointwise_IEEE_composition_v1"
 
 
-def test_uncertified_binary64_zero_divisor_falls_back_before_provider(tmp_path):
+def test_uncertified_binary64_zero_divisor_falls_back_before_provider(tmp_path, supplied_certificate):
     source = str(division_module("0.0"))
     source = source.replace("i32", "f64").replace("f32", "f64")
     source = source.replace("arith.sitofp %a : f64 to f64", "arith.negf %a : f64")
@@ -30,7 +42,7 @@ def test_uncertified_binary64_zero_divisor_falls_back_before_provider(tmp_path):
     assert_host_refusal(tmp_path, parse_mlir_text(source), inputs, cases, code)
 
 
-def test_bf16_nan_negation_needs_explicit_source_policy(tmp_path):
+def test_bf16_nan_negation_needs_explicit_source_policy(tmp_path, supplied_certificate):
     """Native reduced-precision NaN policy is not inferred from IEEE negf."""
     module = pointwise(["tensor<1xbf16>"], "tensor<1xbf16>", "%v=arith.negf %a : bf16")
     inputs, cases = [np.array([float("nan")], np.float32)], [dict(input_abi=[dict(dtype="bf16")])]

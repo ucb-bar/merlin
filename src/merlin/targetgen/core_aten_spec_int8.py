@@ -12,6 +12,7 @@ import math
 from pathlib import Path
 
 from merlin.targetgen.admission_conditions import enforce_provider_emission_obligations
+from merlin.targetgen.native_cpu_errors import require_certificate_available
 from merlin.targetgen.operator_review import review_accepted
 from merlin.targetgen.software_spec import admit_operation, load_software_spec
 
@@ -182,7 +183,7 @@ def provider_proof(provider, source, *, package, policy):
         return None, None
     try:
         proof = provider.admit_numeric_schedule(str(source), package=package, numeric_policy=policy)
-        return enforce_provider_emission_obligations(proof, policy), None
+        return enforce_provider_emission_obligations(require_certificate_available(proof), policy), None
     except ValueError as exc:
         return None, str(exc)
 
@@ -190,6 +191,7 @@ def provider_proof(provider, source, *, package, policy):
 def covering_proof(provider, module, operations, *, package, policy):
     """The provider's proof of module (its ValueError propagates) covering each operation, else ValueError."""
     proof = provider.admit_numeric_schedule(str(module), package=package, numeric_policy=policy)
+    require_certificate_available(proof)
     enforce_provider_emission_obligations(proof, policy)
     for op in operations:
         failure = provider_coverage(module, proof, op)
@@ -200,6 +202,7 @@ def covering_proof(provider, module, operations, *, package, policy):
 
 def provider_coverage(module, proof, op) -> str | None:
     """A source-bound, proven catalog binding for this precise contraction."""
+    require_certificate_available(proof)
     if not isinstance(proof, dict) or proof.get("status") != "proven":
         return "selected provider coverage proof unavailable"
     if proof.get("source_sha256") != hashlib.sha256(str(module).encode()).hexdigest():

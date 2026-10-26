@@ -236,6 +236,35 @@ def component_semantics(module):
     proof = _storage_component_semantics(module)
     if proof["status"] == "proven":
         return proof
+    # The typed certificate has no binary64 arithmetic theorem. Keep this
+    # independent refusal ahead of its loader, preserving storage-only proofs.
+    storage = {
+        str(getattr(arg.type, "element_type", ""))
+        for function in module.walk()
+        if function.name == "func.func" and function.sym_name.data == "forward"
+        for arg in function.body.block.args
+    }
+    arithmetic = {"arith.addf", "arith.subf", "arith.mulf", "arith.divf", "arith.negf", "math.fma"}
+    binary64_arithmetic = any(
+        op.name in arithmetic and any(str(value.type) == "f64" for value in (*op.operands, *op.results))
+        for op in module.walk()
+    )
+    if storage & {"f64", "complex<f64>"} or binary64_arithmetic:
+        return dict(
+            status="refused",
+            code="native_binary64_arithmetic_form_unproved",
+            reason=("binary64 arithmetic/conversion forms are outside this CPU certificate; "
+                    "storage-only proofs remain separate"),
+        )
+    # The typed pointwise fallback has no control-flow theorem. Its certificate
+    # check runs first, so screen this independent refusal before asking for it.
+    for op in module.walk():
+        if op.name.startswith(("cf.", "scf.")):
+            return dict(
+                status="refused",
+                code="native_primitive_semantics_unproved",
+                reason="no certified typed pointwise theorem for " + op.name,
+            )
     numerical = {
         "arith.addf",
         "arith.subf",
