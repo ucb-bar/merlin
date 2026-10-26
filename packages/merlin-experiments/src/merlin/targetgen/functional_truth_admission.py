@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from merlin.targetgen.access_observations import broadcast_axes
+from merlin.targetgen.admission_conditions import binding_declaration
 
 from .functional_truth_types import dclass
 
@@ -116,7 +117,15 @@ def _representation(case, arithmetic: str, numerics: Mapping) -> dict:
         if element(storage) == element(_storage_name(operand)):
             return {**fields, "operand_dtype": operand}
         if domain.get("native_admission") == "structural_per_dtype_semantic_proof":
-            return {**fields, "operand_dtype": operand, "numerical_family": "F5" if "bool" in classes else "F2"}
+            # rewrite_integer_components emits balanced radix-256 signed bytes
+            # with full i32 partial sums, independently of an operation declaration.
+            return {
+                "operand_dtype": "i8",
+                "accum_dtype": "i32",
+                "readout_dtype": "i32",
+                "arithmetic": "integer_components",
+                "numerical_family": "F5" if "bool" in classes else "F2",
+            }
     return {**fields, "operand_dtype": element(storage)}
 
 
@@ -146,6 +155,13 @@ def source_signature(case, raw: Mapping, family_code: str, spec: Mapping) -> tup
         "aliasing": _aliasing(raw),
         **_representation(case, arithmetic, spec.get("numerical_semantics") or {}),
     }
+    if signature.get("arithmetic") == "integer_components":
+        form = "bilinear" if family == "contraction" else "linear"
+        signature["numeric"] = {"family": signature["numerical_family"], "form": form}
+        signature["numerical_contract"] = {
+            "representation": "signed_radix_256_components",
+            "producer": f"closed_static_{form}_integer",
+        }
     if family in ("contraction", "reduction"):
         # Captured cases have static extents; a padded element of a sum is its additive identity.
         signature["tails"] = _STATIC_TAILS
@@ -162,6 +178,25 @@ def source_signature(case, raw: Mapping, family_code: str, spec: Mapping) -> tup
     return family, signature
 
 
+def _component_refusal(signature: Mapping, spec: Mapping) -> dict | None:
+    """Require the source-derived component form's own compatible declaration."""
+    if signature.get("arithmetic") != "integer_components":
+        return None
+    identity = binding_declaration(signature)
+    declaration = next((row for row in spec.get("operations", []) if row["id"] == identity), None)
+    if declaration is None:
+        return {"status": "unsupported", "reason": f"no SW operation declaration {identity}"}
+    contract = declaration.get("numerical_contract") or {}
+    for field, observed in signature["numerical_contract"].items():
+        if contract.get(field) != observed:
+            return {
+                "status": "unsupported",
+                "declaration": identity,
+                "reason": f"observed {field} {observed!r} differs from declared {contract.get(field)!r}",
+            }
+    return None
+
+
 def admit(case, raw: Mapping, family_code: str, admission: Mapping) -> dict:
     """Screen one native construction against the selected spec at accelerator placement."""
     from merlin.targetgen.software_spec import admit_operation
@@ -171,7 +206,13 @@ def admit(case, raw: Mapping, family_code: str, admission: Mapping) -> dict:
     if observed is None:
         return {"status": "not_native", "reason": f"{family_code} is not a native construction"}
     _family, signature = observed
-    decision = admit_operation(spec, case.ov, signature, "accelerator")
+    decision = _component_refusal(signature, spec) or admit_operation(spec, case.ov, signature, "accelerator")
+    if (
+        decision["status"] == "admitted"
+        and signature.get("arithmetic") == "integer_components"
+        and decision.get("declaration") != binding_declaration(signature)
+    ):
+        decision = {"status": "unsupported", "reason": "source component form requires its own declaration"}
     return {**decision, "observed_signature": signature}
 
 

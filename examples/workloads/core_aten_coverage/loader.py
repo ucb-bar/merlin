@@ -48,10 +48,19 @@ ROWS = [
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[3,1],"values":[[-0.75,-0.3499999940395355,0.050000011920928955],[0.44999998807907104,0.8500000238418579,1.25]]},1],"kind":"tuple"},"kwargs":{}},"case_id":"aten.cumsum.default","dtype":"float32","group":"contraction","overload":"aten.cumsum.default","source":"corpus_193"}'
     ),
     json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int32","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":1,"stride":[3,1],"values":[[0,0,0],[0,0,0]]},1],"kind":"tuple"},"kwargs":{"dtype":{"kind":"dtype","value":"int32"}}},"case_id":"aten.cumsum.default::6367e008810eb280","dtype":"int32","group":"contraction","overload":"aten.cumsum.default","source":"bounded"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[3,1],"values":[[0,0,0],[0,0,1]]},0],"kind":"tuple"},"kwargs":{"dtype":{"kind":"dtype","value":"int64"}}},"case_id":"aten.cumsum.default::74624fb3ccb606af","dtype":"int64","group":"contraction","overload":"aten.cumsum.default","source":"bounded"}'
+    ),
+    json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"int8","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[6,2],"values":[[0,0,0],[0,0,1]]},1],"kind":"tuple"},"kwargs":{"dtype":{"kind":"dtype","value":"int8"}}},"case_id":"aten.cumsum.default::d137255a9df8d860","dtype":"int8","group":"contraction","overload":"aten.cumsum.default","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"bfloat16","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":{"kind":"float","value":"-inf"}},2.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.div.Scalar::4a0a13a5cdf89e83","dtype":"bfloat16","group":"elementwise_map","overload":"aten.div.Scalar","source":"bounded"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"bool","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":false},2.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.div.Scalar::7da8e59aa96fc7ed","dtype":"bool","group":"elementwise_map","overload":"aten.div.Scalar","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"complex64","kind":"tensor","requires_grad":false,"shape":[1],"storage_offset":1,"stride":[1],"values":[{"imag":0.0,"kind":"complex","real":{"kind":"float","value":"nan"}}]},-2.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.div.Scalar::4cd6d10188b69132","dtype":"complex64","group":"elementwise_map","overload":"aten.div.Scalar","source":"bounded"}'
@@ -63,10 +72,19 @@ ROWS = [
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[3,1],"values":[[-0.75,-0.3499999940395355,0.050000011920928955],[0.44999998807907104,0.8500000238418579,1.25]]},2.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.div.Scalar","dtype":"float32","group":"elementwise_map","overload":"aten.div.Scalar","source":"corpus_193"}'
     ),
     json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int32","kind":"tensor","requires_grad":false,"shape":[1],"storage_offset":1,"stride":[1],"values":[0]},-2.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.div.Scalar::8468ec10d8f8a580","dtype":"int32","group":"elementwise_map","overload":"aten.div.Scalar","source":"bounded"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0},-2.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.div.Scalar::c2d8f4ca715d9c27","dtype":"int64","group":"elementwise_map","overload":"aten.div.Scalar","source":"bounded"}'
+    ),
+    json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"int8","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0},-0.5],"kind":"tuple"},"kwargs":{}},"case_id":"aten.div.Scalar::18f4aabdd90ecff3","dtype":"int8","group":"elementwise_map","overload":"aten.div.Scalar","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"bfloat16","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":-0.75},0.5],"kind":"tuple"},"kwargs":{}},"case_id":"aten.mul.Scalar::1a3b09ab26193deb","dtype":"bfloat16","group":"elementwise_map","overload":"aten.mul.Scalar","source":"bounded"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"bool","kind":"tensor","requires_grad":false,"shape":[1],"storage_offset":1,"stride":[1],"values":[false]},2.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.mul.Scalar::94452874b9b1ff9a","dtype":"bool","group":"elementwise_map","overload":"aten.mul.Scalar","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"complex64","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":{"imag":-0.75,"kind":"complex","real":-0.75}},0.5],"kind":"tuple"},"kwargs":{}},"case_id":"aten.mul.Scalar::31d9632a7368796e","dtype":"complex64","group":"elementwise_map","overload":"aten.mul.Scalar","source":"bounded"}'
@@ -76,6 +94,12 @@ ROWS = [
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[3,1],"values":[[-0.75,-0.3499999940395355,0.050000011920928955],[0.44999998807907104,0.8500000238418579,1.25]]},0.5],"kind":"tuple"},"kwargs":{}},"case_id":"aten.mul.Scalar","dtype":"float32","group":"elementwise_map","overload":"aten.mul.Scalar","source":"corpus_193"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int32","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0},0.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.mul.Scalar::91c03f5fa1bdbeb7","dtype":"int32","group":"elementwise_map","overload":"aten.mul.Scalar","source":"bounded"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[1],"storage_offset":0,"stride":[1],"values":[0]},0.0],"kind":"tuple"},"kwargs":{}},"case_id":"aten.mul.Scalar::8eeae3cd627d991a","dtype":"int64","group":"elementwise_map","overload":"aten.mul.Scalar","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"int8","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0},-0.5],"kind":"tuple"},"kwargs":{}},"case_id":"aten.mul.Scalar::745226b37f8badd6","dtype":"int8","group":"elementwise_map","overload":"aten.mul.Scalar","source":"bounded"}'
@@ -93,6 +117,12 @@ ROWS = [
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[3,1],"values":[[-0.75,-0.3499999940395355,0.050000011920928955],[0.44999998807907104,0.8500000238418579,1.25]]},0.5],"kind":"tuple"},"kwargs":{"alpha":2}},"case_id":"aten.sub.Scalar","dtype":"float32","group":"elementwise_map","overload":"aten.sub.Scalar","source":"corpus_193"}'
     ),
     json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int32","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0},-2.0],"kind":"tuple"},"kwargs":{"alpha":2}},"case_id":"aten.sub.Scalar::9af7106e9cb12503","dtype":"int32","group":"elementwise_map","overload":"aten.sub.Scalar","source":"bounded"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0},2.0],"kind":"tuple"},"kwargs":{"alpha":-1}},"case_id":"aten.sub.Scalar::5e6f51e8603970d6","dtype":"int64","group":"elementwise_map","overload":"aten.sub.Scalar","source":"bounded"}'
+    ),
+    json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"int8","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0},1.0],"kind":"tuple"},"kwargs":{"alpha":0}},"case_id":"aten.sub.Scalar::5783ca329d63a1ac","dtype":"int8","group":"elementwise_map","overload":"aten.sub.Scalar","source":"bounded"}'
     ),
     json.loads(
@@ -106,6 +136,12 @@ ROWS = [
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[3,1],"values":[[-0.75,-0.3499999940395355,0.050000011920928955],[0.44999998807907104,0.8500000238418579,1.25]]},{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[3,1],"values":[[0.050000011920928955,-0.3499999940395355,-0.75],[1.25,0.8500000238418579,0.44999998807907104]]}],"kind":"tuple"},"kwargs":{"alpha":2}},"case_id":"aten.sub.Tensor","dtype":"float32","group":"elementwise_map","overload":"aten.sub.Tensor","source":"corpus_193"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int32","kind":"tensor","requires_grad":false,"shape":[1],"storage_offset":1,"stride":[1],"values":[0]},{"dtype":"int32","kind":"tensor","requires_grad":false,"shape":[1],"storage_offset":1,"stride":[1],"values":[0]}],"kind":"tuple"},"kwargs":{"alpha":0}},"case_id":"aten.sub.Tensor::03c9f285d4fbdd15","dtype":"int32","group":"elementwise_map","overload":"aten.sub.Tensor","source":"bounded"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0},{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[],"storage_offset":0,"stride":[],"values":0}],"kind":"tuple"},"kwargs":{"alpha":0}},"case_id":"aten.sub.Tensor::0b84e82b25b9e208","dtype":"int64","group":"elementwise_map","overload":"aten.sub.Tensor","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"int8","kind":"tensor","requires_grad":false,"shape":[1],"storage_offset":0,"stride":[1],"values":[0]},{"dtype":"int8","kind":"tensor","requires_grad":false,"shape":[1],"storage_offset":0,"stride":[1],"values":[0]}],"kind":"tuple"},"kwargs":{"alpha":2}},"case_id":"aten.sub.Tensor::3a7908b0ecbcd881","dtype":"int8","group":"elementwise_map","overload":"aten.sub.Tensor","source":"bounded"}'
@@ -681,6 +717,9 @@ ROWS = [
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[1,2,6],"storage_offset":0,"stride":[12,6,1],"values":[[[-0.75,-0.5681818127632141,-0.3863636255264282,-0.20454543828964233,-0.022727251052856445,0.15909093618392944],[0.34090906381607056,0.5227272510528564,0.7045454382896423,0.8863636255264282,1.0681817531585693,1.25]]]},[2],[2],[0],false,true],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool1d.default","dtype":"float32","group":"reduction","overload":"aten.avg_pool1d.default","source":"corpus_193"}'
     ),
     json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[1,2,6],"storage_offset":0,"stride":[24,12,2],"values":[[[-2,-1,0,3,-2,-1],[0,3,-2,-1,0,3]]]},[2],[2],[0],true,false],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool1d.default::274a3539eb811977","dtype":"int64","group":"reduction","overload":"aten.avg_pool1d.default","source":"bounded"}'
+    ),
+    json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"bfloat16","kind":"tensor","requires_grad":false,"shape":[1,2,4,4],"storage_offset":0,"stride":[32,16,4,1],"values":[[[[-0.75,-0.68359375,-0.62109375,-0.5546875],[-0.4921875,-0.427734375,-0.36328125,-0.298828125],[-0.2333984375,-0.1689453125,-0.10498046875,-0.040283203125],[0.024169921875,0.0888671875,0.1533203125,0.2177734375]],[[0.283203125,0.34765625,0.412109375,0.4765625],[0.5390625,0.60546875,0.66796875,0.734375],[0.796875,0.86328125,0.92578125,0.9921875],[1.0546875,1.1171875,1.1875,1.25]]]]},[2,2],[2,2],[0,0],false,true,null],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool2d.default::41e8d66633647c02","dtype":"bfloat16","group":"reduction","overload":"aten.avg_pool2d.default","source":"bounded"}'
     ),
     json.loads(
@@ -688,6 +727,9 @@ ROWS = [
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[1,2,4,4],"storage_offset":0,"stride":[32,16,4,1],"values":[[[[-0.75,-0.6854838728904724,-0.6209677457809448,-0.5564516186714172],[-0.49193549156188965,-0.42741936445236206,-0.3629032373428345,-0.2983871102333069],[-0.2338709831237793,-0.1693548560142517,-0.10483872890472412,-0.04032260179519653],[0.024193525314331055,0.08870965242385864,0.15322577953338623,0.21774190664291382]],[[0.2822580933570862,0.34677422046661377,0.41129034757614136,0.47580647468566895],[0.5403226017951965,0.6048387289047241,0.6693548560142517,0.7338709831237793],[0.7983871102333069,0.8629032373428345,0.9274193644523621,0.9919354915618896],[1.0564515590667725,1.1209677457809448,1.1854839324951172,1.25]]]]},[2,2],[2,2],[0,0],false,true,null],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool2d.default","dtype":"float32","group":"reduction","overload":"aten.avg_pool2d.default","source":"corpus_193"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[1,2,4,4],"storage_offset":0,"stride":[32,16,4,1],"values":[[[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]],[[0,0,0,0],[0,0,0,0],[0,0,0,0],[1,1,1,1]]]]},[2,2],[2,2],[0,0],false,true,null],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool2d.default::0458e5f378acbd92","dtype":"int64","group":"reduction","overload":"aten.avg_pool2d.default","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"bfloat16","kind":"tensor","requires_grad":false,"shape":[1,1,2,2],"storage_offset":0,"stride":[4,4,2,1],"values":[[[[-3.3895313892515355e+38,-1.0],[0.0,1.0]]]]},{"dtype":"bfloat16","kind":"tensor","requires_grad":false,"shape":[1,1,4,4],"storage_offset":0,"stride":[16,16,4,1],"values":[[[[-3.3895313892515355e+38,-1.0,0.0,1.0],[3.3895313892515355e+38,-3.3895313892515355e+38,-1.0,0.0],[1.0,3.3895313892515355e+38,-3.3895313892515355e+38,-1.0],[0.0,1.0,3.3895313892515355e+38,-3.3895313892515355e+38]]]]},[2,2],[2,2],[0,0],false,true,null],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool2d_backward.default::0307a4878e7dad56","dtype":"bfloat16","group":"reduction","overload":"aten.avg_pool2d_backward.default","source":"bounded"}'
@@ -699,7 +741,13 @@ ROWS = [
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[1,1,2,2],"storage_offset":0,"stride":[4,4,2,1],"values":[[[[1.0,1.0],[1.0,1.0]]]]},{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[1,1,4,4],"storage_offset":0,"stride":[16,16,4,1],"values":[[[[-0.75,-0.6166666746139526,-0.4833333194255829,-0.34999996423721313],[-0.21666663885116577,-0.08333329856395721,0.05000004172325134,0.1833333820104599],[0.3166666030883789,0.44999995827674866,0.5833333134651184,0.7166666388511658],[0.8499999642372131,0.9833333492279053,1.1166666746139526,1.25]]]]},[2,2],[2,2],[0,0],false,true,null],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool2d_backward.default","dtype":"float32","group":"reduction","overload":"aten.avg_pool2d_backward.default","source":"corpus_193"}'
     ),
     json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[1,1,2,2],"storage_offset":0,"stride":[4,4,0,1],"values":[[[[0,0],[0,0]]]]},{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[1,1,4,4],"storage_offset":0,"stride":[16,16,0,1],"values":[[[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]]]},[2,2],[2,2],[0,0],true,false,null],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool2d_backward.default::09257394e3803d86","dtype":"int64","group":"reduction","overload":"aten.avg_pool2d_backward.default","source":"bounded"}'
+    ),
+    json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[1,1,4,4,4],"storage_offset":0,"stride":[64,64,16,4,1],"values":[[[[[-0.75,-0.7182539701461792,-0.6865079402923584,-0.6547619104385376],[-0.6230158805847168,-0.591269850730896,-0.5595238208770752,-0.5277777910232544],[-0.4960317313671112,-0.4642857015132904,-0.4325396716594696,-0.4007936418056488],[-0.3690475821495056,-0.3373015522956848,-0.305555522441864,-0.2738094925880432]],[[-0.2420634627342224,-0.2103174328804016,-0.1785714030265808,-0.14682535827159882],[-0.11507932841777802,-0.08333329856395721,-0.05158726125955582,-0.019841227680444717],[0.011904805898666382,0.04365083947777748,0.07539687305688858,0.10714291036128998],[0.13888894021511078,0.17063497006893158,0.20238101482391357,0.23412704467773438]],[[0.2658729553222656,0.2976189851760864,0.3293650150299072,0.361111044883728],[0.3928571045398712,0.424603134393692,0.4563491642475128,0.4880951941013336],[0.5198412537574768,0.5515872836112976,0.5833333134651184,0.6150793433189392],[0.64682537317276,0.6785714030265808,0.7103174328804016,0.7420634627342224]],[[0.7738094925880432,0.805555522441864,0.8373015522956848,0.8690475821495056],[0.9007936120033264,0.9325396418571472,0.964285671710968,0.9960317611694336],[1.0277777910232544,1.0595238208770752,1.091269850730896,1.1230158805847168],[1.1547619104385376,1.1865079402923584,1.2182539701461792,1.25]]]]]},[2,2,2],[2,2,2],[0,0,0],false,true,null],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool3d.default","dtype":"float32","group":"reduction","overload":"aten.avg_pool3d.default","source":"corpus_193"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[1,1,4,4,4],"storage_offset":0,"stride":[64,64,0,4,1],"values":[[[[[-9223372036854775808,-1,0,1],[9223372036854775807,-9223372036854775808,-1,0],[1,9223372036854775807,-9223372036854775808,-1],[0,1,9223372036854775807,-9223372036854775808]],[[-9223372036854775808,-1,0,1],[9223372036854775807,-9223372036854775808,-1,0],[1,9223372036854775807,-9223372036854775808,-1],[0,1,9223372036854775807,-9223372036854775808]],[[-9223372036854775808,-1,0,1],[9223372036854775807,-9223372036854775808,-1,0],[1,9223372036854775807,-9223372036854775808,-1],[0,1,9223372036854775807,-9223372036854775808]],[[-9223372036854775808,-1,0,1],[9223372036854775807,-9223372036854775808,-1,0],[1,9223372036854775807,-9223372036854775808,-1],[0,1,9223372036854775807,-9223372036854775808]]]]]},[2,2,2],[2,2,2],[0,0,0],true,false,null],"kind":"tuple"},"kwargs":{}},"case_id":"aten.avg_pool3d.default::12dcf423e90bb8de","dtype":"int64","group":"reduction","overload":"aten.avg_pool3d.default","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"bfloat16","kind":"tensor","requires_grad":false,"shape":[1,4,4],"storage_offset":0,"stride":[16,0,1],"values":[[[{"kind":"float","value":"-inf"},-1.0,0.0,{"kind":"float","value":"inf"}],[{"kind":"float","value":"-inf"},-1.0,0.0,{"kind":"float","value":"inf"}],[{"kind":"float","value":"-inf"},-1.0,0.0,{"kind":"float","value":"inf"}],[{"kind":"float","value":"-inf"},-1.0,0.0,{"kind":"float","value":"inf"}]]]},[3,3],[2,2],[1,1],[0,0],[1,1]],"kind":"tuple"},"kwargs":{}},"case_id":"aten.col2im.default::19cacc859976f3ff","dtype":"bfloat16","group":"reduction","overload":"aten.col2im.default","source":"bounded"}'
@@ -736,6 +784,12 @@ ROWS = [
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"float32","kind":"tensor","requires_grad":false,"shape":[2,3],"storage_offset":0,"stride":[3,1],"values":[[-0.75,-0.3499999940395355,0.050000011920928955],[0.44999998807907104,0.8500000238418579,1.25]]},[0],false],"kind":"tuple"},"kwargs":{}},"case_id":"aten.sum.dim_IntList","dtype":"float32","group":"reduction","overload":"aten.sum.dim_IntList","source":"corpus_193"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int32","kind":"tensor","requires_grad":false,"shape":[0],"storage_offset":0,"stride":[1],"values":[]},null,false],"kind":"tuple"},"kwargs":{"dtype":{"kind":"dtype","value":"int32"}}},"case_id":"aten.sum.dim_IntList::21fc96f05f2d793e","dtype":"int32","group":"reduction","overload":"aten.sum.dim_IntList","source":"bounded"}'
+    ),
+    json.loads(
+        '{"arguments":{"args":{"items":[{"dtype":"int64","kind":"tensor","requires_grad":false,"shape":[0],"storage_offset":0,"stride":[1],"values":[]},[],false],"kind":"tuple"},"kwargs":{"dtype":{"kind":"dtype","value":"int64"}}},"case_id":"aten.sum.dim_IntList::de708b47ebcdc321","dtype":"int64","group":"reduction","overload":"aten.sum.dim_IntList","source":"bounded"}'
     ),
     json.loads(
         '{"arguments":{"args":{"items":[{"dtype":"int8","kind":"tensor","requires_grad":false,"shape":[0],"storage_offset":0,"stride":[1],"values":[]},[-1],true],"kind":"tuple"},"kwargs":{"dtype":{"kind":"dtype","value":"int8"}}},"case_id":"aten.sum.dim_IntList::0374b5decc3eb91d","dtype":"int8","group":"reduction","overload":"aten.sum.dim_IntList","source":"bounded"}'

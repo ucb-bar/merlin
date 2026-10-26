@@ -47,6 +47,81 @@ def test_admitted_contraction_is_a_device_obligation(authored):
     assert commitment["admission"]["declaration"] == "contraction"
 
 
+def _int32_sub_tensor():
+    case = _case("aten.sub.Tensor")
+    case["case_id"] = "aten.sub.Tensor::03c9f285d4fbdd15"
+    tensor = dict(kind="tensor", dtype="int32", shape=[1], stride=[1], storage_offset=1, values=[0])
+    case["arguments"] = dict(args=dict(kind="tuple", items=[tensor, copy.deepcopy(tensor)]), kwargs=dict(alpha=0))
+    case["expected"] = {**tensor, "storage_offset": 0}
+    return case
+
+
+def test_int32_sub_tensor_observes_component_arithmetic():
+    from merlin.targetgen.functional_truth_admission import source_signature
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _int32_sub_tensor()
+    admission = {"spec": resolve_spec(load_software_spec(SPEC), {})[0]}
+
+    commitment = expectation(case, admission=admission)
+
+    assert commitment["lane"] == "device"
+    assert commitment["admission"]["declaration"] == "component_linear"
+    signature = source_signature(Case(case, "test"), case, "N3", admission["spec"])[1]
+    assert signature["arithmetic"] == "integer_components"
+    assert signature["numerical_contract"] == {
+        "representation": "signed_radix_256_components",
+        "producer": "closed_static_linear_integer",
+    }
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("arithmetic", "integer_affine"),
+        ("arithmetic", "integer_multiply_accumulate"),
+        ("arithmetic", "readout_stages"),
+        ("arithmetic", "integer_sum"),
+        ("arithmetic", "none"),
+        ("arithmetic", "not_a_representation"),
+        ("representation", "signed_radix_16_components"),
+        ("representation", "opaque_little_endian_bytes"),
+        ("representation", "definitely_unproved"),
+        ("representation", None),
+        ("producer", "closed_static_bilinear_integer"),
+        ("producer", None),
+        ("declaration", "remove"),
+        ("declaration", "rename"),
+    ],
+)
+def test_component_declaration_cannot_change_the_observed_representation(field, value):
+    from merlin.targetgen.functional_truth_admission import admit
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _int32_sub_tensor()
+    # Nonzero alpha also exercises the ordinary two-input subtraction form.
+    case["arguments"]["kwargs"]["alpha"] = 1
+    spec = resolve_spec(load_software_spec(SPEC), {})[0]
+    source = Case(case, "test")
+    original = admit(source, case, "N3", {"spec": spec})
+    assert original["status"] == "admitted"
+    row = next(row for row in spec["operations"] if row["id"] == "component_linear")
+    if field == "declaration":
+        if value == "remove":
+            spec["operations"].remove(row)
+        else:
+            row["id"] = "other_linear"
+    elif field == "arithmetic":
+        row[field] = value
+    else:
+        row["numerical_contract"][field] = value
+
+    decision = admit(source, case, "N3", {"spec": spec})
+
+    assert decision["status"] == "unsupported"
+    assert decision["observed_signature"] == original["observed_signature"]
+
+
 @pytest.mark.parametrize("overload", ["aten.add.Tensor", "aten.sub.Tensor"])
 @pytest.mark.parametrize(
     "shapes, broadcasting",
@@ -144,8 +219,11 @@ def test_all_fixture_movement_signatures_are_admitted_without_command_observatio
 
     monkeypatch.setenv(ACCEPT_ENV, "1")
     # Use the selected declaration rather than an op-name movement roster.
-    movements = [case for case in EVIDENCE["cases"]
-                 if expectation(case, admission=authored).get("admission", {}).get("declaration") == "movement_bitwise"]
+    movements = [
+        case
+        for case in EVIDENCE["cases"]
+        if expectation(case, admission=authored).get("admission", {}).get("declaration") == "movement_bitwise"
+    ]
     assert len(movements) == 31
     assert all(expectation(case, admission=authored)["lane"] == "device" for case in movements)
 
@@ -221,10 +299,18 @@ def test_fixture_admission_preserves_pending_row_gating(monkeypatch, enabled, co
     }
     assert len(device) == count
     assert len(EVIDENCE["device_lane"]) == EVIDENCE["lane_run"]["device"] == 57
-    expected_drops = {
-        "aten.addmm.default", "aten.bmm.default", "aten.convolution.default",
-        "aten.convolution_backward.default", "aten.cumsum.default", "aten.mm.default",
-    } if enabled == "0" else set()
+    expected_drops = (
+        {
+            "aten.addmm.default",
+            "aten.bmm.default",
+            "aten.convolution.default",
+            "aten.convolution_backward.default",
+            "aten.cumsum.default",
+            "aten.mm.default",
+        }
+        if enabled == "0"
+        else set()
+    )
     assert set(EVIDENCE["device_lane"]) - device == expected_drops
     for case in EVIDENCE["cases"]:
         if case["overload"] in expected_drops:
