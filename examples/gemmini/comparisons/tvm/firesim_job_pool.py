@@ -1,0 +1,169 @@
+"""Bounded jobs on an explicitly supplied, already provisioned FireSim slot list.
+
+An installation-specific adapter consumes request.json and writes result.json.
+It owns the actual manager API, boot evidence, guest cap, and remote cancellation.
+This module never allocates instances, flashes images, or chooses schedules.
+"""
+
+import fcntl
+import hashlib
+import json
+import os
+import re
+import signal
+import subprocess
+import time
+from pathlib import Path
+
+
+def identity(path):
+    path = Path(path).resolve(strict=True)
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(8 << 20), b""):
+            digest.update(block)
+    return dict(path=str(path), sha256=digest.hexdigest(), bytes=path.stat().st_size)
+
+
+def checked(item):
+    if identity(item["path"])["sha256"] != item["sha256"]:
+        raise ValueError("Changed FireSim evidence: " + item["path"])
+    return Path(item["path"])
+
+
+class FireSimPool:
+    def __init__(self, config, *, deadline_epoch):
+        self.config = json.loads(Path(config).read_text())
+        self.config_identity = identity(config)
+        self.hardware = (
+            identity(self.config["hardware_receipt"])
+            if self.config.get("hardware_receipt")
+            else dict(
+                deployment_id=self.config.get("deployment_id"),
+                expected_memory_model="DDR3",
+                source="user-provided bitstream",
+            )
+        )
+        if not self.config.get("adapter_sources"):
+            raise ValueError("Pin the installed manager wrapper's source bytes")
+        for source in self.config["adapter_sources"]:
+            checked(source)
+        self.deadline = float(deadline_epoch)
+        self.slots = self.config["slots"]
+        if not self.slots or len({s["lock"] for s in self.slots}) != len(self.slots):
+            raise ValueError("Supply distinct locks for already assigned physical slots")
+        if not self.config.get("persistent_manager") or not self.config.get("adapter_cancels_remote_on_timeout"):
+            raise ValueError("Require a persistent manager and qualified remote cancellation")
+        for slot in self.slots:
+            if not Path(slot["lock"]).is_absolute() or not slot["command"]:
+                raise ValueError("Use a shared absolute slot lock and an explicit adapter argv")
+
+    def run(self, elf, folder, *, measured_limit=None, live_limit=None):
+        """Return a verified warm interval, or raise; failures never become costs."""
+        elf, folder = Path(elf).resolve(), Path(folder).resolve()
+        folder.mkdir(parents=True, exist_ok=False)
+        if "path" in self.hardware:
+            checked(self.hardware)
+        for source in self.config["adapter_sources"]:
+            checked(source)
+        lease = None
+        try:
+            while lease is None:
+                if time.time() >= self.deadline:
+                    raise TimeoutError("Study deadline reached while waiting for a slot")
+                for slot in self.slots:
+                    path = Path(slot["lock"])
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    handle = path.open("a+")
+                    try:
+                        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        handle.close()
+                        continue
+                    lease = handle
+                    break
+                if lease is None:
+                    time.sleep(0.1)
+            wall = self.deadline - time.time()
+            if wall <= 0:
+                raise TimeoutError("Study deadline reached")
+            if callable(measured_limit):
+                measured_limit = measured_limit()
+            request = dict(
+                schema="gemmini_firesim_probe_request_v2",
+                elf=identity(elf),
+                hardware=self.hardware,
+                slot=slot["id"],
+                timing_policy="fixed-warm",
+                timing_scope="complete second model_run including completion fence",
+                expected_memory_model="DDR3",
+                configure_memory=False,
+                startup_included=False,
+                cutoff_comparison="active_cycles >= incumbent",
+                measured_cycle_limit=measured_limit,
+                wall_seconds=wall,
+                deadline_epoch=self.deadline,
+                live_limit=live_limit,
+                require_all_outputs=True,
+                keep_manager_alive=True,
+                scope="small workload experiment; not EL4 complete-chain qualification",
+            )
+            request_path, result_path = folder / "request.json", folder / "result.json"
+            request_path.write_text(json.dumps(request, indent=2) + "\n")
+            argv = [
+                arg.format_map(dict(request=str(request_path), result=str(result_path), slot=slot["id"]))
+                for arg in slot["command"]
+            ]
+            with (folder / "adapter.log").open("w") as log:
+                process = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                try:
+                    code = process.wait(timeout=wall)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(process.pid, signal.SIGKILL)
+                        process.wait()
+                    raise TimeoutError("FireSim adapter wall cap; adapter must also cancel the remote job")
+            if code:
+                raise RuntimeError("FireSim adapter failed; see " + str(folder / "adapter.log"))
+            result = json.loads(result_path.read_text())
+            if (
+                result.get("status") != "passed"
+                or result.get("guest_exit") != 0
+                or result.get("elf_sha256") != request["elf"]["sha256"]
+                or not result.get("wall_limit_enforced")
+            ):
+                raise ValueError("FireSim result lacks matching ELF, deadline enforcement or successful guest exit")
+            if "sha256" in self.hardware and result.get("hardware_sha256") != self.hardware["sha256"]:
+                raise ValueError("FireSim result differs from the supplied deployment receipt")
+            if measured_limit is not None and not result.get("measured_limit_enforced"):
+                raise ValueError("Installed adapter has not qualified incumbent-cycle enforcement")
+            if measured_limit is not None and live_limit and not result.get("moving_limit_enforced"):
+                raise ValueError("Installed adapter has not qualified live incumbent refresh")
+            log = checked(result["transcript"]).read_text()
+            boot = json.loads(checked(result["boot_evidence"]).read_text())
+            if boot.get("elf_sha256") != request["elf"]["sha256"]:
+                raise ValueError("Actual boot-file evidence differs from submitted ELF")
+            samples = re.findall(r"^DSE_CYCLES first=(\d+) second=(\d+)$", log, re.M)
+            if len(samples) != 1 or "DSE_PASS" not in log.splitlines():
+                raise ValueError("Require one fixed-warm pair and every-output pass marker")
+            first, warm = map(int, samples[0])
+            if first <= 0 or warm <= 0:
+                raise ValueError("Require positive measured active cycles")
+            if result.get("active_cycles", warm) != warm:
+                raise ValueError("Result cost differs from the guest active-cycle window")
+            if measured_limit is not None and live_limit:
+                path = Path(live_limit["path"])
+                if path.exists():
+                    latest = json.loads(path.read_text()).get(live_limit["key"])
+                    if latest is not None:
+                        measured_limit = min(measured_limit, latest)
+            if measured_limit is not None and warm >= measured_limit:
+                raise TimeoutError("Dominated candidate; not admitted as a valid timing")
+            return warm
+        finally:
+            if lease is not None:
+                fcntl.flock(lease, fcntl.LOCK_UN)
+                lease.close()

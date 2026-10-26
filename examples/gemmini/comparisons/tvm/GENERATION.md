@@ -6,6 +6,12 @@ The current integration is a **Gemmini backend implemented inside a TVM fork**, 
 
 The current implementation exposes generic per-operator schedules through MetaSchedule and 32 graph-preparation alternatives through stock Relax `Knob` / `Choice` / `Trace`. The completed study retains **16 fresh operator records** measured with the FASED latency-pipe Verilator model. The older nine-record `rtl-v1` preset remains historical evidence from a different memory/timing policy.
 
+The 32 configurations need not produce 32 different programs. The follow-up
+[tuning plan](TUNING_PLAN.md) records an equality audit, removes duplicate graph
+choices from connected measurement, and adds per-operator profiling for actual
+stage bottlenecks. It also distinguishes the newer reported F2 results, whose
+presets matched no tasks, from the bounded study described below.
+
 The strongest admitted connected result is **25.95% fewer warm cycles for a TinyLlama K/V region**, from 622,531 to 460,958, using optional stock common-subexpression elimination. This is a bounded region result. New complete-model FireSim qualification remains unfinished; the historical ResNet50 FPGA pass does not qualify the new compiled selection.
 
 This account supersedes the earlier “Document TVM-Gemmini integration” chat explanation. It describes the TVM worktree based on `d4480d521` and Merlin worktree based on `36899e8f4`, including the source deltas frozen in the study's `source-final/`. See [FASED_SWEEPS.md](FASED_SWEEPS.md) for exact measurements and source bindings, [PERFORMANCE_AUDIT.md](PERFORMANCE_AUDIT.md) for the memory/mapping audit, and the companion [OWNERSHIP.md](https://github.com/grammy117/tvm/blob/f1e411b1fe57f9fb5983d6cdef45877a6c211485/apps/gemmini/OWNERSHIP.md) for upstream versus extension ownership.

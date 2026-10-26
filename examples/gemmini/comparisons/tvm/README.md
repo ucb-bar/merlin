@@ -1,11 +1,28 @@
 # TVM comparison: ResNet50, TinyLlama and SmolVLA FireSim handoff
 
+For a fresh checkout, start at [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md).
+It names both published source branches and the two separately transferred
+archives; generated ELFs and tuning inputs are not in Git.
+
+For the **current next-machine run**, follow
+[FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md): TinyLlama baseline plus
+full ResNet baseline and current tuned ResNet, then ML-guided TinyLlama chunk
+DSE and the tuned complete 32+32 session. The provided bitstream already sets
+the expected DDR3 memory model; only ELF delivery is needed for execution. The local four-hour DSE is complete.
+Its classifier database matches 1/68 ResNet tasks; no full-model speedup is
+established. New FireSim execution is deferred to the new machine.
+
+For the local tuning audit and the upcoming machine move, see
+[TUNING_PLAN.md](TUNING_PLAN.md) and
+[REMOTE_TUNING_README.md](REMOTE_TUNING_README.md). They distinguish the newer
+reported F2 results, fresh local exports and retained tuning evidence.
+
 This directory compiles the three EL4 workloads with the companion TVM Gemmini
 backend and runs each as one complete guest session on FireSim. To run the next
-FireSim job, follow [FireSim handoff: next run](#firesim-handoff-next-run). The
+FireSim job, follow [the current run guide](FIRESIM_CHUNK_TUNING.md). The
 rest of this README is the reference for each step.
 
-## Status (2026-10-24)
+## Historical status (2026-10-24)
 
 | Workload | Last FireSim run (F2 `f2_gemmini_rocket_latpipe_60mhz`) | Tuning since then | Next run |
 | --- | --- | --- | --- |
@@ -22,7 +39,12 @@ are compiler knobs; [PERFORMANCE_AUDIT.md](PERFORMANCE_AUDIT.md) audits SRAM use
 and the cycle gap; [NUMERICAL_DIAGNOSTICS.md](NUMERICAL_DIAGNOSTICS.md) covers
 TinyLlama first-divergence tracing.
 
-## FireSim handoff: next run
+## Historical FireSim handoff recipe (superseded)
+
+The current run uses pinned sources, an explicit validated database and the
+prepared artifacts in [FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md).
+The moving-branch pulls and preset choices below describe the older deployment;
+do not use them to reconstruct the new source/native-library pair.
 
 These steps reuse the environment, model caches and launch tools already set up
 on the `tvm-el4-prelim` FireSim host (`source /work/exp/tvm-el4-prelim/env.sh`,
