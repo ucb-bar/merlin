@@ -74,3 +74,17 @@ for captured-literal proof compilation/audits under explicit trusted OS/kernel,
 loader/module reporting and host transport. It does not qualify a graph checker,
 repair an old stale reference or prove formal denial of all OS fallback/late loads.
 See frontend-pure-development-context/README.md and minimal-pure-probe-v2.
+
+## Newly qualified scalar/loop composition
+
+Graph-state-pipeline/review/sealed-v1 checks the actual CSE/DCE→LICM→unroll→
+segment chain under one Int/control/external interpretation, preserving complete
+returns and success/error terminal worlds.64 tests and8 actual all-four-changed
+originals plus8 fresh replay cases passed; all transitive audit roots use std3.
+The coordinator matched4001 retained files and20 original/retained source pairs.
+The admitted static nonnegative no-tail bulk mode is explicit: factors2..4,
+tiles2..16,1..4 carries, region-free original body and signed32/64 controls.
+Poison/value/native fidelity, independent mapping/contract review, selected
+model coverage and ordinary broker integration remain separate. The old literal
+60s witness and elision crash stay unqualified. The new integer-prefix task
+closes a remaining registered graph-pass gap; it does not resume floating numerics.

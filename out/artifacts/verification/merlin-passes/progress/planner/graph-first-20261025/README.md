@@ -39,6 +39,26 @@ Generic graph proofs under precise contracts are useful; contracts, independent
 specification review, actual IR binding, qualification and model coverage remain
 separate obligations.
 
+## CURRENT frontier after the latest qualified graph batches
+
+- W/GraphLoops (user-authorized GPT-6-Astra) sealed standalone shape normalization:
+  22 sources,78 originals +one78 replay,35/41 std3 roots. Its typed/full-heap to
+  old epoch/public adapter remains active and unproved; preserve the refused join.
+- Q/GraphState sealed the20-source scalar→unroll→segment pipeline:64 tests,8
+  actual all-four-changed chains +8 fresh replays. CURRENT next task is
+  [exact-integer whole-boundary normalization](../assignments/graph-exact-integer-normalization/README.md);
+  all75 old owned sources/seals remain read-only. No floating numerical work.
+- F/GraphRegions continues captured-literal parent/cache/full-graph correspondence.
+  The old MLIR oracle and stronger failed qualification remain held. A NEW
+  [pure development context](frontend-pure-development-context/README.md) permits
+  guarded source compilation/audits under original SDK/runtime bindings and
+  explicit host/observer trust; it does not qualify an actual capture or repair
+  the unknown stale reference. Known optional project-initializer trace matching
+  is extended only by exact bound module/object tables; arbitrary errors refuse.
+
+The older completed task rows below are history, not reassignment instructions.
+All three continue large graph batches after compaction; only a NEW user stop wins.
+
 ## Latest completed batch and next worker task
 
 The loop/memory worker sealed memory-scf-mode-v1: the exact retained two-initializer

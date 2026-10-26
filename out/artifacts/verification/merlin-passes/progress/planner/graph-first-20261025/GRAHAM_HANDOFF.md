@@ -247,3 +247,16 @@ and SDK/runtime pre/post checks. frontend-pure-development-context/README.md
 states its exact trust and scope. The held MLIR-full oracle and stronger failed
 wrapper are not reopened by it. This narrower context enables checking candidate
 mathematical sources; it is not actual capture qualification or an OS-loader proof.
+
+## Four-pass scalar/loop chain is ready for independent review
+
+`graph-state-pipeline/review/sealed-v1` now supplies a complete actual five-buffer
+CSE/DCE→LICM→unroll→segment example and error/world relation,64 tests and8 fresh
+positive replays. The coordinator matched4001 retained files and20 source pairs.
+Review its final exact theorem types, no-tail/static domain and concrete control
+model rather than inferring full arbitrary-SCF coverage. Exact-integer whole-
+program normalization is Q's new nonoverlapping task. W continues the unproved
+shape-to-epoch adapter; F now checks captured-literal proof candidates in the
+separately documented original-bound pure development context. The old F oracle/
+failed-wrapper holds remain. Update packages1–3 and the paper claim matrix using
+these sealed rows; do not sum overlapping tests/theorems or grant full coverage.
