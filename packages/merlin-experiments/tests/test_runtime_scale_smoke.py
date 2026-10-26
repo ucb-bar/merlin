@@ -1,10 +1,11 @@
 """Strict semantic smoke selection; numerical success alone never admits."""
 
 from copy import deepcopy
-from pathlib import Path
 
 import pytest
 from merlin_experiments.phase0 import runtime_scale_smoke as S
+
+from merlin.common.paths import repo_root
 
 
 def candidate():
@@ -457,9 +458,7 @@ def test_relu_order_identities_are_read_from_the_reviewed_target_file(tmp_path):
     from merlin_experiments.phase0 import fusion_execution as E
 
     assert set(_registry()) == {_POST_SCALE}
-    source = yaml.safe_load(
-        (Path(__file__).resolve().parents[3] / "examples/gemmini/target" / E.RELU_ORDER_FILE).read_text()
-    )
+    source = yaml.safe_load((repo_root() / "examples/gemmini/target" / E.RELU_ORDER_FILE).read_text())
     entry = source["extensions"][_POST_SCALE]
 
     def mutated(change):

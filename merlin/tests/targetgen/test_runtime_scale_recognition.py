@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from merlin.common import mlir_query as mq
+from merlin.common.paths import repo_root
 from merlin.targetgen import model_coverage
 from merlin.targetgen.composition_capsules import _Source
 from merlin.targetgen.composition_facts import derive, derive_runtime_readout_scale
@@ -18,13 +19,8 @@ from merlin.verify.lean_contract import document_digest
 from merlin.xdsl_dialects.lowering import output_fusion as OF
 from merlin.xdsl_dialects.lowering.runtime_readout import match_closed_readout
 
-FACTS_FILE = Path(
-    os.environ.get(
-        "RT_FACTS",
-        "/tmp/claude-201127/-scratch2-lorenhung-merlin/f6514365-8ad3-487f-ad90-ea36bb1de80f/scratchpad/kextdiag/rtl-facts.json",
-    )
-)
-ROOT = Path(__file__).resolve().parents[3]
+FACTS_FILE = Path(os.environ.get("RT_FACTS") or os.environ.get("MERLIN_RTL_FACTS") or "")
+ROOT = repo_root()
 TRANSPORT = dict(
     schema="merlin.runtime_readout_scale.v1",
     dtype="f32",
@@ -252,7 +248,8 @@ def test_runtime_proof_takes_the_slot_position_from_the_derived_record():
 
 
 def test_runtime_transport_uses_selected_role_layout_and_abi():
-    assert FACTS_FILE.is_file(), "select actual target facts with RT_FACTS"
+    if not FACTS_FILE.is_file():
+        pytest.skip("select actual target facts with RT_FACTS or MERLIN_RTL_FACTS")
     facts = json.loads(FACTS_FILE.read_text())
     contract = yaml.safe_load((ROOT / "examples/gemmini/support/contracts/target_contract.yaml").read_text())
     record = derive_runtime_readout_scale(facts=facts, contract=contract, output_path=PATH)
