@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
+from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 from merlin_experiments.phase0.generation_paths import (
     _require_distinct_corpus_destinations as _require_distinct_corpus_destinations,
@@ -410,6 +411,8 @@ def generate_target(
         **({"include_holdouts": False} if component_only else {}),
         **{key: value for key, value in profile_inputs.items() if value is not None},
     )
+    workload_spec = profile.get("workload_spec") or {}
+    synthesize_compositions = synthesize_compositions_enabled(workload_spec)
     from .component_source_performance import SCHEMA_V2, verify_curriculum_template
 
     if source_preparation == SCHEMA_V2:
@@ -653,11 +656,11 @@ def generate_target(
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:
                 preallocation_denials[entry["name"]] = str(exc)
-    if evidence is not None and evidence.software_spec.get("compositions"):
+    if synthesize_compositions and evidence is not None and evidence.software_spec.get("compositions"):
         from .composition_generation import append_declared, selected_facts
 
         composition_context = selected_facts(evidence, selected_requirement, binding)
-        synthesis_budget = int((profile.get("workload_spec") or {}).get("max_synthesized_capsules", 160))
+        synthesis_budget = int(workload_spec.get("max_synthesized_capsules", 160))
         entries = append_declared(entries, evidence.software_spec, composition_context, budget=synthesis_budget)
     if evidence is not None and evidence.software_spec:
         screened = []
@@ -1221,7 +1224,9 @@ def generate_target(
         }
     from .composition_generation import coverage as composition_coverage
 
-    performance_record["composition_coverage"] = composition_coverage(entries)
+    performance_record["composition_coverage"] = composition_coverage(
+        entries, excluded_spec=evidence.software_spec if evidence is not None and not synthesize_compositions else None
+    )
     update_provenance_manifest(
         written,
         cap_root=out_root,

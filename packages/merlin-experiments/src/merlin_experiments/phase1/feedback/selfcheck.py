@@ -392,6 +392,21 @@ def _adapters(sim: str, target: str, sim_via: str | None, *, readback_policy=Non
             ad["L3"] = CR.simulator_adapter(sim, target, **kwargs, **({"selection": selection} if selection else {}))
             # VCS is the same L3 rung through the provider's own `run_elf(simulator="vcs")`; the old
             # L4 branch imported a `merlin.targetgen.vcs_adapter` module that was never shipped.
+        # Core ATen capsules execute only through the full-call boundary (`run_full_call`), which the
+        # plain simulator adapters above lack, so without a candidate policy every capsule read back
+        # `oracle_unavailable`. Take a tier from the grader's own ladder when it runs the SAME engine
+        # the caller selected, so the self-check exercises what the grade exercises; never substitute
+        # another engine.
+        graded = CR.oracle_adapters(target, sim_via, **kwargs)
+        for tier, engine in (("L2", "spike"), ("L3", sim)):
+            adapter = graded.get(tier)
+            if (
+                tier in ad
+                and not hasattr(ad[tier], "run_full_call")
+                and hasattr(adapter, "run_full_call")
+                and getattr(adapter, "_merlin_simulator_engine", None) == engine
+            ):
+                ad[tier] = adapter
         return ad, sim
     # non-chipyard target: its contract-resolved tiers (arc / program oracle); --sim does not apply.
     return CR.oracle_adapters(target, sim_via, **kwargs), sim

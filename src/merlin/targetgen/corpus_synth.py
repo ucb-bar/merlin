@@ -1114,6 +1114,9 @@ def synthesize(
     cells = list(spec_doc.get("cells") or ())
     probes = list((spec_doc.get("boundaries") or {}).get("extent_probes") or ())
     ws = dict(workload_spec or {})
+    from .composition_corpus import synthesize_compositions_enabled
+
+    synthesize_compositions = synthesize_compositions_enabled(ws)
     # A literal-name check misses ordinary aliases such as Tiny-Llama/tiny_llama.
     # This is an admission guard, not an anonymizer: held-out claim workloads
     # cannot become the source of the public derivation corpus in a verified run.
@@ -2527,7 +2530,9 @@ def synthesize(
             entry.setdefault("acc_scale", SYNTH_ACC_SCALE)
 
     selected_software = software_spec or spec_doc.get("software_spec") or spec_doc
-    if selected_software.get("compositions"):
+    from .composition_corpus import coverage as composition_coverage
+
+    if synthesize_compositions and selected_software.get("compositions"):
         from .composition_corpus import entries as composition_entries
 
         try:
@@ -2551,6 +2556,11 @@ def synthesize(
     return {
         "capsules": entries,
         "provenance": {
+            **(
+                {"composition_coverage": composition_coverage([], excluded_spec=selected_software)}
+                if not synthesize_compositions
+                else {}
+            ),
             "generated_by": "merlin.targetgen.corpus_synth.synthesize",
             "target": target,
             "n_required_cells": len(cells),

@@ -1,0 +1,10948 @@
+{
+ "cases": [
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        2,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        32,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     2,
+     2,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     8,
+     4,
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._adaptive_avg_pool2d.default",
+   "schema": "aten::_adaptive_avg_pool2d(Tensor self, SymInt[2] output_size) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     4,
+     4
+    ],
+    "storage_offset": 0,
+    "stride": [
+     16,
+     16,
+     4,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._adaptive_avg_pool2d_backward.default",
+   "schema": "aten::_adaptive_avg_pool2d_backward(Tensor grad_output, Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        4,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        64,
+        64,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2,
+       2
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     2,
+     2,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     8,
+     8,
+     4,
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._adaptive_avg_pool3d.default",
+   "schema": "aten::_adaptive_avg_pool3d(Tensor self, SymInt[3] output_size) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      2.0,
+      null
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     4
+    ],
+    "storage_offset": 0,
+    "stride": [
+     4,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._cdist_forward.default",
+   "schema": "aten::_cdist_forward(Tensor x1, Tensor x2, float p, int? compute_mode) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        5,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      false,
+      0,
+      false,
+      null,
+      false,
+      -1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       0
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._embedding_bag.default",
+   "schema": "aten::_embedding_bag(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, int mode=0, bool sparse=False, Tensor? per_sample_weights=None, bool include_last_offset=False, int padding_idx=-1) -> (Tensor, Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "complex64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1
+      ],
+      0,
+      4
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     4
+    ],
+    "storage_offset": 0,
+    "stride": [
+     4,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._fft_c2r.default",
+   "schema": "aten::_fft_c2r(Tensor self, int[] dim, int normalization, SymInt last_dim_size) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       1
+      ],
+      0,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "complex64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._fft_r2c.default",
+   "schema": "aten::_fft_r2c(Tensor self, int[] dim, int normalization, bool onesided) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [],
+       "storage_offset": 0,
+       "stride": [],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": 2.5,
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._local_scalar_dense.default",
+   "schema": "aten::_local_scalar_dense(Tensor self) -> Scalar"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._log_softmax.default",
+   "schema": "aten::_log_softmax(Tensor self, int dim, bool half_to_float) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        4,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      true,
+      0.1,
+      1e-05
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       4,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       16,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       4
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       4
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [
+    "args[3]",
+    "args[4]"
+   ],
+   "output_input_aliases": [],
+   "overload": "aten._native_batch_norm_legit.default",
+   "schema": "aten::_native_batch_norm_legit(Tensor input, Tensor? weight, Tensor? bias, Tensor(a!) running_mean, Tensor(b!) running_var, bool training, float momentum, float eps) -> (Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        4,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      true,
+      0.1,
+      1e-05
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       4,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       16,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       4
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       4
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._native_batch_norm_legit.no_stats",
+   "schema": "aten::_native_batch_norm_legit.no_stats(Tensor input, Tensor? weight, Tensor? bias, bool training, float momentum, float eps) -> (Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        4,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      0.1,
+      1e-05
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       4,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       16,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       0
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       0
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._native_batch_norm_legit_no_training.default",
+   "schema": "aten::_native_batch_norm_legit_no_training(Tensor input, Tensor? weight, Tensor? bias, Tensor running_mean, Tensor running_var, float momentum, float eps) -> (Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      2.0
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     6
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._pdist_forward.default",
+   "schema": "aten::_pdist_forward(Tensor self, float p=2.) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._softmax.default",
+   "schema": "aten::_softmax(Tensor self, int dim, bool half_to_float) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "float64"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten._to_copy.default",
+   "schema": "aten::_to_copy(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, bool non_blocking=False, MemoryFormat? memory_format=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.abs.default",
+   "schema": "aten::abs(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.acos.default",
+   "schema": "aten::acos(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.acosh.default",
+   "schema": "aten::acosh(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        2,
+        6
+       ],
+       "storage_offset": 0,
+       "stride": [
+        12,
+        6,
+        1
+       ],
+       "values": []
+      },
+      [
+       3
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     6,
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.adaptive_avg_pool1d.default",
+   "schema": "aten::adaptive_avg_pool1d(Tensor self, int[1] output_size) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.5
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "alpha": 2
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.add.Scalar",
+   "schema": "aten::add.Scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "alpha": 2
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.add.Tensor",
+   "schema": "aten::add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "alpha": 0.5,
+     "beta": 1.5
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     3,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.addmm.default",
+   "schema": "aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.alias.default",
+   "schema": "aten::alias(Tensor(a) self) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       0
+      ],
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.amax.default",
+   "schema": "aten::amax(Tensor self, int[1] dim=[], bool keepdim=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1
+      ],
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.amin.default",
+   "schema": "aten::amin(Tensor self, int[1] dim=[], bool keepdim=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [],
+    "storage_offset": 0,
+    "stride": [],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.any.default",
+   "schema": "aten::any(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     1
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.any.dim",
+   "schema": "aten::any.dim(Tensor self, int dim, bool keepdim=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       0,
+       1
+      ],
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [],
+    "storage_offset": 0,
+    "stride": [],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.any.dims",
+   "schema": "aten::any.dims(Tensor self, int[]? dim=None, bool keepdim=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      1,
+      7,
+      2
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "int64"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.arange.start_step",
+   "schema": "aten::arange.start_step(Scalar start, Scalar end, Scalar step=1, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.argmax.default",
+   "schema": "aten::argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.argmin.default",
+   "schema": "aten::argmin(Tensor self, int? dim=None, bool keepdim=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2
+      ],
+      [
+       4,
+       1
+      ],
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     2
+    ],
+    "storage_offset": 1,
+    "stride": [
+     4,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.as_strided.default",
+   "schema": "aten::as_strided(Tensor(a) self, SymInt[] size, SymInt[] stride, SymInt? storage_offset=None) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.asin.default",
+   "schema": "aten::asin(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.asinh.default",
+   "schema": "aten::asinh(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.atan.default",
+   "schema": "aten::atan(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.atan2.default",
+   "schema": "aten::atan2(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "out": {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [
+    "kwargs.out"
+   ],
+   "output_input_aliases": [
+    "result->kwargs.out"
+   ],
+   "overload": "aten.atan2.out",
+   "schema": "aten::atan2.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.atanh.default",
+   "schema": "aten::atanh(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        2,
+        6
+       ],
+       "storage_offset": 0,
+       "stride": [
+        12,
+        6,
+        1
+       ],
+       "values": []
+      },
+      [
+       2
+      ],
+      [
+       2
+      ],
+      [
+       0
+      ],
+      false,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     6,
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.avg_pool1d.default",
+   "schema": "aten::avg_pool1d(Tensor self, int[1] kernel_size, int[1] stride=[], int[1] padding=[0], bool ceil_mode=False, bool count_include_pad=True) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        2,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        32,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2
+      ],
+      [
+       2,
+       2
+      ],
+      [
+       0,
+       0
+      ],
+      false,
+      true,
+      null
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     2,
+     2,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     8,
+     4,
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.avg_pool2d.default",
+   "schema": "aten::avg_pool2d(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2
+      ],
+      [
+       2,
+       2
+      ],
+      [
+       0,
+       0
+      ],
+      false,
+      true,
+      null
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     4,
+     4
+    ],
+    "storage_offset": 0,
+    "stride": [
+     16,
+     16,
+     4,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.avg_pool2d_backward.default",
+   "schema": "aten::avg_pool2d_backward(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, bool ceil_mode, bool count_include_pad, int? divisor_override) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        4,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        64,
+        64,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2,
+       2
+      ],
+      [
+       2,
+       2,
+       2
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      false,
+      true,
+      null
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     2,
+     2,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     8,
+     8,
+     4,
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.avg_pool3d.default",
+   "schema": "aten::avg_pool3d(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      3
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.bitwise_and.Scalar",
+   "schema": "aten::bitwise_and.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.bitwise_and.Tensor",
+   "schema": "aten::bitwise_and.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.bitwise_not.default",
+   "schema": "aten::bitwise_not(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      3
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.bitwise_or.Scalar",
+   "schema": "aten::bitwise_or.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.bitwise_or.Tensor",
+   "schema": "aten::bitwise_or.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      3
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.bitwise_xor.Scalar",
+   "schema": "aten::bitwise_xor.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.bitwise_xor.Tensor",
+   "schema": "aten::bitwise_xor.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        12,
+        4,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        4,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        8,
+        2,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     6,
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.bmm.default",
+   "schema": "aten::bmm(Tensor self, Tensor mat2) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      [
+       {
+        "dtype": "float32",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+         2,
+         3
+        ],
+        "storage_offset": 0,
+        "stride": [
+         3,
+         1
+        ],
+        "values": []
+       },
+       {
+        "dtype": "float32",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+         2,
+         3
+        ],
+        "storage_offset": 0,
+        "stride": [
+         3,
+         1
+        ],
+        "values": []
+       }
+      ],
+      0
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     4,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.cat.default",
+   "schema": "aten::cat(Tensor[] tensors, int dim=0) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.ceil.default",
+   "schema": "aten::ceil(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.clamp.Tensor",
+   "schema": "aten::clamp.Tensor(Tensor self, Tensor? min=None, Tensor? max=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      -0.25,
+      0.75
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.clamp.default",
+   "schema": "aten::clamp(Tensor self, Scalar? min=None, Scalar? max=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "memory_format": {
+      "kind": "memory_format",
+      "value": "contiguous_format"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.clone.default",
+   "schema": "aten::clone(Tensor self, *, MemoryFormat? memory_format=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       3,
+       3
+      ],
+      [
+       2,
+       2
+      ],
+      [
+       1,
+       1
+      ],
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     3,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     9,
+     9,
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.col2im.default",
+   "schema": "aten::col2im(Tensor self, SymInt[2] output_size, int[2] kernel_size, int[2] dilation, int[2] padding, int[2] stride) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        6,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1,
+       1,
+       1,
+       1
+      ],
+      0.5
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     4,
+     5
+    ],
+    "storage_offset": 0,
+    "stride": [
+     20,
+     5,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.constant_pad_nd.default",
+   "schema": "aten::constant_pad_nd(Tensor self, SymInt[] pad, Scalar value=0) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        5,
+        5
+       ],
+       "storage_offset": 0,
+       "stride": [
+        25,
+        25,
+        5,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        1,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        9,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      [
+       1,
+       1
+      ],
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       1
+      ],
+      false,
+      [
+       0,
+       0
+      ],
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     2,
+     3,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     18,
+     9,
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.convolution.default",
+   "schema": "aten::convolution(Tensor input, Tensor weight, Tensor? bias, SymInt[] stride, SymInt[] padding, SymInt[] dilation, bool transposed, SymInt[] output_padding, SymInt groups) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        2,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        18,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        5,
+        5
+       ],
+       "storage_offset": 0,
+       "stride": [
+        25,
+        25,
+        5,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        1,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        9,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       2
+      ],
+      [
+       1,
+       1
+      ],
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       1
+      ],
+      false,
+      [
+       0,
+       0
+      ],
+      1,
+      [
+       true,
+       true,
+       true
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       1,
+       1,
+       5,
+       5
+      ],
+      "storage_offset": 0,
+      "stride": [
+       25,
+       25,
+       5,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       1,
+       3,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       9,
+       9,
+       3,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.convolution_backward.default",
+   "schema": "aten::convolution_backward(Tensor grad_output, Tensor input, Tensor weight, SymInt[]? bias_sizes, SymInt[] stride, SymInt[] padding, SymInt[] dilation, bool transposed, SymInt[] output_padding, SymInt groups, bool[3] output_mask) -> (Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.copy.default",
+   "schema": "aten::copy(Tensor self, Tensor src, bool non_blocking=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.cos.default",
+   "schema": "aten::cos(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.cosh.default",
+   "schema": "aten::cosh(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.cumsum.default",
+   "schema": "aten::cumsum(Tensor self, int dim, *, ScalarType? dtype=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        1
+       ],
+       "values": []
+      },
+      0,
+      0,
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     5
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.diagonal.default",
+   "schema": "aten::diagonal(Tensor(a) self, int offset=0, int dim1=0, int dim2=1) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      2.0
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.div.Scalar",
+   "schema": "aten::div.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      2
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "rounding_mode": "floor"
+    }
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.div.Scalar_mode",
+   "schema": "aten::div.Scalar_mode(Tensor self, Scalar other, *, str? rounding_mode) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.div.Tensor",
+   "schema": "aten::div.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "rounding_mode": "floor"
+    }
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.div.Tensor_mode",
+   "schema": "aten::div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1.0,
+      1.0,
+      1.0
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.elu.default",
+   "schema": "aten::elu(Tensor self, Scalar alpha=1, Scalar scale=1, Scalar input_scale=1) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        5,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      -1,
+      false,
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     6,
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.embedding.default",
+   "schema": "aten::embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool sparse=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      5,
+      -1,
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     5,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.embedding_dense_backward.default",
+   "schema": "aten::embedding_dense_backward(Tensor grad_output, Tensor indices, SymInt num_weights, SymInt padding_idx, bool scale_grad_by_freq) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      [
+       2,
+       3
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "float32"
+     },
+     "memory_format": {
+      "kind": "memory_format",
+      "value": "contiguous_format"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ]
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.empty.memory_format",
+   "schema": "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      [
+       2,
+       3
+      ],
+      [
+       3,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "float32"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ]
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.empty_strided.default",
+   "schema": "aten::empty_strided(SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.eq.Scalar",
+   "schema": "aten::eq.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.eq.Tensor",
+   "schema": "aten::eq.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.erf.default",
+   "schema": "aten::erf(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.exp.default",
+   "schema": "aten::exp(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       3
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "implicit": false
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     0,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.expand.default",
+   "schema": "aten::expand(Tensor(a) self, SymInt[] size, *, bool implicit=False) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.expm1.default",
+   "schema": "aten::expm1(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      3.0
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.fill.Scalar",
+   "schema": "aten::fill.Scalar(Tensor self, Scalar value) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.flip.default",
+   "schema": "aten::flip(Tensor self, int[] dims) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.floor.default",
+   "schema": "aten::floor(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.fmod.Scalar",
+   "schema": "aten::fmod.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.fmod.Tensor",
+   "schema": "aten::fmod.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      [
+       2,
+       3
+      ],
+      1.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "float32"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.full.default",
+   "schema": "aten::full(SymInt[] size, Scalar fill_value, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "float64"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.full_like.default",
+   "schema": "aten::full_like(Tensor self, Scalar fill_value, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "sparse_grad": false
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.gather.default",
+   "schema": "aten::gather(Tensor self, int dim, Tensor index, *, bool sparse_grad=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.ge.Scalar",
+   "schema": "aten::ge.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.ge.Tensor",
+   "schema": "aten::ge.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "approximate": "none"
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.gelu.default",
+   "schema": "aten::gelu(Tensor self, *, str approximate=\"none\") -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        2,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        8,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      0,
+      0,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     2,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     4,
+     4,
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.grid_sampler_2d.default",
+   "schema": "aten::grid_sampler_2d(Tensor input, Tensor grid, int interpolation_mode, int padding_mode, bool align_corners) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.gt.Scalar",
+   "schema": "aten::gt.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.gt.Tensor",
+   "schema": "aten::gt.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      -0.5,
+      0.5
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.hardtanh.default",
+   "schema": "aten::hardtanh(Tensor self, Scalar min_val=-1, Scalar max_val=1) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       {
+        "dtype": "int64",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+         2
+        ],
+        "storage_offset": 0,
+        "stride": [
+         1
+        ],
+        "values": []
+       }
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.index.Tensor",
+   "schema": "aten::index.Tensor(Tensor self, Tensor?[] indices) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       {
+        "dtype": "int64",
+        "kind": "tensor",
+        "requires_grad": false,
+        "shape": [
+         2
+        ],
+        "storage_offset": 0,
+        "stride": [
+         1
+        ],
+        "values": []
+       }
+      ],
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     4,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.index_put.default",
+   "schema": "aten::index_put(Tensor self, Tensor?[] indices, Tensor values, bool accumulate=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0,
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.index_select.default",
+   "schema": "aten::index_select(Tensor self, int dim, Tensor index) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.isinf.default",
+   "schema": "aten::isinf(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.isnan.default",
+   "schema": "aten::isnan(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.le.Scalar",
+   "schema": "aten::le.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.le.Tensor",
+   "schema": "aten::le.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.leaky_relu.default",
+   "schema": "aten::leaky_relu(Tensor self, Scalar negative_slope=0.01) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.log.default",
+   "schema": "aten::log(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.log10.default",
+   "schema": "aten::log10(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.log1p.default",
+   "schema": "aten::log1p(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.log2.default",
+   "schema": "aten::log2(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.logical_and.default",
+   "schema": "aten::logical_and(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.logical_not.default",
+   "schema": "aten::logical_not(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.logical_or.default",
+   "schema": "aten::logical_or(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.logical_xor.default",
+   "schema": "aten::logical_xor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.lt.Scalar",
+   "schema": "aten::lt.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.lt.Tensor",
+   "schema": "aten::lt.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        6
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.masked_scatter.default",
+   "schema": "aten::masked_scatter(Tensor self, Tensor mask, Tensor source) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.max.dim",
+   "schema": "aten::max.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2
+      ],
+      [
+       2,
+       2
+      ],
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       1
+      ],
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       1,
+       1,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       4,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       1,
+       1,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       4,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.max_pool2d_with_indices.default",
+   "schema": "aten::max_pool2d_with_indices(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False) -> (Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2
+      ],
+      [
+       2,
+       2
+      ],
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       1
+      ],
+      false,
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     4,
+     4
+    ],
+    "storage_offset": 0,
+    "stride": [
+     16,
+     16,
+     4,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.max_pool2d_with_indices_backward.default",
+   "schema": "aten::max_pool2d_with_indices_backward(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, int[2] dilation, bool ceil_mode, Tensor indices) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        4,
+        4,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        64,
+        64,
+        16,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       2,
+       2
+      ],
+      [
+       2,
+       2,
+       2
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       1,
+       1
+      ],
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       1,
+       1,
+       2,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       8,
+       8,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       1,
+       1,
+       2,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       8,
+       8,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.max_pool3d_with_indices.default",
+   "schema": "aten::max_pool3d_with_indices(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, int[3] dilation=1, bool ceil_mode=False) -> (Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.maximum.default",
+   "schema": "aten::maximum(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [],
+    "storage_offset": 0,
+    "stride": [],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.mean.default",
+   "schema": "aten::mean(Tensor self, *, ScalarType? dtype=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1
+      ],
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     1
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.mean.dim",
+   "schema": "aten::mean.dim(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       1,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       1,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.min.dim",
+   "schema": "aten::min.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.minimum.default",
+   "schema": "aten::minimum(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     3,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     2,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.mm.default",
+   "schema": "aten::mm(Tensor self, Tensor mat2) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.5
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.mul.Scalar",
+   "schema": "aten::mul.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.mul.Tensor",
+   "schema": "aten::mul.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.25,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "bool",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.native_dropout.default",
+   "schema": "aten::native_dropout(Tensor input, float p, bool? train) -> (Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        4,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      2,
+      4,
+      4,
+      2,
+      1e-05
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       4,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       16,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       2,
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.native_group_norm.default",
+   "schema": "aten::native_group_norm(Tensor input, Tensor? weight, Tensor? bias, SymInt N, SymInt C, SymInt HxW, int group, float eps) -> (Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        4,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        4,
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        16,
+        4,
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      2,
+      4,
+      4,
+      2,
+      [
+       true,
+       true,
+       true
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       4,
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       16,
+       4,
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       4
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       4
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.native_group_norm_backward.default",
+   "schema": "aten::native_group_norm_backward(Tensor grad_out, Tensor input, Tensor mean, Tensor rstd, Tensor? weight, SymInt N, SymInt C, SymInt HxW, int group, bool[3] output_mask) -> (Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       3
+      ],
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      1e-05
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       1
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       1
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1,
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.native_layer_norm.default",
+   "schema": "aten::native_layer_norm(Tensor input, SymInt[] normalized_shape, Tensor? weight, Tensor? bias, float eps) -> (Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       3
+      ],
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        1
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        1
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      [
+       true,
+       true,
+       true
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.native_layer_norm_backward.default",
+   "schema": "aten::native_layer_norm_backward(Tensor grad_out, Tensor input, SymInt[] normalized_shape, Tensor mean, Tensor rstd, Tensor? weight, Tensor? bias, bool[3] output_mask) -> (Tensor, Tensor, Tensor)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.ne.Scalar",
+   "schema": "aten::ne.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "bool",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.ne.Tensor",
+   "schema": "aten::ne.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.neg.default",
+   "schema": "aten::neg(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     4,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1,
+     4
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.nonzero.default",
+   "schema": "aten::nonzero(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        12,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       0,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     4,
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1,
+     12,
+     4
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.permute.default",
+   "schema": "aten::permute(Tensor(a) self, int[] dims) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      2.0,
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.pow.Scalar",
+   "schema": "aten::pow.Scalar(Scalar self, Tensor exponent) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      2.0
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.pow.Tensor_Scalar",
+   "schema": "aten::pow.Tensor_Scalar(Tensor self, Scalar exponent) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.pow.Tensor_Tensor",
+   "schema": "aten::pow.Tensor_Tensor(Tensor self, Tensor exponent) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [],
+    "storage_offset": 0,
+    "stride": [],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.prod.default",
+   "schema": "aten::prod(Tensor self, *, ScalarType? dtype=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     1
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.prod.dim_int",
+   "schema": "aten::prod.dim_int(Tensor self, int dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      [
+       2,
+       3
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "float32"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.rand.default",
+   "schema": "aten::rand(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      [
+       2,
+       3
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "float32"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.randn.default",
+   "schema": "aten::randn(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      7
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "int64"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "int64",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     7
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.randperm.default",
+   "schema": "aten::randperm(SymInt n, *, ScalarType? dtype=4, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.reciprocal.default",
+   "schema": "aten::reciprocal(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        4,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       1,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     6
+    ],
+    "storage_offset": 0,
+    "stride": [
+     6,
+     6,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.reflection_pad1d.default",
+   "schema": "aten::reflection_pad1d(Tensor self, SymInt[2] padding) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        9,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1,
+       1,
+       1,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     5,
+     5
+    ],
+    "storage_offset": 0,
+    "stride": [
+     25,
+     25,
+     5,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.reflection_pad2d.default",
+   "schema": "aten::reflection_pad2d(Tensor self, SymInt[4] padding) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        3,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        27,
+        27,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     5,
+     5,
+     5
+    ],
+    "storage_offset": 0,
+    "stride": [
+     125,
+     125,
+     25,
+     5,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.reflection_pad3d.default",
+   "schema": "aten::reflection_pad3d(Tensor self, SymInt[6] padding) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.relu.default",
+   "schema": "aten::relu(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1.25
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.remainder.Scalar",
+   "schema": "aten::remainder.Scalar(Tensor self, Scalar other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.remainder.Tensor",
+   "schema": "aten::remainder.Tensor(Tensor self, Tensor other) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     4,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.repeat.default",
+   "schema": "aten::repeat(Tensor self, SymInt[] repeats) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        9,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1,
+       1,
+       1,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     5,
+     5
+    ],
+    "storage_offset": 0,
+    "stride": [
+     25,
+     25,
+     5,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.replication_pad2d.default",
+   "schema": "aten::replication_pad2d(Tensor self, SymInt[4] padding) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        3,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        27,
+        27,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     5,
+     5,
+     5
+    ],
+    "storage_offset": 0,
+    "stride": [
+     125,
+     125,
+     25,
+     5,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.replication_pad3d.default",
+   "schema": "aten::replication_pad3d(Tensor self, SymInt[6] padding) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       3,
+       2
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     3,
+     2
+    ],
+    "storage_offset": 0,
+    "stride": [
+     2,
+     1
+    ]
+   },
+   "mutated_arguments": [
+    "args[0]"
+   ],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.resize_.default",
+   "schema": "aten::resize_(Tensor(a!) self, SymInt[] size, *, MemoryFormat? memory_format=None) -> Tensor(a!)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.round.default",
+   "schema": "aten::round(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.rsqrt.default",
+   "schema": "aten::rsqrt(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      2.5
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "dtype": {
+      "kind": "dtype",
+      "value": "float32"
+     }
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [],
+    "storage_offset": 0,
+    "stride": [],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.scalar_tensor.default",
+   "schema": "aten::scalar_tensor(Scalar s, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.scatter.src",
+   "schema": "aten::scatter.src(Tensor self, int dim, Tensor index, Tensor src) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      2.0
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.scatter.value",
+   "schema": "aten::scatter.value(Tensor self, int dim, Tensor index, Scalar value) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.scatter_add.default",
+   "schema": "aten::scatter_add(Tensor self, int dim, Tensor index, Tensor src) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      {
+       "dtype": "int64",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      "sum"
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "include_self": true
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.scatter_reduce.two",
+   "schema": "aten::scatter_reduce.two(Tensor self, int dim, Tensor index, Tensor src, str reduce, *, bool include_self=True) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        12,
+        4,
+        1
+       ],
+       "values": []
+      },
+      1,
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     4
+    ],
+    "storage_offset": 4,
+    "stride": [
+     12,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.select.int",
+   "schema": "aten::select.int(Tensor(a) self, int dim, SymInt index) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        1
+       ],
+       "values": []
+      },
+      1,
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.select_scatter.default",
+   "schema": "aten::select_scatter(Tensor self, Tensor src, int dim, SymInt index) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sigmoid.default",
+   "schema": "aten::sigmoid(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sign.default",
+   "schema": "aten::sign(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sin.default",
+   "schema": "aten::sin(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sinh.default",
+   "schema": "aten::sinh(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        5
+       ],
+       "storage_offset": 0,
+       "stride": [
+        5,
+        1
+       ],
+       "values": []
+      },
+      1,
+      1,
+      5,
+      2
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     2
+    ],
+    "storage_offset": 1,
+    "stride": [
+     5,
+     2
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.slice.Tensor",
+   "schema": "aten::slice.Tensor(Tensor(a) self, int dim=0, SymInt? start=None, SymInt? end=None, SymInt step=1) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        5
+       ],
+       "storage_offset": 0,
+       "stride": [
+        5,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        2
+       ],
+       "storage_offset": 0,
+       "stride": [
+        2,
+        1
+       ],
+       "values": []
+      },
+      1,
+      1,
+      5,
+      2
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     5
+    ],
+    "storage_offset": 0,
+    "stride": [
+     5,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.slice_scatter.default",
+   "schema": "aten::slice_scatter(Tensor self, Tensor src, int dim=0, SymInt? start=None, SymInt? end=None, SymInt step=1) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       3
+      ],
+      "storage_offset": 0,
+      "stride": [
+       3,
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sort.default",
+   "schema": "aten::sort(Tensor self, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        5
+       ],
+       "storage_offset": 0,
+       "stride": [
+        5,
+        1
+       ],
+       "values": []
+      },
+      [
+       2,
+       3
+      ],
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": [
+    {
+     "dtype": "float32",
+     "kind": "tensor",
+     "requires_grad": false,
+     "shape": [
+      2,
+      2
+     ],
+     "storage_offset": 0,
+     "stride": [
+      5,
+      1
+     ],
+     "values": []
+    },
+    {
+     "dtype": "float32",
+     "kind": "tensor",
+     "requires_grad": false,
+     "shape": [
+      2,
+      3
+     ],
+     "storage_offset": 2,
+     "stride": [
+      5,
+      1
+     ],
+     "values": []
+    }
+   ],
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result[0]->args[0]",
+    "result[1]->args[0]"
+   ],
+   "overload": "aten.split_with_sizes.default",
+   "schema": "aten::split_with_sizes(Tensor(a -> *) self, SymInt[] split_sizes, int dim=0) -> Tensor(a)[]"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sqrt.default",
+   "schema": "aten::sqrt(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        1,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        3,
+        1
+       ],
+       "values": []
+      },
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.squeeze.dim",
+   "schema": "aten::squeeze.dim(Tensor(a) self, int dim) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        2,
+        1,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        6,
+        3,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       0,
+       2
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.squeeze.dims",
+   "schema": "aten::squeeze.dims(Tensor(a) self, int[] dim) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0.5
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "alpha": 2
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sub.Scalar",
+   "schema": "aten::sub.Scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "alpha": 2
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sub.Tensor",
+   "schema": "aten::sub.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       0
+      ],
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sum.dim_IntList",
+   "schema": "aten::sum.dim_IntList(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "kind": "memory_format",
+       "value": "contiguous_format"
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": true,
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sym_is_contiguous.default",
+   "schema": "aten::sym_is_contiguous(Tensor self, MemoryFormat memory_format=0) -> SymBool"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": 6,
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sym_numel.default",
+   "schema": "aten::sym_numel(Tensor self) -> SymInt"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": 3,
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sym_size.int",
+   "schema": "aten::sym_size.int(Tensor self, int dim) -> SymInt"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": 0,
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sym_storage_offset.default",
+   "schema": "aten::sym_storage_offset(Tensor self) -> SymInt"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      0
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": 3,
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.sym_stride.int",
+   "schema": "aten::sym_stride.int(Tensor self, int dim) -> SymInt"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.tan.default",
+   "schema": "aten::tan(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.tanh.default",
+   "schema": "aten::tanh(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      2,
+      1,
+      true,
+      true
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "items": [
+     {
+      "dtype": "float32",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       2,
+       1
+      ],
+      "values": []
+     },
+     {
+      "dtype": "int64",
+      "kind": "tensor",
+      "requires_grad": false,
+      "shape": [
+       2,
+       2
+      ],
+      "storage_offset": 0,
+      "stride": [
+       2,
+       1
+      ],
+      "values": []
+     }
+    ],
+    "kind": "tuple"
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.topk.default",
+   "schema": "aten::topk(Tensor self, SymInt k, int dim=-1, bool largest=True, bool sorted=True) -> (Tensor values, Tensor indices)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.trunc.default",
+   "schema": "aten::trunc(Tensor self) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      1
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     1,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.unsqueeze.default",
+   "schema": "aten::unsqueeze(Tensor(a) self, int dim) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        9,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       5,
+       5
+      ],
+      false,
+      null
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     5,
+     5
+    ],
+    "storage_offset": 0,
+    "stride": [
+     25,
+     25,
+     5,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.upsample_bilinear2d.vec",
+   "schema": "aten::upsample_bilinear2d.vec(Tensor input, SymInt[]? output_size, bool align_corners, float[]? scale_factors) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        1,
+        1,
+        3,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        9,
+        9,
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       6,
+       6
+      ],
+      null
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     1,
+     1,
+     6,
+     6
+    ],
+    "storage_offset": 0,
+    "stride": [
+     36,
+     36,
+     6,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.upsample_nearest2d.vec",
+   "schema": "aten::upsample_nearest2d.vec(Tensor input, SymInt[]? output_size, float[]? scale_factors) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       1
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {
+     "correction": 1,
+     "keepdim": true
+    }
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     1
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.var.correction",
+   "schema": "aten::var.correction(Tensor self, int[1]? dim=None, *, Scalar? correction=None, bool keepdim=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      [
+       0
+      ],
+      false,
+      false
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.var.dim",
+   "schema": "aten::var.dim(Tensor self, int[1]? dim, bool unbiased=True, bool keepdim=False) -> Tensor"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3,
+        4
+       ],
+       "storage_offset": 0,
+       "stride": [
+        12,
+        4,
+        1
+       ],
+       "values": []
+      },
+      [
+       4,
+       6
+      ]
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     4,
+     6
+    ],
+    "storage_offset": 0,
+    "stride": [
+     6,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [
+    "result->args[0]"
+   ],
+   "overload": "aten.view.default",
+   "schema": "aten::view(Tensor(a) self, SymInt[] size) -> Tensor(a)"
+  },
+  {
+   "arguments": {
+    "args": {
+     "items": [
+      {
+       "dtype": "bool",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      },
+      {
+       "dtype": "float32",
+       "kind": "tensor",
+       "requires_grad": false,
+       "shape": [
+        2,
+        3
+       ],
+       "storage_offset": 0,
+       "stride": [
+        3,
+        1
+       ],
+       "values": []
+      }
+     ],
+     "kind": "tuple"
+    },
+    "kwargs": {}
+   },
+   "expected": {
+    "dtype": "float32",
+    "kind": "tensor",
+    "requires_grad": false,
+    "shape": [
+     2,
+     3
+    ],
+    "storage_offset": 0,
+    "stride": [
+     3,
+     1
+    ],
+    "values": []
+   },
+   "mutated_arguments": [],
+   "output_input_aliases": [],
+   "overload": "aten.where.self",
+   "schema": "aten::where.self(Tensor condition, Tensor self, Tensor other) -> Tensor"
+  }
+ ],
+ "corpus_sha256": "02107dd9266eaa1109511484595ef12b4aebf7cf4b81cee707700220cae74d6b",
+ "description": "Core ATen 193-case suite with tensor values removed, and the lane each case ran on in the recorded Spike lane run. Evidence for spec admission; not a selection table.",
+ "device_lane": [
+  "aten._adaptive_avg_pool2d.default",
+  "aten._adaptive_avg_pool2d_backward.default",
+  "aten._adaptive_avg_pool3d.default",
+  "aten._to_copy.default",
+  "aten.adaptive_avg_pool1d.default",
+  "aten.add.Scalar",
+  "aten.add.Tensor",
+  "aten.addmm.default",
+  "aten.alias.default",
+  "aten.as_strided.default",
+  "aten.avg_pool1d.default",
+  "aten.avg_pool2d.default",
+  "aten.avg_pool2d_backward.default",
+  "aten.avg_pool3d.default",
+  "aten.bmm.default",
+  "aten.cat.default",
+  "aten.clone.default",
+  "aten.col2im.default",
+  "aten.constant_pad_nd.default",
+  "aten.convolution.default",
+  "aten.convolution_backward.default",
+  "aten.copy.default",
+  "aten.cumsum.default",
+  "aten.diagonal.default",
+  "aten.div.Scalar",
+  "aten.expand.default",
+  "aten.fill.Scalar",
+  "aten.flip.default",
+  "aten.full.default",
+  "aten.full_like.default",
+  "aten.mean.default",
+  "aten.mean.dim",
+  "aten.mm.default",
+  "aten.mul.Scalar",
+  "aten.neg.default",
+  "aten.permute.default",
+  "aten.reflection_pad1d.default",
+  "aten.reflection_pad2d.default",
+  "aten.reflection_pad3d.default",
+  "aten.relu.default",
+  "aten.repeat.default",
+  "aten.replication_pad2d.default",
+  "aten.replication_pad3d.default",
+  "aten.scalar_tensor.default",
+  "aten.select.int",
+  "aten.select_scatter.default",
+  "aten.slice.Tensor",
+  "aten.slice_scatter.default",
+  "aten.split_with_sizes.default",
+  "aten.squeeze.dim",
+  "aten.squeeze.dims",
+  "aten.sub.Scalar",
+  "aten.sub.Tensor",
+  "aten.sum.dim_IntList",
+  "aten.unsqueeze.default",
+  "aten.upsample_nearest2d.vec",
+  "aten.view.default"
+ ],
+ "lane_ledger_sha256": "2d2399c520d4881e019b4b9afa56f2940819bf520af3bfd0af6318946ead5d4a",
+ "lane_run": {
+  "device": 57,
+  "host": 136,
+  "merlin": "3531ac020",
+  "numeric_policy": "spec_int8",
+  "status": "193/193 pass"
+ },
+ "schema": "merlin.core_aten_lane_evidence.v1"
+}

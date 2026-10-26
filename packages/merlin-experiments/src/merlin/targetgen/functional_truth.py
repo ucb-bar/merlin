@@ -1,5 +1,7 @@
 """User-reviewed Phase 0 (functional, all native ops) semantic rules."""
 
+from .functional_truth_admission import admit
+from .functional_truth_admission import select_admission as select_admission
 from .functional_truth_linear import (
     r_add_scalar,
     r_add_tensor,
@@ -308,6 +310,11 @@ def exact_identity(c):
     return False
 
 
+#: A native construction the selected software spec does not admit (refused or unresolved): the
+#: host computes it, and no device placement is owed.
+SPEC_DECLINED = "spec_declined"
+
+
 def precision_class(c, v):
     """(b) quantized_exact for float/complex arithmetic; bit_exact_vs_eager for integer/bool arithmetic,
     movement (incl. float movement), literal fills and identity specializations."""
@@ -338,8 +345,14 @@ def precision_class(c, v):
     return "bit_exact_vs_eager"
 
 
-def expectation(raw):
-    """Return a deterministic lane commitment from semantics and shape only."""
+def expectation(raw, *, admission=None):
+    """Return a deterministic lane commitment from semantics, shape and the selected spec.
+
+    The rules above name the native construction a case computes; whether that construction is a
+    device obligation is decided by ``admission`` (:func:`select_admission`), the fact-resolved
+    software spec, through ``software_spec.admit_operation``. A native construction the spec does
+    not admit is a host commitment. ``admission`` is required whenever a construction is native.
+    """
     semantic = raw.get("semantic") or {}
     if semantic.get("generalization_axis") == "composition":
         from .functional_truth_compositions import expectation as composition_expectation
@@ -352,13 +365,29 @@ def expectation(raw):
         )
     case = Case(raw, "phase0")
     decision = derive(case)
-    return dict(
+    commitment = dict(
         truth=decision.truth,
         family=decision.family,
         reason=decision.reason,
         precision_class=precision_class(case, decision),
         lane=("device" if decision.truth == MUST else "no-work" if decision.truth in {TRIV, TRIVM} else "host-guard"),
     )
+    if decision.truth != MUST:
+        return commitment
+    if admission is None:
+        raise ValueError("a native construction's lane requires the selected software spec admission")
+    screened = admit(case, raw, decision.family, admission)
+    commitment["admission"] = {
+        key: screened.get(key) for key in ("status", "declaration", "reason") if screened.get(key) is not None
+    }
+    if screened["status"] != "admitted":
+        commitment.update(
+            truth=SPEC_DECLINED,
+            precision_class="n/a_host",
+            lane="host-guard",
+            reason=f"{decision.reason}; the selected software spec does not admit it: {screened['reason']}",
+        )
+    return commitment
 
 
 def require_placement(commitment, *, device=None, member_kernels=None, instruction_audit=None):

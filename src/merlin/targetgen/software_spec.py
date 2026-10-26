@@ -53,6 +53,23 @@ _SIGNATURE_FIELDS = frozenset(
         "numerical_family",
     }
 )
+#: The arithmetic a declaration performs on the payload it admits. Each class names the executable
+#: signature constraints that make the claim screenable, so a row cannot claim arithmetic the screen
+#: never checks. ``none`` is byte movement or a literal fill: it may not declare arithmetic fields.
+ARITHMETIC_CLASSES = {
+    "none": (),
+    "integer_multiply_accumulate": ("accumulator_dtype",),
+    "integer_sum": ("kinds",),
+    "integer_max": ("kinds",),
+    "integer_affine": ("expressions",),
+    "readout_stages": (),
+    "integer_components": ("numerical_family",),
+}
+_ARITHMETIC_FIELDS = frozenset({"accumulator_dtype", "kinds", "expressions", "epilogues"})
+#: The domain axes a declaration states explicitly when the spec selects ``operation_domains``.
+#: An axis the declaration deliberately leaves open is named under ``unconstrained`` with a reason.
+DOMAIN_AXES = ("ranks", "layouts", "tails", "aliasing")
+_DOMAIN_PLACEMENTS = frozenset({"accelerator", "fused_accelerator"})
 
 
 def validate_quantization_parameters(parameters: object, *, source: str) -> dict[str, int]:
@@ -307,6 +324,8 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                     "status",
                     "description",
                     "hardware",
+                    "arithmetic",
+                    "unconstrained",
                 }
             )
             if unknown:
@@ -389,6 +408,9 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
             bounds = signature["shape_bounds"]
             if not isinstance(bounds, dict) or any(not isinstance(value, dict) for value in bounds.values()):
                 raise ValueError(f"{source}: operation {row['id']!r} shape_bounds must map axes to constraints")
+        _validate_row_domain(row, source)
+    if "operation_domains" in document:
+        validate_operation_domains(document, source=source)
     if "evidence" in document and not isinstance(document.get("evidence"), dict):
         raise ValueError(f"{source}: evidence must record the declaration's provenance and unknowns")
     from merlin.targetgen.quantization_spec import validate_quantization_declarations
@@ -413,6 +435,108 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
 
         validate_isa_spec(document["isa"])
     return document
+
+
+def _validate_row_domain(row: dict, source) -> None:
+    """A declared arithmetic class must be backed by the constraints that screen it."""
+    label = f"{source}: operation {row['id']!r}"
+    signature = row.get("signature") or {}
+    unconstrained = row.get("unconstrained")
+    if unconstrained is not None:
+        if not isinstance(unconstrained, dict) or not unconstrained:
+            raise ValueError(f"{label} unconstrained must map domain axes to reasons")
+        for axis, reason in unconstrained.items():
+            if axis not in DOMAIN_AXES:
+                raise ValueError(f"{label} unconstrained names {axis!r}, not a domain axis {list(DOMAIN_AXES)}")
+            if not isinstance(reason, str) or not reason.strip():
+                raise ValueError(f"{label} unconstrained {axis} requires a written reason")
+            if axis in signature:
+                raise ValueError(f"{label} both constrains and leaves {axis} unconstrained")
+    if "arithmetic" not in row:
+        return
+    arithmetic = row["arithmetic"]
+    if arithmetic not in ARITHMETIC_CLASSES:
+        raise ValueError(f"{label} arithmetic must be one of {sorted(ARITHMETIC_CLASSES)}")
+    if arithmetic == "none":
+        claimed = sorted(_ARITHMETIC_FIELDS & set(signature))
+        if claimed:
+            raise ValueError(f"{label} declares arithmetic none but constrains {claimed}")
+        return
+    # Fact-derived fields are filled at selection; a ``hardware`` row is checked on its authored ones.
+    missing = [field for field in ARITHMETIC_CLASSES[arithmetic] if field not in signature]
+    if missing and "hardware" not in row:
+        raise ValueError(f"{label} arithmetic {arithmetic} requires constraints {missing}")
+    kinds = set(signature.get("kinds") or ())
+    if arithmetic == "integer_sum" and "kinds" in signature and kinds != {"sum"}:
+        raise ValueError(f"{label} arithmetic integer_sum admits only sum reductions")
+    if arithmetic == "integer_max" and "kinds" in signature and kinds != {"max"}:
+        raise ValueError(f"{label} arithmetic integer_max admits only max reductions")
+
+
+def validate_operation_domains(document: dict, *, source="software spec") -> dict:
+    """Every device declaration states its shapes, layouts, tails, aliasing and arithmetic.
+
+    Shape of the top-level block (schema ``merlin.software_spec.operation_domains.v1``)::
+
+        operation_domains:
+          schema: merlin.software_spec.operation_domains.v1
+          status: reviewed | unreviewed | authored_pending_operator_review
+          required: [ranks, layouts, tails, aliasing, arithmetic]   # any nonempty subset
+
+    The domains themselves live on each operation declaration, where admission screens them:
+    ``ranks`` (shapes), ``layouts``, ``tails`` and ``aliasing`` as signature constraints,
+    ``placement`` (or a fact-derived ``hardware`` form), and ``arithmetic`` from
+    :data:`ARITHMETIC_CLASSES`. An axis a declaration deliberately leaves open is named under
+    ``unconstrained: {axis: reason}``. Every accelerator, fused or fact-derived declaration must
+    satisfy each required axis; host rows are out of scope. Selected by the spec itself, so a spec
+    without the block keeps its meaning. :func:`operation_domains` returns the resolved view.
+    """
+    block = document["operation_domains"]
+    if not isinstance(block, dict) or block.get("schema") != "merlin.software_spec.operation_domains.v1":
+        raise ValueError(f"{source}: operation_domains must declare schema merlin.software_spec.operation_domains.v1")
+    required = block.get("required")
+    allowed = {*DOMAIN_AXES, "arithmetic"}
+    if not isinstance(required, list) or not required or set(required) - allowed or len(set(required)) != len(required):
+        raise ValueError(f"{source}: operation_domains.required must list axes from {sorted(allowed)}")
+    if block.get("status", "reviewed") not in REVIEW_STATUSES:
+        raise ValueError(f"{source}: operation_domains has an invalid review status")
+    for row in document["operations"]:
+        if row.get("placement") not in _DOMAIN_PLACEMENTS and "hardware" not in row:
+            continue
+        signature, unconstrained = row.get("signature") or {}, row.get("unconstrained") or {}
+        missing = [
+            axis
+            for axis in required
+            if (axis == "arithmetic" and axis not in row)
+            or (axis != "arithmetic" and axis not in signature and axis not in unconstrained)
+        ]
+        if missing:
+            raise ValueError(f"{source}: device operation {row['id']!r} leaves domain axes {missing} undeclared")
+    return copy.deepcopy(block)
+
+
+def operation_domains(spec: dict) -> dict[str, dict]:
+    """Per device declaration, its declared domain: one record per row for ledgers and reports.
+
+    Each record has ``placement``, ``arithmetic`` and, per domain axis, the declared values or
+    ``{"unconstrained": reason}``; an undeclared axis is ``None``. Read from a validated (and, for
+    fact-derived rows, resolved) spec; it adds no admission rule of its own.
+    """
+    result = {}
+    for row in spec.get("operations") or []:
+        if row.get("placement") not in _DOMAIN_PLACEMENTS and "hardware" not in row:
+            continue
+        signature, unconstrained = row.get("signature") or {}, row.get("unconstrained") or {}
+        record = {"placement": row.get("placement", "from_facts"), "arithmetic": row.get("arithmetic")}
+        for axis in DOMAIN_AXES:
+            if axis in signature:
+                record[axis] = copy.deepcopy(signature[axis])
+            elif axis in unconstrained:
+                record[axis] = {"unconstrained": unconstrained[axis]}
+            else:
+                record[axis] = None
+        result[row["id"]] = record
+    return result
 
 
 def capability_contract(spec: dict, *, base_contract: dict | None = None) -> dict:
@@ -678,6 +802,11 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
             missing.append("placement")
         elif declared_placement != placement:
             refused.append(f"placement {placement!r} differs from declared {declared_placement!r}")
+        # The declared arithmetic class is screened through its executable constraints; an observer
+        # that also names the class is held to it, so movement never admits an arithmetic construction.
+        observed_arithmetic = signature.get("arithmetic")
+        if "arithmetic" in row and observed_arithmetic is not None and observed_arithmetic != row["arithmetic"]:
+            refused.append(f"arithmetic {observed_arithmetic!r} differs from declared {row['arithmetic']!r}")
         # A standalone declaration does not authorize using the same family as an epilogue of a
         # different operation. The composition must be selected and reviewed explicitly, even if
         # the hardware also exposes a standalone path for this family.

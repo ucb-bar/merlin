@@ -396,8 +396,12 @@ def test_exact_model_selection_reaches_device_rewrite_without_shape_redecision(t
     # they are not evidence that today's Gemmini inputs were certified.
     spec_doc = yaml.safe_load(original_spec)
     spec_doc["status"] = "reviewed"
+    # The outline observes no layout, tail or aliasing; the synthetic row leaves them open explicitly.
+    contraction = spec_doc["operations"]["contraction"]
+    contraction["unconstrained"] = {}
     for absent_observation in ("layouts", "tails", "aliasing"):
-        spec_doc["operations"]["contraction"].pop(absent_observation)
+        contraction.pop(absent_observation)
+        contraction["unconstrained"][absent_observation] = "synthetic declaration: the outline does not observe it"
     spec = yaml.safe_dump(spec_doc).encode()
     reviewed = outline_integer_matmuls(model, target="gemmini", software_spec=spec, capability_contract=contract)
     selection = ExactOffloadSelection.from_outline(

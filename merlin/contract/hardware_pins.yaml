@@ -1927,11 +1927,25 @@ pins:
     requires_paths:
       - build.sbt
       - sims/firesim/sim/Makefile
+    notes: >-
+      Source tuple, read from this commit's gitlinks (tag 1.15.0): gemmini 8c3f9923, rocket-chip
+      ece7b9ad, testchipip 555ff3fb, diplomacy fe5e131d, cde 2bcaeae2, firesim e1bdea8b; chisel 6.7.0.
+      Both F2 images (latpipe and ddr3llc) share it. The FireSim target is
+      WithDefaultFireSimBridges_WithFireSimConfigTweaks_chipyard.GemminiRocketConfig, which is the
+      fragment list of the FireSimGemminiRocketConfig class. Against chipyard 1.14.0 (0acc1e1d, the
+      `rtl_source` of the Gemmini target contract): gemmini, diplomacy, cde and the chisel version are
+      the same. rocket-chip 55bcad0f..ece7b9ad only ties off a vector unit's FP port in an FPU-less tile,
+      which does nothing in this config. testchipip 26f821be..555ff3fb changes cospike, which FireSim
+      does not build, and switches TLSourceAdjuster (serial-TL) from asSInt to zext. Neither touches a
+      Gemmini module.
 
   gemmini_f2_rtl:
     description: >-
       The Gemmini generator revision inside `gemmini_f2_chipyard`, the one the F2 image elaborates. A
       different revision from the `gemmini_rtl` pin (6ad65b90) and from `gemmini_rocket_rtl` (63f0b68a).
+      The RTL is the same as both: 6ad65b90..8c3f9923 changes only README.md, and 8c3f9923..63f0b68a only
+      adds unused chipyard DSE config classes and comments out one LoadController assert. Mesh size,
+      datapath widths and the RoCC funct table come from identical Scala in all three.
     repo_canonical: https://github.com/ucb-bar/gemmini.git
     commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
     targets: [gemmini]
@@ -1945,6 +1959,19 @@ pins:
       - src/main/scala/gemmini/Configs.scala
       - src/main/scala/gemmini/GemminiISA.scala
       - src/main/scala/gemmini/Mesh.scala
+    notes: >-
+      FACT-LEVEL CHECK, 2026-10-25. The 72 Gemmini-origin modules in both images' FireSim-generated.sv
+      (s3 results-build/.../design/) were compared, by port signature and child instances, with the
+      GemminiRocketConfig Verilator gen-collateral that produced the Phase 1 facts (FIRRTL e325f5a8,
+      core.hw.mlir 4174a534, facts f3d45d60). The two images' Gemmini modules are identical to each other
+      after stripping comments. Against the facts: Mesh has 256 Tile instances (16x16). MacUnit has
+      i8 x i8 + i32 -> i20 ports. AccumulatorMem port signatures are identical (2 banks, depth 512,
+      16 x i32). There are 4 ScratchpadBanks and a 128-bit DMA beat. ONE MATERIAL DIFFERENCE: the
+      physical address is 35 bits on F2 (FireSim's 16 GiB target DRAM) and 32 bits in the Verilator
+      config (256 MiB). It shows up in DMA/TLB `paddr` and PMP ports. No Phase 0 fact is an address
+      width, but a claim about DRAM capacity or placement must use the F2 board's map. Other port
+      differences come from the emitter (dead ports removed, mems inlined) or from rocket-chip's
+      hypervisor `ptw_resp` bits, which are constant in this config.
 
   firesim_f2_gemmini:
     description: >-
@@ -2912,6 +2939,8 @@ artifacts:
     path: bitstreams/f2_gemmini_rocket_latpipe_60mhz/hwdb-entry.yaml
     root_env: MERLIN_F2_ARTIFACTS
     digest: "4dedb520159a7636e5107558c27b64b95a3e68f97838c7cce9b4508695ad41ac"
+    hwdb_digest: "4dedb520159a7636e5107558c27b64b95a3e68f97838c7cce9b4508695ad41ac"
+    abi_header_sha256: "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
     built_from: [gemmini_f2_chipyard, gemmini_f2_rtl, firesim_f2_gemmini]
     config: FireSimGemminiRocketConfig
     target: gemmini
@@ -2924,6 +2953,45 @@ artifacts:
       s3://fsim-artifacts-599243103974/bitstreams/f2_gemmini_rocket_latpipe_60mhz/, and
       MERLIN_F2_ARTIFACTS is a local mirror of that prefix's parent. Sibling image
       f2_gemmini_rocket_ddr3llc_60mhz (agfi-02410ef1a8461b435) is a different device.
+      Host driver built with this image: results-build/.../driver/FireSim-f2, sha256
+      7b382b13eb95723ec492d1fb355051194fd7731165ea1f610531c23040ea3fb0.
+      FireSim-generated.sv sha256 f56fa661ac15d4a792db67c648fbf4dda53bc8d04cdca485ae3e1b23be8efd3a.
+
+  firesim_f2_gemmini_ddr3llc_60mhz:
+    description: >-
+      The AWS F2 FireSim image the Phase 1 F2 runs use from 2026-10-25: hwdb
+      f2_gemmini_rocket_ddr3llc_60mhz, agfi-02410ef1a8461b435 (afi-0b759e97614a74b1b, us-east-1, copied
+      to all F2 regions), GemminiRocketConfig + FireSim tweaks on FRFCFS16GBQuadRankLLC4MB_BaseF2Config
+      (FASED DDR3 FR-FCFS, quad rank, 4 MiB single-bank LLC model), no AutoILA, 60 MHz, post-route worst
+      slack +0.092 ns. The same sources as `firesim_f2_gemmini_latpipe_60mhz`. Only the FASED memory
+      timing model differs, so cycle counts differ between the two images.
+    path: bitstreams/f2_gemmini_rocket_ddr3llc_60mhz/hwdb-entry.yaml
+    root_env: MERLIN_F2_ARTIFACTS
+    digest: "0735de25914d15b31a6a3aa2c78d208611b6ec8ff91df6e63f46e217bb64801a"
+    hwdb_digest: "0735de25914d15b31a6a3aa2c78d208611b6ec8ff91df6e63f46e217bb64801a"
+    abi_header_sha256: "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
+    built_from: [gemmini_f2_chipyard, gemmini_f2_rtl, firesim_f2_gemmini]
+    config: FireSimGemminiRocketConfig
+    target: gemmini
+    role: firesim_bitstream
+    hw_configs: [f2_gemmini_rocket_ddr3llc_60mhz]
+    kind: file
+    notes: >-
+      Host driver built with this image: results-build/.../driver/FireSim-f2, sha256
+      dab86d13f4f7eecd07a64946293c4308bf36c869aab3cddfb167a271776dfb37 (the binary the F2 hosts run;
+      shared libraries come from the latpipe bundle). FireSim-generated.sv sha256
+      355535534868e6c27514c2a152f277485457833ae3d65cfcacb59f6245a8150c.
+      NOT THIS DEVICE, though the names are close:
+      (1) agfi-02455d8983ef4b52e (firesim_rocket_singlecore_gemmini_no_nic_l2_llc4mb_ddr3, 110 MHz,
+      WithAutoILA, same sources) FAILED TIMING (WNS -5.919 ns). Never use it for results.
+      (2) agfi-09268e63eac5f1c08 (reported as chipyard 1.14.0 0acc1e1d / gemmini 8c3f9923 / rocket
+      55bcad0f / firesim da2a1cbc / testchipip 26f821be, FRFCFS16GBQuadRankLLC4MB_BaseF2Config +
+      WithAutoILA) is UNVERIFIED. It is not owned by account 599243103974, it is not public in us-east-1,
+      and its builder's nested checkouts and host driver are unknown, so no hw_config here resolves to it.
+      From source, its Gemmini RTL and its banks=1 LLC model would match this image. The firesim
+      da2a1cbc..e1bdea8b changes are the banked LLC (banks > 1 only), the 64 GiB F2 host channel, PCIM
+      streams and the drivers. Its build products and driver have not been seen, so cycle counts from it
+      are not interchangeable with this image's.
 
 
 # ------------------------------------------------------------------------------------------------------

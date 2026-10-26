@@ -105,6 +105,15 @@ quantization_contract:
   admission: selected_provider_exact_centering_and_full_i32_coverage
   requantization: retained_source_host_readout_per_scheme
   evidence: {review_status: "authored, pending operator review"}
+# Every device declaration states its domain: shapes (ranks), layouts, tails, aliasing,
+# placement and arithmetic. Admission (software_spec.admit_operation) screens these
+# declarations; no separate operation table decides what is accelerated. An axis left open
+# is named under `unconstrained` with the reason it cannot change a valid result.
+# Quantized-island ranks stop at 5: host quantize/dequantize below are declared for 0..5.
+operation_domains:
+  schema: merlin.software_spec.operation_domains.v1
+  status: authored_pending_operator_review
+  required: [ranks, layouts, tails, aliasing, arithmetic]
 operations:
   contraction:
     # Authored, not derived: the exact-offload outline admits contractions against these authored
@@ -117,6 +126,7 @@ operations:
     # constant operand (a ones vector, a scaled identity) is an ordinary operand of this unit.
     families: [contraction, window_mean]
     placement: accelerator
+    arithmetic: integer_multiply_accumulate
     operand_dtypes:
     - int8
     accumulator_dtype: i32
@@ -135,6 +145,13 @@ operations:
     - disjoint_inputs_outputs
   elementwise_map:
     hardware: fused
+    # A fused stage applies to its producer's result, so it shares the contraction's ranks.
+    arithmetic: readout_stages
+    ranks: [2, 3, 4]
+    layouts: [row_major_contiguous]
+    aliasing: [disjoint_inputs_outputs]
+    unconstrained:
+      tails: each readout stage maps one accumulator element to one result element; padded lanes never reach a valid result
   elementwise_map_standalone:
     # Operator reviewed 2026-10-01; unchecked RTL paths remain declarations, not facts.
     status: reviewed
@@ -146,22 +163,42 @@ operations:
     # relu, a difference) as integer weights and an int32 constant, then one readout.
     families: [elementwise_map, operand_sum, affine_map]
     hardware: standalone
+    arithmetic: integer_affine
     max_tensor_operands: 2
     expressions: [affine]
     broadcasting: [none, outer]
+    ranks: [0, 1, 2, 3, 4, 5]
+    layouts: [row_major_contiguous]
+    aliasing: [disjoint_inputs_outputs]
+    unconstrained:
+      tails: each result element reads only its own operand elements; padded lanes never reach a valid result
   elementwise_map_after_operand_sum:
     status: reviewed
     numerical_contract: operand_sum_exhaustive_i8_v1
     families:
     - elementwise_map
     hardware: fused_operand_sum
+    arithmetic: integer_affine
     max_tensor_operands: 2
     expressions: [affine]
     broadcasting: [none, outer]
+    ranks: [0, 1, 2, 3, 4, 5]
+    layouts: [row_major_contiguous]
+    aliasing: [disjoint_inputs_outputs]
+    unconstrained:
+      tails: each result element reads only its own operand elements; padded lanes never reach a valid result
   pooling_on_readout:
     families:
     - reduction
     hardware: fused
+    # Max windows only; sum windows are reduction_standalone. Shares the contraction's ranks.
+    arithmetic: integer_max
+    kinds: [max]
+    ranks: [2, 3, 4]
+    layouts: [row_major_contiguous]
+    aliasing: [disjoint_inputs_outputs]
+    unconstrained:
+      tails: a padded window is governed by the window_reduction_readout constraint padded_max_requires
   reduction_standalone:
     # Standalone SUM reductions: accumulate-on-load over an outer axis or a window, then one
     # readout scale. Max reductions stay fused (`pooling_on_readout`).
@@ -174,15 +211,25 @@ operations:
     # analysis/FINAL_LISTS.md).
     status: reviewed
     hardware: standalone
+    arithmetic: integer_sum
     kinds: [sum]
+    ranks: [0, 1, 2, 3, 4, 5]
+    layouts: [row_major_contiguous]
+    tails: [zero_pad_valid_window]
+    aliasing: [disjoint_inputs_outputs]
   movement:
     # Operator reviewed standalone copies/broadcasts; no fact-derived placement claim.
     status: reviewed
     # Forms and their constraints are the contract's: copy, broadcast, zero_fill, permutation.
+    # A result that views its input (a view op) is materialized as a disjoint copy.
     hardware: standalone
+    arithmetic: none
     broadcasting: [none, outer]
+    ranks: [0, 1, 2, 3, 4, 5]
     layouts: [row_major_contiguous]
-    aliasing: [disjoint_inputs_outputs]
+    aliasing: [disjoint_inputs_outputs, result_views_input]
+    unconstrained:
+      tails: movement copies selected bytes; padded lanes are never written back
   movement_bitwise:
     status: authored_pending_operator_review
     evidence:
@@ -190,11 +237,15 @@ operations:
       scope: "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory"
     families: [movement]
     placement: accelerator
+    arithmetic: none
+    unconstrained:
+      tails: movement copies selected bytes; padded lanes are never written back
     signature:
       numerical_family: [F1]
       operand_dtypes: [i1, int8, i16, f16, bf16, i32, f32, i64, f64, complex<f32>]
+      ranks: [0, 1, 2, 3, 4, 5]
       layouts: [row_major_contiguous]
-      aliasing: [disjoint_inputs_outputs]
+      aliasing: [disjoint_inputs_outputs, result_views_input]
     numerical_contract:
       family: F1
       arithmetic: none
@@ -210,11 +261,17 @@ operations:
       scope: "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory"
     families: [elementwise_map, reduction]
     placement: accelerator
+    arithmetic: integer_components
+    unconstrained:
+      tails: the closed static producer proof bounds every partial sum over the declared static extents
     signature:
       numerical_family: [F2, F4, F5]
       operand_dtypes: [int8]
       accumulator_dtype: i32
       readout_dtype: i32
+      ranks: [0, 1, 2, 3, 4, 5]
+      layouts: [row_major_contiguous]
+      aliasing: [disjoint_inputs_outputs]
     numerical_contract:
       representation: signed_radix_256_components
       producer: closed_static_linear_integer
@@ -228,12 +285,17 @@ operations:
       scope: "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory"
     families: [contraction]
     placement: accelerator
+    arithmetic: integer_components
+    unconstrained:
+      tails: the closed static producer proof bounds every partial sum over the declared static extents
     signature:
       numerical_family: [F2, F4, F5]
       operand_dtypes: [int8]
       accumulator_dtype: i32
       readout_dtype: i32
       ranks: [2, 3]
+      layouts: [row_major_contiguous]
+      aliasing: [disjoint_inputs_outputs]
     numerical_contract:
       representation: signed_radix_256_components
       producer: closed_static_bilinear_integer
@@ -384,6 +446,373 @@ quantization:
     description: Common hardware-order epilogues with MSE activation and minmax weight calibration. Recovery
       is disabled across models; finite recipe-agreement measurements preserve primary metrics with the
       recorded secondary tradeoffs. These measurements are not dataset accuracy or Phase 1 qualification.
+
+  # Explicit numerics per declared scheme (merlin.targetgen.quantization_numerics). Every value
+  # carries its evidence: rtl_derived (checked against the selected RTL facts at `fact`),
+  # rtl_execution_verified, spike_verified, host_definition (arithmetic the host program defines)
+  # or declared_unverified. Internal accumulation is declared, never inferred from int8 operands
+  # and an int32 result. Each boundary below carries an input that separates the declared order
+  # from a rejected regime; validation evaluates both exactly.
+  numerics:
+    schema: merlin.quantization_numerics.v1
+    status: authored_pending_operator_review
+    schemes:
+      q_pow2_tensor:
+        scale_value:
+          value: power_of_two
+          evidence: host_definition
+          basis: calibration_domain.scale_policy enclosing_power_of_two over the declared observer range; chosen by the host recipe
+        scale_granularity:
+          value: {activation: tensor, weight: tensor}
+          evidence: host_definition
+          basis: one scale per tensor in the host recipe; the device sees no scale on this path
+        zero_point: &symmetric_zero
+          value: {activation: 0, weight: 0, output: 0}
+          evidence: host_definition
+          basis: host_quantize declares zero_point 0, quant_min -128, quant_max 127; the device has no zero-point stage
+        signedness: &signed_operands
+          value: signed_twos_complement
+          evidence: spike_verified
+          basis: 193-case device lane (measure-mca wall run, 57 device cases) passes bit-exact with negative int8 operands; the extracted facts record only the 8-bit storage width (scratchpad UInt<8>)
+        operand_type: &operand_type
+          value: {dtype: int8, range: [-128, 127]}
+          evidence: rtl_derived
+          fact: [datapaths, input, dtype]
+          basis: compute input datapath i8 in the selected RTL facts
+        accumulator_type: &accumulator_type
+          value: {dtype: int32}
+          evidence: rtl_derived
+          fact: [datapaths, accumulator, dtype]
+          basis: accumulator datapath i32 (AccumulatorMem SInt<32>) in the selected RTL facts
+        internal_accumulation: &internal_accumulation
+          value: {bits: 20, hardware_overflow: wrap_each_mac, admission: bounded_partial_sums, dataflows: [WS, OS]}
+          evidence: declared_unverified
+          basis: numerical_semantics.native_unit_contract.mesh_mac (authored, pending operator review); the mesh width is not in the extracted facts, so admission requires every partial sum to fit
+        bias: &bias_seed
+          value: {dtype: int32, width: 32, placement: accumulator_seed, scaling: none}
+          evidence: rtl_execution_verified
+          basis: transfer_contracts.accumulator_seed_load (operator decision D1) - Spike and stock RTL bit-exact, FireSim job 2944
+        conversion_order:
+          value:
+            contraction: &v1_contraction
+            - {step: quantize, site: host, dtype: int8, zero_point: 0, rounding: half_even}
+            - {step: transfer, from: host, to: accelerator, dtype: int8}
+            - {step: seed, dtype: int32}
+            - {step: multiply_accumulate, operand: int8, internal_bits: 20, admission: bounded_partial_sums}
+            - {step: accumulate, dtype: int32}
+            - {step: transfer, from: accelerator, to: host, dtype: int32}
+            - {step: activation, function: relu, position: before_scale, site: host}
+            - {step: multiply, site: host, multiplier: exact_rational, product: exact, granularity: tensor}
+            - {step: round, site: host, ties: half_even}
+            - {step: saturate, site: host, dtype: int8}
+            operand_sum:
+            - {step: quantize, site: host, dtype: int8, zero_point: 0, rounding: half_even}
+            - {step: transfer, from: host, to: accelerator, dtype: int8}
+            - {step: operand_sum, rounding: single_rounding}
+            - {step: accumulate, dtype: int32}
+            - {step: transfer, from: accelerator, to: host, dtype: int32}
+            - {step: activation, function: relu, position: before_scale, site: host}
+            - {step: multiply, site: host, multiplier: exact_rational, product: exact, granularity: tensor}
+            - {step: round, site: host, ties: half_even}
+            - {step: saturate, site: host, dtype: int8}
+          evidence: spike_verified
+          basis: full int32 readout then exact host readout; the 193-case device lane records host_exact_rational_RNE readouts bit-exact on Spike
+        rounding:
+          value: {ties: half_even, sites: [host_quantize, host_readout]}
+          evidence: host_definition
+          basis: numerical_semantics.readout exact_rational_host requant_rounding half_even; computed by the host
+        saturation:
+          value: {dtype: int8, range: [-128, 127], mode: saturate}
+          evidence: host_definition
+          basis: numerical_semantics.readout narrowing saturate_to_declared_dtype; computed by the host
+        transfer:
+          value: {host_to_accelerator: {dtype: int8, conversion: bit_preserving}, accelerator_to_host: {dtype: int32, conversion: bit_preserving}}
+          evidence: rtl_derived
+          fact: [datapaths, accumulator, dtype]
+          fact_value: int32
+          basis: transfer_contracts operand_load (i8) and accumulator_readout (i32), both reviewed against the storage datapaths; the readout width is the checked fact
+      q_f32_tensor: &f32_tensor_numerics
+        scale_value: &arbitrary_scales
+          value: arbitrary_f32
+          evidence: host_definition
+          basis: declared_observer calibration over the declared observer domain; multipliers formed by the host as RNE_f32 of the exact rational
+        scale_granularity:
+          value: {activation: tensor, weight: tensor}
+          evidence: host_definition
+          basis: one multiplier per tensor, loaded once into the readout scale
+        zero_point: *symmetric_zero
+        signedness: *signed_operands
+        operand_type: *operand_type
+        accumulator_type: *accumulator_type
+        internal_accumulation: *internal_accumulation
+        bias: *bias_seed
+        conversion_order: &f32_order
+          value:
+            contraction:
+            - {step: quantize, site: host, dtype: int8, zero_point: 0, rounding: half_even}
+            - {step: transfer, from: host, to: accelerator, dtype: int8}
+            - {step: seed, dtype: int32}
+            - {step: multiply_accumulate, operand: int8, internal_bits: 20, admission: bounded_partial_sums}
+            - {step: accumulate, dtype: int32}
+            - {step: activation, function: relu, position: before_scale, site: accelerator}
+            - {step: convert, to: f32, rounding: half_even, site: accelerator}
+            - {step: multiply, site: accelerator, multiplier: rne_f32_of_exact_rational, product: f32_half_even, granularity: tensor}
+            - {step: round, site: accelerator, ties: half_even}
+            - {step: saturate, site: accelerator, dtype: int8}
+            - {step: transfer, from: accelerator, to: host, dtype: int8}
+            operand_sum: &f32_single_sum
+            - {step: quantize, site: host, dtype: int8, zero_point: 0, rounding: half_even}
+            - {step: transfer, from: host, to: accelerator, dtype: int8}
+            - {step: operand_sum, rounding: single_rounding}
+            - {step: accumulate, dtype: int32}
+            - {step: activation, function: relu, position: before_scale, site: accelerator}
+            - {step: convert, to: f32, rounding: half_even, site: accelerator}
+            - {step: multiply, site: accelerator, multiplier: rne_f32_of_exact_rational, product: f32_half_even, granularity: tensor}
+            - {step: round, site: accelerator, ties: half_even}
+            - {step: saturate, site: accelerator, dtype: int8}
+            - {step: transfer, from: accelerator, to: host, dtype: int8}
+          evidence: declared_unverified
+          basis: int8_readout readout_definitions f32_product_rne (AccumulatorScale INToRecFN, MulAddRecFN, RecFNToIN, all RNE, then saturate); activation order resolves from the contract output path, not the extracted facts
+        rounding: &device_rounding
+          value: {ties: half_even, sites: [host_quantize, accumulator_conversion, multiplier_formation, product, integer_conversion]}
+          evidence: spike_verified
+          basis: rounding-fixed Spike extension (libgemmini ROUND_NEAR_EVEN fix, sha256 3dd87ffd661a658b7e4ae56c5fe3b5ea21934707ec38f0ede2eb2fd99c3fd5ea) - exhaustive scan 0 mismatches vs rintf over (-2^24, 2^24); the stock extension disagrees at pred(2^e); RTL execution of non-unit f32 scales is not yet recorded
+        saturation: &device_saturation
+          value: {dtype: int8, range: [-128, 127], mode: saturate}
+          evidence: spike_verified
+          basis: AccumulatorScale saturating narrowing (int8_readout evidence); Dragon ResNet-18/34/50/101 1000/1000 under the rounding-fixed extension
+        transfer: &int8_readout_transfer
+          value: {host_to_accelerator: {dtype: int8, conversion: bit_preserving}, accelerator_to_host: {dtype: int8, conversion: bit_preserving}}
+          evidence: rtl_derived
+          fact: [datapaths, input, dtype]
+          fact_value: int8
+          basis: transfer_contracts operand_load (i8, checked fact) and int8_readout (bit-preserving copy after the readout's saturation)
+      q_f32_column_block:
+        scale_value: *arbitrary_scales
+        scale_granularity: &column_block_scales
+          value: {activation: tensor, weight: column_block, block_width: from_output_path}
+          evidence: declared_unverified
+          basis: one multiplier per columns_per_scale output columns; the width resolves from the selected output path and is currently unresolved
+        zero_point: *symmetric_zero
+        signedness: *signed_operands
+        operand_type: *operand_type
+        accumulator_type: *accumulator_type
+        internal_accumulation: *internal_accumulation
+        bias: *bias_seed
+        conversion_order: &f32_block_order
+          value:
+            contraction:
+            - {step: quantize, site: host, dtype: int8, zero_point: 0, rounding: half_even}
+            - {step: transfer, from: host, to: accelerator, dtype: int8}
+            - {step: seed, dtype: int32}
+            - {step: multiply_accumulate, operand: int8, internal_bits: 20, admission: bounded_partial_sums}
+            - {step: accumulate, dtype: int32}
+            - {step: activation, function: relu, position: before_scale, site: accelerator}
+            - {step: convert, to: f32, rounding: half_even, site: accelerator}
+            - {step: multiply, site: accelerator, multiplier: rne_f32_of_exact_rational, product: f32_half_even, granularity: column_block}
+            - {step: round, site: accelerator, ties: half_even}
+            - {step: saturate, site: accelerator, dtype: int8}
+            - {step: transfer, from: accelerator, to: host, dtype: int8}
+            operand_sum: *f32_single_sum
+          evidence: declared_unverified
+          basis: f32_product_rne readout per scale command; a block's columns share one multiplier (scale_commands column_block per_block)
+        rounding: *device_rounding
+        saturation: *device_saturation
+        transfer: *int8_readout_transfer
+      q_f32_per_operand_sum:
+        scale_value: *arbitrary_scales
+        scale_granularity: *column_block_scales
+        zero_point: *symmetric_zero
+        signedness: *signed_operands
+        operand_type: *operand_type
+        accumulator_type: *accumulator_type
+        internal_accumulation: *internal_accumulation
+        bias: *bias_seed
+        conversion_order:
+          value:
+            contraction:
+            - {step: quantize, site: host, dtype: int8, zero_point: 0, rounding: half_even}
+            - {step: transfer, from: host, to: accelerator, dtype: int8}
+            - {step: seed, dtype: int32}
+            - {step: multiply_accumulate, operand: int8, internal_bits: 20, admission: bounded_partial_sums}
+            - {step: accumulate, dtype: int32}
+            - {step: activation, function: relu, position: before_scale, site: accelerator}
+            - {step: convert, to: f32, rounding: half_even, site: accelerator}
+            - {step: multiply, site: accelerator, multiplier: rne_f32_of_exact_rational, product: f32_half_even, granularity: column_block}
+            - {step: round, site: accelerator, ties: half_even}
+            - {step: saturate, site: accelerator, dtype: int8}
+            - {step: transfer, from: accelerator, to: host, dtype: int8}
+            operand_sum:
+            - {step: quantize, site: host, dtype: int8, zero_point: 0, rounding: half_even}
+            - {step: transfer, from: host, to: accelerator, dtype: int8}
+            - {step: operand_sum, rounding: per_operand, ties: half_even, load_dtype: int8, load_multiplier: rne_f32_of_exact_rational, load_product: f32_half_even}
+            - {step: accumulate, dtype: int32}
+            - {step: activation, function: relu, position: before_scale, site: accelerator}
+            - {step: convert, to: f32, rounding: half_even, site: accelerator}
+            - {step: multiply, site: accelerator, multiplier: rne_f32_of_exact_rational, product: f32_half_even, granularity: tensor}
+            - {step: round, site: accelerator, ties: half_even}
+            - {step: saturate, site: accelerator, dtype: int8}
+            - {step: transfer, from: accelerator, to: host, dtype: int8}
+          evidence: spike_verified
+          basis: each load scales, rounds and saturates before the int32 sum (operand multiplier in (0, 1]); Dragon ResNet-18/34/50/101 double-rounding residuals 1000/1000 under the rounding-fixed extension
+        rounding: *device_rounding
+        saturation: *device_saturation
+        transfer: *int8_readout_transfer
+      q_f32_packed_panel:
+        scale_value: *arbitrary_scales
+        scale_granularity: *column_block_scales
+        zero_point: *symmetric_zero
+        signedness: *signed_operands
+        operand_type: *operand_type
+        accumulator_type: *accumulator_type
+        internal_accumulation: *internal_accumulation
+        bias: *bias_seed
+        conversion_order: *f32_block_order
+        rounding: *device_rounding
+        saturation: *device_saturation
+        transfer: *int8_readout_transfer
+    boundaries:
+    - id: readout_ties
+      property: rounding
+      schemes: [q_pow2_tensor, q_f32_tensor, q_f32_column_block, q_f32_per_operand_sum, q_f32_packed_panel]
+      path: contraction
+      segment: [multiply, saturate]
+      input: {accumulators: [5, -5], multipliers: ['1/2'], column_blocks: [0, 0]}
+      expected: [2, -2]
+      rejected:
+        regime:
+        - {step: multiply, multiplier: exact_rational, product: exact, granularity: tensor}
+        - {step: round, ties: half_away_from_zero}
+        - {step: saturate, dtype: int8}
+        result: [3, -3]
+    - id: readout_saturation
+      property: saturation
+      schemes: [q_pow2_tensor, q_f32_tensor, q_f32_column_block, q_f32_per_operand_sum, q_f32_packed_panel]
+      path: contraction
+      segment: [multiply, saturate]
+      input: {accumulators: [300, -300], multipliers: ['1'], column_blocks: [0, 0]}
+      expected: [127, -128]
+      rejected:
+        regime:
+        - {step: multiply, multiplier: exact_rational, product: exact, granularity: tensor}
+        - {step: round, ties: half_even}
+        - {step: saturate, dtype: int8, mode: wrap}
+        result: [44, -44]
+    - id: exact_rational_beyond_f32_integers
+      property: conversion_order
+      schemes: [q_pow2_tensor]
+      path: contraction
+      segment: [multiply, saturate]
+      input: {accumulators: [16777217], multipliers: ['1/33554432']}
+      expected: [1]
+      rejected:
+        regime:
+        - {step: convert, to: f32, rounding: half_even}
+        - {step: multiply, multiplier: rne_f32_of_exact_rational, product: f32_half_even, granularity: tensor}
+        - {step: round, ties: half_even}
+        - {step: saturate, dtype: int8}
+        result: [0]
+    - id: f32_multiplier_formation
+      property: conversion_order
+      schemes: [q_f32_tensor, q_f32_column_block, q_f32_per_operand_sum, q_f32_packed_panel]
+      path: contraction
+      segment: [convert, saturate]
+      input: {accumulators: [-399], multipliers: ['1/14'], column_blocks: [0]}
+      expected: [-29]
+      rejected:
+        regime:
+        - {step: multiply, multiplier: exact_rational, product: exact, granularity: tensor}
+        - {step: round, ties: half_even}
+        - {step: saturate, dtype: int8}
+        result: [-28]
+    - id: per_operand_rounding
+      property: conversion_order
+      schemes: [q_f32_per_operand_sum]
+      path: operand_sum
+      segment: [operand_sum, round]
+      input: {operands: [[1, '1/2'], [1, '1/2']], multipliers: ['1']}
+      expected: [0]
+      rejected:
+        regime:
+        - {step: operand_sum, rounding: single_rounding}
+        - {step: round, ties: half_even}
+        result: [1]
+    - id: column_block_scale_selection
+      property: scale_granularity
+      schemes: [q_f32_column_block, q_f32_per_operand_sum, q_f32_packed_panel]
+      path: contraction
+      segment: [convert, saturate]
+      input: {accumulators: [8, 8], multipliers: ['1/2', '1/4'], column_blocks: [0, 1]}
+      expected: [4, 2]
+      rejected:
+        regime:
+        - {step: convert, to: f32, rounding: half_even}
+        - {step: multiply, multiplier: rne_f32_of_exact_rational, product: f32_half_even, granularity: tensor}
+        - {step: round, ties: half_even}
+        - {step: saturate, dtype: int8}
+        result: [4, 4]
+    - id: internal_partial_sum_width
+      property: internal_accumulation
+      schemes: [q_pow2_tensor, q_f32_tensor, q_f32_column_block, q_f32_per_operand_sum, q_f32_packed_panel]
+      path: contraction
+      segment: [multiply_accumulate, accumulate]
+      input:
+        lhs: [127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127]
+        rhs: [127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127]
+      expected: refused
+      rejected:
+        # Inferring the internal width from the int32 accumulator would accept this sum.
+        regime:
+        - {step: multiply_accumulate, operand: int8, internal_bits: 32, admission: bounded_partial_sums}
+        - {step: accumulate, dtype: int32}
+        result: [532257]
+    - id: bias_accumulator_width
+      property: bias
+      schemes: [q_pow2_tensor, q_f32_tensor, q_f32_column_block, q_f32_per_operand_sum, q_f32_packed_panel]
+      path: contraction
+      segment: [seed, accumulate]
+      input: {bias: 1000, lhs: [1], rhs: [1]}
+      expected: [1001]
+      rejected:
+        regime:
+        - {step: seed, dtype: int8}
+        - {step: multiply_accumulate, operand: int8, internal_bits: 20, admission: bounded_partial_sums}
+        - {step: accumulate, dtype: int32}
+        result: [128]
+    - id: signed_symmetric_quantization
+      property: zero_point
+      schemes: [q_pow2_tensor, q_f32_tensor, q_f32_column_block, q_f32_per_operand_sum, q_f32_packed_panel]
+      path: contraction
+      segment: [quantize, quantize]
+      input: {real: ['-1', '1/2', '1/256'], scale: '1/128'}
+      expected: [-128, 64, 0]
+      rejected:
+        regime:
+        - {step: quantize, dtype: uint8, zero_point: 128, rounding: half_even}
+        result: [0, 192, 128]
+    unmodeled:
+    - subject: complex-valued arithmetic (complex affine maps, complex addmm with alpha 0)
+      reason: per-component quantization of complex products has no declared scheme; these stay host or native-exact constructions
+    - subject: integer storage wider than int8 (radix-256 components, F2/F5)
+      reason: exact integer constructions, not quantization schemes; numerics live in component_linear/component_bilinear numerical_contract
+    - subject: runtime x runtime contractions (activation_contraction, dynamic attention planes)
+      reason: model_variants dynamic recipes are not declared schemes; no per-scheme conversion order exists for them
+    - subject: residual_coefficient integer_constant (constant-operand K extension)
+      reason: coefficient digits and max K extension resolve from facts and are currently unresolved; no scheme selects the axis
+    - subject: readout_exit accumulator_full crossings
+      reason: crossed per composition, not per scheme; full-width exits apply no readout stage and carry the accumulator conversion only
+    - subject: one-column weight scales (weight_scale_granularity column)
+      reason: legal but ungraded; no declared scheme selects it
+    - subject: fused max pooling on the readout path with padding
+      reason: the pooled-store pad value is not derived (output_path pool padding unknown); padded windows are refused
+    - subject: output-stationary dataflow partial-sum bound from constant operands
+      reason: the value-bound mode of the mesh check is not declared; OS accepts only inputs the bounded_partial_sums admission proves
+    - subject: per-channel activation scales and nonzero zero points
+      reason: activation_scale_granularity declares tensor only and every zero point is 0; asymmetric or per-channel activations are not modeled
+    - subject: floating islands (softmax, layer_norm, rms_norm, group_norm, gelu, silu, rotary)
+      reason: methodology float_island computes these in host fp32; no device quantization is declared
+    - subject: block-scaled and narrow formats (MX, fp8, int4, uint8 operands)
+      reason: quantization.formats declares int8 operands with an int32 accumulator only
 
 # Seal 4 review S4.4-S4.8. Primitive families enumerate instances; no per-op rows.
 compositions:

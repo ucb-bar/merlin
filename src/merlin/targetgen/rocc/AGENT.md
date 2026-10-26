@@ -74,6 +74,13 @@ convolution is lowered) is never a finding.
 The separately bound neutral contract route (`BoundSemantics` and `BoundChecks`)
 currently implements `decode_clean` and `legal_funct` only. Its explicit
 `instructions` roster does not reinterpret the legacy protocol contract above.
+A bound contract may instead declare the role program above (`ROLE_PROGRAM_KEYS`
+beside its roster) together with an `rtl_checks` protocol mapping. Its ISA
+constants, decode and readout bits are then `derive_isa_constants` over the
+bound snapshot, and `BoundProtocolChecks` runs the generic rule engine only
+while the selected contract and facts equal that snapshot. Each program code
+must be a roster code with the same label; a program cannot be combined with a
+selected operand protocol, a rule list, or the absence of a protocol mapping.
 An incomplete hardware decode table cannot establish universal instruction
 legality. Unimplemented temporal/bounds rules and strategy rules refuse.
 

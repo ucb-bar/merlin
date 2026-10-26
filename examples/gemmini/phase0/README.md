@@ -63,6 +63,14 @@ facts identical. A board-level claim must compare the selected facts against
 the FireSim source/elaboration or regenerate facts from a matching source
 selection before treating them as one hardware revision.
 
+The AWS F2 images (`firesim_f2_gemmini_latpipe_60mhz` and
+`firesim_f2_gemmini_ddr3llc_60mhz` in `merlin/contract/hardware_pins.yaml`) are
+built from chipyard 157dd69e and elaborate gemmini 8c3f9923. The contract's
+`rtl_source` (chipyard 0acc1e1d) names the same generator commit. The comparison
+is recorded on the `gemmini_f2_rtl` pin. Mesh, datapath, accumulator and
+scratchpad facts match. The physical address width does not: F2 has 35 bits and
+the Verilator elaboration has 32.
+
 [regression-seeds.yaml](regression-seeds.yaml) preserves historical authored tests
 for explicit compatibility studies, excluding a former SmolVLA-derived seed
 that crossed the held-out validation boundary. It is **not** a default

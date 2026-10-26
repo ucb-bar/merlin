@@ -7,8 +7,45 @@ Source constants are synthetic; missing target premises never acquire defaults.
 from __future__ import annotations
 
 import copy
+from collections import Counter
+from collections.abc import Mapping
 from fractions import Fraction
 from functools import lru_cache
+
+
+def synthesize_compositions_enabled(workload_spec: Mapping | None) -> bool:
+    """Validate the descriptor's optional composition synthesis selection."""
+    enabled = (workload_spec or {}).get("synthesize_compositions", True)
+    if not isinstance(enabled, bool):
+        raise ValueError("workload_spec.synthesize_compositions must be a bool")
+    return enabled
+
+
+def coverage(entries, *, excluded_spec=None):
+    """Count declared composition pairs, retaining explicit seal exclusions."""
+    if excluded_spec is not None:
+        schemes = ((excluded_spec.get("quantization") or {}).get("schemes") or {}).get("schemes") or [{"id": None}]
+        return [
+            dict(
+                composition=chain["id"],
+                scheme=scheme["id"],
+                count=0,
+                status="out_of_scope",
+                reason="workload_spec.synthesize_compositions is false",
+            )
+            for chain in sorted((excluded_spec.get("compositions") or {}).get("chains", []), key=lambda c: c["id"])
+            for scheme in sorted(schemes, key=lambda s: s["id"])
+        ]
+    return [
+        dict(composition=chain, scheme=scheme, count=count)
+        for (chain, scheme), count in sorted(
+            Counter(
+                (e["generalization"]["composition_chain"]["id"], e["generalization"]["quantization_scheme"]["id"])
+                for e in entries
+                if e.get("op") == "composition_program"
+            ).items()
+        )
+    ]
 
 
 def _positive(facts, key):

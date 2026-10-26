@@ -125,6 +125,7 @@ def task_full_call_interface_block(config: TaskStagingConfig) -> str:
         hooks = ", ".join(sorted(entry["hooks"]))
         lines.append(f"| `{module}` | {shape(member, entry['calls'])} | {fields} | {hooks} |")
     lines.append("\n`[i]key` is a key of the i-th unpacked value (0-based).")
+    lines.append("`[i][].attribute` is an attribute path read on each iterable item of the i-th unpacked value.")
     for hook, files in sorted(reads.items()):
         lines.append(
             f"After step `{hook}` the support reads {', '.join(f'`{f}`' for f in files)} from its work directory."

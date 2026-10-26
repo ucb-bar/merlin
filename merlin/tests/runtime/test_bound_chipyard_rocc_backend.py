@@ -520,6 +520,39 @@ def test_incomplete_or_compiler_bearing_selections_refuse_before_any_process(sel
 
 
 @pytest.mark.parametrize(
+    "tokens",
+    [
+        ["+loadmem={elf}"],  # no positional operand
+        ["+loadmem={elf}", "+loadmem={elf}", "{elf}"],  # repeated plusarg
+        ["+loadmem=x{elf}", "{elf}"],  # partial substitution
+        ["+loadmem={elf}.bin", "{elf}"],
+        ["loadmem={elf}", "{elf}"],  # not a plusarg
+        ["+={elf}", "{elf}"],
+        ["+load mem={elf}", "{elf}"],
+        ["+load{mem}={elf}", "{elf}"],
+        ["+loadmem={configuration}", "{elf}"],
+        ["+loadmem={elf}{elf}", "{elf}"],
+    ],
+)
+def test_elf_plusarg_admits_only_an_exact_whole_value_elf_substitution(selection, tokens):
+    _engine(selection)["argv"] = ["--isa=rv64gc", *tokens]
+    with pytest.raises(ValueError, match="ELF"):
+        _bound(selection)
+
+
+def test_declared_elf_plusarg_names_the_same_pinned_elf(selection, tmp_path):
+    _engine(selection)["argv"] = ["--isa=rv64gc", "+loadmem={elf}", "+permissive-off", "{elf}"]
+    bound = _bound(selection)
+    assert bound.execution_argv_template("spike") == ("--isa=rv64gc", "+loadmem={elf}", "+permissive-off", "{elf}")
+    elf = _file(tmp_path, "requested.elf", "owned input artifact\n")
+    bound.run_elf(elf, simulator="spike", timeout=2)
+    (record,) = tmp_path.glob("invocations/*/invocation.json")
+    actual = I.verify(record)
+    assert actual["argv"][-3:] == [f"+loadmem={elf}", "+permissive-off", str(elf)]
+    assert actual["inputs"] == [_pin(elf)]
+
+
+@pytest.mark.parametrize(
     "directive", ["INPUT(code.o)", "GROUP(-lcompute)", "INCLUDE foreign.ld", "SEARCH_DIR(/foreign)", "STARTUP(code.o)"]
 )
 def test_linker_layout_cannot_inject_hidden_code(selection, directive):
@@ -1456,6 +1489,33 @@ def test_native_deployment_joins_actual_observations_without_spike_extension(sel
     assert identity["receipt"]["firrtl"]["sha256"] == facts["inputs"]["fir_sha256"]
     assert "extension" not in identity and bound.ORACLE["verilator"]["derived_from_rtl"] is True
     assert S.prepare_contract(target="synthetic", contract=_deployment((contract, facts)), facts=facts) == contract
+
+
+def test_native_execution_inputs_are_every_member_the_identity_check_reopens(selection, chain):
+    contract, facts, binary = _native(selection, chain)
+    doc, _, dependency, tmp = chain
+    ini = tmp / "memory_ini"
+    ini.mkdir()
+    contract["runner"]["chipyard_rocc"]["engines"]["verilator"]["argv"] = [f"+ini_dir={ini}", "+loadmem={elf}", "{elf}"]
+    bound = B.bind(target="synthetic", contract=contract, facts=facts)
+    paths = set(bound.execution_input_paths("verilator"))
+    receipt = tmp / "receipt.json"
+    assert {binary, receipt, tmp, ini, dependency} <= paths
+    assert {Path(stage["invocation"]["path"]) for stage in doc["stages"]} <= paths
+    assert {Path(row["path"]) for row in doc["hdl"] + doc["model_sources"]} <= paths
+    dependency.write_text("changed")
+    with pytest.raises(ValueError):
+        bound.execution_input_paths("verilator")
+
+
+def test_functional_execution_inputs_include_the_selected_extension(selection, tmp_path):
+    bound = _bound(selection)
+    engine = _engine(selection)
+    paths = bound.execution_input_paths("spike")
+    assert Path(engine["binary"]["path"]) in paths and Path(engine["cwd"]) in paths
+    assert Path(selection[0]["runner"]["spike_extension"]["extlib"]) in paths
+    with pytest.raises(ValueError, match="not selected"):
+        bound.execution_input_paths("gsim")
 
 
 def test_native_receipt_cannot_be_reused_for_another_firrtl(selection, chain):

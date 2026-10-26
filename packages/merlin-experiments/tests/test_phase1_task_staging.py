@@ -232,9 +232,14 @@ def test_joint_task_and_standing_prompt_describe_actual_routing(tmp_path, monkey
     monkeypatch.setattr(public_scalability.S, "selected", lambda _: (tmp_path, {"cases": [{}] * 77}))
     conf = replace(config(tmp_path / "operator", "gemmini"), experiment="full")
     (conf.bundle_dir / "tools.txt").write_text("xdsl_kit\ncca_spine\n")
-    task = TS.full_model_task(conf, "bwrap", {
-        "required_public_dev_capsules": 173, "held_out_capsules": 8,
-    }) + public_scalability.prompt_block(object())
+    task = TS.full_model_task(
+        conf,
+        "bwrap",
+        {
+            "required_public_dev_capsules": 173,
+            "held_out_capsules": 8,
+        },
+    ) + public_scalability.prompt_block(object())
     assert "Core public/dev capsules: **173**" in task
     assert "suite has 77 cases" in task and "Held-out capsules: **8**" in task
     assert "**6 core capsules are final-only**" in task
@@ -254,9 +259,12 @@ def test_joint_task_and_standing_prompt_describe_actual_routing(tmp_path, monkey
     monkeypatch.setattr(joint_control, "remaining", lambda: 100)
     routed = joint_control.selfcheck_policy(lambda argv, **_: argv)(["--capsules", "case_a"])
     assert routed[routed.index("--sim") + 1] == "spike"
-    assert joint_control.selfcheck_policy(lambda *_args, **_kwargs: pytest.fail("must refuse"))(
-        ["--sim", "spike", "--tiers", "L3"]
-    ) == 2
+    assert (
+        joint_control.selfcheck_policy(lambda *_args, **_kwargs: pytest.fail("must refuse"))(
+            ["--sim", "spike", "--tiers", "L3"]
+        )
+        == 2
+    )
 
 
 def test_coverage_objective_is_in_actual_archived_task_only_when_selected(tmp_path):
@@ -339,3 +347,38 @@ def test_staged_task_names_the_full_call_submission_interface(tmp_path, monkeypa
     assert str(provider) not in text and "SECRET_SUPPORT_LOGIC" not in text and "never staged" not in text
     assert "| `pkg.parts.catalog` | `check(arg1)` | - | routing |" in text  # a private helper's use, under its hook
     assert "_private_step" not in text and "_module" not in text and "`_" not in text
+
+
+@pytest.mark.parametrize(
+    "reads",
+    [
+        "    for m in matches:\n"
+        "        consume(m.kernel.meta, m.kernel.stream, m.kernel.meta.get('x'), m.numeric.get('readout'))\n",
+        "    return [(m.kernel.meta, m.kernel.stream, m.kernel.meta.get('x'), m.numeric.get('readout')) "
+        "for m in matches]\n",
+    ],
+)
+def test_full_call_interface_lists_iterable_item_attributes(tmp_path, monkeypatch, reads):
+    provider = tmp_path / "provider.py"
+    provider.write_text(
+        "from merlin.targetgen.plugins import load_module\n"
+        "def routing(source, *, package):\n"
+        "    catalog = load_module(package, 'pkg.catalog')\n"
+        "    _, inventory, matches = catalog.build(source)\n"
+        "    consume(inventory['covered'])\n" + reads
+    )
+    monkeypatch.setenv("MERLIN_CORE_ATEN_EXECUTION_PROVIDER", str(provider))
+    conf = config(tmp_path / "operator")
+    (conf.context.experiment / "task").mkdir()
+    (conf.context.experiment / "task/TASK_realistic.md").write_text("operator task\n")
+
+    text = (stage(conf) / "TASK.md").read_text()
+
+    row = next(line for line in text.splitlines() if line.startswith("| `pkg.catalog` |"))
+    assert "`build(arg1)` -> unpacked into 3 values" in row
+    assert "`[1]covered`" in row
+    assert row.count("`[2][].kernel.meta`") == 1
+    assert "`[2][].kernel.stream`" in row
+    assert row.count("`[2][].numeric`") == 1
+    assert ".get" not in row
+    assert "`[i][].attribute` is an attribute path read on each iterable item" in text

@@ -28,6 +28,7 @@ from .capability_manifest import CapabilityManifest as CapabilityManifest
 from .capability_manifest import _derived_dtype_token as _derived_dtype_token
 from .capability_manifest import _primary_kind as _primary_kind
 from .capability_manifest import load_capability_manifest as load_capability_manifest
+from .composition_corpus import synthesize_compositions_enabled
 from .input_exclusions import declared_held_out_inputs as declared_held_out_inputs
 
 
@@ -682,6 +683,7 @@ class TargetExperiment:
     # it; a token that does not survive is reported, not silently ignored.
     # `max_synthesized_capsules` -- the budget that turns "too many capsules" into an error rather than
     # a truncation, because a silently dropped point reads downstream as a covered one.
+    # `synthesize_compositions` -- bool (default true); false skips declared compositions and reports them out of scope.
     #
     # Absent is not an error: a target that declares none simply gets no tie-break, and the derived
     # requirement alone determines its corpus.
@@ -1037,6 +1039,8 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
     doc = yaml.safe_load(descriptor_bytes.decode("utf-8"))
     if not isinstance(doc, dict) or not doc.get("target"):
         raise ValueError(f"{p}: not a target-experiment descriptor (missing 'target')")
+    if isinstance(doc.get("workload_spec"), dict):
+        synthesize_compositions_enabled(doc["workload_spec"])
     numeric_profile = doc.get("numeric_profile")
     if numeric_profile is not None and (
         not isinstance(numeric_profile, str)

@@ -298,10 +298,18 @@ def _compile_classes(roles: dict, layouts: dict, flags: dict[str, int]) -> dict[
 def isa_constants(target: str) -> dict:
     """Derive the RoCC ISA constants for ``target`` from its RTL facts + contract. No target is baked
     in — the caller passes the target it is grading; the decoder holds no default."""
-    manifest = _load_manifest(target)
-    enc = dict(manifest.encoding)
-    roles = operand_roles(manifest.contract)
-    facts = _load_facts(target)["facts"]
+    return derive_isa_constants(_load_manifest(target).contract, _load_facts(target))
+
+
+def derive_isa_constants(contract: dict, facts_record: dict) -> dict:
+    """The ISA constants one contract and one facts record determine, with no target lookup.
+
+    :func:`isa_constants` applies this to the selected target's contract and facts; a bound selection
+    applies it to its own detached snapshot, so both routes evaluate the same declared data identically.
+    """
+    enc = dict((contract or {}).get("encoding") or {})
+    roles = operand_roles(contract)
+    facts = facts_record["facts"]
     mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
     fdt = _facts_interface(facts, "funct_decode_table") or {}
     layouts = bundle_layouts(facts)
@@ -477,6 +485,15 @@ def _uint(value, width):
     return type(value) is int and 0 <= value < (1 << width)
 
 
+_BOUND_ROLE_KEYS = frozenset({"version", "word_bits", "instructions"})
+#: ``rocc_operand_roles`` keys of the role program :func:`derive_isa_constants` evaluates. A bound
+#: selection may declare them beside its instruction roster to select the same decode, ISA constants
+#: and readout composition a support-selected contract gets from this module.
+ROLE_PROGRAM_KEYS = frozenset(
+    {"local_address_flags", "isa_constants", "readout_bits", "retain_sentinel", "config", "classes"}
+)
+
+
 class BoundSemantics:
     """A detached data selection, with no provider imports or file generation."""
 
@@ -496,7 +513,7 @@ class BoundSemantics:
         if not _uint(table.get("custom_opcode"), 7) or not _uint(table.get("funct3"), 3):
             raise ValueError("RoCC transport encoding must be explicit in facts")
         roles = contract.get("rocc_operand_roles")
-        if type(roles) is not dict or set(roles) != {"version", "word_bits", "instructions"}:
+        if type(roles) is not dict or not _BOUND_ROLE_KEYS <= set(roles) <= _BOUND_ROLE_KEYS | ROLE_PROGRAM_KEYS:
             raise ValueError("RoCC operand roles require a complete versioned declaration")
         if (
             type(roles["version"]) is not int
@@ -568,21 +585,51 @@ class BoundSemantics:
             )
         self.legal_codes = frozenset(codes)
         self.complete_decode = table.get("scope") == "complete_rocc_funct7" and table.get("complete_isa") is True
-        from merlin.targetgen.rtl_checks_generic import BoundChecks
+        self._program_isa = self._role_program(contract, roles)
+        from merlin.targetgen.rtl_checks_generic import BoundChecks, BoundProtocolChecks
 
-        self.rtl_checks = BoundChecks(self, contract.get("rtl_checks"))
+        if self._program_isa is not None:
+            self.rtl_checks = BoundProtocolChecks(self, contract)
+        else:
+            self.rtl_checks = BoundChecks(self, contract.get("rtl_checks"))
+
+    def _role_program(self, contract, roles):
+        """The declared role program's ISA constants over this snapshot, or None when none is declared.
+
+        The program is the same contract data a support-selected contract feeds this module, evaluated
+        by the same :func:`derive_isa_constants`. Every code it classifies must be a roster code with the
+        same label, so the roster and the program cannot disagree about an instruction's identity.
+        """
+        if not ROLE_PROGRAM_KEYS & set(roles):
+            if type(contract.get("rtl_checks")) is dict:
+                raise ValueError("a hardware check protocol requires the declared operand role program")
+            return None
+        if type(contract.get("rtl_checks")) is not dict:
+            raise ValueError("an operand role program requires its declared hardware check protocol")
+        if contract.get("rocc_operand_protocol") is not None or "rocc_operand_selection" in contract:
+            raise ValueError("an operand role program cannot be combined with a selected operand protocol")
+        program = derive_isa_constants(contract, self._facts)
+        classes = program["FUNCT_CLASS"]
+        if any(self._instructions.get(code, (None,))[0] != label for code, label in classes.items()):
+            raise ValueError("operand role program classifies a code differently from the instruction roster")
+        return program
+
+    def _active_isa(self):
+        return self._isa if self._program_isa is None else self._program_isa
 
     def isa_constants(self, target):
         if target != self._target:
             raise ValueError("semantics selection belongs to a different target")
-        return copy.deepcopy(self._isa)
+        return copy.deepcopy(self._active_isa())
 
     def _selected(self, isa):
-        if isa != self._isa:
+        if isa != self._active_isa():
             raise ValueError("instruction decode must use its selected ISA data")
 
     def decode_instruction(self, funct, rs1, rs2, isa):
         self._selected(isa)
+        if self._program_isa is not None:
+            return decode_instruction(funct, rs1, rs2, isa)
         instruction = self._instructions.get(funct) if _uint(funct, 7) else None
         if instruction is None:
             return "UNKNOWN", {}
@@ -602,6 +649,8 @@ class BoundSemantics:
 
     def instruction_funct(self, name, rs1, isa):
         self._selected(isa)
+        if self._program_isa is not None:
+            return instruction_funct(name, rs1, isa)
         matches = [code for code, (label, _) in self._instructions.items() if label == name]
         if len(matches) != 1:
             raise ValueError("instruction label has no unique selected encoding")

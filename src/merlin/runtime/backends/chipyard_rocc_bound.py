@@ -265,6 +265,38 @@ def _model_spike_timeout_ceiling(block):
     return ceiling
 
 
+_ELF = "{elf}"
+
+
+def _elf_plusarg_name(token):
+    """The NAME of a ``+NAME={elf}`` token, or None when the token is not exactly that form."""
+    name, separator, value = token.partition("=")
+    if not (separator and value == _ELF and name.startswith("+") and len(name) > 1):
+        return None
+    if any(c in "{}=" or c.isspace() or not c.isprintable() for c in name):
+        return None
+    return name
+
+
+def _validate_elf_operands(argv):
+    """One positional ELF operand, plus optional ``+NAME={elf}`` plusargs naming that same ELF.
+
+    The only substitution is the caller's ELF path, as an exact whole-value replacement:
+    every other token stays brace-free, so no other placeholder or partial template can be
+    declared, and the process is still started without a shell. However many tokens name
+    the ELF, it remains the single hashed process input checked before and after the run.
+    """
+    _require(argv.count(_ELF) == 1, "execution command requires exactly one ELF operand")
+    plusargs = []
+    for token in argv:
+        if token == _ELF or "{" not in token and "}" not in token:
+            continue
+        name = _elf_plusarg_name(token)
+        _require(name is not None, "execution command substitutes only the ELF path, as {elf} or +NAME={elf}")
+        plusargs.append(name)
+    _require(len(plusargs) == len(set(plusargs)), "execution command repeats an ELF plusarg")
+
+
 def _validate_engine(engine, block, *, timeout_ceiling=600, spike_timeout_ceiling=600):
     required = {"binary", "argv", "environment", "cwd", "max_timeout_s", "max_console_bytes", "failure_markers"}
     _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()), {"readback_transport"})
@@ -279,11 +311,7 @@ def _validate_engine(engine, block, *, timeout_ceiling=600, spike_timeout_ceilin
         _pin_shape(block["receipt"])
     _path(block["cwd"])
     _strings(block["argv"])
-    _require(
-        block["argv"].count("{elf}") == 1
-        and all(token == "{elf}" or "{" not in token and "}" not in token for token in block["argv"]),
-        "execution command requires exactly one ELF operand",
-    )
+    _validate_elf_operands(block["argv"])
     _require(
         type(block["environment"]) is dict
         and all(
@@ -624,6 +652,31 @@ class BoundRoCCBackend:
         """Reopen the selected engine's build identity; execution gates remain separate."""
         return self._engine_identity(engine)
 
+    def execution_input_paths(self, engine):
+        """Every member the selected engine's identity check and process reopen, after verifying them.
+
+        A caller that runs this backend inside a restricted filesystem view exposes exactly these
+        paths; the identity check still runs there and refuses anything changed or absent. Absolute
+        paths named by the selected command (a bare operand or a ``+NAME=<path>`` value) are included
+        because the process reads them. An engine whose receipt kind is not enumerable here refuses.
+        """
+        identity = self._engine_identity(engine)
+        block = self._engine(engine)
+        paths = {_path(block["binary"]["path"]), _path(block["cwd"])}
+        for token in block["argv"]:
+            value = token.partition("=")[2] if "=" in token else token
+            if value.startswith("/") and "{" not in value and Path(value).exists():
+                paths.add(_path(value))
+        if engine == "spike":
+            paths.add(_path(identity["extension"]["path"]))
+        elif engine == "verilator":
+            receipt = _path(block["receipt"]["path"])
+            paths.add(receipt)
+            paths.update(_receipt_members(receipt))
+        else:
+            raise RoCCExecutionError("selected engine has no enumerable execution inputs")
+        return tuple(sorted(paths))
+
     def _status(self, engine):
         try:
             self._engine_identity(engine)
@@ -943,6 +996,25 @@ class BoundRoCCBackend:
             "selected execution reported a declared failure",
         )
         return data if capture_bytes else data.decode("utf-8")
+
+
+def _receipt_members(receipt):
+    """Paths an already validated elaborated-RTL receipt pins, and every pin of its stage records."""
+    document = json.loads(receipt.read_bytes())
+    pins = [document["firrtl"], document["binary"], document["transport_library"], document["driver_source"]]
+    for key in ("hdl", "model_sources", "model_archives", "transport_sources", "transport_configuration"):
+        pins.extend(document[key])
+    pins.extend(document["bridge_sources"])
+    members = set()
+    for stage in document["stages"]:
+        record = _path(stage["invocation"]["path"])
+        members.add(record)
+        observed = json.loads(record.read_text(encoding="utf-8"))
+        pins.extend((observed["executable"], observed["stdout"], observed["stderr"]))
+        for key in ("inputs", "outputs", "dependencies"):
+            pins.extend(observed[key])
+    members.update(_path(pin["path"]) for pin in pins)
+    return members
 
 
 def _bounded_process(argv, *, cwd, env, timeout, max_bytes, observed):

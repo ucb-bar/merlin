@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,6 +22,7 @@ from merlin_experiments.phase0 import generation
 from merlin_experiments.phase2 import corpus as C
 from merlin_experiments.phase2.contracts import StageGateError
 
+from merlin.common.paths import repo_root
 from merlin.runtime.backends import base
 from merlin.targetgen import golden_store as GS
 from merlin.targetgen import phase_policy as PP
@@ -211,6 +213,77 @@ def live(options):
     return C.discover_performance_corpus(
         SimpleNamespace(target="fixture", capsule_corpus=options["output_root"] / "isa", graded_roots=lambda: [])
     )
+
+
+@pytest.mark.parametrize("selection", [{}, {"synthesize_compositions": True}, {"synthesize_compositions": False}])
+def test_generation_honors_composition_synthesis_selection(independent, monkeypatch, selection):
+    from merlin_experiments.phase0 import composition_generation, evidence
+
+    declared = yaml.safe_load((repo_root() / "examples/gemmini/target/software-spec.yaml").read_bytes())
+    select_evidence = evidence.select_evidence
+
+    def select_compositions(*args, **kwargs):
+        selected = select_evidence(*args, **kwargs)
+        views = json.loads(selected.views_json)
+        views["software_spec"]["compositions"] = declared["compositions"]
+        views["software_spec"]["quantization"] = {"formats": [], "schemes": declared["quantization"]["schemes"]}
+        return replace(selected, views_json=json.dumps(views).encode())
+
+    monkeypatch.setattr(evidence, "select_evidence", select_compositions)
+    recipe = yaml.safe_load(independent["recipe"].read_bytes())
+    recipe["workload_spec"] = {"max_synthesized_capsules": 4, **selection}
+    write(independent["recipe"], recipe)
+    calls = []
+    context = {"selected": "facts"}
+    monkeypatch.setattr(composition_generation, "selected_facts", lambda *args: context)
+
+    def append(entries, selected_software, facts, *, budget):
+        calls.append((selected_software, facts, budget))
+        return entries
+
+    monkeypatch.setattr(composition_generation, "append_declared", append)
+    written = generation.generate_target("fixture", **independent)
+    manifest = yaml.safe_load((independent["output_root"] / "MANIFEST.yaml").read_bytes())
+    covered = manifest["performance_generation"]["fixture"]["composition_coverage"]
+    if selection.get("synthesize_compositions", True):
+        assert len(calls) == 1
+        assert calls[0][0]["compositions"] == declared["compositions"]
+        assert calls[0][1] is context and calls[0][2] == 4
+        assert covered == []
+    else:
+        assert calls == []
+        assert len(written) == 4
+        assert covered == composition_generation.coverage([], excluded_spec=declared)
+        assert covered and all(row["status"] == "out_of_scope" and row["count"] == 0 for row in covered)
+        for member in manifest["generated"]:
+            cap = yaml.safe_load((independent["output_root"] / member / "capsule.yaml").read_bytes())
+            assert cap["operation"]["op"] != "composition_program"
+
+
+@pytest.mark.parametrize("selection", [{}, {"synthesize_compositions": True}, {"synthesize_compositions": False}])
+def test_descriptor_composition_selection_reaches_profile_without_replacing_budget(independent, selection):
+    recipe = yaml.safe_load(independent["recipe"].read_bytes())
+    recipe["workload_spec"] = {"max_synthesized_capsules": 4}
+    write(independent["recipe"], recipe)
+    descriptor = yaml.safe_load(independent["descriptor"].read_bytes())
+    descriptor["workload_spec"] = {"max_synthesized_capsules": 1, **selection}
+    write(independent["descriptor"], descriptor)
+    profile = generation.load_profile(
+        "fixture",
+        recipe=independent["recipe"],
+        performance_template=independent["performance_template"],
+        descriptor=independent["descriptor"],
+    )
+    assert profile["workload_spec"] == {"max_synthesized_capsules": 4, **selection}
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false", [], {}])
+def test_generation_rejects_nonboolean_composition_selection(independent, value):
+    recipe = yaml.safe_load(independent["recipe"].read_bytes())
+    recipe["workload_spec"] = {"synthesize_compositions": value}
+    write(independent["recipe"], recipe)
+    with pytest.raises(ValueError, match="workload_spec.synthesize_compositions must be a bool"):
+        generation.generate_target("fixture", **independent)
 
 
 def floating_sweep(options, dtype, operation, *, tiled=False):

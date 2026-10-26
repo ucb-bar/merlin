@@ -49,6 +49,8 @@ def test_direct_selfcheck_refuses_verilator_and_builds_gsim_adapter(monkeypatch)
         "simulator_adapter",
         lambda engine, target: selected.append((engine, target)) or object(),
     )
+    # The grade's own full-call ladder is a separate lookup (test_selfcheck_full_call_adapters.py).
+    monkeypatch.setattr(selfcheck.CR, "oracle_adapters", lambda target, sim_via, **kw: {})
 
     try:
         selfcheck._adapters("verilator", "gemmini", "chipyard")
@@ -73,6 +75,8 @@ def test_required_vcs_never_constructs_the_legacy_verilator_rung(monkeypatch):
         "simulator_adapter",
         lambda engine, target: selected.append((engine, target)) or object(),
     )
+    # The grade's own full-call ladder is a separate lookup (test_selfcheck_full_call_adapters.py).
+    monkeypatch.setattr(selfcheck.CR, "oracle_adapters", lambda target, sim_via, **kw: {})
 
     adapters, sim = selfcheck._adapters("vcs", "gemmini", "chipyard")
     assert selected == [("spike", "gemmini"), ("vcs", "gemmini")]

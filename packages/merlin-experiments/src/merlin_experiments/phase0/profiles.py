@@ -1169,7 +1169,14 @@ def load_profile(
 
         from .claim_boundary import assert_no_claim_capsules, held_out_models
 
-        assert_no_claim_capsules(list(prof.get("capsules") or ()), held_out_models(load_target_experiment(descriptor)))
+        experiment = load_target_experiment(descriptor)
+        workload_spec = experiment.workload_spec or {}
+        if "synthesize_compositions" in workload_spec:
+            prof["workload_spec"] = {
+                **(prof.get("workload_spec") or {}),
+                "synthesize_compositions": workload_spec["synthesize_compositions"],
+            }
+        assert_no_claim_capsules(list(prof.get("capsules") or ()), held_out_models(experiment))
     return prof
 
 

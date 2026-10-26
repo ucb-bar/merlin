@@ -203,6 +203,8 @@ def test_a_named_engine_carries_the_grade_selection_record_only_when_the_grade_s
     monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
     built = []
     monkeypatch.setattr(selfcheck.CR, "simulator_adapter", lambda engine, target, **kw: built.append((engine, kw)))
+    # The grade's own full-call ladder is a separate lookup (test_selfcheck_full_call_adapters.py).
+    monkeypatch.setattr(selfcheck.CR, "oracle_adapters", lambda target, sim_via, **kw: {})
     selfcheck._adapters("gsim", "fixture", "chipyard")
     selfcheck._adapters("verilator", "fixture", "chipyard")
     assert built == [("spike", {}), ("gsim", {"selection": record}), ("spike", {}), ("verilator", {})]

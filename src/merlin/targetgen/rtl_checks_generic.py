@@ -1007,6 +1007,58 @@ def render_trace(trace: dict, facts_rec: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _canonical(document):
+    return json.dumps(json.loads(json.dumps(document)), sort_keys=True, separators=(",", ":"))
+
+
+class BoundProtocolChecks:
+    """A bound selection's ``rtl_checks`` protocol, evaluated by this module's rule engine.
+
+    The engine reads the protocol, facts and role program through ordinary target resolution, exactly
+    as for a support-selected contract. Every entry first requires that resolution to return the very
+    contract and facts the semantics were bound to; any difference refuses rather than checking a trace
+    against data the selection did not bind.
+    """
+
+    def __init__(self, semantics, contract):
+        if protocol_from_contract(contract, semantics._target) is None:
+            raise ValueError("hardware check protocol is not a declared mapping")
+        self._semantics = semantics
+        self._contract = _canonical(contract)
+        self._facts = _canonical(semantics._facts)
+
+    def _require_selected(self, target):
+        from merlin.targetgen import target_experiment
+
+        if target != self._semantics._target:
+            raise RtlChecksUnavailable("hardware checks belong to a different target selection")
+        if (
+            _canonical(target_experiment.load_capability_manifest(target).contract) != self._contract
+            or _canonical(load_facts(target, regenerate=False)) != self._facts
+        ):
+            raise RtlChecksUnavailable("selected contract or facts differ from the bound hardware check selection")
+
+    def load_default_facts(self, target):
+        self._require_selected(target)
+        return load_default_facts(target)
+
+    def project_facts(self, facts_rec):
+        self._require_selected(self._semantics._target)
+        return project_facts(facts_rec)
+
+    def screen(self, trace, capsule=None, rtl_facts=None, *, target, command_buffer=None):
+        self._require_selected(target)
+        return screen(trace, capsule, rtl_facts, target=target, command_buffer=command_buffer)
+
+    def compile_trace_checks(self, facts_rec, capsule, prefix="TRACE"):
+        self._require_selected(self._semantics._target)
+        return compile_trace_checks(facts_rec, capsule, prefix)
+
+    def render_trace(self, trace, facts_rec):
+        self._require_selected(self._semantics._target)
+        return render_trace(trace, facts_rec)
+
+
 class BoundChecks:
     def __init__(self, semantics, rules):
         if type(rules) is not list or not rules or any(type(rule) is not str for rule in rules):

@@ -7,9 +7,9 @@ vocabulary, and each is ``None`` (unknown) whenever the graph does not establish
 
 * ``layout``: ``row_major_contiguous`` when every shaped operand and result is a tensor with no
   encoding, or a memref with no explicit layout. An encoding or a strided layout is not assumed away.
-* ``tails``: ``zero_pad_valid_window`` for a contraction whose body is only operand extension, a
-  product and a sum (so zero is the additive identity of every padded reduction element and padded
-  result rows and columns fall outside the valid window) over a static iteration space.
+* ``tails``: ``zero_pad_valid_window`` for a contraction or sum reduction whose body is only operand
+  extension, a product and a sum (so zero is the additive identity of every padded reduction element
+  and padded result rows and columns fall outside the valid window) over a static iteration space.
 * ``broadcasting``: from the indexing maps. ``none`` when no parallel dimension is shared by every
   input and the result and each input contributes at most one exclusive result dimension;
   ``independent_batches`` when the shared (batch) dimensions index every input; ``operand_broadcast``
@@ -93,7 +93,9 @@ def _maps(op):
 def _tails(op, family: str | None) -> str | None:
     from merlin.common import mlir_query as mq
 
-    if family != "contraction":
+    # A sum reduction has the same tail hazard and the same proof: zero is the additive identity of
+    # every padded element. Its body is checked below exactly as a generic contraction's is.
+    if family not in ("contraction", "reduction"):
         return None
     name = mq.op_name(op)
     if name not in _NAMED_CONTRACTIONS:

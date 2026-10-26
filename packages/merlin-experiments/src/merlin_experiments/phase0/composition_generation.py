@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import copy
-from collections import Counter
+
+from merlin.targetgen.composition_corpus import coverage as coverage
 
 
 def prepare_entries(entries):
@@ -151,19 +152,6 @@ def bind_capsule(cap, source):
     expected["mode_parameters"] = parameters
     semantic["grading"] = "placement_and_instruction_audit"
     return cap
-
-
-def coverage(entries):
-    return [
-        dict(composition=chain, scheme=scheme, count=count)
-        for (chain, scheme), count in sorted(
-            Counter(
-                (e["generalization"]["composition_chain"]["id"], e["generalization"]["quantization_scheme"]["id"])
-                for e in entries
-                if e.get("op") == "composition_program"
-            ).items()
-        )
-    ]
 
 
 def append_declared(entries, software_spec, facts, *, budget):

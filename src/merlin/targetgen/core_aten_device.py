@@ -202,6 +202,31 @@ def submission_interface(provider: Path) -> list[dict]:
         argument = call.args[index] if prefix is not None and len(call.args) > index else None
         return prefix + argument.value if isinstance(argument, ast.Constant) else None
 
+    def iterable_item_fields(function, results):
+        called = {id(node.func) for node in ast.walk(function) if isinstance(node, ast.Call)}
+        for scope in ast.walk(function):
+            loops = [scope] if isinstance(scope, (ast.For, ast.AsyncFor)) else getattr(scope, "generators", ())
+            for loop in loops:
+                if not isinstance(loop.target, ast.Name) or not isinstance(loop.iter, ast.Name):
+                    continue
+                bindings = [b for b in results.get(loop.iter.id, ()) if b[0] <= loop.iter.lineno]
+                if not bindings:
+                    continue
+                key, index = max(bindings, key=lambda b: b[0])[1]
+                attributes = [node for node in ast.walk(scope) if isinstance(node, ast.Attribute)]
+                bases = {id(node.value) for node in attributes}
+                for node in attributes:
+                    if id(node) in bases or not isinstance(node.ctx, ast.Load):
+                        continue
+                    parts = []
+                    owner = node.value if id(node) in called else node
+                    while isinstance(owner, ast.Attribute):
+                        parts.append(owner.attr)
+                        owner = owner.value
+                    if parts and isinstance(owner, ast.Name) and owner.id == loop.target.id:
+                        prefix = "" if index is None else f"[{index}]"
+                        yield key, prefix + "[]." + ".".join(reversed(parts))
+
     rows: dict[tuple, dict] = {}
     for function in functions:
         bound = {}
@@ -264,6 +289,9 @@ def submission_interface(provider: Path) -> list[dict]:
             and isinstance(node.targets[0], ast.Name)
             and isinstance(node.value, ast.BinOp)
         }
+        for key, field in iterable_item_fields(function, results):
+            if field not in rows[key]["fields"]:
+                rows[key]["fields"].append(field)
         for node in ast.walk(function):
             field = None
             if (

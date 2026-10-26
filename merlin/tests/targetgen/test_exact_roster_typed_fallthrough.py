@@ -121,7 +121,9 @@ def test_mean_dim_reaches_its_accelerator_families(resolved, rostered):
     # The standalone sum-reduction row is now reached instead of the host row: admitted once the
     # operator has reviewed it, unknown (review pending) before that -- never a host-row refusal.
     row = next(r for r in resolved["operations"] if r["id"] == "reduction_standalone")
-    standalone = admit_operation(rostered, "aten.mean.dim", _int8("reduction", kind="sum"), "accelerator")
+    # A sum reduction's tail treatment is observed (access_observations) and declared on the row.
+    reduction = _int8("reduction", kind="sum", tails="zero_pad_valid_window")
+    standalone = admit_operation(rostered, "aten.mean.dim", reduction, "accelerator")
     expected = "admitted" if row.get("status", "reviewed") == "reviewed" else "unknown"
     assert standalone["status"] == expected and standalone["declaration"] == "reduction_standalone"
 

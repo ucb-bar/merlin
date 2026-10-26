@@ -147,15 +147,35 @@ ORACLE_LIBRARY_ENV = "MERLIN_ORACLE_LD_LIBRARY_PATH"
 ORACLE_PATH_ENV = "MERLIN_ORACLE_PATH"
 
 
-def _merlin_roots(target: str) -> list:
-    """The interpreter, Merlin and the selected support provider: what a jailed Merlin child imports."""
-    from merlin.targetgen.plugins import resolve_support
+def _selected_roots(target: str, engine: str | None = None) -> list:
+    """What the selected runtime reads: its support provider, or a data-bound backend's declared inputs.
 
+    A backend bound from contract data has no support provider. It is reopened in the child from the
+    same selected contract and facts files, so those and (for an engine run) every input its identity
+    check and process read are exposed instead; the child still verifies them and refuses on change.
+    """
+    from merlin.runtime.backends import base
+
+    # The same data-bound selection get_backend binds first; None when the contract selects support.
+    backend = base._contract_backend(target)
+    declared = getattr(backend, "execution_input_paths", None)
+    if not callable(declared):
+        from merlin.targetgen.plugins import resolve_support
+
+        return [resolve_support(target).base]
+    selections = [os.environ.get(name, "") for name in ("MERLIN_TARGET_CONTRACT", "MERLIN_RTL_FACTS")]
+    if not all(selections):
+        raise RuntimeError("a data-bound runtime needs its explicitly selected contract and facts")
+    return [*selections, *(declared(engine) if engine is not None else ())]
+
+
+def _merlin_roots(target: str, engine: str | None = None) -> list:
+    """The interpreter, Merlin and the selected runtime: what a jailed Merlin child imports and reads."""
     return [
         sys.prefix,
         sys.base_prefix,
         *(entry for entry in sys.path if entry and Path(entry).is_dir()),
-        resolve_support(target).base,
+        *_selected_roots(target, engine),
         os.environ.get("MERLIN_REPO_ROOT"),
     ]
 
@@ -234,7 +254,6 @@ def build_in_sandbox(
     """
     from merlin.llvmlower import toolchain
     from merlin.runtime.backends.spike import gcc_path
-    from merlin.targetgen.plugins import resolve_support
 
     if work.exists():
         shutil.rmtree(work)
@@ -264,12 +283,17 @@ def build_in_sandbox(
     _write(work / "request.json", request)
     compiler = os.environ.get("MERLIN_COMPILER_PYTHON")
     private = [bundle, *denied]
-    required = [Path(package).resolve(), Path(resolve_support(request["target"]).base).resolve()]
+    required = [
+        Path(package).resolve(),
+        Path(provider).resolve().parent,
+        *(Path(root).resolve() for root in _selected_roots(request["target"])),
+    ]
     if any(Path(p).resolve() == r or Path(p).resolve().is_relative_to(r) for r in required for p in [work, *private]):
         raise RuntimeError("full-call sandbox would expose private grading inputs")
     roots = [
         *_merlin_roots(request["target"]),
         package,
+        Path(provider).resolve().parent,
         toolchain.llvm_install(),
         gcc_path().parents[2],  # the environment the cross toolchain and its shared libraries live in
         Path(compiler).parents[1] if compiler else None,
@@ -336,7 +360,8 @@ def run_elf_jailed(target: str, engine: str, elf: Path, work: Path, *, private, 
     """Run ``elf`` on ``target``'s ``engine`` through its backend, inside :func:`oracle_jail`; the console."""
     # The RTL engine checks out a network licence; the jail runs only Merlin, the backend and the guest image,
     # whose HTIF proxy offers no sockets.
-    argv, jailed = oracle_jail(elf, work, private=private, roots=_merlin_roots(target), network=True, procfs=True)
+    roots = _merlin_roots(target, engine)
+    argv, jailed = oracle_jail(elf, work, private=private, roots=roots, network=True, procfs=True)
     environment = [
         "--setenv",
         "PYTHONPATH",

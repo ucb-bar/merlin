@@ -57,7 +57,7 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
         return []
     if not isinstance(declaration, Mapping) or not isinstance(declaration.get("formats"), list):
         raise ValueError("quantization.formats must be a list")
-    unknown = set(declaration) - {"formats", "methodology", "schemes"}
+    unknown = set(declaration) - {"formats", "methodology", "schemes", "numerics"}
     if unknown:
         raise ValueError(f"quantization has unknown fields {sorted(unknown)}")
     if "schemes" in declaration:
@@ -67,6 +67,12 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
                 "readout_strategy", (spec.get("numerical_semantics", {}).get("readout") or {}).get("strategy")
             )
             _validate_scheme_strategy(row, strategy)
+    if "numerics" in declaration:
+        from merlin.targetgen.quantization_numerics import validate as validate_numerics
+
+        if "schemes" not in declaration:
+            raise ValueError("quantization.numerics requires declared quantization.schemes")
+        validate_numerics(spec)
     if "methodology" in declaration:
         from merlin.targetgen.quant_methodology import validate as validate_methodology
 
@@ -744,6 +750,11 @@ def build_quantization_contract(
         context = {"output_path": QM.output_path_of(hardware_snapshot.get("contract"))}
         schemes, unknown = resolve_quantization_schemes(software_spec, context)
         body["schemes"] = {**schemes, "unresolved": unknown}
+    if "numerics" in (software_spec.get("quantization") or {}):
+        # Serialized only when declared, so a contract without the block keeps its digest.
+        from merlin.targetgen.quantization_numerics import validate as validate_numerics
+
+        body["numerics"] = validate_numerics(software_spec)
     if methodology is not None:
         from merlin.targetgen import quant_methodology as QM
 
