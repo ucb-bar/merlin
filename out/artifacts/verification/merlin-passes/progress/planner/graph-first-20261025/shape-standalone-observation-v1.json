@@ -1,0 +1,25 @@
+{
+  "qualified_source_count": 22,
+  "all_owned_prior_source_identities_checked": 94,
+  "sealed_evidence_files_checked": 1001,
+  "evidence_bytes_checked": 53089968,
+  "mismatches": [],
+  "junit_original": {
+    "tests": 78,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "junit_fresh_replay": {
+    "tests": 78,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "main_roots": 35,
+  "inhabited_roots": 41,
+  "independent_mapping_contract_review": false,
+  "semantic_epoch_adapter_proved": false,
+  "ordinary_compiler_gating": false,
+  "new_native_or_test_replay_by_coordinator": false
+}

@@ -1,0 +1,18 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/freeze_shape_v1.py"
+  ],
+  "exception": "KeyError: 'exact_owned_sources'",
+  "location": "freeze_shape_v1.py:61",
+  "cause": "Referenced an obsolete delivery schema key; the immutable prior SOURCE_FREEZE contains owners+prior48_sources.",
+  "failed_script": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/freeze_shape_v1.py",
+    "sha256": "dbc805af14757ed4c35bfeae71c9360e5164113012bd0b6681f469110b0a36c3",
+    "bytes": 6002
+  },
+  "source_context_changed": false,
+  "native_or_qualification_failed": false,
+  "collection_rerun": false,
+  "lean_rerun": false
+}

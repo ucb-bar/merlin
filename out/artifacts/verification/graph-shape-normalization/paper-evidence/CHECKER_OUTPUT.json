@@ -1,0 +1,199 @@
+{
+  "schema": "merlin.graph.shape.actual_whole_module.v1",
+  "originals": [
+    {
+      "bytes": 750,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/actual-cases-v2/rank_two.mlir",
+      "sha256": "a7cf8c7af0cab936a1d7d3016c83e0ee75a3b74480478aef2bc6c0d0a99f21e8"
+    },
+    {
+      "bytes": 1033,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/actual-cases-v2/rank_two/after.mlir",
+      "sha256": "92f5d5df359dd1bbf009dda7ea27aeb25153368dcef6bb139416c17800fb2dcb"
+    }
+  ],
+  "fresh_exports": {
+    "bytes": 45775,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/pytest/test_actual_whole_module_rank_1/proof/actual-pair.json",
+    "sha256": "397fe8285e990c92211042b08b30395b0f4d6890820c1c544ac24c2dc5f48050"
+  },
+  "model": {
+    "bytes": 23838,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/pytest/test_actual_whole_module_rank_1/proof/model.json",
+    "sha256": "24757c0ba6062bda0ac52aaa692d142d695393fb19c561187ae60a1b21745a3f"
+  },
+  "query": {
+    "bytes": 12148,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/pytest/test_actual_whole_module_rank_1/proof/Obligation.lean",
+    "sha256": "2789b79d2678121e91785063c01a40fcc6821eaea6f118996a882fe21eebb307"
+  },
+  "returncode": 0,
+  "lean_complete_shape_checked": true,
+  "transitive_axioms": {
+    "GraphShapeObligation.accepted": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphShapeObligation.call_depth": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphShapeObligation.complete": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphShapeObligation.contextual": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphShapeObligation.memory": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphShapeObligation.valid": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Agreement.alias": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Agreement.define": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Agreement.define_many": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Countermodels.inconsistent_metadata": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsShape.Countermodels.logging_deletion": [],
+    "Merlin.GraphLoopsShape.Countermodels.same_type_cannot_change_buffer": [],
+    "Merlin.GraphLoopsShape.Countermodels.same_type_different_allocation": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsShape.Countermodels.same_type_different_base": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsShape.Countermodels.trapping_deletion": [],
+    "Merlin.GraphLoopsShape.Function.preservation": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Model.check_sound": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Model.checked_complete": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Model.checked_context": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Model.checked_memory": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Module.checked_calls": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Module.checked_complete": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Module.checked_memory": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.Scope.extend": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.cast_address": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsShape.cast_descriptor": [],
+    "Merlin.GraphLoopsShape.cast_result": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsShape.dimension_result": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsShape.entry_equivalence": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.identical_cast": [],
+    "Merlin.GraphLoopsShape.inconsistent_dimension": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsShape.observable_cast_countermodel": [],
+    "Merlin.GraphLoopsShape.preservation": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.static_dimension": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsShape.zero_has_no_coordinate": [
+      "propext"
+    ]
+  },
+  "python_projection_trusted": true,
+  "typed_runtime_descriptor_fidelity_is_premise": true,
+  "old_epoch_model_adapter_proved": false,
+  "pipeline_receipt_issued": false,
+  "independent_review_complete": false,
+  "numerical_gates_discharged": false,
+  "full_receipt": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/pytest/test_actual_whole_module_rank_1/proof/CHECK.json",
+    "sha256": "b536bbdbb48bea1b8c532d24f8b513d89952a38dc94b00f843d6b6cdf44a81a0",
+    "bytes": 945557
+  },
+  "changed_sites": [
+    {
+      "candidate_value": 0,
+      "elided_result": 7,
+      "kind": "cast",
+      "source_operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.cast\",\"operands\":[0],\"properties\":[],\"regions\":[],\"results\":[[7,\"memref<2x3xi32>\"]]}"
+    },
+    {
+      "candidate_value": 0,
+      "elided_result": 8,
+      "kind": "cast",
+      "source_operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.cast\",\"operands\":[7],\"properties\":[],\"regions\":[],\"results\":[[8,\"memref<2x3xi32>\"]]}"
+    },
+    {
+      "candidate_operation": "{\"attributes\":[],\"index_constant\":3,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"3 : index\"]],\"regions\":[],\"results\":[[7,\"index\"]]}",
+      "candidate_value": 3,
+      "expected_value": 3,
+      "kind": "dimension",
+      "source_operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[8,5],\"properties\":[],\"regions\":[],\"results\":[[9,\"index\"]]}"
+    },
+    {
+      "candidate_operation": "{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"2 : index\"]],\"regions\":[],\"results\":[[8,\"index\"]]}",
+      "candidate_value": 2,
+      "expected_value": 2,
+      "kind": "dimension",
+      "source_operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[1,6],\"properties\":[],\"regions\":[],\"results\":[[10,\"index\"]]}"
+    }
+  ],
+  "qualification": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/QUALIFICATION.json",
+    "sha256": "9957f307a87b097f21a096903e429f0151b62c1b1a5c4c052e76d586fc39fd2f",
+    "bytes": 3683
+  }
+}

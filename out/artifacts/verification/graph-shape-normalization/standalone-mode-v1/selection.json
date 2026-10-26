@@ -1,0 +1,17 @@
+{
+  "proof": {
+    "executable": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+    "library": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib",
+    "build_record": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-closure.json",
+    "build_sha256": "9febecc0ea535fb0031ec04b8eb2c56e5f85c077ae54e797df6258e4c32eabee"
+  },
+  "source": "/home/jeremy/Projects/merlin-graph-proof-intake",
+  "revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "manifest": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/additional-cases-v2/shape_memory_chain/CAPTURE.json",
+  "manifest_sha256": "0acaa2b09ddcc22c625c63510ca004c549ec28ef79214952ccdfe807b1e4357b",
+  "fixed_context": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/fixed-context-v1/CONTEXT.json",
+  "fixed_context_sha256": "b1b83740d545c019b8f896e93d5b02a57b45eaebf98950990631236394229e53",
+  "contract": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/CONTRACT.json",
+  "contract_sha256": "4429173239cefe9f521df4c660acaec00968f44a025abfdcfec4dc6d50326981"
+}
