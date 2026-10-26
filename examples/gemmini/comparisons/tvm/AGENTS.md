@@ -1,5 +1,11 @@
 # Agent instructions: EL4 TVM comparison
 
+**Current user scope:** SmolVLA is paused. Do not prepare, compile, tune or run
+it for the next FireSim campaign. Focus ResNet50 and TinyLlama, with remote CPU
+preparation parallel to ready ResNet jobs. TinyLlama iteration is 16/1 tokens;
+final baseline/tuned E2E is 32/32 (physical cache capacity 64). The consolidated
+current instructions are [FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md).
+
 For all new runs read [the current numerical policy](../../numerics/CURRENT_RUN_POLICY.md)
 first. The user's 2026-10-26 W8A8/grouped-16/static-activation and model-quality
 update supersedes older numerical descriptions below; preserve historical
@@ -25,9 +31,11 @@ Read [EL4_INPUT_AUDIT.md](EL4_INPUT_AUDIT.md) for the latest fetched EL4 binding
 actual conformance findings, blocked SmolVLA chunk definitions and E2E mapping.
 The user authorized local synthetic TinyLlama inputs, but the fresh preparation
 also changed the recipe/ABI. Preserve it as a diagnostic; do not auto-enqueue it
-as selected-profile DSE or promote its traces to that E2E model. No further
-numerical/ABI changes are authorized by this audit. SmolVLA definitions remain
-blocked until final admitted observation/exports/scales/references are available.
+as selected-profile DSE or promote its traces to that E2E model. Do not make
+silent numerical/ABI changes while finishing the authorized preparation.
+SmolVLA work is paused by the user; preserve existing partial preparation.
+Fresh TinyLlama preparation is authorized, with its own frozen numerical identity
+and independent references; do not inherit historical numerical qualification.
 
 Read root `AGENT.md`/`CLAUDE.md`, this directory's [README.md](README.md),
 [EL4_ASSETS.md](EL4_ASSETS.md), [UPSTREAM_AUDIT.md](UPSTREAM_AUDIT.md), and the
@@ -36,14 +44,16 @@ This directory is a trusted comparison edge, not the generated compiler candidat
 
 ## Goal and current boundary
 
-Prepare repeatable complete FireSim runs of **ResNet50, TinyLlama and SmolVLA**
+Prepare repeatable complete FireSim runs of **ResNet50 and TinyLlama**;
+SmolVLA remains a historical/future workload excluded from this campaign
 under the shared [EL4 protocol at `0cc289de52a10bed256f32c90cfbb54a21b3c81f`](https://github.com/ucb-bar/merlin/tree/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol).
 Use one selected `visible/v00` input per model, with explicitly recorded warmup
 and measured repetitions. ResNet is one image/one call; TinyLlama is 32-token
 prefill plus 32 teacher-forced decode calls (cache capacity 64); SmolVLA is
 prefix + ten denoise calls + action decode. Check 1 / 99 / 33 output arrays,
-respectively, including carried state and padded channels. The earlier 16+1
-selection and exclusion of SmolVLA are superseded.
+respectively, including carried state and padded channels. Use 16+1 for
+TinyLlama iteration/tuning and 32+32 for final E2E.
+The full SmolVLA chain describes future scope only; it is paused for this run.
 
 Model revisions, shapes, calibration counts, recipes and host-math policies are
 already specified. Do not ask the user to choose them again. The 260 ResNet

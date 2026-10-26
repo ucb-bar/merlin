@@ -1,14 +1,15 @@
 {
   "schema": "merlin.tvm.pending_chunk_definitions.v1",
-  "status": "BLOCKED_NOT_A_RUNNABLE_STUDY",
-  "authority": "EL4_INPUT_AUDIT.md",
+  "status": "PAUSED_BY_USER_EXCLUDED_FROM_NEXT_FIRESIM_RUN",
+  "authority": "FIRESIM_ROUND2_HANDOFF.md",
   "protocol_commit": "f6f1e499565f7cb766da1b680f490cbc3dc0b54b",
   "stage": "flow_denoise",
   "proposal_allocation": 0,
+  "local_preparation": "Prefix/flow/action captures completed locally; no numerical admission or hardware execution claimed",
   "blockers": [
-    "Selected processed observation hash mismatch",
-    "Selected prepared exports and frozen scale/integerized-IR realization unavailable",
-    "All 33 admitted selected-chain reference arrays unavailable"
+    "User paused all SmolVLA preparation/build/tuning/execution",
+    "Historical observation hash discrepancy retained",
+    "33 independent reference arrays not completed; interrupted attempt preserved"
   ],
   "fixed_dimensions": {"batch": 1, "action_rows": 50, "action_channels": 32, "expert_hidden": 720, "expert_mlp": 2048, "query_heads": 15, "kv_heads": 5, "head_dim": 64, "prefix_positions": 113},
   "fixed_numerics": "Selected static-heads-softmax2-bounded-operands2; portable_neural_f32 with captured exceptions. Do not derive integer IR from weight shapes alone.",

@@ -1,5 +1,12 @@
 # EL4 input audit and FireSim readiness
 
+**Current scope update:** SmolVLA is paused by the user and excluded from the
+next run. This is the dated audit, preceding local preparation. TinyLlama
+calibration/input/range seeds and preparation code now exist, but final exports,
+references and 16/1 fixtures remain remote jobs. Read
+[FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md) for current readiness;
+the historical findings below do not supersede it.
+
 Audit date: 2026-10-26. The requested upstream refresh fetched
 `el4-core-aten` at `f6f1e499565f7cb766da1b680f490cbc3dc0b54b`, the latest
 published EL4 branch, and `feat/el4-experiment` at `0cc289de52a10bed256f32c90cfbb54a21b3c81f`.
