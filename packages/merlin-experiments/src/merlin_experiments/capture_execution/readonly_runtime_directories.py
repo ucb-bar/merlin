@@ -40,7 +40,7 @@ def recheck(selection, before, rows):
     after = R._tree(Path(selection["entry"]), allow_directory_symlinks=True, allow_dangling_symlinks=True)
     if after != before:
         raise ValueError("source runtime CAS changed during nested read-only composition")
-    if any((Path(selection["entry"]) / member).lstat().st_uid != os.getuid() for member in after):
+    if any((Path(selection["entry"]) / member).lstat().st_uid != os.getuid() for member in R._present_members(after)):
         raise ValueError("source runtime CAS ownership changed during nested read-only composition")
     created = {}
     for item in selection["overlays"]:

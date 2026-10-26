@@ -16,7 +16,7 @@ from merlin.common import strict_json
 
 from . import readonly_runtime_directories as D
 from . import runtime_store as R
-from .sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
+from .sealed_static import _canonical_path, _digest, _file_digest, _json, _present_members, _tree
 
 SCHEMA = "merlin.sealed_m2m_readonly_runtime.v1"
 OVERLAY_SCHEMA = "merlin.sealed_m2m_readonly_runtime.v2"
@@ -228,7 +228,10 @@ def _select_overlay(plan, entry, marker, marker_sha256, overlays, limits, *, nes
     }
     entry_stat = entry.stat()
     before = _tree(entry, allow_directory_symlinks=True, allow_dangling_symlinks=True)
-    if any((entry if member == "." else entry / member).lstat().st_uid != os.getuid() for member in before):
+    if any(
+        (entry if member == "." else entry / member).lstat().st_uid != os.getuid()
+        for member in _present_members(before)
+    ):
         raise ValueError("read-only runtime CAS has another owner")
     for member, path in sorted(overlays.items()):
         p = Path(member)

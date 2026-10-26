@@ -27,6 +27,8 @@ def _base_inventory(root):
 def test_dangling_file_text_is_recorded_and_copied_exactly(tmp_path, target):
     root, link = _base_tree(tmp_path / "base", target)
     row = {"kind": "dangling_symlink", "target": target}
+    if target in {"../../../../outside", "/absent/merlin-kernel-doc"}:
+        row = {"kind": "external_symlink", "target": target}
     assert M._tree(root, allow_dangling_symlinks=True)["src/headers/scripts/kernel-doc"] == row
     selected = _base_inventory(root)
     copied = tmp_path / "staged"

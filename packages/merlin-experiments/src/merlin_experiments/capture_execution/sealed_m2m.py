@@ -31,6 +31,9 @@ from .sealed_inventory import _snapshot_rows, _verify_replayed_output, _verify_s
 from .sealed_python import _FLAGS, _TIMEOUT_SECONDS
 from .sealed_static import (
     SealedCaptureError,
+    _BASE_ROOT_XATTR,
+    _base_link_root,
+    _base_symlink,
     _bwrap_binary,
     _canonical_path,
     _dangling_symlink,
@@ -38,6 +41,9 @@ from .sealed_static import (
     _directory_symlink,
     _file_digest,
     _json,
+    _omitted_members,
+    _record_omitted,
+    _unreadable_file,
 )
 from .sealed_static import _tree as _strict_tree
 
@@ -604,7 +610,7 @@ def _source_tree(
     permitted only for the three CPython executable aliases, whose selected
     base interpreter is independently snapshotted. The opt-in readonly view
     removes only write bits to predict the exact mode transformation at freeze.
-    Only the broad base inventory permits dangling file metadata; selected
+    Only the broad base inventory permits opaque links, chains and unreadable metadata; selected
     interpreter/startup, import, dependency and data trees remain strict.
     """
     if not root.is_dir() or root.is_symlink():
@@ -632,10 +638,18 @@ def _source_tree(
             path = here / name
             if path.is_symlink():
                 try:
-                    link = _directory_symlink(path, root)
+                    link = _base_symlink(path, root) if allow_dangling_symlinks else None
+                    if link is None:
+                        link = _directory_symlink(path, root)
                 except SealedCaptureError as exc:
                     raise SealedM2MError(str(exc)) from exc
                 records.append((path.relative_to(root).as_posix(), *sorted(link.items())))
+        try:
+            omitted = _omitted_members(here)
+        except SealedCaptureError as exc:
+            raise SealedM2MError(str(exc)) from exc
+        if omitted and not allow_dangling_symlinks:
+            raise SealedM2MError(f"unreadable source member: {relative}")
         directory_mode = stat.S_IMODE(here.stat().st_mode)
         records.append(
             (
@@ -644,18 +658,20 @@ def _source_tree(
                     {
                         "kind": "directory",
                         "mode": directory_mode & ~0o222 if readonly_modes else directory_mode,
-                        "members": sorted([*directories, *files]),
+                        "members": sorted([*directories, *files, *omitted]),
                     }.items()
                 ),
             )
         )
+        for name, row in omitted.items():
+            records.append(((here / name).relative_to(root).as_posix(), *sorted(row.items())))
         directories[:] = [name for name in directories if not (here / name).is_symlink()]
         for name in sorted(files):
             path = here / name
             member = path.relative_to(root).as_posix()
             if path.is_symlink():
                 try:
-                    link = _dangling_symlink(path)
+                    link = _base_symlink(path, root) if allow_dangling_symlinks else _dangling_symlink(path)
                 except SealedCaptureError as exc:
                     raise SealedM2MError(str(exc)) from exc
                 if link is not None:
@@ -677,6 +693,12 @@ def _source_tree(
                     raise SealedM2MError(f"external source link: {member}")
             if not path.is_file():
                 raise SealedM2MError(f"non-regular source member: {member}")
+            unreadable = _unreadable_file(path)
+            if unreadable is not None:
+                if not allow_dangling_symlinks:
+                    raise SealedM2MError(f"unreadable source member: {member}")
+                records.append((member, *sorted(unreadable.items())))
+                continue
             info = path.stat()
             total += info.st_size
             file_mode = stat.S_IMODE(info.st_mode)
@@ -696,19 +718,33 @@ def _source_tree(
     return {"members": len(records), "bytes": total, "sha256": _digest(_json(sorted(records)))}
 
 
-def _copy_source_tree(root: Path, destination: Path, *, ignore=None) -> None:
-    """Keep directory/dangling aliases, dereference files and copy directory modes last."""
+def _copy_source_tree(
+    root: Path, destination: Path, *, ignore=None, allow_dangling_symlinks: bool = False
+) -> None:
+    """Keep directory/opaque aliases, dereference internal files and copy modes last.
+
+    Under the base-only opt-in, unreadable files are omitted from the copy and
+    recorded only as metadata markers on their parent directory.
+    """
 
     def copy(directory: Path, target: Path) -> None:
         target.mkdir(parents=True, exist_ok=False)
+        if directory == root and allow_dangling_symlinks:
+            _, guest_base = _base_link_root(root / ".base-boundary", root)
+            os.setxattr(target, _BASE_ROOT_XATTR, os.fsencode(guest_base), follow_symlinks=False)
         names = os.listdir(directory)
+        omitted = _omitted_members(directory)
+        if omitted and not allow_dangling_symlinks:
+            raise SealedM2MError(f"unreadable source member: {directory}")
+        for name, row in omitted.items():
+            _record_omitted(target, name, row)
         ignored = set() if ignore is None else set(ignore(str(directory), names))
         for name in names:
             if name in ignored:
                 continue
             source, copied = directory / name, target / name
             if source.is_symlink():
-                link = _dangling_symlink(source)
+                link = _base_symlink(source, root) if allow_dangling_symlinks else _dangling_symlink(source)
                 if link is not None:
                     copied.symlink_to(link["target"])
                     continue
@@ -718,6 +754,13 @@ def _copy_source_tree(root: Path, destination: Path, *, ignore=None) -> None:
             if source.is_dir():
                 copy(source, copied)
             else:
+                unreadable = _unreadable_file(source)
+                if unreadable is not None:
+                    if not allow_dangling_symlinks:
+                        raise SealedM2MError(f"unreadable source member: {source}")
+                    # Never materialized: the guest sees no such member at all.
+                    _record_omitted(target, name, unreadable)
+                    continue
                 shutil.copy2(source, copied)
         shutil.copystat(directory, target)
 
@@ -851,6 +894,8 @@ def _input_selection(source: Path, guest_member: str) -> dict[str, Any]:
     if source.is_symlink():
         raise SealedM2MError("selected checkpoint or input must not be an indirect root")
     if source.is_file():
+        if _unreadable_file(source) is not None:
+            raise SealedM2MError("selected input file is unreadable")
         return {
             "source": str(source),
             "guest_member": guest_member,
@@ -915,6 +960,12 @@ def _venv_home(venv: Path) -> Path:
     base = Path(homes[0]).parent
     if not (base / "bin/python3.12").resolve().is_file():
         raise SealedM2MError("venv base CPython is absent")
+    try:
+        selected_python = _canonical_path(base / "bin/python3.12", exists=True)
+        if _unreadable_file(selected_python) is not None:
+            raise SealedCaptureError("selected base CPython is unreadable")
+    except SealedCaptureError as exc:
+        raise SealedM2MError(str(exc)) from exc
     return base
 
 
@@ -930,6 +981,51 @@ def _ldd_library_path(line: str) -> Path | None:
     if raw.startswith(("/lib", "/usr/lib")):
         return Path(raw)
     return None
+
+
+def _require_plain_base_resolution(path: Path, base: Path) -> None:
+    """Refuse a selected closure path that depends on base metadata-only entries.
+
+    Every symlink hop the kernel would take is replayed lexically. A hop inside
+    the base that the base inventory records as external, dangling or a
+    directory chain, or an unreadable final base file, is refused; such an
+    entry is never content in the guest, so the closure would be unbound.
+    """
+    pending = list(Path(path).parts)
+    if not pending or pending[0] != "/":
+        raise SealedM2MError(f"selected closure path is not absolute: {path}")
+    pending.pop(0)
+    current, hops = Path("/"), 0
+    try:
+        while pending:
+            part = pending.pop(0)
+            if part == "..":
+                current = current.parent
+                continue
+            candidate = current / part
+            if not candidate.is_symlink():
+                current = candidate
+                continue
+            hops += 1
+            if hops > 40:
+                raise SealedM2MError(f"selected closure path has a link loop: {path}")
+            if candidate.is_relative_to(base):
+                row = _base_symlink(candidate, base)
+                if row is not None:
+                    if row["kind"] != "symlink":
+                        raise SealedM2MError(f"selected closure path resolves through a {row['kind']}: {path}")
+                    _directory_symlink(candidate, base)  # refuses directory chains
+            text = os.readlink(candidate)
+            pending = list(Path(text).parts) + pending
+            if text.startswith("/"):
+                pending.pop(0)
+                current = Path("/")
+        if current.is_relative_to(base) and _unreadable_file(current) is not None:
+            raise SealedM2MError(f"selected closure path is an unreadable base file: {path}")
+    except SealedCaptureError as exc:
+        raise SealedM2MError(f"selected closure path depends on base metadata: {path}: {exc}") from exc
+    except FileNotFoundError as exc:
+        raise SealedM2MError(f"selected closure path is absent: {path}") from exc
 
 
 def _system_libs(interpreter: Path, torch_so: Path, numpy_so: Path) -> tuple[Path, ...]:
@@ -1056,6 +1152,8 @@ def prepare_plan(
     if torch_so is None or numpy_so is None:
         raise SealedM2MError("selected torch/NumPy ELF roots are absent")
     libs = _system_libs(interpreter, torch_so, numpy_so)
+    for library in libs:
+        _require_plain_base_resolution(library, base.resolve())
     # Inventory *before* copying: directory aliases retain their topology and
     # file aliases are dereferenced. These exact normalized bytes and topology are
     # part of the plan and are rechecked at issuance, before any 9 GB copy.

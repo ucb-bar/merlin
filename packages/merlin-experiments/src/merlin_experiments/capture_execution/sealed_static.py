@@ -8,6 +8,7 @@ model2MLIR loaders are deliberately ineligible for this issuer.
 from __future__ import annotations
 
 import hashlib
+import errno
 import json
 import os
 import secrets
@@ -126,25 +127,166 @@ def _directory_symlink(path: Path, root: Path) -> dict[str, str]:
 
 
 def _dangling_symlink(path: Path) -> dict[str, str] | None:
-    """Bind absent file-link metadata without resolving or copying its target."""
+    """Legacy dangling-file policy, including its explicit directory refusal."""
     try:
         path.stat()
     except FileNotFoundError:
         target = os.readlink(path)
-        # Unix links have no directory type; explicit directory syntax still fails closed.
         if target.endswith("/") or target.rsplit("/", 1)[-1] in {".", ".."}:
             raise SealedCaptureError(f"dangling directory link: {path}")
-        # Preserve even absolute/escaping text: it is metadata, never a copy source.
         return {"kind": "dangling_symlink", "target": target}
     except OSError as exc:
         raise SealedCaptureError(f"unresolvable source link: {path}") from exc
     return None
 
 
+_BASE_ROOT_XATTR = "user.merlin.base_root"
+
+
+def _base_link_root(path: Path, root: Path) -> tuple[Path, Path]:
+    """Recover the base boundary and its guest absolute name after relocation."""
+    for parent in (path.parent, *path.parent.parents):
+        if not parent.is_relative_to(root):
+            break
+        try:
+            original = Path(os.fsdecode(os.getxattr(parent, _BASE_ROOT_XATTR, follow_symlinks=False)))
+        except OSError as exc:
+            if exc.errno not in (errno.ENODATA, errno.ENOTSUP):
+                raise
+        else:
+            if not original.is_absolute() or ".." in original.parts:
+                raise SealedCaptureError(f"invalid staged base boundary: {parent}")
+            return parent, original
+    return root, root
+
+
+def _base_symlink(path: Path, root: Path) -> dict[str, str] | None:
+    """Resolve internal hops only; external text is never a host lookup source.
+
+    Absolute paths and '..' are processed before lstat, including components
+    later cancelled by '..'. A repeated resolution state is a cycle.
+    Internal file aliases retain the historical content-copy behavior.
+    """
+    root, guest_base = _base_link_root(path, root)
+    target = os.readlink(path)
+    pending = list(Path(target).parts)
+    current = path.parent
+    seen = set()
+    hops = 0
+    mode = root.lstat().st_mode
+    while pending:
+        state = (current, tuple(pending))
+        if state in seen or hops > 256:
+            raise SealedCaptureError(f"cyclic base link: {path}")
+        seen.add(state)
+        part = pending.pop(0)
+        if part == "/":
+            # An absolute target outside root is opaque, without even lstat.
+            absolute = Path("/", *pending)
+            if not absolute.is_relative_to(guest_base):
+                return _external_link(target)
+            pending = list(absolute.relative_to(guest_base).parts)
+            current = root
+            continue
+        current = current.parent if part == ".." else current / part
+        if not current.is_relative_to(root):
+            return _external_link(target)
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError:
+            if target.endswith("/") or target.rsplit("/", 1)[-1] in {".", ".."}:
+                raise SealedCaptureError(f"dangling directory link: {path}")
+            return {"kind": "dangling_symlink", "target": target}
+        except OSError as exc:
+            raise SealedCaptureError(f"unresolvable base link: {path}") from exc
+        if stat.S_ISLNK(mode):
+            hops += 1
+            pending = list(Path(os.readlink(current)).parts) + pending
+            current = current.parent
+        elif pending and not stat.S_ISDIR(mode):
+            raise SealedCaptureError(f"non-directory base link component: {path}")
+    if stat.S_ISDIR(mode):
+        return {"kind": "symlink", "target": target}
+    return None
+
+
+def _external_link(target: str) -> dict[str, str]:
+    # Kind plus exact text only: the guest's view of the referent is a property
+    # of its namespace, never of this host, so nothing about it is recorded.
+    return {"kind": "external_symlink", "target": target}
+
+
+_UNREADABLE_XATTR_PREFIX = "user.merlin.unreadable."
+_UNREADABLE_FIELDS = ("mode", "size", "uid", "gid")
+
+
+def _unreadable_xattr(name: str) -> str:
+    return _UNREADABLE_XATTR_PREFIX + _digest(os.fsencode(name))
+
+
+def _unreadable_file(path: Path) -> dict[str, Any] | None:
+    """Metadata of a regular file this process cannot read; never its bytes."""
+    info = path.stat(follow_symlinks=False)
+    if not stat.S_ISREG(info.st_mode):
+        return None
+    if not info.st_mode & 0o444 or not os.access(path, os.R_OK, follow_symlinks=False):
+        return {"kind": "unreadable_file", "mode": stat.S_IMODE(info.st_mode),
+                "size": info.st_size, "uid": info.st_uid, "gid": info.st_gid}
+    return None
+
+
+def _omitted_members(directory: Path) -> dict[str, dict[str, Any]]:
+    """Unreadable base files deliberately ABSENT from this staged directory.
+
+    A staged/guest copy never materializes them (a guest read fails with
+    ENOENT); the parent directory instead carries one marker per member so
+    the copy reproduces the selected inventory rows exactly.
+    """
+    try:
+        attributes = os.listxattr(directory, follow_symlinks=False)
+    except OSError as exc:
+        if exc.errno == errno.ENOTSUP:
+            return {}
+        raise
+    rows: dict[str, dict[str, Any]] = {}
+    for attribute in sorted(attributes):
+        if not attribute.startswith(_UNREADABLE_XATTR_PREFIX):
+            continue
+        try:
+            row = json.loads(os.getxattr(directory, attribute, follow_symlinks=False))
+        except ValueError as exc:
+            raise SealedCaptureError(f"invalid omitted unreadable member: {directory}") from exc
+        name = row.get("name") if isinstance(row, dict) else None
+        if (
+            not isinstance(name, str) or name in {"", ".", ".."} or "/" in name
+            or attribute != _unreadable_xattr(name)
+            or set(row) != {"kind", "name", *_UNREADABLE_FIELDS} or row["kind"] != "unreadable_file"
+            or any(type(row[key]) is not int or row[key] < 0 for key in _UNREADABLE_FIELDS)
+        ):
+            raise SealedCaptureError(f"invalid omitted unreadable member: {directory}")
+        if os.path.lexists(directory / name):
+            raise SealedCaptureError(f"omitted unreadable member is present: {directory / name}")
+        rows[name] = {key: value for key, value in row.items() if key != "name"}
+    return rows
+
+
+def _present_members(rows: dict[str, dict[str, Any]]) -> list[str]:
+    """Inventory names that exist on disk (omitted unreadable files do not)."""
+    return [name for name, row in rows.items() if row.get("kind") != "unreadable_file"]
+
+
+def _record_omitted(directory: Path, name: str, row: dict[str, Any]) -> None:
+    os.setxattr(directory, _unreadable_xattr(name), _json({**row, "name": name}), follow_symlinks=False)
+
+
 def _tree(
     root: Path, *, allow_directory_symlinks: bool = False, allow_dangling_symlinks: bool = False
 ) -> dict[str, dict[str, Any]]:
-    """Bind exact directory membership, file content and execute permissions."""
+    """Bind exact membership, content and modes; opt in to opaque base link text.
+
+    The compatibility flag allow_dangling_symlinks enables base metadata:
+    dangling/external links, internal directory chains and unreadable files.
+    """
     if root.is_symlink() or not root.is_dir():
         raise SealedCaptureError(f"tree is absent or indirect: {root}")
     members: dict[str, dict[str, Any]] = {}
@@ -152,7 +294,7 @@ def _tree(
     def visit(path: Path, name: str) -> None:
         if path.is_symlink():
             if allow_dangling_symlinks:
-                link = _dangling_symlink(path)
+                link = _base_symlink(path, root)
                 if link is not None:
                     members[name] = link
                     return
@@ -164,10 +306,24 @@ def _tree(
         mode = stat.S_IMODE(before.st_mode)
         if stat.S_ISDIR(before.st_mode):
             children = sorted(path.iterdir(), key=lambda child: child.name)
-            members[name] = {"kind": "directory", "mode": mode, "members": [child.name for child in children]}
+            omitted = _omitted_members(path)
+            if omitted and not allow_dangling_symlinks:
+                raise SealedCaptureError(f"unreadable tree member: {name}")
+            members[name] = {
+                "kind": "directory", "mode": mode,
+                "members": sorted([*(child.name for child in children), *omitted]),
+            }
             for child in children:
                 visit(child, child.name if name == "." else f"{name}/{child.name}")
+            for child_name, row in omitted.items():
+                members[child_name if name == "." else f"{name}/{child_name}"] = row
         elif stat.S_ISREG(before.st_mode):
+            unreadable = _unreadable_file(path)
+            if unreadable is not None:
+                if not allow_dangling_symlinks:
+                    raise SealedCaptureError(f"unreadable tree member: {name}")
+                members[name] = unreadable
+                return
 
             def identity(row):
                 return row.st_dev, row.st_ino, row.st_size, row.st_mtime_ns, row.st_mode, row.st_uid, row.st_gid

@@ -147,7 +147,7 @@ def _verified_cached_entry(
     selected_system_libraries: list[dict[str, Any]] | None,
     root: Path,
 ) -> VerifiedRuntimeCache | None:
-    from .sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
+    from .sealed_static import _canonical_path, _digest, _file_digest, _json, _present_members, _tree
 
     try:
         entry = root / _identity(plan)
@@ -171,7 +171,7 @@ def _verified_cached_entry(
         entry_stat = entry.stat()
         entry_identity = (entry_stat.st_dev, entry_stat.st_ino, entry_stat.st_mtime_ns, entry_stat.st_ctime_ns)
         rows = _tree(entry, allow_directory_symlinks=True, allow_dangling_symlinks=True)
-        for name in rows:
+        for name in _present_members(rows):
             member = entry if name == "." else entry / name
             info = member.lstat()
             if info.st_dev != device or info.st_uid != uid:
@@ -325,12 +325,15 @@ def _build(plan: dict[str, Any], destination: Path) -> None:
     base = Path(plan["base"])
     base_copy = destination / base.relative_to("/")
     base_copy.parent.mkdir(parents=True, exist_ok=True)
-    _copy_source_tree(base.resolve(), base_copy)
+    _copy_source_tree(base.resolve(), base_copy, allow_dangling_symlinks=True)
     libraries = []
     for name in plan["system_libs"]:
         path = Path(name)
         target = destination / path.relative_to("/")
         target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink():
+            # Never write through a recorded base link (it may name a host path).
+            raise SealedM2MError(f"system library collides with a staged base link: {name}")
         shutil.copy2(path, target)
         libraries.append({"path": name, "sha256": _file_digest(target)})
     if (
@@ -407,7 +410,7 @@ def link_runtime(
 
 
 def _link_entry(entry: Path, runtime: Path) -> None:
-    from .sealed_static import _dangling_symlink, _directory_symlink
+    from .sealed_static import _BASE_ROOT_XATTR, _base_symlink, _omitted_members, _record_omitted
 
     directories: list[tuple[Path, int]] = []
     for current, names, files in os.walk(entry, followlinks=False):
@@ -415,16 +418,26 @@ def _link_entry(entry: Path, runtime: Path) -> None:
         relative = here.relative_to(entry)
         target_dir = runtime / relative
         target_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            guest_base = os.getxattr(here, _BASE_ROOT_XATTR, follow_symlinks=False)
+        except OSError as exc:
+            if exc.errno not in (errno.ENODATA, errno.ENOTSUP):
+                raise
+        else:
+            os.setxattr(target_dir, _BASE_ROOT_XATTR, guest_base, follow_symlinks=False)
+        # Unreadable base files stay ABSENT in the guest; only their markers follow.
+        for name, row in _omitted_members(here).items():
+            _record_omitted(target_dir, name, row)
         directories.append((target_dir, stat.S_IMODE(here.stat().st_mode)))
         for name in names:
             if (here / name).is_symlink():
-                link = _directory_symlink(here / name, entry)
+                link = _base_symlink(here / name, entry)
                 (target_dir / name).symlink_to(link["target"], target_is_directory=True)
         names[:] = [name for name in names if not (here / name).is_symlink()]
         for name in files:
             source = here / name
             if source.is_symlink():
-                link = _dangling_symlink(source)
+                link = _base_symlink(source, entry)
                 if link is not None:
                     (target_dir / name).symlink_to(link["target"])
                     continue

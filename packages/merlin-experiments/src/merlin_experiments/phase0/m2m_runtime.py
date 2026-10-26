@@ -359,7 +359,7 @@ def sealed_capture_config(
 def _capture_runtime_reuse(selected: dict, selection: dict, destination: Path) -> dict:
     """Reopen the exact selected host runtime and existing read-only composition."""
     from merlin_experiments.capture_execution import readonly_runtime
-    from merlin_experiments.capture_execution.sealed_m2m import _system_libs
+    from merlin_experiments.capture_execution.sealed_m2m import _require_plain_base_resolution, _system_libs
 
     runtime = _runtime(Path(selected["python"]))
     if any(selected.get(key) != value for key, value in runtime.items()):
@@ -370,11 +370,14 @@ def _capture_runtime_reuse(selected: dict, selection: dict, destination: Path) -
     numpy = next(site.glob("numpy/_core/_multiarray_umath*.so"), None)
     if torch is None or numpy is None:
         raise ValueError("selected runtime lacks its Torch/NumPy ELF roots")
+    libraries = _system_libs(Path(selected["python"]), torch, numpy)
+    for library in libraries:
+        _require_plain_base_resolution(library, _venv_home(venv).resolve())
     plan = {
         # Match sealed_m2m.prepare_plan's declared guest mount, which may
         # differ lexically from the resolved host base already verified above.
         "base": str(_venv_home(venv)),
-        "system_libs": [str(path) for path in _system_libs(Path(selected["python"]), torch, numpy)],
+        "system_libs": [str(path) for path in libraries],
         "selected_trees": {"venv": runtime["venv"], "base": runtime["base_python"]},
     }
     # Resolve/preflight precedes creating the fresh run. The nearest existing
