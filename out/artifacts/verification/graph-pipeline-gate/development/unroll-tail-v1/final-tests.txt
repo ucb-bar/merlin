@@ -1,0 +1,10 @@
+test_actual_nonzero_bulk_tail_controls_signed_widths_carries_full_roster (__main__.Tail.test_actual_nonzero_bulk_tail_controls_signed_widths_carries_full_roster) ... ok
+test_domain_no_tail_inline_dynamic_negative_flags_refused (__main__.Tail.test_domain_no_tail_inline_dynamic_negative_flags_refused) ... ok
+test_stale_source_profile_report_root_domain_authority_refused (__main__.Tail.test_stale_source_profile_report_root_domain_authority_refused) ... ok
+test_structural_actual_success_bulk_tail_failure_witness_candidates (__main__.Tail.test_structural_actual_success_bulk_tail_failure_witness_candidates) ... ok
+test_valid_mutations_complete_module_refusal (__main__.Tail.test_valid_mutations_complete_module_refusal) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.673s
+
+OK

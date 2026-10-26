@@ -1,0 +1,791 @@
+{
+  "schema": "merlin.unroll_inline_source_review.v1",
+  "branch": "feat/pass-verification",
+  "observed_head": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "owned": [
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean",
+      "sha256": "694d79ad1df0d7352b2e4034ac9e91cb1f9ceb07d089a37e08cd2dc8511187d5",
+      "bytes": 2475,
+      "snapshot": "source-snapshot/owned/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_inline.py",
+      "sha256": "513b762b3e307e66764ab686dd4a734c3a6ae292a9bb2370bf5a5214b08fdaa1",
+      "bytes": 9590,
+      "snapshot": "source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_inline.py"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+      "sha256": "6638c9359ca4a6f4ac9301cb18e1a5f13b4eb315be15dd6899e754fd852f8ae0",
+      "bytes": 9609,
+      "snapshot": "source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_inline_emit.py"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_inline_models.py",
+      "sha256": "b941b9db1a8a80abd3ff4c875213d542a4a5e3b71677b3bee80b4b621c24c84a",
+      "bytes": 6879,
+      "snapshot": "source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_inline_models.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_pipeline_inline.py",
+      "sha256": "f2341a915f3976fef75df9ab40880a03ea57e23ac8db7cb29d122a5f7aecd522",
+      "bytes": 12913,
+      "snapshot": "source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_inline.py"
+    }
+  ],
+  "dependencies": [
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "size": 4227,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/common/dense_float_ir.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "size": 1017,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "size": 9294,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/certificates.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "size": 4572,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/loops.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "size": 4097,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/normalization.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "size": 8634,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/pipeline.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "size": 12317,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/pipeline_state.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "size": 12381,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/planning.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f",
+      "size": 7588,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/unrolling.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "size": 10145,
+      "owner": "pinned4499",
+      "snapshot": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/validation.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/builder.py",
+      "sha256": "07edf3d0ba3af9083c22310dd98bddd37a3300b7b166466193389aa50aca395a",
+      "size": 11622,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/builder.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/context.py",
+      "sha256": "398f6fe1a77cb940e30cb499f5ddd3e6d80073fb9d4e3b0ea5bc3f5fdc4b81de",
+      "size": 11751,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/context.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/__init__.py",
+      "sha256": "0ce455fc728c51ade6e19ed26ff61c625b9b5f85af77f0976cc6de9504c25556",
+      "size": 549,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/constant_materialization.py",
+      "sha256": "1d805e0a398ccea6bb05684210a22e106600146044902e431129a524eac433b3",
+      "size": 1069,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/constant_materialization.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/op_asm.py",
+      "sha256": "4ce3e98d238e453d63d3f480ba06cb232e7d0a1571736c67fe784117a1664351",
+      "size": 3093,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/op_asm.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/__init__.py",
+      "sha256": "09111f29545dac8235bb5b0cbbc63e591c43a92e9b1fa8e4e23815c2c0371afd",
+      "size": 10337,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py",
+      "sha256": "8e58a5ab3c4e7a7b4cc30653a52b8f6f7b9b35574ed88485f1dbd85866ca3b63",
+      "size": 42917,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/builtin.py",
+      "sha256": "a58c193c85430bcfb34e6e5dba23f442880f8e9593e07ca313906f4a5775a4e2",
+      "size": 114583,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/builtin.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/func.py",
+      "sha256": "8a0cb3d1cfb47bfea7f642decd5c4b6f742461c6fe89b283f0918e515e8b8f8e",
+      "size": 11699,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/func.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/memref.py",
+      "sha256": "216e58c59ab59abe72e12a55c2af9bf89e53569c19479bfc9a7103c387cf28ba",
+      "size": 40815,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/memref.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/scf.py",
+      "sha256": "57a47001029e79e03994fe67de0ed3c95b86ab465103cbd721f1b32b31155ab6",
+      "size": 27021,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/scf.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/__init__.py",
+      "sha256": "9333bca6184814c39e9eaf592f58e6ed493e9898d527ad136fe32f5f59343433",
+      "size": 440,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py",
+      "sha256": "a95bd0416fc8501a6e727ca1315a94b7d8c5cb790358affc1be7c501b3c6501e",
+      "size": 4759,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dimension_list.py",
+      "sha256": "a6612af576bd0357107529dd60c4053f48dfcbf03abe6a431c29a55a2d475989",
+      "size": 1542,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dimension_list.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dynamic_index_list.py",
+      "sha256": "38daa52c1113b0b9c7e184a812206fca75c99bf89bf2d489f9819525c040c242",
+      "size": 11826,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dynamic_index_list.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/enum_attribute.py",
+      "sha256": "a78ec420a097f747703642e1f27f8e41024b087a5244b4dd4709ee537d852dfe",
+      "size": 2170,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/enum_attribute.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/fast_math.py",
+      "sha256": "6b5b526f36fcebd1afee8f3e8cd0e447f5240075885646edd9fbd84b79611b55",
+      "size": 684,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/fast_math.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/format.py",
+      "sha256": "cc99781fa71fcaf702737a52e8c3c3e37754fdd13d9e7530960714dfa721acec",
+      "size": 18761,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/format.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/reshape_ops_utils.py",
+      "sha256": "20d38aaa290665a1f23c3a7781aacd1cc30e0bc1761cac25a2a4c6bcd45d8db9",
+      "size": 5041,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/reshape_ops_utils.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/folder.py",
+      "sha256": "3906e6d34b791f4d1de56bd347cb1af8a53424afaebc1c7e97dff2e70da503de",
+      "size": 3430,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/folder.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/interfaces.py",
+      "sha256": "66a219f8cff8fdf8759426e3ab38f2fedfbd092b09b9daaa2d033831339dc300",
+      "size": 3803,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/interfaces.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/__init__.py",
+      "sha256": "9b70e7a611de326f314eb7f5877f896f864519cf73404a98c0ba1448f5f91485",
+      "size": 808,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/__init__.py",
+      "sha256": "1defb1dab5f098264ce81e6318161a17100e5aeeb8c2fc966327203a5e5a26ba",
+      "size": 296,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_expr.py",
+      "sha256": "e52f3d8ffe8f36c050c9868f679e7bf254f25a64dd50e55f17e37a0c2e811061",
+      "size": 33741,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_expr.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_map.py",
+      "sha256": "b7459de550eb7e16a58c54ef80f0cb799d8d4bdc125eb1aa1431265a2b20217c",
+      "size": 17632,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_map.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_set.py",
+      "sha256": "bf5fe3832e0b73c2d09280a92edb4bea307a24d8f81efdb59fbf09dc7892133b",
+      "size": 1605,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_set.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/core.py",
+      "sha256": "e4a56ec3e51f856d02ee8230739b5024c91da00260d4bce7c125ff08a6f52c08",
+      "size": 87560,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/core.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/__init__.py",
+      "sha256": "5cac03e289cfd95b58f728d2fe09fd069aec7990e05801d02e6c4b20e8a7e119",
+      "size": 302,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/attributes.py",
+      "sha256": "5390db1921844923d604abee03d99d2b713b388848a9b2e0f528826fe182e473",
+      "size": 22211,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/attributes.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/constraints.py",
+      "sha256": "83c063f55d9b835d92c16fdd51e1ada3eb4ad84f7bc6a18698793606dcbf7e75",
+      "size": 49824,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/constraints.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format.py",
+      "sha256": "0634b37132aa57248a3000ec873f1664b9890e550b8a7521e0b58cd3ceeea1fb",
+      "size": 55097,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format_parser.py",
+      "sha256": "fc16909fd1530a8bb6681bd944fcae0dd7cfe7ee7ea55aa28ff140744fb508b8",
+      "size": 39149,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format_parser.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/operations.py",
+      "sha256": "7c5c8bf820d4f89942903794e8a1a21ce9aa5c84e451602f3a54c6cb481149d4",
+      "size": 74020,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/operations.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/__init__.py",
+      "sha256": "a8c23f2dc3bad21336cca3171afa34339dfabf90298dd19ed4e92798e17e823e",
+      "size": 466,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/affine_parser.py",
+      "sha256": "77e1a321b84693db30272b42deafb3453475705c00bff128480f7857b2a5c36b",
+      "size": 11088,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/affine_parser.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/attribute_parser.py",
+      "sha256": "2390628c63b7069fd6e4d814e06fbd5da19df487d0b2af469cc0704b3355c13c",
+      "size": 62798,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/attribute_parser.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/base_parser.py",
+      "sha256": "158558fb5b4fb9dc2a7438f0c6cc3cb5276b462a1adb7da44a1eaabe204b8bad",
+      "size": 12513,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/base_parser.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/core.py",
+      "sha256": "fea4787ef90a2893e6a55bb9a7c70a3d81304b68a40a30904b330e6919ea37e7",
+      "size": 41286,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/core.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/generic_parser.py",
+      "sha256": "badaa2593ec46f77c0856d62e100fe19195357a40c444dc0b4aed8e1376d92d7",
+      "size": 11901,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/generic_parser.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/pattern_rewriter.py",
+      "sha256": "759350b3ea7defd18f75161034182100b69778d9be52d47c2e63060eb80f2e38",
+      "size": 30506,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/pattern_rewriter.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/printer.py",
+      "sha256": "44d48c3d67a1a60793434c3f92376840f764b0fa2f7a7e835173a0ba819e7765",
+      "size": 25749,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/printer.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/rewriter.py",
+      "sha256": "ecb85c0cd62c5fdf04fb72291cab1c0145bce8c6cafedf7b2d7eba21121deb47",
+      "size": 11614,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/rewriter.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/traits.py",
+      "sha256": "9a8df8a232a7d79c1836ce40136a5245559b9f6e6f9ea7e5b5f7782d5bcb7a2e",
+      "size": 29464,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/traits.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/__init__.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/base_printer.py",
+      "sha256": "e481727cfc8d6f5019b3e7d0341e25607c6f64c19cabf27c029cdd7ef2c57a9b",
+      "size": 5606,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/base_printer.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/bitwise_casts.py",
+      "sha256": "a19b2f68806f22a22c1258fd38dc2568a9a713daaa1bdbe822e9ee8c8134cfd6",
+      "size": 1903,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/bitwise_casts.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/classvar.py",
+      "sha256": "75817d634d44001d56dc60cf2142e0fc186c7f4c1bacac124c59380350c90627",
+      "size": 1129,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/classvar.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/comparisons.py",
+      "sha256": "d457aaed334bf384daa7aa70238300f39ad9c8ecc636291b5c8cb6bd07e224ac",
+      "size": 3799,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/comparisons.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/diagnostic.py",
+      "sha256": "fdcb80084e612ae2b1b75cd7ecf1c79796e4c912c58fa3ae612fae97447fe0f3",
+      "size": 1901,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/diagnostic.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_loader.py",
+      "sha256": "fc7fbe1d9ea015f6b9caa764797a0849c9cc972efb778d258baee6b0f8bbb9ec",
+      "size": 3966,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_loader.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_stub.py",
+      "sha256": "e56615befeb25b7ef8dc739ab1afaf7481045af9c13cf82902e1901358f90a43",
+      "size": 10855,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_stub.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/exceptions.py",
+      "sha256": "2c5a6d5e0a8f44c998cae5a22a3922feb4d226e6de2100d3c976cb47e5a091c0",
+      "size": 3497,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/exceptions.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/hints.py",
+      "sha256": "298718d6044b829594b43ad7e1b1226f8aa9318f73de1e4f806073d39004dacf",
+      "size": 7859,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/hints.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/lexer.py",
+      "sha256": "d2d6d2f8e2bf110426e7663c28eb0626de5334ecbc27e74cec92c21af69fefef",
+      "size": 5454,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/lexer.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/mlir_lexer.py",
+      "sha256": "d2d2b59b9a09d18e2edde2d6ccc2fa49f4e063e19672eab4c158e35d44b32e36",
+      "size": 18808,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/mlir_lexer.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/runtime_final.py",
+      "sha256": "37edf56a59a7f385128f5864f07560d2e2535644260141f0f1893bf28a83e7d5",
+      "size": 812,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/runtime_final.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/str_enum.py",
+      "sha256": "3a5fa8d24f075b14a95a56146f832980d666da690e8c4eb7e5d491c3e813456e",
+      "size": 356,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/str_enum.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/type.py",
+      "sha256": "9c4c1ac090bd0da004fd7db64e4c95e96a2803b1b078e49f669085cbbc74fbce",
+      "size": 1540,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/type.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/worklist.py",
+      "sha256": "dea6f7332e611bea48493d6ce60a478a0f484238ab4ddbe24c84e3f63764d842",
+      "size": 2081,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/worklist.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+      "size": 5515,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/common/owned_process.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/common/paths.py",
+      "sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "size": 17204,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/common/paths.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "size": 9653,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "size": 3962,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "size": 7091,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "size": 2118,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "size": 5730,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+      "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+      "size": 5106,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "size": 9854,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+      "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+      "size": 4850,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+      "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+      "size": 7321,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+      "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+      "size": 5747,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+      "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+      "size": 4641,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+      "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+      "size": 7569,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean",
+      "sha256": "694d79ad1df0d7352b2e4034ac9e91cb1f9ceb07d089a37e08cd2dc8511187d5",
+      "size": 2475,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+      "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+      "size": 1400,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+      "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+      "size": 3197,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "size": 4654,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalar.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "size": 8229,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "size": 11782,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "size": 6170,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "size": 9963,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "size": 6614,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "size": 3246,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/ResourceGeometry.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "size": 4537,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/StateEffects.lean"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "size": 7626,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_input_admission.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "size": 12573,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_gate_projection.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_inline.py",
+      "sha256": "513b762b3e307e66764ab686dd4a734c3a6ae292a9bb2370bf5a5214b08fdaa1",
+      "size": 9590,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_inline.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+      "sha256": "6638c9359ca4a6f4ac9301cb18e1a5f13b4eb315be15dd6899e754fd852f8ae0",
+      "size": 9609,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_inline_emit.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_inline_models.py",
+      "sha256": "b941b9db1a8a80abd3ff4c875213d542a4a5e3b71677b3bee80b4b621c24c84a",
+      "size": 6879,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_inline_models.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_tail.py",
+      "sha256": "7c2e7fa1db6b1770668faa05673469f5cba2011b29e4285e11558d6affcf05a8",
+      "size": 8516,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_tail.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state.py",
+      "sha256": "8568b83e5c6bb92b927136e90f18412b8c6912a35b23aa5d27d9c6ede073f1c1",
+      "size": 15961,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline.py",
+      "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+      "size": 3144,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_pipeline.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_capture.py",
+      "sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+      "size": 12106,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_pipeline_capture.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+      "size": 26257,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_pipeline_emit.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar.py",
+      "sha256": "61d351b2b6d31fc172a20931142e5a5096416ac3264901efc322086a410e5fc5",
+      "size": 15252,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_scalar.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "size": 20723,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_scalar_capture.py"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_kernel.py",
+      "sha256": "2a170583ecdab74f9690cbe071e6ef4c4d459daa07c42c07c351e201dfc405e0",
+      "size": 10303,
+      "owner": "primary",
+      "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_scalar_kernel.py"
+    }
+  ],
+  "queries": "UNCOMPILED",
+  "outcomes": "UNOBSERVED",
+  "native": false
+}

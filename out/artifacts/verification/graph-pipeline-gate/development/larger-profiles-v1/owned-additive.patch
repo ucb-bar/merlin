@@ -1,0 +1,657 @@
+diff --git a/src/merlin/verify/lean_graph_pipeline_gate_profiles.py b/src/merlin/verify/lean_graph_pipeline_gate_profiles.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_profiles.py
+@@ -0,0 +1,66 @@
++"""Separate SOURCE-ONLY larger graph profiles. No compiler authority or SDK."""
++from dataclasses import dataclass
++
++SUFFIX = ("scalar_redundancy_elimination", "scalar_loop_invariant_motion",
++          "ordered_loop_unrolling", "ordered_loop_segmentation")
++
++
++@dataclass(frozen=True)
++class Profile:
++    name: str
++    kinds: tuple[str, ...]
++    domain: str
++    relation: str
++    premises: tuple[str, ...]
++    final_root: str
++
++
++COMMON = (
++    "trusted complete xDSL parsing, actual source projection and host source binding",
++    "same Scalar.Program/evalProgram, concrete mathematical Int index control and complete terminal world",
++    "external calls explicitly declared; same possibly failing descriptor interpretation with local successful arity",
++    "no internal call bridge, native ABI/alias/allocator/completion fidelity or hidden private-SSA observers",
++    "one static nonnegative changed top-level loop per changed function, positive stride, no-tail bulk count>factor",
++    "factor2..4, tile2..16, signed32|64 control bounds, one..four word carries, two-input changed functions",
++    "region-free original loop body, at most16 lane external calls, bounded syntax, no broader control modes",
++)
++SCF = Profile("scalar_scf_four_transform_source_v1", SUFFIX,
++              "complete_scalar_scf_static_no_tail_entries_v1",
++              "equal_all_entry_returns_errors_terminal_world",
++              COMMON + ("one total deterministic state-free primitive interpretation; no source-success premise",),
++              "merlin_profile_transform")
++INTEGER = Profile("canonical_integer_scalar_scf_source_v1", ("exact_integer_simplification", *SUFFIX),
++                  "canonical_word_entry_scalar_scf_static_no_tail_v1",
++                  "equal_canonical_entry_returns_errors_terminal_world",
++                  COMMON + ("existing wrapping BitVec word primitive; canonical signless word entry values",
++                            "local external successful-result canonicality on canonical operands; reached typing derived",
++                            "wrong arity and absent entry remain observable; no assumed source success or intermediate typing"),
++                  "merlin_profile_transform")
++
++
++def selected(name):
++    for profile in (SCF, INTEGER):
++        if type(name) is str and name == profile.name:
++            return profile
++    raise ValueError("explicit larger graph profile required; no minimal/default/legacy fallback")
++
++
++@dataclass(frozen=True)
++class Settings:
++    factor: int
++    tile: int
++    index_bits: int
++
++    def validate(self):
++        if (any(type(v) is not int for v in (self.factor, self.tile, self.index_bits))
++                or not 2 <= self.factor <= 4 or not 2 <= self.tile <= 16 or self.index_bits not in (32, 64)):
++            raise ValueError("exact factor2..4/tile2..16/index32|64 settings required")
++
++
++def public_check(*args, **kwargs):
++    raise RuntimeError("larger graph profiles UNSUPPORTED/HELD; no reviewed source/native activation")
++
++
++def compiler_eligible(*args, **kwargs):
++    # No process-local authority ledger is issued by a preparation adapter.
++    return False
+diff --git a/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py b/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py
+@@ -0,0 +1,320 @@
++"""SDK-free complete-buffer reconstruction for frozen scalar/SCF proof emitters.
++
++Old capture/intake/receipt/proof/kernel functions are NEVER called. The frozen
++emitters construct proof terms over the unchanged evaluator. New query outcomes
++are UNOBSERVED until a separately reviewed native context checks them.
++"""
++from dataclasses import asdict, dataclass
++from pathlib import Path
++import sys
++
++from .lean_graph_pipeline_gate_profiles import SCF, INTEGER, Settings, selected
++from .lean_graph_pipeline_gate_projection import canonical, sha, source_ref, project_lean_sources
++
++
++@dataclass(frozen=True)
++class PreparedProfile:
++    schema: str
++    profile: str
++    settings: Settings
++    kinds: tuple[str, ...]
++    domain: str
++    relation: str
++    premises: tuple[str, ...]
++    python_version: str
++    buffers: tuple[str, ...]
++    attribution: str
++    capture: str
++    query: str
++    roots: tuple[str, ...]
++    boundary_roots: tuple[tuple[str, tuple[str, ...]], ...]
++    sources: tuple
++
++    @property
++    def identity(self):
++        return sha(canonical(asdict(self)))
++
++    def describe(self):
++        return {**asdict(self), "identity": self.identity, "query_status": "UNCOMPILED",
++                "outcome": "UNOBSERVED", "qualification": "UNQUALIFIED",
++                "compiler_pass_chain": "not_established", "public_route": "UNSUPPORTED/HELD"}
++
++
++def _sources(query):
++    # Project SOURCES only, never installed objects, runtimes or old guard pins.
++    imports = tuple(word for line in query.splitlines() if line.startswith("import ")
++                    for word in line.split()[1:])
++    if not imports or any(not name.startswith("Merlin.") for name in imports):
++        raise ValueError("closed project-only query import roster required")
++    paths = {Path(__file__), Path(__file__).with_name("lean_graph_pipeline_gate_profiles.py"),
++             Path(__file__).with_name("lean_graph_pipeline_gate_profile_requests.py")}
++    for name, module in tuple(sys.modules.items()):
++        path = getattr(module, "__file__", None)
++        if name.startswith(("merlin.", "xdsl.")) and path and Path(path).suffix == ".py":
++            paths.add(Path(path))
++    return tuple(source_ref(path) for path in sorted(paths)) + project_lean_sources(imports)
++
++
++def _admit(modules):
++    from xdsl.dialects import arith, builtin
++    from .lean_graph_input_admission import admit_module
++    for module in modules:
++        admit_module(module, calls="external-only")
++        operations = tuple(module.walk())
++        if len(operations) > 2048:
++            raise ValueError("bounded complete scalar/SCF syntax required")
++        for op in operations:
++            values = (*op.operands, *op.results,
++                      *(a for r in op.regions for b in r.blocks for a in b.args))
++            for value in values:
++                t = value.type
++                if not (type(t) is builtin.IndexType or type(t) is builtin.IntegerType
++                        and t.signedness.data == builtin.Signedness.SIGNLESS and 1 <= t.width.data <= 256):
++                    raise ValueError("larger adapter supports only signless scalar words/index values")
++            if type(op) in (arith.AddiOp, arith.SubiOp, arith.MuliOp) and op.overflow_flags != arith.IntegerOverflowAttr("none"):
++                raise ValueError("overflow-flagged arithmetic outside explicit larger profile")
++
++
++def _recheck(buffers, modules, profile, settings):
++    from merlin.transforms.certificates import ir_text, TRANSFORM_SCOPES
++    from merlin.transforms.normalization import simplify_integers
++    from merlin.transforms.pure_scalar import eliminate_scalar_redundancy, hoist_scalar_invariants
++    from merlin.transforms.unrolling import unroll_ordered_loops
++    from merlin.transforms.loops import segment_loops
++    runs = {"exact_integer_simplification": simplify_integers,
++            "scalar_redundancy_elimination": eliminate_scalar_redundancy,
++            "scalar_loop_invariant_motion": hoist_scalar_invariants,
++            "ordered_loop_unrolling": lambda m: unroll_ordered_loops(m, (settings.factor,), index_bits=settings.index_bits),
++            "ordered_loop_segmentation": lambda m: segment_loops(m, (settings.tile,), index_bits=settings.index_bits)}
++    rows = []
++    for i, kind in enumerate(profile.kinds):
++        clone = modules[i].clone()
++        witnesses = runs[kind](clone)
++        clone.verify()
++        if not witnesses or buffers[i] == buffers[i+1] or ir_text(clone) != buffers[i+1]:
++            raise ValueError("actual changed adjacent output differs from registered " + kind)
++        rows.append({"kind": kind, "scope": TRANSFORM_SCOPES[kind],
++                     "before": sha(buffers[i]), "after": sha(buffers[i+1]),
++                     "rechecked_witnesses_diagnostic_only": [asdict(w) for w in witnesses],
++                     "semantic_proof": False})
++    return rows
++
++
++def _projection(modules, settings, integer_prefix):
++    from .lean_graph_state_scalar_capture import project, metadata
++    from .lean_graph_state_pipeline_capture import index_operation
++    stages = [project(a, b, context=modules) for a, b in zip(modules, modules[1:])]
++    first = stages[0]
++    for p in stages:
++        if any(p[key] != first[key] for key in ("registry", "types", "module_header")):
++            raise ValueError("all complete stages must share one descriptor/type/module universe")
++        for a, b in zip(first["functions"], p["functions"], strict=True):
++            if any(a[k] != b[k] for k in ("name", "header", "inputs", "outputs", "declaration")):
++                raise ValueError("complete roster/interface changed between stages")
++    for a, b in zip(stages, stages[1:]):
++        if any(x["after"] != y["before"] for x, y in zip(a["functions"], b["functions"], strict=True)):
++            raise ValueError("exact projected intermediate program join differs")
++    controls = {}
++    for module in modules:
++        for op in module.walk():
++            control = index_operation(op)
++            if control is not None:
++                key = canonical(metadata(op))
++                if key in controls and controls[key] != control:
++                    raise ValueError("ambiguous index control descriptor")
++                controls[key] = control
++    concrete = [{"identity": i, **controls[canonical(row["descriptor"]) ]}
++                for i, row in enumerate(first["registry"]) if canonical(row["descriptor"]) in controls]
++    suffix = {**asdict(settings), "stages": stages[1:] if integer_prefix else stages,
++              "index_operations": concrete}
++    return {"prefix": stages[0] if integer_prefix else None, "pipeline": suffix}
++
++
++def _domain(capture):
++    from .lean_graph_state_pipeline_emit import static_controls
++    suffix = capture["pipeline"]
++    factor, tile, bits = (suffix[k] for k in ("factor", "tile", "index_bits"))
++    functions = suffix["stages"][0]["functions"]
++    changed = []
++    for index, function in enumerate(functions):
++        if function["declaration"]:
++            continue
++        records = [function["before"], *[p["functions"][index]["after"] for p in suffix["stages"]]]
++        loops = [[r["loop"] for r in rows if "loop" in r] for rows in records]
++        if not any(loops):
++            continue
++        if any(len(x) != 1 for x in loops) or len(function["inputs"]) != 2:
++            raise ValueError("one top-level static changed loop and two entry arguments required")
++        if records[2] == records[4]:
++            raise ValueError("unchanged loop entry lacks the selected explicit bridge")
++        if any("loop" in row for row in loops[0][0]["body"]):
++            raise ValueError("region-free original loop body required")
++        carries = loops[0][0]["carries"]
++        if not 1 <= len(carries) <= 4 or any(set(t) != {"bits"} for t in carries):
++            raise ValueError("one to four ordered word carries required")
++        lower, upper, step = static_controls(records[2], suffix)
++        if not 0 <= lower <= upper or step <= 0:
++            raise ValueError("static nonnegative ordered control and positive stride required")
++        count = (upper-lower+step-1)//step
++        if count <= factor or count % factor:
++            raise ValueError("empty/inline/tail or nondivisible bulk outside supported submode")
++        bulk_upper, bulk_step = lower+count*step, factor*step
++        if max(upper+step*factor, bulk_upper+bulk_step*tile, bulk_upper+bulk_step) >= 2**(bits-1):
++            raise ValueError("derived unroll/segment signed bounds exceed selected profile")
++        if any(row["kind"] == "index-constant" and not -(2**(bits-1)) <= row["value"] < 2**(bits-1)
++               for row in suffix["index_operations"]):
++            raise ValueError("actual control literal outside signed profile")
++        changed.append(index)
++    if not changed:
++        raise ValueError("profile requires actual changed scalar/SCF functions")
++    return tuple(changed)
++
++
++def _adjacent_rosters(capture, pbase, changed):
++    """Proof glue over the SAME frozen dispatcher; no new evaluator/model."""
++    functions = capture["pipeline"]["stages"][0]["functions"]
++    defined = [i for i, f in enumerate(functions) if not f["declaration"]]
++    text = "namespace Merlin.GraphGateProfileAdjacent\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\n"
++    text += f"abbrev registry := {pbase}registry\n"
++    for stage in range(5):
++        entries = [f"{{inputs := {pbase}F{i}.inputs, outputs := {pbase}F{i}.outputs, body := {pbase}F{i}.S{stage}}}" for i in defined]
++        text += f"def entries{stage} : List Entry := [" + ",".join(entries) + "]\n"
++    roots=[]
++    for i in defined:
++        base=pbase+f"F{i}."
++        for stage, lemma in ((2,"unroll_actual"),(3,"segment_actual")):
++            name=f"step{stage}F{i}"
++            text += f"theorem {name} {{World Error : Type}} (primitive : Prim → List Int → Int)\n"
++            text += f"    (external : External World Error registry) (arguments : List Int) (world : World)\n"
++            text += f"    (arity : arguments.length = {base}inputs.length) :\n"
++            text += f"    evalProgram ({pbase}M primitive external) {base}S{stage} arguments world =\n"
++            text += f"    evalProgram ({pbase}M primitive external) {base}S{stage+1} arguments world := by\n"
++            if i not in changed:
++                stages=capture["pipeline"]["stages"]
++                if stages[stage]["functions"][i]["before"] != stages[stage]["functions"][i]["after"]:
++                    raise ValueError("unchanged-loop-mode adjacent function body differs")
++                # Arity is intentionally consumed; no new unused-binder warning.
++                text += "  revert arity\n  intro _\n  rfl\n"
++            else:
++                text += f'''  cases arguments with
++  | nil => simp only [{base}inputs,List.length_nil,List.length_cons] at arity; contradiction
++  | cons first rest =>
++    cases rest with
++    | nil => simp only [{base}inputs,List.length_nil,List.length_cons] at arity; contradiction
++    | cons second later =>
++      have empty : later = [] := List.length_eq_zero_iff.mp (by
++        simp only [{base}inputs,List.length_nil,List.length_cons] at arity
++        omega)
++      subst later
++      exact {base}{lemma} primitive external first second world
++'''
++            roots.append("Merlin.GraphGateProfileAdjacent."+name)
++    complete=[]
++    for stage in range(4):
++        proof=f"entries_nil ({pbase}M primitive external)"
++        for i in reversed(defined):
++            if stage<2:
++                accepted="firstAccepted" if stage==0 else "secondAccepted"
++                body=f"(check_sound {pbase}F{i}.{accepted} Int World Error ({pbase}M primitive external))"
++            else:
++                body=f"(step{stage}F{i} primitive external)"
++            proof=f"entries_cons ({pbase}M primitive external) rfl rfl {body} ({proof})"
++        text+=f"theorem complete{stage} {{World Error : Type}} (primitive : Prim → List Int → Int)\n"
++        text+=f"    (external : External World Error registry) :\n"
++        text+=f"    PreservesEntries ({pbase}M primitive external) entries{stage} entries{stage+1} :=\n  {proof}\n"
++        complete.append("Merlin.GraphGateProfileAdjacent.complete"+str(stage))
++    text+=f"theorem original_join : entries0 = {pbase}originalEntries := rfl\n"
++    text+=f"theorem final_join : entries4 = {pbase}finalEntries := rfl\n"
++    text+="end Merlin.GraphGateProfileAdjacent\n"
++    return text,tuple(roots+complete+["Merlin.GraphGateProfileAdjacent.original_join","Merlin.GraphGateProfileAdjacent.final_join"]),complete
++
++
++def _query(capture, profile, changed):
++    from .lean_graph_state_pipeline_emit import emit as pipeline_emit
++    from .lean_graph_state_integer_emit import emit as integer_emit
++    integer_prefix = profile == INTEGER
++    query = integer_emit(capture["prefix"], pipeline_capture=capture["pipeline"]) if integer_prefix else pipeline_emit(capture["pipeline"])
++    pbase = "Merlin.GraphStateIntegerInstance.Suffix." if integer_prefix else "Merlin.GraphStatePipelineInstance."
++    roots = [pbase+n for n in ("complete", "controlAccepted", "literalsAccepted", "literalsFit",
++                              "originalEntriesChecked", "finalEntriesChecked")]
++    adjacent = [[], [], [], []]
++    for i, function in enumerate(capture["pipeline"]["stages"][0]["functions"]):
++        if function["declaration"]:
++            continue
++        base = pbase+f"F{i}."
++        roots += [base+n for n in ("actual", "firstAccepted", "secondAccepted", "firstTwo", *(f"typed{k}" for k in range(5)))]
++        adjacent[0].append(base+"firstAccepted"); adjacent[1].append(base+"secondAccepted")
++        if i in changed:
++            roots += [base+n for n in ("body_group", "innerAccepted", "inner_same", "outer_same",
++                "suffixAccepted23", "suffixAccepted34", "suffix_same23", "suffix_same34", "unrollBoundsChecked",
++                "segmentBoundsChecked", "form2", "form3", "form4", "unroll_actual", "segment_actual")]
++            adjacent[2].append(base+"unroll_actual"); adjacent[3].append(base+"segment_actual")
++    adjacent_text, adjacent_roots, complete_roots = _adjacent_rosters(capture,pbase,changed)
++    query += adjacent_text
++    roots += list(adjacent_roots)
++    adjacent = [(root,*local) for root,local in zip(complete_roots,adjacent,strict=True)]
++    if integer_prefix:
++        base = "Merlin.GraphStateIntegerInstance."
++        roots += [base+n for n in ("originalRegistry", "prefix_actual", "exactMiddle", "complete")]
++        prefix_roots = []
++        for i, f in enumerate(capture["prefix"]["functions"]):
++            if not f["declaration"]:
++                names = [base+f"F{i}."+n for n in ("actual", "reached", "localRewrites", "beforeTyped", "afterTyped", "firstNormalized", "secondNormalized")]
++                roots += names; prefix_roots.append(names[0])
++        adjacent.insert(0, [base+"prefix_actual",base+"exactMiddle",*prefix_roots])
++        query += '''theorem merlin_profile_transform {World Error : Type}
++    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.registry)
++    (typed : ∀ identity arguments world values final,
++      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
++        (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).inputs arguments →
++      external.run identity arguments world = .ok (values,final) →
++      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
++        (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).outputs values) :
++    Merlin.GraphState.Integer.PreservesEntriesCanonical
++      (Merlin.GraphStateIntegerInstance.Suffix.M Merlin.GraphState.Integer.primitive external)
++      Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries :=
++  Merlin.GraphStateIntegerInstance.complete external typed
++'''
++    else:
++        query += '''theorem merlin_profile_transform {World Error : Type}
++    (primitive : Merlin.GraphState.Scalar.Prim → List Int → Int)
++    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) :
++    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external)
++      Merlin.GraphStatePipelineInstance.originalEntries Merlin.GraphStatePipelineInstance.finalEntries :=
++  Merlin.GraphStatePipelineInstance.complete primitive external
++'''
++    roots += ["Merlin.GraphState.Scalar.check_sound", "Merlin.GraphState.Pipeline.entries_cons",
++              "Merlin.GraphState.Pipeline.unroll_loop", "Merlin.GraphState.Pipeline.segment_loop",
++              "Merlin.GraphState.Pipeline.Scope.check_sound", "Merlin.GraphState.Pipeline.checkControl_sound",
++              "Merlin.GraphState.Pipeline.checkLiterals_sound"]
++    if integer_prefix:
++        roots += ["Merlin.GraphState.Integer."+name for name in (
++            "programs_sound", "Relation.sound", "typed_result", "typed_reached", "compose_suffix",
++            "index_model_typing", "canonical_iff")]
++    roots.append(profile.final_root)
++    return query, tuple(roots), tuple((k, tuple(v)) for k, v in zip(profile.kinds, adjacent, strict=True))
++
++
++def prepare(profile_name, buffers, settings):
++    from merlin.transforms.certificates import parse_ir
++    from .lean_graph_input_admission import admit_text
++    profile = selected(profile_name)
++    if type(settings) is not Settings:
++        raise ValueError("typed explicit settings required")
++    settings.validate()
++    if (type(buffers) is not tuple or len(buffers) != len(profile.kinds)+1
++            or any(type(text) is not str or len(text.encode()) > 4*1024*1024 for text in buffers)):
++        raise ValueError("exact bounded complete five/six buffer tuple required")
++    for text in buffers:
++        admit_text(text)
++    modules = tuple(parse_ir(text) for text in buffers)
++    _admit(modules)
++    capture = _projection(modules, settings, profile == INTEGER)
++    changed = _domain(capture)
++    attribution = _recheck(buffers, modules, profile, settings)
++    query, roots, boundary_roots = _query(capture, profile, changed)
++    if len(query.encode()) > 4*1024*1024 or len(roots) != len(set(roots)) or any(not r for _, r in boundary_roots):
++        raise ValueError("bounded query with distinct complete endpoint/adjacent roots required")
++    return PreparedProfile("merlin.graph_larger_profile_prepared.v1", profile.name, settings, profile.kinds,
++        profile.domain, profile.relation, profile.premises, sys.version, tuple(sha(text) for text in buffers),
++        canonical(attribution), canonical(capture), query, roots, boundary_roots, _sources(query))
+diff --git a/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py b/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py
+@@ -0,0 +1,84 @@
++"""Typed future request recipe; no provider selection, construction or authority.
++
++Larger closures require independent source/native review. Fv5/minimal7 is not
++expanded, reused implicitly or given additional modules by this adapter.
++"""
++from dataclasses import asdict, dataclass
++from pathlib import Path
++
++from .lean_graph_pipeline_gate_profiles import INTEGER, selected
++from .lean_graph_pipeline_gate_profile_prepare import prepare
++from .lean_graph_pipeline_gate_projection import canonical, project_lean_sources, sha
++
++
++@dataclass(frozen=True)
++class ProjectSource:
++    module: str
++    path: str
++    sha256: str
++    bytes: int
++
++
++@dataclass(frozen=True)
++class FutureRequest:
++    schema: str
++    profile: str
++    prepared_identity: str
++    module: str
++    query: str
++    query_sha256: str
++    exact_final_statement: str
++    final_root: str
++    support_roots: tuple[str, ...]
++    boundary_roots: tuple[tuple[str, tuple[str, ...]], ...]
++    project_sources: tuple[ProjectSource, ...]
++    domain: str
++    relation: str
++    premises: tuple[str, ...]
++    entry_contract: str
++    audit_policy: tuple[str, ...]
++    host_admission_requirements: tuple[str, ...]
++    query_contract: str = "pure_declarations_separate_root_audit_v1"
++    provider_selection: str = "UNSELECTED_HELD_REQUIRES_NEW_EXACT_CONTEXT_REVIEW"
++
++    def describe(self):
++        return {**asdict(self), "authority": False, "native_authorization": False,
++                "query_status": "UNCOMPILED", "outcome": "UNOBSERVED", "qualification": "UNQUALIFIED"}
++
++
++def request(profile_name, buffers, settings):
++    profile = selected(profile_name)
++    prepared = prepare(profile_name, buffers, settings)
++    if prepared.domain != profile.domain or prepared.relation != profile.relation or prepared.roots[-1] != profile.final_root:
++        raise ValueError("exact profile/domain/root contract differs")
++    imports = tuple(word for line in prepared.query.splitlines() if line.startswith("import ") for word in line.split()[1:])
++    closure = project_lean_sources(imports)
++    source_map = tuple(ProjectSource("Merlin." + Path(r.path).stem, r.path, r.sha256, r.size) for r in closure)
++    if tuple(r for r in prepared.sources if r.path.endswith(".lean")) != closure:
++        raise ValueError("exact separate query import closure required; implicit unions refused")
++    marker = "theorem " + profile.final_root
++    if prepared.query.count(marker) != 1 or not all(roots for _, roots in prepared.boundary_roots):
++        raise ValueError("one full-entry final statement and every actual boundary root required")
++    return FutureRequest("merlin.graph_larger_profile_request.v1", profile.name, prepared.identity,
++        "GraphLargerProfile_" + prepared.identity, prepared.query, sha(prepared.query),
++        marker + prepared.query.split(marker, 1)[1], profile.final_root, prepared.roots[:-1],
++        prepared.boundary_roots, source_map, profile.domain, profile.relation, profile.premises,
++        "canonical word inputs on correctly sized entries; missing/wrong arity included" if profile == INTEGER
++        else "all Int entry arguments; missing/wrong arity included",
++        ("exact final and EVERY listed support/boundary root type and transitive std3 audit",
++         "only propext/Classical.choice/Quot.sound; no reflection or new axioms",
++         "exact selected project source/import/object closure and runtime pre/post evidence",
++         "same typed live CheckedQuery identity revalidated under newly approved provider"),
++        ("fresh recomputation from every original actual buffer and registered adjacent roster",
++         "SAME live original-to-final completion AND all checked actual adjacent boundary roots/receipts",
++         "exact source/query/domain/entry-contract/provider/budget binding at delivery",
++         "plan_only=False enforced by reviewed service; no local/saved/copied JSON authority",
++         "no promotion from old qualified receipts or current minimal7/two-kind completions"))
++
++
++def matches(saved, profile_name, buffers, settings):
++    return type(saved) is dict and canonical(saved) == canonical(request(profile_name, buffers, settings).describe())
++
++
++def provider_arguments(*args, **kwargs):
++    raise RuntimeError("larger source recipe is not an authorized provider context; no default SDK or module union")
+diff --git a/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py b/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py
+@@ -0,0 +1,167 @@
++"""SDK-free bounded adapter checks using actual retained historical buffers.
++
++No historical test suite, proof runner, receipt replay or qualification executes.
++"""
++from pathlib import Path
++from dataclasses import asdict
++import importlib.util
++import json
++import sys
++import unittest
++from unittest.mock import patch
++
++PRIMARY = None
++PIPELINE = "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual"
++INTEGER = "out/artifacts/verification/graph-state-integer/review/sealed-v2/qualification-v2/intake/chain-i32/producer/actual"
++
++
++def buffers(kind):
++    directory, count = (PIPELINE, 5) if kind == "pipeline" else (INTEGER, 6)
++    return tuple((PRIMARY/directory/f"stage{i}.mlir").read_text() for i in range(count))
++
++
++class Profiles(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        from merlin.verify import lean_graph_pipeline_gate_profiles as profiles
++        from merlin.verify import lean_graph_pipeline_gate_profile_prepare as preparation
++        from merlin.verify import lean_graph_pipeline_gate_profile_requests as requests
++        cls.profiles, cls.preparation, cls.requests = profiles, preparation, requests
++        cls.settings = profiles.Settings(2, 3, 32)
++
++    def test_actual_five_and_six_buffers_emit_frozen_complete_roots(self):
++        from merlin.verify.lean_graph_state_pipeline_emit import emit as suffix_emit
++        from merlin.verify.lean_graph_state_integer_emit import emit as prefix_emit
++        for name, profile in (("pipeline", self.profiles.SCF), ("integer", self.profiles.INTEGER)):
++            with self.subTest(profile=profile.name):
++                settings=self.profiles.Settings(3,2,64) if name=='integer' else self.settings
++                p = self.preparation.prepare(profile.name, buffers(name), settings)
++                capture = json.loads(p.capture)
++                frozen = prefix_emit(capture['prefix'], pipeline_capture=capture['pipeline']) if name=='integer' else suffix_emit(capture['pipeline'])
++                self.assertTrue(p.query.startswith(frozen))
++                self.assertEqual(len(p.buffers), len(profile.kinds)+1)
++                self.assertTrue(all(p.buffers[i] != p.buffers[i+1] for i in range(len(profile.kinds))))
++                self.assertEqual(tuple(k for k,_ in p.boundary_roots), profile.kinds)
++                self.assertEqual(p.roots[-1], 'merlin_profile_transform')
++                self.assertEqual(len(p.roots),len(set(p.roots)))
++                self.assertNotIn('#print', p.query)
++                self.assertEqual(p.describe()['outcome'],'UNOBSERVED')
++                if name=='integer':
++                    self.assertIn('PreservesEntriesCanonical',p.query)
++                    self.assertIn('exactMiddle',p.query)
++                    self.assertIn('index_model_typing',p.query)
++                else:
++                    self.assertIn('PreservesEntries',p.query)
++                self.assertIn('Merlin.GraphGateProfileAdjacent.complete3',p.roots)
++                request=self.requests.request(profile.name,buffers(name),settings)
++                self.assertGreater(len(request.project_sources),7)
++                self.assertFalse(request.describe()['native_authorization'])
++                self.assertTrue(self.requests.matches(request.describe(),profile.name,buffers(name),settings))
++
++    def test_stale_middle_observer_body_control_return_refuse(self):
++        values=buffers('pipeline')
++        variants=[]
++        for index,old,new in ((2,'arith.addi','arith.subi'),(4,'@partial','@other'),
++                               (3,'value = 2 : index','value = 4 : index'),
++                               (4,'"func.return"(%out_3)','"func.return"(%x)')):
++            text=values[index].replace(old,new)
++            self.assertNotEqual(text,values[index])
++            from merlin.transforms.certificates import parse_ir
++            parse_ir(text).verify()
++            variant=list(values);variant[index]=text;variants.append(tuple(variant))
++        variants.append((values[0],values[1],values[1],values[3],values[4]))
++        for variant in variants:
++            with self.subTest(variant=hash(variant)),self.assertRaises(ValueError):
++                self.preparation.prepare(self.profiles.SCF.name,variant,self.settings)
++
++    def test_unsupported_settings_tail_dynamic_and_flags(self):
++        values=buffers('pipeline')
++        for settings in (self.profiles.Settings(1,3,32),self.profiles.Settings(2,1,32),
++                         self.profiles.Settings(2,3,16),self.profiles.Settings(True,3,32)):
++            with self.assertRaises(ValueError):self.preparation.prepare(self.profiles.SCF.name,values,settings)
++        # Modify ALL buffers coherently so stale hashes alone cannot hide a
++        # broader domain. Dynamic control comes from a real index argument.
++        tail=tuple(s.replace('value = 24 : index','value = 25 : index') for s in values)
++        with self.assertRaisesRegex(ValueError,'tail|bulk'):self.preparation.prepare(self.profiles.SCF.name,tail,self.settings)
++        flagged=tuple(s.replace('#arith.overflow<none>','#arith.overflow<nsw>') for s in values)
++        with self.assertRaisesRegex(ValueError,'flagged'):self.preparation.prepare(self.profiles.SCF.name,flagged,self.settings)
++        from merlin.transforms.certificates import parse_ir,ir_text
++        from xdsl.dialects import arith,builtin,func,scf
++        dynamic=[]
++        for text in values:
++            module=parse_ir(text)
++            main=next(op for op in module.body.block.ops if type(op) is func.FuncOp and op.sym_name.data=='main')
++            arg=main.body.block.insert_arg(builtin.IndexType(),2)
++            sig=main.function_type
++            main.properties['function_type']=builtin.FunctionType.from_lists([*sig.inputs,builtin.IndexType()],sig.outputs)
++            loop=next(op for op in main.walk() if type(op) is scf.ForOp)
++            operands=list(loop.operands);operands[1]=arg;loop.operands=operands
++            module.verify();dynamic.append(ir_text(module))
++        with self.assertRaisesRegex(ValueError,'two entry|static'):
++            self.preparation.prepare(self.profiles.SCF.name,tuple(dynamic),self.settings)
++
++    def test_wrong_profile_domain_roots_and_source_map_are_not_authority(self):
++        values=buffers('pipeline');profile=self.profiles.SCF
++        request=self.requests.request(profile.name,values,self.settings)
++        for key,value in (('profile',self.profiles.INTEGER.name),('domain','possible_success'),
++                          ('final_root','localLemma'),('support_roots',[]),('project_sources',[]),
++                          ('boundary_roots',request.boundary_roots[-1:])):
++            forged=request.describe();forged[key]=value
++            self.assertFalse(self.requests.matches(forged,profile.name,values,self.settings))
++        with self.assertRaises(ValueError):self.preparation.prepare(self.profiles.INTEGER.name,values,self.settings)
++        with self.assertRaises(ValueError):self.requests.request('minimal7',values,self.settings)
++        self.assertFalse(self.profiles.compiler_eligible(request))
++        self.assertFalse(self.profiles.compiler_eligible(request.describe()))
++        with self.assertRaises(RuntimeError):self.profiles.public_check(request)
++        with self.assertRaises(RuntimeError):self.requests.provider_arguments(request)
++
++    def test_old_guards_runners_and_minimal_provider_are_never_called(self):
++        from merlin.verify import lean_graph_state_scalar_kernel as kernel
++        from merlin.verify import lean_graph_state as stable
++        from merlin.verify import lean_graph_pipeline_gate_provider as minimal
++        with patch.object(kernel,'prepare',side_effect=AssertionError('no old runtime prepare')),patch.object(
++                kernel,'guard',side_effect=AssertionError('no old guard')),patch.object(
++                stable,'prepare',side_effect=AssertionError('no runtime selection')),patch.object(
++                minimal,'selected',side_effect=AssertionError('no minimal provider union')):
++            self.requests.request(self.profiles.SCF.name,buffers('pipeline'),self.settings)
++
++
++def retain(destination):
++    destination.mkdir(parents=True,exist_ok=False)
++    Profiles.setUpClass()
++    for name,profile in (('pipeline',Profiles.profiles.SCF),('integer',Profiles.profiles.INTEGER)):
++        path=destination/name;path.mkdir()
++        values=buffers(name)
++        settings=Profiles.profiles.Settings(3,2,64) if name=='integer' else Profiles.settings
++        p=Profiles.preparation.prepare(profile.name,values,settings)
++        r=Profiles.requests.request(profile.name,values,settings)
++        for i,text in enumerate(values):(path/f'stage{i}.mlir').write_text(text)
++        (path/'PREPARED.json').write_text(json.dumps(p.describe(),indent=2)+'\n')
++        (path/'REQUEST.json').write_text(json.dumps(r.describe(),indent=2)+'\n')
++        (path/'Query.lean').write_text(p.query)
++        (path/'PROVENANCE.json').write_text(json.dumps({'retained_original_directory':PIPELINE if name=='pipeline' else INTEGER,
++            'original_population_member':'i32' if name=='pipeline' else 'chain-i32',
++            'historical_qualification_not_transferred':True,'source_buffers_exact':True},indent=2)+'\n')
++
++
++if __name__=='__main__':
++    PRIMARY=Path(sys.argv[1]).resolve();producer=Path(sys.argv[2]).resolve()
++    spec=importlib.util.spec_from_file_location('gate_source_tests',Path(__file__).with_name('test_lean_graph_pipeline_gate.py'))
++    old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
++    old.isolated_owners(PRIMARY,producer)
++    # Explicit source ownership: the frozen pure emitter's historical import
++    # references primary common.run_owned, absent at the old producer revision.
++    # Select the actual primary common source; do not supply a shim function.
++    import types
++    common=types.ModuleType('merlin.common')
++    common.__path__=[str(PRIMARY/'src/merlin/common'),str(producer/'src/merlin/common')]
++    sys.modules['merlin.common']=common
++    def held(event,args):
++        if event=='open' and isinstance(args[0],(str,bytes)):
++            name=str(args[0])
++            if ('/original-runtime-candidate' in name or '/toolchain/' in name or name.endswith(('.olean','.ilean'))):
++                raise AssertionError('no selected/archived runtime objects in source-only profile tests')
++    sys.addaudithook(held)
++    args=sys.argv[3:]
++    if args and args[0]=='--retain':retain(Path(args[1]));args=args[2:]
++    unittest.main(argv=[sys.argv[0],*args])

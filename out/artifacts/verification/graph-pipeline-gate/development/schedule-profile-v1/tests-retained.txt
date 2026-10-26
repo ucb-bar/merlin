@@ -1,0 +1,11 @@
+test_actual_pinned_registered_producer_and_complete_entry_reuse (__main__.Schedule.test_actual_pinned_registered_producer_and_complete_entry_reuse) ... ok
+test_compiler_valid_wrong_result_observer_reorder_and_dropped_function (__main__.Schedule.test_compiler_valid_wrong_result_observer_reorder_and_dropped_function) ... ok
+test_exact_request_wrong_domain_roots_and_held_public_route (__main__.Schedule.test_exact_request_wrong_domain_roots_and_held_public_route) ... ok
+test_partial_empty_effect_arithmetic_is_not_total_or_commutative (__main__.Schedule.test_partial_empty_effect_arithmetic_is_not_total_or_commutative) ... ok
+test_region_and_internal_call_domains_refuse (__main__.Schedule.test_region_and_internal_call_domains_refuse) ... ok
+test_stale_order_and_permutation_fail_without_report_authority (__main__.Schedule.test_stale_order_and_permutation_fail_without_report_authority) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.406s
+
+OK

@@ -1,0 +1,2119 @@
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate.py
+@@ -0,0 +1,122 @@
++"""Live whole-program gate authority, separate from local proof diagnostics.
++
++Only this trusted host's fresh checker invocation may issue a completion. Saved
++JSON, status strings, dataclass reconstruction and local legacy receipts cannot.
++Python module integrity and parser/projection correspondence remain trusted.
++"""
++from __future__ import annotations
++
++import weakref
++from dataclasses import asdict, dataclass
++
++from . import lean_graph_pipeline_gate_native as native
++from .lean_graph_pipeline_gate_projection import GateNotEstablished, GateUnavailable, GateUnsupported, canonical, prepare, sha
++
++
++@dataclass(frozen=True, eq=False)
++class WholeProgramCompletion:
++    schema: str
++    prepared_identity: str
++    source: str
++    target: str
++    domain: str
++    relation: str
++    premises: tuple[str, ...]
++    query_sha256: str
++    roots: tuple[str, ...]
++    toolchain_identity: str
++    audit_sha256: str
++
++    def to_dict(self):
++        # Descriptive serialization deliberately has no loader/issuer API.
++        return {**asdict(self), "status": "conditional_model_relation",
++                "native_fidelity": "not_established", "review_approval": False,
++                "source_success_in_general": False, "poison_freedom": False}
++
++
++@dataclass(frozen=True)
++class GateReport:
++    status: str
++    reason: str
++
++    def to_dict(self):
++        return asdict(self)
++
++
++_LIVE = weakref.WeakValueDictionary()
++_STD3 = frozenset({"propext", "Classical.choice", "Quot.sound"})
++
++
++def _digest(value):
++    return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
++
++
++def verify(change, *, toolchain=None, deadline=None):
++    return _verify(change, toolchain=toolchain, deadline=deadline)
++
++
++def _verify(change, *, toolchain=None, deadline=None, expected_identity=None):
++    try:
++        prepared = prepare(change)
++        if expected_identity is not None and prepared.identity != expected_identity:
++            raise GateUnavailable("fresh replay differs from the exact original prepared source")
++        completed = native.check(prepared, toolchain=toolchain, deadline=deadline)
++        if type(completed) is not native.KernelCompletion:
++            raise GateUnavailable("checker returned no typed live completion")
++        if (completed.prepared_identity != prepared.identity or completed.query_sha256 != sha(prepared.query)
++                or completed.checked_roots != prepared.roots
++                or type(completed.axioms) is not tuple or not set(completed.axioms) <= _STD3
++                or not _digest(completed.toolchain_identity) or not _digest(completed.audit_sha256)):
++            raise GateUnavailable("checker completion lacks exact query/root/std3/context binding")
++        # Fresh re-projection also reopens source identities. No successful query
++        # can authorize intervening source, mapper, parser, or program changes.
++        if prepare(change) != prepared:
++            raise GateUnavailable("boundary or trusted source changed during checking")
++        receipt = WholeProgramCompletion(
++            "merlin.live_whole_program_completion.v1", prepared.identity,
++            prepared.source, prepared.target, prepared.domain, prepared.relation,
++            prepared.premises, sha(prepared.query), prepared.roots,
++            completed.toolchain_identity, completed.audit_sha256)
++        _LIVE[id(receipt)] = receipt
++        return receipt
++    except GateUnsupported as error:
++        return GateReport("unsupported", str(error))
++    except GateNotEstablished as error:
++        return GateReport("not_established", str(error))
++    except (GateUnavailable, OSError, ValueError, TypeError, KeyError, AttributeError, ImportError) as error:
++        return GateReport("unavailable", str(error))
++
++
++def replay(change, original_prepared, *, toolchain=None, deadline=None):
++    """Saved metadata constrains fresh work; it never seeds the live ledger.
++
++    Never open paths from the untrusted document. Reconstruct the entire current
++    request/source closure, compare closed canonical data, then run the checker.
++    """
++    try:
++        prepared = prepare(change)
++        if type(original_prepared) is not dict or canonical(original_prepared) != canonical(asdict(prepared)):
++            raise GateUnavailable("saved original differs from fresh complete preparation")
++        return _verify(change, toolchain=toolchain, deadline=deadline, expected_identity=prepared.identity)
++    except GateUnsupported as error:
++        return GateReport("unsupported", str(error))
++    except (GateUnavailable, OSError, ValueError, TypeError, KeyError, AttributeError, ImportError) as error:
++        return GateReport("unavailable", str(error))
++
++
++def accepted(receipt, change, *, toolchain=None):
++    if type(receipt) is not WholeProgramCompletion or _LIVE.get(id(receipt)) is not receipt:
++        return False
++    try:
++        prepared = prepare(change)
++        if (receipt.schema != "merlin.live_whole_program_completion.v1"
++                or receipt.prepared_identity != prepared.identity or receipt.source != prepared.source
++                or receipt.target != prepared.target or receipt.domain != prepared.domain
++                or receipt.relation != prepared.relation or receipt.premises != prepared.premises
++                or receipt.query_sha256 != sha(prepared.query) or receipt.roots != prepared.roots):
++            return False
++        # No old completion can bypass a newly imposed native dependency hold.
++        # This revalidation must use the same selected identity, never refresh it.
++        return native.revalidate(receipt, toolchain=toolchain) is True
++    except (GateUnsupported, GateUnavailable, OSError, ValueError, TypeError, KeyError, AttributeError, ImportError):
++        return False
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_emit.py
+@@ -0,0 +1,196 @@
++"""SDK-free literal serializer for the unchanged GraphState.Scalar checker.
++
++The pure serializer functions below are extracted unchanged from the owned
++lean_graph_state_scalar.py leaf. Separating them avoids importing its historical
++native runner merely to emit a candidate query. No production transformation or
++Lean semantics is substituted. New source identity; no historical qualification.
++"""
++from __future__ import annotations
++
++
++def integer(value, *, natural=False):
++    if type(value) is not int or natural and value < 0:
++        raise ValueError("exact integer graph field required; bool/float refused")
++    return str(value) if natural else "(" + str(value) + ")"
++
++
++def closed(value, keys):
++    if type(value) is not dict or set(value) != set(keys):
++        raise ValueError("complete closed typed graph record required")
++
++
++def type_code(value):
++    if type(value) is not dict or len(value) != 1:
++        raise ValueError("exact one typed value constructor required")
++    if set(value) == {"index"} and value["index"] is True:
++        return ".index"
++    if set(value) == {"bits"} and type(value["bits"]) is int and value["bits"] > 0:
++        return "(.bits " + str(value["bits"]) + ")"
++    if set(value) == {"opaque"}:
++        return "(.opaque " + integer(value["opaque"], natural=True) + ")"
++    raise ValueError("unsupported exact scalar value type")
++
++
++def types(values):
++    if type(values) is not list:
++        raise ValueError("ordered complete type list required")
++    return "[" + ",".join(type_code(value) for value in values) + "]"
++
++
++def indices(values):
++    if type(values) is not list:
++        raise ValueError("complete ordered SSA operand list required")
++    return "[" + ",".join(integer(value, natural=True) for value in values) + "]"
++
++
++def primitive(value):
++    if type(value) is not dict:
++        raise ValueError("closed pure primitive record required")
++    kind = value["kind"]
++    if kind == "constant":
++        closed(value, {"kind", "width", "value"})
++        return "(.constant " + integer(value["width"], natural=True) + " " + integer(value["value"]) + ")"
++    if kind in ("add", "sub", "mul"):
++        closed(value, {"kind", "width"})
++        return "(." + kind + " " + integer(value["width"], natural=True) + ")"
++    if kind in ("sext", "zext", "trunc"):
++        closed(value, {"kind", "source", "target"})
++        return (
++            "(."
++            + kind
++            + " "
++            + integer(value["source"], natural=True)
++            + " "
++            + integer(value["target"], natural=True)
++            + ")"
++        )
++    raise ValueError("pure primitive lies outside exact unflagged fixed-width whitelist")
++
++
++def program(records, *, depth=0):
++    if type(records) is not list or not records or len(records) > 256 or depth > 16:
++        raise ValueError("complete bounded nonempty supported block required")
++    closed(records[-1], {"ret"})
++    result = "(.ret " + indices(records[-1]["ret"]) + ")"
++    for record in reversed(records[:-1]):
++        if "pure" in record:
++            closed(record, {"pure", "arguments"})
++            result = "(.pure " + primitive(record["pure"]) + " " + indices(record["arguments"]) + " " + result + ")"
++        elif "effect" in record:
++            closed(record, {"effect", "arguments", "outputs"})
++            result = (
++                "(.opaque "
++                + integer(record["effect"], natural=True)
++                + " "
++                + indices(record["arguments"])
++                + " "
++                + types(record["outputs"])
++                + " "
++                + result
++                + ")"
++            )
++        elif "loop" in record:
++            closed(record, {"loop"})
++            loop = record["loop"]
++            closed(loop, {"bounds", "initial", "carries", "body"})
++            if type(loop["bounds"]) is not list or len(loop["bounds"]) != 3:
++                raise ValueError("complete exact lower/upper/stride operands required")
++            bounds = " ".join(integer(value, natural=True) for value in loop["bounds"])
++            result = (
++                "(.loop "
++                + bounds
++                + " "
++                + indices(loop["initial"])
++                + " "
++                + types(loop["carries"])
++                + " "
++                + program(loop["body"], depth=depth + 1)
++                + " "
++                + result
++                + ")"
++            )
++        else:
++            raise ValueError("unsupported/missing complete statement")
++    return result
++
++
++def budget(records, count, work, captured_sizes=None):
++    """Conservative expression-expansion bound; never scales with loop trips."""
++    environment = [1] * count if captured_sizes is None else list(captured_sizes)
++    for record in records:
++        if "loop" in record:
++            loop = record["loop"]
++            budget(
++                loop["body"],
++                len(environment) + len(loop["carries"]) + 1,
++                work,
++                [1] * (len(loop["carries"]) + 1) + environment,
++            )
++            environment = [1] * len(loop["carries"]) + environment
++            continue
++        args = record.get("arguments", record.get("ret", []))
++        indices(args)
++        if any(index >= len(environment) for index in args):
++            # Let the proved checker demonstrate valid-data dominance rejection.
++            return
++        size = 1 + sum(environment[index] for index in args)
++        work[0] += size
++        if size > 4096 or work[0] > 65536:
++            raise ValueError("supported scalar symbolic expression budget exceeded")
++        if "pure" in record:
++            environment.insert(0, size)
++        elif "effect" in record:
++            environment = [1] * len(record["outputs"]) + environment
++
++
++def emit_query(projection):
++    registry = []
++    for row in projection["registry"]:
++        registry.append("{inputs := " + types(row["inputs"]) + ",outputs := " + types(row["outputs"]) + "}")
++    text = (
++        "import Merlin.GraphStateScalar\nset_option maxRecDepth 4096\nset_option maxHeartbeats 2000000\n"
++        "namespace Merlin.GraphStateScalarInstance\nopen Merlin.GraphState.Scalar\n"
++        "def registry : List Signature := [" + ",".join(registry) + "]\n"
++    )
++    roots = [
++        "Merlin.GraphState.Scalar.check_sound",
++        "Merlin.GraphState.Scalar.check_typed",
++        "Merlin.GraphState.Scalar.normalize_sound",
++    ]
++    defined = 0
++    for index, function in enumerate(projection["functions"]):
++        if function["declaration"]:
++            continue
++        defined += 1
++        for key in ("before", "after"):
++            budget(function[key], len(function["inputs"]), [0])
++        namespace = "F" + str(index)
++        text += (
++            "namespace " + namespace + "\n"
++            "def inputs : List Ty := " + types(function["inputs"]) + "\n"
++            "def outputs : List Ty := " + types(function["outputs"]) + "\n"
++            "def before : Program := " + program(function["before"]) + "\n"
++            "def after : Program := " + program(function["after"]) + "\n"
++            "theorem accepted : check registry inputs outputs before after = true := by decide\n"
++            "theorem actual : Preserves registry inputs.length before after := check_sound accepted\n"
++            "theorem typed : Typed registry inputs outputs before ∧ Typed registry inputs outputs after :=\n"
++            "  check_typed accepted\n"
++            "theorem initialized {Value World Error : Type} (model : Model Value World Error registry)\n"
++            "    (values : List Value) (world : World) (arity : values.length = inputs.length) :\n"
++            "    Shaped outputs.length (evalProgram model before values world) ∧\n"
++            "    Shaped outputs.length (evalProgram model after values world) :=\n"
++            "  check_initialized accepted model values world arity\n"
++            "theorem operands_initialized {Value World Error : Type} (model : Model Value World Error registry)\n"
++            "    (values : List Value) (world : World) (arity : values.length = inputs.length) :\n"
++            "    Initialized model before values world ∧ Initialized model after values world :=\n"
++            "  check_operands_initialized accepted model values world arity\n"
++            "end " + namespace + "\n"
++        )
++        roots += [
++            "Merlin.GraphStateScalarInstance." + namespace + "." + name
++            for name in ("accepted", "actual", "typed", "initialized", "operands_initialized")
++        ]
++    if not defined:
++        raise ValueError("no defined complete function available for a graph proof")
++    return text + "end Merlin.GraphStateScalarInstance\n", roots
++
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_models.py
+@@ -0,0 +1,107 @@
++"""Arithmetic-sensitive witness candidates on actual projected scalar programs.
++
++The host computes proposed literal results; Lean must check them independently.
++These are neither approval of the primitive model nor native execution evidence.
++"""
++from __future__ import annotations
++
++import json
++from dataclasses import asdict
++
++from .lean_graph_pipeline_gate_projection import GateUnsupported, project_lean_sources
++
++
++def evaluate(records, arguments, *, fail=False):
++    """Small example evaluator; never consulted by the compiler authority gate."""
++    env, world = list(arguments), 7
++    for row in records:
++        if "ret" in row:
++            return {"values": [env[i] for i in row["ret"]], "world": world}
++        args = [env[i] for i in row["arguments"]]
++        if "effect" in row:
++            world += 1
++            if fail:
++                return {"error": 17, "world": world}
++            env = [args[0]] + env
++            continue
++        op = row["pure"]
++        kind = op["kind"]
++        if kind == "constant":
++            value = op["value"]
++        elif kind == "add":
++            value = args[0] + args[1]
++        elif kind == "sub":
++            value = args[0] - args[1]
++        elif kind == "mul":
++            value = args[0] * args[1]
++        else:
++            raise GateUnsupported("example mode supports scalar constants/add/sub/mul only")
++        env.insert(0, value % (1 << op["width"]))
++    raise GateUnsupported("example has no complete return")
++
++
++def witness(prepared):
++    projection = json.loads(prepared.projection)
++    bits = {"bits": 8}
++    if any(r["inputs"] != [bits] or r["outputs"] != [bits] for r in projection["registry"]):
++        raise GateUnsupported("echo witness needs only i8-to-i8 opaque descriptors")
++    functions = [(i, f) for i, f in enumerate(projection["functions"]) if not f["declaration"]
++                 and f["inputs"] == [bits, bits] and f["outputs"] == [bits]]
++    if len(functions) != 1:
++        raise GateUnsupported("echo witness needs one two-input i8 entry")
++    index, function = functions[0]
++    for side in ("before", "after"):
++        rows = function[side]
++        if any("loop" in r for r in rows) or sum("effect" in r for r in rows) != 1:
++            raise GateUnsupported("echo witness needs loop-free arithmetic and one retained observer")
++    candidates = [(arguments, evaluate(function["before"], arguments)) for arguments in ([3, 5], [4, 5])]
++    if candidates[0][1] == candidates[1][1] or any(not r["values"] or r["values"] == [0] for _, r in candidates):
++        raise GateUnsupported("example must demonstrate nonzero arithmetic-sensitive observations")
++    query = "import Merlin.GraphStateIntegerOperations\n" + prepared.query
++    query += '''namespace Merlin.GraphPipelineGateWitness
++open Merlin.GraphState.Scalar
++abbrev registry := Merlin.GraphStateScalarInstance.registry
++def chosen (fail : Bool) : Model Int Nat Int registry where
++  default := 0
++  primitive := Merlin.GraphState.Integer.primitive
++  index := id
++  iterations := fun _ _ _ => []
++  effect := fun identity arguments world =>
++    if fail then .error (17,world+1)
++    else .ok ((signature registry identity).outputs.map (fun _ => arguments.headD 0),world+1)
++  arity := by
++    intro identity arguments world values final success
++    split at success
++    · cases success
++    · cases success; simp only [List.length_map]
++'''
++    roots = list(prepared.roots)
++    for n, (arguments, result) in enumerate(candidates):
++        values = str(arguments).replace(" ", "")
++        expected = ".ok (" + str(result["values"]).replace(" ", "") + "," + str(result["world"]) + ")"
++        query += f"theorem source_success{n} : evalProgram (chosen false) Merlin.GraphStateScalarInstance.F{index}.before {values} 7 = {expected} := rfl\n"
++        query += f"theorem target_success{n} : evalProgram (chosen false) Merlin.GraphStateScalarInstance.F{index}.after {values} 7 = {expected} := by\n"
++        query += f"  rw [← Merlin.GraphStateScalarInstance.F{index}.actual Int Nat Int (chosen false) {values} 7 rfl]\n  exact source_success{n}\n"
++        roots += [f"Merlin.GraphPipelineGateWitness.{side}_success{n}" for side in ("source", "target")]
++    query += f'''theorem source_failure : evalProgram (chosen true) Merlin.GraphStateScalarInstance.F{index}.before [3,5] 7 = .error (.external 17,8) := rfl
++theorem target_failure : evalProgram (chosen true) Merlin.GraphStateScalarInstance.F{index}.after [3,5] 7 = .error (.external 17,8) := by
++  rw [← Merlin.GraphStateScalarInstance.F{index}.actual Int Nat Int (chosen true) [3,5] 7 rfl]
++  exact source_failure
++theorem source_initialized : Initialized (chosen false) Merlin.GraphStateScalarInstance.F{index}.before [3,5] 7 :=
++  (Merlin.GraphStateScalarInstance.F{index}.operands_initialized (chosen false) [3,5] 7 rfl).1
++theorem target_initialized : Initialized (chosen false) Merlin.GraphStateScalarInstance.F{index}.after [3,5] 7 :=
++  (Merlin.GraphStateScalarInstance.F{index}.operands_initialized (chosen false) [3,5] 7 rfl).2
++end Merlin.GraphPipelineGateWitness
++'''
++    roots += ["Merlin.GraphPipelineGateWitness." + label for label in (
++        "source_failure", "target_failure", "source_initialized", "target_initialized")]
++    return query, tuple(roots), {
++        "state": "UNCOMPILED_CANDIDATE", "function_roster_index": index,
++        "query_contract": "pure_declarations_separate_root_audit_v1",
++        "model": "exact wrapping integer primitive; observer echoes its argument and advances world",
++        "success_proposals": [{"input": arguments, "result": result} for arguments, result in candidates],
++        "failure_proposal": {"input": [3, 5], "error": 17, "world": 8},
++        "source_success_assumed": False, "proof_checked": False,
++        "additional_project_sources": [asdict(ref) for ref in project_lean_sources(("Merlin.GraphStateIntegerOperations",))],
++        "model_approved": False, "native_or_poison_fidelity_established": False,
++    }
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_native.py
+@@ -0,0 +1,154 @@
++"""Native boundary held pending independently justified runtime authorization.
++
++There is deliberately no environment flag, receipt field or caller callback
++that can release this hold. This source must receive a reviewed new implementation
++after coordinator authorization, with exact original tool/import/root bindings.
++Old scalar prepare/check_query paths are never called as a fallback.
++"""
++from __future__ import annotations
++
++from collections import OrderedDict
++from dataclasses import dataclass, replace
++import time
++
++from .lean_graph_pipeline_gate_projection import GateNotEstablished, GateUnavailable, sha
++
++_ISSUED = OrderedDict()
++_SEQUENCE = 0
++_STD3 = frozenset({"propext", "Classical.choice", "Quot.sound"})
++
++
++@dataclass(frozen=True)
++class QueryRequest:
++    """SDK-free handoff shape; no request object grants completion authority."""
++    module: str
++    query: bytes
++    final_root: str
++    support_roots: tuple[str, ...]
++    project_sources: tuple[tuple[str, str, str, int], ...]
++
++
++def request(prepared):
++    """Construct the exact request for the reviewed common Context provider.
++
++    The context itself is selected by the trusted host, not this request. It
++    must independently validate source/import/object/runtime bindings before
++    any native action and again in Context.revalidate(CheckedQuery).
++    """
++    from pathlib import Path
++
++    if prepared.schema != "merlin.graph_pipeline_prepared.v3" or prepared.query_contract != "pure_declarations_separate_root_audit_v1":
++        raise GateUnavailable("explicit pure-declaration/separate-audit query contract required")
++    if not prepared.roots or prepared.roots[-1] != "merlin_transform":
++        raise GateUnavailable("missing exact complete-program final root")
++    if len(set(prepared.roots)) != len(prepared.roots):
++        raise GateUnavailable("duplicate expected proof roots")
++    sources = []
++    for ref in prepared.sources:
++        path = Path(ref.path)
++        if path.suffix == ".lean":
++            # This route's fixed existing roots all live directly under Merlin.
++            # No path from a saved report can select an SDK or extra source.
++            if path.parent.name != "Merlin" or not path.stem.isidentifier():
++                raise GateUnavailable("project source outside the supported root layout")
++            sources.append(("Merlin." + path.stem, ref.path, ref.sha256, ref.size))
++    if len({name for name, _, _, _ in sources}) != len(sources):
++        raise GateUnavailable("ambiguous project module source selection")
++    if not {"Merlin.GraphStateScalar", "Merlin.GraphStateGateEntries"} <= {name for name, _, _, _ in sources}:
++        raise GateUnavailable("complete scalar/roster source roots missing")
++    return QueryRequest("GraphPipelineGateQuery", prepared.query.encode(), "merlin_transform",
++                        prepared.roots[:-1], tuple(sources))
++
++
++@dataclass(frozen=True)
++class KernelCompletion:
++    prepared_identity: str
++    query_sha256: str
++    checked_roots: tuple[str, ...]
++    axioms: tuple[str, ...]
++    toolchain_identity: str
++    audit_sha256: str
++
++
++def check(prepared, *, toolchain=None, deadline=None):
++    """No SDK file is opened and no checker/process is launched while held."""
++    raise GateUnavailable("selected libleanshared runtime incident UNKNOWN; native gate is held")
++
++
++def revalidate(receipt, *, toolchain=None):
++    """Future implementation must recheck the SAME authorized original context."""
++    raise GateUnavailable("selected libleanshared runtime incident UNKNOWN; live admission is held")
++
++
++def _check_with_context(prepared, *, toolchain, deadline=None):
++    """INACTIVE integration candidate, callable in SDK-free mocked tests only.
++
++    Public check/revalidate above remain hard-held. After explicit coordinator
++    review/authorization a NEW source version may connect them to these methods.
++    This function does not select a context or read old SDK/archived images.
++    """
++    from .lean_graph_pipeline_gate_provider import bound_context
++
++    controller, data, _ = bound_context(toolchain)
++    CheckedQuery = controller.CheckedQuery
++    ProofRefused, InfrastructureStop = controller.ProofRefused, controller.InfrastructureStop
++    ContextRefusal, FileRef = data.ContextRefusal, data.FileRef
++
++    global _SEQUENCE
++    selected = request(prepared)
++    expected = {name: FileRef(path, digest, size) for name, path, digest, size in selected.project_sources}
++    # This gate selects only its minimal closure. Witnesses and other proof
++    # domains need separately reviewed contexts, never an implicit source union.
++    if toolchain.originals != expected:
++        raise GateUnavailable("gate project source selection differs from common context")
++    if deadline is not None and time.monotonic() >= deadline:
++        raise GateUnavailable("gate host deadline exhausted before checker invocation")
++    _SEQUENCE += 1
++    selected = replace(selected, module=selected.module + "_" + prepared.identity + "_" + str(_SEQUENCE))
++    try:
++        checked = toolchain.check_query(selected.module, selected.query, final_root=selected.final_root,
++                                       support_roots=selected.support_roots)
++        if (type(checked) is not CheckedQuery or checked.context_id != toolchain.context_id
++                or checked.module != selected.module or checked.query.sha256 != sha(selected.query)
++                or checked.query.bytes != len(selected.query) or checked.final_root != selected.final_root
++                or checked.support_roots != selected.support_roots):
++            raise GateUnavailable("common checker returned the wrong complete query/context/root")
++        ordered = (selected.final_root, *selected.support_roots)
++        if tuple(name for name, _ in checked.axioms) != ordered:
++            raise GateUnavailable("common checker did not audit every exact gate root")
++        axioms = tuple(sorted({axiom for _, values in checked.axioms for axiom in values}))
++        if not set(axioms) <= _STD3:
++            raise GateUnavailable("common checker report exceeds the standard-three axiom policy")
++        if toolchain.revalidate(checked) is not checked:
++            raise GateUnavailable("common checker did not revalidate the same live completion")
++        if deadline is not None and time.monotonic() >= deadline:
++            raise GateUnavailable("gate host deadline exhausted during checker invocation; no completion issued")
++        result = KernelCompletion(prepared.identity, sha(selected.query), prepared.roots, axioms,
++                                  checked.context_id, checked.audit.sha256)
++        key = (result.prepared_identity, result.toolchain_identity, result.audit_sha256)
++        _ISSUED[key] = (toolchain, checked)
++        if len(_ISSUED) > 128:
++            _ISSUED.popitem(last=False)
++        return result
++    except ProofRefused as error:
++        raise GateNotEstablished(str(error)) from error
++    except (InfrastructureStop, ContextRefusal) as error:
++        raise GateUnavailable("common context unavailable/held: " + str(error)) from error
++
++
++def _revalidate_with_context(receipt, *, toolchain=None):
++    """INACTIVE paired adapter; no saved document recreates the live handle."""
++    from .lean_graph_pipeline_gate_provider import bound_context
++
++    key = (receipt.prepared_identity, receipt.toolchain_identity, receipt.audit_sha256)
++    found = _ISSUED.get(key)
++    if found is None:
++        raise GateUnavailable("missing original live common-context completion")
++    context, checked = found
++    if toolchain is not None and toolchain is not context:
++        raise GateUnavailable("admission selected a different context object")
++    controller, data, _ = bound_context(context)
++    try:
++        return context.revalidate(checked) is checked
++    except (controller.InfrastructureStop, data.ContextRefusal) as error:
++        raise GateUnavailable("common context no longer admits the original completion: " + str(error)) from error
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_projection.py
+@@ -0,0 +1,254 @@
++"""Fresh actual-buffer projection for the whole-program compiler gate.
++
++Only Python parsing/projection and source bytes are inspected here. This is
++trusted mapping code, not a proof. The unchanged scalar checker proves the
++generated operational relation when an authorized Lean context checks it.
++"""
++from __future__ import annotations
++
++import hashlib
++import json
++import sys
++from dataclasses import asdict, dataclass
++from pathlib import Path
++
++
++class GateUnsupported(ValueError):
++    """A specifically recognized boundary outside this route's domain."""
++
++
++class GateUnavailable(RuntimeError):
++    """Host, implementation or dependency failure; never a semantic refusal."""
++
++
++class GateNotEstablished(Exception):
++    """An authorized kernel ran but did not establish the generated obligation."""
++
++
++DOMAIN = "complete_scalar_roster_equal_outcome_v1"
++RELATION = "all_defined_entries_equal_returns_errors_terminal_world"
++KINDS = frozenset({"scalar_redundancy_elimination", "scalar_loop_invariant_motion"})
++PREMISES = (
++    "trusted xDSL parser and complete typed SSA/module projection",
++    "one common deterministic total state-free pure primitive interpretation",
++    "one common opaque descriptor interpretation on explicit operands and entire world",
++    "local opaque successful result arity contract; errors and terminal world observable",
++    "common finite abstract SCF iterations and index interpretation; no divergence claim",
++    "private SSA cells are not observations; raw MLIR and physical implementation correspondence reviewed separately",
++)
++
++# Only exact, inspected domain messages from project() are semantic refusals.
++# The old source-identity/runtime helpers also raise ValueError: they must never
++# be included here or caught by a generic ValueError -> unsupported adapter.
++_PROJECTION_DOMAIN = frozenset({
++    "complete actual builtin.module pair required",
++    "complete surrounding module metadata changed",
++    "unsupported complete module block geometry",
++    "complete nonempty function/declaration roster required",
++    "unsupported module-level operation; no missing surrounding context",
++    "duplicate actual function symbols",
++    "missing/unsupported actual terminator",
++    "actual operand lacks lexical availability/dominance",
++    "complete graph exceeds explicit scalar intake budget",
++    "unsupported actual CFG; no unreachable block can be dropped",
++    "changed/unsupported terminator metadata or control",
++    "unsupported loop metadata or block geometry",
++    "supported actual SCF control needs a checked positive constant stride",
++    "actual induction/carry argument slots differ",
++    "actual loop result slots differ from carries",
++    "unsupported region semantics; entire boundary refused",
++    "internal-call/fuel composition bridge unavailable; external contracts only",
++    "complete function interface/attributes changed",
++    "unsupported/dropped function CFG blocks",
++    "actual function argument slots differ from interface",
++})
++
++
++def canonical(value):
++    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
++
++
++def sha(value):
++    return hashlib.sha256(value.encode() if isinstance(value, str) else value).hexdigest()
++
++
++@dataclass(frozen=True)
++class Source:
++    path: str
++    sha256: str
++    size: int
++
++
++def source_ref(path):
++    path = Path(path).resolve()
++    if path.suffix not in {".py", ".lean"}:
++        raise GateUnavailable("gate source identity must not inspect runtime objects")
++    before = path.stat()
++    data = path.read_bytes()
++    after = path.stat()
++    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
++    if any(getattr(before, name) != getattr(after, name) for name in fields) or len(data) != after.st_size:
++        raise GateUnavailable("host source changed during identity observation")
++    return Source(str(path), sha(data), len(data))
++
++
++def project_lean_sources(roots):
++    """Project .lean source closure only; roots belong to trusted emitters."""
++    paths = set()
++    root = Path(__file__).parent / "lean"
++    todo = list(roots)
++    seen = set()
++    while todo:
++        name = todo.pop()
++        if name in seen:
++            continue
++        if not name.startswith("Merlin.") or any(not part.isidentifier() for part in name.split(".")):
++            raise GateUnavailable("invalid project source import")
++        seen.add(name)
++        path = root / (name.replace(".", "/") + ".lean")
++        paths.add(path)
++        for line in path.read_text().splitlines():
++            fields = line.split()
++            if fields and fields[0] == "import":
++                todo += [item for item in fields[1:] if item.startswith("Merlin.")]
++    return tuple(source_ref(path) for path in sorted(paths))
++
++
++def source_closure():
++    """Executed project/parser Python plus exact transitive project Lean sources.
++
++    No SDK objects are read. Their matching import/object identity is a separate
++    native-check prerequisite, and is currently unavailable under the hold.
++    """
++    # Load the selected SOURCE-ONLY provider before taking the closure, so the
++    # first check and fresh postcheck bind identical frozen class/source imports.
++    # This never constructs a context or opens a runtime image.
++    from .lean_graph_pipeline_gate_provider import selected
++    selected()
++    paths = {Path(__file__), Path(__file__).with_name("lean_graph_pipeline_gate.py"),
++             Path(__file__).with_name("lean_graph_pipeline_gate_native.py"),
++             Path(__file__).with_name("lean_graph_pipeline_gate_provider.py"),
++             Path(__file__).with_name("lean_graph_pipeline_gate_emit.py")}
++    for name, module in tuple(sys.modules.items()):
++        if name.startswith(("merlin.", "xdsl.")):
++            filename = getattr(module, "__file__", None)
++            if filename and Path(filename).suffix == ".py":
++                paths.add(Path(filename))
++    lean = project_lean_sources(("Merlin.GraphStateScalar", "Merlin.GraphStateGateEntries"))
++    return tuple(source_ref(path) for path in sorted(paths)) + lean
++
++
++@dataclass(frozen=True)
++class Prepared:
++    schema: str
++    kind: str
++    source: str
++    target: str
++    change: str
++    domain: str
++    relation: str
++    premises: tuple[str, ...]
++    python_version: str
++    query_contract: str
++    projection: str
++    query: str
++    roots: tuple[str, ...]
++    sources: tuple[Source, ...]
++
++    @property
++    def identity(self):
++        return sha(canonical(asdict(self)))
++
++
++def complete_query(projection):
++    from .lean_graph_pipeline_gate_emit import emit_query
++
++    text, roots = emit_query(projection)
++    # Imports precede all commands; add no new axioms or semantic definitions.
++    text = "import Merlin.GraphStateGateEntries\n" + text
++    text += "namespace Merlin.GraphPipelineGateInstance\n"
++    text += "open Merlin.GraphState.Scalar Merlin.GraphState.GateEntries\n"
++    text += "abbrev registry := Merlin.GraphStateScalarInstance.registry\n"
++    defined = [i for i, row in enumerate(projection["functions"]) if not row["declaration"]]
++    for side in ("before", "after"):
++        entries = []
++        for index in defined:
++            base = f"Merlin.GraphStateScalarInstance.F{index}."
++            entries.append("{inputs := " + base + "inputs, outputs := " + base + "outputs, body := " + base + side + "}")
++        text += f"def {side}Entries : List Entry := [" + ",".join(entries) + "]\n"
++    proof = "entries_nil model"
++    for index in reversed(defined):
++        proof = "entries_cons model rfl rfl (Merlin.GraphStateScalarInstance.F" + str(index) + ".actual Value World Error model) (" + proof + ")"
++    text += "theorem complete {Value World Error : Type} (model : Model Value World Error registry) :\n"
++    text += "    PreservesEntries model beforeEntries afterEntries :=\n  " + proof + "\n"
++    text += "end Merlin.GraphPipelineGateInstance\n"
++    # One exact public root. A native check must audit this root transitively,
++    # not merely report that some imported local theorem compiled.
++    text += "theorem merlin_transform {Value World Error : Type}\n"
++    text += "    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n"
++    text += "    Merlin.GraphState.GateEntries.PreservesEntries model\n"
++    text += "      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries :=\n"
++    text += "  Merlin.GraphPipelineGateInstance.complete model\n"
++    roots += ["Merlin.GraphState.GateEntries.entries_cons", "Merlin.GraphState.GateEntries.entries_nil",
++              "Merlin.GraphPipelineGateInstance.complete", "merlin_transform"]
++    # NEW query contract: compile pure declarations with empty stdout. The
++    # common Context owns separate, bound exact-root axiom/type audit commands.
++    # Historical generated queries with in-source reports remain unchanged.
++    return text, tuple(roots)
++
++
++def prepare(change):
++    """No caller-supplied projection, query, model, domain or status is consumed."""
++    from xdsl.utils.exceptions import ParseError, VerifyException
++    from merlin.transforms.certificates import ChangeCertificate, TRANSFORM_SCOPES, TransformationChange, parse_ir
++    from .lean_graph_input_admission import InputAdmissionError, admit_text, admit_module
++    from .lean_graph_state_scalar_capture import project
++
++    if type(change) is not TransformationChange or change.kind not in KINDS:
++        raise GateUnsupported("no whole-program route for this transformation kind")
++    if type(change.certificate) is not ChangeCertificate or change.certificate.schema != "merlin.shared_transform.v2":
++        raise GateUnsupported("exact registered v2 transformation certificate required")
++    if type(change.certificate.scope) is not tuple or change.certificate.scope != TRANSFORM_SCOPES[change.kind]:
++        raise GateUnsupported("incorrect registered transformation scope")
++    if type(change.before_ir) is not str or type(change.after_ir) is not str:
++        raise GateUnsupported("exact complete UTF-8 text buffers required")
++    if max(len(change.before_ir.encode()), len(change.after_ir.encode())) > 4 * 1024 * 1024:
++        raise GateUnsupported("complete boundary exceeds explicit text budget")
++    if (change.certificate.kind != change.kind or change.certificate.before_ir_sha256 != sha(change.before_ir)
++            or change.certificate.after_ir_sha256 != sha(change.after_ir)):
++        raise GateUnsupported("stale/wrong-program transformation certificate")
++    try:
++        # Both texts are admitted BEFORE either parser touches global resources.
++        admit_text(change.before_ir)
++        admit_text(change.after_ir)
++        before, after = parse_ir(change.before_ir), parse_ir(change.after_ir)
++        admit_module(before, calls="external-only")
++        admit_module(after, calls="external-only")
++    except InputAdmissionError as error:
++        raise GateUnsupported("input admission: " + str(error)) from error
++    except (ParseError, VerifyException) as error:
++        raise GateUnsupported("malformed actual IR: " + str(error)) from error
++    try:
++        projection = project(before, after)
++    except InputAdmissionError as error:
++        raise GateUnsupported("input admission: " + str(error)) from error
++    except ValueError as error:
++        if str(error) in _PROJECTION_DOMAIN:
++            raise GateUnsupported(str(error)) from error
++        raise GateUnavailable("unclassified projection error: " + str(error)) from error
++    try:
++        query, roots = complete_query(projection)
++    except ValueError as error:
++        # Author defects stay unavailable. Two explicit work bounds and absence
++        # of a defined entry are the only non-author-error cases here.
++        if str(error) in {"complete bounded nonempty supported block required",
++                          "supported scalar symbolic expression budget exceeded",
++                          "no defined complete function available for a graph proof"}:
++            raise GateUnsupported(str(error)) from error
++        raise GateUnavailable("unclassified author error: " + str(error)) from error
++    if len(query.encode()) > 1024 * 1024:
++        raise GateUnsupported("generated complete proof exceeds explicit query budget")
++    return Prepared("merlin.graph_pipeline_prepared.v3", change.kind,
++                    sha(change.before_ir), sha(change.after_ir), sha(canonical(asdict(change))),
++                    DOMAIN, RELATION, PREMISES, sys.version,
++                    "pure_declarations_separate_root_audit_v1", canonical(projection), query, roots, source_closure())
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_pipeline_gate.py
+@@ -0,0 +1,890 @@
++"""SDK-free actual producer tests; checker completions are explicitly mocked.
++
++Run directly with an isolated Python interpreter and two explicit source roots.
++No pytest conftest, optional solver initializer, Lean discovery or native runner.
++"""
++from __future__ import annotations
++
++import json
++import sys
++import types
++import unittest
++from dataclasses import replace
++from pathlib import Path
++from unittest.mock import patch
++
++
++def isolated_owners(primary, producer):
++    for name, relative in (("merlin", "merlin"), ("merlin.verify", "merlin/verify")):
++        module = types.ModuleType(name)
++        module.__path__ = [str(producer / "src" / relative), str(primary / "src" / relative)]
++        sys.modules[name] = module
++
++    def hold(event, args):
++        if event in {"subprocess.Popen", "os.system", "os.exec", "os.posix_spawn"}:
++            raise AssertionError("SDK-free tests cannot launch child processes")
++        if event == "open" and isinstance(args[0], (str, bytes)):
++            name = str(args[0])
++            if "/.elan/" in name or "/fresh-environment/" in name or "libleanshared" in name:
++                raise AssertionError("SDK-free tests cannot read held/archived runtime")
++    sys.addaudithook(hold)
++
++
++SHAPE = '''builtin.module {
++  func.func @main(%a: memref<4xi8>) -> memref<4xi8> {
++    %b = "memref.cast"(%a) : (memref<4xi8>) -> memref<4xi8>
++    func.return %b : memref<4xi8>
++  }
++}'''
++INTEGER = '''builtin.module {
++  func.func @main(%a: i8) -> i8 {
++    %z = arith.constant 0 : i8
++    %b = arith.addi %a, %z : i8
++    func.return %b : i8
++  }
++}'''
++SCALAR = '''builtin.module {
++  func.func private @observe(i8) -> i8
++  func.func @main(%a: i8, %b: i8) -> i8 {
++    %x = arith.addi %a, %b : i8
++    %y = arith.addi %a, %b : i8
++    %z = arith.muli %x, %y : i8
++    %r = func.call @observe(%z) : (i8) -> i8
++    func.return %r : i8
++  }
++  func.func @other(%a: i8) -> i8 {
++    func.return %a : i8
++  }
++}'''
++LOOP = '''builtin.module {
++  func.func @main(%a: i8, %b: i8) -> i8 {
++    %lb = arith.constant 0 : index
++    %ub = arith.constant 3 : index
++    %st = arith.constant 1 : index
++    %r = scf.for %i = %lb to %ub step %st iter_args(%c = %a) -> (i8) {
++      %x = arith.addi %a, %b : i8
++      %v = arith.muli %c, %x : i8
++      scf.yield %v : i8
++    }
++    func.return %r : i8
++  }
++}'''
++
++
++def rebound(change, **changes):
++    """Valid-data adversary refreshes all textual certificate identities too."""
++    from merlin.verify.lean_graph_pipeline_gate_projection import sha
++    value = replace(change, **changes)
++    return replace(value, certificate=replace(value.certificate, kind=value.kind,
++        before_ir_sha256=sha(value.before_ir), after_ir_sha256=sha(value.after_ir)))
++
++
++class LegacyAuthority(unittest.TestCase):
++    def setUp(self):
++        from merlin.verify import lean_checker
++        from merlin.transforms.pipeline import PipelineOptions, apply_common_pipeline
++        from merlin.transforms.certificates import parse_ir
++        self.checker, self.options, self.pipeline, self.parse = (
++            lean_checker, PipelineOptions, apply_common_pipeline, parse_ir)
++        self.queries = []
++
++    def mock_kernel(self, query, receipt, toolchain, **kwargs):
++        self.queries.append(query)
++        result = replace(receipt, status="verified", toolchain_sha256="0" * 64)
++        self.checker._COMPLETED[id(result)] = result
++        return result
++
++    def change(self, text, shape=False):
++        return self.pipeline(self.parse(text), self.options(
++            index_bits=64, normalize_shapes=shape, simplify_integers=not shape,
++            reuse_buffers=False), plan_only=True).changes[0]
++
++    def test_local_receipt_has_no_whole_program_authority(self):
++        diagnostic = getattr(self.checker, "verify_pipeline_local_obligations",
++                             self.checker.verify_pipeline_change)
++        for text, shape in ((SHAPE, True), (INTEGER, False)):
++            with self.subTest(shape=shape), patch.object(self.checker, "_check_generated", self.mock_kernel):
++                change = self.change(text, shape)
++                receipt = diagnostic(change, toolchain=None)
++                self.assertEqual(receipt.status, "local_checked", receipt.reason)
++                self.assertFalse(receipt.verified)
++                self.assertFalse(self.checker.accepted_receipt(receipt, change.before_ir, change.after_ir))
++                self.assertFalse(self.checker.accepted_pipeline_receipt(receipt, change))
++        self.assertIn("id value = value", self.queries[0])
++        self.assertIn("∀ x : BitVec", self.queries[1])
++
++    def test_actual_pipeline_rejects_legacy_completion(self):
++        diagnostic = getattr(self.checker, "verify_pipeline_local_obligations",
++                             self.checker.verify_pipeline_change)
++        with patch.object(self.checker, "_check_generated", self.mock_kernel):
++            with self.assertRaisesRegex(ValueError, "completion|whole-program"):
++                self.pipeline(self.parse(SHAPE), self.options(
++                    index_bits=64, simplify_integers=False, reuse_buffers=False),
++                    verifier=lambda change: diagnostic(change, toolchain=None))
++
++    def test_arbitrary_callback_never_grants_authority(self):
++        for fake in (True, {"status": "verified"}, object(), None):
++            with self.subTest(fake=type(fake).__name__), self.assertRaises(ValueError):
++                self.pipeline(self.parse(SHAPE), self.options(
++                    index_bits=64, simplify_integers=False, reuse_buffers=False), verifier=lambda _: fake)
++
++
++class WholeBoundary(unittest.TestCase):
++    def setUp(self):
++        from merlin.verify import lean_graph_pipeline_gate as gate
++        from merlin.verify import lean_graph_pipeline_gate_projection as projection
++        from merlin.verify import lean_checker
++        from merlin.transforms.pipeline import PipelineOptions, apply_common_pipeline
++        from merlin.transforms.certificates import parse_ir
++        self.gate, self.mapping, self.checker = gate, projection, lean_checker
++        self.parse, self.pipeline = parse_ir, apply_common_pipeline
++        self.options = PipelineOptions(index_bits=64, normalize_shapes=False,
++                                       simplify_integers=False, reuse_buffers=False,
++                                       eliminate_redundancy=True)
++        self.change = self.pipeline(self.parse(SCALAR), self.options, plan_only=True).changes[0]
++
++    def mock_kernel(self, prepared, **kwargs):
++        return self.gate.native.KernelCompletion(
++            prepared.identity, self.mapping.sha(prepared.query), prepared.roots,
++            ("propext", "Quot.sound", "Classical.choice"), "1" * 64, "2" * 64)
++
++    def test_actual_changed_projection_and_complete_roster(self):
++        prepared = self.mapping.prepare(self.change)
++        self.assertNotEqual(prepared.source, prepared.target)
++        projected = json.loads(prepared.projection)
++        self.assertEqual([f["name"] for f in projected["functions"]], ["observe", "main", "other"])
++        self.assertIn("PreservesEntries model beforeEntries afterEntries", prepared.query)
++        self.assertIn("F1.actual Value World Error model", prepared.query)
++        self.assertIn("F2.actual Value World Error model", prepared.query)
++        self.assertEqual(prepared.roots[-1], "merlin_transform")
++        self.assertEqual(prepared.schema, "merlin.graph_pipeline_prepared.v3")
++        self.assertNotIn("#print", prepared.query)
++        self.assertNotIn("#check", prepared.query)
++        self.assertTrue(any(ref.path.endswith("lean_graph_input_admission.py") for ref in prepared.sources))
++        self.assertTrue(any(ref.path.endswith("xdsl/parser/core.py") for ref in prepared.sources))
++        for filename in ("lean_checker.py", "pipeline.py", "pure_scalar.py", "certificates.py",
++                         "lean_graph_pipeline_gate_projection.py", "lean_graph_pipeline_gate_emit.py"):
++            self.assertTrue(any(Path(ref.path).name == filename for ref in prepared.sources), filename)
++        self.assertNotIn("sorry", prepared.query)
++
++    def test_real_gate_is_unavailable_without_native_launch(self):
++        report = self.checker.verify_pipeline_change(self.change, toolchain=object())
++        self.assertIs(type(report), self.gate.GateReport)
++        self.assertEqual(report.status, "unavailable")
++        self.assertIn("held", report.reason)
++        self.assertFalse(self.checker.accepted_pipeline_receipt(report, self.change))
++
++    def test_actual_pipeline_consumes_mocked_complete_route_only(self):
++        with patch.object(self.gate.native, "check", self.mock_kernel), patch.object(
++                self.gate.native, "revalidate", return_value=True):
++            result = self.pipeline(self.parse(SCALAR), self.options,
++                verifier=lambda change: self.checker.verify_pipeline_change(change, toolchain=None))
++            self.assertFalse(result.plan_only)
++            self.assertEqual(len(result.changes), 1)
++        # This is host wiring evidence with a mocked kernel, NOT Lean acceptance.
++
++    def test_saved_copied_wrong_program_and_forged_reports_refused(self):
++        with patch.object(self.gate.native, "check", self.mock_kernel), patch.object(
++                self.gate.native, "revalidate", return_value=True):
++            receipt = self.gate.verify(self.change)
++            self.assertIs(type(receipt), self.gate.WholeProgramCompletion)
++            self.assertTrue(self.gate.accepted(receipt, self.change))
++            for copied in (replace(receipt), {"status": "verified"}, True, None):
++                self.assertFalse(self.gate.accepted(copied, self.change))
++            for changed in (
++                rebound(self.change, after_ir=self.change.before_ir),
++                rebound(self.change, before_ir=self.change.after_ir),
++                replace(self.change, kind="exact_integer_simplification"),
++            ):
++                self.assertFalse(self.gate.accepted(receipt, changed))
++            for field, value in (("domain", "shape"), ("relation", "local"), ("premises", ()),
++                                 ("roots", ("id",)), ("query_sha256", "0" * 64)):
++                self.assertFalse(self.gate.accepted(replace(receipt, **{field: value}), self.change))
++
++    def test_hold_blocks_even_previous_live_unit_completion(self):
++        with patch.object(self.gate.native, "check", self.mock_kernel):
++            receipt = self.gate.verify(self.change)
++        self.assertFalse(self.gate.accepted(receipt, self.change))
++
++    def test_skipped_wrong_root_foreign_axiom_wrong_query_no_authority(self):
++        for mutation in (
++            lambda p: None,
++            lambda p: {"status": "verified"},
++            lambda p: replace(self.mock_kernel(p), checked_roots=("local",)),
++            lambda p: replace(self.mock_kernel(p), prepared_identity="0" * 64),
++            lambda p: replace(self.mock_kernel(p), query_sha256="0" * 64),
++            lambda p: replace(self.mock_kernel(p), axioms=("Lean.trustCompiler",)),
++            lambda p: replace(self.mock_kernel(p), toolchain_identity=""),
++        ):
++            with self.subTest(mutation=mutation), patch.object(self.gate.native, "check", side_effect=lambda p, **kw: mutation(p)):
++                report = self.gate.verify(self.change)
++                self.assertEqual(report.status, "unavailable")
++                self.assertFalse(self.gate.accepted(report, self.change))
++
++    def test_unexpected_author_identity_valueerror_is_unavailable(self):
++        with patch.object(self.gate, "prepare", side_effect=ValueError("selected dependency changed")):
++            report = self.gate.verify(self.change)
++        self.assertEqual(report.status, "unavailable")
++
++    def test_native_checker_failure_is_not_domain_refusal(self):
++        with patch.object(self.gate.native, "check", side_effect=OSError("held checker cannot start")):
++            report = self.gate.verify(self.change)
++        self.assertEqual(report.status, "unavailable")
++
++    def test_postcheck_changed_projection_refuses_live_completion(self):
++        prepared = self.mapping.prepare(self.change)
++        changed = replace(prepared, projection=prepared.projection + " ")
++        with patch.object(self.gate, "prepare", side_effect=[prepared, changed]), patch.object(
++                self.gate.native, "check", self.mock_kernel):
++            report = self.gate.verify(self.change)
++        self.assertEqual(report.status, "unavailable")
++
++    def test_unsupported_kind_does_not_call_checker(self):
++        with patch.object(self.gate.native, "check", side_effect=AssertionError("not reached")):
++            report = self.gate.verify(replace(self.change, kind="shape_view_normalization"))
++        self.assertEqual(report.status, "unsupported")
++
++    def test_actual_licm_empty_and_nonempty_loop_candidates(self):
++        from merlin.transforms.pipeline import PipelineOptions
++        for text in (LOOP, LOOP.replace("constant 3 : index", "constant 0 : index")):
++            with self.subTest(empty="constant 3" not in text):
++                options = PipelineOptions(index_bits=64, normalize_shapes=False,
++                    simplify_integers=False, reuse_buffers=False, hoist_invariants=True)
++                result = self.pipeline(self.parse(text), options, plan_only=True)
++                self.assertEqual(len(result.changes), 1)
++                prepared = self.mapping.prepare(result.changes[0])
++                self.assertNotEqual(prepared.source, prepared.target)
++                self.assertIn("(.loop", prepared.query)
++                self.assertIn("common finite abstract SCF", " ".join(prepared.premises))
++
++    def test_wrong_result_and_observer_are_complete_valid_different_queries(self):
++        prepared = self.mapping.prepare(self.change)
++        wrong_result = self.change.after_ir.replace("arith.muli", "arith.subi")
++        wrong_observer = self.change.after_ir.replace("@observe", "@changed_observer").replace(
++            'sym_name = "observe"', 'sym_name = "changed_observer"')
++        for text in (wrong_result, wrong_observer):
++            self.assertNotEqual(text, self.change.after_ir)
++            self.parse(text).verify()  # Compiler-valid negative, not malformed text.
++            altered = rebound(self.change, after_ir=text)
++            if text == wrong_observer:
++                # Declaration/context changes are recognized by the host mapper.
++                with self.assertRaises(self.mapping.GateUnsupported):
++                    self.mapping.prepare(altered)
++            else:
++                candidate = self.mapping.prepare(altered)
++                self.assertNotEqual(candidate.query, prepared.query)
++                self.assertNotEqual(candidate.target, prepared.target)
++                self.assertEqual(self.gate.verify(altered).status, "unavailable")
++                # Independent Lean semantic refusal is pending, not simulated.
++
++    def test_changed_unchanged_function_is_in_query(self):
++        after = self.change.after_ir
++        modified = after.replace('"func.return"(%a)',
++            '%neg = "arith.subi"(%a, %a) : (i8, i8) -> i8\n    "func.return"(%neg)')
++        self.assertNotEqual(after, modified)
++        self.parse(modified).verify()
++        original = self.mapping.prepare(self.change)
++        altered = self.mapping.prepare(rebound(self.change, after_ir=modified))
++        self.assertNotEqual(original.query, altered.query)
++
++    def test_resource_metadata_refused_before_parser(self):
++        from merlin.transforms import certificates
++        changed = rebound(self.change, before_ir=self.change.before_ir + '\n{-# dialect_resources: {} #-}')
++        with patch.object(certificates, "parse_ir", side_effect=AssertionError("parse not permitted")):
++            report = self.gate.verify(changed)
++        self.assertEqual(report.status, "unsupported")
++        self.assertIn("file-metadata", report.reason)
++
++    def test_indirect_calls_refused_even_when_hidden_in_other_function(self):
++        suffix = '''
++  func.func @local(%x: i8) -> i8 { func.return %x : i8 }
++  func.func @indirect(%x: i8) -> i8 {
++    %f = "func.constant"() {value = @local} : () -> ((i8) -> i8)
++    %v = "func.call_indirect"(%f, %x) : ((i8) -> i8, i8) -> i8
++    func.return %v : i8
++  }
++'''
++        text = SCALAR.rstrip()[:-1] + suffix + "}"
++        self.parse(text).verify()
++        changed = rebound(self.change, before_ir=text, after_ir=text)
++        report = self.gate.verify(changed)
++        self.assertEqual(report.status, "unsupported")
++        self.assertIn("input admission", report.reason)
++
++    def test_held_default_does_not_return_changed_pipeline(self):
++        with self.assertRaisesRegex(ValueError, "whole-program"):
++            self.pipeline(self.parse(SCALAR), self.options,
++                verifier=lambda change: self.checker.verify_pipeline_change(change, toolchain=None))
++
++    def test_arithmetic_sensitive_witness_candidate_uses_actual_source(self):
++        from merlin.verify.lean_graph_pipeline_gate_models import witness
++        prepared = self.mapping.prepare(self.change)
++        query, roots, metadata = witness(prepared)
++        self.assertEqual([r["result"]["values"] for r in metadata["success_proposals"]], [[64], [81]])
++        self.assertFalse(metadata["proof_checked"])
++        self.assertFalse(metadata["model_approved"])
++        self.assertIn("arguments.headD 0", query)
++        self.assertIn("source_initialized", query)
++        self.assertNotIn("#print", query)
++        self.assertNotIn("#check", query)
++        self.assertIn("Merlin.GraphPipelineGateWitness.target_success1", roots)
++
++    def test_original_primitive_renderer_extraction_is_exact(self):
++        from merlin.verify import lean_graph_pipeline_gate_emit as emitter
++        original = Path(emitter.__file__).with_name("lean_graph_state_scalar.py").read_text()
++        extracted = Path(emitter.__file__).read_text()
++        self.assertEqual(extracted[extracted.index("def integer("):].strip(),
++            original[original.index("def integer("):original.index("\ndef sources():")].strip())
++
++    def test_replay_requires_a_fresh_checker_not_saved_json(self):
++        from dataclasses import asdict
++        prepared = self.mapping.prepare(self.change)
++        saved = json.loads(json.dumps(asdict(prepared)))
++        report = self.gate.replay(self.change, saved)
++        self.assertEqual(report.status, "unavailable")
++        self.assertIn("held", report.reason)
++        with patch.object(self.gate.native, "check", self.mock_kernel) as checker, patch.object(
++                self.gate.native, "revalidate", return_value=True):
++            completion = self.gate.replay(self.change, saved)
++            self.assertIs(type(completion), self.gate.WholeProgramCompletion)
++            self.assertTrue(self.gate.accepted(completion, self.change))
++
++    def test_coherent_rehashed_forgery_does_not_select_queries_or_source_paths(self):
++        from dataclasses import asdict
++        saved = asdict(self.mapping.prepare(self.change))
++        saved["query"] = "theorem merlin_transform : True := True.intro"
++        saved["roots"] = ("merlin_transform",)
++        saved["sources"] = ({"path": "/.elan/forged.lean", "sha256": "0" * 64, "size": 0},)
++        with patch.object(self.gate.native, "check", side_effect=AssertionError("forged work must not launch")):
++            report = self.gate.replay(self.change, saved)
++        self.assertEqual(report.status, "unavailable")
++
++    def test_pipeline_serialization_is_descriptive_not_issuance(self):
++        with patch.object(self.gate.native, "check", self.mock_kernel):
++            receipt = self.gate.verify(self.change)
++        document = receipt.to_dict()
++        self.assertEqual(document["status"], "conditional_model_relation")
++        self.assertFalse(document["review_approval"])
++        self.assertFalse(self.gate.accepted(document, self.change))
++
++    def test_projection_and_author_failures_have_narrow_classification(self):
++        from merlin.verify import lean_graph_state_scalar_capture as capture
++        for message, status in (
++            ("complete function interface/attributes changed", "unsupported"),
++            ("actual producer/parser imports escaped pinned source", "unavailable"),
++            ("selected dependency changed while its bytes were observed", "unavailable"),
++        ):
++            with self.subTest(message=message), patch.object(capture, "project", side_effect=ValueError(message)):
++                self.assertEqual(self.gate.verify(self.change).status, status)
++        with patch.object(self.mapping, "complete_query", side_effect=ValueError("bad author implementation")):
++            self.assertEqual(self.gate.verify(self.change).status, "unavailable")
++
++    def test_live_receipt_stale_mapper_sources_refused(self):
++        prepared = self.mapping.prepare(self.change)
++        with patch.object(self.gate, "prepare", return_value=prepared), patch.object(
++                self.gate.native, "check", self.mock_kernel):
++            receipt = self.gate.verify(self.change)
++        sources = (replace(prepared.sources[0], sha256="f" * 64), *prepared.sources[1:])
++        with patch.object(self.gate, "prepare", return_value=replace(prepared, sources=sources)), patch.object(
++                self.gate.native, "revalidate", side_effect=AssertionError("stale source must refuse before runtime")):
++            self.assertFalse(self.gate.accepted(receipt, self.change))
++
++    def test_valid_changed_observer_keeps_roster_but_changes_lean_program(self):
++        text = SCALAR.replace("func.func private @observe(i8) -> i8",
++            "func.func private @observe(i8) -> i8\n  func.func private @other_observer(i8) -> i8")
++        change = self.pipeline(self.parse(text), self.options, plan_only=True).changes[0]
++        after = change.after_ir.replace("callee = @observe", "callee = @other_observer")
++        self.assertNotEqual(after, change.after_ir)
++        self.parse(after).verify()
++        positive = self.mapping.prepare(change)
++        negative = self.mapping.prepare(rebound(change, after_ir=after))
++        self.assertNotEqual(positive.query, negative.query)
++        with patch.object(self.gate.native, "check", self.mock_kernel):
++            receipt = self.gate.verify(change)
++        with patch.object(self.gate.native, "revalidate", return_value=True):
++            self.assertFalse(self.gate.accepted(receipt, rebound(change, after_ir=after)))
++
++    def test_wrong_scope_never_launches_checker(self):
++        from merlin.transforms.certificates import TRANSFORM_SCOPES
++        certificate = replace(self.change.certificate, scope=TRANSFORM_SCOPES["shape_view_normalization"])
++        with patch.object(self.gate.native, "check", side_effect=AssertionError("unsupported must not launch")):
++            report = self.gate.verify(replace(self.change, certificate=certificate))
++        self.assertEqual(report.status, "unsupported")
++
++    def test_stale_certificate_digests_refuse_before_checker(self):
++        for field in ("before_ir_sha256", "after_ir_sha256"):
++            certificate = replace(self.change.certificate, **{field: "f" * 64})
++            with self.subTest(field=field), patch.object(self.gate.native, "check", side_effect=AssertionError("stale")):
++                report = self.gate.verify(replace(self.change, certificate=certificate))
++                self.assertEqual(report.status, "unsupported")
++
++    def test_valid_flag_change_is_not_a_pure_same_program(self):
++        after = self.change.after_ir.replace("#arith.overflow<none>", "#arith.overflow<nsw>", 1)
++        self.assertNotEqual(after, self.change.after_ir)
++        self.parse(after).verify()
++        before_projection = json.loads(self.mapping.prepare(self.change).projection)
++        after_projection = json.loads(self.mapping.prepare(rebound(self.change, after_ir=after)).projection)
++        self.assertNotEqual(before_projection["registry"], after_projection["registry"])
++        self.assertNotEqual(before_projection["functions"][1]["after"], after_projection["functions"][1]["after"])
++
++    def test_actual_two_changed_stages_keep_exact_middle_and_complete_queries(self):
++        from merlin.transforms.pipeline import PipelineOptions
++        text = LOOP.replace("%x = arith.addi %a, %b : i8", """%x = arith.addi %a, %b : i8
++      %duplicate = arith.addi %a, %b : i8
++      %dead = arith.muli %x, %duplicate : i8""")
++        options = PipelineOptions(index_bits=64, normalize_shapes=False,
++            simplify_integers=False, reuse_buffers=False, eliminate_redundancy=True, hoist_invariants=True)
++        result = self.pipeline(self.parse(text), options, plan_only=True)
++        self.assertEqual([c.kind for c in result.changes], ["scalar_redundancy_elimination", "scalar_loop_invariant_motion"])
++        first, second = result.changes
++        self.assertEqual(first.after_ir, second.before_ir)
++        projections = [self.mapping.prepare(c) for c in result.changes]
++        self.assertTrue(all(c.source != c.target for c in projections))
++        for candidate in projections:
++            self.assertIn("PreservesEntries", candidate.query)
++        self.assertEqual(json.loads(projections[0].projection)["registry"], json.loads(projections[1].projection)["registry"])
++        # This is actual stage/host mapping evidence; composed native acceptance
++        # is not inferred from equal registry JSON or equal middle hashes.
++
++    def test_common_context_request_binds_exact_full_root_query_and_sources(self):
++        prepared = self.mapping.prepare(self.change)
++        request = self.gate.native.request(prepared)
++        self.assertEqual(request.query, prepared.query.encode())
++        self.assertEqual(request.final_root, "merlin_transform")
++        self.assertEqual(request.support_roots, prepared.roots[:-1])
++        self.assertEqual(len(request.project_sources), 7)
++        self.assertIn("Merlin.GraphStateGateEntries", [r[0] for r in request.project_sources])
++        with self.assertRaises(self.mapping.GateUnavailable):
++            self.gate.native.request(replace(prepared, roots=("localLemma",)))
++        with self.assertRaises(self.mapping.GateUnavailable):
++            self.gate.native.request(replace(prepared, sources=()))
++        with self.assertRaises(self.mapping.GateUnavailable):
++            self.gate.native.request(replace(prepared, schema="merlin.graph_pipeline_prepared.v1"))
++        with self.assertRaises(self.mapping.GateUnavailable):
++            self.gate.native.request(replace(prepared, schema="merlin.graph_pipeline_prepared.v2"))
++
++    def test_minimal_roster_keeps_exact_frozen_observations_and_evaluator(self):
++        directory = Path(self.mapping.__file__).parent / "lean/Merlin"
++        old = (directory / "GraphStatePipelineProgram.lean").read_text()
++        new = (directory / "GraphStateGateEntries.lean").read_text()
++        self.assertEqual([line for line in new.splitlines() if line.startswith("import ")],
++                         ["import Merlin.GraphStateScalar"])
++        # Source/data correspondence ONLY, not a substitute for compiling Lean.
++        old_body = old[old.index("namespace Merlin.GraphState.Pipeline"):]
++        old_body = old_body.replace("Merlin.GraphState.Pipeline", "Merlin.GraphState.GateEntries")
++        old_body = old_body.replace("  deriving DecidableEq, BEq, ReflBEq, LawfulBEq, Repr\n", "")
++        old_body = old_body.replace("(outputs : first.outputs = second.outputs)",
++                                    "(_outputs : first.outputs = second.outputs)")
++        self.assertEqual(new[new.index("namespace Merlin.GraphState.GateEntries"):], old_body)
++        prepared = self.mapping.prepare(self.change)
++        sources = {Path(ref.path).stem for ref in prepared.sources if ref.path.endswith(".lean")}
++        self.assertEqual(sources, {"GraphStateGateEntries", "GraphStateScalar", "GraphStateScalarContract",
++                                  "GraphStateScalarNormalize", "GraphStateScalarSound",
++                                  "GraphStateScalarTyping", "GraphStateScalarInitialized"})
++        self.assertNotIn("Merlin.GraphState.Pipeline", prepared.query)
++        self.assertEqual(prepared.domain, "complete_scalar_roster_equal_outcome_v1")
++        self.assertEqual(prepared.relation, "all_defined_entries_equal_returns_errors_terminal_world")
++
++    def test_plan_only_requires_exact_boolean_and_grants_no_receipt(self):
++        from merlin.transforms.certificates import ir_text
++        for flag in ("false", "true", 0, 1, None, [], {}):
++            original = self.parse(SCALAR)
++            before = ir_text(original)
++            with self.subTest(flag=flag), self.assertRaisesRegex(ValueError, "explicit boolean"):
++                self.pipeline(original, self.options, plan_only=flag)
++            self.assertEqual(ir_text(original), before)
++        original = self.parse(SCALAR)
++        before = ir_text(original)
++        planned = self.pipeline(original, self.options, plan_only=True)
++        self.assertIs(planned.plan_only, True)
++        self.assertEqual(ir_text(original), before)
++        self.assertNotEqual(ir_text(planned.module), before)
++        self.assertFalse(self.checker.accepted_pipeline_receipt(planned, planned.changes[0]))
++
++    def test_mid_chain_rejection_preserves_original_module_and_input_context(self):
++        from merlin.transforms.pipeline import PipelineOptions
++        from merlin.transforms.certificates import ir_text
++        text = LOOP.replace("%x = arith.addi %a, %b : i8", """%x = arith.addi %a, %b : i8
++      %duplicate = arith.addi %a, %b : i8
++      %dead = arith.muli %x, %duplicate : i8""")
++        options = PipelineOptions(index_bits=64, normalize_shapes=False, simplify_integers=False,
++            reuse_buffers=False, eliminate_redundancy=True, hoist_invariants=True)
++        original = self.parse(text)
++        before = ir_text(original)
++        calls = []
++        def reject_second(change):
++            calls.append(change)
++            if len(calls) == 1:
++                return self.gate.verify(change)
++            return self.gate.GateReport("not_established", "mocked later-stage refusal")
++        with patch.object(self.gate.native, "check", self.mock_kernel), patch.object(
++                self.gate.native, "revalidate", return_value=True):
++            with self.assertRaisesRegex(ValueError, "whole-program"):
++                self.pipeline(original, options, plan_only=False, verifier=reject_second)
++        self.assertEqual([c.kind for c in calls], ["scalar_redundancy_elimination", "scalar_loop_invariant_motion"])
++        self.assertEqual(calls[0].after_ir, calls[1].before_ir)
++        self.assertEqual(ir_text(original), before)
++        original.verify()
++        # Neither failed invocation nor its partial clone is returned; callbacks
++        # received immutable text changes. External callback side effects are not
++        # claimed transactional, and this is host evidence, not composed Lean proof.
++
++    def context_fixture(self):
++        from merlin.verify import lean_graph_pipeline_gate_provider as provider
++        controller, data, _ = provider.selected()
++        Context, CheckedQuery, FileRef = controller.Context, controller.CheckedQuery, data.FileRef
++        prepared = self.mapping.prepare(self.change)
++        request = self.gate.native.request(prepared)
++        context = object.__new__(Context)  # No from_review, filesystem or SDK reads.
++        context.context_id = "1" * 64
++        context.held = False
++        context.workspace = Path("/mock/graph-context")
++        context.compile_audit_roots = dict(provider._COMPILE_ROOTS)
++        context.review = {role: FileRef(str(Path(provider.__file__).resolve().parents[3] / path), digest, size)
++                          for role, (path, digest, size) in provider._REVIEW_PINS.items()}
++        context.controls = tuple(FileRef(str(provider._DIRECTORY / (name + ".py")), digest, size)
++                                 for name, digest, size in provider._PINS)
++        context.originals = {name: FileRef(path, digest, size) for name, path, digest, size in request.project_sources}
++
++        def checked(module, query, *, final_root, support_roots):
++            return CheckedQuery(context.context_id, module,
++                FileRef("/mock/query.lean", self.mapping.sha(query), len(query)),
++                FileRef("/mock/query.olean", "2" * 64, 1), final_root, support_roots,
++                tuple((name, ("propext",)) for name in (final_root, *support_roots)),
++                FileRef("/mock/audit.json", "3" * 64, 1),
++                FileRef("/mock/types.txt", "4" * 64, 1),
++                FileRef("/mock/imports.json", "5" * 64, 1), (), object())
++        return Context, prepared, context, checked
++
++    def test_inactive_common_adapter_with_mocked_typed_provider(self):
++        Context, prepared, context, checked = self.context_fixture()
++        with patch.object(Context, "check_query", side_effect=checked), patch.object(
++                Context, "revalidate", side_effect=lambda value: value), patch.object(
++                Context, "_guard", side_effect=AssertionError("no native guard in SDK-free test")):
++            result = self.gate.native._check_with_context(prepared, toolchain=context)
++            self.assertEqual(result.prepared_identity, prepared.identity)
++            self.assertTrue(self.gate.native._revalidate_with_context(result, toolchain=context))
++            with self.assertRaises(self.mapping.GateUnavailable):
++                self.gate.native._revalidate_with_context(result, toolchain=object())
++        with self.assertRaises(self.mapping.GateUnavailable):
++            self.gate.native.check(prepared, toolchain=context)  # Public entry stays held.
++
++    def test_inactive_adapter_wrong_typed_report_refuses(self):
++        Context, prepared, context, checked = self.context_fixture()
++        from merlin.verify.lean_graph_pipeline_gate_provider import selected
++        FileRef = selected()[1].FileRef
++        for update in (
++            {"final_root": "localLemma"}, {"context_id": "f" * 64}, {"support_roots": ()},
++            {"query": FileRef("/mock/query.lean", "f" * 64, 3)}, {"axioms": ()},
++        ):
++            def wrong(*args, **kwargs):
++                return replace(checked(*args, **kwargs), **update)
++            with self.subTest(update=update), patch.object(Context, "check_query", side_effect=wrong), patch.object(
++                    Context, "revalidate", side_effect=AssertionError("wrong report must not revalidate")):
++                with self.assertRaises(self.mapping.GateUnavailable):
++                    self.gate.native._check_with_context(prepared, toolchain=context)
++
++    def test_inactive_adapter_refusal_vs_infrastructure_and_deadline(self):
++        from merlin.verify.lean_graph_pipeline_gate_provider import selected
++        provider = selected()[0]
++        ProofRefused, InfrastructureStop = provider.ProofRefused, provider.InfrastructureStop
++        Context, prepared, context, _ = self.context_fixture()
++        for failure, expected in ((ProofRefused("ordinary diagnostic"), self.mapping.GateNotEstablished),
++                                  (InfrastructureStop("binding changed"), self.mapping.GateUnavailable)):
++            with self.subTest(failure=failure), patch.object(Context, "check_query", side_effect=failure):
++                with self.assertRaises(expected):
++                    self.gate.native._check_with_context(prepared, toolchain=context)
++        with patch.object(Context, "check_query", side_effect=AssertionError("expired budget must not launch")):
++            with self.assertRaises(self.mapping.GateUnavailable):
++                self.gate.native._check_with_context(prepared, toolchain=context, deadline=0)
++        with patch.object(self.gate.native, "check", side_effect=self.mapping.GateNotEstablished("ordinary diagnostic")):
++            self.assertEqual(self.gate.verify(self.change).status, "not_established")
++
++    def test_selected_frozen_provider_refuses_other_class_and_mixed_refs(self):
++        from merlin.verify import lean_graph_pipeline_gate_provider as provider
++        from merlin.verify.lean_graph_original_image_context import Context as LiveContext
++        Context, prepared, context, _ = self.context_fixture()
++        self.assertIsNot(Context, LiveContext)
++        with self.assertRaises(self.mapping.GateUnavailable):
++            provider.bound_context(object.__new__(LiveContext))
++        for controls in ((), context.controls[:-1], tuple(reversed(context.controls))):
++            with self.subTest(controls=controls), patch.object(context, "controls", controls):
++                with self.assertRaises(self.mapping.GateUnavailable):
++                    provider.bound_context(context)
++        for review in ({}, {k: v for k, v in context.review.items() if k != "finite_review"},
++                       {**context.review, "probe": context.review["base_intent"]}):
++            with self.subTest(review=review), patch.object(context, "review", review):
++                with self.assertRaises(self.mapping.GateUnavailable):
++                    provider.bound_context(context)
++        closure = {source.path for source in self.mapping.prepare(self.change).sources}
++        self.assertTrue(all(str(provider._DIRECTORY / (name + ".py")) in closure
++                            for name, _, _ in provider._PINS))
++
++    def test_selected_provider_source_and_module_changes_refuse_before_native(self):
++        from merlin.verify import lean_graph_pipeline_gate_provider as provider
++        controller, data, _ = provider.selected()
++        with patch.object(controller, "data", object()):
++            with self.assertRaises(self.mapping.GateUnavailable):
++                provider.selected()
++        name, digest, size = provider._PINS[0]
++        with patch.object(provider, "_PINS", ((name, "0" * 64, size), *provider._PINS[1:])):
++            with self.assertRaises(self.mapping.GateUnavailable):
++                provider.selected()
++        with patch.dict(sys.modules, {controller.__name__: object()}):
++            with self.assertRaises(self.mapping.GateUnavailable):
++                provider.selected()
++
++    def test_source_only_context_recipe_is_exact_and_cannot_construct_or_launch(self):
++        from merlin.verify import lean_graph_pipeline_gate_provider as provider
++        Context, prepared, context, _ = self.context_fixture()
++        with patch.object(Context, "from_review", side_effect=AssertionError("recipe must not construct")), patch.object(
++                Context, "_guard", side_effect=AssertionError("recipe must not inspect runtime")):
++            args = provider.context_arguments(prepared, workspace="/mock/fresh-gate-workspace")
++        self.assertEqual(args["project_sources"], context.originals)
++        self.assertEqual(args["controller_sources"], context.controls)
++        self.assertEqual(args["review"], {k: v for k, v in context.review.items()
++                                         if k in {"metadata", "copy", "probe", "trace"}})
++        self.assertEqual(sum(map(len, args["compile_audit_roots"].values())), 11)
++        self.assertTrue(all(type(roots) is tuple and roots for roots in args["compile_audit_roots"].values()))
++        self.assertEqual(set(args["compile_audit_roots"]), {
++            "Merlin.GraphStateScalar", "Merlin.GraphStateScalarInitialized",
++            "Merlin.GraphStateScalarSound", "Merlin.GraphStateScalarTyping"})
++        with self.assertRaises(self.mapping.GateUnavailable):
++            provider.context_arguments(replace(prepared, sources=prepared.sources + (
++                self.mapping.Source("/mock/Merlin/Extra.lean", "0" * 64, 1),)), workspace="/mock/fresh")
++        with patch.object(context, "originals", {**context.originals, "Merlin.Extra": object()}):
++            with self.assertRaises(self.mapping.GateUnavailable):
++                self.gate.native._check_with_context(prepared, toolchain=context)
++
++    def test_actual_enforced_pipeline_through_inactive_frozen_adapter_mock_only(self):
++        Context, prepared, context, checked = self.context_fixture()
++        calls = []
++        def observe(*args, **kwargs):
++            calls.append((args, kwargs))
++            return checked(*args, **kwargs)
++        # ONLY unit wiring: public entry remains held outside this scoped patch.
++        # No Context constructor, runtime guard or subprocess may execute.
++        with patch.object(Context, "check_query", side_effect=observe), patch.object(
++                Context, "revalidate", side_effect=lambda value: value), patch.object(
++                Context, "_guard", side_effect=AssertionError("no runtime reads")), patch.object(
++                self.gate.native, "check", self.gate.native._check_with_context), patch.object(
++                self.gate.native, "revalidate", self.gate.native._revalidate_with_context):
++            receipts = []
++            def verifier(change):
++                receipt = self.checker.verify_pipeline_change(change, toolchain=context)
++                receipts.append(receipt)
++                return receipt
++            result = self.pipeline(self.parse(SCALAR), self.options, plan_only=False, verifier=verifier)
++            self.assertFalse(result.plan_only)
++            self.assertEqual(len(calls), 1)
++            self.assertEqual(result.changes[0].after_ir, self.change.after_ir)
++            self.assertTrue(self.checker.accepted_pipeline_receipt(receipts[0], result.changes[0]))
++            self.assertFalse(self.checker.accepted_pipeline_receipt(receipts[0].to_dict(), result.changes[0]))
++            self.assertFalse(self.checker.accepted_pipeline_receipt(replace(receipts[0]), result.changes[0]))
++            changed = rebound(result.changes[0], after_ir=result.changes[0].after_ir.replace("arith.muli", "arith.subi"))
++            self.assertFalse(self.checker.accepted_pipeline_receipt(receipts[0], changed))
++        self.assertFalse(self.checker.accepted_pipeline_receipt(receipts[0], result.changes[0]))
++
++
++class ServiceBoundary(unittest.TestCase):
++    """Actual service, gate and pipeline; release custody/native methods mocked.
++
++    The graph binding factory and its source/typed-context checks run normally.
++    No real bundle snapshot verification or runtime checking is claimed here.
++    """
++
++    def setUp(self):
++        import contextlib
++        import tempfile
++        from merlin.targetgen import common_transforms as service
++        from merlin.verify import lean_graph_pipeline_gate_service as selection
++        self.case = WholeBoundary()
++        self.case.setUp()
++        self.Context, _, self.context, self.checked = self.case.context_fixture()
++        self.service_module, self.selection = service, selection
++        self.stack = contextlib.ExitStack()
++        self.addCleanup(self.stack.close)
++        directory = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
++        self.manifest = directory / "host-bundle.yaml"
++        self.manifest.write_text("{}\n")
++        self.workspace = directory / "workspace"
++        self.profile = {"sha256": "a" * 64, "host_index_bits": 64,
++                        "common_substrate": "merlin.common_compiler_substrate.v2",
++                        "common_sources": [], "automatic_checker_sources": []}
++        self.stack.enter_context(patch.object(service, "verify_tool_profile", return_value=self.profile))
++        self.stack.enter_context(patch.object(service.BW, "verify_bundle_snapshot", return_value={"content_sha256": "b" * 64}))
++        self.stack.enter_context(patch.object(service.BW, "snapshot_marker_digest", return_value="c" * 64))
++        self.stack.enter_context(patch.object(service.BW, "verified_snapshot_scope", side_effect=lambda *a, **k: contextlib.nullcontext()))
++        self.stack.enter_context(patch.object(service.CommonTransformService, "_toolchain", side_effect=AssertionError("no legacy SDK fallback")))
++        self.stack.enter_context(patch.object(self.Context, "from_review", side_effect=AssertionError("no service context construction")))
++        self.stack.enter_context(patch.object(self.Context, "_guard", side_effect=AssertionError("no runtime reads")))
++        self.binding = selection.bind_service_context(self.context, compiler_profile_sha256=self.profile["sha256"], timeout_s=120)
++        self.service = self.make_service(self.binding)
++        self.request = {"schema": service.SCHEMA, "source_ir": SCALAR, "options": {
++            "normalize_shapes": False, "simplify_integers": False, "reuse_buffers": False,
++            "eliminate_redundancy": True}}
++
++    def make_service(self, binding):
++        return self.service_module.CommonTransformService(workspace=self.workspace, bundle_manifest=self.manifest,
++            repo=Path(self.case.mapping.__file__).resolve().parents[3], graph_binding=binding)
++
++    def activate_mock_methods(self, check=None):
++        self.stack.enter_context(patch.object(self.Context, "check_query", side_effect=check or self.checked))
++        self.stack.enter_context(patch.object(self.Context, "revalidate", side_effect=lambda value: value))
++        self.stack.enter_context(patch.object(self.case.gate.native, "check", self.case.gate.native._check_with_context))
++        self.stack.enter_context(patch.object(self.case.gate.native, "revalidate", self.case.gate.native._revalidate_with_context))
++
++    def test_actual_service_gate_and_live_compiler_eligibility_mocked(self):
++        import time
++        self.activate_mock_methods()
++        document = self.service.apply(self.request, work_root=self.context.workspace)
++        self.assertEqual(document["status"], "conditional_model_relation")
++        self.assertNotEqual(document["transformed_ir"], self.request["source_ir"])
++        self.assertEqual(len(document["receipts"]), 1)
++        self.assertEqual(document["compiler_pass_chain"], "not_established")
++        self.assertTrue(self.service.compiler_eligible(document, source_ir=SCALAR))
++        self.assertFalse(self.service.compiler_eligible(json.loads(json.dumps(document)), source_ir=SCALAR))
++        self.assertFalse(self.service.compiler_eligible(document, source_ir=SCALAR + "\n"))
++        recorded = self.selection._DELIVERIES[id(document)]
++        with self.assertRaises(ValueError):
++            self.selection.record_delivery(self.binding, dict(document), SCALAR.replace("arith.addi", "arith.subi", 1),
++                recorded[4], recorded[5], deadline=time.monotonic() + 60)
++        with self.assertRaises(TimeoutError):
++            self.selection.record_delivery(self.binding, dict(document), SCALAR, recorded[4], recorded[5], deadline=0)
++        document["transformed_ir"] += "\n"
++        self.assertFalse(self.service.compiler_eligible(document, source_ir=SCALAR))
++
++    def test_service_refuses_missing_saved_legacy_profile_and_unsupported_options(self):
++        for value in (self.binding.describe(), replace(self.binding), object()):
++            with self.subTest(value=type(value).__name__), self.assertRaises(ValueError):
++                self.make_service(value)
++        missing = self.make_service(None)
++        with self.assertRaises(ValueError):
++            missing.apply(self.request, work_root=self.context.workspace)
++        for changes in ({"normalize_shapes": True}, {"unroll_factors": [2]}, {"plan_only": True}):
++            request = {**self.request, "options": {**self.request["options"], **changes}}
++            with self.subTest(changes=changes), self.assertRaises(ValueError):
++                self.service.apply(request, work_root=self.context.workspace)
++        with self.assertRaises(ValueError):
++            self.service.apply({**self.request, "graph_binding": self.binding.describe()}, work_root=self.context.workspace)
++        with self.assertRaises(ValueError):
++            self.service.apply(self.request, work_root=Path("/mock/other-context"))
++        with self.assertRaisesRegex(ValueError, "no legacy fallback"):
++            self.service.check({"schema": "merlin.common_check_request.v1", "before_ir": SCALAR,
++                "after_ir": SCALAR, "entry": "main"}, work_root=self.context.workspace)
++
++    def test_service_native_hold_and_new_context_hold_cannot_grant_eligibility(self):
++        with self.assertRaisesRegex(ValueError, "held"):
++            self.service.apply(self.request, work_root=self.context.workspace)
++        self.activate_mock_methods()
++        document = self.service.apply(self.request, work_root=self.context.workspace)
++        self.context.held = True
++        self.assertFalse(self.service.compiler_eligible(document, source_ir=SCALAR))
++        with self.assertRaises(ValueError):
++            self.service.apply(self.request, work_root=self.context.workspace)
++
++    def test_service_second_boundary_refusal_has_no_deliverable(self):
++        calls = []
++        provider = __import__("merlin.verify.lean_graph_pipeline_gate_provider", fromlist=["selected"])
++        def checked(*args, **kwargs):
++            calls.append(args[0])
++            if len(calls) == 2:
++                raise provider.selected()[0].ProofRefused("mocked second-boundary refusal")
++            return self.checked(*args, **kwargs)
++        self.activate_mock_methods(checked)
++        source = LOOP.replace("%x = arith.addi %a, %b : i8", """%x = arith.addi %a, %b : i8
++      %duplicate = arith.addi %a, %b : i8
++      %dead = arith.muli %x, %duplicate : i8""")
++        request = {**self.request, "source_ir": source,
++                   "options": {**self.request["options"], "hoist_invariants": True}}
++        count = len(self.selection._DELIVERIES)
++        with self.assertRaisesRegex(ValueError, "second-boundary"):
++            self.service.apply(request, work_root=self.context.workspace)
++        self.assertEqual(len(calls), 2)
++        self.assertEqual(len(self.selection._DELIVERIES), count)
++        self.assertEqual(request["source_ir"], source)
++
++    def test_actual_licm_service_eligibility_uses_same_minimal_profile_mocked(self):
++        self.activate_mock_methods()
++        request = {**self.request, "source_ir": LOOP,
++                   "options": {**self.request["options"], "eliminate_redundancy": False, "hoist_invariants": True}}
++        document = self.service.apply(request, work_root=self.context.workspace)
++        record = self.selection._DELIVERIES[id(document)]
++        self.assertEqual([change.kind for change in record[4]], ["scalar_loop_invariant_motion"])
++        self.assertNotEqual(record[4][0].before_ir, record[4][0].after_ir)
++        self.assertTrue(self.service.compiler_eligible(document, source_ir=LOOP))
++        self.assertEqual(len(self.context.originals), 7)
++        self.assertEqual(document["hardware_conformance"], "not_established")
++
++    def test_service_profile_or_context_policy_change_refuses_before_checker(self):
++        from merlin.verify import lean_graph_pipeline_gate_provider as provider
++        with patch.object(self.Context, "check_query", side_effect=AssertionError("stale profile cannot check")):
++            with patch.dict(self.service.profile, {"sha256": "d" * 64}):
++                with self.assertRaises(ValueError):
++                    self.service.apply(self.request, work_root=self.context.workspace)
++            extra = provider.selected()[1].FileRef("/mock/Merlin/Extra.lean", "0" * 64, 0)
++            with patch.object(self.context, "originals", {**self.context.originals, "Merlin.Extra": extra}):
++                with self.assertRaises(ValueError):
++                    self.service.apply(self.request, work_root=self.context.workspace)
++            with patch.object(self.context, "compile_audit_roots", {}):
++                with self.assertRaises(ValueError):
++                    self.service.apply(self.request, work_root=self.context.workspace)
++
++
++def retain_examples(destination):
++    """Retain actual producer bytes and uncompiled queries; never a receipt seal."""
++    from dataclasses import asdict
++    from merlin.verify.lean_graph_pipeline_gate_models import witness
++    case = WholeBoundary()
++    case.setUp()
++    destination.mkdir(parents=True, exist_ok=False)
++    change = case.change
++    prepared = case.mapping.prepare(change)
++    for name, text in (("input.mlir", SCALAR), ("before.mlir", change.before_ir),
++                       ("after.mlir", change.after_ir), ("Check.lean", prepared.query)):
++        (destination / name).write_text(text)
++    (destination / "projection.json").write_text(prepared.projection + "\n")
++    (destination / "PREPARED.json").write_text(json.dumps(asdict(prepared), indent=2) + "\n")
++    query, roots, model = witness(prepared)
++    (destination / "ArithmeticWitness.lean").write_text(query)
++    (destination / "WITNESS.json").write_text(json.dumps({**model, "roots": roots}, indent=2) + "\n")
++    wrong = change.after_ir.replace("arith.muli", "arith.subi")
++    case.parse(wrong).verify()
++    wrong_prepared = case.mapping.prepare(rebound(change, after_ir=wrong))
++    (destination / "wrong-result.mlir").write_text(wrong)
++    (destination / "WrongResult.lean").write_text(wrong_prepared.query)
++    status = case.gate.verify(change).to_dict()
++    (destination / "GATE-OUTPUT.json").write_text(json.dumps(status, indent=2) + "\n")
++    (destination / "STATUS.json").write_text(json.dumps({
++        "producer": "corrective4499 planning APIs; complete actual changed CSE boundary",
++        "actual_parser_verify": True, "query_state": "UNCOMPILED", "qualification": "NONE",
++        "corrected_producer_source": "PREPARED.json sources; not historical4499 qualification",
++        "gate_status": status, "wrong_result": "compiler-valid; changed independent after query; Lean rejection PENDING",
++        "mocked_pipeline_tests": "separate unit evidence, not real Lean acceptance",
++    }, indent=2) + "\n")
++    observer = destination / "changed-observer"
++    observer.mkdir()
++    source = SCALAR.replace("func.func private @observe(i8) -> i8",
++        "func.func private @observe(i8) -> i8\n  func.func private @other_observer(i8) -> i8")
++    observed = case.pipeline(case.parse(source), case.options, plan_only=True).changes[0]
++    wrong = observed.after_ir.replace("callee = @observe", "callee = @other_observer")
++    case.parse(wrong).verify()
++    good, bad = case.mapping.prepare(observed), case.mapping.prepare(rebound(observed, after_ir=wrong))
++    for name, text in (("before.mlir", observed.before_ir), ("correct-after.mlir", observed.after_ir),
++                       ("wrong-after.mlir", wrong), ("Positive.lean", good.query), ("Negative.lean", bad.query)):
++        (observer / name).write_text(text)
++    (observer / "STATUS.json").write_text(json.dumps({
++        "state": "UNCOMPILED_VALID_NEGATIVE", "same_roster": True, "actual_parser_verify": True,
++        "changed_query": good.query != bad.query, "kernel_refusal_observed": False,
++        "positive_prepared_identity": good.identity, "negative_prepared_identity": bad.identity,
++    }, indent=2) + "\n")
++
++
++if __name__ == "__main__":
++    primary, producer = (Path(value).resolve() for value in sys.argv[1:3])
++    isolated_owners(primary, producer)
++    args = sys.argv[3:]
++    if args and args[0] == "--retain-example":
++        retain_examples(Path(args[1]).resolve())
++        args = args[2:]
++    unittest.main(argv=[sys.argv[0], *args])
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_provider.py
+@@ -0,0 +1,156 @@
++"""Source-only selection of ONE frozen common provider; no launch authority.
++
++The trusted host must separately authorize construction/use of a fresh context.
++This loader never constructs Context, opens runtime images, or discovers an SDK.
++Public gate activation remains held in lean_graph_pipeline_gate_native.py.
++Changing this selected source cut requires a new reviewed gate source version.
++"""
++from __future__ import annotations
++
++import hashlib
++from pathlib import Path
++import sys
++import types
++
++from .lean_graph_pipeline_gate_projection import GateUnavailable
++
++_DIRECTORY = (Path(__file__).resolve().parents[3] /
++    "out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/"
++    "source-snapshot/src/merlin/verify")
++_PINS = (
++    ("lean_graph_original_image_context", "bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6", 24711),
++    ("lean_graph_original_image_context_data", "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1", 15692),
++    ("lean_graph_original_image_context_io", "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09", 4512),
++)
++_PACKAGE = "merlin.verify._graph_pipeline_frozen_provider_v5"
++_MODULES = None
++_PROJECT_MODULES = frozenset("Merlin." + name for name in (
++    "GraphStateGateEntries", "GraphStateScalar", "GraphStateScalarContract",
++    "GraphStateScalarNormalize", "GraphStateScalarSound", "GraphStateScalarTyping",
++    "GraphStateScalarInitialized"))
++_COMPILE_ROOTS = {
++    "Merlin.GraphStateScalar": tuple("Merlin.GraphState.Scalar." + name for name in (
++        "check_sound", "check_typed", "check_composes", "check_initialized", "check_operands_initialized")),
++    "Merlin.GraphStateScalarInitialized": tuple("Merlin.GraphState.Scalar." + name for name in (
++        "typed_execution_shaped", "HasReads.initialized", "typed_operands_initialized")),
++    "Merlin.GraphStateScalarSound": ("Merlin.GraphState.Scalar.normalize_sound", "Merlin.GraphState.Scalar.loopEval_congr"),
++    "Merlin.GraphStateScalarTyping": ("Merlin.GraphState.Scalar.checkTypes_sound",),
++}
++# Exact reviewed metadata/descriptor/provenance identities. These are data refs,
++# never a runtime-discovery mechanism or permission to construct/launch Context.
++_REVIEW_PINS = {'base_intent': ('out/build/graph-paper-deadline/original-runtime-candidate-v1/basic-kernel-probe-v1/INTENT.json',
++                 '2682ee9260af211714d48a3b41206a0464a5fd18d6495ba071386f87eea67a8b',
++                 145093),
++ 'copy': ('out/build/graph-paper-deadline/original-runtime-candidate-v1/RESULT.json',
++          '849060513fb300270eb75fd79518cc187325b4f8472105b34570faeaaf85a7ce',
++          3531848),
++ 'finite_review': ('out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/finite-stdlib-diagnostics-v1/REVIEW.json',
++                   '200da90f0ca766a78eca5d18a3b4fd315ac733f396017b20324a71d17ebae16b',
++                   392060),
++ 'metadata': ('out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/runtime-snapshot-review/METADATA-REVIEW-v2.json',
++              '8c4a1566fac6ecba764c91e8179b5732d7ccda1a5e9a6f58559d7a130770cd82',
++              3017778),
++ 'probe': ('out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/REVIEWED-RUNTIME-INTENT-v2.json',
++           'ccb70d1da9990d786dd59328686a389f4cd891c1a8aa24cf78625e3924a8e2f8',
++           214970),
++ 'trace': ('out/build/graph-paper-deadline/original-runtime-candidate-v1/basic-kernel-probe-v1/trace_parser.py',
++           '2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba',
++           9118)}
++
++
++def selected():
++    """Return exact frozen controller/data/IO modules, or fail closed.
++
++    Same bytes imported under another package still yield different Python class
++    identities and are NOT accepted. Saved records never select executable code.
++    """
++    global _MODULES
++    paths, contents = [], {}
++    for name, digest, size in _PINS:
++        path = _DIRECTORY / (name + ".py")
++        if path.is_symlink():
++            raise GateUnavailable("selected provider source is a symlink")
++        raw = path.read_bytes()
++        if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
++            raise GateUnavailable("selected frozen provider source changed: " + name)
++        paths.append(path)
++        contents[name] = (path, raw)
++    if _MODULES is None:
++        if any(name == _PACKAGE or name.startswith(_PACKAGE + ".") for name in sys.modules):
++            raise GateUnavailable("selected provider namespace was populated externally")
++        package = types.ModuleType(_PACKAGE)
++        package.__path__ = [str(_DIRECTORY)]
++        sys.modules[_PACKAGE] = package
++        # Execute the already digest-checked bytes, never import from a stale
++        # pyc or write __pycache__ into the immutable source snapshot. Relative
++        # imports resolve only these preloaded data/IO/controller modules.
++        loaded = {}
++        for name in (_PINS[1][0], _PINS[2][0], _PINS[0][0]):
++            path, raw = contents[name]
++            module = types.ModuleType(_PACKAGE + "." + name)
++            module.__file__, module.__package__ = str(path), _PACKAGE
++            sys.modules[module.__name__] = module
++            setattr(package, name, module)
++            exec(compile(raw, str(path), "exec"), module.__dict__)
++            loaded[name] = module
++        _MODULES = tuple(loaded[name] for name, _, _ in _PINS)
++    for module, path, (name, _, _) in zip(_MODULES, paths, _PINS, strict=True):
++        if (sys.modules.get(_PACKAGE + "." + name) is not module
++                or Path(module.__file__) != path):
++            raise GateUnavailable("selected provider module identity changed")
++    controller, data, io = _MODULES
++    if controller.data is not data or controller.io is not io or controller.CheckedQuery is not data.CheckedQuery:
++        raise GateUnavailable("mixed frozen provider modules/classes")
++    return _MODULES
++
++
++def bound_context(context):
++    """Check frozen class identity AND the context's exact three source refs.
++
++    This is source/host binding, not context validity or permission to launch.
++    The common provider still performs all runtime and live-result checks.
++    """
++    controller, data, io = selected()
++    if type(context) is not controller.Context:
++        raise GateUnavailable("exact selected frozen Context required; alternate classes/callbacks refused")
++    expected = tuple(data.FileRef(str(_DIRECTORY / (name + ".py")), digest, size)
++                     for name, digest, size in _PINS)
++    if type(context.controls) is not tuple or context.controls != expected:
++        raise GateUnavailable("context does not bind the complete selected frozen controller source cut")
++    expected_review = {role: data.FileRef(str(Path(__file__).resolve().parents[3] / path), digest, size)
++                       for role, (path, digest, size) in _REVIEW_PINS.items()}
++    if type(context.review) is not dict or context.review != expected_review:
++        raise GateUnavailable("context review/finite-runtime descriptor differs from selected exact policy")
++    return controller, data, io
++
++
++def context_arguments(prepared, *, workspace):
++    """SOURCE-ONLY recipe for the future trusted host's explicit construction.
++
++    No Context is created and no runtime image is opened. The host still needs
++    separate exact source/workspace authorization before passing these arguments
++    to selected()[0].Context.from_review. Saved JSON cannot select a provider,
++    policy, module map, compile-root list or query. No public gate is activated.
++    """
++    from .lean_graph_pipeline_gate_native import request
++
++    _, data, _ = selected()
++    selected_request = request(prepared)
++    projects = {name: data.FileRef(path, digest, size)
++                for name, path, digest, size in selected_request.project_sources}
++    if set(projects) != _PROJECT_MODULES:
++        raise GateUnavailable("exact minimal seven-module gate closure required")
++    # This validates spelling only. Fresh-directory creation is the authorized
++    # controller's responsibility, never implicit preparation or an SDK probe.
++    destination = str(data.absolute(str(workspace)))
++    root = Path(__file__).resolve().parents[3]
++    return {
++        "review": {role: data.FileRef(str(root / path), digest, size)
++                   for role, (path, digest, size) in _REVIEW_PINS.items()
++                   if role in {"metadata", "copy", "probe", "trace"}},
++        "project_sources": projects,
++        "controller_sources": tuple(data.FileRef(str(_DIRECTORY / (name + ".py")), digest, size)
++                                    for name, digest, size in _PINS),
++        "workspace": destination,
++        "compile_audit_roots": dict(_COMPILE_ROOTS),
++    }
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean
+@@ -0,0 +1,68 @@
++/- Minimal complete-entry adapter for the unchanged scalar semantics.
++The Entry fields, evalEntry, PreservesEntries and roster proofs are retained
++from GraphStatePipelineProgram under a new namespace. Only unused dependency
++imports and unused Entry typeclass derivations are omitted. Every body still
++uses Scalar.Program / Scalar.Model / Scalar.evalProgram directly. Missing
++entries return none; bad argument arity returns the same .arity error and world.
++No loop/index/resource semantics or new body evaluator is introduced.
++This additive source candidate is UNCOMPILED pending exact context review. -/
++import Merlin.GraphStateScalar
++
++namespace Merlin.GraphState.GateEntries
++set_option autoImplicit false
++open Scalar
++
++structure Entry where
++  inputs : List Ty
++  outputs : List Ty
++  body : Program
++
++def evalEntry {Value World Error : Type} {registry : List Signature}
++    (model : Model Value World Error registry) (entries : List Entry)
++    (identity : Nat) (arguments : List Value) (world : World) : Option (Outcome Value World Error) :=
++  match entries[identity]? with
++  | none => none
++  | some entry => some (if arguments.length = entry.inputs.length then
++      evalProgram model entry.body arguments world else .error (.arity,world))
++
++def PreservesEntries {Value World Error : Type} {registry : List Signature}
++    (model : Model Value World Error registry) (before after : List Entry) : Prop :=
++  ∀ identity arguments world, evalEntry model before identity arguments world =
++    evalEntry model after identity arguments world
++
++theorem entries_nil {Value World Error : Type} {registry : List Signature}
++    (model : Model Value World Error registry) : PreservesEntries model [] [] := by
++  intro identity arguments world
++  rfl
++
++/-- Every defined entry uses its own checked signature/arity; arbitrary external
++observers are in the complete outcome. No private environment equality is used. -/
++theorem entries_cons {Value World Error : Type} {registry : List Signature}
++    (model : Model Value World Error registry) {first second : Entry} {before after : List Entry}
++    (inputs : first.inputs = second.inputs) (_outputs : first.outputs = second.outputs)
++    (body : ∀ arguments world, arguments.length = first.inputs.length →
++      evalProgram model first.body arguments world = evalProgram model second.body arguments world)
++    (rest : PreservesEntries model before after) :
++    PreservesEntries model (first::before) (second::after) := by
++  intro identity arguments world
++  cases identity with
++  | zero =>
++    simp only [evalEntry,List.getElem?_cons_zero]
++    rw [← inputs]
++    by_cases arity : arguments.length = first.inputs.length
++    · simp only [arity,↓reduceIte,body arguments world arity]
++    · simp only [arity,↓reduceIte]
++  | succ identity =>
++    simpa only [evalEntry,List.getElem?_cons_succ] using rest identity arguments world
++
++def checkEntries (registry : List Signature) (entries : List Entry) : Bool :=
++  entries.all (fun entry => checkTypes registry entry.inputs entry.outputs entry.body)
++
++theorem checkEntries_sound {registry : List Signature} {entries : List Entry}
++    (accepted : checkEntries registry entries = true) :
++    ∀ entry ∈ entries, Typed registry entry.inputs entry.outputs entry.body := by
++  intro entry member
++  have checked := List.all_eq_true.mp accepted entry member
++  exact checkTypes_sound _ _ _ checked
++
++end Merlin.GraphState.GateEntries
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_gate_service.py
+@@ -0,0 +1,145 @@
++"""Trusted, process-local graph service selection and delivery authority.
++
++Binding inspects SOURCE identities only; it does not construct a Context or
++authorize native checking. Saved profile/delivery JSON never recreates authority.
++Public native dispatch remains independently held in the gate backend.
++"""
++from __future__ import annotations
++
++from collections import OrderedDict
++from dataclasses import dataclass, field
++from pathlib import Path
++import weakref
++import time
++
++from . import lean_graph_pipeline_gate as gate
++from . import lean_graph_pipeline_gate_provider as provider
++from .lean_graph_pipeline_gate_projection import DOMAIN, KINDS, PREMISES, RELATION, source_closure, source_ref
++
++_BINDINGS = weakref.WeakKeyDictionary()
++_DELIVERIES = OrderedDict()
++
++
++@dataclass(frozen=True, eq=False)
++class GraphServiceBinding:
++    compiler_profile_sha256: str
++    context_id: str
++    workspace: str
++    timeout_s: int
++    sources: tuple
++    context: object = field(repr=False)
++
++    def describe(self):
++        return {"schema": "merlin.graph_service_binding.v1", "compiler_profile_sha256": self.compiler_profile_sha256,
++                "context_id": self.context_id, "workspace": self.workspace, "timeout_s": self.timeout_s,
++                "domain": DOMAIN, "relation": RELATION, "premises": list(PREMISES), "kinds": sorted(KINDS),
++                "sources": [{"path": r.path, "sha256": r.sha256, "size": r.size} for r in self.sources],
++                "native_authorization": False, "saved_profile_is_authority": False}
++
++
++def bind_service_context(context, *, compiler_profile_sha256, timeout_s):
++    """Trusted host injection, not a request option or permission to launch.
++
++    The context must already exist from a separately authorized construction.
++    Load actual service dependencies before binding their Python source closure.
++    No old toolchain selection, runtime guard, context construction or fallback.
++    """
++    from merlin.targetgen import common_transforms
++    from merlin.transforms import pipeline
++    from merlin.perf import pass_observation
++    from merlin.verify import lean_checker
++
++    # Imports intentionally bind these real entry points in source_closure.
++    _ = common_transforms, pipeline, pass_observation, lean_checker
++    if not gate._digest(compiler_profile_sha256) or type(timeout_s) is not int or not 1 <= timeout_s <= 3600:
++        raise ValueError("explicit compiler profile identity and bounded graph host budget required")
++    provider.bound_context(context)
++    if context.held is not False:
++        raise ValueError("held graph context cannot be bound to a compiler service")
++    sources = source_closure()
++    projects = {"Merlin." + Path(ref.path).stem: (ref.path, ref.sha256, ref.size)
++                for ref in sources if ref.path.endswith(".lean")}
++    if set(projects) != provider._PROJECT_MODULES or projects != {
++            name: (ref.path, ref.sha256, ref.bytes) for name, ref in context.originals.items()}:
++        raise ValueError("service graph profile requires the exact minimal seven-module source map")
++    if context.compile_audit_roots != provider._COMPILE_ROOTS:
++        raise ValueError("service graph profile requires the exact dependency audit policy")
++    workspace = str(context.workspace)
++    if not Path(workspace).is_absolute():
++        raise ValueError("graph service requires an explicit context workspace")
++    result = GraphServiceBinding(compiler_profile_sha256, context.context_id, workspace, timeout_s, sources, context)
++    _BINDINGS[result] = (context, result.describe())
++    return result
++
++
++def validate_binding(binding, *, compiler_profile_sha256, work_root=None):
++    if type(binding) is not GraphServiceBinding or binding not in _BINDINGS:
++        raise ValueError("live trusted graph service binding required; saved/copy/callback data refused")
++    context, original = _BINDINGS[binding]
++    if (binding.context is not context or binding.describe() != original
++            or binding.compiler_profile_sha256 != compiler_profile_sha256
++            or binding.context_id != context.context_id or str(context.workspace) != binding.workspace
++            or context.held is not False):
++        raise ValueError("graph service binding/context/profile changed or held")
++    if work_root is not None and str(Path(work_root)) != binding.workspace:
++        raise ValueError("graph request work root differs from the host-selected context")
++    provider.bound_context(context)
++    if any(source_ref(ref.path) != ref for ref in binding.sources):
++        raise ValueError("graph service selected source bytes changed")
++    projects = {"Merlin." + Path(ref.path).stem: (ref.path, ref.sha256, ref.size)
++                for ref in binding.sources if ref.path.endswith(".lean")}
++    if projects != {name: (ref.path, ref.sha256, ref.bytes) for name, ref in context.originals.items()}:
++        raise ValueError("graph service project source map changed")
++    if context.compile_audit_roots != provider._COMPILE_ROOTS:
++        raise ValueError("graph service dependency audit policy changed")
++    return context
++
++
++def validate_options(selected):
++    if any(selected.get(name, True) for name in ("normalize_shapes", "simplify_integers", "reuse_buffers")):
++        raise ValueError("graph profile supports only explicit scalar CSE/DCE and LICM; legacy passes have no authority")
++    if any(selected.get(name, ()) for name in ("tile_iterations", "unroll_factors", "dependency_orders")):
++        raise ValueError("loop/storage/schedule transformations are outside the selected graph service profile")
++
++
++def record_delivery(binding, document, source, changes, receipts, *, deadline):
++    """Record the SAME live service output only after all boundary admissions."""
++    from .lean_graph_pipeline_gate_projection import canonical, sha
++    from merlin.transforms.certificates import ir_text, parse_ir
++
++    validate_binding(binding, compiler_profile_sha256=binding.compiler_profile_sha256)
++    if time.monotonic() >= deadline:
++        raise TimeoutError("graph delivery exhausted the host work budget")
++    if len(changes) != len(receipts) or not changes:
++        raise ValueError("graph authority requires an actual checked changed boundary roster")
++    if (document.get("source_sha256") != sha(source) or changes[0].before_ir != ir_text(parse_ir(source))
++            or any(first.after_ir != second.before_ir for first, second in zip(changes, changes[1:]))):
++        raise ValueError("graph delivery lacks exact original and adjacent compiler buffer joins")
++    if any(change.kind not in KINDS or not gate.accepted(receipt, change, toolchain=binding.context)
++           for change, receipt in zip(changes, receipts, strict=True)):
++        raise ValueError("graph delivery lacks fresh whole-boundary admissions")
++    if document.get("transformed_ir") != changes[-1].after_ir:
++        raise ValueError("graph delivery differs from the last complete checked output")
++    original = canonical(document)
++    if time.monotonic() >= deadline:
++        raise TimeoutError("graph delivery exhausted the host budget during revalidation")
++    _DELIVERIES[id(document)] = (document, original, binding, source, tuple(changes), tuple(receipts))
++    if len(_DELIVERIES) > 128:
++        _DELIVERIES.popitem(last=False)
++
++
++def eligible_delivery(binding, document, source):
++    """Saved/copy/mutated service output cannot grant compiler eligibility."""
++    from .lean_graph_pipeline_gate_projection import canonical
++
++    found = _DELIVERIES.get(id(document))
++    if found is None or found[0] is not document or found[2] is not binding or found[3] != source:
++        return False
++    try:
++        validate_binding(binding, compiler_profile_sha256=binding.compiler_profile_sha256)
++        if canonical(document) != found[1]:
++            return False
++        return all(gate.accepted(receipt, change, toolchain=binding.context)
++                   for change, receipt in zip(found[4], found[5], strict=True))
++    except (ValueError, RuntimeError, OSError, TypeError, AttributeError, KeyError):
++        return False

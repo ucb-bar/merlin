@@ -1,0 +1,18 @@
+Command: .venv/bin/python -I -B merlin/tests/ir/test_lean_graph_pipeline_tail.py /home/jeremy/Projects/merlin /home/jeremy/Projects/merlin-graph-proof-intake -v
+Tool retained output chunk 5efc8b; exit 1. Five tests ran; four passed. The valid mutation test errored constructing lane_flags before any preparation/native check.
+
+ERROR: test_valid_mutations_complete_module_refusal (__main__.Tail.test_valid_mutations_complete_module_refusal) (name='lane_flags')
+Traceback (most recent call last):
+  File "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_tail.py", line 119, in test_valid_mutations_complete_module_refusal
+    bad=mutate(change.after_ir,name);self.assertNotEqual(bad,change.after_ir)
+  File "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_tail.py", line 63, in mutate
+    addition.properties['overflowFlags']=arith.IntegerOverflowAttr('nsw')
+  File "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py", line 132, in __init__
+    super().__init__(flags)
+  File "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py", line 53, in __init__
+    raise TypeError(
+TypeError: expected string parameter to be one of none or None, got nsw
+
+FAILED (errors=1)
+
+Correction after preserving this failure: use the actual enum iterable [arith.IntegerOverflowFlag.NSW], then verify compiler-valid mutation before host refusal. No runtime/SDK/object context involved. This is a test-construction failure, not a transform counterexample or kernel rejection.

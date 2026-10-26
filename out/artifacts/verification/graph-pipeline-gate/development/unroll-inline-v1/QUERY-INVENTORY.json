@@ -1,0 +1,638 @@
+{
+  "authoritative_examples": "complete-carry-examples",
+  "cases": [
+    {
+      "case": "empty",
+      "identity": "de268a9e7c9666912a0c0eaf57232d004e0c39a3b026ce754d3512e5eadc920d",
+      "source_sha256": "990e2f7b271dbce4ab0cc837ab65145358f54040686c5372df3639d25651820c",
+      "target_sha256": "a7c60eacf73d09eee9ec6d97873b0f83807db58a11af01ba3c587c7b3457490d",
+      "query_sha256": "4344cbeae90444ee6bf46a7719a383e8e37f6d29775842588f9ea79b05884862",
+      "roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform"
+      ],
+      "field_facts": [
+        {
+          "carry_types": [
+            "i8",
+            "i8"
+          ],
+          "count": 0,
+          "entry": "main",
+          "factor": 2,
+          "lane_constants": [],
+          "mode": "empty",
+          "producer_witness_used_as_proof": false,
+          "source_body_operations": 2,
+          "source_controls": [
+            3,
+            3,
+            2
+          ],
+          "source_suffix_operations": 2,
+          "target_lane_operations": 0,
+          "target_suffix_position": 3
+        }
+      ],
+      "witness_roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform",
+        "Merlin.GraphInlineWitness.source_success",
+        "Merlin.GraphInlineWitness.target_success",
+        "Merlin.GraphInlineWitness.source_success_initialized",
+        "Merlin.GraphInlineWitness.target_success_initialized",
+        "Merlin.GraphInlineWitness.source_observer_failure",
+        "Merlin.GraphInlineWitness.target_observer_failure",
+        "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.source_empty_body_fault_skipped",
+        "Merlin.GraphInlineWitness.target_empty_body_fault_skipped",
+        "Merlin.GraphInlineWitness.source_empty_body_fault_skipped_initialized",
+        "Merlin.GraphInlineWitness.target_empty_body_fault_skipped_initialized"
+      ],
+      "witness_outcomes": [
+        {
+          "name": "success",
+          "provider": "none false false",
+          "proposed_outcome": ".ok ([3],8)"
+        },
+        {
+          "name": "observer_failure",
+          "provider": "none true false",
+          "proposed_outcome": ".error (.external 17,8)"
+        },
+        {
+          "name": "empty_body_fault_skipped",
+          "provider": "none false true",
+          "proposed_outcome": ".ok ([3],8)"
+        }
+      ]
+    },
+    {
+      "case": "inline1",
+      "identity": "d1e170cc62248217d69f47d1a118724e44fa635579b3c9fda367b94910c1e48c",
+      "source_sha256": "0869de7abb2d071b1abcd198596e83ec62941d24faae23417da791a58dfdcb9e",
+      "target_sha256": "83615479974ff114fa9bf52ff77d53d25d6a1a31887f304e40acfba7f1b6c236",
+      "query_sha256": "11f1e95d97507fa69cdf3be2d1445b83fa4568b985aca56e83d4df3fdf4edc2d",
+      "roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform"
+      ],
+      "field_facts": [
+        {
+          "carry_types": [
+            "i8"
+          ],
+          "count": 1,
+          "entry": "main",
+          "factor": 2,
+          "lane_constants": [
+            {
+              "actual_index": 5,
+              "ordinal": 0,
+              "target_operation": 3
+            }
+          ],
+          "mode": "full-inline",
+          "producer_witness_used_as_proof": false,
+          "source_body_operations": 2,
+          "source_controls": [
+            5,
+            6,
+            2
+          ],
+          "source_suffix_operations": 2,
+          "target_lane_operations": 3,
+          "target_suffix_position": 6
+        }
+      ],
+      "witness_roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform",
+        "Merlin.GraphInlineWitness.source_success",
+        "Merlin.GraphInlineWitness.target_success",
+        "Merlin.GraphInlineWitness.source_success_initialized",
+        "Merlin.GraphInlineWitness.target_success_initialized",
+        "Merlin.GraphInlineWitness.source_observer_failure",
+        "Merlin.GraphInlineWitness.target_observer_failure",
+        "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.source_first_body_failure",
+        "Merlin.GraphInlineWitness.target_first_body_failure",
+        "Merlin.GraphInlineWitness.source_first_body_failure_initialized",
+        "Merlin.GraphInlineWitness.target_first_body_failure_initialized",
+        "Merlin.GraphInlineWitness.source_last_body_failure",
+        "Merlin.GraphInlineWitness.target_last_body_failure",
+        "Merlin.GraphInlineWitness.source_last_body_failure_initialized",
+        "Merlin.GraphInlineWitness.target_last_body_failure_initialized"
+      ],
+      "witness_outcomes": [
+        {
+          "name": "success",
+          "provider": "none false false",
+          "proposed_outcome": ".ok ([5],9)"
+        },
+        {
+          "name": "observer_failure",
+          "provider": "none true false",
+          "proposed_outcome": ".error (.external 17,9)"
+        },
+        {
+          "name": "first_body_failure",
+          "provider": "(some 5) false false",
+          "proposed_outcome": ".error (.external 17,8)"
+        },
+        {
+          "name": "last_body_failure",
+          "provider": "(some 5) false false",
+          "proposed_outcome": ".error (.external 17,8)"
+        }
+      ]
+    },
+    {
+      "case": "inline2",
+      "identity": "5c131898e074d9e756d0f2573536904071de04064fd7c75091d29d681a5eab47",
+      "source_sha256": "02ecd0ef3e270350eec6e990d06f057e4252e3528eb3939e08e77e91a4abe69b",
+      "target_sha256": "3861112b0eafd59d3124cbfa6d9f705c3cdb4742bd8101f8bb6996fbb8c47a2b",
+      "query_sha256": "00acd4837b64927418ddf1335e4a47663a68c754c0448fef071e0d4a92b56249",
+      "roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform"
+      ],
+      "field_facts": [
+        {
+          "carry_types": [
+            "i8",
+            "i8"
+          ],
+          "count": 2,
+          "entry": "main",
+          "factor": 2,
+          "lane_constants": [
+            {
+              "actual_index": 2,
+              "ordinal": 0,
+              "target_operation": 3
+            },
+            {
+              "actual_index": 5,
+              "ordinal": 1,
+              "target_operation": 6
+            }
+          ],
+          "mode": "full-inline",
+          "producer_witness_used_as_proof": false,
+          "source_body_operations": 2,
+          "source_controls": [
+            2,
+            8,
+            3
+          ],
+          "source_suffix_operations": 2,
+          "target_lane_operations": 6,
+          "target_suffix_position": 9
+        }
+      ],
+      "witness_roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform",
+        "Merlin.GraphInlineWitness.source_success",
+        "Merlin.GraphInlineWitness.target_success",
+        "Merlin.GraphInlineWitness.source_success_initialized",
+        "Merlin.GraphInlineWitness.target_success_initialized",
+        "Merlin.GraphInlineWitness.source_observer_failure",
+        "Merlin.GraphInlineWitness.target_observer_failure",
+        "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.source_first_body_failure",
+        "Merlin.GraphInlineWitness.target_first_body_failure",
+        "Merlin.GraphInlineWitness.source_first_body_failure_initialized",
+        "Merlin.GraphInlineWitness.target_first_body_failure_initialized",
+        "Merlin.GraphInlineWitness.source_last_body_failure",
+        "Merlin.GraphInlineWitness.target_last_body_failure",
+        "Merlin.GraphInlineWitness.source_last_body_failure_initialized",
+        "Merlin.GraphInlineWitness.target_last_body_failure_initialized"
+      ],
+      "witness_outcomes": [
+        {
+          "name": "success",
+          "provider": "none false false",
+          "proposed_outcome": ".ok ([7],10)"
+        },
+        {
+          "name": "observer_failure",
+          "provider": "none true false",
+          "proposed_outcome": ".error (.external 17,10)"
+        },
+        {
+          "name": "first_body_failure",
+          "provider": "(some 2) false false",
+          "proposed_outcome": ".error (.external 17,8)"
+        },
+        {
+          "name": "last_body_failure",
+          "provider": "(some 5) false false",
+          "proposed_outcome": ".error (.external 17,9)"
+        }
+      ]
+    },
+    {
+      "case": "inline3",
+      "identity": "a34371e5ca38441d83fe2ed2326f70e27e2e606b18e4939e2d5aded95829e76e",
+      "source_sha256": "cdb5e32a988b1357080be305661b7c0d3840fd66d07b23448161a688fd39c4ce",
+      "target_sha256": "cde668d26650b68660e95b565d3c915ad2fa75e636d0105ffc510838a7135e89",
+      "query_sha256": "bb6fe7247d7ee3a8eb9008fb397007a6aebfda86a50c9dc3155a78fc2cbc6c65",
+      "roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform"
+      ],
+      "field_facts": [
+        {
+          "carry_types": [
+            "i8",
+            "i8"
+          ],
+          "count": 3,
+          "entry": "main",
+          "factor": 4,
+          "lane_constants": [
+            {
+              "actual_index": 7,
+              "ordinal": 0,
+              "target_operation": 3
+            },
+            {
+              "actual_index": 10,
+              "ordinal": 1,
+              "target_operation": 6
+            },
+            {
+              "actual_index": 13,
+              "ordinal": 2,
+              "target_operation": 9
+            }
+          ],
+          "mode": "full-inline",
+          "producer_witness_used_as_proof": false,
+          "source_body_operations": 2,
+          "source_controls": [
+            7,
+            16,
+            3
+          ],
+          "source_suffix_operations": 2,
+          "target_lane_operations": 9,
+          "target_suffix_position": 12
+        }
+      ],
+      "witness_roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform",
+        "Merlin.GraphInlineWitness.source_success",
+        "Merlin.GraphInlineWitness.target_success",
+        "Merlin.GraphInlineWitness.source_success_initialized",
+        "Merlin.GraphInlineWitness.target_success_initialized",
+        "Merlin.GraphInlineWitness.source_observer_failure",
+        "Merlin.GraphInlineWitness.target_observer_failure",
+        "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.source_first_body_failure",
+        "Merlin.GraphInlineWitness.target_first_body_failure",
+        "Merlin.GraphInlineWitness.source_first_body_failure_initialized",
+        "Merlin.GraphInlineWitness.target_first_body_failure_initialized",
+        "Merlin.GraphInlineWitness.source_last_body_failure",
+        "Merlin.GraphInlineWitness.target_last_body_failure",
+        "Merlin.GraphInlineWitness.source_last_body_failure_initialized",
+        "Merlin.GraphInlineWitness.target_last_body_failure_initialized"
+      ],
+      "witness_outcomes": [
+        {
+          "name": "success",
+          "provider": "none false false",
+          "proposed_outcome": ".ok ([9],11)"
+        },
+        {
+          "name": "observer_failure",
+          "provider": "none true false",
+          "proposed_outcome": ".error (.external 17,11)"
+        },
+        {
+          "name": "first_body_failure",
+          "provider": "(some 7) false false",
+          "proposed_outcome": ".error (.external 17,8)"
+        },
+        {
+          "name": "last_body_failure",
+          "provider": "(some 13) false false",
+          "proposed_outcome": ".error (.external 17,10)"
+        }
+      ]
+    },
+    {
+      "case": "wide_inline1",
+      "identity": "23530a9f260c0c97d9577a71bd4b5cf9a217bfa8f649ffa6848693b54b06696c",
+      "source_sha256": "7485d750960fe56661f9f175193526020c3bc555a3b175c8eb69af37e9b28ac6",
+      "target_sha256": "ac240e440ff38e965c413048cb004123f76eed52c0b352c0760a900b3c5a51b1",
+      "query_sha256": "d5d15ffe2618f82b59fc631aa157b591d2907148925b39fc10a72664a2256ac6",
+      "roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform"
+      ],
+      "field_facts": [
+        {
+          "carry_types": [
+            "i8"
+          ],
+          "count": 1,
+          "entry": "main",
+          "factor": 2,
+          "lane_constants": [
+            {
+              "actual_index": 2147483650,
+              "ordinal": 0,
+              "target_operation": 3
+            }
+          ],
+          "mode": "full-inline",
+          "producer_witness_used_as_proof": false,
+          "source_body_operations": 2,
+          "source_controls": [
+            2147483650,
+            2147483651,
+            2
+          ],
+          "source_suffix_operations": 2,
+          "target_lane_operations": 3,
+          "target_suffix_position": 6
+        }
+      ],
+      "witness_roots": [
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+        "Merlin.GraphState.Pipeline.indexIterations_count",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+        "Merlin.GraphStatePipelineInlineInstance.complete",
+        "merlin_unroll_inline_transform",
+        "Merlin.GraphInlineWitness.source_success",
+        "Merlin.GraphInlineWitness.target_success",
+        "Merlin.GraphInlineWitness.source_success_initialized",
+        "Merlin.GraphInlineWitness.target_success_initialized",
+        "Merlin.GraphInlineWitness.source_observer_failure",
+        "Merlin.GraphInlineWitness.target_observer_failure",
+        "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+        "Merlin.GraphInlineWitness.source_first_body_failure",
+        "Merlin.GraphInlineWitness.target_first_body_failure",
+        "Merlin.GraphInlineWitness.source_first_body_failure_initialized",
+        "Merlin.GraphInlineWitness.target_first_body_failure_initialized",
+        "Merlin.GraphInlineWitness.source_last_body_failure",
+        "Merlin.GraphInlineWitness.target_last_body_failure",
+        "Merlin.GraphInlineWitness.source_last_body_failure_initialized",
+        "Merlin.GraphInlineWitness.target_last_body_failure_initialized"
+      ],
+      "witness_outcomes": [
+        {
+          "name": "success",
+          "provider": "none false false",
+          "proposed_outcome": ".ok ([5],9)"
+        },
+        {
+          "name": "observer_failure",
+          "provider": "none true false",
+          "proposed_outcome": ".error (.external 17,9)"
+        },
+        {
+          "name": "first_body_failure",
+          "provider": "(some 2147483650) false false",
+          "proposed_outcome": ".error (.external 17,8)"
+        },
+        {
+          "name": "last_body_failure",
+          "provider": "(some 2147483650) false false",
+          "proposed_outcome": ".error (.external 17,8)"
+        }
+      ]
+    }
+  ],
+  "final_root": "merlin_unroll_inline_transform",
+  "kernel_acceptances": 0,
+  "qualified": false
+}

@@ -1,0 +1,20 @@
+{
+  "authorization": false,
+  "provider": "UNSELECTED_HELD",
+  "purpose": "prioritize checking existing candidates before further variant expansion once root authorizes an exact justified common context",
+  "ordered_source_obligations": [
+    "frozen imported roots and exact new Inline module type/std3 audit",
+    "empty complete query and skipped-body/observer-failure/countermodel candidates",
+    "inline1 complete query and witness",
+    "inline2 and inline3 complete queries and witnesses",
+    "wide_inline1 signed64 query and witness",
+    "existing unroll-tail-v1 generic helpers, trip5_factor2 complete query and structural success/failure witness",
+    "remaining existing tail cases and exact support roots",
+    "new fixed qualification/valid-negative roster and one retained replay only under separately authorized policy"
+  ],
+  "holds": [
+    "no execution of this list without NEW explicit authorization",
+    "no SDK/pin refresh, repair, old-profile retry or qualification transfer",
+    "same-live-result source/output/boundary binding required before public compiler admission"
+  ]
+}

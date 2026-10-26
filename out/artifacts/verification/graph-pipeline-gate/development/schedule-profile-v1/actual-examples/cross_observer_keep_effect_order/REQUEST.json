@@ -1,0 +1,98 @@
+{
+  "schema": "merlin.graph_schedule_request.v1",
+  "profile": "sequential_scalar_schedule_source_v1",
+  "kind": "sequential_dependency_schedule",
+  "prepared_identity": "4130beacc5d4c95d74733a367144164884fdb9a6be13254bc80a61fe0f214146",
+  "domain": "complete_regionfree_scalar_order_equal_outcome_v1",
+  "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+  "premises": [
+    "trusted complete xDSL parsing, projection, exact source and host binding",
+    "same frozen Scalar.Program/Model/evalProgram and complete-entry dispatcher",
+    "closed total deterministic state-free primitive interpretation; not inferred from dependency hints",
+    "same ordered opaque descriptor interpretation on explicit operands and entire persistent world",
+    "opaque calls may fail; local successful result arity only; no source-success premise",
+    "region-free scalar word bodies, explicit external declarations; no internal-call/CFG/region bridge",
+    "private SSA stacks unobserved; native, alias/allocator/completion/poison/numerical fidelity separate"
+  ],
+  "query": "import Merlin.GraphStateGateEntries\nimport Merlin.GraphStateScalar\nset_option maxRecDepth 4096\nset_option maxHeartbeats 2000000\nnamespace Merlin.GraphStateScalarInstance\nopen Merlin.GraphState.Scalar\ndef registry : List Signature := [{inputs := [(.bits 8)],outputs := [(.bits 8)]},{inputs := [(.bits 8)],outputs := [(.bits 8)]}]\nnamespace F2\ndef inputs : List Ty := [(.bits 8),(.bits 8)]\ndef outputs : List Ty := [(.bits 8)]\ndef before : Program := (.pure (.add 8) [0,1] (.pure (.mul 8) [1,2] (.opaque 0 [1] [(.bits 8)] (.pure (.sub 8) [3,4] (.opaque 1 [2] [(.bits 8)] (.pure (.add 8) [2,0] (.pure (.add 8) [0,2] (.ret [0]))))))))\ndef after : Program := (.pure (.add 8) [0,1] (.pure (.mul 8) [1,2] (.pure (.sub 8) [2,3] (.opaque 0 [2] [(.bits 8)] (.opaque 1 [2] [(.bits 8)] (.pure (.add 8) [1,0] (.pure (.add 8) [0,3] (.ret [0]))))))))\ntheorem accepted : check registry inputs outputs before after = true := by decide\ntheorem actual : Preserves registry inputs.length before after := check_sound accepted\ntheorem typed : Typed registry inputs outputs before \u2227 Typed registry inputs outputs after :=\n  check_typed accepted\ntheorem initialized {Value World Error : Type} (model : Model Value World Error registry)\n    (values : List Value) (world : World) (arity : values.length = inputs.length) :\n    Shaped outputs.length (evalProgram model before values world) \u2227\n    Shaped outputs.length (evalProgram model after values world) :=\n  check_initialized accepted model values world arity\ntheorem operands_initialized {Value World Error : Type} (model : Model Value World Error registry)\n    (values : List Value) (world : World) (arity : values.length = inputs.length) :\n    Initialized model before values world \u2227 Initialized model after values world :=\n  check_operands_initialized accepted model values world arity\nend F2\nnamespace F3\ndef inputs : List Ty := [(.bits 8)]\ndef outputs : List Ty := [(.bits 8)]\ndef before : Program := (.ret [0])\ndef after : Program := (.ret [0])\ntheorem accepted : check registry inputs outputs before after = true := by decide\ntheorem actual : Preserves registry inputs.length before after := check_sound accepted\ntheorem typed : Typed registry inputs outputs before \u2227 Typed registry inputs outputs after :=\n  check_typed accepted\ntheorem initialized {Value World Error : Type} (model : Model Value World Error registry)\n    (values : List Value) (world : World) (arity : values.length = inputs.length) :\n    Shaped outputs.length (evalProgram model before values world) \u2227\n    Shaped outputs.length (evalProgram model after values world) :=\n  check_initialized accepted model values world arity\ntheorem operands_initialized {Value World Error : Type} (model : Model Value World Error registry)\n    (values : List Value) (world : World) (arity : values.length = inputs.length) :\n    Initialized model before values world \u2227 Initialized model after values world :=\n  check_operands_initialized accepted model values world arity\nend F3\nend Merlin.GraphStateScalarInstance\nnamespace Merlin.GraphPipelineGateInstance\nopen Merlin.GraphState.Scalar Merlin.GraphState.GateEntries\nabbrev registry := Merlin.GraphStateScalarInstance.registry\ndef beforeEntries : List Entry := [{inputs := Merlin.GraphStateScalarInstance.F2.inputs, outputs := Merlin.GraphStateScalarInstance.F2.outputs, body := Merlin.GraphStateScalarInstance.F2.before},{inputs := Merlin.GraphStateScalarInstance.F3.inputs, outputs := Merlin.GraphStateScalarInstance.F3.outputs, body := Merlin.GraphStateScalarInstance.F3.before}]\ndef afterEntries : List Entry := [{inputs := Merlin.GraphStateScalarInstance.F2.inputs, outputs := Merlin.GraphStateScalarInstance.F2.outputs, body := Merlin.GraphStateScalarInstance.F2.after},{inputs := Merlin.GraphStateScalarInstance.F3.inputs, outputs := Merlin.GraphStateScalarInstance.F3.outputs, body := Merlin.GraphStateScalarInstance.F3.after}]\ntheorem complete {Value World Error : Type} (model : Model Value World Error registry) :\n    PreservesEntries model beforeEntries afterEntries :=\n  entries_cons model rfl rfl (Merlin.GraphStateScalarInstance.F2.actual Value World Error model) (entries_cons model rfl rfl (Merlin.GraphStateScalarInstance.F3.actual Value World Error model) (entries_nil model))\nend Merlin.GraphPipelineGateInstance\ntheorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries :=\n  Merlin.GraphPipelineGateInstance.complete model\n",
+  "query_sha256": "31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e",
+  "final_root": "merlin_schedule_transform",
+  "support_roots": [
+    "Merlin.GraphState.Scalar.check_sound",
+    "Merlin.GraphState.Scalar.check_typed",
+    "Merlin.GraphState.Scalar.normalize_sound",
+    "Merlin.GraphStateScalarInstance.F2.accepted",
+    "Merlin.GraphStateScalarInstance.F2.actual",
+    "Merlin.GraphStateScalarInstance.F2.typed",
+    "Merlin.GraphStateScalarInstance.F2.initialized",
+    "Merlin.GraphStateScalarInstance.F2.operands_initialized",
+    "Merlin.GraphStateScalarInstance.F3.accepted",
+    "Merlin.GraphStateScalarInstance.F3.actual",
+    "Merlin.GraphStateScalarInstance.F3.typed",
+    "Merlin.GraphStateScalarInstance.F3.initialized",
+    "Merlin.GraphStateScalarInstance.F3.operands_initialized",
+    "Merlin.GraphState.GateEntries.entries_cons",
+    "Merlin.GraphState.GateEntries.entries_nil",
+    "Merlin.GraphPipelineGateInstance.complete"
+  ],
+  "exact_statement": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries :=\n  Merlin.GraphPipelineGateInstance.complete model\n",
+  "project_sources": [
+    [
+      "Merlin.GraphStateGateEntries",
+      "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+      "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+      3401
+    ],
+    [
+      "Merlin.GraphStateScalar",
+      "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      4654
+    ],
+    [
+      "Merlin.GraphStateScalarContract",
+      "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      8229
+    ],
+    [
+      "Merlin.GraphStateScalarInitialized",
+      "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      11782
+    ],
+    [
+      "Merlin.GraphStateScalarNormalize",
+      "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      6170
+    ],
+    [
+      "Merlin.GraphStateScalarSound",
+      "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      9963
+    ],
+    [
+      "Merlin.GraphStateScalarTyping",
+      "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      6614
+    ]
+  ],
+  "host_obligations": [
+    "fresh complete module/common registry/current order/dependency/opaque-anchor reconstruction",
+    "exact final/support root types and transitive std3 audit; no local-lemma-only acceptance",
+    "explicit NEW reviewed provider/source/import/object/runtime profile; no default SDK or two-kind gate extension",
+    "same typed live full-entry completion revalidated for actual source/output/order at delivery",
+    "plan_only=False in future reviewed service; no saved/copied/diagnostic/certificate authority",
+    "unchanged-order example stays identity; scheduling is not panel/double-buffer execution proof"
+  ],
+  "provider": "UNSELECTED_HELD",
+  "query_contract": "pure_declarations_separate_root_audit_v1",
+  "authority": false,
+  "native_authorization": false,
+  "query_status": "UNCOMPILED",
+  "outcome": "UNOBSERVED",
+  "qualification": "UNQUALIFIED"
+}

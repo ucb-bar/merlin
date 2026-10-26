@@ -1,0 +1,10 @@
+test_actual_five_and_six_buffers_emit_frozen_complete_roots (__main__.Profiles.test_actual_five_and_six_buffers_emit_frozen_complete_roots) ... ok
+test_old_guards_runners_and_minimal_provider_are_never_called (__main__.Profiles.test_old_guards_runners_and_minimal_provider_are_never_called) ... ok
+test_stale_middle_observer_body_control_return_refuse (__main__.Profiles.test_stale_middle_observer_body_control_return_refuse) ... ok
+test_unsupported_settings_tail_dynamic_and_flags (__main__.Profiles.test_unsupported_settings_tail_dynamic_and_flags) ... ok
+test_wrong_profile_domain_roots_and_source_map_are_not_authority (__main__.Profiles.test_wrong_profile_domain_roots_and_source_map_are_not_authority) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 2.688s
+
+OK

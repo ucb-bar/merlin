@@ -1,0 +1,1 @@
+{"host_refusal": "actual lane IV constant differs from counted progression", "parser_verify": true, "before": "../inline3/before.mlir", "query_status": "UNCOMPILED", "kernel_refusal_observed": false}

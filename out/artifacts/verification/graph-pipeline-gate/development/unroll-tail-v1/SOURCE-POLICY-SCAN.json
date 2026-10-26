@@ -1,0 +1,6 @@
+{
+  "state": "source scan only; kernel transitive std3 audit UNOBSERVED",
+  "files": 7,
+  "forbidden_declaration_or_tactic_hits": [],
+  "native_or_runtime_reads": false
+}

@@ -1,0 +1,9 @@
+test_actual_service_gate_and_live_compiler_eligibility_mocked (__main__.ServiceBoundary.test_actual_service_gate_and_live_compiler_eligibility_mocked) ... ok
+test_service_native_hold_and_new_context_hold_cannot_grant_eligibility (__main__.ServiceBoundary.test_service_native_hold_and_new_context_hold_cannot_grant_eligibility) ... ok
+test_service_refuses_missing_saved_legacy_profile_and_unsupported_options (__main__.ServiceBoundary.test_service_refuses_missing_saved_legacy_profile_and_unsupported_options) ... ok
+test_service_second_boundary_refusal_has_no_deliverable (__main__.ServiceBoundary.test_service_second_boundary_refusal_has_no_deliverable) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.593s
+
+OK

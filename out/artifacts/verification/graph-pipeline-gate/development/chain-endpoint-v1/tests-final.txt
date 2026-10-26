@@ -1,0 +1,14 @@
+test_actual_checked_pipeline_plus_live_endpoint_mock_only (__main__.Chain.test_actual_checked_pipeline_plus_live_endpoint_mock_only) ... ok
+test_actual_common_model_full_roster_direct_and_composed_query (__main__.Chain.test_actual_common_model_full_roster_direct_and_composed_query) ... ok
+test_actual_dce_changes_independent_opaque_type_numbers (__main__.Chain.test_actual_dce_changes_independent_opaque_type_numbers) ... ok
+test_actual_service_wrapper_requires_endpoint_and_leaves_v1_output_untouched (__main__.Chain.test_actual_service_wrapper_requires_endpoint_and_leaves_v1_output_untouched) ... ok
+test_interface_and_external_callee_roster_refuse (__main__.Chain.test_interface_and_external_callee_roster_refuse) ... ok
+test_public_hold_and_saved_receipt_cannot_grant_chain (__main__.Chain.test_public_hold_and_saved_receipt_cannot_grant_chain) ... ok
+test_saved_registry_roster_domain_and_source_forgeries_refuse (__main__.Chain.test_saved_registry_roster_domain_and_source_forgeries_refuse) ... ok
+test_valid_altered_final_observer_and_callee_change_query_not_authority (__main__.Chain.test_valid_altered_final_observer_and_callee_change_query_not_authority) ... ok
+test_wrong_middle_order_missing_and_certificate_refuse (__main__.Chain.test_wrong_middle_order_missing_and_certificate_refuse) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 4.443s
+
+OK

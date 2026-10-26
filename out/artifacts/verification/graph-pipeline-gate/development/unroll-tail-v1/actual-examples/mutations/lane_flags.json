@@ -1,0 +1,1 @@
+{"host_refusal": "actual complete result differs from pinned ordered producer output", "parser_verify": true, "source": "../nonzero_nonunit_two/before.mlir", "kernel_refusal_observed": false, "outcome": "UNOBSERVED"}

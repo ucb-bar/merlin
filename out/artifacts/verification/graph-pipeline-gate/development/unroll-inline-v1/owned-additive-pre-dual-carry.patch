@@ -1,0 +1,683 @@
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean
+@@ -0,0 +1,45 @@
++/- Source-only empty/full-inline operational bridge. No replacement evaluator,
++body-agreement axiom or source-success assumption. Instantiated queries close
++the finite actual syntax equations in the unchanged Scalar evaluator. -/
++import Merlin.GraphStatePipelineControl
++import Merlin.GraphStateScalarSound
++
++namespace Merlin.GraphState.Pipeline.Inline
++set_option autoImplicit false
++open Scalar GraphLoopsUnroll
++
++/-- No body operation is invoked in a counted empty source loop. This includes
++arbitrary partial/effectful bodies and retains the initial carry and world. -/
++theorem empty_no_body {Value World Error : Type} (arity : Nat)
++    (body : Int → List Value → World → Outcome Value World Error)
++    (lower upper step : Nat) (positive : 0 < step)
++    (counted : CountCorrect lower upper step 0)
++    (values : List Value) (world : World) (size : values.length = arity) :
++    loopEval arity body (indexIterations lower upper step) values world = .ok (values,world) := by
++  rw [indexIterations_count positive counted]
++  simp only [progression,List.map_nil,loopEval,size,↓reduceIte]
++
++/-- Counted source execution, INCLUDING its continuation, can be reduced over
++the exact lane IV progression. Instantiation is bounded by the selected inline
++factor; no unbounded trip-sized trace or success premise is introduced. -/
++theorem counted_continuation {Value World Error : Type} (arity : Nat)
++    (body : Int → List Value → World → Outcome Value World Error)
++    (next : List Value → World → Outcome Value World Error)
++    (lower upper step count : Nat) (positive : 0 < step)
++    (counted : CountCorrect lower upper step count)
++    (values : List Value) (world : World) :
++    (loopEval arity body (indexIterations lower upper step) values world).bind
++      (fun result => next result.1 result.2) =
++    (loopEval arity body ((progression lower step count).map Int.ofNat) values world).bind
++      (fun result => next result.1 result.2) := by
++  rw [indexIterations_count positive counted]
++
++/-- A failing inline lane suppresses all remaining lanes and the post-loop
++observer. The failure includes the terminal world, not only an error code. -/
++theorem failed_continuation {Value World Error : Type}
++    (failure : Fault Error × World)
++    (next : List Value → World → Outcome Value World Error) :
++    (Except.error failure : Outcome Value World Error).bind
++      (fun result => next result.1 result.2) = .error failure := rfl
++
++end Merlin.GraphState.Pipeline.Inline
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_inline.py
+@@ -0,0 +1,169 @@
++"""Inactive empty/full-inline source preparation; no native authority or IO.
++
++Complete actual producer association and independent typed projection are host
++observations. The closed operational query must still be checked in Lean.
++"""
++from dataclasses import asdict, dataclass
++from pathlib import Path
++import sys
++
++from .lean_graph_pipeline_gate_projection import canonical, sha, source_ref, project_lean_sources
++from .lean_graph_pipeline_tail import Selection, query_roots, _admit
++
++PROFILE='ordered_unroll_empty_full_inline_source_v1'
++KIND='ordered_loop_unrolling'
++DOMAIN='static_nonnegative_signed32or64_count_le_factor_complete_outcome'
++PREMISES=(
++    'trusted complete xDSL parser/projection and exact source delivery binding',
++    'same frozen Scalar evaluator/common descriptor registry/total pure primitive/partial external interpretation',
++    'concrete finite indexIterations; checked signed index/literal/count facts; no backend fidelity premise discharged',
++    'external local successful-result arity only; no source success, pure opaque call or body/whole-run equality premise',
++    'one top-level source loop per two-argument changed entry; count0..factor2..4; one/two carries; region-free body and suffix',
++    'complete returns/faults/terminal world observed; private SSA stack unobserved; native/poison/model/review separate',
++)
++
++
++@dataclass(frozen=True)
++class PreparedInline:
++    profile: str
++    kind: str
++    domain: str
++    premises: tuple[str,...]
++    python_version: str
++    before: str
++    after: str
++    selection: Selection
++    projection: str
++    controls: str
++    producer_diagnostics: str
++    field_facts: str
++    query: str
++    roots: tuple[str,...]
++    sources: tuple
++
++    @property
++    def identity(self):return sha(canonical(asdict(self)))
++
++    def describe(self):
++        return {**asdict(self),'identity':self.identity,'query_sha256':sha(self.query),
++                'query_status':'UNCOMPILED','outcome':'UNOBSERVED','qualification':'UNQUALIFIED',
++                'authority':False,'provider':'UNSELECTED_HELD','public_route':'UNSUPPORTED/HELD',
++                'compiler_pass_chain':'not_established'}
++
++
++def _sources():
++    paths={Path(__file__),Path(__file__).with_name('lean_graph_pipeline_inline_emit.py'),
++           Path(__file__).with_name('lean_graph_pipeline_inline_models.py')}
++    for name,module in tuple(sys.modules.items()):
++        path=getattr(module,'__file__',None)
++        if name.startswith(('merlin.','xdsl.')) and path and Path(path).suffix=='.py':paths.add(Path(path))
++    return tuple(source_ref(p) for p in sorted(paths))+project_lean_sources((
++        'Merlin.GraphStatePipelineInline','Merlin.GraphStatePipelineIndex',
++        'Merlin.GraphStatePipelineLiterals','Merlin.GraphStatePipelineProgram','Merlin.GraphStateScalar'))
++
++
++def _field_facts(source,target,selection):
++    from xdsl.dialects import func,scf
++    from merlin.transforms.normalization import constant_integer
++    rows=[]
++    targets={op.sym_name.data:op for op in target.body.block.ops if type(op) is func.FuncOp}
++    for f in source.body.block.ops:
++        if type(f) is not func.FuncOp or not f.body.blocks:continue
++        loops=[op for op in f.body.block.ops if type(op) is scf.ForOp]
++        if not loops:continue
++        if len(loops)!=1:raise ValueError('one top-level loop per changed entry required')
++        loop=loops[0];lower,upper,step=(constant_integer(v) for v in (loop.lb,loop.ub,loop.step))
++        if any(type(v) is not int for v in (lower,upper,step)) or lower<0 or upper<lower or step<1:
++            raise ValueError('static nonnegative/ordered bounds and positive stride required')
++        count=(upper-lower+step-1)//step
++        if count>selection.factor:raise ValueError('only empty/full-inline mode admitted')
++        before_ops=list(f.body.block.ops);pos=before_ops.index(loop)
++        target_ops=list(targets[f.sym_name.data].body.block.ops)
++        body_ops=list(loop.body.block.ops)[:-1]
++        if any(op.regions or op.successors for op in body_ops):raise ValueError('region/CFG inside source body unsupported')
++        lanes=[]
++        for lane in range(count):
++            offset=pos+lane*(1+len(body_ops))
++            if offset>=len(target_ops):raise ValueError('missing actual inline lane')
++            op=target_ops[offset]
++            if len(op.results)!=1 or constant_integer(op.results[0])!=lower+lane*step:
++                raise ValueError('actual lane IV constant differs from counted progression')
++            lanes.append({'ordinal':lane,'actual_index':constant_integer(op.results[0]),'target_operation':offset})
++        rows.append({'entry':f.sym_name.data,'source_controls':[lower,upper,step],'count':count,
++                     'factor':selection.factor,'mode':'empty' if count==0 else 'full-inline',
++                     'lane_constants':lanes,'carry_types':[str(v.type) for v in loop.iter_args],
++                     'source_body_operations':len(body_ops),'target_lane_operations':count*(1+len(body_ops)),
++                     'source_suffix_operations':len(before_ops)-pos-1,
++                     'target_suffix_position':pos+count*(1+len(body_ops)),
++                     'producer_witness_used_as_proof':False})
++    if not rows:raise ValueError('an actual source loop is required')
++    return rows
++
++
++def prepare(before,after,selection):
++    from merlin.transforms.certificates import parse_ir,ir_text
++    from merlin.transforms.unrolling import unroll_ordered_loops
++    from .lean_graph_input_admission import admit_text
++    from .lean_graph_state_scalar_capture import project,metadata
++    from .lean_graph_state_pipeline_capture import index_operation
++    from .lean_graph_pipeline_inline_emit import emit
++    from xdsl.dialects import arith
++    if type(selection) is not Selection:raise ValueError('typed selected inline profile required; no JSON authority')
++    selection.validate()
++    for text in (before,after):
++        if type(text) is not str or len(text.encode())>4*1024*1024:raise ValueError('complete bounded module text required')
++        admit_text(text)
++    source,target=parse_ir(before),parse_ir(after)
++    for module in (source,target):
++        _admit(module)
++        for op in module.walk():
++            flags=op.properties.get('overflowFlags')
++            if flags is not None and flags!=arith.IntegerOverflowAttr('none'):
++                raise ValueError('flagged arithmetic outside this inline source profile')
++            if op.properties.get('fastmath') is not None:
++                raise ValueError('fast-math outside scalar integer inline profile')
++    facts=_field_facts(source,target,selection)
++    clone=source.clone();diagnostics=unroll_ordered_loops(clone,(selection.factor,),index_bits=selection.index_bits)
++    if not diagnostics or any(w.iterations>w.factor for w in diagnostics):raise ValueError('actual empty/full-inline change required')
++    if ir_text(clone)!=ir_text(target):raise ValueError('complete actual inline result differs from selected pinned producer')
++    pair=project(source,target,context=(source,target));descriptors={}
++    for module in (source,target):
++        for op in module.walk():
++            control=index_operation(op)
++            if control is not None:descriptors[canonical(metadata(op))]=control
++    for op in source.walk():
++        control=index_operation(op)
++        if control is not None and control['kind']!='index-constant':
++            raise ValueError('source index arithmetic needs separate runtime range evidence')
++    controls=[{'identity':i,**descriptors[canonical(r['descriptor'])]} for i,r in enumerate(pair['registry']) if canonical(r['descriptor']) in descriptors]
++    query=emit({'stages':[pair],'index_operations':controls,'factor':selection.factor,'index_bits':selection.index_bits})
++    roots=('Merlin.GraphState.Pipeline.Inline.empty_no_body',
++           'Merlin.GraphState.Pipeline.Inline.counted_continuation',
++           'Merlin.GraphState.Pipeline.Inline.failed_continuation',
++           'Merlin.GraphState.Pipeline.indexIterations_count',
++           'Merlin.GraphState.Pipeline.entries_cons',*query_roots(query))
++    if len(roots)!=len(set(roots)) or roots[-1]!='merlin_unroll_inline_transform':raise ValueError('exact final/support roster required')
++    return PreparedInline(PROFILE,KIND,DOMAIN,PREMISES,sys.version,before,after,selection,canonical(pair),canonical(controls),
++                          canonical([asdict(w) for w in diagnostics]),canonical(facts),query,roots,_sources())
++
++
++def request(profile,before,after,selection):
++    if type(profile) is not str or profile!=PROFILE:raise ValueError('exact inline profile required; no other profile fallback')
++    p=prepare(before,after,selection);final='merlin_unroll_inline_transform'
++    return {**p.describe(),'schema':'merlin.unroll_inline_future_request.v1',
++            'final_root':final,'support_roots':p.roots[:-1],
++            'exact_statement':'theorem '+final+p.query.split('theorem '+final,1)[1],
++            'project_sources':[asdict(s) for s in p.sources if s.path.endswith('.lean')],
++            'query_contract':'pure_declarations_separate_root_audit_v1',
++            'delivery_obligation':'same live complete source/result completion plus actual boundary selection; no saved report authority'}
++
++
++def matches(saved,profile,before,after,selection):
++    return type(saved) is dict and canonical(saved)==canonical(request(profile,before,after,selection))
++
++
++def compiler_eligible(_candidate):return False
++
++
++def provider_arguments(*_args,**_kwargs):
++    raise RuntimeError('inline provider held; source review and justified new native context required')
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_inline_emit.py
+@@ -0,0 +1,125 @@
++"""Pure empty/full-inline complete-entry query generation, never execution.
++
++Only the bounded selected lane syntax is expanded. Every partial call and final
++observer is split using the same external meaning and local result arity law.
++"""
++from .lean_graph_state_pipeline import SIMPS, lean_list, prefix_environment
++from .lean_graph_state_pipeline_emit import header, static_controls, symbolic_body, unpack
++from .lean_graph_state_scalar import program, types, budget
++
++
++def _calls(calls):
++    if len(calls)>16:
++        raise ValueError('inline source proof admits at most sixteen retained call occurrences')
++    text=''
++    for depth,call in enumerate(calls):
++        # Earlier simplification can already close identical continuations.
++        # Case splits are needed only for remaining goals, never assumptions.
++        pad='  '+'    '*depth
++        text+=pad+'all_goals\n'
++        pad+='  '
++        index,identity=call['index'],call['identity']
++        args,world=lean_list(call['arguments']),call['world']
++        text+=f'{pad}cases step{index} : external.run {identity} {args} {world} with\n'
++        text+=f'{pad}| error failure =>\n{pad}  rcases failure with ⟨error,terminal⟩\n'
++        text+=f'{pad}  simp only [step{index},{SIMPS},loopEval]\n'
++        text+=f'{pad}| ok result =>\n{pad}  rcases result with ⟨values,w{index}⟩\n'
++        text+=f"{pad}  have size : values.length = {call['outputs']} := by\n"
++        text+=f'{pad}    have localArity := external.arity {identity} {args} {world} values w{index} step{index}\n'
++        text+=f'{pad}    simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n'
++        text+=unpack('values','size',call['outputs'],f'v{index}_',pad+'  ')
++        text+=f'{pad}  simp only [step{index},{SIMPS},loopEval]\n'
++    return text
++
++
++def emit(capture):
++    pair=capture['stages'][0]
++    factor,bits=capture['factor'],capture['index_bits']
++    text=header(capture).replace('namespace Merlin.GraphStatePipelineInstance',
++                               'namespace Merlin.GraphStatePipelineInlineInstance')
++    text='import Merlin.GraphStatePipelineInline\n'+text.replace('set_option linter.unusedSimpArgs false\n','')
++    text=text.replace('import Merlin.GraphStatePipelineLoops\n','').replace('import Merlin.GraphStatePipelineScope\n','')
++    for fi,function in enumerate(pair['functions']):
++        if function['declaration']:
++            continue
++        before,after=function['before'],function['after']
++        for raw in (before,after):budget(raw,len(function['inputs']),[0])
++        text+=f"namespace F{fi}\ndef inputs : List Ty := {types(function['inputs'])}\n"
++        text+=f"def outputs : List Ty := {types(function['outputs'])}\n"
++        text+=f'def S0 : Program := {program(before)}\ndef S1 : Program := {program(after)}\n'
++        for stage in (0,1):text+=f'theorem typed{stage} : checkTypes registry inputs outputs S{stage} = true := by decide\n'
++        if before==after:
++            text+='theorem actual {World Error : Type} (primitive : Prim → List Int → Int) (external : External World Error registry)\n'
++            text+='    (arguments : List Int) (world : World) (_arity : arguments.length = inputs.length) :\n'
++            text+='    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S1 arguments world := rfl\n'
++            text+=f'end F{fi}\n';continue
++        positions=[i for i,row in enumerate(before) if 'loop' in row]
++        if len(function['inputs'])!=2 or len(positions)!=1 or any('loop' in row for row in after):
++            raise ValueError('one changed top-level source loop/two arguments/no target loop required')
++        pos=positions[0];loop=before[pos]['loop'];count=len(loop['carries'])
++        if not 1<=count<=2 or any('loop' in row for row in loop['body']):
++            raise ValueError('region-free inline body with one/two carries required')
++        env=prefix_environment(before,['x0','x1'],capture)
++        lower,upper,step=static_controls(before,capture)
++        if step<=0 or upper<lower:raise ValueError('static nonnegative ordered controls required')
++        trips=(upper-lower+step-1)//step
++        if trips>factor:raise ValueError('bulk/tail form outside empty/full-inline profile')
++        if upper+step*factor>=2**(bits-1):raise ValueError('selected signed control bound exceeded')
++        initial=[env[i] for i in loop['initial']]
++        primitive_name='primitive' if any('primitive' in v for v in env) else '_primitive'
++        text+=f'def E ({primitive_name} : Prim → List Int → Int) (x0 x1 : Int) : List Int := {lean_list(env)}\n'
++        text+=f'def B : Program := {program(loop["body"])}\ndef N : Program := {program(before[pos+1:])}\n'
++        text+=f'def bounds : Merlin.GraphLoopsUnroll.Bounds := {{bits := {bits},lower := {lower},upper := {upper},step := {step},factor := {factor},count := {trips},groups := {trips//factor},remainder := {trips%factor}}}\n'
++        text+='theorem boundsChecked : bounds.Valid := by decide\n'
++        text+='theorem isInline : bounds.count ≤ bounds.factor := by decide\n'
++        text+='''theorem inlineIndicesFit (ordinal : Nat) (inside : ordinal < bounds.count) :
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits (bounds.lower+bounds.step*ordinal) ∧
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits (bounds.lower+bounds.step*ordinal+bounds.step) :=
++  Merlin.GraphLoopsUnroll.Bounds.inline_control boundsChecked inside
++'''
++        text+='variable {World Error : Type} (primitive : Prim → List Int → Int)\n    (external : External World Error registry) (x0 x1 : Int)\n'
++        body='(fun i c w => evalProgram (M primitive external) B (i::c++E primitive x0 x1) w)'
++        nxt='(fun c w => evalProgram (M primitive external) N (c++E primitive x0 x1) w)'
++        text+=f'theorem source_form (world : World) : evalProgram (M primitive external) S0 [x0,x1] world =\n'
++        text+=f'  (loopEval {count} {body} (indexIterations {lower} {upper} {step}) {lean_list(initial)} world).bind\n'
++        text+='    (fun r => evalProgram (M primitive external) N (r.1++E primitive x0 x1) r.2) := rfl\n'
++        if trips==0:
++            text+=f'theorem empty_body_never_runs (world : World) :\n'
++            text+=f'    loopEval {count} {body} (indexIterations {lower} {upper} {step}) {lean_list(initial)} world = .ok ({lean_list(initial)},world) :=\n'
++            text+=f'  Inline.empty_no_body {count} _ {lower} {upper} {step} (by decide) (by decide) _ world rfl\n'
++        text+='theorem actual_inputs (world : World) : evalProgram (M primitive external) S0 [x0,x1] world =\n    evalProgram (M primitive external) S1 [x0,x1] world := by\n'
++        text+='  rw [source_form]\n'
++        if trips==0:
++            text+='  rw [empty_body_never_runs]\n'
++        else:
++            text+=f'  rw [Inline.counted_continuation {count} {body} {nxt} {lower} {upper} {step} {trips} (by decide) (by decide)]\n'
++        text+=f'  simp only [B,N,E,S1,progression,List.map_cons,List.map_nil,{SIMPS},loopEval]\n'
++        values=list(initial);calls=[];control_map={r['identity']:r for r in capture['index_operations']}
++        for lane in range(trips):
++            values,more=symbolic_body(loop['body'],[f'({lower+lane*step} : Int)',*values,*env],control_map,len(calls),
++                                      'world' if not calls else f'w{len(calls)-1}')
++            calls+=more
++        _,more=symbolic_body(before[pos+1:],[*values,*env],control_map,len(calls),
++                             'world' if not calls else f'w{len(calls)-1}')
++        calls+=more;text+=_calls(calls)
++        text+='theorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n'
++        text+='    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S1 arguments world := by\n'
++        text+='  have size : arguments.length = 2 := arity\n'+unpack('arguments','size',2,'a')
++        text+='  exact actual_inputs primitive external a0 a1 world\n'
++        text+=f'end F{fi}\n'
++    defined=[i for i,f in enumerate(pair['functions']) if not f['declaration']]
++    for name,stage in (('originalEntries',0),('finalEntries',1)):
++        text+=f'def {name} : List Entry := '+lean_list([f'{{inputs := F{i}.inputs,outputs := F{i}.outputs,body := F{i}.S{stage}}}' for i in defined])+'\n'
++        text+=f'theorem {name}Checked : checkEntries registry {name} = true := by decide\n'
++    proof='entries_nil (M primitive external)'
++    for i in reversed(defined):proof=f'entries_cons (M primitive external) rfl rfl (F{i}.actual primitive external) ({proof})'
++    text+='theorem complete {World Error : Type} (primitive : Prim → List Int → Int) (external : External World Error registry) :\n'
++    text+='    PreservesEntries (M primitive external) originalEntries finalEntries :=\n  '+proof+'\n'
++    text+='end Merlin.GraphStatePipelineInlineInstance\n'
++    text+='theorem merlin_unroll_inline_transform {World Error : Type}\n'
++    text+='    (primitive : Merlin.GraphState.Scalar.Prim → List Int → Int)\n'
++    text+='    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry) :\n'
++    text+='    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n'
++    text+='      Merlin.GraphStatePipelineInlineInstance.originalEntries Merlin.GraphStatePipelineInlineInstance.finalEntries :=\n'
++    text+='  Merlin.GraphStatePipelineInlineInstance.complete primitive external\n'
++    return text
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_inline_models.py
+@@ -0,0 +1,111 @@
++"""Bounded actual-program nonzero success/error/initialized-read candidates.
++
++The selected inline profile has count <= factor <= 4. Literal evaluation below
++is only for these bounded actual examples, never an unbounded loop proof.
++"""
++import json
++from dataclasses import asdict
++from .lean_graph_pipeline_gate_projection import project_lean_sources
++from .lean_graph_pipeline_tail import query_roots
++
++
++def witness(prepared):
++    pair=json.loads(prepared.projection);facts=json.loads(prepared.field_facts)
++    candidates=[(i,f) for i,f in enumerate(pair['functions']) if not f['declaration'] and any('loop' in r for r in f['before'])]
++    if len(candidates)!=1 or len(facts)!=1:raise ValueError('one actual inline witness entry required')
++    fi,f=candidates[0];fact=facts[0];count=fact['count'];lower,_,stride=fact['source_controls']
++    if not 0<=count<=4 or f['inputs']!=[{'bits':8},{'bits':8}] or f['outputs']!=[{'bits':8}]:
++        raise ValueError('bounded i8 witness profile required')
++    loop=next(r['loop'] for r in f['before'] if 'loop' in r)
++    effects=[r['effect'] for r in loop['body'] if 'effect' in r]
++    observers=[r['effect'] for r in f['before'] if 'effect' in r and pair['registry'][r['effect']]['inputs']==[{'bits':8}]]
++    if len(effects)!=1 or len(observers)!=1:raise ValueError('one step and one final observer required')
++    step,observer=effects[0],observers[0]
++    base=f'Merlin.GraphStatePipelineInlineInstance.F{fi}'
++    q='import Merlin.GraphStateIntegerOperations\n'+prepared.query
++    q+='''namespace Merlin.GraphInlineWitness
++open Merlin.GraphState.Scalar Merlin.GraphState.Pipeline
++open Merlin.GraphStatePipelineInlineInstance
++abbrev wordPrimitive := Merlin.GraphState.Integer.primitive
++'''
++    q+=f'''def chosen (failLane : Option Int) (failObserver : Bool) (failEveryBody : Bool) : External Nat Int registry where
++  run := fun identity arguments world =>
++    if (identity = {step} ∧ (failEveryBody = true ∨ failLane = some (arguments[0]?.getD 0))) ∨
++        (identity = {observer} ∧ failObserver = true) then .error (17,world+1)
++    else .ok ((signature registry identity).outputs.map
++      (fun _ => if identity = {step} then arguments[1]?.getD 0 else arguments.headD 0),world+1)
++  arity := by
++    intro identity arguments world values final success
++    split at success
++    · cases success
++    · cases success; simp only [List.length_map]
++'''
++    cases=[('success','none false false',f'.ok ([{3+2*count}],{8+count})'),
++           ('observer_failure','none true false',f'.error (.external 17,{8+count})')]
++    if count==0:
++        cases.append(('empty_body_fault_skipped','none false true','.ok ([3],8)'))
++    else:
++        cases.extend([('first_body_failure',f'(some {lower}) false false','.error (.external 17,8)'),
++                      ('last_body_failure',f'(some {lower+(count-1)*stride}) false false',f'.error (.external 17,{7+count})')])
++    for name,mode,result in cases:
++        q+=f'theorem source_{name} : evalProgram (M wordPrimitive (chosen {mode})) {base}.S0 [3,2] 7 = {result} := rfl\n'
++        q+=f'''theorem target_{name} : evalProgram (M wordPrimitive (chosen {mode})) {base}.S1 [3,2] 7 = {result} := by
++  rw [← {base}.actual wordPrimitive (chosen {mode}) [3,2] 7 rfl]
++  exact source_{name}
++'''
++        for side,stage in (('source',0),('target',1)):
++            q+=f'''theorem {side}_{name}_initialized :
++    Initialized (M wordPrimitive (chosen {mode})) {base}.S{stage} [3,2] 7 :=
++  (check_operands_initialized (show check registry {base}.inputs {base}.outputs {base}.S{stage} {base}.S{stage} = true by decide)
++    (M wordPrimitive (chosen {mode})) [3,2] 7 rfl).1
++'''
++    q+='end Merlin.GraphInlineWitness\n'
++    roots=tuple(dict.fromkeys((*prepared.roots,*query_roots(q))))
++    return q,roots,{'query_status':'UNCOMPILED','outcome':'UNOBSERVED','source_success_assumed':False,
++        'model_approved':False,'native_or_poison_claim':False,'inputs':[3,2],'initial_world':7,
++        'count':count,'case_outcomes':[{'name':n,'provider':m,'proposed_outcome':r} for n,m,r in cases],
++        'model':'existing wrapping word primitive; actual step echoes incremented carry, advances world; final observer echoes/advances or fails',
++        'evaluation_bound':'count <= selected factor <= 4; no unbounded trip-sized witness evaluation',
++        'additional_sources':[asdict(r) for r in project_lean_sources(('Merlin.GraphStateIntegerOperations',))]}
++
++
++def empty_countermodel(projection):
++    """Actual valid erroneous empty-body execution; source-only countermodel."""
++    from .lean_graph_state_scalar import program,types
++    rows=[f for f in projection['functions'] if not f['declaration'] and any('loop' in r for r in f['before'])]
++    if len(rows)!=1:raise ValueError('one original empty source entry required')
++    f=rows[0];loop=next(r['loop'] for r in f['before'] if 'loop' in r)
++    step=next(r['effect'] for r in loop['body'] if 'effect' in r)
++    registry='['+','.join('{inputs := '+types(r['inputs'])+',outputs := '+types(r['outputs'])+'}' for r in projection['registry'])+']'
++    q='import Merlin.GraphStateIntegerOperations\nimport Merlin.GraphStatePipelineControl\nnamespace Merlin.GraphInlineEmptyCountermodel\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\n'
++    q+=f'def registry : List Signature := {registry}\ndef source : Program := {program(f["before"])}\ndef target : Program := {program(f["after"])}\n'
++    # The actual empty capture is lb=ub=3. In this witness all actual index
++    # constants are3 or2. Derive their values from the registry, not a fake loop.
++    constants={i:r['index_constant'] for i,r in enumerate(projection['registry']) if r['index_constant'] is not None}
++    q+='def constantAt (identity : Nat) : Option Int :=\n'
++    for i,value in constants.items():q+=f'  if identity = {i} then some {value} else\n'
++    q+='  none\n'
++    q+=f'''def model : Model Int Nat Int registry where
++  default := 0
++  primitive := Merlin.GraphState.Integer.primitive
++  index := id
++  iterations := indexIterations
++  effect := fun identity arguments world =>
++    if identity = {step} then .error (17,world+1)
++    else .ok ((signature registry identity).outputs.map
++      (fun _ => (constantAt identity).getD (arguments.headD 0)),
++      if (constantAt identity).isSome then world else world+1)
++  arity := by
++    intro identity arguments world values final success
++    split at success
++    · cases success
++    · cases success; simp only [List.length_map]
++theorem source_skips_body : evalProgram model source [3,2] 7 = .ok ([3],8) := rfl
++theorem target_executes_body : evalProgram model target [3,2] 7 = .error (.external 17,8) := rfl
++theorem observations_differ : evalProgram model source [3,2] 7 ≠ evalProgram model target [3,2] 7 := by
++  rw [source_skips_body,target_executes_body]
++  intro equal
++  cases equal
++end Merlin.GraphInlineEmptyCountermodel
++'''
++    return q,query_roots(q)
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_pipeline_inline.py
+@@ -0,0 +1,218 @@
++"""Bounded actual empty/full-inline source tests; runtime/object access denied."""
++from dataclasses import asdict
++from pathlib import Path
++import json
++import sys
++import types
++import unittest
++
++PRIMARY=REFERENCE=None
++CASES={'empty':(3,3,2,2,2,32),'inline1':(5,6,2,1,2,32),
++       'inline2':(2,8,3,2,2,64),'inline3':(7,16,3,2,4,32),
++       'wide_inline1':(2147483650,2147483651,2,1,2,64)}
++
++
++def source(lower,upper,step,carries):
++    second=', %d=%b' if carries==2 else ''
++    result='(i8, i8)' if carries==2 else '(i8)'
++    yielded='%next, %d : i8, i8' if carries==2 else '%next : i8'
++    returned='%r#0' if carries==2 else '%r'
++    return f'''builtin.module {{
++      func.func private @step(index,i8) -> i8
++      func.func private @observe(i8) -> i8
++      func.func private @altered(i8) -> i8
++      func.func @main(%a:i8,%b:i8) -> i8 {{
++        %lb=arith.constant {lower} : index
++        %ub=arith.constant {upper} : index
++        %st=arith.constant {step} : index
++        %r{' : 2' if carries==2 else ''}=scf.for %i=%lb to %ub step %st iter_args(%c=%a{second}) -> {result} {{
++          %sum=arith.addi %c,%b : i8
++          %next=func.call @step(%i,%sum) : (index,i8) -> i8
++          scf.yield {yielded}
++        }}
++        %seen=func.call @observe({returned}) : (i8) -> i8
++        func.return %seen : i8
++      }}
++      func.func @untouched(%x:i8) -> i8 {{ func.return %x : i8 }}
++    }}'''
++
++
++def capture(case):
++    from merlin.transforms.pipeline import apply_common_pipeline,PipelineOptions
++    from merlin.transforms.certificates import parse_ir
++    lower,upper,step,carries,factor,bits=CASES[case]
++    result=apply_common_pipeline(parse_ir(source(lower,upper,step,carries)),PipelineOptions(
++        index_bits=bits,normalize_shapes=False,simplify_integers=False,reuse_buffers=False,
++        unroll_factors=(factor,)),plan_only=True)
++    if len(result.changes)!=1 or result.changes[0].kind!='ordered_loop_unrolling':
++        raise AssertionError('one actual registered unroll change required')
++    return result.changes[0]
++
++
++def mutate(raw,kind):
++    from merlin.transforms.certificates import parse_ir,ir_text
++    from xdsl.dialects import func,arith,builtin
++    from xdsl.rewriter import Rewriter
++    module=parse_ir(raw)
++    main=next(op for op in module.body.block.ops if type(op) is func.FuncOp and op.sym_name.data=='main')
++    block=main.body.block;ops=list(block.ops)
++    steps=[op for op in ops if type(op) is func.CallOp and op.callee.root_reference.data=='step']
++    observer=next(op for op in ops if type(op) is func.CallOp and op.callee.root_reference.data=='observe')
++    if kind in ('lane','cutoff'):
++        old=steps[-1].operands[0].owner if kind=='lane' else ops[1]
++        new=arith.ConstantOp.from_int_and_width(old.value.value.data+1,builtin.IndexType())
++        Rewriter.replace_op(old,new)
++    elif kind=='initial_carry':
++        first=next(op for op in ops if type(op) is arith.AddiOp)
++        first.operands=(main.body.block.args[1],first.operands[1])
++    elif kind=='lane_carry':
++        adds=[op for op in ops if type(op) is arith.AddiOp]
++        adds[-1].operands=(main.body.block.args[0],adds[-1].operands[1])
++    elif kind=='capture':
++        first=next(op for op in ops if type(op) is arith.AddiOp)
++        first.operands=(first.operands[0],main.body.block.args[0])
++    elif kind=='return':
++        block.last_op.operands=(main.body.block.args[0],)
++    elif kind=='observer':
++        observer.properties['callee']=builtin.SymbolRefAttr('altered')
++    elif kind=='flags':
++        first=next(op for op in ops if type(op) is arith.AddiOp)
++        first.properties['overflowFlags']=arith.IntegerOverflowAttr([arith.IntegerOverflowFlag.NSW])
++    elif kind=='empty_body':
++        call=func.CallOp('step',[ops[0].results[0],block.args[0]],[block.args[0].type])
++        block.insert_op_before(call,observer)
++    elif kind=='empty_carry':
++        observer.operands=(block.args[1],)
++    elif kind=='dropped_entry':
++        other=next(op for op in module.body.block.ops if type(op) is func.FuncOp and op.sym_name.data=='untouched')
++        module.body.block.erase_op(other)
++    else:raise ValueError(kind)
++    module.verify();return ir_text(module)
++
++
++MUTATIONS=('lane','cutoff','initial_carry','lane_carry','capture','return','observer','flags','dropped_entry')
++
++
++class Inline(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        from merlin.verify import lean_graph_pipeline_inline as inline
++        from merlin.verify import lean_graph_pipeline_inline_models as models
++        cls.inline,cls.models=inline,models
++
++    def prepared(self,case='inline3'):
++        change=capture(case);values=CASES[case]
++        return change,self.inline.prepare(change.before_ir,change.after_ir,self.inline.Selection(values[4],values[5]))
++
++    def test_actual_empty_and_full_inline_complete_pairs_common_roots_witnesses(self):
++        from merlin.transforms import unrolling
++        self.assertEqual(Path(unrolling.__file__).resolve(),REFERENCE/'src/merlin/transforms/unrolling.py')
++        for case in CASES:
++            with self.subTest(case=case):
++                change,p=self.prepared(case);fact=json.loads(p.field_facts)[0]
++                self.assertNotEqual(change.before_ir,change.after_ir)
++                self.assertEqual(len(json.loads(p.projection)['functions']),5)
++                self.assertEqual(fact['mode'],'empty' if case=='empty' else 'full-inline')
++                self.assertEqual(len(fact['lane_constants']),fact['count'])
++                self.assertIn('empty_body_never_runs' if case=='empty' else 'Inline.counted_continuation',p.query)
++                self.assertEqual(p.roots[-1],'merlin_unroll_inline_transform')
++                self.assertEqual(p.describe()['outcome'],'UNOBSERVED')
++                q,roots,model=self.models.witness(p)
++                self.assertIn('source_observer_failure',q)
++                self.assertIn('source_empty_body_fault_skipped' if case=='empty' else 'source_last_body_failure',q)
++                self.assertFalse(model['source_success_assumed']);self.assertEqual(len(roots),len(set(roots)))
++
++    def test_compiler_valid_wrong_fields_captures_and_surrounding_output(self):
++        change,_=self.prepared()
++        for name in MUTATIONS:
++            with self.subTest(name=name):
++                bad=mutate(change.after_ir,name);self.assertNotEqual(bad,change.after_ir)
++                with self.assertRaises(ValueError):self.inline.prepare(change.before_ir,bad,self.inline.Selection(4,32))
++
++    def test_empty_body_must_never_execute_or_change_initial_carry(self):
++        change,_=self.prepared('empty')
++        for name in ('empty_body','empty_carry','return','observer'):
++            with self.subTest(name=name):
++                bad=mutate(change.after_ir,name)
++                with self.assertRaises(ValueError):self.inline.prepare(change.before_ir,bad,self.inline.Selection(2,32))
++        from merlin.transforms.certificates import parse_ir
++        from merlin.verify.lean_graph_state_scalar_capture import project
++        p=project(parse_ir(change.before_ir),parse_ir(mutate(change.after_ir,'empty_body')))
++        q,roots=self.models.empty_countermodel(p)
++        self.assertIn('observations_differ',q);self.assertEqual(len(roots),3)
++
++    def test_wrong_profile_stale_source_domain_roots_never_authorize(self):
++        change,p=self.prepared();selection=self.inline.Selection(4,32)
++        request=self.inline.request(self.inline.PROFILE,change.before_ir,change.after_ir,selection)
++        for key,value in (('profile','tail'),('domain','possible_success'),('final_root','rfl'),('support_roots',[]),('project_sources',[])):
++            bad=dict(request);bad[key]=value
++            self.assertFalse(self.inline.matches(bad,self.inline.PROFILE,change.before_ir,change.after_ir,selection))
++        with self.assertRaises(ValueError):self.inline.request('minimal7',change.before_ir,change.after_ir,selection)
++        with self.assertRaises(ValueError):self.inline.prepare(capture('inline2').before_ir,change.after_ir,selection)
++        self.assertFalse(self.inline.compiler_eligible(p));self.assertFalse(self.inline.compiler_eligible(request))
++        with self.assertRaises(RuntimeError):self.inline.provider_arguments(request)
++
++    def test_bulk_dynamic_flags_and_internal_calls_refused(self):
++        from merlin.transforms.certificates import parse_ir,ir_text
++        from merlin.transforms.unrolling import unroll_ordered_loops
++        from xdsl.dialects import arith
++        original=source(0,5,1,1)
++        for text in (original,source(0,1,1,1).replace('func.call @observe','func.call @untouched'),
++                     source(0,1,1,1).replace('func.func @main(%a:i8,%b:i8)','func.func @main(%a:i8,%b:i8,%dynamic:index)').replace('%ub=arith.constant 1 : index','').replace('to %ub','to %dynamic')):
++            module=parse_ir(text);before=ir_text(module)
++            unroll_ordered_loops(module,(2,),index_bits=32)
++            with self.assertRaises(ValueError):self.inline.prepare(before,ir_text(module),self.inline.Selection(2,32))
++        module=parse_ir(source(0,1,1,1))
++        addition=next(op for op in module.walk() if type(op) is arith.AddiOp)
++        addition.properties['overflowFlags']=arith.IntegerOverflowAttr([arith.IntegerOverflowFlag.NSW])
++        before=ir_text(module);unroll_ordered_loops(module,(2,),index_bits=32)
++        with self.assertRaises(ValueError):self.inline.prepare(before,ir_text(module),self.inline.Selection(2,32))
++
++
++def retain(destination):
++    destination.mkdir(parents=True,exist_ok=False);Inline.setUpClass();test=Inline()
++    for case,values in CASES.items():
++        change,p=test.prepared(case);folder=destination/case;folder.mkdir()
++        (folder/'before.mlir').write_text(change.before_ir);(folder/'after.mlir').write_text(change.after_ir)
++        (folder/'CHANGE.json').write_text(json.dumps(asdict(change),indent=2)+'\n')
++        (folder/'PREPARED.json').write_text(json.dumps(p.describe(),indent=2)+'\n')
++        (folder/'REQUEST.json').write_text(json.dumps(test.inline.request(test.inline.PROFILE,change.before_ir,change.after_ir,test.inline.Selection(values[4],values[5])),indent=2)+'\n')
++        (folder/'Query.lean').write_text(p.query)
++        q,roots,model=test.models.witness(p)
++        (folder/'Witness.lean').write_text(q);(folder/'WITNESS.json').write_text(json.dumps({**model,'roots':roots},indent=2)+'\n')
++    folder=destination/'mutations';folder.mkdir()
++    for case,names in (('inline3',MUTATIONS),('empty',('empty_body','empty_carry','observer'))):
++        change,_=test.prepared(case);values=CASES[case]
++        for name in names:
++            bad=mutate(change.after_ir,name);label=case+'-'+name
++            (folder/(label+'.mlir')).write_text(bad)
++            try:test.inline.prepare(change.before_ir,bad,test.inline.Selection(values[4],values[5]))
++            except ValueError as error:reason=str(error)
++            else:raise AssertionError('mutation admitted')
++            (folder/(label+'.json')).write_text(json.dumps({'host_refusal':reason,'parser_verify':True,
++                'before':'../'+case+'/before.mlir','query_status':'UNCOMPILED','kernel_refusal_observed':False})+'\n')
++            if case=='empty' and name=='empty_body':
++                from merlin.transforms.certificates import parse_ir
++                from merlin.verify.lean_graph_state_scalar_capture import project
++                projection=project(parse_ir(change.before_ir),parse_ir(bad));q,roots=test.models.empty_countermodel(projection)
++                (folder/'EmptyBodyCountermodel.lean').write_text(q)
++                (folder/'EmptyBodyCountermodel.json').write_text(json.dumps({'projection':projection,'roots':roots,
++                    'query_status':'UNCOMPILED','outcome':'UNOBSERVED','model_approved':False},indent=2)+'\n')
++
++
++if __name__=='__main__':
++    PRIMARY=Path(sys.argv[1]).resolve();REFERENCE=Path(sys.argv[2]).resolve()
++    for name,paths in (('merlin',[REFERENCE/'src/merlin',PRIMARY/'src/merlin']),
++                       ('merlin.verify',[PRIMARY/'src/merlin/verify',REFERENCE/'src/merlin/verify']),
++                       ('merlin.common',[PRIMARY/'src/merlin/common',REFERENCE/'src/merlin/common'])):
++        module=types.ModuleType(name);module.__path__=[str(p) for p in paths];sys.modules[name]=module
++    def held(event,args):
++        if event in ('subprocess.Popen','os.system','os.exec','os.posix_spawn'):raise AssertionError('source-only inline cannot launch children')
++        if event=='open' and isinstance(args[0],(str,bytes)):
++            p=str(args[0])
++            if ('/.elan/' in p or '/toolchain/' in p or 'libleanshared' in p or '/original-runtime-candidate' in p
++                    or p.endswith(('.olean','.ilean'))):raise AssertionError('no runtime/object access')
++    sys.addaudithook(held)
++    args=sys.argv[3:]
++    if args and args[0]=='--retain':retain(Path(args[1]));args=args[2:]
++    unittest.main(argv=[sys.argv[0],*args])

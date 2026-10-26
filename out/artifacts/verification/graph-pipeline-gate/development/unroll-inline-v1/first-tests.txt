@@ -1,0 +1,10 @@
+test_actual_empty_and_full_inline_complete_pairs_common_roots_witnesses (__main__.Inline.test_actual_empty_and_full_inline_complete_pairs_common_roots_witnesses) ... ok
+test_bulk_dynamic_flags_and_internal_calls_refused (__main__.Inline.test_bulk_dynamic_flags_and_internal_calls_refused) ... ok
+test_compiler_valid_wrong_fields_captures_and_surrounding_output (__main__.Inline.test_compiler_valid_wrong_fields_captures_and_surrounding_output) ... ok
+test_empty_body_must_never_execute_or_change_initial_carry (__main__.Inline.test_empty_body_must_never_execute_or_change_initial_carry) ... ok
+test_wrong_profile_stale_source_domain_roots_never_authorize (__main__.Inline.test_wrong_profile_stale_source_domain_roots_never_authorize) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.723s
+
+OK

@@ -1,0 +1,1 @@
+{"host_refusal": "complete actual inline result differs from selected pinned producer", "parser_verify": true, "before": "../empty/before.mlir", "query_status": "UNCOMPILED", "kernel_refusal_observed": false}

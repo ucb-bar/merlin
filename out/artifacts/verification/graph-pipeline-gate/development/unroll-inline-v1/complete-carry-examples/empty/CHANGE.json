@@ -1,0 +1,43 @@
+{
+  "kind": "ordered_loop_unrolling",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"step\", function_type = (index, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"observe\", function_type = (i8, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"altered\", function_type = (i8, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"main\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %lb = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %ub = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %st = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %r, %r_1 = \"scf.for\"(%lb, %ub, %st, %a, %b) ({\n    ^bb0(%i: index, %c: i8, %d: i8):\n      %sum = \"arith.addi\"(%c, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n      %next = \"func.call\"(%i, %sum) <{callee = @step}> : (index, i8) -> i8\n      \"scf.yield\"(%next, %d) : (i8, i8) -> ()\n    }) : (index, index, index, i8, i8) -> (i8, i8)\n    %seen = \"func.call\"(%r, %r_1) <{callee = @observe}> : (i8, i8) -> i8\n    \"func.return\"(%seen) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i8) -> i8}> ({\n  ^bb0(%x: i8):\n    \"func.return\"(%x) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"step\", function_type = (index, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"observe\", function_type = (i8, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"altered\", function_type = (i8, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"main\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %lb = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %ub = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %st = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %seen = \"func.call\"(%a, %b) <{callee = @observe}> : (i8, i8) -> i8\n    \"func.return\"(%seen) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i8) -> i8}> ({\n  ^bb0(%x: i8):\n    \"func.return\"(%x) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {
+    "factors": [
+      2
+    ],
+    "index_bits": 32,
+    "max_added_operations": 4096
+  },
+  "certificate": {
+    "kind": "ordered_loop_unrolling",
+    "before_ir_sha256": "990e2f7b271dbce4ab0cc837ab65145358f54040686c5372df3639d25651820c",
+    "after_ir_sha256": "a7c60eacf73d09eee9ec6d97873b0f83807db58a11af01ba3c587c7b3457490d",
+    "witnesses": [
+      {
+        "operation_index": 8,
+        "lower": 3,
+        "upper": 3,
+        "step": 2,
+        "factor": 2,
+        "index_bits": 32,
+        "iterations": 0,
+        "full_groups": 0,
+        "remainder": 0,
+        "source_sha256": "6889174ca07b8b019dea912fe3895980fb25074063ef28aab4ab8bb1c73cbaca",
+        "carried_types": [
+          "i8",
+          "i8"
+        ]
+      }
+    ],
+    "scope": [
+      "static_nonnegative_index_bounds",
+      "positive_step",
+      "exact_iteration_order",
+      "forwarded_loop_carried_state",
+      "bounded_operation_growth"
+    ],
+    "schema": "merlin.shared_transform.v2"
+  }
+}

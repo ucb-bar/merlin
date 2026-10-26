@@ -1,0 +1,123 @@
+{
+  "state": "UNCOMPILED",
+  "outcome": "UNOBSERVED",
+  "model_approved": false,
+  "success_proposals": [
+    {
+      "input": [
+        3,
+        5
+      ],
+      "output": [
+        21
+      ],
+      "world": 9
+    },
+    {
+      "input": [
+        4,
+        5
+      ],
+      "output": [
+        28
+      ],
+      "world": 9
+    }
+  ],
+  "failure_proposals": [
+    {
+      "observer": 0,
+      "error": 17,
+      "world": 8
+    },
+    {
+      "observer": 1,
+      "error": 17,
+      "world": 9
+    }
+  ],
+  "source_success_assumed": false,
+  "opaque_order": [
+    0,
+    1
+  ],
+  "meaning": "existing exact wrapping primitive; each actual unary observer echoes operand and increments world or fails",
+  "initialized_is_not_poison_or_native_fidelity": true,
+  "additional_sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+      "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+      "size": 4850
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+      "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+      "size": 7321
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "size": 4654
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "size": 8229
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "size": 11782
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "size": 6170
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "size": 9963
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "size": 6614
+    }
+  ],
+  "roots": [
+    "Merlin.GraphState.Scalar.check_sound",
+    "Merlin.GraphState.Scalar.check_typed",
+    "Merlin.GraphState.Scalar.normalize_sound",
+    "Merlin.GraphStateScalarInstance.F2.accepted",
+    "Merlin.GraphStateScalarInstance.F2.actual",
+    "Merlin.GraphStateScalarInstance.F2.typed",
+    "Merlin.GraphStateScalarInstance.F2.initialized",
+    "Merlin.GraphStateScalarInstance.F2.operands_initialized",
+    "Merlin.GraphStateScalarInstance.F3.accepted",
+    "Merlin.GraphStateScalarInstance.F3.actual",
+    "Merlin.GraphStateScalarInstance.F3.typed",
+    "Merlin.GraphStateScalarInstance.F3.initialized",
+    "Merlin.GraphStateScalarInstance.F3.operands_initialized",
+    "Merlin.GraphState.GateEntries.entries_cons",
+    "Merlin.GraphState.GateEntries.entries_nil",
+    "Merlin.GraphPipelineGateInstance.complete",
+    "merlin_schedule_transform",
+    "Merlin.GraphScheduleWitness.source_success",
+    "Merlin.GraphScheduleWitness.target_success",
+    "Merlin.GraphScheduleWitness.source_success_initialized",
+    "Merlin.GraphScheduleWitness.target_success_initialized",
+    "Merlin.GraphScheduleWitness.source_success_other",
+    "Merlin.GraphScheduleWitness.target_success_other",
+    "Merlin.GraphScheduleWitness.source_success_other_initialized",
+    "Merlin.GraphScheduleWitness.target_success_other_initialized",
+    "Merlin.GraphScheduleWitness.source_first_failure",
+    "Merlin.GraphScheduleWitness.target_first_failure",
+    "Merlin.GraphScheduleWitness.source_first_failure_initialized",
+    "Merlin.GraphScheduleWitness.target_first_failure_initialized",
+    "Merlin.GraphScheduleWitness.source_second_failure",
+    "Merlin.GraphScheduleWitness.target_second_failure",
+    "Merlin.GraphScheduleWitness.source_second_failure_initialized",
+    "Merlin.GraphScheduleWitness.target_second_failure_initialized"
+  ]
+}

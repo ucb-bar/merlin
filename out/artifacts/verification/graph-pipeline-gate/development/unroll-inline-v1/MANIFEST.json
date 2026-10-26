@@ -1,0 +1,2219 @@
+{
+  "schema": "merlin.unroll_inline_source_review.v1",
+  "state": "SOURCE_ONLY_UNCOMPILED_UNQUALIFIED",
+  "outcomes": "UNOBSERVED",
+  "provider": "UNSELECTED_HELD",
+  "public_activation": false,
+  "rows": [
+    {
+      "path": "CHECKER-STATUS.json",
+      "sha256": "2456a97b15c5a2ef999b0dec8ae37e1b3473fabf3c33f13d4f0f2053e668fc4b",
+      "bytes": 547
+    },
+    {
+      "path": "DEVELOPMENT-HISTORY.json",
+      "sha256": "5083e17e96550ff6a8070c8ac7afea1dee2467903ce8a02c46222f52d5df841d",
+      "bytes": 836
+    },
+    {
+      "path": "FUTURE-CHECK-PRIORITY.json",
+      "sha256": "c51ba1b5728bee1fc7cb985203457e7a2886dcc6e5691e3b39f64316ea83b2f2",
+      "bytes": 1105
+    },
+    {
+      "path": "PRESERVED-CUTS.json",
+      "sha256": "7e4e218be70106d9c0af809e739136a90bb86f4370031cd3aadc66460855876f",
+      "bytes": 870
+    },
+    {
+      "path": "QUERY-INVENTORY-pre-dual-carry.json",
+      "sha256": "4cbaddc5aa4883423f949b6ffd62229e67f498fc77f384ec0137e31907074f53",
+      "bytes": 29478
+    },
+    {
+      "path": "QUERY-INVENTORY.json",
+      "sha256": "0c4191de6ea6c03d9187065a83fdc81d0e8b264cdc8fc5f1c62c67f5d145425c",
+      "bytes": 29533
+    },
+    {
+      "path": "README.md",
+      "sha256": "20c7bb1d8cccd39a14b7716a408d127506daa98144467e3bcf0a80c7e2a12223",
+      "bytes": 13268
+    },
+    {
+      "path": "SOURCE-INVENTORY-pre-dual-carry.json",
+      "sha256": "9827f8b764b688372ef8a41dfd844e4865217e09abd58e72e9f8adb2efddd0d4",
+      "bytes": 40418
+    },
+    {
+      "path": "SOURCE-INVENTORY.json",
+      "sha256": "a8d3337b4a2d9fe914ca75710bdd17f0c6c382ddf0587f0e6eba5e16ebed11b3",
+      "bytes": 41090
+    },
+    {
+      "path": "SOURCE-POLICY-SCAN.json",
+      "sha256": "d0a8b40f34588377e61893885d92c05d425aeeb65c59e5915838e0363030164e",
+      "bytes": 159
+    },
+    {
+      "path": "UNROLL-VARIANTS.md",
+      "sha256": "2b543911f881585ea03981d685734a3b88c669f2225d013d0494682bc912b834",
+      "bytes": 3990
+    },
+    {
+      "path": "actual-examples/empty/CHANGE.json",
+      "sha256": "1122daf2c709040072073b9d5fce87c54c9aed7fe98908d694616507b1ead28f",
+      "bytes": 3435
+    },
+    {
+      "path": "actual-examples/empty/PREPARED.json",
+      "sha256": "515a24e7d98f450ee579154976a34a823d9ad2464c40c6136b4cf711b0076c28",
+      "bytes": 49788
+    },
+    {
+      "path": "actual-examples/empty/Query.lean",
+      "sha256": "81e7b36b37faed994dfe901d4ce1a9cb13ab390146d3ef57a98405d1e09d4212",
+      "bytes": 8291
+    },
+    {
+      "path": "actual-examples/empty/REQUEST.json",
+      "sha256": "95184c93ba6999770519ce1ad7d11b191a2daa2f092b68c856b4133d2219a1ce",
+      "bytes": 56785
+    },
+    {
+      "path": "actual-examples/empty/WITNESS.json",
+      "sha256": "84f3a68939220f802c5e672a30d388ac7966ba6682602fde9c98244fde03953e",
+      "bytes": 4942
+    },
+    {
+      "path": "actual-examples/empty/Witness.lean",
+      "sha256": "7a6ddf21db5b875fb68cfa1943f41ff4e9b97e8ff0ee81bbf24561d70ead1125",
+      "bytes": 13548
+    },
+    {
+      "path": "actual-examples/empty/after.mlir",
+      "sha256": "0f02c9a3755c2c587648e81f5c4a373d2cc348dde6f7c3d6d9b45c0c1a7822b8",
+      "bytes": 937
+    },
+    {
+      "path": "actual-examples/empty/before.mlir",
+      "sha256": "b0378880113c5f53fcc5d2baa724a616a5b84d3652d9a6d747dc5117fd3ec0c5",
+      "bytes": 1290
+    },
+    {
+      "path": "actual-examples/inline1/CHANGE.json",
+      "sha256": "06e311024f122c0dcc4855599051b3fdb11cdd0d7762ab5cc81935e412b4600c",
+      "bytes": 3623
+    },
+    {
+      "path": "actual-examples/inline1/PREPARED.json",
+      "sha256": "c01a4232d4f1f296eefd89e8e9327157ae16b72ed5a0a89957bb7020d219916e",
+      "bytes": 52095
+    },
+    {
+      "path": "actual-examples/inline1/Query.lean",
+      "sha256": "d1b3ad9f1e12af36914e886d333ef1fa8ac0437cdd85c653d434ecb2c2ae8430",
+      "bytes": 9598
+    },
+    {
+      "path": "actual-examples/inline1/REQUEST.json",
+      "sha256": "d97c954b4e4a39e100327026af631e8ede9a7397c7a2ea46c3138d175dc19f5d",
+      "bytes": 59020
+    },
+    {
+      "path": "actual-examples/inline1/WITNESS.json",
+      "sha256": "b36d45b00b5a57d18538212d58f5e0bef4708d0965330a4bb4230021482a9904",
+      "bytes": 5255
+    },
+    {
+      "path": "actual-examples/inline1/Witness.lean",
+      "sha256": "54838da1762ffe53738472ab9cf477fdb0877bd0d8ea229a9356fb60d8bc2dcc",
+      "bytes": 16391
+    },
+    {
+      "path": "actual-examples/inline1/after.mlir",
+      "sha256": "a1baef8fba33fe20984ae58808f84644baf7dfeb1ddd1e537961b5445c07e114",
+      "bytes": 1168
+    },
+    {
+      "path": "actual-examples/inline1/before.mlir",
+      "sha256": "b4b9599d9b7029823675376ca2b5679a93d225e95e63ff4da0d4569e1c74120f",
+      "bytes": 1254
+    },
+    {
+      "path": "actual-examples/inline2/CHANGE.json",
+      "sha256": "6fc26c7c7fbfde02f5159ae646e5a11bcd6794f29326651ce1c741a81e83114b",
+      "bytes": 3927
+    },
+    {
+      "path": "actual-examples/inline2/PREPARED.json",
+      "sha256": "5ba0372bbe028fc92359632702ad6283205b9a52dd04065192de2d08926ba85b",
+      "bytes": 54758
+    },
+    {
+      "path": "actual-examples/inline2/Query.lean",
+      "sha256": "410592e6e3841bad9439b1d71c8ee227ed8efeb6a0bb0b5184be9f7709364b72",
+      "bytes": 11045
+    },
+    {
+      "path": "actual-examples/inline2/REQUEST.json",
+      "sha256": "d99b5ae17db9597895fb0cc75d3e8a0ceb404d4f3e6b2add209ac960de8b2f59",
+      "bytes": 61683
+    },
+    {
+      "path": "actual-examples/inline2/WITNESS.json",
+      "sha256": "b31d15eadef3487976e4cebf7623ef7660d2644bf0b11b3750ef39403b89c128",
+      "bytes": 5257
+    },
+    {
+      "path": "actual-examples/inline2/Witness.lean",
+      "sha256": "bf9d08c011e20792777e91a459ea0d763fe2fe59f6ceda18d0a5a58f3860b3a3",
+      "bytes": 17842
+    },
+    {
+      "path": "actual-examples/inline2/after.mlir",
+      "sha256": "de9a6b8d5689df40373f5b4f54923724a2e8552355f17fc995b5a50212b134c5",
+      "bytes": 1411
+    },
+    {
+      "path": "actual-examples/inline2/before.mlir",
+      "sha256": "b6fbcf55a8c683f578f706b48061c6dcf0f7af0a5722df86ad31110e0fa4b42e",
+      "bytes": 1290
+    },
+    {
+      "path": "actual-examples/inline3/CHANGE.json",
+      "sha256": "177cf4d42fb4b8fab20b4f71577dcc185aa9f1b300401e02c91ba8503e98e0ee",
+      "bytes": 4184
+    },
+    {
+      "path": "actual-examples/inline3/PREPARED.json",
+      "sha256": "b2d82586c2fcddfb9f580bd062a4404d2aa6356d12428d5710d61ded16852c29",
+      "bytes": 57388
+    },
+    {
+      "path": "actual-examples/inline3/Query.lean",
+      "sha256": "d077a31c43b4f63633e6d12b1da08eb74a84eee395126c841654462df2be4c17",
+      "bytes": 12507
+    },
+    {
+      "path": "actual-examples/inline3/REQUEST.json",
+      "sha256": "83092155db8b15ae8f1ce19bc2c45d12547cb55ec36cd675cfc94453715be1e1",
+      "bytes": 64313
+    },
+    {
+      "path": "actual-examples/inline3/WITNESS.json",
+      "sha256": "deaf6d1ba81b02013babc418c4cb7d16c63c5b0f4881ac145fcb51516ce25c95",
+      "bytes": 5259
+    },
+    {
+      "path": "actual-examples/inline3/Witness.lean",
+      "sha256": "30db9315ddb9ab66b52e0fa6aff944fccc7123c97340afacc7bd7468da914cbd",
+      "bytes": 19313
+    },
+    {
+      "path": "actual-examples/inline3/after.mlir",
+      "sha256": "07a26aa4c6ab177bc77bcc1ff60a00e31bc4410032177cc555081db7b953e49b",
+      "bytes": 1657
+    },
+    {
+      "path": "actual-examples/inline3/before.mlir",
+      "sha256": "6d5cd4d4d2be72dbc89b7510930f42e44382b861aabc6c31490c950040af3e0c",
+      "bytes": 1291
+    },
+    {
+      "path": "actual-examples/mutations/EmptyBodyCountermodel.json",
+      "sha256": "8bbb46ecf99e7e7c561f7e9cd4a2c6ccc1c19303d4f55fba5b4d2c36f3022772",
+      "bytes": 37210
+    },
+    {
+      "path": "actual-examples/mutations/EmptyBodyCountermodel.lean",
+      "sha256": "2a127ed31e5fcde04f6b003551f2adec89aa36daf56668d353ae6e399b0ee7bb",
+      "bytes": 1915
+    },
+    {
+      "path": "actual-examples/mutations/empty-empty_body.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "actual-examples/mutations/empty-empty_body.mlir",
+      "sha256": "f7e3e983a63672e25d1a612159866f51be01d7354c58d306f1016c00a535afe5",
+      "bytes": 1006
+    },
+    {
+      "path": "actual-examples/mutations/empty-empty_carry.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "actual-examples/mutations/empty-empty_carry.mlir",
+      "sha256": "008f03c11598889a63f99fbbbacd788528ecf28c5c6e1704309b3dd2c631091a",
+      "bytes": 937
+    },
+    {
+      "path": "actual-examples/mutations/empty-observer.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "actual-examples/mutations/empty-observer.mlir",
+      "sha256": "7517824305b9ad64e89481504451347f5592fd6a1fdb4f47000b1b258a08b844",
+      "bytes": 937
+    },
+    {
+      "path": "actual-examples/mutations/inline3-capture.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "actual-examples/mutations/inline3-capture.mlir",
+      "sha256": "deab7c899d930fd47897c6e9b97fc9f10dc5a8345ddc872829df94f3548e0066",
+      "bytes": 1657
+    },
+    {
+      "path": "actual-examples/mutations/inline3-cutoff.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "actual-examples/mutations/inline3-cutoff.mlir",
+      "sha256": "7d8c9f67113c72f53673c94cb582d75487d69b5c6c86d0e9d3c7f0e7865cd107",
+      "bytes": 1657
+    },
+    {
+      "path": "actual-examples/mutations/inline3-dropped_entry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "actual-examples/mutations/inline3-dropped_entry.mlir",
+      "sha256": "403949840910ebe64a229ec61553081e865c02b0a91957d4035998f408874d9a",
+      "bytes": 1516
+    },
+    {
+      "path": "actual-examples/mutations/inline3-flags.json",
+      "sha256": "d8c8c69369b422ede4118bc329785f74771eafa3036ac3cc39c125d84d0575ac",
+      "bytes": 197
+    },
+    {
+      "path": "actual-examples/mutations/inline3-flags.mlir",
+      "sha256": "09a689b91e987ba7153c9313871f6e897bce80a51db7107eeff9fcaa517d483c",
+      "bytes": 1656
+    },
+    {
+      "path": "actual-examples/mutations/inline3-initial_carry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "actual-examples/mutations/inline3-initial_carry.mlir",
+      "sha256": "d625f596548dd7f765d32e6fdab3611f74fb601e318ec86f5abdfc21c5995fa6",
+      "bytes": 1657
+    },
+    {
+      "path": "actual-examples/mutations/inline3-lane.json",
+      "sha256": "ae57e4382c0847fb152c24e064eef146ea269270641744af22f964ca5810a1f3",
+      "bytes": 200
+    },
+    {
+      "path": "actual-examples/mutations/inline3-lane.mlir",
+      "sha256": "ad3b3f23be3e4af45c8960ee43bf80a2a4dbb2c4a88e20e56d5fe7afdc50d4f7",
+      "bytes": 1657
+    },
+    {
+      "path": "actual-examples/mutations/inline3-lane_carry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "actual-examples/mutations/inline3-lane_carry.mlir",
+      "sha256": "c1fd98a9e1f74378808cf3a22c05f147ce5302e31e3e62b7242ed848ec736c51",
+      "bytes": 1652
+    },
+    {
+      "path": "actual-examples/mutations/inline3-observer.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "actual-examples/mutations/inline3-observer.mlir",
+      "sha256": "913b1bd2a9dc43a077dd953f39582aa211a0570fe630cf3c1c8d759ac4ca909e",
+      "bytes": 1657
+    },
+    {
+      "path": "actual-examples/mutations/inline3-return.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "actual-examples/mutations/inline3-return.mlir",
+      "sha256": "52027531c1b6b44416870b2dbf7726f884f9c94581e83bf4a7fb3b49c12d80e9",
+      "bytes": 1654
+    },
+    {
+      "path": "actual-examples/wide_inline1/CHANGE.json",
+      "sha256": "864547bde1ace57b3fa7db5faa3ca327ddb042663d5e12f84b17cb5b98800f39",
+      "bytes": 3686
+    },
+    {
+      "path": "actual-examples/wide_inline1/PREPARED.json",
+      "sha256": "8b60d030f1787a6ed130f2a8ac2ae0534b16336af87cc58a38f8ffb81c68cf46",
+      "bytes": 52347
+    },
+    {
+      "path": "actual-examples/wide_inline1/Query.lean",
+      "sha256": "75d76530727d791ed82f6ee0507576fe03ae8157fec48cd3eae1b84ab259368b",
+      "bytes": 9706
+    },
+    {
+      "path": "actual-examples/wide_inline1/REQUEST.json",
+      "sha256": "92d57f5ac69d6a8f874129080297c1e8d6736ff49f54739e48bad8fed89da8ff",
+      "bytes": 59272
+    },
+    {
+      "path": "actual-examples/wide_inline1/WITNESS.json",
+      "sha256": "b5703531458a10b0a28e0dab6bcb2e25dac95d8fc195b3d85153e044f9c271ed",
+      "bytes": 5273
+    },
+    {
+      "path": "actual-examples/wide_inline1/Witness.lean",
+      "sha256": "3d6c5dc76ebc1e6f7b0d38562a80ffdb90baa5345ae2614a068bdd2b13523655",
+      "bytes": 16625
+    },
+    {
+      "path": "actual-examples/wide_inline1/after.mlir",
+      "sha256": "e8ea1063c5e1ab7554c7238fb94c45de14c2f892ae279ea0fe612cfd40641eb4",
+      "bytes": 1195
+    },
+    {
+      "path": "actual-examples/wide_inline1/before.mlir",
+      "sha256": "ff66618dfa980bcf2ef1ad322c15967153e481cc5449791e1fefc55fb5fcde0b",
+      "bytes": 1272
+    },
+    {
+      "path": "complete-carry-examples/empty/CHANGE.json",
+      "sha256": "1c87a1b2e73ca0894c74d09b5f91c6210ffd2c43e0230dc922fb49b5ac458554",
+      "bytes": 3469
+    },
+    {
+      "path": "complete-carry-examples/empty/PREPARED.json",
+      "sha256": "8da3b9bef67aae6b6288625752508a34d090ea1f2263859ca4741acda7ee5335",
+      "bytes": 50837
+    },
+    {
+      "path": "complete-carry-examples/empty/Query.lean",
+      "sha256": "4344cbeae90444ee6bf46a7719a383e8e37f6d29775842588f9ea79b05884862",
+      "bytes": 8347
+    },
+    {
+      "path": "complete-carry-examples/empty/REQUEST.json",
+      "sha256": "d756db0769e7d9a8501d554508b7869c558b2a72880457766dea0d895b777814",
+      "bytes": 57834
+    },
+    {
+      "path": "complete-carry-examples/empty/WITNESS.json",
+      "sha256": "84f3a68939220f802c5e672a30d388ac7966ba6682602fde9c98244fde03953e",
+      "bytes": 4942
+    },
+    {
+      "path": "complete-carry-examples/empty/Witness.lean",
+      "sha256": "a7a221c2f87c482f15d8ea62a0d582decbcfc84b8f049e50090aba1f16be095f",
+      "bytes": 13604
+    },
+    {
+      "path": "complete-carry-examples/empty/after.mlir",
+      "sha256": "a7c60eacf73d09eee9ec6d97873b0f83807db58a11af01ba3c587c7b3457490d",
+      "bytes": 953
+    },
+    {
+      "path": "complete-carry-examples/empty/before.mlir",
+      "sha256": "990e2f7b271dbce4ab0cc837ab65145358f54040686c5372df3639d25651820c",
+      "bytes": 1308
+    },
+    {
+      "path": "complete-carry-examples/inline1/CHANGE.json",
+      "sha256": "d86046da9001816ce78e09b39622c925e86b30c944fa3ee7e6f4c2cf032470f6",
+      "bytes": 3655
+    },
+    {
+      "path": "complete-carry-examples/inline1/PREPARED.json",
+      "sha256": "7e6dad72c59880a38db1797d1a2f26d0b542995570056de044ad81d2e2e27058",
+      "bytes": 53203
+    },
+    {
+      "path": "complete-carry-examples/inline1/Query.lean",
+      "sha256": "11f1e95d97507fa69cdf3be2d1445b83fa4568b985aca56e83d4df3fdf4edc2d",
+      "bytes": 9714
+    },
+    {
+      "path": "complete-carry-examples/inline1/REQUEST.json",
+      "sha256": "121e570400e08a3cc00aca17003ebe3d282ff87a9e12b04d15eea746cd91a80c",
+      "bytes": 60128
+    },
+    {
+      "path": "complete-carry-examples/inline1/WITNESS.json",
+      "sha256": "b36d45b00b5a57d18538212d58f5e0bef4708d0965330a4bb4230021482a9904",
+      "bytes": 5255
+    },
+    {
+      "path": "complete-carry-examples/inline1/Witness.lean",
+      "sha256": "2427b602ae04fc642a8dd88aea8b3e39cbeab012af0b0e63ac51fd88f14e9618",
+      "bytes": 16507
+    },
+    {
+      "path": "complete-carry-examples/inline1/after.mlir",
+      "sha256": "83615479974ff114fa9bf52ff77d53d25d6a1a31887f304e40acfba7f1b6c236",
+      "bytes": 1184
+    },
+    {
+      "path": "complete-carry-examples/inline1/before.mlir",
+      "sha256": "0869de7abb2d071b1abcd198596e83ec62941d24faae23417da791a58dfdcb9e",
+      "bytes": 1270
+    },
+    {
+      "path": "complete-carry-examples/inline2/CHANGE.json",
+      "sha256": "88d664942a88591d2d5f9806d74ff34cff75cf8f393dac4b8488915aa00b0aac",
+      "bytes": 3961
+    },
+    {
+      "path": "complete-carry-examples/inline2/PREPARED.json",
+      "sha256": "2d84f2237ed391f953192e2364d0d48f11b22cf6abc24a6f0d761abcdcbcb3be",
+      "bytes": 55957
+    },
+    {
+      "path": "complete-carry-examples/inline2/Query.lean",
+      "sha256": "00acd4837b64927418ddf1335e4a47663a68c754c0448fef071e0d4a92b56249",
+      "bytes": 11248
+    },
+    {
+      "path": "complete-carry-examples/inline2/REQUEST.json",
+      "sha256": "4928ff6457c16bf92fc43faf3089592220ebbb81d450f5b2ed88db965511cd87",
+      "bytes": 62882
+    },
+    {
+      "path": "complete-carry-examples/inline2/WITNESS.json",
+      "sha256": "b31d15eadef3487976e4cebf7623ef7660d2644bf0b11b3750ef39403b89c128",
+      "bytes": 5257
+    },
+    {
+      "path": "complete-carry-examples/inline2/Witness.lean",
+      "sha256": "d3a12043920435693499c88c9c2136c8090302236b7d6984cd84fc0d6e3620db",
+      "bytes": 18045
+    },
+    {
+      "path": "complete-carry-examples/inline2/after.mlir",
+      "sha256": "3861112b0eafd59d3124cbfa6d9f705c3cdb4742bd8101f8bb6996fbb8c47a2b",
+      "bytes": 1427
+    },
+    {
+      "path": "complete-carry-examples/inline2/before.mlir",
+      "sha256": "02ecd0ef3e270350eec6e990d06f057e4252e3528eb3939e08e77e91a4abe69b",
+      "bytes": 1308
+    },
+    {
+      "path": "complete-carry-examples/inline3/CHANGE.json",
+      "sha256": "9d33357b7a140713227a562b3a82e2b8346cc6c7fa314df94a3a69ea91b44a3e",
+      "bytes": 4218
+    },
+    {
+      "path": "complete-carry-examples/inline3/PREPARED.json",
+      "sha256": "a70394f0298077adbdceead474326c55f7e2a875ea55a76387034f41c610c0e1",
+      "bytes": 58700
+    },
+    {
+      "path": "complete-carry-examples/inline3/Query.lean",
+      "sha256": "bb6fe7247d7ee3a8eb9008fb397007a6aebfda86a50c9dc3155a78fc2cbc6c65",
+      "bytes": 12822
+    },
+    {
+      "path": "complete-carry-examples/inline3/REQUEST.json",
+      "sha256": "232ac5f9e8d404a9ca389e344452489cd86685247f46cececd474225969ed39d",
+      "bytes": 65625
+    },
+    {
+      "path": "complete-carry-examples/inline3/WITNESS.json",
+      "sha256": "deaf6d1ba81b02013babc418c4cb7d16c63c5b0f4881ac145fcb51516ce25c95",
+      "bytes": 5259
+    },
+    {
+      "path": "complete-carry-examples/inline3/Witness.lean",
+      "sha256": "6aaa677ead4d9cf217b05592c5031123660198c7fbd65f813c29eebc0a7a6080",
+      "bytes": 19628
+    },
+    {
+      "path": "complete-carry-examples/inline3/after.mlir",
+      "sha256": "cde668d26650b68660e95b565d3c915ad2fa75e636d0105ffc510838a7135e89",
+      "bytes": 1673
+    },
+    {
+      "path": "complete-carry-examples/inline3/before.mlir",
+      "sha256": "cdb5e32a988b1357080be305661b7c0d3840fd66d07b23448161a688fd39c4ce",
+      "bytes": 1309
+    },
+    {
+      "path": "complete-carry-examples/mutations/EmptyBodyCountermodel.json",
+      "sha256": "f2b78400f19aace668a606c07f935778996215197a911332775cc377e2b9b575",
+      "bytes": 40627
+    },
+    {
+      "path": "complete-carry-examples/mutations/EmptyBodyCountermodel.lean",
+      "sha256": "9e44a886b7cafbc3da22142b3e580b8d96af1eb15974a95352b51a1055001501",
+      "bytes": 1929
+    },
+    {
+      "path": "complete-carry-examples/mutations/empty-empty_body.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "complete-carry-examples/mutations/empty-empty_body.mlir",
+      "sha256": "5d4cb4aaf12743df97b955561f6a5b352f1ef47f21201087694502cc6b5f4555",
+      "bytes": 1022
+    },
+    {
+      "path": "complete-carry-examples/mutations/empty-empty_carry.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "complete-carry-examples/mutations/empty-empty_carry.mlir",
+      "sha256": "65e4975bdc3cea8703246b7867fd8e84feda06363a277524d812bba5bdc01390",
+      "bytes": 953
+    },
+    {
+      "path": "complete-carry-examples/mutations/empty-observer.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "complete-carry-examples/mutations/empty-observer.mlir",
+      "sha256": "3bebfe410ef886a91a82efa00c0559d33e2de23e65bf3913de010d8039ae63ad",
+      "bytes": 953
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-capture.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-capture.mlir",
+      "sha256": "41d9e2d71dda9146a2eeac4e1df8606715cf946789f4e9f4dc1259f6311f30e9",
+      "bytes": 1673
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-carry_order.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-carry_order.mlir",
+      "sha256": "79d5da06f6eae832f752778e6b631797caf73e6ada7f54a79097adffef3a62e4",
+      "bytes": 1673
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-cutoff.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-cutoff.mlir",
+      "sha256": "3bd9b74ac6344c89e1e25218ec34a405847f7a61230dda4973da1365d41cb63c",
+      "bytes": 1673
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-dropped_entry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-dropped_entry.mlir",
+      "sha256": "d17a82ecd096644561bf59b9ba8086d05f2adf8f57a9ec50e0b693ecaa6f6b84",
+      "bytes": 1532
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-flags.json",
+      "sha256": "d8c8c69369b422ede4118bc329785f74771eafa3036ac3cc39c125d84d0575ac",
+      "bytes": 197
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-flags.mlir",
+      "sha256": "e794142424e0988cf4d67a0b1a1354aa14c46ff7d237aca369e3688e9c94bfb3",
+      "bytes": 1672
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-initial_carry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-initial_carry.mlir",
+      "sha256": "776776da865a38e19642db7b9d493bf1dba9ecb81d63a98672be45ebb93483ba",
+      "bytes": 1673
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-lane.json",
+      "sha256": "ae57e4382c0847fb152c24e064eef146ea269270641744af22f964ca5810a1f3",
+      "bytes": 200
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-lane.mlir",
+      "sha256": "e41eabf8d25518baa8761a60eed6676165028bfaad13f6fe788417fc851d0dab",
+      "bytes": 1673
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-lane_carry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-lane_carry.mlir",
+      "sha256": "51c9a428dfac348995918ed218a3e0a5a3bbae2bbf7d1027de911359964377dc",
+      "bytes": 1668
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-observer.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-observer.mlir",
+      "sha256": "bd6b5df679130fe89b7b7e81400d494b836417f8e833c77c1096ba45bf780e50",
+      "bytes": 1673
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-return.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "complete-carry-examples/mutations/inline3-return.mlir",
+      "sha256": "4904f4d802ddeb2aa7f8711852d4f063fde560bdd63b597e1e23f13efabaaa7b",
+      "bytes": 1670
+    },
+    {
+      "path": "complete-carry-examples/wide_inline1/CHANGE.json",
+      "sha256": "6236b261ec0dd793a147525c137f3ff0a1615aba484b0393adb4c122822a6c94",
+      "bytes": 3718
+    },
+    {
+      "path": "complete-carry-examples/wide_inline1/PREPARED.json",
+      "sha256": "173c4f3264a702f367c937d51f82433cb9bc3572f1e05ec5cba7c4a25951e93c",
+      "bytes": 53455
+    },
+    {
+      "path": "complete-carry-examples/wide_inline1/Query.lean",
+      "sha256": "d5d15ffe2618f82b59fc631aa157b591d2907148925b39fc10a72664a2256ac6",
+      "bytes": 9822
+    },
+    {
+      "path": "complete-carry-examples/wide_inline1/REQUEST.json",
+      "sha256": "6762c2c544a4dfe7b0b872dbbdaf5be3da54b74612e847475d96391364628eb2",
+      "bytes": 60380
+    },
+    {
+      "path": "complete-carry-examples/wide_inline1/WITNESS.json",
+      "sha256": "b5703531458a10b0a28e0dab6bcb2e25dac95d8fc195b3d85153e044f9c271ed",
+      "bytes": 5273
+    },
+    {
+      "path": "complete-carry-examples/wide_inline1/Witness.lean",
+      "sha256": "7a6a681b3ef19e8c78ac32ee3cd1545f503b0192e5aeae919b8455a81b3bd6d1",
+      "bytes": 16741
+    },
+    {
+      "path": "complete-carry-examples/wide_inline1/after.mlir",
+      "sha256": "ac240e440ff38e965c413048cb004123f76eed52c0b352c0760a900b3c5a51b1",
+      "bytes": 1211
+    },
+    {
+      "path": "complete-carry-examples/wide_inline1/before.mlir",
+      "sha256": "7485d750960fe56661f9f175193526020c3bc555a3b175c8eb69af37e9b28ac6",
+      "bytes": 1288
+    },
+    {
+      "path": "complete-carry-tests.txt",
+      "sha256": "796b1c21448da080ac821ddec98e8ad2d9f0410fe8b5a62bcbfbe4f977fc8bb7",
+      "bytes": 839
+    },
+    {
+      "path": "development-history/initial-emitter.py",
+      "sha256": "397730336a62e0bd385da95244e9db0053187362af5f488ef4f277476ac67990",
+      "bytes": 9403
+    },
+    {
+      "path": "final-actual-examples/empty/CHANGE.json",
+      "sha256": "1122daf2c709040072073b9d5fce87c54c9aed7fe98908d694616507b1ead28f",
+      "bytes": 3435
+    },
+    {
+      "path": "final-actual-examples/empty/PREPARED.json",
+      "sha256": "56fcee0f8f465c50a2f80cf1fb3da8b3fbf58d3a31f7557cf523606167a345d5",
+      "bytes": 49823
+    },
+    {
+      "path": "final-actual-examples/empty/Query.lean",
+      "sha256": "fb98aed1fe88d668ad4efe2a0c2c1e74ffbb84428d54cc590f34b61f225273ad",
+      "bytes": 8325
+    },
+    {
+      "path": "final-actual-examples/empty/REQUEST.json",
+      "sha256": "30764d5691326d52fc8cfc509f986aa71f8b5116ca62964c2930c70d3295872b",
+      "bytes": 56820
+    },
+    {
+      "path": "final-actual-examples/empty/WITNESS.json",
+      "sha256": "84f3a68939220f802c5e672a30d388ac7966ba6682602fde9c98244fde03953e",
+      "bytes": 4942
+    },
+    {
+      "path": "final-actual-examples/empty/Witness.lean",
+      "sha256": "53c6ce42dcc86e82e1ee514f2aef58398ab925520286d2efc4b6f0dd043d6813",
+      "bytes": 13582
+    },
+    {
+      "path": "final-actual-examples/empty/after.mlir",
+      "sha256": "0f02c9a3755c2c587648e81f5c4a373d2cc348dde6f7c3d6d9b45c0c1a7822b8",
+      "bytes": 937
+    },
+    {
+      "path": "final-actual-examples/empty/before.mlir",
+      "sha256": "b0378880113c5f53fcc5d2baa724a616a5b84d3652d9a6d747dc5117fd3ec0c5",
+      "bytes": 1290
+    },
+    {
+      "path": "final-actual-examples/inline1/CHANGE.json",
+      "sha256": "06e311024f122c0dcc4855599051b3fdb11cdd0d7762ab5cc81935e412b4600c",
+      "bytes": 3623
+    },
+    {
+      "path": "final-actual-examples/inline1/PREPARED.json",
+      "sha256": "6face0637f0c49628c554139bdf557cb56fc45f868e75076bb5c7135b352e8c2",
+      "bytes": 52191
+    },
+    {
+      "path": "final-actual-examples/inline1/Query.lean",
+      "sha256": "4d18077d33eb2c55ce601d09c23f14c6077b3c9864897ac163946c37acf89ff8",
+      "bytes": 9692
+    },
+    {
+      "path": "final-actual-examples/inline1/REQUEST.json",
+      "sha256": "55ae57e7ff070b0e6d281c6c2d7b9d6d25cd63fa94625129408faf7e439f142b",
+      "bytes": 59116
+    },
+    {
+      "path": "final-actual-examples/inline1/WITNESS.json",
+      "sha256": "b36d45b00b5a57d18538212d58f5e0bef4708d0965330a4bb4230021482a9904",
+      "bytes": 5255
+    },
+    {
+      "path": "final-actual-examples/inline1/Witness.lean",
+      "sha256": "575fc615b226f61efdef81c89657f7959fc444c6d328809bc0fd8578d8ce9a3e",
+      "bytes": 16485
+    },
+    {
+      "path": "final-actual-examples/inline1/after.mlir",
+      "sha256": "a1baef8fba33fe20984ae58808f84644baf7dfeb1ddd1e537961b5445c07e114",
+      "bytes": 1168
+    },
+    {
+      "path": "final-actual-examples/inline1/before.mlir",
+      "sha256": "b4b9599d9b7029823675376ca2b5679a93d225e95e63ff4da0d4569e1c74120f",
+      "bytes": 1254
+    },
+    {
+      "path": "final-actual-examples/inline2/CHANGE.json",
+      "sha256": "6fc26c7c7fbfde02f5159ae646e5a11bcd6794f29326651ce1c741a81e83114b",
+      "bytes": 3927
+    },
+    {
+      "path": "final-actual-examples/inline2/PREPARED.json",
+      "sha256": "5bb00e815e49c92bb7a7acfb4afbe8b7b09269f44212d4117792ee530e6e8105",
+      "bytes": 54941
+    },
+    {
+      "path": "final-actual-examples/inline2/Query.lean",
+      "sha256": "d8c5a37de3ee354a6b87b587d12f7d27c209afb9fa0e1e19b6d567c262efe09d",
+      "bytes": 11225
+    },
+    {
+      "path": "final-actual-examples/inline2/REQUEST.json",
+      "sha256": "dbb32ec49cc587e770ff83cbd698ff92eeb0447b76cdd227ad088a08a429b8ec",
+      "bytes": 61866
+    },
+    {
+      "path": "final-actual-examples/inline2/WITNESS.json",
+      "sha256": "b31d15eadef3487976e4cebf7623ef7660d2644bf0b11b3750ef39403b89c128",
+      "bytes": 5257
+    },
+    {
+      "path": "final-actual-examples/inline2/Witness.lean",
+      "sha256": "4045f489c78b14e964eead2f92f45c69a2a4557c9c9e9393578caa37219a9378",
+      "bytes": 18022
+    },
+    {
+      "path": "final-actual-examples/inline2/after.mlir",
+      "sha256": "de9a6b8d5689df40373f5b4f54923724a2e8552355f17fc995b5a50212b134c5",
+      "bytes": 1411
+    },
+    {
+      "path": "final-actual-examples/inline2/before.mlir",
+      "sha256": "b6fbcf55a8c683f578f706b48061c6dcf0f7af0a5722df86ad31110e0fa4b42e",
+      "bytes": 1290
+    },
+    {
+      "path": "final-actual-examples/inline3/CHANGE.json",
+      "sha256": "177cf4d42fb4b8fab20b4f71577dcc185aa9f1b300401e02c91ba8503e98e0ee",
+      "bytes": 4184
+    },
+    {
+      "path": "final-actual-examples/inline3/PREPARED.json",
+      "sha256": "de43d9ae30d6436a403877b5dda5be1b4d529d084b66649191c7f08ceb115dc3",
+      "bytes": 57684
+    },
+    {
+      "path": "final-actual-examples/inline3/Query.lean",
+      "sha256": "7c84c07706f1e84c80eb216437b9de518bd97cb0e67c547e1639cced06fa4ee5",
+      "bytes": 12799
+    },
+    {
+      "path": "final-actual-examples/inline3/REQUEST.json",
+      "sha256": "040460c0adf0a9a9b01f2c8db04ae0f9dc7787a719be5ebcb4efed8d6315e174",
+      "bytes": 64609
+    },
+    {
+      "path": "final-actual-examples/inline3/WITNESS.json",
+      "sha256": "deaf6d1ba81b02013babc418c4cb7d16c63c5b0f4881ac145fcb51516ce25c95",
+      "bytes": 5259
+    },
+    {
+      "path": "final-actual-examples/inline3/Witness.lean",
+      "sha256": "9a054ba456ec20e29c803c2c9b990ed8b3aed82eb1150343fe808d2a6d231a04",
+      "bytes": 19605
+    },
+    {
+      "path": "final-actual-examples/inline3/after.mlir",
+      "sha256": "07a26aa4c6ab177bc77bcc1ff60a00e31bc4410032177cc555081db7b953e49b",
+      "bytes": 1657
+    },
+    {
+      "path": "final-actual-examples/inline3/before.mlir",
+      "sha256": "6d5cd4d4d2be72dbc89b7510930f42e44382b861aabc6c31490c950040af3e0c",
+      "bytes": 1291
+    },
+    {
+      "path": "final-actual-examples/mutations/EmptyBodyCountermodel.json",
+      "sha256": "8bbb46ecf99e7e7c561f7e9cd4a2c6ccc1c19303d4f55fba5b4d2c36f3022772",
+      "bytes": 37210
+    },
+    {
+      "path": "final-actual-examples/mutations/EmptyBodyCountermodel.lean",
+      "sha256": "2a127ed31e5fcde04f6b003551f2adec89aa36daf56668d353ae6e399b0ee7bb",
+      "bytes": 1915
+    },
+    {
+      "path": "final-actual-examples/mutations/empty-empty_body.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "final-actual-examples/mutations/empty-empty_body.mlir",
+      "sha256": "f7e3e983a63672e25d1a612159866f51be01d7354c58d306f1016c00a535afe5",
+      "bytes": 1006
+    },
+    {
+      "path": "final-actual-examples/mutations/empty-empty_carry.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "final-actual-examples/mutations/empty-empty_carry.mlir",
+      "sha256": "008f03c11598889a63f99fbbbacd788528ecf28c5c6e1704309b3dd2c631091a",
+      "bytes": 937
+    },
+    {
+      "path": "final-actual-examples/mutations/empty-observer.json",
+      "sha256": "54b27785eae12a8e9158d7ff3f65ebdcaf0e8e37e540ebc13e515d16860001fe",
+      "bytes": 209
+    },
+    {
+      "path": "final-actual-examples/mutations/empty-observer.mlir",
+      "sha256": "7517824305b9ad64e89481504451347f5592fd6a1fdb4f47000b1b258a08b844",
+      "bytes": 937
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-capture.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-capture.mlir",
+      "sha256": "deab7c899d930fd47897c6e9b97fc9f10dc5a8345ddc872829df94f3548e0066",
+      "bytes": 1657
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-cutoff.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-cutoff.mlir",
+      "sha256": "7d8c9f67113c72f53673c94cb582d75487d69b5c6c86d0e9d3c7f0e7865cd107",
+      "bytes": 1657
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-dropped_entry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-dropped_entry.mlir",
+      "sha256": "403949840910ebe64a229ec61553081e865c02b0a91957d4035998f408874d9a",
+      "bytes": 1516
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-flags.json",
+      "sha256": "d8c8c69369b422ede4118bc329785f74771eafa3036ac3cc39c125d84d0575ac",
+      "bytes": 197
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-flags.mlir",
+      "sha256": "09a689b91e987ba7153c9313871f6e897bce80a51db7107eeff9fcaa517d483c",
+      "bytes": 1656
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-initial_carry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-initial_carry.mlir",
+      "sha256": "d625f596548dd7f765d32e6fdab3611f74fb601e318ec86f5abdfc21c5995fa6",
+      "bytes": 1657
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-lane.json",
+      "sha256": "ae57e4382c0847fb152c24e064eef146ea269270641744af22f964ca5810a1f3",
+      "bytes": 200
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-lane.mlir",
+      "sha256": "ad3b3f23be3e4af45c8960ee43bf80a2a4dbb2c4a88e20e56d5fe7afdc50d4f7",
+      "bytes": 1657
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-lane_carry.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-lane_carry.mlir",
+      "sha256": "c1fd98a9e1f74378808cf3a22c05f147ce5302e31e3e62b7242ed848ec736c51",
+      "bytes": 1652
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-observer.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-observer.mlir",
+      "sha256": "913b1bd2a9dc43a077dd953f39582aa211a0570fe630cf3c1c8d759ac4ca909e",
+      "bytes": 1657
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-return.json",
+      "sha256": "07df5798f1b2a615b9c947f6981223035a03bbd2f12cd4b33fefd012b900ce3e",
+      "bytes": 211
+    },
+    {
+      "path": "final-actual-examples/mutations/inline3-return.mlir",
+      "sha256": "52027531c1b6b44416870b2dbf7726f884f9c94581e83bf4a7fb3b49c12d80e9",
+      "bytes": 1654
+    },
+    {
+      "path": "final-actual-examples/wide_inline1/CHANGE.json",
+      "sha256": "864547bde1ace57b3fa7db5faa3ca327ddb042663d5e12f84b17cb5b98800f39",
+      "bytes": 3686
+    },
+    {
+      "path": "final-actual-examples/wide_inline1/PREPARED.json",
+      "sha256": "094364eae8710d1790bcae6eecf61db96d9994b20d66a38db9b98d99ed0ba0d3",
+      "bytes": 52443
+    },
+    {
+      "path": "final-actual-examples/wide_inline1/Query.lean",
+      "sha256": "c3d56d82f57edc925db1eac2802d13aa678274c5e71e8a2f28adb62fdd470610",
+      "bytes": 9800
+    },
+    {
+      "path": "final-actual-examples/wide_inline1/REQUEST.json",
+      "sha256": "78d717bbc69fcbef41a2d3dc9f3c631ec008cf6112e1d474e95a4acf9ff31f29",
+      "bytes": 59368
+    },
+    {
+      "path": "final-actual-examples/wide_inline1/WITNESS.json",
+      "sha256": "b5703531458a10b0a28e0dab6bcb2e25dac95d8fc195b3d85153e044f9c271ed",
+      "bytes": 5273
+    },
+    {
+      "path": "final-actual-examples/wide_inline1/Witness.lean",
+      "sha256": "e020f17a53196299da7a6cb8883000a9369fc49c5fb0c6149ad749845378441d",
+      "bytes": 16719
+    },
+    {
+      "path": "final-actual-examples/wide_inline1/after.mlir",
+      "sha256": "e8ea1063c5e1ab7554c7238fb94c45de14c2f892ae279ea0fe612cfd40641eb4",
+      "bytes": 1195
+    },
+    {
+      "path": "final-actual-examples/wide_inline1/before.mlir",
+      "sha256": "ff66618dfa980bcf2ef1ad322c15967153e481cc5449791e1fefc55fb5fcde0b",
+      "bytes": 1272
+    },
+    {
+      "path": "final-tests.txt",
+      "sha256": "75d140e132f3e3a0a7a38b7990cefde009dcf304e5d5973b4c6cb8c7de2a2d2b",
+      "bytes": 839
+    },
+    {
+      "path": "first-tests.txt",
+      "sha256": "70c6ded7bd09de837d8c5e5eeda969d86b4bff09d187e664fa1844b11c54f1e6",
+      "bytes": 839
+    },
+    {
+      "path": "owned-additive-pre-dual-carry.patch",
+      "sha256": "6d55265ce711d28aa862efd7cb10b6d8abe46abc09c1e5876b2a756e2f124c75",
+      "bytes": 42590
+    },
+    {
+      "path": "owned-additive.patch",
+      "sha256": "ef66a3954422181911427e41d14a7d85e3f8385e95c0a2f1f29d35255ab45ca7",
+      "bytes": 42847
+    },
+    {
+      "path": "retention-tests.txt",
+      "sha256": "26ead0d4d10f247250e65972d0af501ee4ee93abe18734bcdfb3f6436cb4b23e",
+      "bytes": 839
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "bytes": 4227
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "bytes": 1017
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "bytes": 9294
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "bytes": 4572
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "bytes": 4097
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "bytes": 8634
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "bytes": 12317
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f",
+      "bytes": 7588
+    },
+    {
+      "path": "source-snapshot/dependencies/pinned4499/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/builder.py",
+      "sha256": "07edf3d0ba3af9083c22310dd98bddd37a3300b7b166466193389aa50aca395a",
+      "bytes": 11622
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/context.py",
+      "sha256": "398f6fe1a77cb940e30cb499f5ddd3e6d80073fb9d4e3b0ea5bc3f5fdc4b81de",
+      "bytes": 11751
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/__init__.py",
+      "sha256": "0ce455fc728c51ade6e19ed26ff61c625b9b5f85af77f0976cc6de9504c25556",
+      "bytes": 549
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/constant_materialization.py",
+      "sha256": "1d805e0a398ccea6bb05684210a22e106600146044902e431129a524eac433b3",
+      "bytes": 1069
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/op_asm.py",
+      "sha256": "4ce3e98d238e453d63d3f480ba06cb232e7d0a1571736c67fe784117a1664351",
+      "bytes": 3093
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/__init__.py",
+      "sha256": "09111f29545dac8235bb5b0cbbc63e591c43a92e9b1fa8e4e23815c2c0371afd",
+      "bytes": 10337
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py",
+      "sha256": "8e58a5ab3c4e7a7b4cc30653a52b8f6f7b9b35574ed88485f1dbd85866ca3b63",
+      "bytes": 42917
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/builtin.py",
+      "sha256": "a58c193c85430bcfb34e6e5dba23f442880f8e9593e07ca313906f4a5775a4e2",
+      "bytes": 114583
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/func.py",
+      "sha256": "8a0cb3d1cfb47bfea7f642decd5c4b6f742461c6fe89b283f0918e515e8b8f8e",
+      "bytes": 11699
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/memref.py",
+      "sha256": "216e58c59ab59abe72e12a55c2af9bf89e53569c19479bfc9a7103c387cf28ba",
+      "bytes": 40815
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/scf.py",
+      "sha256": "57a47001029e79e03994fe67de0ed3c95b86ab465103cbd721f1b32b31155ab6",
+      "bytes": 27021
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/__init__.py",
+      "sha256": "9333bca6184814c39e9eaf592f58e6ed493e9898d527ad136fe32f5f59343433",
+      "bytes": 440
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py",
+      "sha256": "a95bd0416fc8501a6e727ca1315a94b7d8c5cb790358affc1be7c501b3c6501e",
+      "bytes": 4759
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dimension_list.py",
+      "sha256": "a6612af576bd0357107529dd60c4053f48dfcbf03abe6a431c29a55a2d475989",
+      "bytes": 1542
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dynamic_index_list.py",
+      "sha256": "38daa52c1113b0b9c7e184a812206fca75c99bf89bf2d489f9819525c040c242",
+      "bytes": 11826
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/enum_attribute.py",
+      "sha256": "a78ec420a097f747703642e1f27f8e41024b087a5244b4dd4709ee537d852dfe",
+      "bytes": 2170
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/fast_math.py",
+      "sha256": "6b5b526f36fcebd1afee8f3e8cd0e447f5240075885646edd9fbd84b79611b55",
+      "bytes": 684
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/format.py",
+      "sha256": "cc99781fa71fcaf702737a52e8c3c3e37754fdd13d9e7530960714dfa721acec",
+      "bytes": 18761
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/reshape_ops_utils.py",
+      "sha256": "20d38aaa290665a1f23c3a7781aacd1cc30e0bc1761cac25a2a4c6bcd45d8db9",
+      "bytes": 5041
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/folder.py",
+      "sha256": "3906e6d34b791f4d1de56bd347cb1af8a53424afaebc1c7e97dff2e70da503de",
+      "bytes": 3430
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/interfaces.py",
+      "sha256": "66a219f8cff8fdf8759426e3ab38f2fedfbd092b09b9daaa2d033831339dc300",
+      "bytes": 3803
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/__init__.py",
+      "sha256": "9b70e7a611de326f314eb7f5877f896f864519cf73404a98c0ba1448f5f91485",
+      "bytes": 808
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/__init__.py",
+      "sha256": "1defb1dab5f098264ce81e6318161a17100e5aeeb8c2fc966327203a5e5a26ba",
+      "bytes": 296
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_expr.py",
+      "sha256": "e52f3d8ffe8f36c050c9868f679e7bf254f25a64dd50e55f17e37a0c2e811061",
+      "bytes": 33741
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_map.py",
+      "sha256": "b7459de550eb7e16a58c54ef80f0cb799d8d4bdc125eb1aa1431265a2b20217c",
+      "bytes": 17632
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_set.py",
+      "sha256": "bf5fe3832e0b73c2d09280a92edb4bea307a24d8f81efdb59fbf09dc7892133b",
+      "bytes": 1605
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/ir/core.py",
+      "sha256": "e4a56ec3e51f856d02ee8230739b5024c91da00260d4bce7c125ff08a6f52c08",
+      "bytes": 87560
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/__init__.py",
+      "sha256": "5cac03e289cfd95b58f728d2fe09fd069aec7990e05801d02e6c4b20e8a7e119",
+      "bytes": 302
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/attributes.py",
+      "sha256": "5390db1921844923d604abee03d99d2b713b388848a9b2e0f528826fe182e473",
+      "bytes": 22211
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/constraints.py",
+      "sha256": "83c063f55d9b835d92c16fdd51e1ada3eb4ad84f7bc6a18698793606dcbf7e75",
+      "bytes": 49824
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format.py",
+      "sha256": "0634b37132aa57248a3000ec873f1664b9890e550b8a7521e0b58cd3ceeea1fb",
+      "bytes": 55097
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format_parser.py",
+      "sha256": "fc16909fd1530a8bb6681bd944fcae0dd7cfe7ee7ea55aa28ff140744fb508b8",
+      "bytes": 39149
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/operations.py",
+      "sha256": "7c5c8bf820d4f89942903794e8a1a21ce9aa5c84e451602f3a54c6cb481149d4",
+      "bytes": 74020
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/__init__.py",
+      "sha256": "a8c23f2dc3bad21336cca3171afa34339dfabf90298dd19ed4e92798e17e823e",
+      "bytes": 466
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/affine_parser.py",
+      "sha256": "77e1a321b84693db30272b42deafb3453475705c00bff128480f7857b2a5c36b",
+      "bytes": 11088
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/attribute_parser.py",
+      "sha256": "2390628c63b7069fd6e4d814e06fbd5da19df487d0b2af469cc0704b3355c13c",
+      "bytes": 62798
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/base_parser.py",
+      "sha256": "158558fb5b4fb9dc2a7438f0c6cc3cb5276b462a1adb7da44a1eaabe204b8bad",
+      "bytes": 12513
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/core.py",
+      "sha256": "fea4787ef90a2893e6a55bb9a7c70a3d81304b68a40a30904b330e6919ea37e7",
+      "bytes": 41286
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/parser/generic_parser.py",
+      "sha256": "badaa2593ec46f77c0856d62e100fe19195357a40c444dc0b4aed8e1376d92d7",
+      "bytes": 11901
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/pattern_rewriter.py",
+      "sha256": "759350b3ea7defd18f75161034182100b69778d9be52d47c2e63060eb80f2e38",
+      "bytes": 30506
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/printer.py",
+      "sha256": "44d48c3d67a1a60793434c3f92376840f764b0fa2f7a7e835173a0ba819e7765",
+      "bytes": 25749
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/rewriter.py",
+      "sha256": "ecb85c0cd62c5fdf04fb72291cab1c0145bce8c6cafedf7b2d7eba21121deb47",
+      "bytes": 11614
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/traits.py",
+      "sha256": "9a8df8a232a7d79c1836ce40136a5245559b9f6e6f9ea7e5b5f7782d5bcb7a2e",
+      "bytes": 29464
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/base_printer.py",
+      "sha256": "e481727cfc8d6f5019b3e7d0341e25607c6f64c19cabf27c029cdd7ef2c57a9b",
+      "bytes": 5606
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/bitwise_casts.py",
+      "sha256": "a19b2f68806f22a22c1258fd38dc2568a9a713daaa1bdbe822e9ee8c8134cfd6",
+      "bytes": 1903
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/classvar.py",
+      "sha256": "75817d634d44001d56dc60cf2142e0fc186c7f4c1bacac124c59380350c90627",
+      "bytes": 1129
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/comparisons.py",
+      "sha256": "d457aaed334bf384daa7aa70238300f39ad9c8ecc636291b5c8cb6bd07e224ac",
+      "bytes": 3799
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/diagnostic.py",
+      "sha256": "fdcb80084e612ae2b1b75cd7ecf1c79796e4c912c58fa3ae612fae97447fe0f3",
+      "bytes": 1901
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_loader.py",
+      "sha256": "fc7fbe1d9ea015f6b9caa764797a0849c9cc972efb778d258baee6b0f8bbb9ec",
+      "bytes": 3966
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_stub.py",
+      "sha256": "e56615befeb25b7ef8dc739ab1afaf7481045af9c13cf82902e1901358f90a43",
+      "bytes": 10855
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/exceptions.py",
+      "sha256": "2c5a6d5e0a8f44c998cae5a22a3922feb4d226e6de2100d3c976cb47e5a091c0",
+      "bytes": 3497
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/hints.py",
+      "sha256": "298718d6044b829594b43ad7e1b1226f8aa9318f73de1e4f806073d39004dacf",
+      "bytes": 7859
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/lexer.py",
+      "sha256": "d2d6d2f8e2bf110426e7663c28eb0626de5334ecbc27e74cec92c21af69fefef",
+      "bytes": 5454
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/mlir_lexer.py",
+      "sha256": "d2d2b59b9a09d18e2edde2d6ccc2fa49f4e063e19672eab4c158e35d44b32e36",
+      "bytes": 18808
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/runtime_final.py",
+      "sha256": "37edf56a59a7f385128f5864f07560d2e2535644260141f0f1893bf28a83e7d5",
+      "bytes": 812
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/str_enum.py",
+      "sha256": "3a5fa8d24f075b14a95a56146f832980d666da690e8c4eb7e5d491c3e813456e",
+      "bytes": 356
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/type.py",
+      "sha256": "9c4c1ac090bd0da004fd7db64e4c95e96a2803b1b078e49f669085cbbc74fbce",
+      "bytes": 1540
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/.venv/lib/python3.14/site-packages/xdsl/utils/worklist.py",
+      "sha256": "dea6f7332e611bea48493d6ce60a478a0f484238ab4ddbe24c84e3f63764d842",
+      "bytes": 2081
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+      "bytes": 5515
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/common/paths.py",
+      "sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "bytes": 17204
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "bytes": 9653
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "bytes": 3962
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "bytes": 7091
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "bytes": 2118
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "bytes": 5730
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+      "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+      "bytes": 5106
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "bytes": 9854
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+      "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+      "bytes": 4850
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+      "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+      "bytes": 7321
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+      "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+      "bytes": 5747
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+      "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+      "bytes": 4641
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+      "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+      "bytes": 7569
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean",
+      "sha256": "694d79ad1df0d7352b2e4034ac9e91cb1f9ceb07d089a37e08cd2dc8511187d5",
+      "bytes": 2475
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+      "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+      "bytes": 1400
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+      "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+      "bytes": 3197
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "bytes": 4654
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "bytes": 8229
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "bytes": 11782
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "bytes": 6170
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "bytes": 9963
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "bytes": 6614
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "bytes": 3246
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "bytes": 4537
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "bytes": 7626
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "bytes": 12573
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_inline.py",
+      "sha256": "513b762b3e307e66764ab686dd4a734c3a6ae292a9bb2370bf5a5214b08fdaa1",
+      "bytes": 9590
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+      "sha256": "6638c9359ca4a6f4ac9301cb18e1a5f13b4eb315be15dd6899e754fd852f8ae0",
+      "bytes": 9609
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_inline_models.py",
+      "sha256": "b941b9db1a8a80abd3ff4c875213d542a4a5e3b71677b3bee80b4b621c24c84a",
+      "bytes": 6879
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_pipeline_tail.py",
+      "sha256": "7c2e7fa1db6b1770668faa05673469f5cba2011b29e4285e11558d6affcf05a8",
+      "bytes": 8516
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state.py",
+      "sha256": "8568b83e5c6bb92b927136e90f18412b8c6912a35b23aa5d27d9c6ede073f1c1",
+      "bytes": 15961
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_pipeline.py",
+      "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+      "bytes": 3144
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_pipeline_capture.py",
+      "sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+      "bytes": 12106
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+      "bytes": 26257
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_scalar.py",
+      "sha256": "61d351b2b6d31fc172a20931142e5a5096416ac3264901efc322086a410e5fc5",
+      "bytes": 15252
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "bytes": 20723
+    },
+    {
+      "path": "source-snapshot/dependencies/primary/src/merlin/verify/lean_graph_state_scalar_kernel.py",
+      "sha256": "2a170583ecdab74f9690cbe071e6ef4c4d459daa07c42c07c351e201dfc405e0",
+      "bytes": 10303
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "bytes": 4227
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "bytes": 1017
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "bytes": 9294
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "bytes": 4572
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "bytes": 4097
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "bytes": 8634
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "bytes": 12317
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f",
+      "bytes": 7588
+    },
+    {
+      "path": "source-snapshot/dependencies-final/pinned4499/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/builder.py",
+      "sha256": "07edf3d0ba3af9083c22310dd98bddd37a3300b7b166466193389aa50aca395a",
+      "bytes": 11622
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/context.py",
+      "sha256": "398f6fe1a77cb940e30cb499f5ddd3e6d80073fb9d4e3b0ea5bc3f5fdc4b81de",
+      "bytes": 11751
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/__init__.py",
+      "sha256": "0ce455fc728c51ade6e19ed26ff61c625b9b5f85af77f0976cc6de9504c25556",
+      "bytes": 549
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/constant_materialization.py",
+      "sha256": "1d805e0a398ccea6bb05684210a22e106600146044902e431129a524eac433b3",
+      "bytes": 1069
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/op_asm.py",
+      "sha256": "4ce3e98d238e453d63d3f480ba06cb232e7d0a1571736c67fe784117a1664351",
+      "bytes": 3093
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/__init__.py",
+      "sha256": "09111f29545dac8235bb5b0cbbc63e591c43a92e9b1fa8e4e23815c2c0371afd",
+      "bytes": 10337
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py",
+      "sha256": "8e58a5ab3c4e7a7b4cc30653a52b8f6f7b9b35574ed88485f1dbd85866ca3b63",
+      "bytes": 42917
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/builtin.py",
+      "sha256": "a58c193c85430bcfb34e6e5dba23f442880f8e9593e07ca313906f4a5775a4e2",
+      "bytes": 114583
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/func.py",
+      "sha256": "8a0cb3d1cfb47bfea7f642decd5c4b6f742461c6fe89b283f0918e515e8b8f8e",
+      "bytes": 11699
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/memref.py",
+      "sha256": "216e58c59ab59abe72e12a55c2af9bf89e53569c19479bfc9a7103c387cf28ba",
+      "bytes": 40815
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/scf.py",
+      "sha256": "57a47001029e79e03994fe67de0ed3c95b86ab465103cbd721f1b32b31155ab6",
+      "bytes": 27021
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/__init__.py",
+      "sha256": "9333bca6184814c39e9eaf592f58e6ed493e9898d527ad136fe32f5f59343433",
+      "bytes": 440
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py",
+      "sha256": "a95bd0416fc8501a6e727ca1315a94b7d8c5cb790358affc1be7c501b3c6501e",
+      "bytes": 4759
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dimension_list.py",
+      "sha256": "a6612af576bd0357107529dd60c4053f48dfcbf03abe6a431c29a55a2d475989",
+      "bytes": 1542
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dynamic_index_list.py",
+      "sha256": "38daa52c1113b0b9c7e184a812206fca75c99bf89bf2d489f9819525c040c242",
+      "bytes": 11826
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/enum_attribute.py",
+      "sha256": "a78ec420a097f747703642e1f27f8e41024b087a5244b4dd4709ee537d852dfe",
+      "bytes": 2170
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/fast_math.py",
+      "sha256": "6b5b526f36fcebd1afee8f3e8cd0e447f5240075885646edd9fbd84b79611b55",
+      "bytes": 684
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/format.py",
+      "sha256": "cc99781fa71fcaf702737a52e8c3c3e37754fdd13d9e7530960714dfa721acec",
+      "bytes": 18761
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/reshape_ops_utils.py",
+      "sha256": "20d38aaa290665a1f23c3a7781aacd1cc30e0bc1761cac25a2a4c6bcd45d8db9",
+      "bytes": 5041
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/folder.py",
+      "sha256": "3906e6d34b791f4d1de56bd347cb1af8a53424afaebc1c7e97dff2e70da503de",
+      "bytes": 3430
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/interfaces.py",
+      "sha256": "66a219f8cff8fdf8759426e3ab38f2fedfbd092b09b9daaa2d033831339dc300",
+      "bytes": 3803
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/ir/__init__.py",
+      "sha256": "9b70e7a611de326f314eb7f5877f896f864519cf73404a98c0ba1448f5f91485",
+      "bytes": 808
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/__init__.py",
+      "sha256": "1defb1dab5f098264ce81e6318161a17100e5aeeb8c2fc966327203a5e5a26ba",
+      "bytes": 296
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_expr.py",
+      "sha256": "e52f3d8ffe8f36c050c9868f679e7bf254f25a64dd50e55f17e37a0c2e811061",
+      "bytes": 33741
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_map.py",
+      "sha256": "b7459de550eb7e16a58c54ef80f0cb799d8d4bdc125eb1aa1431265a2b20217c",
+      "bytes": 17632
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_set.py",
+      "sha256": "bf5fe3832e0b73c2d09280a92edb4bea307a24d8f81efdb59fbf09dc7892133b",
+      "bytes": 1605
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/ir/core.py",
+      "sha256": "e4a56ec3e51f856d02ee8230739b5024c91da00260d4bce7c125ff08a6f52c08",
+      "bytes": 87560
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/__init__.py",
+      "sha256": "5cac03e289cfd95b58f728d2fe09fd069aec7990e05801d02e6c4b20e8a7e119",
+      "bytes": 302
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/attributes.py",
+      "sha256": "5390db1921844923d604abee03d99d2b713b388848a9b2e0f528826fe182e473",
+      "bytes": 22211
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/constraints.py",
+      "sha256": "83c063f55d9b835d92c16fdd51e1ada3eb4ad84f7bc6a18698793606dcbf7e75",
+      "bytes": 49824
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format.py",
+      "sha256": "0634b37132aa57248a3000ec873f1664b9890e550b8a7521e0b58cd3ceeea1fb",
+      "bytes": 55097
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format_parser.py",
+      "sha256": "fc16909fd1530a8bb6681bd944fcae0dd7cfe7ee7ea55aa28ff140744fb508b8",
+      "bytes": 39149
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/irdl/operations.py",
+      "sha256": "7c5c8bf820d4f89942903794e8a1a21ce9aa5c84e451602f3a54c6cb481149d4",
+      "bytes": 74020
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/parser/__init__.py",
+      "sha256": "a8c23f2dc3bad21336cca3171afa34339dfabf90298dd19ed4e92798e17e823e",
+      "bytes": 466
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/parser/affine_parser.py",
+      "sha256": "77e1a321b84693db30272b42deafb3453475705c00bff128480f7857b2a5c36b",
+      "bytes": 11088
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/parser/attribute_parser.py",
+      "sha256": "2390628c63b7069fd6e4d814e06fbd5da19df487d0b2af469cc0704b3355c13c",
+      "bytes": 62798
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/parser/base_parser.py",
+      "sha256": "158558fb5b4fb9dc2a7438f0c6cc3cb5276b462a1adb7da44a1eaabe204b8bad",
+      "bytes": 12513
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/parser/core.py",
+      "sha256": "fea4787ef90a2893e6a55bb9a7c70a3d81304b68a40a30904b330e6919ea37e7",
+      "bytes": 41286
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/parser/generic_parser.py",
+      "sha256": "badaa2593ec46f77c0856d62e100fe19195357a40c444dc0b4aed8e1376d92d7",
+      "bytes": 11901
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/pattern_rewriter.py",
+      "sha256": "759350b3ea7defd18f75161034182100b69778d9be52d47c2e63060eb80f2e38",
+      "bytes": 30506
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/printer.py",
+      "sha256": "44d48c3d67a1a60793434c3f92376840f764b0fa2f7a7e835173a0ba819e7765",
+      "bytes": 25749
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/rewriter.py",
+      "sha256": "ecb85c0cd62c5fdf04fb72291cab1c0145bce8c6cafedf7b2d7eba21121deb47",
+      "bytes": 11614
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/traits.py",
+      "sha256": "9a8df8a232a7d79c1836ce40136a5245559b9f6e6f9ea7e5b5f7782d5bcb7a2e",
+      "bytes": 29464
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/base_printer.py",
+      "sha256": "e481727cfc8d6f5019b3e7d0341e25607c6f64c19cabf27c029cdd7ef2c57a9b",
+      "bytes": 5606
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/bitwise_casts.py",
+      "sha256": "a19b2f68806f22a22c1258fd38dc2568a9a713daaa1bdbe822e9ee8c8134cfd6",
+      "bytes": 1903
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/classvar.py",
+      "sha256": "75817d634d44001d56dc60cf2142e0fc186c7f4c1bacac124c59380350c90627",
+      "bytes": 1129
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/comparisons.py",
+      "sha256": "d457aaed334bf384daa7aa70238300f39ad9c8ecc636291b5c8cb6bd07e224ac",
+      "bytes": 3799
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/diagnostic.py",
+      "sha256": "fdcb80084e612ae2b1b75cd7ecf1c79796e4c912c58fa3ae612fae97447fe0f3",
+      "bytes": 1901
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_loader.py",
+      "sha256": "fc7fbe1d9ea015f6b9caa764797a0849c9cc972efb778d258baee6b0f8bbb9ec",
+      "bytes": 3966
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_stub.py",
+      "sha256": "e56615befeb25b7ef8dc739ab1afaf7481045af9c13cf82902e1901358f90a43",
+      "bytes": 10855
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/exceptions.py",
+      "sha256": "2c5a6d5e0a8f44c998cae5a22a3922feb4d226e6de2100d3c976cb47e5a091c0",
+      "bytes": 3497
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/hints.py",
+      "sha256": "298718d6044b829594b43ad7e1b1226f8aa9318f73de1e4f806073d39004dacf",
+      "bytes": 7859
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/lexer.py",
+      "sha256": "d2d6d2f8e2bf110426e7663c28eb0626de5334ecbc27e74cec92c21af69fefef",
+      "bytes": 5454
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/mlir_lexer.py",
+      "sha256": "d2d2b59b9a09d18e2edde2d6ccc2fa49f4e063e19672eab4c158e35d44b32e36",
+      "bytes": 18808
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/runtime_final.py",
+      "sha256": "37edf56a59a7f385128f5864f07560d2e2535644260141f0f1893bf28a83e7d5",
+      "bytes": 812
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/str_enum.py",
+      "sha256": "3a5fa8d24f075b14a95a56146f832980d666da690e8c4eb7e5d491c3e813456e",
+      "bytes": 356
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/type.py",
+      "sha256": "9c4c1ac090bd0da004fd7db64e4c95e96a2803b1b078e49f669085cbbc74fbce",
+      "bytes": 1540
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/.venv/lib/python3.14/site-packages/xdsl/utils/worklist.py",
+      "sha256": "dea6f7332e611bea48493d6ce60a478a0f484238ab4ddbe24c84e3f63764d842",
+      "bytes": 2081
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+      "bytes": 5515
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/common/paths.py",
+      "sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "bytes": 17204
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "bytes": 9653
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "bytes": 3962
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "bytes": 7091
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "bytes": 2118
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "bytes": 5730
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+      "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+      "bytes": 5106
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "bytes": 9854
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+      "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+      "bytes": 4850
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+      "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+      "bytes": 7321
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+      "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+      "bytes": 5747
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+      "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+      "bytes": 4641
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+      "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+      "bytes": 7569
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean",
+      "sha256": "694d79ad1df0d7352b2e4034ac9e91cb1f9ceb07d089a37e08cd2dc8511187d5",
+      "bytes": 2475
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+      "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+      "bytes": 1400
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+      "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+      "bytes": 3197
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "bytes": 4654
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "bytes": 8229
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "bytes": 11782
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "bytes": 6170
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "bytes": 9963
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "bytes": 6614
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "bytes": 3246
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "bytes": 4537
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "bytes": 7626
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "bytes": 12573
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_pipeline_inline.py",
+      "sha256": "513b762b3e307e66764ab686dd4a734c3a6ae292a9bb2370bf5a5214b08fdaa1",
+      "bytes": 9590
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+      "sha256": "6638c9359ca4a6f4ac9301cb18e1a5f13b4eb315be15dd6899e754fd852f8ae0",
+      "bytes": 9609
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_pipeline_inline_models.py",
+      "sha256": "4e972a5a87418c00eddd1e6a4dc6087c66f55fbce3373434a687d9d8b503c1ee",
+      "bytes": 6890
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_pipeline_tail.py",
+      "sha256": "7c2e7fa1db6b1770668faa05673469f5cba2011b29e4285e11558d6affcf05a8",
+      "bytes": 8516
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_state.py",
+      "sha256": "8568b83e5c6bb92b927136e90f18412b8c6912a35b23aa5d27d9c6ede073f1c1",
+      "bytes": 15961
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_state_pipeline.py",
+      "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+      "bytes": 3144
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_state_pipeline_capture.py",
+      "sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+      "bytes": 12106
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+      "bytes": 26257
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_state_scalar.py",
+      "sha256": "61d351b2b6d31fc172a20931142e5a5096416ac3264901efc322086a410e5fc5",
+      "bytes": 15252
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "bytes": 20723
+    },
+    {
+      "path": "source-snapshot/dependencies-final/primary/src/merlin/verify/lean_graph_state_scalar_kernel.py",
+      "sha256": "2a170583ecdab74f9690cbe071e6ef4c4d459daa07c42c07c351e201dfc405e0",
+      "bytes": 10303
+    },
+    {
+      "path": "source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_inline.py",
+      "sha256": "f2341a915f3976fef75df9ab40880a03ea57e23ac8db7cb29d122a5f7aecd522",
+      "bytes": 12913
+    },
+    {
+      "path": "source-snapshot/owned/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean",
+      "sha256": "694d79ad1df0d7352b2e4034ac9e91cb1f9ceb07d089a37e08cd2dc8511187d5",
+      "bytes": 2475
+    },
+    {
+      "path": "source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_inline.py",
+      "sha256": "513b762b3e307e66764ab686dd4a734c3a6ae292a9bb2370bf5a5214b08fdaa1",
+      "bytes": 9590
+    },
+    {
+      "path": "source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+      "sha256": "6638c9359ca4a6f4ac9301cb18e1a5f13b4eb315be15dd6899e754fd852f8ae0",
+      "bytes": 9609
+    },
+    {
+      "path": "source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_inline_models.py",
+      "sha256": "b941b9db1a8a80abd3ff4c875213d542a4a5e3b71677b3bee80b4b621c24c84a",
+      "bytes": 6879
+    },
+    {
+      "path": "source-snapshot/owned-final/merlin/tests/ir/test_lean_graph_pipeline_inline.py",
+      "sha256": "f2db585401d90d5cd59e11985f440df4812dc77ea5ffc4cea7af277807ce363f",
+      "bytes": 13156
+    },
+    {
+      "path": "source-snapshot/owned-final/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean",
+      "sha256": "694d79ad1df0d7352b2e4034ac9e91cb1f9ceb07d089a37e08cd2dc8511187d5",
+      "bytes": 2475
+    },
+    {
+      "path": "source-snapshot/owned-final/src/merlin/verify/lean_graph_pipeline_inline.py",
+      "sha256": "513b762b3e307e66764ab686dd4a734c3a6ae292a9bb2370bf5a5214b08fdaa1",
+      "bytes": 9590
+    },
+    {
+      "path": "source-snapshot/owned-final/src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+      "sha256": "6638c9359ca4a6f4ac9301cb18e1a5f13b4eb315be15dd6899e754fd852f8ae0",
+      "bytes": 9609
+    },
+    {
+      "path": "source-snapshot/owned-final/src/merlin/verify/lean_graph_pipeline_inline_models.py",
+      "sha256": "4e972a5a87418c00eddd1e6a4dc6087c66f55fbce3373434a687d9d8b503c1ee",
+      "bytes": 6890
+    }
+  ]
+}

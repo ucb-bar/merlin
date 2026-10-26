@@ -1,0 +1,847 @@
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStatePipelineTail.lean
+@@ -0,0 +1,86 @@
++/- Source-only candidate. No native validation has been performed.
++Ordered bulk plus remainder in the unchanged Scalar operational interpretation.
++The body equation below is a local obligation to close using actual decoded SSA;
++it is never an external contract or a premise of the emitted complete-entry root. -/
++import Merlin.GraphStatePipelineLoops
++
++namespace Merlin.GraphState.Pipeline.Tail
++set_option autoImplicit false
++open Scalar GraphLoopsUnroll
++
++theorem progression_append (lower step first rest : Nat) :
++    progression lower step (first + rest) =
++      progression lower step first ++ progression (lower + step * first) step rest := by
++  induction first generalizing lower with
++  | zero => simp only [Nat.zero_add, progression, List.nil_append, Nat.mul_zero, Nat.add_zero]
++  | succ first ih =>
++    simpa only [Nat.succ_add, progression, List.cons_append, Nat.mul_succ,
++      Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
++      congrArg (List.cons lower) (ih (lower+step))
++
++/-- Splitting never executes the second interval after a first-interval failure.
++The complete fault and terminal world, including arity failures, are retained. -/
++theorem loop_append {Value World Error : Type} (arity : Nat)
++    (body : Int → List Value → World → Outcome Value World Error)
++    (first rest : List Int) (values : List Value) (world : World) :
++    loopEval arity body (first ++ rest) values world =
++      (loopEval arity body first values world).bind
++        (fun result => loopEval arity body rest result.1 result.2) := by
++  induction first generalizing values world with
++  | nil =>
++    by_cases size : values.length = arity
++    · simp only [List.nil_append, loopEval, size, ↓reduceIte, Except.bind]
++    · simp only [List.nil_append, loopEval, size, ↓reduceIte, Except.bind]
++  | cons index later ih =>
++    by_cases size : values.length = arity
++    · simp only [List.cons_append, loopEval, size, ↓reduceIte]
++      cases result : body index values world with
++      | error failure => rfl
++      | ok state => exact ih state.1 state.2
++    · simp only [List.cons_append, loopEval, size, ↓reduceIte, Except.bind]
++
++/-- Structural counted split plus sealed W grouping. No trip-sized computation,
++source-success premise, error commutativity, or arithmetic reassociation. -/
++theorem ordered_bulk_tail {Value World Error : Type} (arity : Nat)
++    (original bulk : Int → List Value → World → Outcome Value World Error)
++    (lower upper step factor groups remainder : Nat)
++    (positive : 0 < step) (positiveFactor : 0 < factor)
++    (counted : CountCorrect lower upper step (groups * factor + remainder))
++    (bodyChecked : ∀ index values world, values.length = arity →
++      bulk (Int.ofNat index) values world =
++        loopEval arity original ((progression index step factor).map Int.ofNat) values world)
++    (values : List Value) (world : World) :
++    loopEval arity original (indexIterations lower upper step) values world =
++      (loopEval arity bulk
++        (indexIterations (lower : Int) ((lower + (step * factor) * groups : Nat) : Int)
++          ((step * factor : Nat) : Int)) values world).bind
++        (fun result => loopEval arity original
++          (indexIterations ((lower + (step * factor) * groups : Nat) : Int) upper step)
++          result.1 result.2) := by
++  have cutoff : lower + step * (groups * factor) = lower + (step * factor) * groups := by
++    simp only [Nat.mul_assoc, Nat.mul_comm, Nat.mul_left_comm]
++  have prefixCount := CountCorrect.aligned lower step (groups * factor) positive
++  have suffixCount := CountCorrect.drop counted
++  have split : indexIterations lower upper step =
++      indexIterations (lower : Int) ((lower + step * (groups * factor) : Nat) : Int) step ++
++      indexIterations ((lower + step * (groups * factor) : Nat) : Int) upper step := by
++    rw [indexIterations_count positive counted, indexIterations_count positive prefixCount,
++      indexIterations_count positive suffixCount, progression_append, List.map_append]
++  rw [split, loop_append,
++    unroll_loop arity original bulk lower (lower + step * (groups * factor)) step factor groups
++      positive positiveFactor prefixCount bodyChecked, cutoff]
++
++/-- Sequential continuation congruence retains arbitrary observers, failures,
++and terminal worlds. It is used only after both actual loop equations close. -/
++theorem continue_same {Value World Error : Type}
++    (first second : Outcome Value World Error)
++    (left right : List Value → World → Outcome Value World Error)
++    (loops : first = second) (suffix : ∀ values world, left values world = right values world) :
++    first.bind (fun result => left result.1 result.2) =
++      second.bind (fun result => right result.1 result.2) := by
++  rw [loops]
++  cases second with
++  | error failure => rfl
++  | ok state => exact suffix state.1 state.2
++
++end Merlin.GraphState.Pipeline.Tail
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStatePipelineTailWitness.lean
+@@ -0,0 +1,59 @@
++/- Source-only structural witness helpers, specialized by emitted actual-body
++equations. These are not new operational semantics or successful-body axioms. -/
++import Merlin.GraphStatePipelineTail
++
++namespace Merlin.GraphState.Pipeline.Tail
++set_option autoImplicit false
++open Scalar
++
++theorem progression_length (lower step count : Nat) :
++    (progression lower step count).length = count := by
++  induction count generalizing lower with
++  | zero => rfl
++  | succ count ih => simp only [progression, List.length_cons, ih]
++
++theorem progression_member {lower step count index : Nat}
++    (member : index ∈ progression lower step count) :
++    ∃ ordinal, ordinal < count ∧ index = lower + step * ordinal := by
++  induction count generalizing lower with
++  | zero => cases member
++  | succ count ih =>
++    simp only [progression,List.mem_cons] at member
++    rcases member with same | later
++    · exact ⟨0,by omega,by simpa using same⟩
++    · obtain ⟨ordinal,inside,equal⟩ := ih later
++      refine ⟨ordinal+1,by omega,?_⟩
++      rw [equal,Nat.mul_add,Nat.mul_one]
++      omega
++
++/-- A structural success witness, with a local equation closed from the
++instantiated actual body. No trip-sized literal evaluation is required. -/
++theorem constant_carry_run {Error : Type} (arity : Nat) (values : List Int)
++    (body : Int → List Int → Nat → Outcome Int Nat Error)
++    (size : values.length = arity) (indices : List Int)
++    (bodyStep : ∀ i w, i ∈ indices → body i values w = .ok (values,w+1)) (world : Nat) :
++    loopEval arity body indices values world = .ok (values,world+indices.length) := by
++  induction indices generalizing world with
++  | nil => simp only [loopEval,size,↓reduceIte,List.length_nil,Nat.add_zero]
++  | cons index rest ih =>
++    simp only [loopEval,size,↓reduceIte,bodyStep index world (by simp),Except.bind]
++    rw [ih (fun i w member => bodyStep i w (by simp [member]))]
++    simp only [List.length_cons]
++    congr 1
++    omega
++
++/-- First fault after a successful prefix, with no later call or observation.
++The prefix equation is discharged structurally in generated witness queries. -/
++theorem fault_after_prefix {Error : Type} (arity : Nat) (values : List Int)
++    (body : Int → List Int → Nat → Outcome Int Nat Error)
++    (size : values.length = arity) (prefix rest : List Int) (faultIndex : Int)
++    (bodyStep : ∀ i w, i ∈ prefix → body i values w = .ok (values,w+1))
++    (failure : Fault Error) (fault : ∀ w, body faultIndex values w = .error (failure,w+1))
++    (world : Nat) :
++    loopEval arity body (prefix ++ faultIndex::rest) values world =
++      .error (failure,world+prefix.length+1) := by
++  rw [loop_append,constant_carry_run arity values body size prefix bodyStep world]
++  simp only [Except.bind,loopEval,size,↓reduceIte,fault]
++  rfl
++
++end Merlin.GraphState.Pipeline.Tail
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_tail.py
+@@ -0,0 +1,181 @@
++"""Inactive ordered-unroll remainder preparation, complete actual module pairs.
++
++Production replay is a host correspondence check, never Lean acceptance. Every
++new query and witness remains uncompiled/unobserved under the shared native hold.
++"""
++from dataclasses import asdict, dataclass
++from pathlib import Path
++import sys
++
++from .lean_graph_pipeline_gate_projection import canonical, sha, source_ref, project_lean_sources
++
++PROFILE = 'ordered_unroll_bulk_remainder_source_v1'
++KIND = 'ordered_loop_unrolling'
++DOMAIN = 'static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome'
++PREMISES = (
++    'trusted complete xDSL parser/projection and exact source delivery binding',
++    'one common frozen Scalar evaluator/registry/total pure primitive/partial external interpretation',
++    'concrete finite indexIterations and checked signed control/literal bounds; no backend fidelity claim',
++    'external successful-result arity contract only; no source success or whole-run equality premise',
++    'private SSA stacks unobserved; full returns/fault/terminal world retained',
++    'one changed top-level loop per two-argument entry; one/two carries; region-free body; explicit external calls only',
++    'native fidelity, runtime value typing/poison, model relevance and review remain separate',
++)
++
++
++@dataclass(frozen=True)
++class Selection:
++    factor: int
++    index_bits: int
++
++    def validate(self):
++        if type(self.factor) is not int or not 2 <= self.factor <= 4 or type(self.index_bits) is not int or self.index_bits not in (32,64):
++            raise ValueError('explicit factor2..4 and signed32/64 selection required')
++
++
++@dataclass(frozen=True)
++class PreparedTail:
++    profile: str
++    kind: str
++    domain: str
++    premises: tuple[str, ...]
++    python_version: str
++    before: str
++    after: str
++    selection: Selection
++    projection: str
++    controls: str
++    producer_diagnostics: str
++    query: str
++    roots: tuple[str, ...]
++    sources: tuple
++
++    @property
++    def identity(self):
++        return sha(canonical(asdict(self)))
++
++    def describe(self):
++        return {**asdict(self),'identity':self.identity,'query_sha256':sha(self.query),
++                'query_status':'UNCOMPILED','outcome':'UNOBSERVED','qualification':'UNQUALIFIED',
++                'authority':False,'compiler_pass_chain':'not_established','provider':'UNSELECTED_HELD',
++                'public_route':'UNSUPPORTED/HELD'}
++
++
++def _admit(module):
++    from xdsl.dialects import builtin, func, scf
++    from .lean_graph_input_admission import admit_module
++    admit_module(module,calls='external-only')
++    module.verify()
++    for op in module.walk():
++        if op.successors or (op.regions and type(op) not in (builtin.ModuleOp,func.FuncOp,scf.ForOp)):
++            raise ValueError('unsupported CFG/region in complete tail domain')
++        for value in (*op.operands,*op.results,*(a for r in op.regions for b in r.blocks for a in b.args)):
++            t=value.type
++            if type(t) is builtin.IndexType:
++                continue
++            if not (type(t) is builtin.IntegerType and t.signedness.data==builtin.Signedness.SIGNLESS and 1<=t.width.data<=256):
++                raise ValueError('only scalar signless words and concrete index controls supported')
++
++
++def query_roots(query):
++    namespaces=[];roots=[]
++    for line in query.splitlines():
++        words=line.split()
++        if not words:
++            continue
++        if words[0]=='namespace':
++            namespaces.append(words[1])
++        elif words[0]=='end':
++            namespaces.pop()
++        elif words[0]=='theorem':
++            roots.append('.'.join([*namespaces,words[1]]))
++    return tuple(roots)
++
++
++def _sources():
++    paths={Path(__file__),Path(__file__).with_name('lean_graph_pipeline_tail_emit.py'),
++           Path(__file__).with_name('lean_graph_pipeline_tail_models.py')}
++    for name,module in tuple(sys.modules.items()):
++        path=getattr(module,'__file__',None)
++        if name.startswith(('merlin.','xdsl.')) and path and Path(path).suffix=='.py':
++            paths.add(Path(path))
++    return tuple(source_ref(p) for p in sorted(paths)) + project_lean_sources((
++        'Merlin.GraphStatePipelineTail','Merlin.GraphStatePipelineLiterals',
++        'Merlin.GraphStatePipelineScope','Merlin.GraphStatePipelineProgram','Merlin.GraphStateScalar'))
++
++
++def prepare(before,after,selection):
++    from merlin.transforms.certificates import parse_ir,ir_text
++    from merlin.transforms.unrolling import unroll_ordered_loops
++    from .lean_graph_input_admission import admit_text
++    from .lean_graph_state_scalar_capture import project,metadata
++    from .lean_graph_state_pipeline_capture import index_operation
++    from .lean_graph_pipeline_tail_emit import emit
++    if type(selection) is not Selection:
++        raise ValueError('typed tail selection required; copied JSON grants no authority')
++    selection.validate()
++    for text in (before,after):
++        if type(text) is not str or len(text.encode())>4*1024*1024:
++            raise ValueError('bounded complete module text required')
++        admit_text(text)
++    source,target=parse_ir(before),parse_ir(after)
++    _admit(source);_admit(target)
++    clone=source.clone()
++    diagnostic=unroll_ordered_loops(clone,(selection.factor,),index_bits=selection.index_bits)
++    if not diagnostic or any(w.iterations<=w.factor or w.remainder==0 for w in diagnostic):
++        raise ValueError('actual changed bulk+nonempty tail required; no-tail/inline remain separate')
++    if ir_text(clone)!=ir_text(target):
++        raise ValueError('actual complete result differs from pinned ordered producer output')
++    pair=project(source,target,context=(source,target))
++    descriptors={}
++    for module in (source,target):
++        for op in module.walk():
++            control=index_operation(op)
++            if control is not None:
++                descriptors[canonical(metadata(op))]=control
++    controls=[{'identity':i,**descriptors[canonical(row['descriptor'])]}
++              for i,row in enumerate(pair['registry']) if canonical(row['descriptor']) in descriptors]
++    # Index arithmetic already present in the source is not licensed by an
++    # unroll bound. Its runtime operand bounds need a separate local proof.
++    for op in source.walk():
++        c=index_operation(op)
++        if c is not None and c['kind']!='index-constant':
++            raise ValueError('source index arithmetic needs separate range evidence')
++    capture={'stages':[pair],'index_operations':controls,'factor':selection.factor,'index_bits':selection.index_bits}
++    query=emit(capture)
++    roots=('Merlin.GraphState.Pipeline.Tail.progression_append',
++           'Merlin.GraphState.Pipeline.Tail.loop_append',
++           'Merlin.GraphState.Pipeline.Tail.ordered_bulk_tail',
++           'Merlin.GraphState.Pipeline.Scope.check_sound',
++           'Merlin.GraphState.Pipeline.unroll_loop',
++           'Merlin.GraphState.Scalar.loopEval_congr',
++           'Merlin.GraphState.Pipeline.entries_cons',*query_roots(query))
++    if len(roots)!=len(set(roots)) or roots[-1]!='merlin_unroll_tail_transform':
++        raise ValueError('closed unique final/support root roster required')
++    return PreparedTail(PROFILE,KIND,DOMAIN,PREMISES,sys.version,before,after,selection,canonical(pair),canonical(controls),
++                        canonical([asdict(w) for w in diagnostic]),query,roots,_sources())
++
++
++def request(profile,before,after,selection):
++    if profile!=PROFILE or type(profile) is not str:
++        raise ValueError('exact tail profile required; no no-tail/minimal profile fallback')
++    p=prepare(before,after,selection)
++    final='merlin_unroll_tail_transform'
++    return {**p.describe(),'schema':'merlin.unroll_tail_future_request.v1',
++            'final_root':final,'support_roots':p.roots[:-1],
++            'exact_statement':'theorem '+final+p.query.split('theorem '+final,1)[1],
++            'project_sources':[asdict(s) for s in p.sources if s.path.endswith('.lean')],
++            'delivery_obligation':'same live complete source/result completion plus actual boundary selection; no report authority',
++            'query_contract':'pure_declarations_separate_root_audit_v1'}
++
++
++def matches(saved,profile,before,after,selection):
++    return type(saved) is dict and canonical(saved)==canonical(request(profile,before,after,selection))
++
++
++def compiler_eligible(_candidate):
++    return False
++
++
++def provider_arguments(*_args,**_kwargs):
++    raise RuntimeError('tail provider unselected/held; new source review and native context required')
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_tail_emit.py
+@@ -0,0 +1,185 @@
++"""Source-only complete bulk/remainder query; no SDK or evaluator execution.
++
++Local cloned-body, lexical frame and suffix obligations are closed declarations.
++The final root quantifies over the same primitive and partial external meaning.
++All output is UNCOMPILED until a separately authorized kernel context checks it.
++"""
++from .lean_graph_state_pipeline import SIMPS, lean_list, prefix_environment
++from .lean_graph_state_pipeline_emit import header, body_group_text, static_controls, unpack
++from .lean_graph_state_scalar import program, types, budget
++
++
++def _symbols(indices):
++    return lean_list([f"(.var {i})" for i in indices])
++
++
++def _scope(name, left, right, logical, left_frame, right_frame, statement, introductions):
++    selected = [logical.index(value) for value in left_frame]
++    other = [logical.index(value) for value in right_frame]
++    return (f"def {name}L : List Expr := {_symbols(selected)}\n"
++            f"def {name}R : List Expr := {_symbols(other)}\n"
++            f"theorem {name}Checked : Scope.check registry {name}L {name}R {left} {right} = true := by decide\n"
++            + statement + " := by\n" + introductions
++            + f"  have checked := Scope.check_sound {name}Checked (M primitive external) {lean_list(logical)} world\n"
++            + f"  simpa only [{name}L,{name}R,E2,E3,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked\n")
++
++
++def emit(capture):
++    pair = capture['stages'][0]
++    factor, bits = capture['factor'], capture['index_bits']
++    text = header(capture).replace('namespace Merlin.GraphStatePipelineInstance',
++                                  'namespace Merlin.GraphStatePipelineTailInstance')
++    text = text.replace('set_option linter.unusedSimpArgs false\n', '')
++    text = 'import Merlin.GraphStatePipelineTail\n' + text
++    for fi, function in enumerate(pair['functions']):
++        if function['declaration']:
++            continue
++        before, after = function['before'], function['after']
++        for raw in (before, after):
++            budget(raw, len(function['inputs']), [0])
++        text += f"namespace F{fi}\ndef inputs : List Ty := {types(function['inputs'])}\n"
++        text += f"def outputs : List Ty := {types(function['outputs'])}\n"
++        text += f"def S2 : Program := {program(before)}\ndef S3 : Program := {program(after)}\n"
++        for stage in (2, 3):
++            text += f"theorem typed{stage} : checkTypes registry inputs outputs S{stage} = true := by decide\n"
++        if before == after:
++            text += "theorem actual {World Error : Type} (primitive : Prim → List Int → Int) (external : External World Error registry)\n"
++            text += "    (arguments : List Int) (world : World) (_arity : arguments.length = inputs.length) :\n"
++            text += "    evalProgram (M primitive external) S2 arguments world = evalProgram (M primitive external) S3 arguments world := rfl\n"
++            text += f"end F{fi}\n"
++            continue
++        if len(function['inputs']) != 2:
++            raise ValueError('changed entry requires two scalar arguments')
++        pos = [[i for i, row in enumerate(raw) if 'loop' in row] for raw in (before, after)]
++        if len(pos[0]) != 1 or len(pos[1]) != 2 or pos[1][1] != pos[1][0]+1:
++            raise ValueError('one original loop and adjacent bulk/remainder loops required')
++        p, q = pos[0][0], pos[1][0]
++        loops = {2: before[p]['loop'], 3: after[q]['loop']}
++        tail = after[q+1]['loop']
++        if any('loop' in row for loop in (*loops.values(), tail) for row in loop['body']):
++            raise ValueError('nested original/tail bodies require separate bridges')
++        count = len(loops[2]['carries'])
++        if not 1 <= count <= 2 or any(loop['carries'] != loops[2]['carries'] for loop in (loops[3], tail)):
++            raise ValueError('one/two identical ordered carry types required')
++        envs = {2: prefix_environment(before, ['x0','x1'], capture),
++                3: prefix_environment(after, ['x0','x1'], capture)}
++        lower, upper, step = static_controls(before, capture)
++        if step <= 0 or upper < lower:
++            raise ValueError('nonnegative static bounds and positive stride required')
++        trips = (upper-lower+step-1)//step
++        groups, remainder = divmod(trips, factor)
++        cutoff = lower + groups*factor*step
++        if trips <= factor or remainder == 0:
++            raise ValueError('this profile requires changed nonempty bulk AND nonempty remainder')
++        if upper+step*factor >= 2**(bits-1):
++            raise ValueError('signed bound proof outside selected width')
++        if static_controls(after, capture) != [lower, cutoff, factor*step]:
++            raise ValueError('actual bulk cutoff/stride differ')
++        prior = [f'p{i}' for i in range(count)]
++        carry = [f'c{i}' for i in range(count)]
++        tail_env = prior + envs[3]
++        actual_tail_bounds = [tail_env[i] for i in tail['bounds']]
++        expected = [f'({cutoff} : Int)', f'({upper} : Int)', f'({step} : Int)']
++        if actual_tail_bounds != expected or tail['initial'] != list(range(count)):
++            raise ValueError('tail controls or forwarded bulk carry are not exact')
++        initial = [[envs[s][i] for i in loops[s]['initial']] for s in (2,3)]
++        if initial[0] != initial[1]:
++            raise ValueError('bulk initial bindings differ')
++        for s in (2,3):
++            text += f"def E{s} (primitive : Prim → List Int → Int) (x0 x1 : Int) : List Int := {lean_list(envs[s])}\n"
++            text += f"def B{s} : Program := {program(loops[s]['body'])}\n"
++        text += f"def BT : Program := {program(tail['body'])}\n"
++        text += f"def N2 : Program := {program(before[p+1:])}\n"
++        text += f"def N3 : Program := {program(after[q+1:])}\n"
++        text += f"def NT : Program := {program(after[q+2:])}\n"
++        text += 'variable {World Error : Type} (primitive : Prim → List Int → Int)\n    (external : External World Error registry) (x0 x1 : Int)\n'
++        for s, bounds in ((2,(lower,upper,step)), (3,(lower,cutoff,step*factor))):
++            text += f"theorem form{s} (world : World) : evalProgram (M primitive external) S{s} [x0,x1] world =\n"
++            text += f"  (loopEval {count} (fun i c w => evalProgram (M primitive external) B{s} (i::c++E{s} primitive x0 x1) w)\n"
++            text += f"    (indexIterations {' '.join(map(str,bounds))}) {lean_list(initial[0])} world).bind\n"
++            text += f"    (fun r => evalProgram (M primitive external) N{s} (r.1++E{s} primitive x0 x1) r.2) := by rfl\n"
++        text += body_group_text(capture, loops, envs, count, factor, step)
++        intro = unpack('previous','previousSize',count,'p') + unpack('carry','arity',count,'c')
++        statement = f"theorem tail_body (iv : Int) (previous carry : List Int) (world : World) (previousSize : previous.length = {count}) (arity : carry.length = {count}) :\n"
++        statement += '  evalProgram (M primitive external) B2 (iv::carry++E2 primitive x0 x1) world =\n'
++        statement += '  evalProgram (M primitive external) BT (iv::carry++(previous++E3 primitive x0 x1)) world'
++        text += _scope('tailScope','B2','BT',['iv',*carry,*prior,*envs[3]],
++                       ['iv',*carry,*envs[2]], ['iv',*carry,*prior,*envs[3]],statement,intro)
++        statement = f"theorem suffix_same (previous carry : List Int) (world : World) (previousSize : previous.length = {count}) (arity : carry.length = {count}) :\n"
++        statement += '  evalProgram (M primitive external) N2 (carry++E2 primitive x0 x1) world =\n'
++        statement += '  evalProgram (M primitive external) NT (carry++(previous++E3 primitive x0 x1)) world'
++        text += _scope('suffixScope','N2','NT',[*carry,*prior,*envs[3]],
++                       [*carry,*envs[2]], [*carry,*prior,*envs[3]],statement,intro)
++        text += f"theorem after_bulk (previous : List Int) (world : World) (previousSize : previous.length = {count}) :\n"
++        text += '  evalProgram (M primitive external) N3 (previous++E3 primitive x0 x1) world =\n'
++        text += f"  (loopEval {count} (fun i c w => evalProgram (M primitive external) BT (i::c++(previous++E3 primitive x0 x1)) w)\n"
++        text += f"    (indexIterations {cutoff} {upper} {step}) previous world).bind\n"
++        text += '    (fun r => evalProgram (M primitive external) NT (r.1++(previous++E3 primitive x0 x1)) r.2) := by\n'
++        text += unpack('previous','previousSize',count,'p')+'  rfl\n'
++        text += f"def bounds : Merlin.GraphLoopsUnroll.Bounds := {{bits := {bits},lower := {lower},upper := {upper},step := {step},factor := {factor},count := {trips},groups := {groups},remainder := {remainder}}}\n"
++        text += 'theorem boundsChecked : bounds.Valid := by decide\n'
++        text += '''theorem constantsFit :
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits bounds.lower ∧
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits bounds.upper ∧
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits bounds.step ∧
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits (bounds.step*bounds.factor) ∧
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits (bounds.lower+bounds.step*(bounds.groups*bounds.factor)) :=
++  Merlin.GraphLoopsUnroll.Bounds.constants boundsChecked
++theorem lanesFit (group lane : Nat) (inGroup : group < bounds.groups) (inLane : lane < bounds.factor) :
++    bounds.lower+(bounds.step*bounds.factor)*group+bounds.step*lane =
++      bounds.lower+bounds.step*(group*bounds.factor+lane) ∧
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits (bounds.step*lane) ∧
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits (bounds.lower+(bounds.step*bounds.factor)*group+bounds.step*lane) :=
++  Merlin.GraphLoopsUnroll.Bounds.lane_control boundsChecked inGroup inLane
++theorem tailIndicesFit (ordinal : Nat) (inside : ordinal < bounds.remainder) :
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits
++      (bounds.lower+bounds.step*(bounds.groups*bounds.factor+ordinal)) ∧
++    Merlin.GraphLoopsSegment.FitsSigned bounds.bits
++      (bounds.lower+bounds.step*(bounds.groups*bounds.factor+ordinal)+bounds.step) := by
++  apply Merlin.GraphLoopsUnroll.Bounds.inline_control boundsChecked
++  have partition := boundsChecked.2.2.2.2.2.1
++  omega
++'''
++        b2 = '(fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)'
++        b3 = '(fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)'
++        bt = '(fun i c w => evalProgram (M primitive external) BT (i::c++(previous++E3 primitive x0 x1)) w)'
++        text += f"theorem actual_inputs (world : World) : evalProgram (M primitive external) S2 [x0,x1] world = evalProgram (M primitive external) S3 [x0,x1] world := by\n"
++        text += f"  have bodies : ∀ index values w, values.length = {count} →\n"
++        text += f"      evalProgram (M primitive external) B3 (Int.ofNat index::values++E3 primitive x0 x1) w =\n"
++        text += f"      loopEval {count} {b2} ((progression index {step} {factor}).map Int.ofNat) values w := by\n"
++        text += '    intro index values w size\n    simpa [progression,Int.ofNat_eq_natCast,Int.add_assoc] using body_group primitive external x0 x1 (Int.ofNat index) values w size\n'
++        text += f"  have loops := Tail.ordered_bulk_tail {count} {b2} {b3} {lower} {upper} {step} {factor} {groups} {remainder}\n"
++        text += f"    (by decide) (by decide) (by decide) bodies {lean_list(initial[0])} world\n"
++        text += '  rw [form2,form3,loops]\n'
++        text += f"  cases bulkRun : loopEval {count} {b3} (indexIterations {lower} {cutoff} {step*factor}) {lean_list(initial[0])} world with\n"
++        text += '  | error failure => rfl\n  | ok result =>\n    rcases result with ⟨previous,afterBulk⟩\n'
++        text += f"    have previousSize := loopEval_arity {count} _ _ _ _ bulkRun\n"
++        text += '    simp only [Except.bind]\n    rw [after_bulk primitive external x0 x1 previous afterBulk previousSize]\n'
++        text += f"    have tails := loopEval_congr {count} {b2} {bt}\n"
++        text += '      (fun i c w size => tail_body primitive external x0 x1 i previous c w previousSize size)\n'
++        text += f"      (indexIterations {cutoff} {upper} {step}) previous afterBulk\n    rw [tails]\n"
++        text += f"    cases tailRun : loopEval {count} {bt} (indexIterations {cutoff} {upper} {step}) previous afterBulk with\n"
++        text += '    | error failure => rfl\n    | ok result =>\n'
++        text += f"      exact suffix_same primitive external x0 x1 previous result.1 result.2 previousSize (loopEval_arity {count} _ _ _ _ tailRun)\n"
++        text += 'theorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n'
++        text += '    evalProgram (M primitive external) S2 arguments world = evalProgram (M primitive external) S3 arguments world := by\n'
++        text += '  have size : arguments.length = 2 := arity\n'+unpack('arguments','size',2,'a')
++        text += '  exact actual_inputs primitive external a0 a1 world\n'
++        text += f'end F{fi}\n'
++    defined = [i for i,f in enumerate(pair['functions']) if not f['declaration']]
++    for name,stage in (('originalEntries',2),('finalEntries',3)):
++        text += f"def {name} : List Entry := "+lean_list([f'{{inputs := F{i}.inputs,outputs := F{i}.outputs,body := F{i}.S{stage}}}' for i in defined])+'\n'
++        text += f'theorem {name}Checked : checkEntries registry {name} = true := by decide\n'
++    proof = 'entries_nil (M primitive external)'
++    for i in reversed(defined):
++        proof = f'entries_cons (M primitive external) rfl rfl (F{i}.actual primitive external) ({proof})'
++    text += 'theorem complete {World Error : Type} (primitive : Prim → List Int → Int) (external : External World Error registry) :\n'
++    text += '    PreservesEntries (M primitive external) originalEntries finalEntries :=\n  '+proof+'\n'
++    text += 'end Merlin.GraphStatePipelineTailInstance\n'
++    text += 'theorem merlin_unroll_tail_transform {World Error : Type}\n'
++    text += '    (primitive : Merlin.GraphState.Scalar.Prim → List Int → Int)\n'
++    text += '    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineTailInstance.registry) :\n'
++    text += '    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineTailInstance.M primitive external)\n'
++    text += '      Merlin.GraphStatePipelineTailInstance.originalEntries Merlin.GraphStatePipelineTailInstance.finalEntries :=\n'
++    text += '  Merlin.GraphStatePipelineTailInstance.complete primitive external\n'
++    return text
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_pipeline_tail_models.py
+@@ -0,0 +1,116 @@
++"""Closed actual-syntax structural success and first-fault witness candidates.
++
++No Python evaluator supplies semantic authority. No source-success premise is
++accepted. Witness Lean is UNCOMPILED and the proposed outcomes are UNOBSERVED.
++"""
++import json
++from dataclasses import asdict
++from .lean_graph_pipeline_gate_projection import project_lean_sources
++from .lean_graph_pipeline_tail import query_roots
++
++
++def witness(prepared):
++    pair=json.loads(prepared.projection)
++    chosen=[(i,f) for i,f in enumerate(pair['functions']) if not f['declaration'] and any('loop' in r for r in f['before'])]
++    if len(chosen)!=1:
++        raise ValueError('one actual loop entry for this concrete witness')
++    index,f=chosen[0]
++    loop=next(r['loop'] for r in f['before'] if 'loop' in r)
++    facts=json.loads(prepared.producer_diagnostics)
++    if len(facts)!=1 or [facts[0][k] for k in ('lower','upper','step','factor','remainder')]!=[0,5,1,2,1]:
++        raise ValueError('this witness instantiates the retained actual trip5/factor2 case')
++    if loop['carries']!=[{'bits':8}] or len(loop['body'])!=2 or 'effect' not in loop['body'][0]:
++        raise ValueError('concrete one-call/one-carry source body required')
++    identity=loop['body'][0]['effect'];base=f'Merlin.GraphStatePipelineTailInstance.F{index}'
++    if pair['registry'][identity]['inputs']!=[{'index':True},{'bits':8}]:
++        raise ValueError('actual index/value observer signature required')
++    q='import Merlin.GraphStatePipelineTailWitness\nimport Merlin.GraphStateIntegerOperations\n'+prepared.query
++    q+='''namespace Merlin.GraphUnrollTailWitness
++open Merlin.GraphState.Scalar Merlin.GraphState.Pipeline
++open Merlin.GraphStatePipelineTailInstance
++abbrev wordPrimitive := Merlin.GraphState.Integer.primitive
++'''
++    q+=f'''def chosen (failAt : Option Int) : External Nat Int registry where
++  run := fun identity arguments world =>
++    if identity = {identity} ∧ failAt = some (arguments[0]?.getD 0) then .error (17,world+1)
++    else .ok ((signature registry identity).outputs.map
++      (fun _ => if identity = {identity} then arguments[1]?.getD 0 else arguments.headD 0),world+1)
++  arity := by
++    intro identity arguments world values final success
++    split at success
++    · cases success
++    · cases success; simp only [List.length_map]
++def body (failAt : Option Int) (i : Int) (values : List Int) (world : Nat) : Outcome Int Nat Int :=
++  evalProgram (M wordPrimitive (chosen failAt)) {base}.B2
++    (i::values++{base}.E2 wordPrimitive 3 5) world
++theorem body_actual (failAt : Option Int) (i : Int) (world : Nat) :
++    body failAt i [3] world =
++      if failAt = some i then .error (.external 17,world+1) else .ok ([3],world+1) := by
++  simp [body,{base}.B2,{base}.E2,M,indexModel,indexEffect,controls,controlAt,
++    chosen,registry,signature,opaqueStep,evalProgram,reads]
++theorem source_success : evalProgram (M wordPrimitive (chosen none)) {base}.S2 [3,5] 7 = .ok ([3],13) := by
++  have run := Tail.constant_carry_run 1 [3] (body none) rfl
++    ((progression 0 1 5).map Int.ofNat)
++    (fun i w _ => by simp only [body_actual,reduceCtorEq,↓reduceIte]) 7
++  have counted : indexIterations 0 5 1 = (progression 0 1 5).map Int.ofNat :=
++    indexIterations_count (by decide) (by decide)
++  rw [{base}.form2,counted]
++  change (loopEval 1 (body none) ((progression 0 1 5).map Int.ofNat) [3] 7).bind _ = _
++  rw [run,List.length_map,Tail.progression_length]
++  rfl
++'''
++    for label,ordinal in (('bulk_failure',1),('tail_failure',4)):
++        q+=f'''theorem source_{label} :
++    evalProgram (M wordPrimitive (chosen (some {ordinal}))) {base}.S2 [3,5] 7 =
++      .error (.external 17,{8+ordinal}) := by
++  have prefix : ∀ i w, i ∈ ((progression 0 1 {ordinal}).map Int.ofNat) →
++      body (some {ordinal}) i [3] w = .ok ([3],w+1) := by
++    intro i w member
++    obtain ⟨n,inside,rfl⟩ := List.mem_map.mp member
++    obtain ⟨k,bound,value⟩ := Tail.progression_member inside
++    have different : (some ({ordinal} : Int)) ≠ some (Int.ofNat n) := by
++      intro same
++      have equal := Option.some.inj same
++      omega
++    simp only [body_actual,different,↓reduceIte]
++  have failed := Tail.fault_after_prefix 1 [3] (body (some {ordinal})) rfl
++    ((progression 0 1 {ordinal}).map Int.ofNat)
++    ((progression {ordinal+1} 1 {4-ordinal}).map Int.ofNat) {ordinal} prefix (.external 17)
++    (fun w => by simp only [body_actual,↓reduceIte]) 7
++  have split : indexIterations 0 5 1 =
++      (progression 0 1 {ordinal}).map Int.ofNat ++
++        ({ordinal} : Int)::(progression {ordinal+1} 1 {4-ordinal}).map Int.ofNat := by
++    rw [indexIterations_count (show 0 < (1 : Nat) by decide)
++      (show Merlin.GraphLoopsUnroll.CountCorrect 0 5 1 ({ordinal}+{5-ordinal}) by decide),
++      Tail.progression_append,List.map_append]
++    rfl
++  rw [{base}.form2,split]
++  change (loopEval 1 (body (some {ordinal})) _ [3] 7).bind _ = _
++  rw [failed,List.length_map,Tail.progression_length]
++  rfl
++'''
++    for label,mode,result in (('success','none','.ok ([3],13)'),
++                              ('bulk_failure','(some 1)','.error (.external 17,9)'),
++                              ('tail_failure','(some 4)','.error (.external 17,12)')):
++        q+=f'''theorem target_{label} : evalProgram (M wordPrimitive (chosen {mode})) {base}.S3 [3,5] 7 = {result} := by
++  rw [← {base}.actual wordPrimitive (chosen {mode}) [3,5] 7 rfl]
++  exact source_{label}
++'''
++        for side,stage in (('source',2),('target',3)):
++            q+=f'''theorem {side}_{label}_initialized :
++    Initialized (M wordPrimitive (chosen {mode})) {base}.S{stage} [3,5] 7 :=
++  (check_operands_initialized (show check registry {base}.inputs {base}.outputs {base}.S{stage} {base}.S{stage} = true by decide)
++    (M wordPrimitive (chosen {mode})) [3,5] 7 rfl).1
++'''
++    q+='end Merlin.GraphUnrollTailWitness\n'
++    roots=tuple(dict.fromkeys((*prepared.roots,'Merlin.GraphState.Pipeline.Tail.constant_carry_run',
++        'Merlin.GraphState.Pipeline.Tail.fault_after_prefix',*query_roots(q))))
++    return q,roots,{'query_status':'UNCOMPILED','outcome':'UNOBSERVED','source_success_assumed':False,
++        'initialized_is_not_poison_or_native_fidelity':True,'model_approved':False,
++        'success_proposal':{'arguments':[3,5],'initial_world':7,'result':[3],'final_world':13},
++        'bulk_failure_proposal':{'iv':1,'fault':17,'terminal_world':9},
++        'tail_failure_proposal':{'iv':4,'fault':17,'terminal_world':12},
++        'meaning':'actual step echoes i8 carry and advances world; optional failure keyed to actual IV; actual post-loop observer echoes and advances world',
++        'no_trip_sized_literal_loop_evaluation':True,
++        'additional_sources':[asdict(r) for r in project_lean_sources((
++            'Merlin.GraphStatePipelineTailWitness','Merlin.GraphStateIntegerOperations'))]}
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_pipeline_tail.py
+@@ -0,0 +1,202 @@
++"""Bounded SDK-free actual ordered-unroll tail preparation and valid mutations."""
++from dataclasses import asdict
++from pathlib import Path
++import json
++import sys
++import types
++import unittest
++
++PRIMARY=REFERENCE=None
++
++
++def source(lower=0,upper=5,step=1,carries=1):
++    second=', %d=%b' if carries==2 else ''
++    result='(i8, i8)' if carries==2 else '(i8)'
++    yielded='%next, %d : i8, i8' if carries==2 else '%next : i8'
++    returned='%r#0' if carries==2 else '%r'
++    return f'''builtin.module {{
++      func.func private @step(index, i8) -> i8
++      func.func private @observe(i8) -> i8
++      func.func private @altered(i8) -> i8
++      func.func @main(%a:i8, %b:i8) -> i8 {{
++        %lb=arith.constant {lower} : index
++        %ub=arith.constant {upper} : index
++        %st=arith.constant {step} : index
++        %r{' : 2' if carries==2 else ''}=scf.for %i=%lb to %ub step %st iter_args(%c=%a{second}) -> {result} {{
++          %next=func.call @step(%i,%c) : (index,i8) -> i8
++          scf.yield {yielded}
++        }}
++        %seen=func.call @observe({returned}) : (i8) -> i8
++        func.return %seen : i8
++      }}
++      func.func @untouched(%x:i8) -> i8 {{ func.return %x : i8 }}
++    }}'''
++
++
++def capture(lower=0,upper=5,step=1,carries=1,factor=2,bits=32):
++    from merlin.transforms.pipeline import apply_common_pipeline,PipelineOptions
++    from merlin.transforms.certificates import parse_ir
++    result=apply_common_pipeline(parse_ir(source(lower,upper,step,carries)),PipelineOptions(
++        index_bits=bits,normalize_shapes=False,simplify_integers=False,reuse_buffers=False,
++        unroll_factors=(factor,)),plan_only=True)
++    if len(result.changes)!=1 or result.changes[0].kind!='ordered_loop_unrolling':
++        raise AssertionError('one actual registered unroll boundary required')
++    return result.changes[0]
++
++
++def mutate(raw,kind):
++    from merlin.transforms.certificates import parse_ir,ir_text
++    from xdsl.dialects import scf,arith,func,builtin
++    from xdsl.rewriter import Rewriter
++    m=parse_ir(raw);loops=[op for op in m.walk() if type(op) is scf.ForOp]
++    bulk,tail=loops
++    if kind=='missing_tail':
++        Rewriter.replace_op(tail,[],list(tail.iter_args))
++    elif kind=='cutoff':
++        old=bulk.ub.owner
++        replacement=arith.ConstantOp.from_int_and_width(old.value.value.data+1,builtin.IndexType())
++        Rewriter.replace_op(old,replacement)
++    elif kind=='tail_stride':
++        tail.operands=(tail.lb,tail.ub,bulk.step,*tail.iter_args)
++    elif kind=='tail_upper':
++        tail.operands=(tail.lb,bulk.ub,tail.step,*tail.iter_args)
++    elif kind=='lane_flags':
++        addition=next(op for op in bulk.body.block.ops if type(op) is arith.AddiOp)
++        addition.properties['overflowFlags']=arith.IntegerOverflowAttr([arith.IntegerOverflowFlag.NSW])
++    elif kind=='lane_carry':
++        call=next(op for op in bulk.body.block.ops if type(op) is func.CallOp)
++        calls=[op for op in bulk.body.block.ops if type(op) is func.CallOp]
++        calls[-1].operands=(calls[-1].operands[0],call.operands[1])
++    elif kind=='tail_carry':
++        tail.operands=(tail.lb,tail.ub,tail.step,*bulk.iter_args)
++    elif kind=='return':
++        main=next(op for op in m.body.block.ops if type(op) is func.FuncOp and op.sym_name.data=='main')
++        terminal=main.body.block.last_op;terminal.operands=(main.body.block.args[0],)
++    elif kind=='observer':
++        call=next(op for op in m.walk() if type(op) is func.CallOp and op.callee.root_reference.data=='observe')
++        call.properties['callee']=builtin.SymbolRefAttr('altered')
++    elif kind=='tail_body':
++        call=next(op for op in tail.body.block.ops if type(op) is func.CallOp)
++        call.operands=(call.operands[0],bulk.iter_args[1] if len(bulk.iter_args)>1 else bulk.iter_args[0])
++    elif kind=='dropped_function':
++        other=next(op for op in m.body.block.ops if type(op) is func.FuncOp and op.sym_name.data=='untouched')
++        m.body.block.erase_op(other)
++    else:
++        raise ValueError(kind)
++    m.verify();return ir_text(m)
++
++
++MUTATIONS=('missing_tail','cutoff','tail_stride','tail_upper','lane_flags','lane_carry','tail_carry','return','observer','tail_body','dropped_function')
++CASES={'trip5_factor2':(0,5,1,1,2,32),'nonzero_nonunit_two':(3,18,3,2,2,64),
++       'remainder_two':(1,17,2,1,3,32),'wide_index':(2147483650,2147483660,2,2,2,64)}
++
++
++class Tail(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        from merlin.verify import lean_graph_pipeline_tail as tail
++        from merlin.verify import lean_graph_pipeline_tail_models as models
++        cls.tail,cls.models=tail,models
++
++    def prepared(self,case='trip5_factor2'):
++        values=CASES[case];change=capture(*values)
++        return change,self.tail.prepare(change.before_ir,change.after_ir,self.tail.Selection(values[4],values[5]))
++
++    def test_actual_nonzero_bulk_tail_controls_signed_widths_carries_full_roster(self):
++        from merlin.transforms import unrolling
++        self.assertEqual(Path(unrolling.__file__).resolve(),REFERENCE/'src/merlin/transforms/unrolling.py')
++        for case in CASES:
++            with self.subTest(case=case):
++                c,p=self.prepared(case);projection=json.loads(p.projection)
++                self.assertEqual(len(projection['functions']),5)
++                self.assertNotEqual(c.before_ir,c.after_ir)
++                self.assertIn('Tail.ordered_bulk_tail',p.query)
++                self.assertIn('Scope.check registry tailScopeL tailScopeR',p.query)
++                self.assertIn('after_bulk',p.query)
++                self.assertEqual(p.roots[-1],'merlin_unroll_tail_transform')
++                self.assertEqual(p.describe()['outcome'],'UNOBSERVED')
++                self.assertFalse(p.describe()['authority'])
++
++    def test_valid_mutations_complete_module_refusal(self):
++        change,_=self.prepared('nonzero_nonunit_two')
++        for name in MUTATIONS:
++            with self.subTest(name=name):
++                bad=mutate(change.after_ir,name);self.assertNotEqual(bad,change.after_ir)
++                with self.assertRaises(ValueError):
++                    self.tail.prepare(change.before_ir,bad,self.tail.Selection(2,64))
++
++    def test_domain_no_tail_inline_dynamic_negative_flags_refused(self):
++        from merlin.transforms.certificates import parse_ir,ir_text
++        from merlin.transforms.unrolling import unroll_ordered_loops
++        for text in (source(0,4),source(0,2),source(-1,5),source().replace('%st=arith.constant 1 : index','%st=arith.constant 0 : index'),
++                     source().replace('func.func @main(%a:i8, %b:i8)', 'func.func @main(%a:i8, %b:i8, %dynamic:index)').replace('%ub=arith.constant 5 : index','').replace('to %ub','to %dynamic')):
++            with self.subTest(text=text):
++                module=parse_ir(text);before=ir_text(module)
++                unroll_ordered_loops(module,(2,),index_bits=32)
++                with self.assertRaises(ValueError):self.tail.prepare(before,ir_text(module),self.tail.Selection(2,32))
++        change,_=self.prepared()
++        for selection in (self.tail.Selection(True,32),self.tail.Selection(2,16),self.tail.Selection(1,32)):
++            with self.assertRaises(ValueError):self.tail.prepare(change.before_ir,change.after_ir,selection)
++
++    def test_stale_source_profile_report_root_domain_authority_refused(self):
++        change,p=self.prepared();selection=self.tail.Selection(2,32)
++        request=self.tail.request(self.tail.PROFILE,change.before_ir,change.after_ir,selection)
++        for key,value in (('profile','no_tail'),('domain','possible_success'),('final_root','rfl'),('support_roots',[])):
++            bad=dict(request);bad[key]=value
++            self.assertFalse(self.tail.matches(bad,self.tail.PROFILE,change.before_ir,change.after_ir,selection))
++        with self.assertRaises(ValueError):self.tail.request('minimal7',change.before_ir,change.after_ir,selection)
++        other=capture(1,6)
++        with self.assertRaises(ValueError):self.tail.prepare(other.before_ir,change.after_ir,selection)
++        self.assertFalse(self.tail.compiler_eligible(p));self.assertFalse(self.tail.compiler_eligible(request))
++        with self.assertRaises(RuntimeError):self.tail.provider_arguments(request)
++
++    def test_structural_actual_success_bulk_tail_failure_witness_candidates(self):
++        _,p=self.prepared();query,roots,model=self.models.witness(p)
++        self.assertIn('constant_carry_run',query)
++        self.assertIn('fault_after_prefix',query)
++        self.assertIn('source_tail_failure',query)
++        self.assertFalse(model['source_success_assumed'])
++        self.assertEqual(model['outcome'],'UNOBSERVED')
++        self.assertEqual(len(roots),len(set(roots)))
++
++
++def retain(destination):
++    destination.mkdir(parents=True,exist_ok=False);Tail.setUpClass();test=Tail()
++    for name,values in CASES.items():
++        change,p=test.prepared(name);folder=destination/name;folder.mkdir()
++        (folder/'before.mlir').write_text(change.before_ir);(folder/'after.mlir').write_text(change.after_ir)
++        (folder/'CHANGE.json').write_text(json.dumps(asdict(change),indent=2)+'\n')
++        (folder/'PREPARED.json').write_text(json.dumps(p.describe(),indent=2)+'\n')
++        (folder/'REQUEST.json').write_text(json.dumps(test.tail.request(test.tail.PROFILE,change.before_ir,change.after_ir,test.tail.Selection(values[4],values[5])),indent=2)+'\n')
++        (folder/'Query.lean').write_text(p.query)
++        if name=='trip5_factor2':
++            q,roots,model=test.models.witness(p)
++            (folder/'Witness.lean').write_text(q)
++            (folder/'WITNESS.json').write_text(json.dumps({**model,'roots':roots},indent=2)+'\n')
++    change,_=test.prepared('nonzero_nonunit_two');folder=destination/'mutations';folder.mkdir()
++    for name in MUTATIONS:
++        bad=mutate(change.after_ir,name);(folder/(name+'.mlir')).write_text(bad)
++        try:test.tail.prepare(change.before_ir,bad,test.tail.Selection(2,64))
++        except ValueError as error:reason=str(error)
++        else:raise AssertionError('mutation accepted')
++        (folder/(name+'.json')).write_text(json.dumps({'host_refusal':reason,'parser_verify':True,
++            'source':'../nonzero_nonunit_two/before.mlir','kernel_refusal_observed':False,'outcome':'UNOBSERVED'})+'\n')
++
++
++if __name__=='__main__':
++    PRIMARY=Path(sys.argv[1]).resolve();REFERENCE=Path(sys.argv[2]).resolve()
++    for name,paths in (('merlin',[REFERENCE/'src/merlin',PRIMARY/'src/merlin']),
++                       ('merlin.verify',[PRIMARY/'src/merlin/verify',REFERENCE/'src/merlin/verify']),
++                       ('merlin.common',[PRIMARY/'src/merlin/common',REFERENCE/'src/merlin/common'])):
++        module=types.ModuleType(name);module.__path__=[str(p) for p in paths];sys.modules[name]=module
++    def held(event,args):
++        if event in ('subprocess.Popen','os.system','os.exec','os.posix_spawn'):
++            raise AssertionError('source-only tail cannot launch child processes')
++        if event=='open' and isinstance(args[0],(str,bytes)):
++            p=str(args[0])
++            if ('/.elan/' in p or '/toolchain/' in p or 'libleanshared' in p or '/original-runtime-candidate' in p
++                    or p.endswith(('.olean','.ilean'))):raise AssertionError('no runtime/object access')
++    sys.addaudithook(held)
++    args=sys.argv[3:]
++    if args and args[0]=='--retain':retain(Path(args[1]));args=args[2:]
++    unittest.main(argv=[sys.argv[0],*args])

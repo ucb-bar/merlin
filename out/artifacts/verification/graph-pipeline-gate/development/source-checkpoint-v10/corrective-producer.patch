@@ -1,0 +1,226 @@
+--- a/src/merlin/verify/lean_checker.py
++++ b/src/merlin/verify/lean_checker.py
+@@ -74,18 +74,20 @@
+     return digest(semantic_identity().encode() + b"".join((root / name).read_bytes() for name in selected) + additional)
+ 
+ 
+-def accepted_pipeline_receipt(receipt, change, *, toolchain: LeanToolchain | None = None) -> bool:
+-    """Bind the completion to the entire change's fixed domain and semantic scope."""
+-    domain = _TRANSFORM_DOMAINS.get(change.kind)
+-    return (
+-        isinstance(receipt, LeanTransformReceipt)
+-        and accepted_receipt(receipt, change.before_ir, change.after_ir)
+-        and receipt.domain == domain
+-        and receipt.scope == tuple(change.certificate.scope)
+-        and receipt.semantics_sha256 == pipeline_semantic_identity(change.kind)
+-        and receipt.toolchain_sha256 is not None
+-        and (toolchain is None or receipt.toolchain_sha256 == toolchain.identity())
+-    )
++def accepted_pipeline_receipt(receipt, change, *, toolchain: object | None = None) -> bool:
++    """Require whole-program authority, not the legacy local-obligation ledger.
++
++    D1-G09/D3-G10: identity and local BitVec lemmas can be genuine kernel
++    completions without relating the actual programs. They never authorize this
++    compiler boundary. A missing whole-program adapter fails closed, SDK-free.
++    """
++    if isinstance(receipt, LeanTransformReceipt):
++        return False
++    try:
++        from .lean_graph_pipeline_gate import accepted
++    except ImportError:
++        return False
++    return accepted(receipt, change, toolchain=toolchain)
+ 
+ 
+ def semantic_identity(registry: Mapping | None = None) -> str:
+@@ -353,9 +355,45 @@
+ 
+ 
+ def verify_pipeline_change(
++    change, *, toolchain: object | None, deadline: float | None = None
++) -> object:
++    """Dispatch only to the separately bound complete-program host route.
++
++    The legacy diagnostic is never a fallback if the adapter cannot run. The
++    complete route validates its exact selected Context class and source policy;
++    a legacy LeanToolchain object has no automatic authority at this boundary.
++    """
++    try:
++        from .lean_graph_pipeline_gate import verify
++    except ImportError:
++        verify = None
++    if verify is not None:
++        return verify(change, toolchain=toolchain, deadline=deadline)
++    return LeanTransformReceipt(
++        SCHEMA, "lean_kernel", "whole_program_route_unavailable_v1",
++        digest(change.before_ir), digest(change.after_ir),
++        pipeline_semantic_identity(change.kind), "unsupported",
++        tuple(change.certificate.scope), (),
++        reason="legacy local/identity obligations provide no whole-program authority",
++    )
++
++
++def verify_pipeline_local_obligations(
+     change, *, toolchain: LeanToolchain | None, deadline: float | None = None
+ ) -> LeanTransformReceipt:
+-    """The common broker's host-owned callback on an actual changed IR pair.
++    """Local-only diagnostic with NO generic or pipeline completion authority."""
++    result = _verify_pipeline_local_obligations(change, toolchain=toolchain, deadline=deadline)
++    _COMPLETED.pop(id(result), None)
++    if result.verified:
++        return replace(result, method="local_" + result.method, status="local_checked",
++                       reason="local/identity equations only; no whole-program proof authority")
++    return result
++
++
++def _verify_pipeline_local_obligations(
++    change, *, toolchain: LeanToolchain | None, deadline: float | None = None
++) -> LeanTransformReceipt:
++    """Diagnostic local obligations only; NEVER pipeline admission authority.
+ 
+     Structural projection is explicit trusted code. Mathematical certificates
+     cover local integer equality, ordered loop indexing, or disjoint lifetimes;
+--- a/src/merlin/transforms/pipeline.py
++++ b/src/merlin/transforms/pipeline.py
+@@ -66,6 +66,8 @@
+     No callback, successful numerical test or structural certificate proves a
+     transformation by itself.
+     """
++    if type(plan_only) is not bool:
++        raise ValueError("plan_only must be an explicit boolean; data values cannot disable the proof gate")
+     if options.index_bits <= 1 or any(tile <= 0 for tile in options.tile_iterations):
+         raise ValueError("positive tiles and an explicit signed index width are required")
+     module.verify()
+@@ -96,7 +98,7 @@
+                 from merlin.verify.lean_checker import accepted_pipeline_receipt
+ 
+                 if not accepted_pipeline_receipt(receipt, change):
+-                    raise ValueError("covered transformation lacks fresh host Lean completion for this exact change")
++                    raise ValueError("covered transformation lacks fresh whole-program Lean completion for this exact change")
+         changes.append(change)
+         return {}
+ 
+--- a/src/merlin/targetgen/common_transforms.py
++++ b/src/merlin/targetgen/common_transforms.py
+@@ -50,7 +50,7 @@
+ class CommonTransformService:
+     """The launcher selects immutable inputs; requests cannot select proof policy."""
+ 
+-    def __init__(self, *, workspace: Path, bundle_manifest: Path, repo: Path):
++    def __init__(self, *, workspace: Path, bundle_manifest: Path, repo: Path, graph_binding=None):
+         self.workspace, self.bundle_manifest, self.repo = workspace, bundle_manifest, repo
+         if (
+             bundle_manifest.is_symlink()
+@@ -71,6 +71,11 @@
+         marker = BW.verify_bundle_snapshot(workspace, self.bundle, repo=repo)
+         self.snapshot_digest = marker["content_sha256"]
+         self.snapshot_marker_digest = BW.snapshot_marker_digest(workspace)
++        self.graph_binding = graph_binding
++        if graph_binding is not None:
++            from merlin.verify.lean_graph_pipeline_gate_service import validate_binding
++
++            validate_binding(graph_binding, compiler_profile_sha256=self.profile["sha256"])
+ 
+     def _verify(self) -> None:
+         from merlin.common.paths import module_source_path
+@@ -200,6 +205,9 @@
+         from merlin.transforms.certificates import ir_text, parse_ir
+         from merlin.transforms.pipeline import PipelineOptions, apply_common_pipeline
+         from merlin.verify.lean_checker import accepted_pipeline_receipt, verify_pipeline_change
++        from merlin.verify.lean_graph_pipeline_gate_service import (
++            record_delivery, validate_binding, validate_options,
++        )
+ 
+         if set(request) != {"schema", "source_ir", "options"} or request["schema"] != SCHEMA:
+             raise ValueError("common transform request cannot select semantics, coverage or proof results")
+@@ -284,16 +292,20 @@
+                 raise ValueError("common dependency order is malformed")
+             parsed_orders.append((row[0], tuple(order)))
+         selected["dependency_orders"] = tuple(parsed_orders)
++        # Host injection is separate from untrusted request data. No graph
++        # selection means refusal, never automatic construction of old SDK policy.
++        binding = self.graph_binding
++        toolchain = validate_binding(binding, compiler_profile_sha256=self.profile["sha256"], work_root=work_root)
++        validate_options(selected)
++        if timeout_s is not None and (type(timeout_s) is not int or timeout_s < 1):
++            raise ValueError("common transform host budget must be positive")
+         started = time.monotonic()
+         with BW.verified_snapshot_scope(self.workspace, self.bundle, repo=self.repo):
+             self._verify()
+-            toolchain = self._toolchain(work_root)
+-            if timeout_s is not None:
+-                if type(timeout_s) is not int or timeout_s < 1:
+-                    raise ValueError("common transform host budget must be positive")
+-            budget = min(timeout_s, toolchain.timeout_s) if timeout_s is not None else toolchain.timeout_s
++            budget = min(timeout_s, binding.timeout_s) if timeout_s is not None else binding.timeout_s
+             deadline = started + budget
+             receipts = []
++            live_receipts = []
+ 
+             def verify(change):
+                 if time.monotonic() >= deadline:
+@@ -305,16 +317,19 @@
+                         + str(getattr(receipt, "reason", "invalid checker completion"))
+                     )
+                 receipts.append(receipt.to_dict())
++                live_receipts.append(receipt)
+                 return receipt
+ 
+-            result = apply_common_pipeline(parse_ir(source), PipelineOptions(**selected), verifier=verify)
++            result = apply_common_pipeline(parse_ir(source), PipelineOptions(**selected), verifier=verify, plan_only=False)
++            if result.plan_only is not False:
++                raise ValueError("planning-only data cannot become a checked service result")
+             if time.monotonic() > deadline:
+                 raise TimeoutError("common transformation exceeded its original host work budget")
+             self._verify()
+             document = {
+-                "status": "verified" if receipts else "unchanged",
++                "status": "conditional_model_relation" if receipts else "unchanged",
+                 "scope": (
+-                    "host-issued common transformation preservation" if receipts else "structurally unchanged program"
++                    "per-boundary scalar model correspondence" if receipts else "structurally unchanged program"
+                 ),
+                 "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
+                 "transformed_ir": ir_text(result.module),
+@@ -322,6 +337,9 @@
+                 "compiler_tool_profile_sha256": self.profile["sha256"],
+                 "hardware_conformance": "not_established",
+                 "numerical_execution": "not_established",
++                "graph_profile": binding.describe(),
++                "compiler_pass_chain": "not_established",
++                "saved_report_is_authority": False,
+             }
+             if self.profile.get("common_substrate") in {
+                 COMMON_SUBSTRATE_V2,
+@@ -341,10 +359,31 @@
+                 raise TimeoutError("common transformation observations exceeded its original host work budget")
+             if len(json.dumps(document).encode()) > 2 * MAX_REQUEST_BYTES:
+                 raise ValueError("common transformation output exceeds its inherited byte budget")
++            validate_binding(binding, compiler_profile_sha256=self.profile["sha256"], work_root=work_root)
++            if receipts:
++                record_delivery(binding, document, source, result.changes, live_receipts, deadline=deadline)
+             return document
++
++    def compiler_eligible(self, document: dict, *, source_ir: str) -> bool:
++        """Only the SAME live checked delivery is eligible under this graph profile.
++
++        This is conditional graph eligibility, not hardware/numerical validation.
++        Descriptive JSON/status fields, planning output and local proofs never
++        recreate it. The default native hold still prevents admission here.
++        """
++        from merlin.verify.lean_graph_pipeline_gate_service import eligible_delivery, validate_binding
++
++        try:
++            self._verify()
++            validate_binding(self.graph_binding, compiler_profile_sha256=self.profile["sha256"])
++            return eligible_delivery(self.graph_binding, document, source_ir)
++        except (ValueError, RuntimeError, OSError, TypeError, AttributeError, KeyError):
++            return False
+ 
+     def check(self, request: dict, *, work_root: Path, timeout_s: int | None = None) -> dict:
+         """Check authored actual IR without accepting author-selected semantics."""
++        if self.graph_binding is not None:
++            raise ValueError("authored-check is outside the selected scalar graph service profile; no legacy fallback")
+         from merlin.targetgen.tool_profile import (
+             COMMON_SUBSTRATE_V3,
+             COMMON_SUBSTRATE_V4,

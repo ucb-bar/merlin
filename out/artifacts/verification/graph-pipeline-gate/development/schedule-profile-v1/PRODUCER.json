@@ -1,0 +1,31 @@
+{
+  "reference_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "revision_observed_with_git": true,
+  "actual_import_paths_tested": true,
+  "actual_registered_kind": "sequential_dependency_schedule",
+  "sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "bytes": 8634
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "bytes": 9294
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145
+    }
+  ],
+  "capture_plan_only": true,
+  "plan_only_grants_authority": false,
+  "native_or_hardware_execution_observed": false
+}

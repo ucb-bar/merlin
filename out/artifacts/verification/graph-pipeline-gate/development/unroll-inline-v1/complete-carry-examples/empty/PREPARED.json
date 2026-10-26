@@ -1,0 +1,588 @@
+{
+  "profile": "ordered_unroll_empty_full_inline_source_v1",
+  "kind": "ordered_loop_unrolling",
+  "domain": "static_nonnegative_signed32or64_count_le_factor_complete_outcome",
+  "premises": [
+    "trusted complete xDSL parser/projection and exact source delivery binding",
+    "same frozen Scalar evaluator/common descriptor registry/total pure primitive/partial external interpretation",
+    "concrete finite indexIterations; checked signed index/literal/count facts; no backend fidelity premise discharged",
+    "external local successful-result arity only; no source success, pure opaque call or body/whole-run equality premise",
+    "one top-level source loop per two-argument changed entry; count0..factor2..4; one/two carries; region-free body and suffix",
+    "complete returns/faults/terminal world observed; private SSA stack unobserved; native/poison/model/review separate"
+  ],
+  "python_version": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+  "before": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"step\", function_type = (index, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"observe\", function_type = (i8, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"altered\", function_type = (i8, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"main\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %lb = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %ub = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %st = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %r, %r_1 = \"scf.for\"(%lb, %ub, %st, %a, %b) ({\n    ^bb0(%i: index, %c: i8, %d: i8):\n      %sum = \"arith.addi\"(%c, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n      %next = \"func.call\"(%i, %sum) <{callee = @step}> : (index, i8) -> i8\n      \"scf.yield\"(%next, %d) : (i8, i8) -> ()\n    }) : (index, index, index, i8, i8) -> (i8, i8)\n    %seen = \"func.call\"(%r, %r_1) <{callee = @observe}> : (i8, i8) -> i8\n    \"func.return\"(%seen) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i8) -> i8}> ({\n  ^bb0(%x: i8):\n    \"func.return\"(%x) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"step\", function_type = (index, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"observe\", function_type = (i8, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"altered\", function_type = (i8, i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"main\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %lb = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %ub = \"arith.constant\"() <{value = 3 : index}> : () -> index\n    %st = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %seen = \"func.call\"(%a, %b) <{callee = @observe}> : (i8, i8) -> i8\n    \"func.return\"(%seen) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i8) -> i8}> ({\n  ^bb0(%x: i8):\n    \"func.return\"(%x) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "selection": {
+    "factor": 2,
+    "index_bits": 32
+  },
+  "projection": "{\"functions\":[{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"step\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"index\":true},{\"bits\":8}],\"name\":\"step\",\"outputs\":[{\"bits\":8}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"observe\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":8},{\"bits\":8}],\"name\":\"observe\",\"outputs\":[{\"bits\":8}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"altered\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":8},{\"bits\":8}],\"name\":\"altered\",\"outputs\":[{\"bits\":8}]},{\"after\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":0,\"outputs\":[{\"index\":true}]},{\"arguments\":[3,4],\"effect\":3,\"outputs\":[{\"bits\":8}]},{\"ret\":[0]}],\"before\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":0,\"outputs\":[{\"index\":true}]},{\"loop\":{\"body\":[{\"arguments\":[1,7],\"pure\":{\"kind\":\"add\",\"width\":8}},{\"arguments\":[1,0],\"effect\":2,\"outputs\":[{\"bits\":8}]},{\"ret\":[0,4]}],\"bounds\":[2,1,0],\"carries\":[{\"bits\":8},{\"bits\":8}],\"initial\":[3,4]}},{\"arguments\":[0,1],\"effect\":3,\"outputs\":[{\"bits\":8}]},{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"main\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":8},{\"bits\":8}],\"name\":\"main\",\"outputs\":[{\"bits\":8}]},{\"after\":[{\"ret\":[0]}],\"before\":[{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"untouched\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":8}],\"name\":\"untouched\",\"outputs\":[{\"bits\":8}]}],\"module_header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.builtin.ModuleOp\",\"name\":\"builtin.module\",\"operand_types\":[],\"properties\":[\"dictionary\",[]],\"result_types\":[]},\"operation_budget_used\":16,\"registry\":[{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",2]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":2,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",3]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":3,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"step\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"bits\":8}],\"outputs\":[{\"bits\":8}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"observe\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},\"index_constant\":null,\"inputs\":[{\"bits\":8},{\"bits\":8}],\"outputs\":[{\"bits\":8}]}],\"types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",8]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]}",
+  "controls": "[{\"identity\":0,\"kind\":\"index-constant\",\"value\":2},{\"identity\":1,\"kind\":\"index-constant\",\"value\":3}]",
+  "producer_diagnostics": "[{\"carried_types\":[\"i8\",\"i8\"],\"factor\":2,\"full_groups\":0,\"index_bits\":32,\"iterations\":0,\"lower\":3,\"operation_index\":8,\"remainder\":0,\"source_sha256\":\"6889174ca07b8b019dea912fe3895980fb25074063ef28aab4ab8bb1c73cbaca\",\"step\":2,\"upper\":3}]",
+  "field_facts": "[{\"carry_types\":[\"i8\",\"i8\"],\"count\":0,\"entry\":\"main\",\"factor\":2,\"lane_constants\":[],\"mode\":\"empty\",\"producer_witness_used_as_proof\":false,\"source_body_operations\":2,\"source_controls\":[3,3,2],\"source_suffix_operations\":2,\"target_lane_operations\":0,\"target_suffix_position\":3}]",
+  "query": "import Merlin.GraphStatePipelineInline\nimport Merlin.GraphStatePipelineIndex\nimport Merlin.GraphStatePipelineLiterals\nimport Merlin.GraphStatePipelineProgram\nimport Merlin.GraphStateScalar\nset_option maxRecDepth 4096\nset_option maxHeartbeats 2000000\nnamespace Merlin.GraphStatePipelineInlineInstance\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\ndef registry : List Signature := [{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [.index,(.bits 8)],outputs := [(.bits 8)]},{inputs := [(.bits 8),(.bits 8)],outputs := [(.bits 8)]}]\ndef controls : Controls := [(some (.constant (2))),(some (.constant (3))),none,none]\ntheorem controlAccepted : checkControl registry controls = true := by decide\ndef profileBits : Nat := 32\ntheorem literalsAccepted : checkLiterals profileBits controls = true := by decide\ntheorem literalsFit (identity : Nat) (value : Int) (found : Merlin.GraphState.Pipeline.controlAt controls identity = some (.constant value)) :\n    signedRepresentative profileBits value := checkLiterals_sound literalsAccepted found\ndef M {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) : Model Int World Error registry :=\n  indexModel (checkControl_sound controlAccepted) primitive external\ntheorem naturalRange (lower upper step : Nat) (positive : 0 < step) :\n  indexIterations (Int.ofNat lower) (Int.ofNat upper) (Int.ofNat step) =\n    (scfRange lower upper step).map Int.ofNat := by\n  change indexIterations (lower : Int) (upper : Int) (step : Int) = _\n  have pos : (0 : Int) < (step : Int) := by omega\n  simp only [indexIterations,Int.natCast_nonneg,pos,and_self,\u2193reduceIte,Int.toNat_natCast]\nnamespace F3\ndef inputs : List Ty := [(.bits 8),(.bits 8)]\ndef outputs : List Ty := [(.bits 8)]\ndef S0 : Program := (.opaque 1 [] [.index] (.opaque 1 [] [.index] (.opaque 0 [] [.index] (.loop 2 1 0 [3,4] [(.bits 8),(.bits 8)] (.pure (.add 8) [1,7] (.opaque 2 [1,0] [(.bits 8)] (.ret [0,4]))) (.opaque 3 [0,1] [(.bits 8)] (.ret [0]))))))\ndef S1 : Program := (.opaque 1 [] [.index] (.opaque 1 [] [.index] (.opaque 0 [] [.index] (.opaque 3 [3,4] [(.bits 8)] (.ret [0])))))\ntheorem typed0 : checkTypes registry inputs outputs S0 = true := by decide\ntheorem typed1 : checkTypes registry inputs outputs S1 = true := by decide\ndef E (_primitive : Prim \u2192 List Int \u2192 Int) (x0 x1 : Int) : List Int := [(2 : Int),(3 : Int),(3 : Int),x0,x1]\ndef B : Program := (.pure (.add 8) [1,7] (.opaque 2 [1,0] [(.bits 8)] (.ret [0,4])))\ndef N : Program := (.opaque 3 [0,1] [(.bits 8)] (.ret [0]))\ndef bounds : Merlin.GraphLoopsUnroll.Bounds := {bits := 32,lower := 3,upper := 3,step := 2,factor := 2,count := 0,groups := 0,remainder := 0}\ntheorem boundsChecked : bounds.Valid := by decide\ntheorem isInline : bounds.count \u2264 bounds.factor := by decide\ntheorem inlineIndicesFit (ordinal : Nat) (inside : ordinal < bounds.count) :\n    Merlin.GraphLoopsSegment.FitsSigned bounds.bits (bounds.lower+bounds.step*ordinal) \u2227\n    Merlin.GraphLoopsSegment.FitsSigned bounds.bits (bounds.lower+bounds.step*ordinal+bounds.step) :=\n  Merlin.GraphLoopsUnroll.Bounds.inline_control boundsChecked inside\nvariable {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (x0 x1 : Int)\ntheorem source_form (world : World) : evalProgram (M primitive external) S0 [x0,x1] world =\n  (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i::c++E primitive x0 x1) w) (indexIterations 3 3 2) [x0,x1] world).bind\n    (fun r => evalProgram (M primitive external) N (r.1++E primitive x0 x1) r.2) := rfl\ntheorem empty_body_never_runs (world : World) :\n    loopEval 2 (fun i c w => evalProgram (M primitive external) B (i::c++E primitive x0 x1) w) (indexIterations 3 3 2) [x0,x1] world = .ok ([x0,x1],world) :=\n  Inline.empty_no_body 2 _ 3 3 2 (by decide) (by decide) _ world rfl\ntheorem actual_inputs (world : World) : evalProgram (M primitive external) S0 [x0,x1] world =\n    evalProgram (M primitive external) S1 [x0,x1] world := by\n  rw [source_form]\n  rw [empty_body_never_runs]\n  simp only [B,N,E,S1,progression,List.map_cons,List.map_nil,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n  all_goals\n    cases step0 : external.run 3 [x0,x1] world with\n    | error failure =>\n      rcases failure with \u27e8error,terminal\u27e9\n      simp only [step0,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n    | ok result =>\n      rcases result with \u27e8values,w0\u27e9\n      have size : values.length = 1 := by\n        have localArity := external.arity 3 [x0,x1] world values w0 step0\n        simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n      obtain \u27e8v0_0,rfl\u27e9 := List.length_eq_one_iff.mp size\n      simp only [step0,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\ntheorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S1 arguments world := by\n  have size : arguments.length = 2 := arity\n  obtain \u27e8a0,atail0,rfl\u27e9 := List.exists_cons_of_length_eq_add_one size\n  have asize0 : atail0.length = 1 := by\n    simp only [List.length_cons] at size\n    omega\n  obtain \u27e8a1,rfl\u27e9 := List.length_eq_one_iff.mp asize0\n  exact actual_inputs primitive external a0 a1 world\nend F3\nnamespace F4\ndef inputs : List Ty := [(.bits 8)]\ndef outputs : List Ty := [(.bits 8)]\ndef S0 : Program := (.ret [0])\ndef S1 : Program := (.ret [0])\ntheorem typed0 : checkTypes registry inputs outputs S0 = true := by decide\ntheorem typed1 : checkTypes registry inputs outputs S1 = true := by decide\ntheorem actual {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int) (external : External World Error registry)\n    (arguments : List Int) (world : World) (_arity : arguments.length = inputs.length) :\n    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S1 arguments world := rfl\nend F4\ndef originalEntries : List Entry := [{inputs := F3.inputs,outputs := F3.outputs,body := F3.S0},{inputs := F4.inputs,outputs := F4.outputs,body := F4.S0}]\ntheorem originalEntriesChecked : checkEntries registry originalEntries = true := by decide\ndef finalEntries : List Entry := [{inputs := F3.inputs,outputs := F3.outputs,body := F3.S1},{inputs := F4.inputs,outputs := F4.outputs,body := F4.S1}]\ntheorem finalEntriesChecked : checkEntries registry finalEntries = true := by decide\ntheorem complete {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int) (external : External World Error registry) :\n    PreservesEntries (M primitive external) originalEntries finalEntries :=\n  entries_cons (M primitive external) rfl rfl (F3.actual primitive external) (entries_cons (M primitive external) rfl rfl (F4.actual primitive external) (entries_nil (M primitive external)))\nend Merlin.GraphStatePipelineInlineInstance\ntheorem merlin_unroll_inline_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n      Merlin.GraphStatePipelineInlineInstance.originalEntries Merlin.GraphStatePipelineInlineInstance.finalEntries :=\n  Merlin.GraphStatePipelineInlineInstance.complete primitive external\n",
+  "roots": [
+    "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+    "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+    "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+    "Merlin.GraphState.Pipeline.indexIterations_count",
+    "Merlin.GraphState.Pipeline.entries_cons",
+    "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+    "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+    "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+    "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+    "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+    "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+    "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+    "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+    "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+    "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+    "Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs",
+    "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+    "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+    "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+    "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+    "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+    "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+    "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+    "Merlin.GraphStatePipelineInlineInstance.complete",
+    "merlin_unroll_inline_transform"
+  ],
+  "sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/builder.py",
+      "sha256": "07edf3d0ba3af9083c22310dd98bddd37a3300b7b166466193389aa50aca395a",
+      "size": 11622
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/context.py",
+      "sha256": "398f6fe1a77cb940e30cb499f5ddd3e6d80073fb9d4e3b0ea5bc3f5fdc4b81de",
+      "size": 11751
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/__init__.py",
+      "sha256": "0ce455fc728c51ade6e19ed26ff61c625b9b5f85af77f0976cc6de9504c25556",
+      "size": 549
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/constant_materialization.py",
+      "sha256": "1d805e0a398ccea6bb05684210a22e106600146044902e431129a524eac433b3",
+      "size": 1069
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/op_asm.py",
+      "sha256": "4ce3e98d238e453d63d3f480ba06cb232e7d0a1571736c67fe784117a1664351",
+      "size": 3093
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/__init__.py",
+      "sha256": "09111f29545dac8235bb5b0cbbc63e591c43a92e9b1fa8e4e23815c2c0371afd",
+      "size": 10337
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py",
+      "sha256": "8e58a5ab3c4e7a7b4cc30653a52b8f6f7b9b35574ed88485f1dbd85866ca3b63",
+      "size": 42917
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/builtin.py",
+      "sha256": "a58c193c85430bcfb34e6e5dba23f442880f8e9593e07ca313906f4a5775a4e2",
+      "size": 114583
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/func.py",
+      "sha256": "8a0cb3d1cfb47bfea7f642decd5c4b6f742461c6fe89b283f0918e515e8b8f8e",
+      "size": 11699
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/memref.py",
+      "sha256": "216e58c59ab59abe72e12a55c2af9bf89e53569c19479bfc9a7103c387cf28ba",
+      "size": 40815
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/scf.py",
+      "sha256": "57a47001029e79e03994fe67de0ed3c95b86ab465103cbd721f1b32b31155ab6",
+      "size": 27021
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/__init__.py",
+      "sha256": "9333bca6184814c39e9eaf592f58e6ed493e9898d527ad136fe32f5f59343433",
+      "size": 440
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py",
+      "sha256": "a95bd0416fc8501a6e727ca1315a94b7d8c5cb790358affc1be7c501b3c6501e",
+      "size": 4759
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dimension_list.py",
+      "sha256": "a6612af576bd0357107529dd60c4053f48dfcbf03abe6a431c29a55a2d475989",
+      "size": 1542
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dynamic_index_list.py",
+      "sha256": "38daa52c1113b0b9c7e184a812206fca75c99bf89bf2d489f9819525c040c242",
+      "size": 11826
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/enum_attribute.py",
+      "sha256": "a78ec420a097f747703642e1f27f8e41024b087a5244b4dd4709ee537d852dfe",
+      "size": 2170
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/fast_math.py",
+      "sha256": "6b5b526f36fcebd1afee8f3e8cd0e447f5240075885646edd9fbd84b79611b55",
+      "size": 684
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/format.py",
+      "sha256": "cc99781fa71fcaf702737a52e8c3c3e37754fdd13d9e7530960714dfa721acec",
+      "size": 18761
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/reshape_ops_utils.py",
+      "sha256": "20d38aaa290665a1f23c3a7781aacd1cc30e0bc1761cac25a2a4c6bcd45d8db9",
+      "size": 5041
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/folder.py",
+      "sha256": "3906e6d34b791f4d1de56bd347cb1af8a53424afaebc1c7e97dff2e70da503de",
+      "size": 3430
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/interfaces.py",
+      "sha256": "66a219f8cff8fdf8759426e3ab38f2fedfbd092b09b9daaa2d033831339dc300",
+      "size": 3803
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/__init__.py",
+      "sha256": "9b70e7a611de326f314eb7f5877f896f864519cf73404a98c0ba1448f5f91485",
+      "size": 808
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/__init__.py",
+      "sha256": "1defb1dab5f098264ce81e6318161a17100e5aeeb8c2fc966327203a5e5a26ba",
+      "size": 296
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_expr.py",
+      "sha256": "e52f3d8ffe8f36c050c9868f679e7bf254f25a64dd50e55f17e37a0c2e811061",
+      "size": 33741
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_map.py",
+      "sha256": "b7459de550eb7e16a58c54ef80f0cb799d8d4bdc125eb1aa1431265a2b20217c",
+      "size": 17632
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_set.py",
+      "sha256": "bf5fe3832e0b73c2d09280a92edb4bea307a24d8f81efdb59fbf09dc7892133b",
+      "size": 1605
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/core.py",
+      "sha256": "e4a56ec3e51f856d02ee8230739b5024c91da00260d4bce7c125ff08a6f52c08",
+      "size": 87560
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/__init__.py",
+      "sha256": "5cac03e289cfd95b58f728d2fe09fd069aec7990e05801d02e6c4b20e8a7e119",
+      "size": 302
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/attributes.py",
+      "sha256": "5390db1921844923d604abee03d99d2b713b388848a9b2e0f528826fe182e473",
+      "size": 22211
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/constraints.py",
+      "sha256": "83c063f55d9b835d92c16fdd51e1ada3eb4ad84f7bc6a18698793606dcbf7e75",
+      "size": 49824
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format.py",
+      "sha256": "0634b37132aa57248a3000ec873f1664b9890e550b8a7521e0b58cd3ceeea1fb",
+      "size": 55097
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format_parser.py",
+      "sha256": "fc16909fd1530a8bb6681bd944fcae0dd7cfe7ee7ea55aa28ff140744fb508b8",
+      "size": 39149
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/operations.py",
+      "sha256": "7c5c8bf820d4f89942903794e8a1a21ce9aa5c84e451602f3a54c6cb481149d4",
+      "size": 74020
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/__init__.py",
+      "sha256": "a8c23f2dc3bad21336cca3171afa34339dfabf90298dd19ed4e92798e17e823e",
+      "size": 466
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/affine_parser.py",
+      "sha256": "77e1a321b84693db30272b42deafb3453475705c00bff128480f7857b2a5c36b",
+      "size": 11088
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/attribute_parser.py",
+      "sha256": "2390628c63b7069fd6e4d814e06fbd5da19df487d0b2af469cc0704b3355c13c",
+      "size": 62798
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/base_parser.py",
+      "sha256": "158558fb5b4fb9dc2a7438f0c6cc3cb5276b462a1adb7da44a1eaabe204b8bad",
+      "size": 12513
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/core.py",
+      "sha256": "fea4787ef90a2893e6a55bb9a7c70a3d81304b68a40a30904b330e6919ea37e7",
+      "size": 41286
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/generic_parser.py",
+      "sha256": "badaa2593ec46f77c0856d62e100fe19195357a40c444dc0b4aed8e1376d92d7",
+      "size": 11901
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/pattern_rewriter.py",
+      "sha256": "759350b3ea7defd18f75161034182100b69778d9be52d47c2e63060eb80f2e38",
+      "size": 30506
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/printer.py",
+      "sha256": "44d48c3d67a1a60793434c3f92376840f764b0fa2f7a7e835173a0ba819e7765",
+      "size": 25749
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/rewriter.py",
+      "sha256": "ecb85c0cd62c5fdf04fb72291cab1c0145bce8c6cafedf7b2d7eba21121deb47",
+      "size": 11614
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/traits.py",
+      "sha256": "9a8df8a232a7d79c1836ce40136a5245559b9f6e6f9ea7e5b5f7782d5bcb7a2e",
+      "size": 29464
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/base_printer.py",
+      "sha256": "e481727cfc8d6f5019b3e7d0341e25607c6f64c19cabf27c029cdd7ef2c57a9b",
+      "size": 5606
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/bitwise_casts.py",
+      "sha256": "a19b2f68806f22a22c1258fd38dc2568a9a713daaa1bdbe822e9ee8c8134cfd6",
+      "size": 1903
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/classvar.py",
+      "sha256": "75817d634d44001d56dc60cf2142e0fc186c7f4c1bacac124c59380350c90627",
+      "size": 1129
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/comparisons.py",
+      "sha256": "d457aaed334bf384daa7aa70238300f39ad9c8ecc636291b5c8cb6bd07e224ac",
+      "size": 3799
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/diagnostic.py",
+      "sha256": "fdcb80084e612ae2b1b75cd7ecf1c79796e4c912c58fa3ae612fae97447fe0f3",
+      "size": 1901
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_loader.py",
+      "sha256": "fc7fbe1d9ea015f6b9caa764797a0849c9cc972efb778d258baee6b0f8bbb9ec",
+      "size": 3966
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_stub.py",
+      "sha256": "e56615befeb25b7ef8dc739ab1afaf7481045af9c13cf82902e1901358f90a43",
+      "size": 10855
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/exceptions.py",
+      "sha256": "2c5a6d5e0a8f44c998cae5a22a3922feb4d226e6de2100d3c976cb47e5a091c0",
+      "size": 3497
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/hints.py",
+      "sha256": "298718d6044b829594b43ad7e1b1226f8aa9318f73de1e4f806073d39004dacf",
+      "size": 7859
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/lexer.py",
+      "sha256": "d2d6d2f8e2bf110426e7663c28eb0626de5334ecbc27e74cec92c21af69fefef",
+      "size": 5454
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/mlir_lexer.py",
+      "sha256": "d2d2b59b9a09d18e2edde2d6ccc2fa49f4e063e19672eab4c158e35d44b32e36",
+      "size": 18808
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/runtime_final.py",
+      "sha256": "37edf56a59a7f385128f5864f07560d2e2535644260141f0f1893bf28a83e7d5",
+      "size": 812
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/str_enum.py",
+      "sha256": "3a5fa8d24f075b14a95a56146f832980d666da690e8c4eb7e5d491c3e813456e",
+      "size": 356
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/type.py",
+      "sha256": "9c4c1ac090bd0da004fd7db64e4c95e96a2803b1b078e49f669085cbbc74fbce",
+      "size": 1540
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/worklist.py",
+      "sha256": "dea6f7332e611bea48493d6ce60a478a0f484238ab4ddbe24c84e3f63764d842",
+      "size": 2081
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+      "size": 5515
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/common/paths.py",
+      "sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "size": 17204
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "size": 7626
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "size": 12573
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_inline.py",
+      "sha256": "513b762b3e307e66764ab686dd4a734c3a6ae292a9bb2370bf5a5214b08fdaa1",
+      "size": 9590
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+      "sha256": "6638c9359ca4a6f4ac9301cb18e1a5f13b4eb315be15dd6899e754fd852f8ae0",
+      "size": 9609
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_inline_models.py",
+      "sha256": "4e972a5a87418c00eddd1e6a4dc6087c66f55fbce3373434a687d9d8b503c1ee",
+      "size": 6890
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_tail.py",
+      "sha256": "7c2e7fa1db6b1770668faa05673469f5cba2011b29e4285e11558d6affcf05a8",
+      "size": 8516
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state.py",
+      "sha256": "8568b83e5c6bb92b927136e90f18412b8c6912a35b23aa5d27d9c6ede073f1c1",
+      "size": 15961
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline.py",
+      "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+      "size": 3144
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_capture.py",
+      "sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+      "size": 12106
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+      "size": 26257
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar.py",
+      "sha256": "61d351b2b6d31fc172a20931142e5a5096416ac3264901efc322086a410e5fc5",
+      "size": 15252
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "size": 20723
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_kernel.py",
+      "sha256": "2a170583ecdab74f9690cbe071e6ef4c4d459daa07c42c07c351e201dfc405e0",
+      "size": 10303
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "size": 4227
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "size": 1017
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "size": 9294
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "size": 4572
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "size": 4097
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "size": 8634
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "size": 12317
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "size": 12381
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f",
+      "size": 7588
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "size": 10145
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "size": 9653
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "size": 3962
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "size": 7091
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "size": 2118
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "size": 5730
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+      "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+      "size": 5106
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "size": 9854
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+      "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+      "size": 5747
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+      "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+      "size": 4641
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+      "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+      "size": 7569
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineInline.lean",
+      "sha256": "694d79ad1df0d7352b2e4034ac9e91cb1f9ceb07d089a37e08cd2dc8511187d5",
+      "size": 2475
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+      "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+      "size": 1400
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+      "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+      "size": 3197
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "size": 4654
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "size": 8229
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "size": 11782
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "size": 6170
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "size": 9963
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "size": 6614
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "size": 3246
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "size": 4537
+    }
+  ],
+  "identity": "de268a9e7c9666912a0c0eaf57232d004e0c39a3b026ce754d3512e5eadc920d",
+  "query_sha256": "4344cbeae90444ee6bf46a7719a383e8e37f6d29775842588f9ea79b05884862",
+  "query_status": "UNCOMPILED",
+  "outcome": "UNOBSERVED",
+  "qualification": "UNQUALIFIED",
+  "authority": false,
+  "provider": "UNSELECTED_HELD",
+  "public_route": "UNSUPPORTED/HELD",
+  "compiler_pass_chain": "not_established"
+}

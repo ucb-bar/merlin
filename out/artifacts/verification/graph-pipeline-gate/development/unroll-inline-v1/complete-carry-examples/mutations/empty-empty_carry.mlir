@@ -1,0 +1,20 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "step", function_type = (index, i8) -> i8, sym_visibility = "private"}> ({
+  }) : () -> ()
+  "func.func"() <{sym_name = "observe", function_type = (i8, i8) -> i8, sym_visibility = "private"}> ({
+  }) : () -> ()
+  "func.func"() <{sym_name = "altered", function_type = (i8, i8) -> i8, sym_visibility = "private"}> ({
+  }) : () -> ()
+  "func.func"() <{sym_name = "main", function_type = (i8, i8) -> i8}> ({
+  ^bb0(%a: i8, %b: i8):
+    %lb = "arith.constant"() <{value = 3 : index}> : () -> index
+    %ub = "arith.constant"() <{value = 3 : index}> : () -> index
+    %st = "arith.constant"() <{value = 2 : index}> : () -> index
+    %seen = "func.call"(%b, %b) <{callee = @observe}> : (i8, i8) -> i8
+    "func.return"(%seen) : (i8) -> ()
+  }) : () -> ()
+  "func.func"() <{sym_name = "untouched", function_type = (i8) -> i8}> ({
+  ^bb0(%x: i8):
+    "func.return"(%x) : (i8) -> ()
+  }) : () -> ()
+}) : () -> ()

@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "<stdin>", line 45, in <module>
+AssertionError
+
+Source-only packaging assertion, not a native failure. Subsequent source comparison
+identified four preexisting current host corrections against historical originals;
+retained seals and all current frozen Lean/emitter sources match. See PRESERVED-CUTS.json.

@@ -1,0 +1,34 @@
+{
+  "checks": [
+    {
+      "cut": "chain-endpoint-v1",
+      "exact_packet_files": 141
+    },
+    {
+      "cut": "chain-endpoint-v1",
+      "exact_live_owned_sources": 5
+    },
+    {
+      "cut": "service-route-review-v1",
+      "exact_packet_files": 77
+    },
+    {
+      "cut": "larger-profiles-v1",
+      "exact_packet_files": 186
+    },
+    {
+      "cut": "larger-profiles-v1",
+      "exact_live_owned_sources": 4
+    },
+    {
+      "cut": "schedule-profile-v1",
+      "exact_packet_files": 127
+    },
+    {
+      "cut": "schedule-profile-v1",
+      "exact_live_owned_sources": 4
+    }
+  ],
+  "runtime_or_objects_read": false,
+  "older_frozen_and_numerical_sources": "not edited; no old qualification rerun"
+}
