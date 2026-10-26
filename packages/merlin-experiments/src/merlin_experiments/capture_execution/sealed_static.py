@@ -125,7 +125,25 @@ def _directory_symlink(path: Path, root: Path) -> dict[str, str]:
     return {"kind": "symlink", "target": target}
 
 
-def _tree(root: Path, *, allow_directory_symlinks: bool = False) -> dict[str, dict[str, Any]]:
+def _dangling_symlink(path: Path) -> dict[str, str] | None:
+    """Bind absent file-link metadata without resolving or copying its target."""
+    try:
+        path.stat()
+    except FileNotFoundError:
+        target = os.readlink(path)
+        # Unix links have no directory type; explicit directory syntax still fails closed.
+        if target.endswith("/") or target.rsplit("/", 1)[-1] in {".", ".."}:
+            raise SealedCaptureError(f"dangling directory link: {path}")
+        # Preserve even absolute/escaping text: it is metadata, never a copy source.
+        return {"kind": "dangling_symlink", "target": target}
+    except OSError as exc:
+        raise SealedCaptureError(f"unresolvable source link: {path}") from exc
+    return None
+
+
+def _tree(
+    root: Path, *, allow_directory_symlinks: bool = False, allow_dangling_symlinks: bool = False
+) -> dict[str, dict[str, Any]]:
     """Bind exact directory membership, file content and execute permissions."""
     if root.is_symlink() or not root.is_dir():
         raise SealedCaptureError(f"tree is absent or indirect: {root}")
@@ -133,6 +151,11 @@ def _tree(root: Path, *, allow_directory_symlinks: bool = False) -> dict[str, di
 
     def visit(path: Path, name: str) -> None:
         if path.is_symlink():
+            if allow_dangling_symlinks:
+                link = _dangling_symlink(path)
+                if link is not None:
+                    members[name] = link
+                    return
             if not allow_directory_symlinks:
                 raise SealedCaptureError(f"tree contains a symlink: {name}")
             members[name] = _directory_symlink(path, root)

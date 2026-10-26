@@ -376,7 +376,7 @@ def _sealed_m2m_v3_bindings(selection_path: Path, selection_sha256: str, capture
         source, runtime = run / "snapshots/source", run / "snapshots/guest-root"
         if sealed_m2m._snapshot_tree(source) != receipt.get("source"):
             raise AttestationNotVerified("session source bytes differ from the sealed receipt")
-        if sealed_m2m._snapshot_tree(runtime) != receipt.get("guest_root"):
+        if sealed_m2m._snapshot_tree(runtime, allow_dangling_symlinks=True) != receipt.get("guest_root"):
             raise AttestationNotVerified("session runtime bytes differ from the sealed receipt")
         if sealed_m2m_tree_snapshot(capture) != receipt.get("output"):
             raise AttestationNotVerified("session output bytes differ from the sealed receipt")

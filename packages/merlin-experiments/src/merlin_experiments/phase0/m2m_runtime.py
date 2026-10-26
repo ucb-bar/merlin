@@ -181,7 +181,7 @@ def _runtime(python: Path) -> dict:
     return {
         "base": str(base),
         "venv": _source_tree(venv, skip_lib64=True),
-        "base_python": _source_tree(base),
+        "base_python": _source_tree(base, allow_dangling_symlinks=True),
         "python_sha256": _file_digest(python),
     }
 

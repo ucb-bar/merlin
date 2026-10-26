@@ -158,7 +158,7 @@ def file_path(selection, guest_member):
 
 def effective_rows(selection, *, source_rows=None):
     rows = (
-        _tree(Path(selection["entry"]), allow_directory_symlinks=True)
+        _tree(Path(selection["entry"]), allow_directory_symlinks=True, allow_dangling_symlinks=True)
         if source_rows is None
         else copy.deepcopy(source_rows)
     )
@@ -227,8 +227,8 @@ def _select_overlay(plan, entry, marker, marker_sha256, overlays, limits, *, nes
         ),
     }
     entry_stat = entry.stat()
-    before = _tree(entry, allow_directory_symlinks=True)
-    if any((entry if member == "." else entry / member).stat().st_uid != os.getuid() for member in before):
+    before = _tree(entry, allow_directory_symlinks=True, allow_dangling_symlinks=True)
+    if any((entry if member == "." else entry / member).lstat().st_uid != os.getuid() for member in before):
         raise ValueError("read-only runtime CAS has another owner")
     for member, path in sorted(overlays.items()):
         p = Path(member)

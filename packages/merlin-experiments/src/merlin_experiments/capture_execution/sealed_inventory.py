@@ -38,9 +38,11 @@ def _verify_staged_selection(
     """Reject changed selected bytes before executing any guest code."""
     from . import sealed_m2m as M
 
-    def identity(path: Path) -> dict[str, Any]:
+    def identity(path: Path, *, allow_dangling_symlinks: bool = False) -> dict[str, Any]:
         root, rows = (runtime, runtime_rows) if path.is_relative_to(runtime) else (source, source_rows)
-        return M._snapshot_tree(path) if rows is None else _snapshot_rows(rows, path.relative_to(root).as_posix())
+        if rows is None:
+            return M._snapshot_tree(path, allow_dangling_symlinks=allow_dangling_symlinks)
+        return _snapshot_rows(rows, path.relative_to(root).as_posix())
 
     roots = {
         "venv": runtime / "opt/capture-venv",
@@ -63,7 +65,7 @@ def _verify_staged_selection(
         if origin_commit != plan["m2m_commit"]:
             raise M.SealedM2MError("staged frozen M2M origin revision differs from selected plan")
     for name, path in roots.items():
-        if identity(path) != selected_trees[name]:
+        if identity(path, allow_dangling_symlinks=name == "base") != selected_trees[name]:
             raise M.SealedM2MError(f"staged {name} bytes differ from the pre-execution selection")
     if plan.get("schema") == M.SCHEMA_V3:
         for row in plan["selected_inputs"]:

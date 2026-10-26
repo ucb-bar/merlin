@@ -33,6 +33,7 @@ from .sealed_static import (
     SealedCaptureError,
     _bwrap_binary,
     _canonical_path,
+    _dangling_symlink,
     _digest,
     _directory_symlink,
     _file_digest,
@@ -592,6 +593,7 @@ def _source_tree(
     skip_lib64: bool = False,
     skip_python_cache: bool = False,
     readonly_modes: bool = False,
+    allow_dangling_symlinks: bool = False,
 ) -> dict[str, Any]:
     """Digest normalized file bytes, names and modes without retaining a huge manifest.
 
@@ -602,6 +604,8 @@ def _source_tree(
     permitted only for the three CPython executable aliases, whose selected
     base interpreter is independently snapshotted. The opt-in readonly view
     removes only write bits to predict the exact mode transformation at freeze.
+    Only the broad base inventory permits dangling file metadata; selected
+    interpreter/startup, import, dependency and data trees remain strict.
     """
     if not root.is_dir() or root.is_symlink():
         raise SealedM2MError(f"selected tree is absent or indirect: {root}")
@@ -651,6 +655,15 @@ def _source_tree(
             member = path.relative_to(root).as_posix()
             if path.is_symlink():
                 try:
+                    link = _dangling_symlink(path)
+                except SealedCaptureError as exc:
+                    raise SealedM2MError(str(exc)) from exc
+                if link is not None:
+                    if not allow_dangling_symlinks:
+                        raise SealedM2MError(f"dangling source link: {member}")
+                    records.append((member, *sorted(link.items())))
+                    continue
+                try:
                     resolved = path.resolve(strict=True)
                 except FileNotFoundError as exc:
                     raise SealedM2MError(f"dangling source link: {member}") from exc
@@ -684,7 +697,7 @@ def _source_tree(
 
 
 def _copy_source_tree(root: Path, destination: Path, *, ignore=None) -> None:
-    """Keep directory aliases, dereference file aliases and copy directory modes last."""
+    """Keep directory/dangling aliases, dereference files and copy directory modes last."""
 
     def copy(directory: Path, target: Path) -> None:
         target.mkdir(parents=True, exist_ok=False)
@@ -694,9 +707,15 @@ def _copy_source_tree(root: Path, destination: Path, *, ignore=None) -> None:
             if name in ignored:
                 continue
             source, copied = directory / name, target / name
-            if source.is_symlink() and source.is_dir():
-                copied.symlink_to(_directory_symlink(source, root)["target"], target_is_directory=True)
-            elif source.is_dir():
+            if source.is_symlink():
+                link = _dangling_symlink(source)
+                if link is not None:
+                    copied.symlink_to(link["target"])
+                    continue
+                if source.is_dir():
+                    copied.symlink_to(_directory_symlink(source, root)["target"], target_is_directory=True)
+                    continue
+            if source.is_dir():
                 copy(source, copied)
             else:
                 shutil.copy2(source, copied)
@@ -705,14 +724,14 @@ def _copy_source_tree(root: Path, destination: Path, *, ignore=None) -> None:
     copy(root, destination)
 
 
-def _tree(root: Path) -> dict[str, dict[str, Any]]:
+def _tree(root: Path, *, allow_dangling_symlinks: bool = False) -> dict[str, dict[str, Any]]:
     """Inventory sealed M2M aliases without changing the static capture policy."""
-    return _strict_tree(root, allow_directory_symlinks=True)
+    return _strict_tree(root, allow_directory_symlinks=True, allow_dangling_symlinks=allow_dangling_symlinks)
 
 
-def _snapshot_tree(root: Path) -> dict[str, Any]:
+def _snapshot_tree(root: Path, *, allow_dangling_symlinks: bool = False) -> dict[str, Any]:
     # File identities are checked while hashing; directory aliases retain their text.
-    return _snapshot_rows(_tree(root))
+    return _snapshot_rows(_tree(root, allow_dangling_symlinks=allow_dangling_symlinks))
 
 
 def _declared_loader_env(
@@ -1042,7 +1061,7 @@ def prepare_plan(
     # part of the plan and are rechecked at issuance, before any 9 GB copy.
     selected_trees = {
         "venv": _source_tree(venv, skip_lib64=True),
-        "base": _source_tree(base.resolve()),
+        "base": _source_tree(base.resolve(), allow_dangling_symlinks=True),
         # The guest receives only the selected package source (see _stage_source),
         # never these transient caches. -B prevents guest bytecode writes; it does
         # not by itself disable reading existing bytecode.
@@ -1346,7 +1365,8 @@ def _issue(
     )
     # Rehash the copied bytes against the antecedent selection, not mutable
     # host paths: a source change after prepare_plan must never be executed.
-    source_rows, runtime_rows = _tree(source), readonly_runtime.effective_rows(reuse) if reuse else _tree(runtime)
+    source_rows = _tree(source)
+    runtime_rows = readonly_runtime.effective_rows(reuse) if reuse else _tree(runtime, allow_dangling_symlinks=True)
     selected_schemas = _verify_staged_selection(
         plan, source, Path(reuse["entry"]) if reuse else runtime, source_rows=source_rows, runtime_rows=runtime_rows
     )
@@ -1364,7 +1384,7 @@ def _issue(
         elif _file_digest(copied) != _file_digest(Path(name)):
             raise SealedM2MError(f"system ELF snapshot differs from selected bytes: {name}")
     source_digest = _snapshot_rows(source_rows)
-    runtime_digest = _snapshot_tree(runtime) if reuse else _snapshot_rows(runtime_rows)
+    runtime_digest = _snapshot_tree(runtime, allow_dangling_symlinks=True) if reuse else _snapshot_rows(runtime_rows)
     del source_rows, runtime_rows
     if source_digest["bytes"] + runtime_digest["bytes"] > plan["max_snapshot_bytes"]:
         raise SealedM2MError("actual snapshot bytes exceed selected cap")
@@ -1471,7 +1491,10 @@ def _write_pending(
         if plan["schema"] == SCHEMA_V3
         else _materialized_v2(output, source, output, plan)
     )
-    if (_snapshot_tree(source), _snapshot_tree(runtime)) != (source_digest, runtime_digest):
+    if (_snapshot_tree(source), _snapshot_tree(runtime, allow_dangling_symlinks=True)) != (
+        source_digest,
+        runtime_digest,
+    ):
         raise SealedM2MError("sealed source or runtime changed during capture")
     if plan.get("runtime_reuse") is not None:
         readonly_runtime.verify(plan, plan["runtime_reuse"], runtime)
@@ -1632,7 +1655,7 @@ def replay_verify(
     _validate_snapshots(
         source, runtime, output, schema=schema, **({"runtime_reuse": reuse} if reuse is not None else {})
     )
-    source_rows, runtime_rows = _tree(source), _tree(runtime)
+    source_rows, runtime_rows = _tree(source), _tree(runtime, allow_dangling_symlinks=True)
     if (_snapshot_rows(source_rows), _snapshot_rows(runtime_rows), _snapshot_tree(output)) != (
         doc.get("source"),
         doc.get("guest_root"),
@@ -1761,7 +1784,7 @@ def replay_verify(
                 ),
                 replay,
             )
-    if (_snapshot_tree(source), _snapshot_tree(runtime), _snapshot_tree(output)) != (
+    if (_snapshot_tree(source), _snapshot_tree(runtime, allow_dangling_symlinks=True), _snapshot_tree(output)) != (
         doc["source"],
         doc["guest_root"],
         doc["output"],

@@ -649,14 +649,14 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
     monkeypatch.setattr(
         sealed_m2m,
         "_snapshot_tree",
-        lambda path: (
+        lambda path, **_: (
             input_identity
             if Path(path).is_relative_to(source) or Path(path).is_relative_to(runtime)
             else output_identity
         ),
     )
     # Receipt-policy fixture only; real inventory identities are tested separately.
-    monkeypatch.setattr(sealed_m2m, "_tree", lambda path: {"owner": Path(path)})
+    monkeypatch.setattr(sealed_m2m, "_tree", lambda path, **_: {"owner": Path(path)})
     monkeypatch.setattr(sealed_m2m, "_snapshot_rows", lambda rows, relative=".": input_identity)
     monkeypatch.setattr(sealed_m2m, "_materialized", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_materialized_v2", lambda *_: materialized)

@@ -170,7 +170,7 @@ def _verified_cached_entry(
         marker_sha256 = _file_digest(marker)
         entry_stat = entry.stat()
         entry_identity = (entry_stat.st_dev, entry_stat.st_ino, entry_stat.st_mtime_ns, entry_stat.st_ctime_ns)
-        rows = _tree(entry, allow_directory_symlinks=True)
+        rows = _tree(entry, allow_directory_symlinks=True, allow_dangling_symlinks=True)
         for name in rows:
             member = entry if name == "." else entry / name
             info = member.lstat()
@@ -335,7 +335,7 @@ def _build(plan: dict[str, Any], destination: Path) -> None:
         libraries.append({"path": name, "sha256": _file_digest(target)})
     if (
         _snapshot_tree(venv_copy) != plan["selected_trees"]["venv"]
-        or _snapshot_tree(base_copy) != plan["selected_trees"]["base"]
+        or _snapshot_tree(base_copy, allow_dangling_symlinks=True) != plan["selected_trees"]["base"]
     ):
         raise SealedM2MError("runtime store copy differs from the selected runtime trees")
     if any(_file_digest(Path(row["path"])) != row["sha256"] for row in libraries):
@@ -407,7 +407,7 @@ def link_runtime(
 
 
 def _link_entry(entry: Path, runtime: Path) -> None:
-    from .sealed_static import _directory_symlink
+    from .sealed_static import _dangling_symlink, _directory_symlink
 
     directories: list[tuple[Path, int]] = []
     for current, names, files in os.walk(entry, followlinks=False):
@@ -423,6 +423,11 @@ def _link_entry(entry: Path, runtime: Path) -> None:
         names[:] = [name for name in names if not (here / name).is_symlink()]
         for name in files:
             source = here / name
+            if source.is_symlink():
+                link = _dangling_symlink(source)
+                if link is not None:
+                    (target_dir / name).symlink_to(link["target"])
+                    continue
             if source.is_symlink() or not source.is_file():
                 raise ValueError(f"runtime store contains a nonregular member: {source}")
             destination = target_dir / name

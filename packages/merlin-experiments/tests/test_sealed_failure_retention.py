@@ -36,11 +36,11 @@ def _issue_fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(M, "_probe_sandbox", lambda _: None)
     monkeypatch.setattr(M, "_stage_source", lambda *_: None)
     monkeypatch.setattr(M, "_validate_snapshots", lambda *_, **__: None)
-    monkeypatch.setattr(M, "_tree", lambda _: [])
+    monkeypatch.setattr(M, "_tree", lambda _, **__: [])
     monkeypatch.setattr(M, "_verify_staged_selection", lambda *_, **__: {})
     monkeypatch.setattr(M, "_file_digest", lambda _: "worker")
     monkeypatch.setattr(M, "_snapshot_rows", lambda _: identity)
-    monkeypatch.setattr(M, "_snapshot_tree", lambda _: identity)
+    monkeypatch.setattr(M, "_snapshot_tree", lambda _, **__: identity)
 
     def execute(_bwrap, _runtime, _source, output, *_args, **_kwargs):
         (output / "result.bin").write_bytes(b"actual capture")

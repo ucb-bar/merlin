@@ -37,10 +37,10 @@ def recheck(selection, before, rows):
     """Reopen the complete CAS and every selected leaf/parent before returning V3."""
     from . import readonly_runtime as R
 
-    after = R._tree(Path(selection["entry"]))
+    after = R._tree(Path(selection["entry"]), allow_directory_symlinks=True, allow_dangling_symlinks=True)
     if after != before:
         raise ValueError("source runtime CAS changed during nested read-only composition")
-    if any((Path(selection["entry"]) / member).stat().st_uid != os.getuid() for member in after):
+    if any((Path(selection["entry"]) / member).lstat().st_uid != os.getuid() for member in after):
         raise ValueError("source runtime CAS ownership changed during nested read-only composition")
     created = {}
     for item in selection["overlays"]:

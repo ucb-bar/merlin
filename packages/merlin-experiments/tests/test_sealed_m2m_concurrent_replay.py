@@ -149,13 +149,13 @@ def _pending_v3(tmp_path, monkeypatch):
     monkeypatch.setattr(
         sealed_m2m,
         "_snapshot_tree",
-        lambda path: (
+        lambda path, **_: (
             identity
             if Path(path).is_relative_to(source) or Path(path).is_relative_to(runtime)
             else ({"sha256": "tampered"} if (Path(path) / "tampered").exists() else output_identity)
         ),
     )
-    monkeypatch.setattr(sealed_m2m, "_tree", lambda path: {"owner": Path(path)})
+    monkeypatch.setattr(sealed_m2m, "_tree", lambda path, **_: {"owner": Path(path)})
     monkeypatch.setattr(sealed_m2m, "_snapshot_rows", lambda rows, relative=".": identity)
     monkeypatch.setattr(sealed_m2m, "_materialized_v3", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_declared_loader_env", lambda *_: ({}, []))

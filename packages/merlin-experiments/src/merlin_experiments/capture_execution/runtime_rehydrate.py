@@ -197,7 +197,7 @@ def rehydrate_verified_runtime(
     if cache is None or cache.entry.parent != root:
         raise RuntimeRecoveryError("selected runtime CAS is absent or not fully verified")
     base = Path(plan["base"])
-    if sealed_m2m._source_tree(base.resolve()) != plan["selected_trees"]["base"]:
+    if sealed_m2m._source_tree(base.resolve(), allow_dangling_symlinks=True) != plan["selected_trees"]["base"]:
         raise RuntimeRecoveryError("selected base interpreter bytes changed")
     source_venv = cache.entry / "opt/capture-venv"
     roster, owners, unowned = _inventory(source_venv, omitted_editables=omitted_editables)
@@ -256,7 +256,7 @@ def rehydrate_verified_runtime(
     if (
         _file_digest(producer) != producer_sha256
         or _file_digest(uv) != uv_sha256
-        or sealed_m2m._source_tree(base.resolve()) != plan["selected_trees"]["base"]
+        or sealed_m2m._source_tree(base.resolve(), allow_dangling_symlinks=True) != plan["selected_trees"]["base"]
     ):
         raise RuntimeRecoveryError("rehydration producer, uv or selected base changed during recovery")
     # A complete new tree digest is the authority for the next capture. The

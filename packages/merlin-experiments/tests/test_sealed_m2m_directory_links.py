@@ -64,7 +64,7 @@ def test_unsafe_directory_aliases_are_refused(tmp_path, kind, message):
     target = {
         "absolute": str(root / "local/share/man"),
         "escaping": "../../outside",
-        "dangling": "share/absent",
+        "dangling": "share/absent/",  # Unix symlinks retain directory intent only in their text.
         "loop": "man",
     }[kind]
     link.symlink_to(target, target_is_directory=True)
