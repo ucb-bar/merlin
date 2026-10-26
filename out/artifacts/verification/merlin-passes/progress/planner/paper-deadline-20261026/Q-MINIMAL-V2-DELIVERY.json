@@ -1,0 +1,10 @@
+{
+  "phase": "accepted",
+  "prior_status": {
+    "type": "idle"
+  },
+  "authorization": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/NATIVE_AUTHORIZATION_Q_MINIMAL_V2.json",
+  "prompt": "ROOT AUTHORIZES deadline/NATIVE_AUTHORIZATION_Q_MINIMAL_V2.json for your exact corrected minimal-roster-request-v2. Root independently compared old/new owned Lean source: ONLY outputs\u2192_outputs, same statement/proof/query;15 exactrefs verified. Run the ONE actual CSE positive in NEW requested workspace with frozenFv5, complete audits/type/raw/pre-post/runtime/revalidation. Oldwarning profile stays held; no linter suppression, fallback, SDK/pin change, public activation, negative/replay/qualification. First unexpected failure stops oldprofile/raw evidence; no unchanged retry. Continue full source checking-path integration queue after result. No new agents/models/publishing; brief success/blocker only.",
+  "turn_id": "01a179cb-9fbc-7521-8382-b8b0086400aa",
+  "method": "started"
+}

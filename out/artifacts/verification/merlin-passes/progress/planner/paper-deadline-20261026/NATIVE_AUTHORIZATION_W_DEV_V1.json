@@ -1,0 +1,796 @@
+{
+  "schema": "merlin.coordinator.native-development-authorization.v1",
+  "created_utc": "2026-10-26T18:49:02.283685+00:00",
+  "worker": "W / GraphLoops",
+  "thread_id": "01a141ba-7640-7d21-bb41-b65635302b71",
+  "status": "AUTHORIZED_NEW_W_DEVELOPMENT_CONTEXT_ONLY",
+  "request": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/consumer-context-request-v1/REQUEST.json",
+    "bytes": 138329,
+    "sha256": "fbfc68ca5b87990efad1a3821914ea1f7ba059fd674a127b17d8bbbb52048d7d"
+  },
+  "controller_packet_sha256": "c2f0dc32e4af1d9dc91be41afc539eb2e09abb5d2d19db1a19d1e6594cd76f8a",
+  "source_review": "Root read controller/data/IO source in full; independent reviewer verified exact packet and30 SDK-free tests, IPR01/02/03 source findings addressed. This is not native qualification.",
+  "source_refs_checked_without_SDK_access": 108,
+  "project_modules": 76,
+  "controller_sources": [
+    {
+      "bytes": 23611,
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_original_image_context.py",
+      "sha256": "24644d127c1224a1dce7503bdd42328466fdee7046849a172337b055d283c70f"
+    },
+    {
+      "bytes": 8857,
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_original_image_context_data.py",
+      "sha256": "0a65096707eed87c9ccf2064ce124514279ef65e993280d05965708c588a3380"
+    },
+    {
+      "bytes": 4512,
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_original_image_context_io.py",
+      "sha256": "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09"
+    }
+  ],
+  "review": {
+    "copy": {
+      "bytes": 3531848,
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/original-runtime-candidate-v1/RESULT.json",
+      "sha256": "849060513fb300270eb75fd79518cc187325b4f8472105b34570faeaaf85a7ce"
+    },
+    "metadata": {
+      "bytes": 3017778,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/runtime-snapshot-review/METADATA-REVIEW-v2.json",
+      "sha256": "8c4a1566fac6ecba764c91e8179b5732d7ccda1a5e9a6f58559d7a130770cd82"
+    },
+    "probe": {
+      "bytes": 145093,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/runtime-snapshot-review/basic-probe-evidence/INTENT.json",
+      "sha256": "2682ee9260af211714d48a3b41206a0464a5fd18d6495ba071386f87eea67a8b"
+    },
+    "trace": {
+      "bytes": 9118,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/runtime-snapshot-review/basic-probe-evidence/trace_parser.py",
+      "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba"
+    }
+  },
+  "workspace": "/home/jeremy/Projects/merlin/out/build/graph-verification/loops/shape-after-consumer-v1",
+  "compile_audit_roots": {},
+  "allowed_initial_roster": [
+    {
+      "expected": "accept",
+      "final_root": "Merlin.GraphLoopsShape.After.checked_source_epoch_chain",
+      "module": "WAfterCandidatesCompileV1",
+      "query": {
+        "bytes": 40,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/consumer-context-request-v1/CompileCandidates.lean",
+        "sha256": "19c5f97e4d4bf5843a77f19f5bf085eccdd8c444329d058cc0f02b433aa37fbf"
+      },
+      "role": "candidate_compile_and_exact_root_audit_only_not_program_qualification",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.actual_middle_complete"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 26254,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_actual_pair_has_two_separ0/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "d6e179b7743def8d008532f449cb843752c7c7efababb81c8bae2fcdfb01a1ed",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase01V2",
+      "query": {
+        "bytes": 25418,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case01.lean",
+        "sha256": "28e3e716bb0d09a2d48b3f327f7f91554cf65f3cb39207c25ca6fe2d6a84746e"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 26254,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_actual_pair_has_two_separ1/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "3c2096fd6c3d0b6e617daeb59df61120d5ef04473fdde569b233746236d78ce9",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase02V2",
+      "query": {
+        "bytes": 25418,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case02.lean",
+        "sha256": "5879353b50b87d41d4f9b9fa43b9c913420b33dc1992824aba48edef9331cfa2"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 26254,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_actual_pair_has_two_separ2/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "2aed83dabf15f0cde473d63e62cb360a76b7ebe44353b8988a5e8af53c467964",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase03V2",
+      "query": {
+        "bytes": 25418,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case03.lean",
+        "sha256": "2b748312d186993c2ca03a1dbe8c5cedb67db17a9ceab70044bd4dfe9edc5956"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 26254,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_actual_pair_has_two_separ3/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "71de7f2417c7497045c2373cd3c574d6baf3f2189e421d5c9a49618bbd3b5d8b",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase04V2",
+      "query": {
+        "bytes": 25418,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case04.lean",
+        "sha256": "456badbc1d9985f4dbe2285bc82f909ec41f6985fcf8a5fc21c4c46b58cb5de7"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 26254,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_actual_pair_has_two_separ4/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "9c44a9820313225083eacda1bbd66232778e74ae44370209a4b512f080a757ba",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase05V2",
+      "query": {
+        "bytes": 25418,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case05.lean",
+        "sha256": "15d0e188c78f1cb5c0842111f188e9c5f3f8492cddaf0eaf0286b0f6bb3007ae"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 26582,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_actual_pair_has_two_separ5/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "cee2680fc42c83e1f31afe58bdfa32d0d00ffc2238aff9aef317c5fa7ff20504",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase06V2",
+      "query": {
+        "bytes": 25746,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case06.lean",
+        "sha256": "a1f1270e20c246714cd433f97165ad8bd11d6df1dc994bcb0d3614405bad5a27"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 8657,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_retained_actual_shape_fam0/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "694c0e28f36e958742e9fa243b3a83534320c533f2999991717751f9b2aa562e",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase08V2",
+      "query": {
+        "bytes": 7821,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case08.lean",
+        "sha256": "250315bb371f9ff26736174dd2dbe34dad158570ce96f5049baace9458c78d2b"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 8905,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_retained_actual_shape_fam1/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "47d8590401189b86a30e178b98997cb1499eac14a07ba7d756f05b680320fd0f",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase09V2",
+      "query": {
+        "bytes": 8069,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case09.lean",
+        "sha256": "4d463e23f19f6da18869c0e9f7e2001da02b7a25956494c64d3eee88fa4aebf4"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 9121,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_retained_actual_shape_fam2/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "cbf339edc43665853b334587c89fd5fe16ecca3102ff35c04bcf47233f324594",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase10V2",
+      "query": {
+        "bytes": 8285,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case10.lean",
+        "sha256": "1c501dd34299b9b9ce92decea720a360b3d39d95fc9359eb3f396e2f0a8e6695"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 11128,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_retained_actual_shape_fam3/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "44208940aa2d97f6ac924151e4b483d790b18d946205de4e0f90fd4dc3bde64c",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase11V2",
+      "query": {
+        "bytes": 10292,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case11.lean",
+        "sha256": "8d56015b6af026a79f073349b86da91526a6141906bca11c59e7e64e816709b8"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 8268,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_retained_actual_shape_fam4/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "b343ddca966404d753badda30d4ffb8a6c58209050297b8de17c6ae4eb2bb381",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase12V2",
+      "query": {
+        "bytes": 7432,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case12.lean",
+        "sha256": "17da13bb661bea634d1ba74d0ced3c0df764cc54d2b0448cdb8e89f20ebfcd14"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 11654,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_retained_actual_shape_fam5/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "677a4fe890f21da4335583a6612a750c589a9a6266bc356e3cb0e57b962f1f67",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase13V2",
+      "query": {
+        "bytes": 10818,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case13.lean",
+        "sha256": "24a09a3d1d882b3fdfb462e525ec263e3c156c2c3629e9173adf375215e2fe6a"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    },
+    {
+      "expected": "accept",
+      "final_root": "GraphShapeAfterObligation.complete",
+      "legacy": {
+        "bytes": 9403,
+        "expected": "UNOBSERVED_EXPECT_ACCEPT",
+        "final_root": "GraphShapeAfterObligation.complete",
+        "native_invoked": false,
+        "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/tests-v9/pytest/test_retained_actual_shape_fam6/Obligation.lean",
+        "qualified": false,
+        "semantics": "ordinary-actual-shape-pair",
+        "sha256": "cb990a287a96a7f3be11fff95b5ce1615bdac471b57dd3b9e7ac50375b05a04d",
+        "support_roots": [
+          "Merlin.GraphLoopsShape.After.swap_twice",
+          "Merlin.GraphLoopsShape.After.swap_injective",
+          "Merlin.GraphLoopsShape.After.put_swapped",
+          "Merlin.GraphLoopsShape.After.assign_swapped",
+          "Merlin.GraphLoopsShape.After.eval_swapped",
+          "Merlin.GraphLoopsShape.After.function_swapped",
+          "Merlin.GraphLoopsShape.After.invoke_swapped",
+          "Merlin.GraphLoopsShape.After.complete_permuted",
+          "Merlin.GraphLoopsShape.After.check_sound",
+          "Merlin.GraphLoopsShape.After.checked_complete",
+          "Merlin.GraphLoopsShape.After.checked_context",
+          "GraphShapeAfterObligation.accepted",
+          "GraphShapeAfterObligation.final_syntax",
+          "GraphShapeAfterObligation.complete",
+          "GraphShapeAfterObligation.contextual"
+        ]
+      },
+      "module": "WAfterCase14V2",
+      "query": {
+        "bytes": 8567,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/queries/Case14.lean",
+        "sha256": "c5e2b65bbd3a2090819ca1c33b2fe1c0c51e1035de4b408b49c1288d85a99df5"
+      },
+      "role": "actual_shape_pair",
+      "support_roots": [
+        "Merlin.GraphLoopsShape.After.swap_twice",
+        "Merlin.GraphLoopsShape.After.swap_injective",
+        "Merlin.GraphLoopsShape.After.put_swapped",
+        "Merlin.GraphLoopsShape.After.assign_swapped",
+        "Merlin.GraphLoopsShape.After.eval_swapped",
+        "Merlin.GraphLoopsShape.After.function_swapped",
+        "Merlin.GraphLoopsShape.After.invoke_swapped",
+        "Merlin.GraphLoopsShape.After.complete_permuted",
+        "Merlin.GraphLoopsShape.After.check_sound",
+        "Merlin.GraphLoopsShape.After.checked_complete",
+        "Merlin.GraphLoopsShape.After.checked_context",
+        "GraphShapeAfterObligation.accepted",
+        "GraphShapeAfterObligation.final_syntax",
+        "GraphShapeAfterObligation.contextual"
+      ]
+    }
+  ],
+  "allowances": [
+    "Exact reviewed Context.from_review inputs and ORIGINAL private image selection only",
+    "Actual dependency reports, private builds and separate exact root/type/std3 audits for the first candidate compile case, then remaining thirteen expected positives",
+    "Same live result/full source-runtime-object-evidence revalidation"
+  ],
+  "excluded": [
+    "Ten negative initial-roster cases until a separately reviewed finite diagnostic protocol",
+    "Two later epoch queries and fresh replay/qualification until development results and fixed source roster are reviewed",
+    "Installed SDK/archive reads or failed-profile retries",
+    "New source or expected runtime pin adoption within this context",
+    "Native launch by other workers"
+  ],
+  "failure_policy": "Stop on first infrastructure mismatch/signal/timeout/unknown diagnostic or unexpected positive failure; retain exact raw output, no unchanged retry. Ordinary source corrections require a NEW version/context, never edit this request or promote its failure.",
+  "qualification": false,
+  "graph_correctness_approved": false,
+  "old_incident_repaired": false,
+  "old_profiles_retried": false,
+  "SDK_reads_during_authorization": 0,
+  "native_invocations_during_authorization": 0
+}

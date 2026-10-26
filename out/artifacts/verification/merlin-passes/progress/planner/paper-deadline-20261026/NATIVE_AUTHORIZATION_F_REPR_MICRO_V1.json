@@ -1,0 +1,40 @@
+{
+  "status": "AUTHORIZED_EXACT_THREE_DIAGNOSTIC_CASES_WITH_GLOBAL_FIRST_FAILURE_STOP",
+  "created_utc": "2026-10-26T19:55:57.493659+00:00",
+  "request": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/repr-prerequisite-v1/microcases/REQUEST.json",
+    "bytes": 5642,
+    "sha256": "ee58911b01180d65b67ee64a5721eeed3cc794b0689f136fa29ae0ac254bfb4f"
+  },
+  "runner": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/repr-prerequisite-v1/microcases/run_reviewed.py",
+    "bytes": 5067,
+    "sha256": "91ab83dbdecaa690e911a3ea3d9ce9a956914b0aa503e05dc4d1b4ca14924eea"
+  },
+  "review": "Root read all three tiny sources, complete fixed runner and protocol; source/ref bytes checked without SDK access. Frozen v5 provider/runtime selection already reviewed.",
+  "purpose": "Diagnose derived-Repr compiler prerequisite only; no graph/program verification or semantic negative claim",
+  "allowed": {
+    "ordered_cases": [
+      "InitNat",
+      "InitListNat",
+      "OmegaListNat"
+    ],
+    "attempts_per_case": 1,
+    "new_private_workspace_per_case": true,
+    "reuse_project_objects": false,
+    "global_stop_on_any_exception": true,
+    "unexecuted_cases_remain_unexecuted": true,
+    "guard_and_source_policy": "unchanged frozen v5",
+    "finite_policy": "899 exact;181 success-only;nonzero does not gain allowance",
+    "stdout": "pure declarations; separate root audit/type reports",
+    "timeout_seconds_per_command": 120,
+    "proof_axiom_policy": "standard-three only, no reflection",
+    "no_graph_qualification": true,
+    "no_runtime_image_expansion": true,
+    "first_failure_retention": "exact source, intent, process, stdout, stderr and all existing guards; no retry"
+  },
+  "failure_policy": "ONE attempt/case in listed fresh workspace, stop ALL remaining on first exception; retain all raw outputs/guards; no retry/repair/source edit/pin refresh",
+  "qualification": false,
+  "native_fidelity_proved": false,
+  "other_native_permission": false
+}

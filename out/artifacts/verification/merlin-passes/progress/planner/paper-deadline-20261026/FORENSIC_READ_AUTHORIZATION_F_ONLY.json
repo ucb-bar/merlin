@@ -1,0 +1,29 @@
+{
+  "status": "AUTHORIZED_ONE_SHOT_DATA_FORENSICS_F_ONLY",
+  "created_utc": "2026-10-26T20:11:35.467034+00:00",
+  "user_instruction": "one agent look at runtime problem, other four keep working",
+  "worker": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/original-runtime-candidate-v1/toolchain/lib/lean/libleanshared.so",
+      "expected_bytes": 231113560,
+      "original_expected_sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/lean-shared-passes/phase7-worktree/out/build/fresh-environment/toolchain/lib/lean/libleanshared.so",
+      "expected_bytes": 231113560,
+      "original_expected_sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4"
+    }
+  ],
+  "protocol": [
+    "Read each exact source at most ONCE through stable regular-file descriptors/O_NOFOLLOW and record before/after/path stats. Stop on nonregular/symlink/changed descriptor/oversize. Do not use old guard/controller or verify.py.",
+    "Stream to exclusive new DATA-only .bin captures under out/build/graph-paper-deadline/runtime-forensics-v1 with observed SHA/byte count; do not execute/load captures or modify originals. Preserve a nonmatching capture as evidence, not a replacement pin.",
+    "Compare ONLY captured copies afterward: hashes (optionally independent host hash utility), changed byte ranges/ELF section locations; retain full evidence and hypotheses separately.",
+    "May read filesystem/OS metadata for the exact paths; no broad process scan, privilege escalation, repairs, new SDK, installs or Lean/MLIR/compiler/loader invocation.",
+    "A matching forensic reread NEVER clears either earlier mismatch or any native/qualification hold. No rehash retry, source-path repetition or expectation refresh."
+  ],
+  "output": "owned source/report files under graph-regions-declared/runtime-forensics-v1 and captured data under exact new scratch path",
+  "all_native_authorizations": "remain SUSPENDED",
+  "all_other_workers": "No runtime/image reads or native/guard execution",
+  "purpose": "Diagnosis only, not proof/native/model approval or qualification"
+}

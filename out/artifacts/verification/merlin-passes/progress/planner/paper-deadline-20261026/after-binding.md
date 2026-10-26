@@ -1,5 +1,46 @@
 # W / GraphLoops — strengthen actual final-IR binding and finish current graph result
 
+## Latest user continuation — native readiness and final memory binding
+
+The user explicitly said **keep W8A8 going**. Resume this graph assignment;
+numerics remain deferred. Your declaration-only v2b/43-test checkpoint is
+preserved. Do not stop after packaging or merely wait for a runtime message.
+
+1. Prepare an EXACT concrete consumer context request for the retained v2b
+   queries: reviewed F controller3/source hashes and metadata4 refs, transitive
+   project source map, explicit source-derived frozen dependency
+   `compile_audit_roots`, exact query bytes/final+support roots, NEW private
+   workspace, fixed initial positive/adversarial roster and observations.
+   Send root the immutable request for authorization; no native preflight.
+   F's corrected30-test controller cut passed independent SOURCE recheck, but
+   this does not authorize your consumer or native execution.
+2. While authorization is pending, tackle the remaining actual FINAL memory
+   program bridge for the existing retained shape→reuse→segment case. Start
+   with a concrete tractable two-epoch/static rectangular subset: independently
+   decode the real final nested SCF bounds/min/add/control operands, slot
+   allocation, initialization, SSA, accesses/deallocations and complete caller
+   observations into a separate operational target term. Prove its relation
+   to the preserved epoch/slot execution with additive modules you own. Reuse
+   existing bounds/lifetime/composition lemmas. No trusted full-tree matcher
+   disguised as a theorem, copied hashes or whole-run equality premise.
+   Preserve total/private/unobservable-allocation premises and possible-success
+   relation; never imply error/resource/native fidelity. If a form is outside
+   the model, retain the actual refusal and continue a meaningful smaller
+   complete subset, naming the restriction. Do not start other pass families.
+3. After explicit root authorization of your NEW context, prioritize compiling
+   and auditing the existing3 after-binding candidates and actual changed shape
+   positives before broader source expansion. Resolve ordinary proof/source
+   diagnostics in new explicit versions; stop unknown infrastructure failures
+   without unchanged retry. Then qualify a fixed supported boundary and one
+   fresh replay. Keep final-memory source progress separate until it also
+   receives actual kernel checks and full changed-boundary evidence.
+
+Keep ACTIVE.md current with this next step and context request. Work the whole
+batch after compaction until complete or a NEW genuine user stop. Send root
+only substantive milestones and real dependencies. Root alone publishes.
+
+## Preserved earlier acceptance criteria
+
 Read current deadline README and D2-G03/D3-G04. Your current47-source semantic
 adapter and71 passing DEVELOPMENT tests remain a useful checkpoint; preserve it
 and all old94 sources/seals. Do NOT start queued staged-dense/other broad families.

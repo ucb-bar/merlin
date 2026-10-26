@@ -1,4 +1,18 @@
-**CURRENT USER RESUME — 2026-10-25: GRAPH PROOFS BEFORE NUMERICS.**
+> **2026-10-26 USER STOP at5% allowance.** All five workers are paused after portable handoffs. Start with repository-root `VERIFICATION_HANDOFF.md`; historical keep-working prompts do not authorize resume. New graph candidates remain UNCOMPILED/UNQUALIFIED.
+
+**LATEST — 2026-10-26: five workers, graph proofs before numerics.**
+Current assignments and runtime boundaries are in the
+[deadline coordination record](planner/paper-deadline-20261026/README.md).
+One worker investigates runtime; four continue source implementation/review and
+reproduction. The latest four-command diagnostic did not reproduce the private
+runtime mismatch and cleared no hold. Historical qualified scalar/SCF, integer,
+shape and memory packets remain separate from today's UNCOMPILED proof candidates
+and mocked service/admission fixes. Full-pass, all-graph, model and native
+correctness are not established. Read the
+[registered-kind coverage table](planner/paper-deadline-20261026/independent-proof-review/registered-coverage-v1/APPENDIX_TABLE.md)
+and [human review guide](planner/paper-deadline-20261026/HUMAN_REVIEW_GUIDE.md).
+
+**Historical user resume — 2026-10-25: graph proofs before numerics.**
 All three existing graph workers are resumed. Current assignments and the paper's
 two verification deliverables are in [the live resume](planner/graph-first-20261025/README.md)
 and [paper target](planner/graph-first-20261025/PAPER_TARGET.md). Historical stops

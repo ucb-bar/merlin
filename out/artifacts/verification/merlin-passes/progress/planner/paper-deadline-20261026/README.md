@@ -1,4 +1,62 @@
+> **2026-10-26 USER STOP at5% allowance.** All five workers are paused after portable handoffs. Start with repository-root `VERIFICATION_HANDOFF.md`; historical keep-working prompts do not authorize resume. New graph candidates remain UNCOMPILED/UNQUALIFIED.
+
 # CURRENT USER RESUME — 3.5-day paper deadline
+
+Start with [CURRENT_WORK.json](CURRENT_WORK.json) for the latest five-worker
+queues, fixed source cuts, runtime limits and actual publication state. Refresh
+live thread status before restarting anyone. The chronology below is retained;
+current task queues supersede completed batches and consumed permissions.
+
+**LATEST: keep all five workers working continuously, with F alone investigating
+runtime.** The runtime problem does not block source work by the other four.
+Current ordered queues are `CONTINUOUS-WORK-QUEUES.json` and
+`CONTINUOUS-WP-NEXT.json`, followed by `CONTINUOUS-Q-CHAIN-V1.json` and
+`CONTINUOUS-ASSIGN-INTEGRATION-V2.json` and
+`CONTINUOUS-PREPARE-MEMORY-REVIEW-V1.json`, then
+`CONTINUOUS-W-ENTRY-ROSTER-V1.json`, `CONTINUOUS-Q-QUALIFIED-PROFILES-V1.json`
+and `CONTINUOUS-F-IR-TRANSPORT-V1.json`. W completed the selected-entry actual-final
+memory source candidate and now lifts its explicit whole-module entry scope.
+Q completed the mocked common-model CSE/LICM chain candidate; it now prepares
+adapters for the existing qualified scalar/SCF and exact-integer proof profiles.
+Prepare completed registered coverage and twelve independent mocked service
+checks; it now audits the new memory-proof obligation chain independently.
+Assign's portable source handoff is complete; it now rehearses integration of
+the fixed service/admission source cuts in private scratch. Continue the next
+useful queued item after a milestone or dependency block. Preserve selected
+models, exclusive ownership and concise reporting; do not stop after a small task.
+
+**Current runtime hold supersedes EVERY earlier native authorization below.**
+See `PRIVATE-RUNTIME-HOLD.json`. The private original-image context also produced
+an actual `libleanshared.so` digest mismatch. Its cause remains UNKNOWN. No native
+launches, repairs, refreshed pins, old-profile retries or runtime-image reads by
+the other four workers. F's only exception is the bounded data-only one-shot
+capture in `FORENSIC_READ_AUTHORIZATION_F_ONLY.json`; matching later reads do not
+clear the mismatch or authorize proof qualification.
+
+**One later investigative exception, F ONLY:**
+`NATIVE_AUTHORIZATION_F_FAILED_BUFFER_DIAGNOSTIC_V1.json` permits one exact
+four-command library-build workload in a fresh diagnostic workspace, using the
+reviewed failure-buffer-preserving provider. It does not authorize graph
+acceptance, repair, new image pins, qualification or another attempt. First
+failure stops; completion without mismatch leaves all prior holds active. See
+`F-FAILED-BUFFER-DIAGNOSTIC-DELIVERY.json` for the accepted steer. This experiment
+is now TERMINAL: four commands completed, mismatch not reproduced. It issued no
+graph acceptance or qualification, cleared no hold and authorizes no retry.
+F now develops an original-IR transport/provider proposal using synthetic and
+metadata tests only. Real IR-image transport and any further launch remain
+unauthorized until their exact proposed source/inputs receive separate review.
+
+**Latest user direction:** keep the two extra workers running on the models the
+user selected, with more well-defined tasks and low token usage. This supersedes
+their brief cost-control stop. Their [claim ledger](bounded-claim-ledger.md) and
+[portable handoff](bounded-reproduction-handoff.md) batches are complete. Current
+import-header corpus and targeted integration rehearsal are now complete;
+their continuations are the registered-kind/service review and external-host
+source handoff listed above.
+Original Q/F/W retain critical implementation work. No new workers/model changes,
+broad feature expansion or repeated status/testing batches. Use large ordered
+queues, bounded checks and concise milestone/blocker messages. Preserve all
+completed evidence and review findings.
 
 The user explicitly resumed implementation and asked for one or two workers to
 fix Graham's review findings while the others continue the highest-value graph
@@ -32,12 +90,12 @@ wholesale experimental-branch merge. Record base+patch/new revision honestly.
 
 | Existing worker | Deadline assignment | Exclusive boundary |
 | --- | --- | --- |
-| Q / GraphState | [Compiler gate repair](gate.md), D1-G09/D3-G10 | Corrective producer lean_checker.py and pipeline enforcement/tests; new primary lean_graph_pipeline_gate* modules/tests. Pause scheduling feature expansion. |
-| F / Frontend | [Input-admission fixes](capture.md), D2-G01/G02 | Primary shared admission helper and capture entry hooks; corrective producer certificates.py and matching helper/tests. No gate or W emitter/model edits. |
+| Q / GraphState | [Compiler gate repair](gate.md), D1-G09/D3-G10 | Corrective producer lean_checker.py, pipeline.py and CommonTransformService graph-profile injection; primary lean_graph_pipeline_gate* modules/tests and additive minimal entry adapter. Source-only host integration; native activation held. |
+| F / Frontend | Sole runtime investigator; [input-admission fixes](capture.md) and common context provider | Bounded authorized capture comparison, original IR provenance and remedy plan; admission helper/capture hooks, corrective certificates.py and common provider. No gate or W emitter/model edits. |
 | W / GraphLoops | [Actual after-program binding](after-binding.md), D2-G03 | Shape/memory model and emitter wrapper, new pair-binding modules/tests; current composition and its evidence. No shared admission or corrective producer edits. |
-| New independent reviewer | [Proof/mapping/gate review](independent-proof-review.md) | Own review reports/probes only; review common context first, then gate, actual IR mapping and exact theorem/claim rows. No implementation edits or native authorization. |
-| New reproduction worker | [Original delivery and reproduction](independent-reproduction.md) | Own independent archive verifier, evidence/dependency inventories, portable worked-example packet and reproduction protocol. No implementation or runtime-provider edits. |
-| Coordinator | Runtime recovery investigation, immutable evidence delivery, claim text and integration | Original-runtime snapshot provenance; full original bundles/exact parser identity for Graham; daily status and paper table. |
+| Prepare / independent reviewer | New memory-after proof-obligation audit; coverage/service review complete | Own independent-proof-review outputs and SDK-free harness only. Check which actual-final simulation premises remain open, then review Q's new chain cut. No implementation, controller, Lean or native edits. |
+| Assign / reproduction worker | Exact external-host source handoff and scratch integration rehearsal | Own independent-reproduction outputs, canonical integrity verifier and tests, private scratch. No actual producer integration, SDK reads or native work. |
+| Coordinator | Continuous assignment, immutable evidence delivery, claim text and integration | Review source cuts, route dependencies, preserve hold/evidence, review and publish coherent patches on primary. F owns runtime investigation. |
 
 After the admission regression batch, F also owns the new common
 `lean_graph_original_image_context*.py` runner. Q/W consume that provider instead
@@ -66,6 +124,14 @@ a new independent private context and reviewed one basic `Init` kernel probe.
 That probe passed with zero axioms and the exact eleven-image runtime closure.
 The old incident is still UNKNOWN. Graph qualification and worker native use
 are NOT authorized by that basic probe; see `runtime-snapshot-review/README.md`.
+
+**Historical development permissions are SUSPENDED.** The retained
+`NATIVE_AUTHORIZATION_*.json` files record earlier bounded attempts and do not
+authorize another run. The latest private-library mismatch is retained at
+`out/build/graph-paper-deadline/q-gate-minimal-context-v2/FIRST-INFRASTRUCTURE-STOP.json`.
+Candidate source builds, kernel root audits, positive graph acceptance and final
+qualification remain outstanding. The earlier basic Init probe and completed
+Repr diagnostic microcases establish only their recorded narrow observations.
 
 SDK-free Python producer/parser/projection/data tests and mocked gate unit tests
 are allowed after inspecting their call paths for native/SDK actions. Use explicit

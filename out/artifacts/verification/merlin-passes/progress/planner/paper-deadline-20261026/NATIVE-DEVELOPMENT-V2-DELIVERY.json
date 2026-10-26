@@ -1,0 +1,32 @@
+{
+  "phase": "accepted",
+  "created_utc": "2026-10-26T19:01:36.251473+00:00",
+  "workers": [
+    {
+      "worker": "W",
+      "id": "01a141ba-7640-7d21-bb41-b65635302b71",
+      "auth": "NATIVE_AUTHORIZATION_W_DEV_V2.json",
+      "prior_status": {
+        "type": "active",
+        "activeFlags": []
+      },
+      "prompt": "EXPLICIT ROOT AUTHORIZATION: read out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/NATIVE_AUTHORIZATION_W_DEV_V2.json. Execute ONLY its exact effective_request in a NEW private development workspace using the reviewed F v2 FROZEN SNAPSHOT controller/data/IO refs. Root reviewed the narrow duplicate-path fix+34 SDK-free regressions and rechecked all source/metadata/query refs. Do not reuse old request inputs/controller/workspace. Old W v1 stays held. Construct typed refs and tuple audit lists from effective_request.\nW: first3candidate compile/root audit then13expected positives. Q: ONE complete actual CSE positive. Retain actual import/compile/process/runtime/pre/post/object/query/type/std3 evidence and revalidate same live result. NO negatives, epoch/witness, replay/qualification, public gate activation, installed/archive SDK or old guards. First mismatch/signal/timeout/unknown diagnostic/unexpected positive failure STOPS context, preserves first raw output; no unchanged retry, refreshed expectations or policy widening. Ordinary source corrections need NEW explicit cut/context.\nThis is DEVELOPMENT permission, not correctness/qualification approval. Start authorized batch now. Use one batch, report only success/blocker, no model changes/new agents/publication. Continue separate source work if runtime held; keep ACTIVE state current.",
+      "phase": "accepted",
+      "turn_id": "01a17987-5d33-7d93-8b95-bf1658f33d92",
+      "delivery": "steered"
+    },
+    {
+      "worker": "Q",
+      "id": "01a16018-1974-7b53-ade5-e42d3d020739",
+      "auth": "NATIVE_AUTHORIZATION_Q_DEV_V1.json",
+      "prior_status": {
+        "type": "idle"
+      },
+      "prompt": "EXPLICIT ROOT AUTHORIZATION: read out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/NATIVE_AUTHORIZATION_Q_DEV_V1.json. Execute ONLY its exact effective_request in a NEW private development workspace using the reviewed F v2 FROZEN SNAPSHOT controller/data/IO refs. Root reviewed the narrow duplicate-path fix+34 SDK-free regressions and rechecked all source/metadata/query refs. Do not reuse old request inputs/controller/workspace. Old W v1 stays held. Construct typed refs and tuple audit lists from effective_request.\nW: first3candidate compile/root audit then13expected positives. Q: ONE complete actual CSE positive. Retain actual import/compile/process/runtime/pre/post/object/query/type/std3 evidence and revalidate same live result. NO negatives, epoch/witness, replay/qualification, public gate activation, installed/archive SDK or old guards. First mismatch/signal/timeout/unknown diagnostic/unexpected positive failure STOPS context, preserves first raw output; no unchanged retry, refreshed expectations or policy widening. Ordinary source corrections need NEW explicit cut/context.\nThis is DEVELOPMENT permission, not correctness/qualification approval. Start authorized batch now. Use one batch, report only success/blocker, no model changes/new agents/publication. Continue separate source work if runtime held; keep ACTIVE state current.",
+      "phase": "accepted",
+      "turn_id": "01a17997-c566-7eb0-a3b8-9bc69093ad09",
+      "delivery": "started"
+    }
+  ],
+  "first_read_failure": "thread/read includeTurns=true exceeded fixed16MiB transport guard; no mutation attempted. Resume with metadata-only reads and explicit observed active turn."
+}

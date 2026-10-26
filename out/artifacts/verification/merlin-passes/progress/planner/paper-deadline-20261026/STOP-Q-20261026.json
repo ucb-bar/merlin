@@ -1,0 +1,9 @@
+{
+  "thread": "01a16018-1974-7b53-ade5-e42d3d020739",
+  "expectedTurnId": "01a17a40-585c-7b80-a4d5-4d5f62fc1454",
+  "status": "DELIVERED",
+  "prompt": "NEW USER INSTRUCTION at5% allowance: STOP implementation now at safe checkpoint. Do not resume from previous prompts. Write portable HANDOFF.md with fixed sources/patch, completed vs UNCOMPILED/UNQUALIFIED, current task and exact next steps, zero/live-job state. Add discoverable account-handoffs-20261026/Q.md under planner/paper-deadline-20261026. Root publishes everything completed. Then end your turn stopped; no new source investigation or native actions.",
+  "result": {
+    "turnId": "01a17a40-585c-7b80-a4d5-4d5f62fc1454"
+  }
+}

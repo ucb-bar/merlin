@@ -1,0 +1,7 @@
+{
+  "threshold_remaining_percent": 5,
+  "triggered": true,
+  "source": "user explicit5% message2026-10-26",
+  "action": "all five instructed stop; portable handoffs indexed at root VERIFICATION_HANDOFF.md",
+  "auto_resume": false
+}

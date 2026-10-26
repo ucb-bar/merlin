@@ -1,0 +1,36 @@
+{
+  "created_utc": "2026-10-26T18:51:59.352894+00:00",
+  "user_instruction": "limit token usage; five agents at once chewing through usage",
+  "policy": "Stop both extra workers at safe checkpoints; original3 critical implementers continue, no model changes. No new worker creation or expansion.",
+  "workers": [
+    {
+      "role": "independent reviewer",
+      "thread_id": "01a17973-5716-7a02-bab9-138a67ca2750",
+      "prior_status": {
+        "type": "active",
+        "activeFlags": []
+      },
+      "prompt": "NEW USER DIRECTION: reduce token usage; five concurrent workers are consuming too much. STOP this extra review/reproduction stream now. Do only the minimum safe checkpoint: preserve all current files/raw evidence, note completed work and next step in your owned ACTIVE/handoff, then end your turn. No new tests, findings batches, parser/context changes or further research. Do not wait on native contexts or keep working through the earlier long batch. Earlier keep-working instructions are superseded for YOU by this cost-control stop. Do not spawn agents or change models. Root will resume this stream later only when needed. Send root a concise checkpoint path/status; no lengthy re-review.",
+      "phase": "stop_accepted",
+      "turn_id": "01a17977-5b87-77f1-b5a6-0d12560d87e5",
+      "response": {
+        "turnId": "01a17977-5b87-77f1-b5a6-0d12560d87e5"
+      }
+    },
+    {
+      "role": "independent reproduction",
+      "thread_id": "01a17973-63bc-75c0-bb3d-969450f68052",
+      "prior_status": {
+        "type": "active",
+        "activeFlags": []
+      },
+      "prompt": "NEW USER DIRECTION: reduce token usage; five concurrent workers are consuming too much. STOP this extra review/reproduction stream now. Do only the minimum safe checkpoint: preserve all current files/raw evidence, note completed work and next step in your owned ACTIVE/handoff, then end your turn. No new tests, findings batches, parser/context changes or further research. Do not wait on native contexts or keep working through the earlier long batch. Earlier keep-working instructions are superseded for YOU by this cost-control stop. Do not spawn agents or change models. Root will resume this stream later only when needed. Send root a concise checkpoint path/status; no lengthy re-review.",
+      "phase": "stop_accepted",
+      "turn_id": "01a17977-5b89-7bc0-ac80-3af161c2e0cb",
+      "response": {
+        "turnId": "01a17977-5b89-7bc0-ac80-3af161c2e0cb"
+      }
+    }
+  ],
+  "phase": "delivered"
+}

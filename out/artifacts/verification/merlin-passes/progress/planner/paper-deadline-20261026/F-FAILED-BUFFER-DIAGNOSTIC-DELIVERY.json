@@ -1,0 +1,14 @@
+{
+  "phase": "accepted",
+  "created_utc": "2026-10-26T20:37:06.820154+00:00",
+  "thread_id": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "expected_turn_id": "01a179d6-fecc-7413-85e8-2ae527d4d9c4",
+  "prompt": "Coordinator reviewed exact diagnostic delta/runner/source metadata. NEW bounded permission is NATIVE_AUTHORIZATION_F_FAILED_BUFFER_DIAGNOSTIC_V1.json under current paper-deadline planner. Proposal NEXT-EXPERIMENT.json SHA2565de6bf971968058d3f2fce2520fcc947b3f650e83edbd36e72dccc04b2ceba4e;10source/metadata refs match, proposed workspace/output absent at review. F ONLY may execute EXACT fixed run_next_experiment.py ONCE with that reviewed proposal digest, at most4 native commands, exact unchanged original private runtime refs and2project sources. This is investigative evidence collection, no graph acceptance/qualification/repair/IR extension; all previous holds and other4 native prohibitions remain. Preserve source cut now; do not update any authorized bytes. First preparation/binding/runtime/compiler/observer failure stops ENTIRE experiment; no retry even before launch. If mismatch occurs retain original failed-read buffer/error and analyze copies only; if no mismatch report fixed workload completed, cause still UNKNOWN, holds still active. Root already checked source/metadata hashes; do not run a separate runtime-read preflight beyond fixed guarded runner. Journal launch intent and owned session, then execute now. After terminal result continue source/data-only original IR provenance/remedy proposal without waiting idle; no second experiment or expanded images without separate concrete review. Keep messages concise. User wants F sole runtime investigator and other4 graph workers progressing.",
+  "before_status": {
+    "type": "active",
+    "activeFlags": []
+  },
+  "result": {
+    "turnId": "01a179d6-fecc-7413-85e8-2ae527d4d9c4"
+  }
+}

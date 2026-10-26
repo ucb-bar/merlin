@@ -1,0 +1,182 @@
+{
+  "schema": "merlin.q_stop_source_inventory.v1",
+  "status": "PAUSED BY NEW USER STOP",
+  "observed_branch": "feat/pass-verification",
+  "observed_head": "1483336b07fcc9732b017a1ba2ce93c870e64c05",
+  "proposal_base": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "files": [
+    {
+      "path": "sources/src/merlin/common/bundle_snapshot.py",
+      "sha256": "75ccb58526671f2ee474ce6f3290db2ea0709069d65926be927da9635cb9cc39",
+      "bytes": 34386
+    },
+    {
+      "path": "sources/src/merlin/common/cpu_pool.py",
+      "sha256": "980011c6f2a154c1830c2ed7b9ca53509c658cef957ddcf4f4a0ffaa8bf09138",
+      "bytes": 39630
+    },
+    {
+      "path": "sources/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "bytes": 4227
+    },
+    {
+      "path": "sources/src/merlin/common/invocation_record.py",
+      "sha256": "e0cc8a707e38920baf362a57d4eea1bd0b2f4c47e7283f9d55cf4a9c1c8ba8bb",
+      "bytes": 13107
+    },
+    {
+      "path": "sources/src/merlin/common/path_relations.py",
+      "sha256": "8e15c5f6b71785414fca77f9ce2ea84fe71dde328abda9d103faf94156b99f87",
+      "bytes": 2539
+    },
+    {
+      "path": "sources/src/merlin/common/read_lease_digest.py",
+      "sha256": "0adb034a66058287259108de8717323eb38c9a83a3e6f810c93b0872d5c0cf4c",
+      "bytes": 18925
+    },
+    {
+      "path": "sources/src/merlin/compile/scheduling/export.py",
+      "sha256": "0652a77b3da5d2b8e3ec1e5cf6b5cfc1f504169c4f3170dcd46d4328d5fda3cc",
+      "bytes": 12547
+    },
+    {
+      "path": "sources/src/merlin/compile/scheduling/library_sources.py",
+      "sha256": "1e6108dc34a998e54ecad85b519cda474f1a673ba884845276e0e8ba10dbd404",
+      "bytes": 7056
+    },
+    {
+      "path": "sources/src/merlin/llvmlower/device_ir_scalability.py",
+      "sha256": "8f54758a7e90a9bc31c600b17b3a0227ba1bc1cf1d9cfaa8465584b9e6fc82f5",
+      "bytes": 12313
+    },
+    {
+      "path": "sources/src/merlin/perf/pass_observation.py",
+      "sha256": "3a58c25461a41e466e30b46a79cb377f8d9387d94a7e7ab948ca82cbf345249c",
+      "bytes": 5307
+    },
+    {
+      "path": "sources/src/merlin/targetgen/public_codegen_budget.py",
+      "sha256": "fef713c3042576d5bdd12aa9a28ca940c8ae0bae66c127529cd60717f58aa8c7",
+      "bytes": 9490
+    },
+    {
+      "path": "sources/src/merlin/targetgen/tool_profile.py",
+      "sha256": "c78f181120e193c3d7a87e2d5456c14cf0c468bef9c8216a7284717dd6fb2996",
+      "bytes": 35005
+    },
+    {
+      "path": "sources/src/merlin/targetgen/tool_profile_shared.py",
+      "sha256": "c2f97ac5d624376c77f619e482c6c05c4882597fd026fdb040a8c436be546b9a",
+      "bytes": 31607
+    },
+    {
+      "path": "sources/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "bytes": 1017
+    },
+    {
+      "path": "sources/src/merlin/transforms/analyses.py",
+      "sha256": "f644bb56349d680a3228b75308f2ebf51f7491baa628e704e1617f472ad8e754",
+      "bytes": 1372
+    },
+    {
+      "path": "sources/src/merlin/transforms/analysis_liveness.py",
+      "sha256": "ee3e4b9ed35d5f888f1706eb2d540016e28eacfc8454c96d769ee76b4b7b4b5f",
+      "bytes": 7014
+    },
+    {
+      "path": "sources/src/merlin/transforms/analysis_memory.py",
+      "sha256": "042cb7a7e72db59c574a6ecb1bfe9bc0c70de88898553f5a129d469071e38fbd",
+      "bytes": 6597
+    },
+    {
+      "path": "sources/src/merlin/transforms/analysis_types.py",
+      "sha256": "63eb8ab800b446c3f50b61dd54f228db5d3c9a66457939eb16a678ff78a68b0c",
+      "bytes": 3166
+    },
+    {
+      "path": "sources/src/merlin/transforms/certificates.py",
+      "sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+      "bytes": 9448
+    },
+    {
+      "path": "sources/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "bytes": 4572
+    },
+    {
+      "path": "sources/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "bytes": 4097
+    },
+    {
+      "path": "sources/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "bytes": 12317
+    },
+    {
+      "path": "sources/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381
+    },
+    {
+      "path": "sources/src/merlin/transforms/pure_scalar.py",
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "bytes": 6617
+    },
+    {
+      "path": "sources/src/merlin/transforms/scalar_witness.py",
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "bytes": 2083
+    },
+    {
+      "path": "sources/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145
+    },
+    {
+      "path": "sources/src/merlin/verify/lean_contract.py",
+      "sha256": "fcb0b8a2812d41d20fa95724c8a54b50dd5763260f63f672bfeb17a8de346ab8",
+      "bytes": 9284
+    },
+    {
+      "path": "sources/src/merlin/verify/lean_export.py",
+      "sha256": "73a0764df9f026c3b9e1b2643f5562119b585ffa7ea7b7d364feeb6db1c9c1e3",
+      "bytes": 9605
+    },
+    {
+      "path": "sources/src/merlin/verify/lean_sat_runtime.py",
+      "sha256": "26a2104f7baef33ac46720c7f14c13bd1ff4163b5c5f4f385b1343ea7575f6ac",
+      "bytes": 5966
+    },
+    {
+      "path": "prepare_prerequisites.py",
+      "sha256": "0771b58805d8379efa144b9a52bf7db974ce7012fdba15cec901e0ba7e12d2e7",
+      "bytes": 6889
+    },
+    {
+      "path": "01-missing-prerequisites.patch",
+      "sha256": "ee9973a06de699127c550a5a67c6c2e9d1e587bed649b179a58a600740cef7aa",
+      "bytes": 328174
+    },
+    {
+      "path": "02-additive-timing-api.patch",
+      "sha256": "aac3d4fbc4d3059438b11acb89956b49a69e4aba857cb538591f96f2307a6ce1",
+      "bytes": 3335
+    },
+    {
+      "path": "PREREQUISITES.patch",
+      "sha256": "8d41d7e6e00bdde6324843eccf102f08f68653712bdb81158f6be7bced130814",
+      "bytes": 331509
+    },
+    {
+      "path": "APPLICABILITY.json",
+      "sha256": "d27b2049bcc6be270368694aecd1dec31a9cfaa9d9eccc386f0420fca7f059ed",
+      "bytes": 47276
+    }
+  ],
+  "qualification": "UNQUALIFIED",
+  "runtime_actions": false,
+  "live_owned_jobs": []
+}

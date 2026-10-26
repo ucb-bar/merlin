@@ -1,0 +1,30 @@
+{
+  "phase": "accepted",
+  "created_utc": "2026-10-26T19:34:20.617582+00:00",
+  "workers": [
+    {
+      "name": "Q",
+      "id": "01a16018-1974-7b53-ade5-e42d3d020739",
+      "auth": "NATIVE_AUTHORIZATION_Q_DEV_V3.json",
+      "prior_status": {
+        "type": "idle"
+      },
+      "prompt": "RESUME YOUR EXISTING GRAPH BATCH NOW. Root EXPLICITLY authorizes out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/NATIVE_AUTHORIZATION_Q_DEV_V3.json ONLY. Read exact effective_request; use frozen Fv5 controller3 + reviewed-runtime-intent-v2 descriptor and NEW workspace. Root read header/finite-policy deltas and49 SDK-free regressions, rechecked all exact refs. Finite observed-helper policy is explicit899 on exit0/718 on nonzero; no wildcard/automatic learning/new runtime bits. Original SDK incident and ALL prior failed Q/W profiles stay held.\nExecute listed positives: Q ONE actual complete CSE query; W first3-candidate root audit then13expected positive queries. Preserve actual object imports/private compilation/query/object/std3/type/raw process/runtime/pre-post and same live revalidation. First unknown/mismatch/signal/timeout/unexpected positive failure STOPS context, no unchanged retry or refreshed expectations. No negative/witness/epoch/replay/qualification/public gate activation yet. SDK reads only exact private original selection through authorized Context; never installed/archive SDK or old guards. No new agents/model changes/publication.\nAfter a result, continue your substantial OWNED integration/final-memory source assignment from gate.md/after-binding.md; do not stop after a generic packaging acknowledgement. Q frozen-provider selector for future activation must use exact new source identities, not oldv3 class mixing. Report only complete batch or real blocker, retain first failures and flags false. Start the authorized case now.",
+      "phase": "accepted",
+      "turn_id": "01a179b4-e4cb-70d1-98b2-049c8cb920d7",
+      "turn_status": "inProgress"
+    },
+    {
+      "name": "W",
+      "id": "01a141ba-7640-7d21-bb41-b65635302b71",
+      "auth": "NATIVE_AUTHORIZATION_W_DEV_V3.json",
+      "prior_status": {
+        "type": "idle"
+      },
+      "prompt": "RESUME YOUR EXISTING GRAPH BATCH NOW. Root EXPLICITLY authorizes out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/NATIVE_AUTHORIZATION_W_DEV_V3.json ONLY. Read exact effective_request; use frozen Fv5 controller3 + reviewed-runtime-intent-v2 descriptor and NEW workspace. Root read header/finite-policy deltas and49 SDK-free regressions, rechecked all exact refs. Finite observed-helper policy is explicit899 on exit0/718 on nonzero; no wildcard/automatic learning/new runtime bits. Original SDK incident and ALL prior failed Q/W profiles stay held.\nExecute listed positives: Q ONE actual complete CSE query; W first3-candidate root audit then13expected positive queries. Preserve actual object imports/private compilation/query/object/std3/type/raw process/runtime/pre-post and same live revalidation. First unknown/mismatch/signal/timeout/unexpected positive failure STOPS context, no unchanged retry or refreshed expectations. No negative/witness/epoch/replay/qualification/public gate activation yet. SDK reads only exact private original selection through authorized Context; never installed/archive SDK or old guards. No new agents/model changes/publication.\nAfter a result, continue your substantial OWNED integration/final-memory source assignment from gate.md/after-binding.md; do not stop after a generic packaging acknowledgement. Q frozen-provider selector for future activation must use exact new source identities, not oldv3 class mixing. Report only complete batch or real blocker, retain first failures and flags false. Start the authorized case now.",
+      "phase": "accepted",
+      "turn_id": "01a179b4-e4ce-7aa3-89a7-24464fbe7fa0",
+      "turn_status": "inProgress"
+    }
+  ]
+}

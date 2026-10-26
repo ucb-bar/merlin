@@ -1,0 +1,13 @@
+{
+  "phase": "accepted",
+  "created_utc": "2026-10-26T21:00:55.676779+00:00",
+  "thread_id": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "prompt": "Continue concrete fresh-SDK recovery implementation now. Preserve fresh-sdk-metadata-v1 identity/plan/source bytes. NEW fresh-sdk-intake-candidate-v1/ only: implement bounded stdlib HTTPS fetch and DATA-only ZIP intake from exact INTAKE-PLAN.json (official925899528bytes/c8531f... pinned URL/hosts/redirect3/timeouts/1attempt, finite member/per-file/total/disk caps). No actual archive request/download/extraction/install/native allowed yet. Exact parent archive SHA/size must match BEFORE ZIP member processing. Exclusive new dirs/files; refuse path escapes, duplicate/prefix collisions, encrypted/unsupported/nonregular/link entries and cap/CRC/size errors. Keep partial bytes and first error; no retry/resume/unlink-to-retry. Link layout remains unknown; do not silently relax rejection to get success. Produce complete per-member manifest linked to official archive, new-environment pins explicitly distinct from old pins. Never read old SDK/runtime/images or update old expectations.\nTest source implementation using tiny synthetic ZIPs and injected fake HTTP transport only (redirect/host/TLS scheme/deadline/length/digest/short/oversize/error; archive/member/type/path/size/collision/CRC; first-failure preservation/one-shot journal). No external binaries, archived execution, project compiler, native probe or broad rerun. Then freeze exact fetch/extract runner/request/source closure and proposed exclusive roots for root review. Also prepare NEW provider/context intake schema for authenticated archive member refs + separately reviewed host loader closure, source/data only; no selecting/guarding/executing actual images. Maintain IR-transport fallback fixed cut independently for reviewer, no real original2144reads yet. Goal a concrete reviewable download/intake action next, not another metadata-only report. Advance full ordered batch; no models/newagents/numerics/protected/locks edits. Root alone commits/publishes/reviews launch. Update ACTIVE through compaction and report concise milestone. ALL old failures UNKNOWN/held, prior diagnostic authority consumed.",
+  "before_status": {
+    "type": "active",
+    "activeFlags": []
+  },
+  "result": {
+    "turnId": "01a17a03-2fb1-78b0-9c97-6e579415995c"
+  }
+}

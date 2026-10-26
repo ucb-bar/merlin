@@ -1,0 +1,14 @@
+{
+  "status": "ALL_NATIVE_PERMISSIONS_SUSPENDED",
+  "created_utc": "2026-10-26T20:01:42.502785+00:00",
+  "cause": "UNKNOWN",
+  "first_failure": "out/build/graph-paper-deadline/q-gate-minimal-context-v2/FIRST-INFRASTRUCTURE-STOP.json",
+  "expected_sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4",
+  "observed_sha256": "c8929745008ba01f3a7d143b303195409dc718ca0e3cd755d7a701a66cd9711a",
+  "bytes": 231113560,
+  "metadata_stat_comparison": "before/after/live equal",
+  "scope": "ALL consumers of selected installed/private/archive runtime; no rehash/read/retry/repair/pin refresh/native preflight or invocation. Existing owned process cleanup/raw retention only. Source/data work continues.",
+  "all_prior_native_authorizations": "suspended regardless original per-case permission",
+  "semantic_refusal": false,
+  "qualification": false
+}

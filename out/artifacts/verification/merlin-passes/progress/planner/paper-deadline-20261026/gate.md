@@ -1,5 +1,35 @@
 # Q / GraphState — fix compiler proof authority and enforce a real boundary
 
+## Latest user continuation: run the next concrete gate milestone
+
+Jeremy explicitly said to keep the quant-ext worker busy. Resume this GRAPH
+gate assignment, not numerical quant-ext proofs. Root has reviewed the corrected
+closed-header/actual-object-report controller and authorized ONE NEW actual CSE
+positive in `NATIVE_AUTHORIZATION_Q_DEV_V2.json`. Use its exact effective_request,
+frozen v3 controller3 and fresh q-gate-context-v4 workspace. Prior profiles stay
+held. Run that batch now; report only its result or actual blocker.
+
+After its first success, inspect/retain full final theorem type, exact-root audit
+and live revalidation, then prepare the concrete public-gate integration patch
+and source/test packet: one selected trusted provider, complete actual boundary,
+no saved-JSON/local-identity authority, actual plan_only=False host path, stale/
+missing/wrong-program evidence refusal. Handle frozen-provider class/module
+identity explicitly; never replace type checks with arbitrary callback trust.
+You may implement SDK-free integration/tests while root reviews the first native
+result. Public native gate activation and wider native rosters still need their
+separate concrete source/context review; the one-positive permission does not
+grant them. Coordinate prerequisite inventory with the separate scratch worker
+through root; do not duplicate its dependency/merge rehearsal.
+
+If an unknown infrastructure diagnostic occurs, preserve first raw evidence and
+hold that context. Continue meaningful owned integration/source work or provide
+one precise next prerequisite; do not silently retry or stop merely after a
+packaging summary. No broad features/test expansion, new agents, model changes,
+numerics or worker staging/publication. Continue this full batch after compaction
+until complete or a NEW user stop.
+
+## Original acceptance criteria
+
 Read the current deadline README first. This is your NEW active assignment;
 the old scheduling expansion is checkpointed, not abandoned or overwritten.
 

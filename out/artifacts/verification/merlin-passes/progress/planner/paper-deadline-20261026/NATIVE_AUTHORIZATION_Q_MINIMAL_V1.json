@@ -1,0 +1,170 @@
+{
+  "status": "AUTHORIZED_ONE_NEW_PRIVATE_MINIMAL_CSE_DEVELOPMENT_CASE",
+  "created_utc": "2026-10-26T19:52:33.944941+00:00",
+  "request": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-pipeline-gate/development/minimal-roster-request-v1/REQUEST.json",
+    "bytes": 8752,
+    "sha256": "fac878c89479a9c32c17d43224f9ba035d78501fbbef5c54267bb615950a405e"
+  },
+  "effective_request": {
+    "review": {
+      "metadata": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/runtime-snapshot-review/METADATA-REVIEW-v2.json",
+        "bytes": 3017778,
+        "sha256": "8c4a1566fac6ecba764c91e8179b5732d7ccda1a5e9a6f58559d7a130770cd82"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/original-runtime-candidate-v1/RESULT.json",
+        "bytes": 3531848,
+        "sha256": "849060513fb300270eb75fd79518cc187325b4f8472105b34570faeaaf85a7ce"
+      },
+      "probe": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/REVIEWED-RUNTIME-INTENT-v2.json",
+        "bytes": 214970,
+        "sha256": "ccb70d1da9990d786dd59328686a389f4cd891c1a8aa24cf78625e3924a8e2f8"
+      },
+      "trace": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/original-runtime-candidate-v1/basic-kernel-probe-v1/trace_parser.py",
+        "bytes": 9118,
+        "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba"
+      }
+    },
+    "controller_sources": [
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context.py",
+        "bytes": 24711,
+        "sha256": "bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context_data.py",
+        "bytes": 15692,
+        "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context_io.py",
+        "bytes": 4512,
+        "sha256": "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09"
+      }
+    ],
+    "project_sources": {
+      "Merlin.GraphStateGateEntries": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+        "sha256": "60d8240faa1f7cfe5b2fb0e8288e8433a692697831ec5459b05571bca5000b99",
+        "bytes": 3400
+      },
+      "Merlin.GraphStateScalar": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+        "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+        "bytes": 4654
+      },
+      "Merlin.GraphStateScalarContract": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+        "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+        "bytes": 8229
+      },
+      "Merlin.GraphStateScalarInitialized": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+        "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+        "bytes": 11782
+      },
+      "Merlin.GraphStateScalarNormalize": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+        "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+        "bytes": 6170
+      },
+      "Merlin.GraphStateScalarSound": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+        "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+        "bytes": 9963
+      },
+      "Merlin.GraphStateScalarTyping": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+        "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+        "bytes": 6614
+      }
+    },
+    "compile_audit_roots": {
+      "Merlin.GraphStateScalar": [
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Scalar.check_typed",
+        "Merlin.GraphState.Scalar.check_composes",
+        "Merlin.GraphState.Scalar.check_initialized",
+        "Merlin.GraphState.Scalar.check_operands_initialized"
+      ],
+      "Merlin.GraphStateScalarInitialized": [
+        "Merlin.GraphState.Scalar.typed_execution_shaped",
+        "Merlin.GraphState.Scalar.HasReads.initialized",
+        "Merlin.GraphState.Scalar.typed_operands_initialized"
+      ],
+      "Merlin.GraphStateScalarSound": [
+        "Merlin.GraphState.Scalar.normalize_sound",
+        "Merlin.GraphState.Scalar.loopEval_congr"
+      ],
+      "Merlin.GraphStateScalarTyping": [
+        "Merlin.GraphState.Scalar.checkTypes_sound"
+      ]
+    },
+    "workspace": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/q-gate-minimal-context-v1",
+    "roster": [
+      {
+        "case": "actual_cse_complete_minimal_roster_i8",
+        "module": "GraphPipelineGateQuery_b575867c6b3acdfb329439bcd67860fa9920e42eaf0b03bcbcf91fb24a499839_1",
+        "query": {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-pipeline-gate/development/minimal-roster-request-v1/Query.lean",
+          "sha256": "5791c715ba1ad0e583c60e090dc311a7ef956a6aad1fa87e69ce34251ff5b55e",
+          "bytes": 4432
+        },
+        "final_root": "merlin_transform",
+        "support_roots": [
+          "Merlin.GraphState.Scalar.check_sound",
+          "Merlin.GraphState.Scalar.check_typed",
+          "Merlin.GraphState.Scalar.normalize_sound",
+          "Merlin.GraphStateScalarInstance.F1.accepted",
+          "Merlin.GraphStateScalarInstance.F1.actual",
+          "Merlin.GraphStateScalarInstance.F1.typed",
+          "Merlin.GraphStateScalarInstance.F1.initialized",
+          "Merlin.GraphStateScalarInstance.F1.operands_initialized",
+          "Merlin.GraphStateScalarInstance.F2.accepted",
+          "Merlin.GraphStateScalarInstance.F2.actual",
+          "Merlin.GraphStateScalarInstance.F2.typed",
+          "Merlin.GraphStateScalarInstance.F2.initialized",
+          "Merlin.GraphStateScalarInstance.F2.operands_initialized",
+          "Merlin.GraphState.GateEntries.entries_cons",
+          "Merlin.GraphState.GateEntries.entries_nil",
+          "Merlin.GraphPipelineGateInstance.complete"
+        ],
+        "prepared": {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-pipeline-gate/development/minimal-roster-request-v1/PREPARED.json",
+          "sha256": "83897f54ab40f8bb37bfd0848b52c2e77ae9f0fdfe429fb04a61b17eb41a5ebf",
+          "bytes": 35913
+        },
+        "prepared_identity": "b575867c6b3acdfb329439bcd67860fa9920e42eaf0b03bcbcf91fb24a499839",
+        "change": {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-pipeline-gate/development/minimal-roster-request-v1/CHANGE.json",
+          "sha256": "b0bcba2409fa1142e2b50c1923762473669ec6632b51d9e79fda8a3d5c123ab7",
+          "bytes": 2358
+        },
+        "before": {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-pipeline-gate/development/minimal-roster-request-v1/before.mlir",
+          "sha256": "0d53dc10d1e7c6358c74a054d08128c80f326498a905dbd2637e2c919ee9176f",
+          "bytes": 763
+        },
+        "after": {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-pipeline-gate/development/minimal-roster-request-v1/after.mlir",
+          "sha256": "e1cdfe08c1cb305fea3943d9c91428324441d59d8eb207cd3cd517dd172a53f1",
+          "bytes": 674
+        }
+      }
+    ]
+  },
+  "review": "Root read entire additive67-line GateEntries module: same frozen Scalar.Program/Model/evalProgram, complete roster/arity/error-world relation. Frozen body semantics unchanged; no equivalence to old namespace asserted. Controller v5 already source-reviewed;21refs verified data-only.",
+  "permitted": "ONE exact positive in fresh requested workspace; private object-deps/build, exact root/type/std3 audits and same live revalidation",
+  "failure_policy": "First unknown/mismatch/signal/timeout/unexpected positive failure stops this context with raw evidence; no unchanged retry, pin refresh or frozen Repr edits.",
+  "excluded": [
+    "Old failed profiles",
+    "Public gate activation, negatives/witness/replay/qualification",
+    "Installed/archive SDK reads or selection changes"
+  ],
+  "qualification": false,
+  "old_incident_repaired": false
+}

@@ -1,0 +1,57 @@
+{
+  "schema": "merlin.fresh-sdk-data-intake-review.v1",
+  "status": "AUTHORIZED_ONE_FRESH_OFFICIAL_SDK_DATA_INTAKE_F_ONLY",
+  "action": "ONE_FRESH_OFFICIAL_SDK_DATA_INTAKE",
+  "attempts": 1,
+  "attempt_journal": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/REAL-INTAKE-ATTEMPT.json",
+  "source_refs": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/run_intake.py",
+      "bytes": 3589,
+      "sha256": "2499405ac8eaf3b0fbd69793947637cfd7cfb734e6c947e69ffb6a6e7a636670"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/intake.py",
+      "bytes": 2975,
+      "sha256": "d538fa398b113c1802c17e072d79016e5e0514f2e1522d16668e2eac6141504f"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/fdio.py",
+      "bytes": 2918,
+      "sha256": "f2e62c5e0ac8c4156db4a5a3a9b01366a82cc8e7e755e9d08af2f3b609ac3905"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/policy.py",
+      "bytes": 4550,
+      "sha256": "efea82f860bee8fde5e6d228fc9df892248d4c05fd2152c0779cbc7a23423c1a"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/http_fetch.py",
+      "bytes": 4561,
+      "sha256": "20678771d5bf71ac20f4013b838ea778e86421e9c7ed53b21d3c903723b93aa8"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/zip_intake.py",
+      "bytes": 10746,
+      "sha256": "6ca539f64f06f19250b5ca7d3ff044c16f22f53c18e35dd1b8d7dfc884146f4c"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/outer_deadline.py",
+      "bytes": 2422,
+      "sha256": "aaef05f9892dbe638c1142aa57c70215ebb400ca935e76cca54766d9c82f4d74"
+    }
+  ],
+  "plan": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/INTAKE-PLAN.json",
+    "bytes": 3068,
+    "sha256": "4b37789e294d4eed486461f0b4f03b06042c67e3282837bd8a0bc5b9fd32cf64"
+  },
+  "request": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/deadline-candidate-v2/REQUEST.json",
+    "bytes": 2759,
+    "sha256": "3d9abc6a31bc99f9248ded9a5e727f44f793bc210cadb031f318c29e516f4e11"
+  },
+  "native_authorized": false,
+  "install_authorized": false,
+  "old_holds_cleared": false
+}

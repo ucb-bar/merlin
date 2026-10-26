@@ -1,3 +1,5 @@
+> **2026-10-26 USER STOP at5% allowance.** All five workers are paused after portable handoffs. Start with repository-root `VERIFICATION_HANDOFF.md`; historical keep-working prompts do not authorize resume. New graph candidates remain UNCOMPILED/UNQUALIFIED.
+
 **CURRENT USER RESUME — 3.5-DAY PAPER DEADLINE.**
 The user resumed all three workers to fix Graham's gate/capture findings and
 finish the strongest existing graph results. Read
