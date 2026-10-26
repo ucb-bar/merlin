@@ -269,7 +269,7 @@ def run(args):
     manifest = json.loads(args.candidates.read_bytes())
     selected = select_candidates(manifest, args.candidate_id)
     verify_snapshot(argparse.Namespace(**vars(args), snapshot=None), manifest)
-    provider = load_execution_provider(args.target, args.provider)
+    provider = load_execution_provider(args.target, args.provider, candidate_writable_roots=())
     extension = pinned_extension(args.target, args.extension, provider.runner_options())
     selection = dict(
         target=args.target,

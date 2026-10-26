@@ -411,7 +411,7 @@ def execution_identity(args, suite):
     from .fusion_execution import pinned_extension
 
     with selected_facts(args.target, args.facts):
-        provider = load_execution_provider(args.target, args.provider.resolve())
+        provider = load_execution_provider(args.target, args.provider.resolve(), candidate_writable_roots=())
         pinned_extension(args.target, args.extension.resolve(), provider.runner_options())
     code = [
         "merlin_experiments.phase0.fusion_validation",

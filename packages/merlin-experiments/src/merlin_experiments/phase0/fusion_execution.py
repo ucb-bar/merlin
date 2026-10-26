@@ -984,7 +984,7 @@ def execute_case(payload, candidate, selection, directory):
     try:
         package = Path(selection["package"])
         with selected_facts(target, Path(selection["facts"])) as raw_facts:
-            provider = load_execution_provider(target, Path(selection["provider"]))
+            provider = load_execution_provider(target, Path(selection["provider"]), candidate_writable_roots=())
             policy = _selected_policy(load_software_spec(Path(selection["spec"]), target=target), candidate)
             options = readout_options(selection, policy, raw_facts, candidate)
             proof = provider.admit_numeric_schedule(
@@ -1117,7 +1117,9 @@ def verify_pass(payload, candidate, selection, directory):
     if observed != dict(bytes=wanted, shapes=[r["shape"] for r in payload["references"]]):
         raise ValueError("fusion numeric evidence differs from the frozen exact reference")
     with selected_facts(selection["target"], Path(selection["facts"])) as raw:
-        provider = load_execution_provider(selection["target"], Path(selection["provider"]))
+        provider = load_execution_provider(
+            selection["target"], Path(selection["provider"]), candidate_writable_roots=()
+        )
         spec = load_software_spec(Path(selection["spec"]), target=selection["target"])
         policy = _selected_policy(spec, candidate)
         proof = provider.admit_numeric_schedule(
