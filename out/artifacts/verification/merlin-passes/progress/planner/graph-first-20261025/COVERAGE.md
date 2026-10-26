@@ -8,14 +8,14 @@ is inferred. Evidence counts are recorded earlier qualifications, not new runs.
 
 | Registered kind | Existing evidence and actual domain | Remaining paper obligation |
 | --- | --- | --- |
-| shape_view_normalization | NEW qualified standalone whole-module descriptor/SSA/heap-world result:78 originals plus one78-test replay,35/41 std3 roots,22 source files. Actual identical casts/static dimensions, calls and surrounding context are bound by a trusted full-tree matcher. | Runtime descriptor/primitive fidelity and independent mapping review remain explicit. Rich typed/full-heap→old epoch/public semantic adapter is unproved; exact shape→reuse→segment join is refused. No ordinary compiler gating. |
-| exact_integer_simplification | Existing fixed-width add/sub/mul identities; NEW whole-context development derives canonical runtime values from entries and local result contracts, and checks an actual all-five-changed six-buffer integer→CSE/DCE→LICM→unroll→segment chain. | Current worker owns width/region/adversarial/witness coverage, receipts and frozen qualification. The new chain is UNQUALIFIED. Poison/native fidelity and the bridge to separately identified MerlinVerify semantics are not implicit. |
+| shape_view_normalization | Qualified standalone whole-module descriptor/SSA/heap-world result:78 originals plus one78-test replay,35/41 std3 roots,22 source files. Actual identical casts/static dimensions, calls and surrounding context are bound by a trusted full-tree matcher. | Runtime descriptor/primitive fidelity and independent mapping review remain explicit. A NEW actual shape→reuse→segment semantic adapter is kernel-checked DEVELOPMENT (201 std3 roots), not yet checker-qualified; historical standalone join refusal remains. No ordinary compiler gating. |
+| exact_integer_simplification | NEW sealed whole-context v2 derives canonical runtime values from entries and local result contracts, and checks actual all-five-changed six-buffer integer→CSE/DCE→LICM→unroll→segment chains.75 tests,17 originals(14 changed/3 identity),one fresh batch17;20 sources,2250 retained files matched by coordinator. | Canonical initialized/no-poison representation, local successful result typing, primitive/effect/native fidelity, trusted projection, independent review and broker integration remain explicit. V1's host-classification diagnostic remains UNQUALIFIED. No implicit bridge to separately identified MerlinVerify semantics. |
 | scalar_redundancy_elimination | Qualified Scalar.check_sound/normalize_sound: complete typed SSA, total pure nodes and retained partial opaque steps, full returned/world/error observation. | Review primitive/projection/control contracts, supported variants and actual host admission; retain model/native limits. |
 | scalar_loop_invariant_motion | Same qualified scalar framework; positive constant stride, nested/empty finite iteration sequences, scoped captures/carries/yields and total speculation. The sealed scalar/loop pipeline derives index/range/scope correspondence for its narrower static no-tail bulk domain. | Primitive/control fidelity and independent review remain explicit; do not generalize the qualified composed domain to arbitrary SCF. |
 | ordered_loop_segmentation | Qualified complete ordered body/carry/state relation for the checked static signed-control domain;88 tests and one88-test replay. | Raw-IR/Python/body interpretation and review remain explicit. The sealed memory-SCF packet covers its admitted actual nested/multiple initializer boundaries; arbitrary SCF is not covered. |
 | ordered_loop_unrolling | Qualified inline/empty and grouped bulk/tail modes,151 tests and one151-test replay; actual same-SCF unroll→segment composition. The newly sealed pipeline also derives complete scalar/error/world/scoped-SSA correspondence for static no-tail bulk. | Broader unroll variants need their own composed bridge. Native rendering, primitive fidelity and unsupported regions remain outside. |
 | buffer_reuse | Qualified live initialized epoch→slot/public complete outcomes in both directions,214 tests and one214-test replay, total/private/unobservable allocation premise. | Qualified memory-SCF packet derives operational initialization and the actual two-initializer reuse→segment composition (71 tests plus one71-test replay;61/63 std3 roots). Actual8→16-byte resource counterexample limits allocator claims; independent review/gating remain open. |
-| sequential_dependency_schedule | Old broker accepts a narrow single scalar-function route; new qualified StateEffects graph projections prove actual supported effect exchanges/configuration chains under declared complete frames. | Enumerate supported original-IR scheduling routes; generic SSA/topological legality or Python validation alone is insufficient. No general opaque-memory/asynchronous action semantics. |
+| sequential_dependency_schedule | Old broker accepts a narrow single scalar-function route; new qualified StateEffects graph projections prove actual supported effect exchanges/configuration chains under declared complete frames. GraphState now owns the registered reorder's full-context/actual seven-buffer composition batch. | New complete registered-route checker/qualification is pending; generic SSA/topological legality or Python validation alone is insufficient. No general opaque-memory/asynchronous action semantics. |
 
 ## Broader shared graph/scheduling inventory remains in scope accounting
 
@@ -44,9 +44,10 @@ result with the intended paper scope and recorded actual artifact coverage.
 The worked CSE/DCE→LICM example is supported conditional graph evidence now;
 the memory chain now has its own qualified scoped packet and paper example. The
 four-pass scalar chain now has its own qualified scoped packet. Standalone shape
-normalization is also qualified, while its full semantic memory adapter remains
-unproved. The integer prefix and frontend captured-literal extension are active
-development; they are not yet qualified.
+normalization and the integer prefix are also qualified. Shape's new semantic
+memory composition is checked development with integration/qualification still
+pending. Sequential dependency scheduling and frontend captured-literal extension
+are active development; they are not yet qualified.
 All-graph, numerical, native, full-pass/pipeline/model and policy approval flags
 remain false. Publication is source delivery, not semantic approval.
 
@@ -101,4 +102,14 @@ tiles2..16,1..4 carries, region-free original body and signed32/64 controls.
 Poison/value/native fidelity, independent mapping/contract review, selected
 model coverage and ordinary broker integration remain separate. The old literal
 60s witness and elision crash stay unqualified. The new integer-prefix task
-closes a remaining registered graph-pass gap; it does not resume floating numerics.
+closed its scoped registered graph-pass gap in sealed-v2 (75 tests,17 originals
+and one17 replay). Sequential scheduling is the worker's next large graph batch;
+neither task resumes floating numerics.
+
+The coordinator's subsequent static review found a remaining v2 host-status
+limitation: capture also emits structured ValueError refusals on stale source/
+runtime identities, and intake can call these unsupported. No real runtime fault
+was created and no false positive Lean acceptance was demonstrated. Retain the
+measured75-case engineering evidence without claiming universal error-label
+correctness. See integer-v2-host-status-limitation.json; the NEW scheduler adapter
+owns distinct domain/identity/author/runtime errors, without editing sealed95.

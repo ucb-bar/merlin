@@ -24,8 +24,10 @@ wholesale into the verification branch. The three implementation agents own:
   GraphLoopsMemorySCF batch is sealed and now ready for independent review.
 - `GraphRegionsDeclared*` / `lean_graph_regions_declared*`: declaration/call
   correspondence and local fusion agreement.
-- `GraphStatePipeline*` / `lean_graph_state_pipeline*`: scalar CSE/DCE→LICM→
-  unroll→segment in one failure-preserving operational interpretation.
+- `GraphStateSchedule*` / `lean_graph_state_schedule*`: complete sequential
+  dependency scheduling and actual composition with the now-sealed integer/
+  scalar/loop chain, preserving failures and terminal worlds. Prior pipeline
+  and integer sources/evidence are immutable review inputs.
 
 Do not modify those sources or their sealed tests/evidence. Own a separate
 `out/artifacts/verification/graham-graph-review/` tree, independent reviewer
@@ -279,3 +281,28 @@ rule. Offline membership tests precede NEW guarded development. Review this
 selection, actual imports/runtime reporting and explicit host trust separately
 from the mathematics. It does not promote any old failed profile or qualify a
 captured graph; do not rerun held profiles as a review shortcut.
+
+## Exact-integer v2 is ready for review; scheduling is the current task
+
+`graph-state-integer/review/sealed-v2` now supplies20 new sources,106 dependency
+snapshots,75 tests,17 original receipts(14 changed/3 identity) and one fresh replay
+batch17. The coordinator matched all2250 retained files and20 source pairs.
+Its `complete` theorem uses canonical word entries and local successful opaque
+result typing; runtime typing of reached intermediates is derived. Check those
+contracts, the noncanonical/provider/hidden-effect countermodels, actual six-buffer
+joins and the trusted full IR mapping in packages1–3. Native, poison and broker
+fidelity remain separate. V1 is an immutable unqualified host-guard diagnostic.
+
+The coordinator also recorded a concrete STATIC v2 host-status limitation:
+capture's broad ValueError handling can label stale source/runtime identities as
+unsupported. No real SDK fault was created and no false Lean acceptance was
+demonstrated. Review integer-v2-host-status-limitation.json; do not infer universal
+error-classification correctness from the75 selected tests. The new scheduler
+adapter owns stricter exception separation; all95 old owned sources stay frozen.
+
+W's new actual shape→reuse→segment semantic adapter now checks201 std3 roots in
+development; its checker/witness/adversarial/frozen qualification remains active.
+It does not amend the earlier standalone seal or its historical composition
+refusal. F's latest exact optional-parser-symbol review is separately retained at
+frontend-finite-symbol-review-v1; new source development continues, without old
+profile promotion or actual-capture qualification.

@@ -9,7 +9,8 @@ paper. Publication of this draft is not specification approval.
 
 We use Lean to validate supported instances of Merlin's shared graph
 transformations. The current artifacts cover static shape/view normalization,
-scalar common-subexpression and dead-code elimination, loop-invariant motion,
+exact scalar-integer simplification, common-subexpression and dead-code
+elimination, loop-invariant motion,
 ordered loop unrolling and segmentation, and initialized buffer reuse, each
 within its explicitly checked domain. Trusted parsing and projection translate
 the actual before/after IR into proof obligations; Lean checks preservation of
@@ -46,14 +47,17 @@ the entire shared scheduling/fusion/transfer/storage inventory.
 | Result | Authoritative relation and mapping packet | Limits to retain |
 | --- | --- | --- |
 | Scalar CSE/DCE and LICM | `graph-state-scalar/review/sealed-v1`, including its exact generated roots and projection | Typed SSA and local total-pure/common opaque contracts; host mapping and native fidelity remain separate. |
+| Exact integer prefix and five-pass chain | `graph-state-integer/review/sealed-v2`; `Merlin.GraphStateIntegerInstance.complete` | Canonical initialized word entries and local successful-result representation contracts; reached value typing is derived.75 tests,17 originals and one17 replay. Native/poison fidelity and independent review remain separate. |
 | Composed scalar/loop chain | `graph-state-pipeline/review/sealed-v1/PAPER_ROWS.md`; `Merlin.GraphStatePipelineInstance.complete` | Static nonnegative no-tail bulk mode, explicit widths/strides/carries and local external contracts; broader unroll modes need their own composed bridge. |
-| Shape normalization | `graph-shape-normalization/paper-evidence/README.md` and `standalone-mode-v1/SEAL.json` under that root | Identical casts/static dimensions, descriptor typing and partial primitive meaning; whole typed heap/public observation. Its adapter to the older epoch model is still unproved. |
+| Shape normalization | `graph-shape-normalization/paper-evidence/README.md` and `standalone-mode-v1/SEAL.json` under that root | Identical casts/static dimensions, descriptor typing and partial primitive meaning; whole typed heap/public observation. The new actual shape/memory composition is checked development, with qualification pending. |
 | Initialized reuse and segmentation | `graph-memory-scf/memory-scf-mode-v1` and its paper packet | Complete public outcomes under total/private/unobservable allocation; the retained 8→16-byte counterexample excludes general resource/failure claims. |
 | Declared-call/fusion correspondence | Historical `graph-regions-declared/qualification-v1` and its paper packet | Per-instruction, packing, ABI and Action contracts. The stronger wrapper is unqualified; newer capture candidates are development only. |
 
 Packet paths in this table are relative to `out/artifacts/verification/`.
-Exact integers currently have a new whole-context development chain, not a
-qualified claim row. Sequential scheduling and broader mechanisms retain their
+Exact integers now have a qualified scoped v2 row; its earlier v1 host diagnostic
+stays unqualified. A remaining static stale-identity error-label path is recorded
+in integer-v2-host-status-limitation.json; it is separate from positive theorem
+acceptance. Sequential scheduling and broader mechanisms retain their
 own narrower contracts/open obligations in COVERAGE. Do not describe the whole
 table as reviewed or every graph pass as verified.
 

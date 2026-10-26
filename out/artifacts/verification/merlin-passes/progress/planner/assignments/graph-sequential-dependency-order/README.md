@@ -1,9 +1,17 @@
-# QUEUED — complete sequential dependency scheduling
+# ACTIVE — complete sequential dependency scheduling
 
-This is the GraphState worker's prepared next graph batch, NOT its current
-assignment. Continue exact-integer qualification until the coordinator delivers
-this task after reviewing that delivery. A new user stop overrides this queue.
-No worker has been asked to start this file yet.
+The coordinator is assigning this full next GraphState batch after the sealed
+exact-integer v2 delivery. The continuous graph-first user authorization remains
+active. A NEW genuine user stop wins. Resume this task after compaction rather
+than the completed integer, pipeline, quant-ext or Qinner assignments.
+
+Immutable new anchor: `graph-state-integer/review/sealed-v2` under
+`out/artifacts/verification/`:20 owned sources,75 tests,17 original receipts
+(14 changed/3 identity),ONE fresh replay batch17, clean std3 audits. Its manifest
+is `5a2552cd32bba11b06acc43c2218abed0f8ace4639d99deb814623eb947194fa`.
+The coordinator matched all20 original/retained source pairs before this task.
+All95 prior GraphState-owned sources now stay read-only. V1 remains an immutable
+UNQUALIFIED host-classification diagnostic; no native/review approval follows.
 
 ## Goal and source boundary
 

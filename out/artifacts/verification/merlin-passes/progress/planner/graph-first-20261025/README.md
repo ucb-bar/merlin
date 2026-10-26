@@ -43,14 +43,18 @@ separate obligations.
 
 - W/GraphLoops (user-authorized GPT-6-Astra) sealed standalone shape normalization:
   22 sources,78 originals +one78 replay,35/41 std3 roots. Its typed/full-heap to
-  old epoch/public adapter remains active and unproved; preserve the refused join.
+  old epoch/public adapter now has a checked DEVELOPMENT actual-chain proof
+  (201 std3 roots); checker integration, witnesses/adversaries and qualification
+  remain active. Preserve the historical standalone refused join.
   The [authorized model-switch record](w8a8-authorized-model-switch-20261026T022240Z.json)
   confirms actual commands and source edits after the capacity failures; the
   existing thread/checkpoint and graph assignment are preserved.
-- Q/GraphState sealed the20-source scalar→unroll→segment pipeline:64 tests,8
-  actual all-four-changed chains +8 fresh replays. CURRENT next task is
-  [exact-integer whole-boundary normalization](../assignments/graph-exact-integer-normalization/README.md);
-  all75 old owned sources/seals remain read-only. No floating numerical work.
+- Q/GraphState also sealed exact-integer v2:20 sources,75 tests,17 originals
+  (14 changed/3 identity) +one replay batch17. The coordinator matched2250
+  retained files and20 source pairs. CURRENT next task is
+  [complete sequential dependency scheduling](../assignments/graph-sequential-dependency-order/README.md);
+  all95 old owned sources/seals remain read-only. V1 remains a held diagnostic.
+  The preceding four-pass pipeline remains sealed; no floating numerical work.
 - F/GraphRegions continues captured-literal parent/cache/full-graph correspondence.
   The old MLIR oracle and stronger failed qualification remain held. A NEW
   [pure development context](frontend-pure-development-context/README.md) permits
@@ -63,6 +67,11 @@ separate obligations.
   selects all653 Init module families plus the original11 runtime refs (3276
   pins), excluding auxiliary tools as a class. Offline membership tests must
   pass before new guarded development; v9 and older failed profiles stay held.
+  All17 selection tests passed. Thirteen Capture modules compiled, followed by
+  an Examples rc0 command whose observer stopped on one optional parser symbol.
+  The [finite exact-pair review](frontend-finite-symbol-review-v1/README.md)
+  permits offline recovery and first-time ParentExamples/audits in a NEW context;
+  no old profile promotion, wildcard symbols or runtime pin changes.
 
 The older completed task rows below are history, not reassignment instructions.
 All three continue large graph batches after compaction; only a NEW user stop wins.
@@ -78,9 +87,9 @@ not complete the full graph roster or categorized failure/divergence semantics.
 
 The subsequent [whole-boundary shape normalization](../assignments/graph-shape-normalization/README.md)
 batch has also qualified its standalone relation. Its semantic memory adapter
-continues, as recorded at the CURRENT frontier above. The scalar pipeline is
-qualified and its worker now owns the exact-integer prefix. No numerical work
-is resumed.
+continues through qualification, as recorded at the CURRENT frontier above.
+The scalar pipeline and integer prefix are qualified; their worker now owns
+sequential dependency scheduling. No numerical work is resumed.
 
 ## Original Oct25 resume batches — historical
 
