@@ -358,6 +358,15 @@ def _affine(matrix: list[list[int | None]]) -> dict[str, int] | None:
 
 
 # ---------------------------------------------------------------------- dataflow
+def _classify(reach):
+    """Classify product destinations independently of the source IR."""
+    if reach["registers"] and not reach["combinational_outputs"]:
+        return "output_stationary"
+    if reach["combinational_outputs"] and not reach["registers"]:
+        return "weight_stationary"
+    return "unclassified"
+
+
 def dataflow_modes(design: Design, root: str, decl: dict[str, Any]) -> dict[str, Any]:
     cell, select = decl.get("cell_module"), decl.get("select_port")
     try:
@@ -370,15 +379,9 @@ def dataflow_modes(design: Design, root: str, decl: dict[str, Any]) -> dict[str,
     for value in (0, 1):
         found = design.pinned({cell: {select: value}}).product_reach(cell)
         reach[str(value)] = found
-        if found["combinational_outputs"] and not found["registers"]:
-            modes[str(value)] = "weight_stationary"
-        elif found["registers"] and not found["combinational_outputs"]:
-            modes[str(value)] = "output_stationary"
-        else:
-            modes[str(value)] = "unclassified"
+        modes[str(value)] = _classify(found)
     occurrences = design.occurrences(root, cell)
-    influenced = design.root_input_reach(root) if occurrences else set()
-    driven = [design.driven_by_root_inputs(root, path, select, influenced) for path in occurrences]
+    driven = [design.runtime_driven(root, path, select) for path in occurrences]
     runtime = bool(occurrences) and all(driven)
     classified = {label for label in modes.values() if label != "unclassified"}
     if runtime and len(classified) == 2:
@@ -397,7 +400,9 @@ def dataflow_modes(design: Design, root: str, decl: dict[str, Any]) -> dict[str,
         "cell_occurrences": len(occurrences),
         "method": "per select value: a product reaching a cell output with no register is weight-stationary; a "
         "product written only into cell registers is output-stationary; the select is runtime-driven when "
-        "every cell occurrence's select is reached from a unit input",
+        "every cell occurrence's select cone reaches a unit data input (not a clock or reset), following "
+        "registers through their written values without the hold path or reset value and memory reads "
+        "through their write data",
         "evidence": reach,
     }
 

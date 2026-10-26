@@ -121,3 +121,25 @@ def test_simulation_configuration_is_structurally_the_same_accelerator(derived):
     assert correspondence["configs"]["simulation"]["config"] == "GemminiGsimFireSimAlignedConfig"
     assert correspondence["firrtl_module_bodies"]["differ"] == []
     assert not correspondence["hw_file_level_operations"]["anchored_in_unit"]
+
+
+def test_pinned_firrtl_derives_the_register_driven_output_stationary_select():
+    # The PE select comes from the execute controller's dataflow register, written from the config
+    # command: its update cone reaches the unit's command input, so the select is runtime-driven.
+    import hashlib
+    from unittest.mock import patch
+
+    from merlin.targetgen import composition_audit
+    from merlin.targetgen.rtl import facts as facts_api
+    from merlin.targetgen.rtl import introspect
+
+    try:
+        selected = introspect.declared_rtl_source("gemmini").artifacts()
+    except (OSError, ValueError, KeyError, introspect.RtlSourceUndeclared) as error:
+        pytest.skip(f"pinned gemmini elaboration unavailable: {error}")
+    inputs = {}
+    for kind in ("fir", "hierarchy"):
+        inputs[f"{kind}_path"] = str(selected[kind])
+        inputs[f"{kind}_sha256"] = hashlib.sha256(selected[kind].read_bytes()).hexdigest()
+    with patch.object(facts_api, "load_facts", return_value={"inputs": inputs}):
+        assert composition_audit._selected_hardware("gemmini", {"output_stationary"}) == {"output_stationary": 0}

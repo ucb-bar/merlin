@@ -861,16 +861,48 @@ class Design:
                     work.append((where, op.results[0]))
         return {"combinational_outputs": sorted(outputs), "registers": sorted(registers)}
 
-    def root_input_reach(self, root: str, *, max_steps: int = 5_000_000) -> set[tuple[str, int]]:
-        """``(instance path, value id)`` of every value a root input can influence.
+    def root_resets(self, root: str) -> set[Any]:
+        """Inputs of ``root`` reaching a register's reset operand through only instance ports and wires.
 
-        One forward pass from all root inputs through every operation, register, memory and instance
-        boundary (both directions). A value outside the set is driven only by constants and state no
-        root input ever writes.
+        Such an input initialises state; it carries no data a runtime select could take.
         """
         occurrences = self.instance_paths(root)
-        view = self.module(root)
-        work = [(root, value) for value in view.input_value.values() if str(value.type) != "!seq.clock"]
+        resets = set()
+        for value in self.module(root).input_value.values():
+            work, seen = [(root, value)], set()
+            while work and value not in resets:
+                where, current = work.pop()
+                if (where, id(current)) in seen:
+                    continue
+                seen.add((where, id(current)))
+                here = self.module(occurrences[where])
+                for use in list(current.uses):
+                    kind = _name(use.operation)
+                    if kind == "hw.instance":
+                        inst = here.instance_by_op[use.operation]
+                        if not self.module(inst.callee).extern:
+                            callee = self.module(inst.callee)
+                            work.append((f"{where}/{inst.name}", callee.input_value[inst.inputs[use.index]]))
+                    elif kind == "hw.wire":
+                        work.extend((where, result) for result in use.operation.results)
+                    elif kind in REGISTERS and use.index == 2:  # next, clock, reset, reset value
+                        resets.add(value)
+        return resets
+
+    def runtime_driven(self, root: str, path: str, port: str, *, max_steps: int = 1_000_000) -> bool:
+        """Whether the operand bound to input ``port`` of the instance at ``path`` is runtime-driven.
+
+        Walks the operand's driving cone backward across instance boundaries; it is runtime-driven only
+        when the cone reaches a data input of ``root`` (not a clock or reset). Combinational values are
+        followed through every operand. A register is followed through its next-state value with its
+        hold path removed (:func:`_register_update`), never its reset value; a memory read through the
+        data of its memory's write ports. So state written only from constants, or holding its reset
+        value, is not runtime-driven. An extern instance's results are followed through its operands.
+        """
+        occurrences = self.instance_paths(root)
+        resets = self.root_resets(root)
+        _, inst = self._instance_at(root, path)
+        work = [(path.rpartition("/")[0], inst.op.operands[inst.inputs.index(port)])]
         seen: set[tuple[str, int]] = set()
         while work:
             where, value = work.pop()
@@ -878,36 +910,54 @@ class Design:
                 continue
             seen.add((where, id(value)))
             if len(seen) > max_steps:
-                raise ValueError("root input reach exceeds its explicit step budget")
-            here = self.module(occurrences[where])
-            for use in list(value.uses):
-                op, index, kind = use.operation, use.index, _name(use.operation)
-                if kind == "hw.instance":
-                    inst = here.instance_by_op[op]
-                    if not self.module(inst.callee).extern:
-                        callee = self.module(inst.callee)
-                        work.append((f"{where}/{inst.name}", callee.input_value[inst.inputs[index]]))
-                    else:
-                        work.extend((where, result) for result in op.results)
-                elif kind == "hw.output":
-                    if where != root:
-                        up, _, name = where.rpartition("/")
-                        holder = self.module(occurrences[up]).instances[name]
-                        for out in here.output_names(value):
-                            work.append((up, holder.op.results[holder.outputs.index(out)]))
-                elif kind in WRITE_PORTS:
-                    memory = op.operands[0].owner
-                    for read in memory.results[0].uses:
-                        if _name(read.operation) in READ_PORTS:
-                            work.extend((where, result) for result in read.operation.results)
-                else:
-                    work.extend((where, result) for result in op.results)
-        return seen
+                raise ValueError("runtime select cone exceeds its explicit step budget")
+            view = self.module(occurrences[where])
+            if isinstance(value, BlockArgument):
+                if where == root:
+                    if str(value.type) != "!seq.clock" and value not in resets:
+                        return True
+                    continue
+                up, _, name = where.rpartition("/")
+                holder = self.module(occurrences[up]).instances[name]
+                work.append((up, holder.op.operands[holder.inputs.index(view.input_name[value])]))
+                continue
+            if not isinstance(value, OpResult):
+                continue
+            op, kind = value.owner, _name(value.owner)
+            if kind in CONSTANTS:
+                continue
+            if kind in REGISTERS:
+                work.extend((where, part) for part in _register_update(op.operands[0], value))
+            elif kind in READ_PORTS:
+                work.extend((where, data) for data in self._write_data(op.operands[0].owner))
+            elif kind == "hw.instance" and not self.module(view.instance_by_op[op].callee).extern:
+                child = view.instance_by_op[op]
+                callee = self.module(child.callee)
+                work.append((f"{where}/{child.name}", callee.output_value[child.outputs[value.index]]))
+            else:
+                work.extend((where, operand) for operand in op.operands)
+        return False
 
-    def driven_by_root_inputs(self, root: str, path: str, port: str, reach: set[tuple[str, int]]) -> bool:
-        """Whether the operand bound to input ``port`` of the instance at ``path`` is in ``reach``."""
-        _, inst = self._instance_at(root, path)
-        return (path.rpartition("/")[0], id(inst.op.operands[inst.inputs.index(port)])) in reach
+
+def _register_update(next_value, register) -> list[Any]:
+    """The parts of a register's next-state value that can change it, its hold path removed.
+
+    A mux arm that is the register's own value is the hold path, so that mux is a write enable: its
+    select and held arm drop out and only the written arm stays (cf. ``firrtl_dataflow._update``).
+    """
+    parts, work = [], [next_value]
+    while work:
+        value = work.pop()
+        if value is register:
+            continue
+        owner = value.owner if isinstance(value, OpResult) else None
+        if owner is not None and _name(owner) == "comb.mux":
+            arms = [arm for arm in owner.operands[1:] if arm is not register]
+            if len(arms) < 2:
+                work.extend(arms)
+                continue
+        parts.append(value)
+    return parts
 
 
 def _apply(transform: tuple, stages: Stages) -> Stages:

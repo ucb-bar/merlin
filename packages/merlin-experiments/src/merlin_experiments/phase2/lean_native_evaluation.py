@@ -151,6 +151,10 @@ def evaluate_member(
 
         declaration = yaml.safe_load(descriptor.read_bytes())
         selected_contract = declaration["hardware_spec"]["target_contract"]
+        selected_target = member.get("target") or declaration.get("target")
+        if not selected_target:
+            contract = yaml.safe_load(Path(selected_contract).read_bytes())
+            selected_target = contract.get("target") or contract["name"]
         os.environ["MERLIN_TARGET_EXPERIMENT"] = str(descriptor)
         os.environ["MERLIN_TARGET_CONTRACT"] = str(selected_contract)
         os.environ["MERLIN_RTL_FACTS"] = str(member["rtl_facts"])
@@ -187,7 +191,7 @@ def evaluate_member(
                     lowered_mlir_text=emitted.stdout,
                     capsule_dir=Path(member["capsule_dir"]),
                     capture_bundle=Path(member["runtime_bundle"]),
-                    target=member.get("target", "gemmini"),
+                    target=selected_target,
                     out_dir=root / "native",
                     simulator="spike",
                     timeout=int(_remaining(deadline)),
@@ -293,8 +297,10 @@ def evaluate_candidate(
         status="running",
         qualification="UNQUALIFIED",
         source_effects="PENDING",
-        members=[dict(id=member["id"], baseline=dict(phase="pending"), candidate=dict(phase="pending"))
-                 for member in selected_members],
+        members=[
+            dict(id=member["id"], baseline=dict(phase="pending"), candidate=dict(phase="pending"))
+            for member in selected_members
+        ],
     )
 
     def checkpoint(index, arm, record):
@@ -359,9 +365,12 @@ def evaluate_candidate(
             baseline = dict(baseline, baseline_cache_hit=hit)
         checkpoint(index, "baseline", baseline)
         candidate_tree = _tree(candidate_source)
-        if (baseline.get("package_identity") == identity["baseline"]
-                and _source_bytes(candidate_tree) == _source_bytes(identity["baseline"])
-                and baseline.get("input_identity") == member_identity(member) and _reopen_cached(baseline)):
+        if (
+            baseline.get("package_identity") == identity["baseline"]
+            and _source_bytes(candidate_tree) == _source_bytes(identity["baseline"])
+            and baseline.get("input_identity") == member_identity(member)
+            and _reopen_cached(baseline)
+        ):
             candidate = copy.deepcopy(baseline)
             candidate.update(
                 candidate_source=str(Path(candidate_source).resolve(strict=True)),

@@ -41,6 +41,8 @@ def _trace_word(line):
     fields = line.split()
     if not fields or fields[0] != b"core":
         return None
+    if len(fields) == 4 and fields[1].endswith(b":") and fields[1][:-1].isdigit() and fields[2] == b">>>>":
+        return None  # Spike's function-symbol annotation, not a retired instruction.
     # Spike -l disassembly precedes the --log-commits retirement record.
     if len(fields) >= 3 and fields[2].startswith(b"0x"):
         return None
@@ -198,7 +200,25 @@ def _entry_buffers(arguments, registers):
     return bindings
 
 
-def decode_retirement_trace(*, elf, trace, routed, target, runtime_abi=None):
+def elf_object_buffers(elf):
+    """Bound static DMA allocations by defined object symbols in the same ELF."""
+    output = subprocess.check_output(["readelf", "--symbols", "--wide", str(elf)], text=True)
+    buffers = {}
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) < 8 or fields[3] != "OBJECT" or not fields[6].isdigit():
+            continue
+        base, extent, symbol = int(fields[1], 16), int(fields[2]), fields[7]
+        if base <= 0 or extent <= 0:
+            continue
+        binding = dict(symbol=symbol, base=base, byte_extent=extent)
+        if symbol in buffers and buffers[symbol] != binding:
+            raise ValueError("UNKNOWN: static DMA object has ambiguous ELF extents")
+        buffers[symbol] = binding
+    return list(buffers.values())
+
+
+def decode_retirement_trace(*, elf, trace, routed, target, runtime_abi=None, static_buffers=None):
     """Decode actual operands from per-hart committed writes, never guessed zeros."""
     from merlin.kernels.decode.rocc import fields_of
     from merlin.targetgen.rocc.decode import _semantics
@@ -240,6 +260,8 @@ def decode_retirement_trace(*, elf, trace, routed, target, runtime_abi=None):
                 if (hart, owner) not in active_buffers:
                     raise ValueError("UNKNOWN: runtime buffer binding has no observed kernel entry")
                 identity["runtime_buffer_bindings"] = active_buffers[(hart, owner)]
+                if static_buffers:
+                    identity["static_buffer_bindings"] = static_buffers
             fields = fields_of(word)
             if fields["opcode"] == opcode:
                 command_harts.add(hart)
@@ -362,9 +384,36 @@ def _instruction_report(expected, observed, elf, opcode):
     }
 
 
+def _emission_declaration(binding, instructions, rows):
+    from merlin.targetgen.admission_conditions import binding_declaration
+
+    # A source mean is realized as an ordinary ones MAC with its reciprocal
+    # folded into readout. Select its duties from the declared arithmetic,
+    # rather than interpreting the provider's symbol or choosing a row id.
+    operator = binding.get("op", "").removeprefix("aten.").partition(".")[0]
+    if binding.get("software_declaration") is not None or operator != "mean":
+        return binding_declaration(binding)
+    window = binding.get("numeric", {}).get("window")
+    if (
+        type(window) is not int
+        or window <= 0
+        or not any(row.get("class") in {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"} for row in instructions)
+    ):
+        raise ValueError("UNKNOWN: source mean lacks an observed MAC realization")
+    matches = [
+        identity
+        for identity, row in rows.items()
+        if "window_mean" in row.get("families", ()) and row.get("arithmetic") == "integer_multiply_accumulate"
+    ]
+    if len(matches) != 1:
+        raise ValueError("UNKNOWN: source mean lacks one declared MAC realization")
+    return matches[0]
+
+
 def audit_declared_emission(decoded, routed, spec, *, target):
     """Apply selected row duties to each original source-bound kernel stream."""
-    from merlin.targetgen.admission_conditions import binding_declaration
+    from merlin.targetgen.admission_conditions import declaration_numerics
+    from merlin.targetgen.operator_review import review_record
 
     from .composition_audit import check_emission_obligations
     from .trace_check import _bound_trace_view
@@ -374,15 +423,17 @@ def audit_declared_emission(decoded, routed, spec, *, target):
     rows = {row["id"]: row for row in spec["operations"]}
     reports = {}
     for binding in routed:
-        identity = binding_declaration(binding)
+        instructions = [r for r in view["instructions"] if r.get("kernel") == binding["symbol"]]
+        identity = _emission_declaration(binding, instructions, rows)
         if identity not in rows:
             raise ValueError(f"UNKNOWN: no selected software declaration {identity}")
+        declaration_numerics(binding, identity, rows[identity])
         obligations = rows[identity].get("emission_obligations")
         if not obligations:
             continue
-        instructions = [r for r in view["instructions"] if r.get("kernel") == binding["symbol"]]
         reports[binding["symbol"]] = {
             "declaration": identity,
+            **review_record(rows[identity]),
             "obligations": check_emission_obligations(instructions, obligations, target=target),
         }
     return reports
@@ -453,7 +504,9 @@ def require_observed_kernels(audit, symbols):
         or type(audit.get("outside_kernel_instructions")) is not int
         or audit["outside_kernel_instructions"] != 0
     ):
-        raise ValueError("UNKNOWN: composition needs a clean observed outside-kernel instruction audit")
+        issues = audit.get("issues", []) if isinstance(audit, Mapping) else []
+        detail = ": " + "; ".join(str(issue) for issue in issues) if issues else ""
+        raise ValueError("UNKNOWN: composition needs a clean observed outside-kernel instruction audit" + detail)
     rows = audit.get("kernels")
     if not isinstance(rows, list):
         raise ValueError("UNKNOWN: observed audit lacks kernel identities")
@@ -533,7 +586,9 @@ def audit_native_composition(native, *, policy, facts, target):
         bound = _bound_trace_view(decoded, target)
         view = bound[0] if bound is not None else decoded
         observed["policy_emission_obligations"] = check_emission_obligations(
-            view["instructions"], policy["emission_obligations"], target=target,
+            view["instructions"],
+            policy["emission_obligations"],
+            target=target,
         )
     frozen = read(declaration, declaration_path.parent)
     consumers = host_chain_consumers(

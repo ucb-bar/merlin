@@ -75,6 +75,9 @@ def _scale_refusals(scheme, case):
     if case["exit"] == "accumulator":
         return
     scales = case.get("multipliers", [])
+    if scheme.get("scale_source") == "runtime_input":
+        if not case.get("runtime_scale_input") or len(scales) != 1:
+            yield "runtime tensor readout requires one bound scale input"
     if not scales:
         yield "narrow readout requires formed multipliers"
     if "activation" in case["readout_stages"] and any(Fraction(s) < 0 for s in scales):
@@ -243,6 +246,19 @@ def _shared_refusals(chain, case, facts):
         yield "shared input exceeds or lacks derived residency capacity"
 
 
+def _mesh_product(case):
+    """Whether a case's producer runs a mesh product, or None when it has no declared answer.
+
+    As in fusion_enumeration.uses_mesh_product: a contraction and a window mean
+    (a ones-operand MAC, whatever producer label its chain carries) are mesh
+    products; scaled loads and a pool window are not.
+    """
+    producer = case.get("producer")
+    if producer not in ("contraction", "operand_sum", "movement"):
+        return None
+    return producer == "contraction" or case.get("window_mean") is True or case.get("reduction_kind") == "sum"
+
+
 def _family_refusals(chain, scheme, case, path, facts):
     constraints = _constraints(chain)
     if case.get("reduction_kind") not in [None, *chain.get("reduction_kinds", [])]:
@@ -252,6 +268,11 @@ def _family_refusals(chain, scheme, case, path, facts):
         yield from _sum_refusals(scheme, case)
     if case.get("dataflow") == "OS":
         yield from _os_refusals(case, facts)
+    mesh = _mesh_product(case)
+    if mesh is None:
+        yield "producer has no declared mesh-product semantics"
+    elif mesh and case.get("dataflow") == "not_applicable":
+        yield "a mesh-product producer requires a selected dataflow"
     if "dataflows" in chain and case.get("dataflow") not in facts.get("dataflows", []):
         yield "dataflow is not derived"
     if chain.get("extension"):
@@ -297,7 +318,7 @@ def _audit_parameters(scheme, case):
     def bits(values):
         return [struct.unpack("<I", struct.pack("<f", form_multiplier(value)))[0] for value in values]
 
-    return dict(
+    result = dict(
         readout_multiplier_bits=bits(case.get("multipliers", [])),
         operand_multiplier_bits=bits(case.get("operand_multipliers", [])),
         pool_window=case.get("pool_window"),
@@ -306,6 +327,9 @@ def _audit_parameters(scheme, case):
         weight_layout=scheme.get("weight_layout"),
         siblings=case.get("siblings", []),
     )
+    if "runtime_scale_input" in case:
+        result["runtime_scale_input"] = case["runtime_scale_input"]
+    return result
 
 
 def expectation(chain, scheme, case, *, facts):

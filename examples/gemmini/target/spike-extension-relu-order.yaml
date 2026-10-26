@@ -1,0 +1,17 @@
+# Reviewed accumulator-ReLU/scale order of Spike functional-model extension bytes.
+#
+# RTL applies the accumulator ReLU before the f32 readout scale (AccumulatorScale.scala). An
+# extension that applies it after the scale agrees with RTL only for a nonnegative scale, so a
+# fusion case with an active ReLU over a runtime scale is discharged either by an extension listed
+# here as pre_scale (parity-proved) or by a nonnegative executed scale input. Unlisted bytes have no
+# parity proof. Keys are the extension file's sha256; `artifact` names its declaration in
+# merlin/contract/hardware_pins.yaml, whose digest must equal the key.
+#
+# Add a pre_scale identity only with its repaired-build hashes and a passing signed-scale probe.
+schema: merlin.spike_extension_relu_order.v1
+target: gemmini
+extensions:
+  "3dd87ffd661a658b7e4ae56c5fe3b5ea21934707ec38f0ede2eb2fd99c3fd5ea":
+    artifact: gemmini_spike_extension_rne
+    relu_scale_order: post_scale
+    evidence: "s=-0.5 probe: post-scale ReLU, 240/256 narrow bytes differ from the RTL order"

@@ -62,6 +62,7 @@ def selected_hardware(monkeypatch):
             "timing_structure": {
                 "dataflow": {
                     "status": "derived",
+                    "support": "both",
                     "modes": {"9": "output_stationary", "4": "weight_stationary"},
                 }
             }
@@ -179,6 +180,7 @@ def test_readout_lineage_also_applies_to_standalone_trace_modes():
 def test_retirement_parser_requires_privilege_and_excludes_disassembly(privilege):
     assert NA._trace_word(f"core 0: {privilege} 0x8000 (0x0a00002b)".encode()) == (0x8000, 0x0A00002B)
     assert NA._trace_word(b"core 0: 0x8000 (0x0a00002b) custom") is None
+    assert NA._trace_word(b"core 0: >>>> _start") is None
 
 
 @pytest.mark.parametrize(
@@ -1111,3 +1113,544 @@ def test_pooling_completion_with_missing_fence_semantics_is_unknown():
     result = _check(case)
     assert result["status"] == "fail"
     assert result["composition_audit"]["evidence_status"] == "UNKNOWN"
+
+
+def test_original_load_mapping_fallback_is_rederived(selected_hardware, monkeypatch):
+    from merlin.targetgen import composition_facts, target_registry
+
+    observer = selected_hardware[1]
+    del observer.load_states
+    mapping = SimpleNamespace(ports=(("MVIN", 5), ("MVIN2", 8)), max_element_bytes=4)
+    calls = []
+    monkeypatch.setattr(target_registry, "load_contract", lambda _: {"selected": True})
+
+    def derive(**kwargs):
+        calls.append(kwargs)
+        return mapping
+
+    monkeypatch.setattr(composition_facts, "load_state_mapping", derive)
+    assert CA._selected_hardware("synthetic", {"scaled_accumulate_load"})["load_states"] == dict(mapping.ports)
+    assert len(calls) == 1 and calls[0]["contract"] == {"selected": True}
+
+
+@pytest.mark.parametrize("mutation", [None, "missing", "overlap", "stride", "geometry"])
+def test_pooled_bands_cover_source_windows_exactly(mutation):
+    geometry = dict(image=[5, 5, 4], window=2, stride=2)
+    config = dict(
+        pool_size=2,
+        pool_stride=2,
+        pool_out_dim=2,
+        pocols=2,
+        ocols=5,
+        orows=2,
+        porows=1,
+        upad=0,
+        lpad=0,
+        out_stride_bytes=4,
+    )
+    commits = [
+        (
+            {"dram": dict(kind="argbase", arg_index=1, offset=row * 8 + column), "rows": 1, "cols": 2},
+            dict(config),
+            i,
+            [],
+        )
+        for i, (row, column) in enumerate([(0, 0), (0, 2), (1, 0), (1, 2)])
+    ]
+    if mutation == "missing":
+        commits.pop()
+    elif mutation == "overlap":
+        commits.append(commits[0])
+    elif mutation == "stride":
+        commits[0][1]["out_stride_bytes"] = 3
+    elif mutation == "geometry":
+        commits[0][1]["orows"] = 3
+    if mutation:
+        with pytest.raises(ValueError):
+            CA._pool(commits, dict(geometry=geometry))
+    else:
+        CA._pool(commits, dict(geometry=geometry))
+
+
+def _column_partition_case():
+    rows = []
+    for offset, scale in ((0, 0.25), (3, 0.5)):
+        rows.extend(
+            [
+                _row("CONFIG_ST", acc_scale_bits=_bits(scale), out_stride_bytes=6, pool_stride=0),
+                _row("MVOUT", dram={**_operand(2), "offset": offset}, rows=2, cols=3),
+            ]
+        )
+    parameters = dict(
+        partitions=[dict(output=_operand(2), shape=[2, 6], column_scale_bits=[_bits(0.25)] * 3 + [_bits(0.5)] * 3)]
+    )
+    return rows, parameters
+
+
+def test_readout_binds_multiplier_to_columns_and_covers_every_output():
+    rows, parameters = _column_partition_case()
+    CA._readout(CA._events(rows, {})[0], parameters)
+    # Equal multiplier multisets cannot hide a swap of column partitions.
+    rows[0]["decoded"]["acc_scale_bits"], rows[2]["decoded"]["acc_scale_bits"] = (
+        rows[2]["decoded"]["acc_scale_bits"],
+        rows[0]["decoded"]["acc_scale_bits"],
+    )
+    with pytest.raises(ValueError, match="multiplier differs"):
+        CA._readout(CA._events(rows, {})[0], parameters)
+
+
+@pytest.mark.parametrize("fault", ["missing", "overlap", "allocation", "width", "stride", "wide"])
+def test_partition_readout_refuses_missing_overlapping_or_unbound_stores(fault):
+    rows, parameters = _column_partition_case()
+    if fault == "missing":
+        rows.pop()
+    elif fault == "overlap":
+        rows.append(copy.deepcopy(rows[1]))
+    elif fault == "allocation":
+        rows[1]["decoded"]["dram"]["arg_index"] = 3
+    elif fault == "width":
+        rows[1]["decoded"]["cols"] = 4
+    elif fault == "stride":
+        rows[0]["decoded"]["out_stride_bytes"] = 5
+    else:
+        rows[1]["decoded"]["readout"] = "i32"
+    with pytest.raises(ValueError):
+        CA._readout(CA._events(rows, {})[0], parameters)
+
+
+def _bound_load_case():
+    operands = [
+        dict(input=_operand(i), shape=[2, 6], scale_bits=_bits(scale), accumulate=i == 1)
+        for i, scale in enumerate((0.5, 0.25))
+    ]
+    loads = [
+        (
+            {
+                "dram": {**_operand(i), "offset": offset},
+                "is_acc_addr": True,
+                "accumulate": i == 1,
+                "rows": 2,
+                "cols": 3,
+            },
+            {"scale_bits": _bits(scale), "stride": 6, "shrink": 1},
+        )
+        for i, scale in enumerate((0.5, 0.25))
+        for offset in (0, 3)
+    ]
+    return loads, operands
+
+
+def test_scaled_load_binds_both_overwrite_and_accumulate_operands_across_tiles():
+    loads, operands = _bound_load_case()
+    CA._scaled_load(loads, dict(operands=operands))
+
+
+@pytest.mark.parametrize("fault", ["missing", "duplicate", "scale", "swap", "accumulate", "shrink", "stride"])
+def test_bound_scaled_load_refuses_changed_operand_configuration_or_coverage(fault):
+    loads, operands = _bound_load_case()
+    if fault == "missing":
+        loads.pop()
+    elif fault == "duplicate":
+        loads.append(copy.deepcopy(loads[0]))
+    elif fault == "scale":
+        loads[0][1]["scale_bits"] = _bits(1.0)
+    elif fault == "swap":
+        for load, config in loads:
+            config["scale_bits"] = _bits(0.25 if load["dram"]["arg_index"] == 0 else 0.5)
+    elif fault == "accumulate":
+        loads[0][0]["accumulate"] = True
+    elif fault == "shrink":
+        del loads[0][1]["shrink"]
+    else:
+        loads[0][1]["stride"] = 7
+    with pytest.raises(ValueError):
+        CA._scaled_load(loads, dict(operands=operands))
+
+
+@pytest.mark.parametrize("shrink,expected", [(0, 18), (1, 9)])
+def test_accumulator_dma_footprint_uses_active_shrink(shrink, expected):
+    hardware = dict(max_load_bytes=4, input_bytes=1)
+    assert (
+        CA._dma_footprint("MVIN", dict(is_acc_addr=True, rows=3, cols=3), dict(stride=3, shrink=shrink), hardware)
+        == expected
+    )
+
+
+def test_static_dma_objects_come_from_defined_same_elf_symbols(monkeypatch):
+    monkeypatch.setattr(
+        NA.subprocess,
+        "check_output",
+        lambda *_a, **_k: (
+            """
+    1: 0000000000001000 16 OBJECT LOCAL DEFAULT 2 weights
+    2: 0000000000002000 0 OBJECT LOCAL DEFAULT 2 empty
+    3: 0000000000000000 16 OBJECT GLOBAL DEFAULT UND external
+    4: 0000000000003000 16 FUNC GLOBAL DEFAULT 1 kernel
+    """
+        ),
+    )
+    assert NA.elf_object_buffers("same.elf") == [dict(symbol="weights", base=4096, byte_extent=16)]
+
+
+@pytest.mark.parametrize("address,extent,passes", [(4096, 9, True), (4096, 8, False), (4097, 9, False)])
+def test_runtime_dma_static_binding_requires_full_object_extent(selected_hardware, address, extent, passes):
+    selected_hardware[0]["facts"]["datapaths"] = [dict(name="input", dtype="i8")]
+    rows = [
+        _row("CONFIG_LD", state_id=6, stride=3),
+        _row("MVIN", dram=dict(kind="const", raw=address), is_acc_addr=False),
+    ]
+    rows[1]["runtime_buffer_bindings"] = [dict(arg_index=0, base=8192, byte_extent=9)]
+    rows[1]["static_buffer_bindings"] = [dict(symbol="weights", base=4096, byte_extent=extent)]
+    if passes:
+        projected = CA._logical_runtime_operands(rows, target="moved")
+        assert projected[1]["decoded"]["dram"] == dict(kind="global", symbol="weights", offset=0)
+    else:
+        with pytest.raises(ValueError, match="footprint"):
+            CA._logical_runtime_operands(rows, target="moved")
+
+
+@pytest.mark.parametrize("static_extent,passes", [(9, True), (10, False)])
+def test_direct_elf_input_alias_requires_the_exact_argument_extent(selected_hardware, static_extent, passes):
+    selected_hardware[0]["facts"]["datapaths"] = [dict(name="input", dtype="i8")]
+    rows = [_row("CONFIG_LD", state_id=6, stride=3), _row("MVIN", dram=dict(kind="const", raw=4096), is_acc_addr=False)]
+    rows[1]["runtime_buffer_bindings"] = [dict(arg_index=0, base=4096, byte_extent=9)]
+    rows[1]["static_buffer_bindings"] = [dict(symbol="input", base=4096, byte_extent=static_extent)]
+    if passes:
+        projected = CA._logical_runtime_operands(rows, target="moved")
+        assert projected[1]["decoded"]["dram"] == _operand(0)
+    else:
+        with pytest.raises(ValueError, match="unique logical buffer"):
+            CA._logical_runtime_operands(rows, target="moved")
+
+
+def test_output_partitions_cannot_bypass_explicit_config_reissue_mode():
+    rows, parameters = _column_partition_case()
+    with pytest.raises(ValueError, match="per-block CONFIG_ST re-issue"):
+        CA._readout(CA._events(rows, {})[0], parameters, per_block=True)
+
+
+def test_k_extension_binds_blocked_work_to_each_output_accumulator():
+    work = [(None, dict(c_addr=address)) for address in (32, 64) for _ in range(3)]
+    commits = [(dict(acc_addr=32), None, None, work), (dict(acc_addr=64), None, None, [])]
+    parameters, hardware = dict(source_k=6, extension_k=3), dict(tile_k=3, address_flags=0)
+    CA._k_extension(commits, parameters, hardware)
+    # The same aggregate count cannot conceal unequal per-output work.
+    work[0] = (None, dict(c_addr=64))
+    with pytest.raises(ValueError, match="extra K tiles"):
+        CA._k_extension(commits, parameters, hardware)
+
+
+def test_k_extension_cannot_reuse_or_leave_unstored_compute_work():
+    work = [(None, dict(c_addr=32))] * 3
+    parameters, hardware = dict(source_k=6, extension_k=3), dict(tile_k=3, address_flags=0)
+    for commits in (
+        [(dict(acc_addr=32), None, None, work), (dict(acc_addr=32), None, None, [])],
+        [(dict(acc_addr=32), None, None, work + [(None, dict(c_addr=64))])],
+    ):
+        with pytest.raises(ValueError):
+            CA._k_extension(commits, parameters, hardware)
+
+
+def test_independent_sibling_stage_parameters_are_enforced():
+    trace, expected = _readout_case()
+    original = copy.deepcopy(expected["mode_parameters"])
+    expected["mode_parameters"] = {"readout_multipliers": {"acc_scale_bits": [0]}}
+    expected["stage_scoped_mode_parameters"] = {"readout": original}
+    assert _check((trace, expected))["status"] == "pass"
+    expected["stage_scoped_mode_parameters"]["readout"] = expected["mode_parameters"]
+    assert _check((trace, expected))["status"] == "fail"
+
+
+def test_mean_emission_uses_declared_mac_duties_not_a_row_name():
+    instructions = [_row("COMPUTE_PRELOADED")]
+    binding = dict(op="aten.mean.dim", numeric=dict(window=4))
+    rows = {
+        "renamed_mac": dict(families=["window_mean"], arithmetic="integer_multiply_accumulate"),
+        "sum": dict(families=["window_mean"], arithmetic="integer_sum"),
+    }
+    assert NA._emission_declaration(binding, instructions, rows) == "renamed_mac"
+    for changed in ({}, dict(rows, ambiguous=rows["renamed_mac"])):
+        with pytest.raises(ValueError, match="declared MAC realization"):
+            NA._emission_declaration(binding, instructions, changed)
+    with pytest.raises(ValueError, match="observed MAC realization"):
+        NA._emission_declaration(binding, [], rows)
+    binding["software_declaration"] = "explicit"
+    assert NA._emission_declaration(binding, instructions, rows) == "explicit"
+
+
+def test_mean_emission_enforces_duties_and_does_not_erase_unknown_bindings():
+    binding = dict(op="aten.mean.dim", numeric=dict(window=4), symbol="fused")
+    rows = [_row("CONFIG_EX", dataflow=4), *_compute(), _row("MVOUT", readout="i32")]
+    spec = dict(
+        operations=[
+            dict(
+                id="arbitrary_mac",
+                families=["window_mean"],
+                arithmetic="integer_multiply_accumulate",
+                emission_obligations=dict(
+                    stationary=dict(status="instruction_audit", check="weight_stationary", constraints=dict(eq="WS"))
+                ),
+            )
+        ]
+    )
+    report = NA.audit_declared_emission(dict(instructions=rows), [binding], spec, target="synthetic")
+    assert report["fused"]["obligations"]["stationary"]["observation_status"] == "pass"
+    rows[0]["decoded"]["dataflow"] = 9
+    with pytest.raises(ValueError, match="emission obligation"):
+        NA.audit_declared_emission(dict(instructions=rows), [binding], spec, target="synthetic")
+    with pytest.raises(ValueError, match="lacks a software declaration"):
+        NA.audit_declared_emission(dict(instructions=rows), [dict(binding, op="unknown")], spec, target="synthetic")
+
+
+def test_k_extension_refuses_ordinary_source_work_even_when_numeric_readout_matches():
+    # One source tile per accumulator output cannot establish an extra digit tile.
+    work = [(None, dict(c_addr=address)) for address in (32, 64)]
+    commits = [(dict(acc_addr=32), None, None, work), (dict(acc_addr=64), None, None, [])]
+    with pytest.raises(ValueError, match="extra K tiles"):
+        CA._k_extension(commits, dict(source_k=3, extension_k=3), dict(tile_k=3, address_flags=0))
+
+
+def test_unclean_native_audit_retains_the_underlying_reason():
+    with pytest.raises(ValueError, match="missing declaration"):
+        NA.require_observed_kernels(dict(status="UNKNOWN", issues=["missing declaration"]), ["fused"])
+
+
+@pytest.mark.parametrize("support", [None, "fixed_select", "unknown", "weight_stationary"])
+def test_output_stationary_emission_requires_selected_support(selected_hardware, support):
+    selected_hardware[0]["facts"]["timing_structure"]["dataflow"]["support"] = support
+    report = _check(_case([_row("CONFIG_EX", dataflow=9), *_compute(), _row("MVOUT")], {"output_stationary": True}))
+    assert report["status"] == "fail"
+    assert report["composition_audit"]["evidence_status"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize("mutation", [None, "drop", "extra", "wrong_base", "unresolved_extent"])
+def test_pooled_k_extension_authenticates_every_accumulator_tile(mutation):
+    # One pooled MVOUT drains five rows: two full tiles and one partial tile.
+    work = [(None, dict(c_addr=address)) for address in (32, 34, 36) for _ in range(3)]
+    store, config = dict(acc_addr=32), dict(pool_stride=2, orows=1, ocols=5)
+    if mutation == "drop":
+        work.pop()
+    elif mutation == "extra":
+        work.append((None, dict(c_addr=38)))
+    elif mutation == "wrong_base":
+        store["acc_addr"] = 34
+    elif mutation == "unresolved_extent":
+        config.pop("ocols")
+    commits = [(store, config, None, work)]
+    parameters, hardware = dict(source_k=4, extension_k=2), dict(tile_k=2, address_flags=0)
+    if mutation is None:
+        CA._k_extension(commits, parameters, hardware)
+    else:
+        with pytest.raises(ValueError):
+            CA._k_extension(commits, parameters, hardware)
+
+
+def _scaled_load_node():
+    readout = dict(exit="requant", stage_indices=[], stages=[])
+    return dict(form="operand_sum", realization="scaled_loads", readout=readout, seed=False, residual=None, scheme="s")
+
+
+def test_scaled_load_without_a_mesh_product_needs_no_dataflow_select(selected_hardware):
+    from merlin_experiments.phase0.fusion_cases import chain_for_node
+
+    from merlin.targetgen.functional_truth_compositions import _audit_modes, _family_refusals
+
+    chain = chain_for_node(_scaled_load_node(), "not_applicable")
+    case = dict(
+        producer="operand_sum",
+        exit="requant",
+        readout_stages=[],
+        dataflow="not_applicable",
+        operand_multipliers=[1.0, 1.0],
+        negates_load_minimum=False,
+    )
+    modes = _audit_modes(chain, case, dict(readout=[]))
+    assert "dataflows" not in chain and "output_stationary" not in modes
+    scheme = dict(operand_sum_rounding="single_rounding")
+    assert list(_family_refusals(chain, scheme, case, {}, {})) == []
+    # No dataflow select is derivable here; a scaled-load kernel must not ask for one.
+    selected_hardware[0]["facts"]["timing_structure"]["dataflow"].pop("modes")
+    rows = [
+        _row("CONFIG_LD", state_id=6, scale_bits=_bits(0.625)),
+        _row("MVIN", is_acc_addr=True, accumulate=True),
+        _row("MVOUT"),
+    ]
+    trace, expected = _case(
+        rows,
+        dict.fromkeys(modes, True),
+        {"scaled_accumulate_load": {"scale_bits": [_bits(0.625)]}},
+    )
+    expected["composition"]["producer"] = "operand_sum"
+    assert _check((trace, expected))["status"] == "pass"
+
+
+def test_contraction_still_requires_a_derived_dataflow_select(selected_hardware):
+    from merlin_experiments.phase0.fusion_cases import chain_for_node
+    from merlin_experiments.phase0.fusion_execution import _trace_modes
+
+    from merlin.targetgen.functional_truth_compositions import _audit_modes, _family_refusals
+
+    node = dict(_scaled_load_node(), form="contraction", realization="matmul")
+    chain = chain_for_node(node, "OS")
+    case = dict(producer="contraction", exit="requant", readout_stages=[], dataflow="OS")
+    assert "output_stationary" in _audit_modes(chain, case, dict(readout=[]))
+    selected_hardware[0]["facts"]["timing_structure"]["dataflow"].pop("modes")
+    report = _check(_case([_row("CONFIG_EX", dataflow=9), *_compute(), _row("MVOUT")], {"output_stationary": True}))
+    assert report["status"] == "fail"
+    assert report["composition_audit"]["evidence_status"] == "UNKNOWN"
+    # A contraction cannot shed its dataflow obligation by claiming none applies.
+    unselected = dict(case, dataflow="not_applicable")
+    assert "a mesh-product producer requires a selected dataflow" in _family_refusals(
+        chain_for_node(node, "not_applicable"), {}, unselected, {}, {}
+    )
+    candidate = dict(semantic=dict(structure="single", nodes=[node], dataflow="not_applicable"))
+    with pytest.raises(ValueError, match="mesh-product semantics"):
+        _trace_modes(None, candidate, dict(readout=[]))
+    scaled = dict(semantic=dict(structure="single", nodes=[_scaled_load_node()], dataflow="OS"))
+    with pytest.raises(ValueError, match="mesh-product semantics"):
+        _trace_modes(None, scaled, dict(readout=[]))
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        dict(producer="contraction"),
+        dict(producer="contraction", reduction_kind="sum", window_mean=True),
+        # A window mean is a ones-operand MAC whatever producer label its chain carries.
+        dict(producer="movement", window_mean=True),
+        dict(producer="movement", reduction_kind="sum"),
+    ],
+)
+def test_every_mesh_product_producer_refuses_not_applicable(case):
+    from merlin_experiments.phase0.fusion_cases import chain_for_node
+
+    from merlin.targetgen.functional_truth_compositions import _family_refusals
+
+    node = dict(_scaled_load_node(), form="window_movement", realization="mean")
+    case = dict(case, exit="requant", readout_stages=[], dataflow="not_applicable")
+    refusals = list(_family_refusals(chain_for_node(node, "not_applicable"), {}, case, {}, {}))
+    assert "a mesh-product producer requires a selected dataflow" in refusals
+
+
+def test_mesh_free_and_unknown_producers_under_not_applicable():
+    from merlin.targetgen.functional_truth_compositions import _family_refusals
+
+    chain = dict(producer="movement", constraints=[])
+    pool = dict(producer="movement", exit="requant", readout_stages=[], dataflow="not_applicable")
+    assert "a mesh-product producer requires a selected dataflow" not in _family_refusals(chain, {}, pool, {}, {})
+    unknown = dict(pool, producer="elementwise")
+    assert "producer has no declared mesh-product semantics" in _family_refusals(chain, {}, unknown, {}, {})
+
+
+# Runtime-input readout partitions.
+
+
+def _runtime_case(scale=0.25, relu=True):
+    from merlin.targetgen import runtime_scale_trace as RT
+
+    bits = _bits(scale)
+    config = dict(acc_scale_bits=bits, acc_scale=scale, acc_act=int(relu), relu=relu, out_stride_bytes=3, pool_stride=0)
+    raw = dict(acc_scale_bits=_bits(1.0), acc_scale=1.0, acc_act=0, relu=False, out_stride_bytes=12, pool_stride=0)
+    rows = [
+        {**_row("CONFIG_ST", **raw), "funct": 0, "pc": 0x200, "rs2": dict(kind="const", raw=_bits(1.0) << 32 | 12)},
+        _row("MVOUT", dram=_operand(4), rows=2, cols=3, readout="i32"),
+        {**_row("CONFIG_ST", **config), "funct": 0, "pc": 0x208, "rs2": dict(kind="const", raw=bits << 32 | 3)},
+        _row("MVOUT", dram=_operand(5), rows=2, cols=3),
+    ]
+    for ordinal, row in enumerate(rows):
+        row.update(command_ordinal=ordinal, funct=row.get("funct", 3), pc=row.get("pc", 0x300 + 4 * ordinal))
+    load = dict(kernel="fused", call=1, pc=0x204, word=0x4288, arg_index=3, address=0xC0000400, offset=0)
+    use = dict(kernel="fused", call=1, command_ordinal=2, pc=0x208, word=0x00A6307B, rs2_register="x10")
+    use.update(rs2=bits << 32 | 3, arg_index=3, scale_bits=bits, static_bits=3, load_pc=0x204, chain=[])
+    report = dict(
+        schema=RT.SCHEMA,
+        status="pass",
+        elf_sha256="e" * 64,
+        retirement_trace_sha256="t" * 64,
+        slot=dict(offset=32, width=32),
+        loads=[dict(load, loaded_bits=bits, register="x10")],
+        config_uses=[dict(use, chain_sha256="c" * 64)],
+        evidence={},
+    )
+    report["evidence"]["fused:3"] = RT.scale_load_evidence_id(report, "fused", 3)
+    report["sha256"] = RT._sha({k: v for k, v in report.items() if k != "sha256"})
+    partition = dict(
+        output=_operand(5),
+        shape=[2, 3],
+        scale_input=dict(kind="argbase", arg_index=3, offset=0, dtype="f32", shape=[1]),
+        expected_input_bits=bits,
+        scale_load_evidence_id=report["evidence"]["fused:3"],
+    )
+    return rows, partition, report
+
+
+def _runtime_readout(rows, partition, report, **kwargs):
+    commits = CA._events(rows, {})[0]
+    CA._readout(commits, dict(partitions=[partition]), rows=rows, scale_loads=report, **kwargs)
+
+
+@pytest.mark.parametrize("scale", [0.25, 0.0, 1.0, -0.5])
+def test_runtime_partition_checks_retired_bits_and_load_provenance(scale):
+    rows, partition, report = _runtime_case(scale, relu=scale >= 0)
+    # A runtime scale of 0 or 1 is still the source operand; no non-unit test applies.
+    _runtime_readout(rows[2:], partition, report, relu=scale >= 0, scaled=True)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("stale_bits", "differ from the frozen runtime input"),
+        ("wrong_register", "no retired load provenance"),
+        ("wrong_pc", "no retired load provenance"),
+        ("wrong_input", "not this scale input's observed chain"),
+        ("missing_load", "UNKNOWN: runtime readout has no retired scale-load evidence"),
+        ("tampered", "report digest differs from its rows"),
+        ("exclusive", "mutually exclusive"),
+        ("nonfinite", "UNKNOWN: runtime readout has no frozen finite"),
+        ("missing_store", "do not cover every source output"),
+        ("overlap", "overlap source output"),
+        ("activation", "lacks simultaneous ReLU"),
+    ],
+)
+def test_runtime_partition_mutations_fail(mutation, error):
+    rows, partition, report = _runtime_case()
+    rows = rows[2:]
+    if mutation == "stale_bits":
+        # The effective CONFIG_ST still carries the previous call's scale.
+        rows[0]["decoded"]["acc_scale_bits"] = _bits(0.5)
+    elif mutation == "wrong_register":
+        rows[0]["command_ordinal"] = 7
+    elif mutation == "wrong_pc":
+        rows[0]["pc"] = 0x20C
+    elif mutation == "wrong_input":
+        partition["scale_input"]["arg_index"] = 2
+    elif mutation == "missing_load":
+        report = None
+    elif mutation == "tampered":
+        report["config_uses"][0]["rs2"] ^= 1
+    elif mutation == "exclusive":
+        partition["column_scale_bits"] = [partition["expected_input_bits"]] * 3
+    elif mutation == "nonfinite":
+        partition["expected_input_bits"] = 0x7F800000
+    elif mutation == "missing_store":
+        rows[1]["decoded"]["rows"] = 1
+    elif mutation == "overlap":
+        rows.append(copy.deepcopy(rows[1]))
+    else:
+        rows[0]["decoded"].update(relu=False, acc_act=0)
+    with pytest.raises(ValueError, match=error):
+        _runtime_readout(rows, partition, report, relu=True)
+
+
+def test_raw_sibling_of_runtime_readout_requires_identity_config():
+    rows, _, _ = _runtime_case()
+    parameters = {"i32_exit": dict(outputs=[_operand(4)], identity_config=True)}
+    CA.check_modes(rows, {"i32_exit": True}, parameters, target="synthetic")
+    for field, value in (("acc_scale_bits", _bits(0.25)), ("acc_act", 1), ("pool_stride", 2)):
+        changed = copy.deepcopy(rows)
+        changed[0]["decoded"][field] = value
+        with pytest.raises(ValueError, match="identity scale and no activation"):
+            CA.check_modes(changed, {"i32_exit": True}, parameters, target="synthetic")
+    # Without a runtime sibling the historical i32_exit check is unchanged.
+    changed[0]["decoded"]["acc_scale_bits"] = _bits(0.25)
+    CA.check_modes(changed, {"i32_exit": True}, {"i32_exit": dict(outputs=[_operand(4)])}, target="synthetic")

@@ -287,6 +287,51 @@ def test_dataflow_modes_are_classified_from_the_product_destinations(record):
     assert (flow["support"], flow["select_runtime_driven"], flow["cell_occurrences"]) == ("both", True, 1)
 
 
+_CFG_REGISTER = '%cfg = "seq.firreg"(%cfgn, %clock) <{name = "cfg"}> : (i1, !seq.clock) -> i1'
+_CFG_NEXT = '%cfgn = "comb.mux"(%io_cfg_en, %io_cfg, %cfg) : (i1, i1, i1) -> i1'
+_LITERAL = '%cfgk = "hw.constant"() {value = 1 : i1} : () -> i1\n    '
+
+
+@pytest.mark.parametrize(
+    "old, new, expected",
+    [
+        (_CFG_NEXT, _CFG_NEXT, ("both", True)),
+        (_CFG_NEXT, '%cfgn = "comb.xor"(%io_cfg, %cfg) : (i1, i1) -> i1', ("both", True)),
+        (_CFG_NEXT, '%cfgn = "comb.mux"(%cfg, %cfg, %cfg) : (i1, i1, i1) -> i1', ("fixed_select", False)),
+        (
+            _CFG_NEXT,
+            _LITERAL + '%cfgn = "comb.mux"(%io_cfg_en, %cfgk, %cfg) : (i1, i1, i1) -> i1',
+            ("fixed_select", False),
+        ),
+        (_CFG_NEXT, _LITERAL + '%cfgn = "comb.or"(%cfgk, %cfgk) : (i1, i1) -> i1', ("fixed_select", False)),
+        (
+            _CFG_REGISTER,
+            _LITERAL + '%cfg = "seq.firreg"(%cfg, %clock, %io_go, %cfgk) <{name = "cfg"}> '
+            ": (i1, !seq.clock, i1, i1) -> i1",
+            ("fixed_select", False),
+        ),
+        (_CFG_REGISTER, '%cfg = "hw.constant"() {value = 1 : i1} : () -> i1', ("fixed_select", False)),
+    ],
+    ids=["enabled_input", "input_feedback", "self_held", "literal_enabled", "literal", "reset_held", "constant"],
+)
+def test_select_is_runtime_only_when_written_from_a_unit_input(old, new, expected):
+    text = _design_text()
+    assert old in text
+    flow = ts.dataflow_modes(load_design(text.replace(old, new)), "Unit", DECLARATIONS["dataflow"])
+    assert (flow["support"], flow["select_runtime_driven"]) == expected
+
+
+def test_a_root_input_used_as_a_register_reset_is_not_data():
+    text = _design_text().replace(_CFG_NEXT, '%cfgn = "comb.xor"(%io_go, %cfg) : (i1, i1) -> i1')
+    assert load_design(text).runtime_driven("Unit", "Unit/cell", "io_sel") is True
+    reset = (
+        _LITERAL + '%cfg = "seq.firreg"(%cfgn, %clock, %io_go, %cfgk) <{name = "cfg"}> : (i1, !seq.clock, i1, i1) -> i1'
+    )
+    design = load_design(text.replace(_CFG_REGISTER, reset))
+    assert design.root_resets("Unit") == {design.module("Unit").input_value["io_go"]}
+    assert design.runtime_driven("Unit", "Unit/cell", "io_sel") is False
+
+
 def test_buffer_census_and_measurement_fits_are_recorded(record):
     census = {row["module"]: row["locations"] for row in record["buffers"]}
     assert census["Fifo"] == [4] and census["Table"] == [2, 3] and census["Client"] == [4]
