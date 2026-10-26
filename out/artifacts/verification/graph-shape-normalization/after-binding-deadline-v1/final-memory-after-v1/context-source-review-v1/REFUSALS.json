@@ -1,0 +1,144 @@
+[
+  {
+    "case": "prefix_allocation",
+    "refusals": [
+      {
+        "entry": "wrapper",
+        "code": "prefix_or_transitive_kernel_call_not_supported",
+        "obligation": "initial-clock and prefix/frame stability must be proved"
+      }
+    ],
+    "raw_source": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr0/source.mlir",
+      "sha256": "aef4071d4fdb4513b88f4b672676f5f99fec40aed9ff4c870d911ff71f27d353",
+      "bytes": 5208
+    },
+    "raw_final": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr0/final.mlir",
+      "sha256": "2b4d86be76346a02374c35ca580e2a5fb49a208f35a456887c31f9943f63b660",
+      "bytes": 5390
+    },
+    "query": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr0/Context.lean",
+      "sha256": "608001d025e7f170f8d076f2af4ea2a77546941a955a4798b266d445b985c8da",
+      "bytes": 241605
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "semantic_counterexample_proved": false
+  },
+  {
+    "case": "private_escape",
+    "refusals": [
+      {
+        "entry": "wrapper",
+        "code": "state_inspecting_or_unknown_suffix_action",
+        "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.alloc\",\"operand_arity\":0,\"properties\":[[\"operandSegmentSizes\",\"array<i32: 0, 0>\"]],\"result_types\":[\"memref<1xi32>\"]}"
+      },
+      {
+        "entry": "wrapper",
+        "code": "view_result_not_supported"
+      },
+      {
+        "entry": "wrapper",
+        "code": "descriptor_return_not_supported"
+      }
+    ],
+    "raw_source": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr1/source.mlir",
+      "sha256": "350ce5681938e352d7243bcf97a491a1571adcb623f1b6a62c4ba5c14350b5f1",
+      "bytes": 5202
+    },
+    "raw_final": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr1/final.mlir",
+      "sha256": "e9d800b09c92c1611c147f7b5f4919fb9b70458f2a16b00dc7447f684eb4b5c4",
+      "bytes": 5384
+    },
+    "query": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr1/Context.lean",
+      "sha256": "fcc000c134ebe747b2b9f7cf7e788e6c5c214f0ca1b12ea12f76fd6b19134ee8",
+      "bytes": 247781
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "semantic_counterexample_proved": false
+  },
+  {
+    "case": "repeated",
+    "refusals": [
+      {
+        "entry": "wrapper",
+        "code": "post_call_callee_not_supported",
+        "target": "kernel",
+        "obligation": "related initial private-clock/heap stability and contextual call congruence"
+      }
+    ],
+    "raw_source": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_re1/source.mlir",
+      "sha256": "8f322a84283a642a9764de29a852a863d98913116b10ab07484f311c4a5d6428",
+      "bytes": 5226
+    },
+    "raw_final": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_re1/final.mlir",
+      "sha256": "11eda04e5ef467af30862a874af663d3cd8af0a6e78e660516d20c4983dd68a9",
+      "bytes": 5408
+    },
+    "query": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_re1/Context.lean",
+      "sha256": "c02b9292eb67bc00d8e76d6c88eaa6254755beb1e89261b15c1ed8e2f3843bbc",
+      "bytes": 248994
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "semantic_counterexample_proved": false
+  },
+  {
+    "case": "transitive",
+    "refusals": [
+      {
+        "entry": "wrapper",
+        "code": "prefix_or_transitive_kernel_call_not_supported",
+        "obligation": "initial-clock and prefix/frame stability must be proved"
+      }
+    ],
+    "raw_source": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_tr0/source.mlir",
+      "sha256": "f778f5f01524f35d64b4c366bd25261dd421554d7810272648cf2a4ce0b4df92",
+      "bytes": 5478
+    },
+    "raw_final": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_tr0/final.mlir",
+      "sha256": "7e29f314c682354eae0f14e1613061e537de7eb8fe209f541d03f727ccae0355",
+      "bytes": 5660
+    },
+    "query": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_tr0/Context.lean",
+      "sha256": "616825c0637628108fdcb6b71684c810eb4837a4926d946eb2387e1e7f17dc87",
+      "bytes": 252469
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "semantic_counterexample_proved": false
+  },
+  {
+    "case": "unknown_caller",
+    "refusals": [
+      {
+        "code": "external_declaration_not_supported"
+      }
+    ],
+    "raw_source": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_un0/source.mlir",
+      "sha256": "67c0e7ecf334650d5b1e7bc4bf51b926ee0bff6ba8777097949d7bdba1d10bb7",
+      "bytes": 5259
+    },
+    "raw_final": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_un0/final.mlir",
+      "sha256": "50dfa791bf1d66f377403cea80b136010810fbc04bf93e10327d2ef4e800c1d8",
+      "bytes": 5441
+    },
+    "query": {
+      "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_un0/Context.lean",
+      "sha256": "f21d37389fb6e27e8b5dd45659b17eb620c1e93f40ab9076e0aef20d48bc4d90",
+      "bytes": 242753
+    },
+    "kernel_outcome": "UNOBSERVED",
+    "semantic_counterexample_proved": false
+  }
+]

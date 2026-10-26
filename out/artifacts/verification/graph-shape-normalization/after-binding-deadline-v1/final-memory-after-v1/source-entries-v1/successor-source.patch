@@ -1,0 +1,1066 @@
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py
+@@ -0,0 +1,151 @@
++"""SDK-free complete-roster preparation. No Lean outcome is observed here."""
++
++import hashlib
++import io
++import json
++import os
++from pathlib import Path
++
++import pytest
++from xdsl.dialects import arith, builtin, func, memref
++from xdsl.printer import Printer
++
++from merlin.verify.lean_graph_loops_memory_scf_after_entries import prepare_entries
++from merlin.verify.lean_graph_loops_shape_projection import Decoder
++from test_lean_graph_loops_memory_scf_after_whole import parser
++
++
++def _function(module, name):
++    return next(op for op in module.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == name)
++
++
++def _print(module):
++    module.verify()
++    stream = io.StringIO()
++    Printer(stream=stream, print_generic_format=True).print_op(module)
++    return stream.getvalue()
++
++
++def _mutate(module, case):
++    untouched = _function(module, "untouched")
++    touch = _function(module, "touch")
++    kernel = _function(module, "kernel")
++    if case == "untouched_return":
++        untouched.body.block.last_op.operands = (untouched.body.block.args[0],)
++    elif case == "literal":
++        constant = next(op for op in untouched.body.block.ops if isinstance(op, arith.ConstantOp))
++        constant.properties["value"] = builtin.IntegerAttr(2, builtin.i32)
++    elif case == "callee":
++        replacement = parser('builtin.module { func.func @untouched(%input: i32) -> i32 { '
++                             '%result = func.call @untouched(%input) : (i32) -> i32 '
++                             'func.return %result : i32 } }')
++        body = replacement.body.block.first_op
++        replacement.body.block.detach_op(body)
++        module.body.block.insert_op_before(body, untouched)
++        module.body.block.erase_op(untouched)
++    elif case == "arity":
++        replacement = parser('builtin.module { func.func @untouched(%input: i32, %extra: i32) -> i32 { '
++                             '%one = arith.constant 1 : i32 %result = arith.addi %input, %one : i32 '
++                             'func.return %result : i32 } }')
++        body = replacement.body.block.first_op
++        replacement.body.block.detach_op(body)
++        module.body.block.insert_op_before(body, untouched)
++        module.body.block.erase_op(untouched)
++    elif case == "caller_buffer":
++        block = touch.body.block
++        load = next(op for op in block.ops if isinstance(op, memref.LoadOp))
++        allocation = memref.AllocOp.get(builtin.i32, shape=[1])
++        block.insert_op_before(allocation, load)
++        load.operands = (allocation.memref, *load.operands[1:])
++    elif case == "interface":
++        untouched.properties["sym_visibility"] = builtin.StringAttr("private")
++    elif case == "observer":
++        addition = next(op for op in touch.body.block.ops if isinstance(op, arith.AddiOp))
++        addition.operands = (addition.operands[0], addition.operands[0])
++    elif case == "kernel_return":
++        returned = kernel.body.block.last_op
++        returned.operands = (kernel.body.block.args[0], returned.operands[1])
++    elif case in ("missing_entry", "declaration"):
++        module.body.block.erase_op(untouched)
++        if case == "declaration":
++            declaration = parser('builtin.module { func.func private @untouched(i32) -> i32 }').body.block.first_op
++            declaration.parent_block().detach_op(declaration)
++            module.body.block.add_op(declaration)
++    elif case == "wrapper":
++        added = parser('builtin.module { func.func @wrapper(%a: i32, %b: i32, %caller: memref<1xi32>) '
++                       '-> (i32, index) { %x, %y = func.call @kernel(%a, %b, %caller) '
++                       ': (i32, i32, memref<1xi32>) -> (i32, index) func.return %x, %y : i32, index } }')
++        wrapper = added.body.block.first_op
++        added.body.block.detach_op(wrapper)
++        module.body.block.add_op(wrapper)
++    else:
++        raise AssertionError(case)
++
++
++@pytest.mark.parametrize("case", (
++    "positive", "untouched_return", "literal", "callee", "caller_buffer", "interface",
++    "observer", "kernel_return", "missing_entry", "declaration", "wrapper", "arity",
++))
++def test_complete_roster_actual_binding(case, monkeypatch, tmp_path):
++    selected = {key: os.environ.get(key) for key in (
++        "MERLIN_GRAPH_MEMORY_AFTER_SOURCE", "MERLIN_GRAPH_MEMORY_AFTER_ACTUAL", "MERLIN_GRAPH_MEMORY_AFTER_HINT",
++    )}
++    if not all(selected.values()):
++        pytest.skip("select retained actual raw boundaries and untrusted plan")
++    raw_source = Path(selected["MERLIN_GRAPH_MEMORY_AFTER_SOURCE"]).read_text()
++    raw_final = Path(selected["MERLIN_GRAPH_MEMORY_AFTER_ACTUAL"]).read_text()
++    original_final = raw_final
++    hint = json.loads(Path(selected["MERLIN_GRAPH_MEMORY_AFTER_HINT"]).read_text())
++    if case != "positive":
++        final = parser(raw_final)
++        _mutate(final, case)
++        raw_final = _print(final)
++        if case == "wrapper":
++            source = parser(raw_source)
++            _mutate(source, case)
++            raw_source = _print(source)
++    parser(raw_source).verify()
++    parser(raw_final).verify()
++
++    def forbidden(*args, **kwargs):
++        raise AssertionError("old whole-tree pair matcher cannot supply either boundary")
++
++    for name in ("block", "project", "operands"):
++        monkeypatch.setattr(Decoder, name, forbidden)
++    result = prepare_entries(hint["adapter"], hint["pair"]["afterFrame"], raw_source, raw_final,
++                             parser=parser, index_bits=64, max_nodes=5000)
++    roster = result["entry_roster"]
++    assert [row["name"] for row in roster["rows"]] == [row["name"] for row in roster["source_headers"]]
++    assert result["lean_status"] == "UNCOMPILED"
++    assert not result["all_entries_proved"] and not result["kernel_checked"] and not result["qualified"]
++    assert result["raw_source_sha256"] == hashlib.sha256(raw_source.encode()).hexdigest()
++    assert result["raw_final_sha256"] == hashlib.sha256(raw_final.encode()).hexdigest()
++    if case != "positive":
++        assert raw_final != original_final
++    assert result["execution_witness_roots"][-1] == "entry2_final_outcome"
++    assert result["query_sha256"] == hashlib.sha256(result["query"].encode()).hexdigest()
++    assert result["final_root"] == "GraphMemoryAfterEntries.every_definition"
++    assert result["final_root"] not in result["support_roots"]
++    assert not any(line.lstrip().startswith("#") for line in result["query"].splitlines())
++    if case == "positive":
++        assert not roster["refusals"]
++        assert roster["kernel_reachable"] == ["kernel", "touch"]
++        assert len(roster["source_callgraph"]["kernel"]) == 2
++        assert not roster["source_callgraph"]["touch"] and not roster["source_callgraph"]["untouched"]
++        assert [row["name"] for row in roster["source_headers"]] == ["kernel", "touch", "untouched"]
++        assert len(roster["literals"]) == 1
++    if case == "wrapper":
++        assert any(row["code"] == "unproved_changed_kernel_caller_context" for row in roster["refusals"])
++    if case in ("missing_entry", "interface", "declaration", "arity"):
++        assert any(row["code"] == "boundary_roster_or_interface_changed" for row in roster["refusals"])
++    if case == "declaration":
++        assert any(row["code"] == "declaration_not_supported" for row in roster["refusals"])
++    (tmp_path / "source.mlir").write_text(raw_source)
++    (tmp_path / "final.mlir").write_text(raw_final)
++    (tmp_path / "Entries.lean").write_text(result["query"])
++    (tmp_path / "PREPARATION.json").write_text(json.dumps(dict(
++        case=case, xdsl_verified=True, llvm_verified=False, kernel_outcome="UNOBSERVED",
++        expected_finite_binding_acceptance=case == "positive", semantic_counterexample_proved=False,
++        mutation_kind="binding change; no semantic rejection or wrong-result claim",
++        prepared={key: value for key, value in result.items() if key != "query"},
++    ), indent=2) + "\n")
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean
+@@ -0,0 +1,100 @@
++/- UNCOMPILED successor. All listed defined entries, with exact finite coverage
++of both boundary rosters. Unchanged entries require a call-closed identical
++submodule; wrappers reaching the changed kernel do not pass that condition.
++-/
++import Merlin.GraphLoopsMemorySCFAfterEntriesRoster
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsMemorySCF.After
++
++open GraphLoopsShape
++
++def KernelLiteralSupport (source actualFinal : Module) (kernel : Epoch.Kernel)
++    (reachable : List String) (literals : LiteralOpcodes) : Prop :=
++  kernel.function.name ∈ reachable ∧ CallClosed source reachable ∧ CallClosed actualFinal reachable ∧
++    ClosedLiteralAbsent source reachable literals ∧ ClosedLiteralAbsent actualFinal reachable literals
++
++instance (source actualFinal : Module) (kernel : Epoch.Kernel) (reachable : List String) (literals : LiteralOpcodes) :
++    Decidable (KernelLiteralSupport source actualFinal kernel reachable literals) := by
++  unfold KernelLiteralSupport
++  infer_instance
++
++theorem unchanged_entry_outcomes {Value User : Type} (source : Module) (bits : Nat) (sourceValid : source.Valid bits)
++    (plan : Epoch.PlanContext) (normalized : plan.module = Epoch.normalizedModule source)
++    (kernel : Epoch.Kernel) (expansions : List Expansion) (reachable : List String)
++    (agreement : ClosedAgreement plan.module (expandedModule plan kernel expansions) reachable)
++    (actualFinal : Module) (swaps : List (Nat × Nat)) (sourceFrame finalFrame : List String)
++    (materialized : GraphLoopsShape.After.check
++      ⟨bits, expandedModule plan kernel expansions, actualFinal, swaps, sourceFrame, finalFrame⟩ = true)
++    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
++    (name : String) (member : name ∈ reachable) (inputs : List (Runtime Value)) (heap : Heap Value)
++    (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes plan.objects.length meaning source name inputs heap user observed ↔
++      Epoch.graphOutcomes plan.objects.length meaning actualFinal name inputs heap user observed := by
++  have first := Epoch.shape_outcomes source bits sourceValid plan.module normalized plan.objects.length meaning
++    name inputs heap user observed
++  have rest : Epoch.graphOutcomes plan.objects.length meaning plan.module name inputs heap user observed ↔
++      Epoch.graphOutcomes plan.objects.length meaning actualFinal name inputs heap user observed := by
++    unfold Epoch.graphOutcomes
++    apply exists_congr; intro returned
++    apply exists_congr; intro world
++    apply and_congr_left; intro _
++    exact (closed_complete_agreement meaning plan.module (expandedModule plan kernel expansions) reachable agreement
++      name member inputs _ returned world).trans
++      (checked_materialization bits plan kernel expansions actualFinal swaps sourceFrame finalFrame materialized
++        meaning name inputs _ returned world)
++  exact first.trans rest
++
++/-- No per-entry semantic equality is supplied. The changed kernel uses the
++derived checked chain; each other entry uses finite call-closed body facts and
++the same literal/scalar interpretation. Full failure preservation is not asserted.
++-/
++theorem checked_entry_roster {Value User : Type} (source : Module) (bits : Nat) (sourceValid : source.Valid bits)
++    (indices : IndexOpcodes) (sourceAbsent : SourceIndexAbsent indices source)
++    (plan : Epoch.PlanContext) (planValid : plan.Valid) (normalized : plan.module = Epoch.normalizedModule source)
++    (kernel : Epoch.Kernel) (facts : kernel.Facts plan)
++    (memory : GraphLoopsMemorySCF.Model.Projection) (memoryBinding : Epoch.MemoryBinding plan kernel memory)
++    (memoryAccepted : GraphLoopsMemorySCF.Model.check memory = true)
++    (expansions : List Expansion) (binding : ExpansionBinding bits plan kernel indices expansions)
++    (boundary : BoundaryFacts plan kernel expansions)
++    (actualFinal : Module) (swaps : List (Nat × Nat)) (sourceFrame finalFrame : List String)
++    (materialized : GraphLoopsShape.After.check
++      ⟨bits, expandedModule plan kernel expansions, actualFinal, swaps, sourceFrame, finalFrame⟩ = true)
++    (sourceHeaders finalHeaders : List EntryHeader) (rows : List EntryRow)
++    (roster : EntryRosterFacts source actualFinal sourceHeaders finalHeaders plan kernel expansions rows)
++    (literals : LiteralOpcodes) (kernelReachable : List String)
++    (literalSource : LiteralModuleFacts literals source) (literalFinal : LiteralModuleFacts literals actualFinal)
++    (support : KernelLiteralSupport source actualFinal kernel kernelReachable literals)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (row : EntryRow) (member : row ∈ rows) (inputs : List (Runtime Value))
++    (domain : EntryDomain source plan kernel row inputs)
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes plan.objects.length (entryMeaning bits indices plan.opcodes scalar literals literal)
++      source row.name inputs heap user observed ↔
++    Epoch.graphOutcomes plan.objects.length (entryMeaning bits indices plan.opcodes scalar literals literal)
++      actualFinal row.name inputs heap user observed := by
++  have entryFacts := roster.2.2.2.2.2 row member
++  cases route : row.route with
++  | kernel =>
++    have name : row.name = kernel.function.name := by simpa only [EntryRow.Facts, route] using entryFacts
++    have inputsValid : ValuesHold kernel.function.parameters inputs ∧
++        Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs) := by
++      simpa only [EntryDomain, route] using domain.2
++    rw [name]
++    have beforeExtension := literal_outcomes_extension plan.objects.length (finalMeaning bits indices plan.opcodes scalar)
++      literals literal source kernelReachable support.2.1 support.2.2.2.1 kernel.function.name support.1 inputs heap user observed
++    have afterExtension := literal_outcomes_extension plan.objects.length (finalMeaning bits indices plan.opcodes scalar)
++      literals literal actualFinal kernelReachable support.2.2.1 support.2.2.2.2 kernel.function.name support.1 inputs heap user observed
++    have changed := checked_actual_chain source bits sourceValid indices sourceAbsent plan planValid normalized kernel facts
++      memory memoryBinding memoryAccepted expansions binding boundary actualFinal swaps sourceFrame finalFrame materialized
++      scalar inputs inputsValid.1 inputsValid.2 heap user observed
++    exact beforeExtension.symm.trans (changed.trans afterExtension)
++  | unchanged reachable =>
++    have local : row.name ∈ reachable ∧ ClosedAgreement plan.module (expandedModule plan kernel expansions) reachable := by
++      simpa only [EntryRow.Facts, route] using entryFacts
++    exact unchanged_entry_outcomes source bits sourceValid plan normalized kernel expansions reachable local.2 actualFinal
++      swaps sourceFrame finalFrame materialized (entryMeaning bits indices plan.opcodes scalar literals literal)
++      row.name local.1 inputs heap user observed
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean
+@@ -0,0 +1,133 @@
++/- UNCOMPILED successor. Finite call-closed sets justify unchanged entry
++preservation and conservative primitive extension. Body equality alone is not
++enough: every internal target, including absent/declaration names, is covered.
++-/
++import Merlin.GraphLoopsMemorySCFAfterChain
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsMemorySCF.After
++
++open GraphLoopsShape
++
++def TargetClosed (calls : List (String × String)) (names : List String) (key : String) : Prop :=
++  match callTarget calls key with
++  | none => True
++  | some target => target ∈ names
++
++instance (calls : List (String × String)) (names : List String) (key : String) : Decidable (TargetClosed calls names key) := by
++  unfold TargetClosed
++  split <;> infer_instance
++
++def ClosedEntry (module : Module) (names : List String) (name : String) : Prop :=
++  match functionAt module name with
++  | none => True
++  | some function => ∀ key ∈ actionKeys function.code, TargetClosed module.calls names key
++
++instance (module : Module) (names : List String) (name : String) : Decidable (ClosedEntry module names name) := by
++  unfold ClosedEntry
++  split
++  · infer_instance
++  · infer_instance
++
++def CallClosed (module : Module) (names : List String) : Prop :=
++  ∀ name ∈ names, ClosedEntry module names name
++
++instance (module : Module) (names : List String) : Decidable (CallClosed module names) := by
++  unfold CallClosed
++  infer_instance
++
++theorem closed_target (module : Module) (names : List String) (closed : CallClosed module names)
++    (name : String) (member : name ∈ names) (function : Function) (found : functionAt module name = some function)
++    (key : String) (used : key ∈ actionKeys function.code) (target : String)
++    (called : callTarget module.calls key = some target) : target ∈ names := by
++  have entry := closed name member
++  simp only [ClosedEntry, found] at entry
++  have result := entry key used
++  simpa only [TargetClosed, called] using result
++
++def ClosedAgreement (first second : Module) (names : List String) : Prop :=
++  first.calls = second.calls ∧ CallClosed first names ∧
++    ∀ name ∈ names, functionAt first name = functionAt second name
++
++instance (first second : Module) (names : List String) : Decidable (ClosedAgreement first second names) := by
++  unfold ClosedAgreement
++  infer_instance
++
++/-- Each recursive call is justified by finite reachability. An unchanged
++wrapper that calls a changed kernel fails ClosedAgreement rather than inheriting
++an unproved complete-world/contextual congruence from a public-outcome theorem.
++-/
++theorem closed_invoke_agreement {Value World : Type} (meaning : Interpretation Value World)
++    (first second : Module) (names : List String) (agreement : ClosedAgreement first second names)
++    (depth : Nat) (name : String) (member : name ∈ names) :
++    GraphLoopsShape.invoke meaning first false depth name = GraphLoopsShape.invoke meaning second false depth name := by
++  induction depth generalizing name with
++  | zero => rfl
++  | succ depth induction =>
++    funext inputs before outputs after
++    apply propext
++    simp only [GraphLoopsShape.invoke, ← agreement.2.2 name member]
++    cases found : functionAt first name with
++    | none => rfl
++    | some function =>
++      apply and_congr_right; intro typed
++      apply eval_action_agreement
++      · intro key used
++        have tables := agreement.1
++        simp only [withCalls, ← tables]
++        cases called : callTarget first.calls key with
++        | none => rfl
++        | some target =>
++          have targetMember := closed_target first names agreement.2.1 name member function found key used target called
++          rw [← agreement.2.2 target targetMember, induction target targetMember]
++      · rfl
++
++theorem closed_complete_agreement {Value World : Type} (meaning : Interpretation Value World)
++    (first second : Module) (names : List String) (agreement : ClosedAgreement first second names)
++    (name : String) (member : name ∈ names) (inputs : List (Runtime Value))
++    (before : World) (outputs : List (Runtime Value)) (after : World) :
++    complete meaning first false name inputs before outputs after ↔ complete meaning second false name inputs before outputs after := by
++  unfold complete
++  apply exists_congr; intro depth
++  rw [closed_invoke_agreement meaning first second names agreement depth name member]
++
++theorem closed_invoke_extension {Value World : Type} (first second : Interpretation Value World)
++    (module : Module) (names : List String) (closed : CallClosed module names)
++    (actions : ∀ name ∈ names, ∀ function, functionAt module name = some function →
++      ∀ key ∈ actionKeys function.code, first.action key = second.action key)
++    (regions : first.region = second.region) (depth : Nat) (name : String) (member : name ∈ names) :
++    GraphLoopsShape.invoke first module false depth name = GraphLoopsShape.invoke second module false depth name := by
++  induction depth generalizing name with
++  | zero => rfl
++  | succ depth induction =>
++    funext inputs before outputs after
++    apply propext
++    simp only [GraphLoopsShape.invoke]
++    cases found : functionAt module name with
++    | none => rfl
++    | some function =>
++      apply and_congr_right; intro typed
++      apply eval_action_agreement
++      · intro key used
++        simp only [withCalls]
++        cases called : callTarget module.calls key with
++        | none => exact actions name member function found key used
++        | some target =>
++          have targetMember := closed_target module names closed name member function found key used target called
++          rw [induction target targetMember]
++          split
++          · rfl
++          · exact actions name member function found key used
++      · exact regions
++
++theorem absent_entry_no_success {Value World : Type} (meaning : Interpretation Value World) (module : Module)
++    (name : String) (absent : functionAt module name = none) (inputs : List (Runtime Value))
++    (before : World) (outputs : List (Runtime Value)) (after : World) :
++    ¬ complete meaning module false name inputs before outputs after := by
++  rintro ⟨depth, run⟩
++  cases depth with
++  | zero => exact run
++  | succ depth => simpa only [GraphLoopsShape.invoke, absent] using run
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean
+@@ -0,0 +1,124 @@
++/- UNCOMPILED successor. Unchanged scalar literals receive an explicit shared
++partial literal interpretation. No value-of-literal/numerical law is assumed or
++proved. Literals are effect-free by this disclosed model; fidelity is separate.
++Finite closed-support checks derive that selected-kernel execution is unchanged.
++-/
++import Merlin.GraphLoopsMemorySCFAfterEntriesClosure
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsMemorySCF.After
++
++open GraphLoopsShape
++
++abbrev LiteralOpcodes := List (String × String)
++abbrev LiteralMeaning (Value : Type) := String → Value → Prop
++
++def literalAt : LiteralOpcodes → String → Option String
++  | [], _ => none
++  | (key, element) :: rest, actual => if actual = key then some element else literalAt rest actual
++
++def LiteralAction {Value World : Type} (element key : String) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (before : World) (outputs : List (Runtime Value)) (after : World) : Prop :=
++  inputs = [] ∧ ∃ value, literal key value ∧ outputs = [.scalar element value] ∧ after = before
++
++def withLiterals {Value World : Type} (base : Interpretation Value World) (opcodes : LiteralOpcodes)
++    (literal : LiteralMeaning Value) : Interpretation Value World where
++  action := fun key => match literalAt opcodes key with
++    | none => base.action key
++    | some element => LiteralAction element key literal
++  region := base.region
++
++def LiteralAbsentEntry (module : Module) (literals : LiteralOpcodes) (name : String) : Prop :=
++  match functionAt module name with
++    | none => True
++    | some function => ∀ key ∈ actionKeys function.code, literalAt literals key = none
++
++instance (module : Module) (literals : LiteralOpcodes) (name : String) :
++    Decidable (LiteralAbsentEntry module literals name) := by
++  unfold LiteralAbsentEntry
++  split <;> infer_instance
++
++def ClosedLiteralAbsent (module : Module) (names : List String) (literals : LiteralOpcodes) : Prop :=
++  ∀ name ∈ names, LiteralAbsentEntry module literals name
++
++instance (module : Module) (names : List String) (literals : LiteralOpcodes) :
++    Decidable (ClosedLiteralAbsent module names literals) := by
++  unfold ClosedLiteralAbsent
++  infer_instance
++
++def LiteralCodeFacts (literals : LiteralOpcodes) : Code → Prop
++  | .returned _ => True
++  | .cast _ _ _ _ rest | .dimension _ _ _ _ _ _ rest | .constant _ _ rest => LiteralCodeFacts literals rest
++  | .action key operands results rest =>
++      (match literalAt literals key with
++       | none => True
++       | some element => operands = [] ∧ match results with
++         | [result] => result.kind = .scalar element ∧ result.known = none
++         | _ => False) ∧ LiteralCodeFacts literals rest
++  | .region _ _ _ _ body rest => LiteralCodeFacts literals body ∧ LiteralCodeFacts literals rest
++
++def literalCodeDecidable (literals : LiteralOpcodes) : (code : Code) → Decidable (LiteralCodeFacts literals code)
++  | .returned _ => isTrue trivial
++  | .cast _ _ _ _ rest | .dimension _ _ _ _ _ _ rest | .constant _ _ rest => literalCodeDecidable literals rest
++  | .action key operands results rest => by
++      letI := literalCodeDecidable literals rest
++      unfold LiteralCodeFacts
++      split
++      · infer_instance
++      · cases results with
++        | nil => infer_instance
++        | cons result rest => cases rest <;> infer_instance
++  | .region _ _ _ _ body rest =>
++      letI := literalCodeDecidable literals body
++      letI := literalCodeDecidable literals rest
++      inferInstanceAs (Decidable (_ ∧ _))
++
++instance (literals : LiteralOpcodes) (code : Code) : Decidable (LiteralCodeFacts literals code) := literalCodeDecidable literals code
++
++def LiteralModuleFacts (literals : LiteralOpcodes) (module : Module) : Prop :=
++  (literals.map Prod.fst).Nodup ∧
++    (∀ function ∈ module.functions, LiteralCodeFacts literals function.code) ∧
++    (∀ entry ∈ literals, callTarget module.calls entry.1 = none)
++
++instance (literals : LiteralOpcodes) (module : Module) : Decidable (LiteralModuleFacts literals module) := by
++  unfold LiteralModuleFacts
++  infer_instance
++
++theorem closed_literal_extension {Value World : Type} (base : Interpretation Value World)
++    (literals : LiteralOpcodes) (literal : LiteralMeaning Value) (module : Module) (names : List String)
++    (closed : CallClosed module names) (absent : ClosedLiteralAbsent module names literals)
++    (name : String) (member : name ∈ names) (inputs : List (Runtime Value))
++    (before : World) (outputs : List (Runtime Value)) (after : World) :
++    complete base module false name inputs before outputs after ↔
++      complete (withLiterals base literals literal) module false name inputs before outputs after := by
++  have actions : ∀ entry ∈ names, ∀ function, functionAt module entry = some function →
++      ∀ key ∈ actionKeys function.code, base.action key = (withLiterals base literals literal).action key := by
++    intro entry entryMember function found key used
++    have missing := absent entry entryMember
++    simp only [LiteralAbsentEntry, found] at missing
++    simp only [withLiterals, missing key used]
++  unfold complete
++  apply exists_congr; intro depth
++  rw [closed_invoke_extension base (withLiterals base literals literal) module names closed actions rfl depth name member]
++
++def entryMeaning {Value User : Type} (bits : Nat) (indices : IndexOpcodes) (opcodes : Epoch.Opcodes)
++    (scalar : Epoch.BinaryMeaning Value) (literals : LiteralOpcodes) (literal : LiteralMeaning Value) :
++    Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
++  withLiterals (finalMeaning bits indices opcodes scalar) literals literal
++
++theorem literal_outcomes_extension {Value User : Type} (bound : Nat)
++    (base : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
++    (literals : LiteralOpcodes) (literal : LiteralMeaning Value) (module : Module) (names : List String)
++    (closed : CallClosed module names) (absent : ClosedLiteralAbsent module names literals)
++    (name : String) (member : name ∈ names) (inputs : List (Runtime Value)) (heap : Heap Value) (user : User)
++    (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes bound base module name inputs heap user observed ↔
++      Epoch.graphOutcomes bound (withLiterals base literals literal) module name inputs heap user observed := by
++  unfold Epoch.graphOutcomes
++  apply exists_congr; intro returned
++  apply exists_congr; intro world
++  apply and_congr_left; intro _
++  exact closed_literal_extension base literals literal module names closed absent name member inputs _ returned world
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean
+@@ -0,0 +1,111 @@
++/- UNCOMPILED successor. Complete defined-entry roster, explicit interfaces and
++per-entry domains. Declaration/visibility metadata is an independently decoded
++input bound to both raw modules; it is not native linkage/access-control semantics.
++-/
++import Merlin.GraphLoopsMemorySCFAfterEntriesMeaning
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsMemorySCF.After
++
++open GraphLoopsShape
++
++structure EntryHeader where
++  name : String
++  visibility : String
++  declaration : Bool
++  parameters : List Kind
++  returned : List Kind
++  deriving DecidableEq, Repr
++
++def HeaderFits (module : Module) (header : EntryHeader) : Prop :=
++  match functionAt module header.name with
++  | none => header.declaration = true
++  | some function => header.declaration = false ∧
++      function.parameters.map Binding.kind = header.parameters ∧ function.returned = header.returned
++
++instance (module : Module) (header : EntryHeader) : Decidable (HeaderFits module header) := by
++  unfold HeaderFits
++  split <;> infer_instance
++
++def DefinedHeaders (module : Module) (headers : List EntryHeader) : Prop :=
++  headers.map EntryHeader.name = module.functions.map Function.name ∧
++    (headers.map EntryHeader.name).Nodup ∧
++    (∀ header ∈ headers, header.declaration = false ∧ HeaderFits module header)
++
++instance (module : Module) (headers : List EntryHeader) : Decidable (DefinedHeaders module headers) := by
++  unfold DefinedHeaders
++  infer_instance
++
++inductive EntryRoute where
++  | kernel
++  | unchanged (reachable : List String)
++  deriving DecidableEq, Repr
++
++structure EntryRow where
++  name : String
++  route : EntryRoute
++  deriving DecidableEq, Repr
++
++def EntryRow.Facts (plan : Epoch.PlanContext) (kernel : Epoch.Kernel) (expansions : List Expansion) (row : EntryRow) : Prop :=
++  match row.route with
++  | .kernel => row.name = kernel.function.name
++  | .unchanged reachable => row.name ∈ reachable ∧ ClosedAgreement plan.module (expandedModule plan kernel expansions) reachable
++
++instance (plan : Epoch.PlanContext) (kernel : Epoch.Kernel) (expansions : List Expansion) (row : EntryRow) :
++    Decidable (row.Facts plan kernel expansions) := by
++  unfold EntryRow.Facts
++  split <;> infer_instance
++
++def EntryRosterFacts (source actualFinal : Module) (sourceHeaders finalHeaders : List EntryHeader)
++    (plan : Epoch.PlanContext) (kernel : Epoch.Kernel) (expansions : List Expansion) (rows : List EntryRow) : Prop :=
++  DefinedHeaders source sourceHeaders ∧ DefinedHeaders actualFinal finalHeaders ∧ sourceHeaders = finalHeaders ∧
++    rows.map EntryRow.name = sourceHeaders.map EntryHeader.name ∧
++    (rows.map EntryRow.name).Nodup ∧ ∀ row ∈ rows, row.Facts plan kernel expansions
++
++instance (source actualFinal : Module) (sourceHeaders finalHeaders : List EntryHeader)
++    (plan : Epoch.PlanContext) (kernel : Epoch.Kernel) (expansions : List Expansion) (rows : List EntryRow) :
++    Decidable (EntryRosterFacts source actualFinal sourceHeaders finalHeaders plan kernel expansions rows) := by
++  unfold EntryRosterFacts
++  infer_instance
++
++def ExternalInput {Value : Type} (bound : Nat) : Runtime Value → Prop
++  | .view _ descriptor _ => ¬ descriptor.allocation < bound
++  | _ => True
++
++def EntryDomain {Value : Type} (source : Module) (plan : Epoch.PlanContext) (kernel : Epoch.Kernel)
++    (row : EntryRow) (inputs : List (Runtime Value)) : Prop :=
++  (∀ input ∈ inputs, ExternalInput plan.objects.length input) ∧
++  match row.route with
++  | .kernel => ValuesHold kernel.function.parameters inputs ∧
++      Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs)
++  | .unchanged _ => ∃ function, functionAt source row.name = some function ∧ ValuesHold function.parameters inputs
++
++theorem roster_has_every_definition (source actualFinal : Module) (sourceHeaders finalHeaders : List EntryHeader)
++    (plan : Epoch.PlanContext) (kernel : Epoch.Kernel) (expansions : List Expansion) (rows : List EntryRow)
++    (facts : EntryRosterFacts source actualFinal sourceHeaders finalHeaders plan kernel expansions rows)
++    (function : Function) (member : function ∈ source.functions) : ∃ row ∈ rows, row.name = function.name := by
++  have nameMember : function.name ∈ rows.map EntryRow.name := by
++    rw [facts.2.2.2.1, facts.1.1]
++    exact List.mem_map_of_mem member
++  exact List.mem_map.mp nameMember
++
++theorem typed_input_arity {Value : Type} (bindings : List Binding) (inputs : List (Runtime Value))
++    (typed : ValuesHold bindings inputs) : inputs.length = bindings.length := by
++  induction typed with
++  | nil => rfl
++  | cons holds typed induction => exact congrArg Nat.succ induction
++
++theorem wrong_arity_no_success {Value World : Type} (meaning : Interpretation Value World) (module : Module)
++    (name : String) (function : Function) (found : functionAt module name = some function)
++    (inputs : List (Runtime Value)) (wrong : inputs.length ≠ function.parameters.length)
++    (before : World) (outputs : List (Runtime Value)) (after : World) :
++    ¬ complete meaning module false name inputs before outputs after := by
++  rintro ⟨depth, run⟩
++  cases depth with
++  | zero => exact run
++  | succ depth =>
++    simp only [GraphLoopsShape.invoke, found, Function.invoke] at run
++    exact wrong (typed_input_arity function.parameters inputs run.1)
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean
+@@ -0,0 +1,99 @@
++/- UNCOMPILED successor. Constructed typed input/caller-heap witnesses, plus
++an explicit Unit-valued execution for the retained literal/binary body. Unit
++relations illustrate nonempty abstract outcomes; they are not integer numerics.
++-/
++import Merlin.GraphLoopsMemorySCFAfterEntriesChain
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsMemorySCF.After
++
++open GraphLoopsShape
++
++def sampleRuntime (object : Nat) : Kind → Runtime Unit
++  | .index => .index 0
++  | .scalar element => .scalar element ()
++  | .view type => .view type
++      ⟨object, 0, type.offset, type.shape, type.strides, type.element, type.space⟩
++      ⟨rfl, rfl, rfl, rfl, rfl⟩
++
++theorem sample_kind (object : Nat) (kind : Kind) : (sampleRuntime object kind).kind = kind := by cases kind <;> rfl
++
++def sampleInputs (object : Nat) (parameters : List Binding) : List (Runtime Unit) :=
++  parameters.map (fun binding => sampleRuntime object binding.kind)
++
++theorem sample_typed (object : Nat) (parameters : List Binding) (plain : Plain parameters) :
++    ValuesHold parameters (sampleInputs object parameters) := by
++  induction parameters with
++  | nil => exact .nil
++  | cons binding rest induction =>
++    exact .cons (Binding.holds_plain binding _ (sample_kind object binding.kind) (plain binding List.mem_cons_self))
++      (induction (fun item member => plain item (List.mem_cons_of_mem _ member)))
++
++theorem sample_external (bound : Nat) (parameters : List Binding) :
++    ∀ input ∈ sampleInputs bound parameters, ExternalInput bound input := by
++  intro input member
++  obtain ⟨binding, _, rfl⟩ := List.mem_map.mp member
++  cases binding.kind with
++  | index => trivial
++  | scalar => trivial
++  | view type => exact Nat.lt_irrefl bound
++
++def sampleHeap : Heap Unit := fun _ _ => some ()
++
++theorem sample_cell_initialized (object index : Nat) : sampleHeap object index = some () := rfl
++
++/-- Execute the literal and binary ACTIONS with explicit partial relations
++chosen to be inhabited. No source execution is assumed. The ordinary Eval
++definition supplies both SSA writes and the final return.
++-/
++theorem literal_binary_execution {World : Type} (meaning : Interpretation Unit World)
++    (literalKey binaryKey element : String) (input literalResult result : Binding)
++    (literalKind : literalResult.kind = .scalar element) (literalPlain : literalResult.known = none)
++    (resultKind : result.kind = .scalar element) (resultPlain : result.known = none)
++    (separate : input.name ≠ literalResult.name)
++    (literal : meaning.action literalKey = LiteralAction element literalKey (fun _ _ => True))
++    (binary : meaning.action binaryKey = Epoch.Binary element (fun _ _ _ => True))
++    (aliases : Aliases) (env : GraphLoopsShape.Env Unit) (read : env input.name = .scalar element ()) (world : World) :
++    Eval meaning false aliases
++      (.action literalKey [] [literalResult]
++        (.action binaryKey [input, literalResult] [result] (.returned [result])))
++      env world [.scalar element ()] world := by
++  refine ⟨[.scalar element ()], world, ?_,
++    .cons (Binding.holds_plain literalResult _ literalKind.symm literalPlain) .nil, ?_⟩
++  · rw [literal]
++    exact ⟨rfl, (), trivial, rfl, rfl⟩
++  · refine ⟨[.scalar element ()], world, ?_,
++      .cons (Binding.holds_plain result _ resultKind.symm resultPlain) .nil, ?_⟩
++    · rw [binary]
++      refine ⟨(), (), (), ?_, trivial, rfl, rfl⟩
++      simp only [readArguments, List.map_cons, List.map_nil, Bool.false_eq_true, ↓reduceIte,
++        assign, GraphLoopsShape.put, separate, read]
++    · exact ⟨by simp only [readArguments, List.map_cons, List.map_nil, Bool.false_eq_true,
++        ↓reduceIte, assign, GraphLoopsShape.put], rfl⟩
++
++/-- Construct a complete finite-depth entry execution from its actual body and
++primitive selections. No whole-run or successful-execution premise is used. -/
++theorem literal_binary_complete {World : Type} (meaning : Interpretation Unit World)
++    (module : Module) (function : Function) (found : functionAt module function.name = some function)
++    (literalKey binaryKey element : String) (input literalResult result : Binding)
++    (parameters : function.parameters = [input])
++    (body : function.code = .action literalKey [] [literalResult]
++      (.action binaryKey [input, literalResult] [result] (.returned [result])))
++    (inputKind : input.kind = .scalar element) (inputPlain : input.known = none)
++    (literalKind : literalResult.kind = .scalar element) (literalPlain : literalResult.known = none)
++    (resultKind : result.kind = .scalar element) (resultPlain : result.known = none)
++    (separate : input.name ≠ literalResult.name)
++    (literal : (withCalls meaning module (GraphLoopsShape.invoke meaning module false 0)).action literalKey =
++      LiteralAction element literalKey (fun _ _ => True))
++    (binary : (withCalls meaning module (GraphLoopsShape.invoke meaning module false 0)).action binaryKey =
++      Epoch.Binary element (fun _ _ _ => True)) (world : World) :
++    complete meaning module false function.name [.scalar element ()] world [.scalar element ()] world := by
++  refine ⟨1, ?_⟩
++  simp only [GraphLoopsShape.invoke, found, Function.invoke, parameters, body]
++  refine ⟨.cons (Binding.holds_plain input _ inputKind.symm inputPlain) .nil, ?_⟩
++  apply literal_binary_execution _ literalKey binaryKey element input literalResult result literalKind literalPlain
++    resultKind resultPlain separate literal binary
++  simp only [assign, GraphLoopsShape.put, ↓reduceIte]
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py
+@@ -0,0 +1,152 @@
++"""Emit an all-supported-entry successor to the selected-entry graph candidate.
++
++Both raw boundary modules supply complete rosters. Each unchanged entry requires
++finite call-closed correspondence, not merely an equal local body. All emitted
++Lean remains UNCOMPILED; parser/projection and native fidelity are separate.
++"""
++
++import hashlib
++
++from .lean_graph_loops_memory_scf_after_entries_data import roster
++from .lean_graph_loops_memory_scf_after_entries_witness import literal_witnesses
++from .lean_graph_loops_memory_scf_after_whole import prepare_whole
++from .lean_graph_loops_shape_model import function, kind
++from .lean_graph_loops_unroll import _list, _string
++
++
++def _header(row):
++    return "⟨" + ", ".join((
++        _string(row["name"]), _string(row["visibility"]), str(row["declaration"]).lower(),
++        _list(row["parameters"], kind), _list(row["returned"], kind),
++    )) + "⟩"
++
++
++def _row(row):
++    route = ".kernel" if row["route"] == "kernel" else "(.unchanged " + _list(row["reachable"], _string) + ")"
++    return "⟨" + _string(row["name"]) + ", " + route + "⟩"
++
++
++def _definitions(data):
++    return f"""
++namespace GraphMemoryAfterEntries
++open Merlin Merlin.GraphLoopsShape Merlin.GraphLoopsMemorySCF.After
++open GraphShapeEpochObligation GraphMemoryAfterExpansion GraphMemoryAfterWhole
++def sourceHeaders : List EntryHeader := {_list(data['source_headers'], _header)}
++def finalHeaders : List EntryHeader := {_list(data['final_headers'], _header)}
++def rows : List EntryRow := {_list(data['rows'], _row)}
++def literals : LiteralOpcodes := {_list(data['literals'], lambda row: '(' + _string(row[0]) + ', ' + _string(row[1]) + ')')}
++def kernelReachable : List String := {_list(data['kernel_reachable'], _string)}
++theorem roster_facts : EntryRosterFacts independentSource GraphMemoryAfterMaterialization.actualFinal
++    sourceHeaders finalHeaders plan kernel expansions rows := by decide
++theorem literal_source : LiteralModuleFacts literals independentSource := by decide
++theorem literal_final : LiteralModuleFacts literals GraphMemoryAfterMaterialization.actualFinal := by decide
++theorem kernel_support : KernelLiteralSupport independentSource GraphMemoryAfterMaterialization.actualFinal
++    kernel kernelReachable literals := by decide
++"""
++
++
++def _theorems(bits):
++    return f"""
++theorem complete_roster {{Value User : Type}} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (row : EntryRow) (member : row ∈ rows) (inputs : List (Runtime Value))
++    (domain : EntryDomain independentSource plan kernel row inputs)
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes plan.objects.length (entryMeaning {bits} indices plan.opcodes scalar literals literal)
++      independentSource row.name inputs heap user observed ↔
++    Epoch.graphOutcomes plan.objects.length (entryMeaning {bits} indices plan.opcodes scalar literals literal)
++      GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed :=
++  checked_entry_roster independentSource {bits} source_valid indices source_index_absent
++    plan (of_decide_eq_true plan_valid) source_normalized kernel (of_decide_eq_true kernel_facts)
++    GraphMemorySCFObligation.actual (of_decide_eq_true memory_binding) GraphMemorySCFObligation.accepted
++    expansions (of_decide_eq_true expansion_checked) boundary_facts
++    GraphMemoryAfterMaterialization.actualFinal actual.swaps actual.beforeFrame actual.afterFrame actual_materialized
++    sourceHeaders finalHeaders rows roster_facts literals kernelReachable literal_source literal_final kernel_support
++    scalar literal row member inputs domain heap user observed
++
++theorem every_definition {{Value User : Type}} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (function : Function) (defined : function ∈ independentSource.functions) :
++    ∃ row ∈ rows, row.name = function.name ∧
++      ∀ inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs →
++      ∀ (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),
++      (Epoch.graphOutcomes plan.objects.length (entryMeaning {bits} indices plan.opcodes scalar literals literal)
++        independentSource row.name inputs heap user observed ↔
++       Epoch.graphOutcomes plan.objects.length (entryMeaning {bits} indices plan.opcodes scalar literals literal)
++        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed) := by
++  obtain ⟨row, member, name⟩ := roster_has_every_definition independentSource GraphMemoryAfterMaterialization.actualFinal
++    sourceHeaders finalHeaders plan kernel expansions rows roster_facts function defined
++  exact ⟨row, member, name, fun inputs domain heap user observed =>
++    complete_roster scalar literal row member inputs domain heap user observed⟩
++"""
++
++
++def _domains(source, data):
++    text, roots = [], []
++    for number, (body, row) in enumerate(zip(source["functions"], data["rows"], strict=True)):
++        name = "entry" + str(number)
++        text.append(f"""
++def {name} : Function := {function(body)}
++def {name}Row : EntryRow := {_row(row)}
++def {name}Inputs : List (Runtime Unit) := sampleInputs plan.objects.length {name}.parameters
++theorem {name}_found : functionAt independentSource {_string(body['name'])} = some {name} := by decide
++theorem {name}_member : {name}Row ∈ rows := by decide
++theorem {name}_plain : Plain {name}.parameters := by decide
++theorem {name}_typed : ValuesHold {name}.parameters {name}Inputs :=
++  sample_typed plan.objects.length {name}.parameters {name}_plain
++theorem {name}_wrong_arity {{Value World : Type}} (meaning : Interpretation Value World)
++    (inputs : List (Runtime Value)) (wrong : inputs.length ≠ {name}.parameters.length)
++    (before : World) (outputs : List (Runtime Value)) (after : World) :
++    ¬ complete meaning independentSource false {name}.name inputs before outputs after :=
++  wrong_arity_no_success meaning independentSource {name}.name {name} {name}_found inputs wrong before outputs after
++theorem {name}_external : ∀ input ∈ {name}Inputs, ExternalInput plan.objects.length input :=
++  sample_external plan.objects.length {name}.parameters
++""")
++        if row["route"] == "kernel":
++            text.append(f"""
++theorem {name}_kernel_parameters : {name}.parameters = kernel.function.parameters := by decide
++theorem {name}_callers : Epoch.CallersValid plan.objects.length plan.callers
++    (assign emptyEnv kernel.function.parameters {name}Inputs) := by
++  intro caller member
++  simp only [plan, List.mem_cons, List.not_mem_nil, or_false] at member
++  rcases member with rfl
++  exact ⟨plan.objects.length, Nat.lt_irrefl _, rfl⟩
++theorem {name}_domain : EntryDomain independentSource plan kernel {name}Row {name}Inputs := by
++  refine ⟨{name}_external, ?_, {name}_callers⟩
++  rw [← {name}_kernel_parameters]
++  exact {name}_typed
++""")
++            roots += [name + "_kernel_parameters", name + "_callers"]
++        else:
++            text.append(f"""
++theorem {name}_domain : EntryDomain independentSource plan kernel {name}Row {name}Inputs :=
++  ⟨{name}_external, {name}, {name}_found, {name}_typed⟩
++""")
++        roots += [name + suffix for suffix in ("_found", "_member", "_plain", "_typed", "_wrong_arity", "_external", "_domain")]
++    return "".join(text), roots
++
++
++def prepare_entries(adapter, source_frame, raw_source, raw_final, *, parser, index_bits, max_nodes):
++    whole = prepare_whole(adapter, source_frame, raw_source, raw_final,
++                          parser=parser, index_bits=index_bits, max_nodes=max_nodes)
++    source = whole["independent_source"]["module"]
++    final = whole["actual_final"]["model"]["module"]
++    data = roster(whole["source_export"], whole["actual_final"]["actual_export"], source, final,
++                  adapter["step_binding"]["function"])
++    # Declarations retain full data/refusal; never silently zip them out of the witness roster.
++    domains, domain_roots = ("", []) if any(row["declaration"] for row in data["source_headers"]) else _domains(source, data)
++    witnesses, witness_roots, witness_refusals = ("", [], []) if not domain_roots else literal_witnesses(source, index_bits)
++    query = "import Merlin.GraphLoopsMemorySCFAfterEntriesWitness\n" + whole["query"]
++    query += _definitions(data) + _theorems(index_bits) + domains + witnesses + "\nend GraphMemoryAfterEntries\n"
++    roots = [*whole["support_roots"], whole["final_root"], *[
++        "GraphMemoryAfterEntries." + name for name in (
++            "roster_facts", "literal_source", "literal_final", "kernel_support", "complete_roster", *domain_roots, *witness_roots,
++        )
++    ]]
++    return dict(
++        whole, query=query, entry_roster=data, support_roots=list(dict.fromkeys(roots)),
++        final_root="GraphMemoryAfterEntries.every_definition",
++        query_sha256=hashlib.sha256(query.encode()).hexdigest(),
++        domain_witnesses_emitted=bool(domain_roots), execution_witness_roots=witness_roots,
++        execution_witness_refusals=witness_refusals, all_entries_proved=False,
++        native_failure_preservation_claimed=False, divergence_preservation_claimed=False,
++        scalar_literal_model="shared partial effect-free relation; numeric values/native fidelity unproved",
++    )
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py
+@@ -0,0 +1,109 @@
++"""Actual complete entry roster and finite reachability hints, never proof results.
++
++All definitions and declarations are retained. Header/closure facts are emitted
++as Lean obligations elsewhere. Python comparisons are preparation diagnostics.
++"""
++
++import json
++
++from .lean_graph_loops_segment_projection import _one_block
++from .lean_graph_loops_shape_types import kind
++
++
++def headers(exported):
++    result = []
++    operations = _one_block(exported["tree"])["operations"]
++    for operation, prototype in zip(operations, exported["functions"], strict=True):
++        if operation["name"] != "func.func":
++            raise ValueError("entry roster requires every top-level operation to be a function")
++        properties = dict(operation["properties"])
++        result.append(dict(
++            name=prototype["name"],
++            visibility=properties.get("sym_visibility", "<default-public>"),
++            declaration=prototype["declaration"],
++            parameters=[kind(row) for row in prototype["parameters"]],
++            returned=[kind(row) for row in prototype["returned"]],
++        ))
++    return result
++
++
++def actions(code):
++    """All scoped action nodes, including nested bodies; retain occurrence order."""
++    while code["tag"] != "returned":
++        if code["tag"] == "action":
++            yield code
++        elif code["tag"] == "region":
++            yield from actions(code["body"])
++        code = code["rest"]
++
++
++def callgraph(module):
++    # Lean callTarget uses the FIRST matching key. Module.Valid separately checks consistency.
++    targets = {}
++    for key, name in module["calls"]:
++        targets.setdefault(key, name)
++    return {
++        function["name"]: [
++            dict(key=action["key"], target=targets[action["key"]])
++            for action in actions(function["code"]) if action["key"] in targets
++        ]
++        for function in module["functions"]
++    }
++
++
++def reachable(name, *graphs):
++    result, pending = [], [name]
++    while pending:
++        current = pending.pop(0)
++        if current in result:
++            continue
++        result.append(current)
++        for graph in graphs:
++            pending.extend(row["target"] for row in graph.get(current, ()))
++    return result
++
++
++def literal_opcodes(*modules):
++    """Keep exact metadata keys; scalar literal values remain opaque parameters."""
++    result = []
++    for module in modules:
++        for function in module["functions"]:
++            for action in actions(function["code"]):
++                metadata = json.loads(action["key"])
++                if metadata["name"] != "arith.constant" or metadata["index_constant"] is not None:
++                    continue
++                outputs = action["results"]
++                if action["operands"] or len(outputs) != 1 or outputs[0]["kind"]["tag"] != "scalar":
++                    raise ValueError("scalar literal interpretation requires zero inputs and one scalar result")
++                row = [action["key"], outputs[0]["kind"]["type"]]
++                if row not in result:
++                    result.append(row)
++    return result
++
++
++def roster(source_export, final_export, source, final, kernel):
++    before, after = headers(source_export), headers(final_export)
++    first_graph, last_graph = callgraph(source), callgraph(final)
++    rows, refusals = [], []
++    if before != after:
++        refusals.append(dict(code="boundary_roster_or_interface_changed", detail="complete ordered headers differ"))
++    for header in before + after:
++        if header["declaration"]:
++            refusals.append(dict(code="declaration_not_supported", entry=header["name"]))
++    names = [header["name"] for header in before]
++    if len(names) != len(set(names)):
++        refusals.append(dict(code="duplicate_entry_name"))
++    for header in before:
++        name = header["name"]
++        closure = reachable(name, first_graph, last_graph)
++        rows.append(dict(name=name, route="kernel" if name == kernel else "unchanged", reachable=closure))
++        if name != kernel and kernel in closure:
++            refusals.append(dict(code="unproved_changed_kernel_caller_context", entry=name, reachable=closure))
++    return dict(
++        source_headers=before, final_headers=after, rows=rows,
++        source_callgraph=first_graph, final_callgraph=last_graph,
++        kernel_reachable=reachable(kernel, first_graph, last_graph),
++        literals=literal_opcodes(source, final), refusals=refusals,
++        coverage="ALL_LISTED_DEFINITIONS_CANDIDATE" if not refusals else "REFUSED_DOMAIN",
++        semantic_validation="UNOBSERVED",
++    )
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py
+@@ -0,0 +1,60 @@
++"""Source-bound Unit execution candidates for literal/binary leaf entries.
++
++This demonstrates an inhabited abstract interpretation, not actual i32 numerics.
++The entire function body is bound by a finite equality before the semantic root.
++"""
++
++from .lean_graph_loops_shape_model import binding
++from .lean_graph_loops_unroll import _string
++
++
++def literal_witnesses(source, bits):
++    texts, roots, refusals = [], [], []
++    for number, function in enumerate(source["functions"]):
++        code = function["code"]
++        if code["tag"] != "action" or len(code["results"]) != 1 or code["operands"]:
++            continue
++        binary = code["rest"]
++        if binary["tag"] != "action" or len(binary["results"]) != 1 or len(function["parameters"]) != 1:
++            continue
++        input_value, literal_result, result = function["parameters"][0], code["results"][0], binary["results"][0]
++        if (binary["operands"] != [input_value, literal_result]
++                or binary["rest"] != dict(tag="returned", values=[result])
++                or input_value["kind"]["tag"] != "scalar"):
++            refusals.append(dict(entry=function["name"], obligation="nonvacuity_literal_binary_body_outside_witness_subset"))
++            continue
++        element = _string(input_value["kind"]["type"])
++        name, literal_key, binary_key = "entry" + str(number), _string(code["key"]), _string(binary["key"])
++        meaning = f"(entryMeaning (User := Unit) {bits} indices plan.opcodes (fun _ _ _ _ => True) literals (fun _ _ => True))"
++        texts.append(f"""
++theorem {name}_literal_selection :
++    (withCalls {meaning} independentSource
++      (Merlin.GraphLoopsShape.invoke {meaning} independentSource false 0)).action {literal_key} =
++    LiteralAction {element} {literal_key} (fun _ _ => True) := by rfl
++theorem {name}_binary_selection :
++    (withCalls {meaning} independentSource
++      (Merlin.GraphLoopsShape.invoke {meaning} independentSource false 0)).action {binary_key} =
++    Epoch.Binary {element} (fun _ _ _ => True) := by rfl
++theorem {name}_source_execution :
++    complete {meaning} independentSource false {name}.name
++      [.scalar {element} ()] ⟨⟨0, ()⟩, sampleHeap⟩ [.scalar {element} ()] ⟨⟨0, ()⟩, sampleHeap⟩ :=
++  literal_binary_complete {meaning} independentSource {name} {name}_found
++    {literal_key} {binary_key} {element} {binding(input_value)} {binding(literal_result)} {binding(result)}
++    (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
++    {name}_literal_selection {name}_binary_selection ⟨⟨0, ()⟩, sampleHeap⟩
++theorem {name}_source_outcome :
++    Epoch.graphOutcomes plan.objects.length {meaning} independentSource {name}.name
++      {name}Inputs sampleHeap ()
++      (Epoch.observeWorld plan.objects.length [.scalar {element} ()] ⟨⟨0, ()⟩, sampleHeap⟩) :=
++  ⟨[.scalar {element} ()], ⟨⟨0, ()⟩, sampleHeap⟩, {name}_source_execution, rfl⟩
++theorem {name}_final_outcome :
++    Epoch.graphOutcomes plan.objects.length {meaning} GraphMemoryAfterMaterialization.actualFinal {name}.name
++      {name}Inputs sampleHeap ()
++      (Epoch.observeWorld plan.objects.length [.scalar {element} ()] ⟨⟨0, ()⟩, sampleHeap⟩) :=
++  (complete_roster (fun _ _ _ _ => True) (fun _ _ => True) {name}Row {name}_member {name}Inputs {name}_domain
++    sampleHeap () _).mp {name}_source_outcome
++""")
++        roots.extend(name + suffix for suffix in (
++            "_literal_selection", "_binary_selection", "_source_execution", "_source_outcome", "_final_outcome",
++        ))
++    return "".join(texts), roots, refusals

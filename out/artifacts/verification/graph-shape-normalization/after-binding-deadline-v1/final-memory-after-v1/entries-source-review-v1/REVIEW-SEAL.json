@@ -1,0 +1,41 @@
+{
+  "kind": "INTEGRITY_ONLY_NOT_QUALIFICATION",
+  "files": [
+    {
+      "path": "ENTRY-DOMAIN.json",
+      "sha256": "f5db6e30329e1013ac006d18c132867afda99ba17a09e5f3e38db275bd46017b"
+    },
+    {
+      "path": "EVIDENCE.json",
+      "sha256": "b56ea558a55e44d417f463dccf81b3e6a0053ad772508a741ff36f762991e199"
+    },
+    {
+      "path": "FIELD-MAP.json",
+      "sha256": "6b999559a7c535fac933a61fcf8dd3aa0d65851ecdbc43cc862de6270d067d6d"
+    },
+    {
+      "path": "OPEN-OBLIGATIONS.json",
+      "sha256": "2c4f4c48dbf8f5aac3a37c3597f39daf4328d16a05096f6b0066c0fba99532ee"
+    },
+    {
+      "path": "POSTCHECK.json",
+      "sha256": "d94dc768caa13e0fb83eb0cfaf0ddc0540410778521e6c6c6c35a927b630720b"
+    },
+    {
+      "path": "README.md",
+      "sha256": "f1ccecb41d553e9e86c21d657469bb9b13a601a672ef772d702e134f3a54537a"
+    },
+    {
+      "path": "SOURCE-REVIEW.json",
+      "sha256": "166d06b171f0bf3f8b5911b4dc169c6e94d609a1b1eccb1735037aef790f39f7"
+    },
+    {
+      "path": "THEOREM-PREMISE-MAP.json",
+      "sha256": "1283f60befb5d229a616606039f7e7e729acf7e245a9062a0c7c377503545d36"
+    },
+    {
+      "path": "review.patch",
+      "sha256": "782a8e1fe46167f95b8bc3f3ac73106bae4efcb646f37d503032649e864c7a5c"
+    }
+  ]
+}

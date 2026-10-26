@@ -1,0 +1,1344 @@
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_context.py
+@@ -0,0 +1,152 @@
++"""New wrapper test extension; independent actual raw decoding, SDK-free only."""
++
++import hashlib
++import io
++import json
++import os
++from pathlib import Path
++
++import pytest
++from xdsl.dialects import builtin, func, memref
++from xdsl.printer import Printer
++
++from merlin.verify.lean_graph_loops_memory_scf_after_context import prepare_context
++from merlin.verify.lean_graph_loops_shape_projection import Decoder
++from test_lean_graph_loops_memory_scf_after_whole import parser
++
++WRAPPER = '''func.func @wrapper(%a: i32, %b: i32, %caller: memref<1xi32>, %bias: i32) -> (i32, index) {
++ %value, %extent = func.call @kernel(%a, %b, %caller) : (i32, i32, memref<1xi32>) -> (i32, index)
++ %continued = arith.addi %value, %bias : i32
++ %zero = arith.constant 0 : index
++ %old = memref.load %caller[%zero] : memref<1xi32>
++ %observed = arith.addi %old, %continued : i32
++ memref.store %observed, %caller[%zero] : memref<1xi32>
++ func.return %observed, %extent : i32, index
++}'''
++
++
++def _append(module, text):
++    temporary = parser('builtin.module {\n' + text + '\n}')
++    for operation in list(temporary.body.block.ops):
++        temporary.body.block.detach_op(operation)
++        module.body.block.add_op(operation)
++
++
++def _print(module):
++    module.verify()
++    stream = io.StringIO()
++    Printer(stream=stream, print_generic_format=True).print_op(module)
++    return stream.getvalue()
++
++
++def _variant(case):
++    if case == "argument_alias":
++        return WRAPPER.replace('@kernel(%a, %b, %caller)', '@kernel(%a, %a, %caller)')
++    if case == "unknown_caller":
++        return ('func.func private @unknown(i32, i32, memref<1xi32>) -> (i32, index)\n'
++                + WRAPPER.replace('@kernel(%a, %b, %caller)', '@unknown(%a, %b, %caller)'))
++    if case == "repeated":
++        return WRAPPER.replace(' %continued =', ' %again, %other = func.call @kernel(%a, %b, %caller) '
++                               ': (i32, i32, memref<1xi32>) -> (i32, index)\n %continued =')
++    if case == "prefix_allocation":
++        return WRAPPER.replace(' %value,', ' %private = memref.alloc() : memref<1xi32>\n %value,', 1)
++    if case == "private_escape":
++        return WRAPPER.replace('-> (i32, index) {', '-> memref<1xi32> {', 1).replace(
++            ' func.return %observed, %extent : i32, index',
++            ' %private = memref.alloc() : memref<1xi32>\n func.return %private : memref<1xi32>')
++    if case == "transitive":
++        inner = WRAPPER.replace('@wrapper(', '@inner(')
++        return inner + '\nfunc.func @wrapper(%a: i32, %b: i32, %caller: memref<1xi32>, %bias: i32) '
++        # The complete transitive wrapper is assembled below to keep this fixture explicit.
++    return WRAPPER
++
++
++@pytest.mark.parametrize("case", (
++    "positive", "argument", "return", "order", "observer", "changed_callee",
++    "repeated", "prefix_allocation", "private_escape", "transitive", "argument_alias", "caller_buffer", "unknown_caller", "descriptor_alias",
++))
++def test_actual_wrapper_context(case, monkeypatch, tmp_path):
++    selected = {key: os.environ.get(key) for key in (
++        "MERLIN_GRAPH_MEMORY_AFTER_SOURCE", "MERLIN_GRAPH_MEMORY_AFTER_ACTUAL", "MERLIN_GRAPH_MEMORY_AFTER_HINT",
++    )}
++    if not all(selected.values()):
++        pytest.skip("select retained original raw modules and existing untrusted plan")
++    base_source = Path(selected["MERLIN_GRAPH_MEMORY_AFTER_SOURCE"]).read_text()
++    base_final = Path(selected["MERLIN_GRAPH_MEMORY_AFTER_ACTUAL"]).read_text()
++    hint = json.loads(Path(selected["MERLIN_GRAPH_MEMORY_AFTER_HINT"]).read_text())
++    source, final = parser(base_source), parser(base_final)
++    extension = _variant(case)
++    if case == "transitive":
++        extension += ('-> (i32, index) { %value, %extent = func.call @inner(%a, %b, %caller, %bias) '
++                      ': (i32, i32, memref<1xi32>, i32) -> (i32, index) '
++                      'func.return %value, %extent : i32, index }')
++    source_extension = extension
++    if case == "descriptor_alias":
++        source_extension = extension.replace(' %value,', ' %alias = "memref.cast"(%caller) : (memref<1xi32>) -> memref<1xi32>\n %value,', 1)
++        source_extension = source_extension.replace('@kernel(%a, %b, %caller)', '@kernel(%a, %b, %alias)')
++    _append(source, source_extension)
++    _append(final, extension)
++    wrapper = next(op for op in final.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "wrapper")
++    if case == "argument":
++        call = next(op for op in wrapper.body.block.ops if isinstance(op, func.CallOp))
++        call.operands = (call.operands[1], call.operands[0], call.operands[2])
++    elif case == "caller_buffer":
++        call = next(op for op in wrapper.body.block.ops if isinstance(op, func.CallOp))
++        allocation = memref.AllocOp.get(builtin.i32, shape=[1])
++        wrapper.body.block.insert_op_before(allocation, call)
++        call.operands = (*call.operands[:2], allocation.memref)
++    elif case == "return":
++        returned = wrapper.body.block.last_op
++        returned.operands = (wrapper.body.block.args[3], returned.operands[1])
++    elif case == "observer":
++        store = next(op for op in wrapper.body.block.ops if isinstance(op, memref.StoreOp))
++        store.operands = (wrapper.body.block.args[3], *store.operands[1:])
++    elif case == "order":
++        load = next(op for op in wrapper.body.block.ops if isinstance(op, memref.LoadOp))
++        store = memref.StoreOp.get(wrapper.body.block.args[3], wrapper.body.block.args[2], load.indices)
++        wrapper.body.block.insert_op_before(store, load)
++    elif case == "changed_callee":
++        kernel = next(op for op in final.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "kernel")
++        returned = kernel.body.block.last_op
++        returned.operands = (kernel.body.block.args[0], returned.operands[1])
++    raw_source, raw_final = _print(source), _print(final)
++    # Preserve raw inputs before preparation so source-domain refusals retain their complete programs too.
++    (tmp_path / 'source.mlir').write_text(raw_source)
++    (tmp_path / 'final.mlir').write_text(raw_final)
++
++    def forbidden(*args, **kwargs):
++        raise AssertionError('old whole-tree pair matcher cannot provide a context proof')
++
++    for name in ('block', 'project', 'operands'):
++        monkeypatch.setattr(Decoder, name, forbidden)
++    result = prepare_context(hint['adapter'], raw_source, raw_final, parser=parser, index_bits=64, max_nodes=5000)
++    assert result['lean_status'] == 'UNCOMPILED' and not result['kernel_checked'] and not result['qualified']
++    assert not result['whole_world_equality_assumed'] and not result['context_proved']
++    assert not result['source_extension_is_original_capture'] and not result['repeated_kernel_calls_supported']
++    assert result['query_sha256'] == hashlib.sha256(result['query'].encode()).hexdigest()
++    assert result['raw_source_sha256'] == hashlib.sha256(raw_source.encode()).hexdigest()
++    assert result['raw_final_sha256'] == hashlib.sha256(raw_final.encode()).hexdigest()
++    assert result['final_root'] not in result['support_roots']
++    assert not any(line.lstrip().startswith('#') for line in result['query'].splitlines())
++    unsupported = case in ('repeated', 'prefix_allocation', 'private_escape', 'transitive', 'unknown_caller')
++    assert bool(result['context']['refusals']) == unsupported
++    if case == 'positive':
++        assert len(result['context']['rows']) == 4
++        assert result['context']['rows'][-1] == dict(name='wrapper', route='caller', wrapper=0)
++        assert len(result['context']['wrappers']) == 1
++        assert result['witness']['status'] == 'UNCOMPILED'
++        assert result['witness']['wrapper_returns'] == [498, 2]
++        assert not result['witness']['source_success_assumed']
++        assert 'GraphMemoryAfterContextWitness.final_observation' in result['support_roots']
++    if case in ('argument_alias', 'descriptor_alias'):
++        assert result['witness']['status'] == 'NOT_EMITTED'
++        assert 'GraphMemoryAfterContext.wrapper0_sample_domain' in result['support_roots']
++    (tmp_path / 'Context.lean').write_text(result['query'])
++    (tmp_path / 'PREPARATION.json').write_text(json.dumps(dict(
++        case=case, xdsl_verified=True, kernel_outcome='UNOBSERVED',
++        source_level_wrapper_extension=True, original_capture=False,
++        expected_finite_binding_acceptance=case in ('positive', 'argument_alias', 'descriptor_alias'), semantic_counterexample_proved=False,
++        base_source_sha256=hashlib.sha256(base_source.encode()).hexdigest(),
++        base_final_sha256=hashlib.sha256(base_final.encode()).hexdigest(),
++        prepared={key:value for key,value in result.items() if key!='query'},
++    ), indent=2)+'\n')
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean
+@@ -0,0 +1,107 @@
++/- UNCOMPILED successor. Constructorwise public frame laws. No arbitrary opaque
++operation is assumed unable to inspect private state; only the listed concrete
++partial primitives have this property. Allocation/release/calls are excluded. -/
++import Merlin.GraphLoopsMemorySCFAfterContextFrame
++
++set_option autoImplicit false
++namespace Merlin.GraphLoopsMemorySCF.After
++open GraphLoopsShape
++
++inductive PublicOpcode where
++  | binary (element : String)
++  | literal (element : String)
++  | index (opcode : IndexOpcode)
++  | load
++  | store
++  deriving DecidableEq, Repr
++
++def publicOpcode (indices : IndexOpcodes) (opcodes : Epoch.Opcodes) (literals : LiteralOpcodes)
++    (key : String) : Option PublicOpcode :=
++  match literalAt literals key with
++  | some element => some (.literal element)
++  | none => match Epoch.memoryOpcode opcodes key with
++    | .load => some .load
++    | .store => some .store
++    | _ => match indexOpcodeAt indices key with
++      | some opcode => some (.index opcode)
++      | none => match Epoch.opcodeAt opcodes key with
++        | some (.binary element) => some (.binary element)
++        | _ => none
++
++def PublicOpcode.action {Value User : Type} (opcode : PublicOpcode) (bits : Nat) (key : String)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value) :
++    RegionMeaning Value (CallerWorld Value User) :=
++  match opcode with
++  | .binary element => Epoch.Binary element (scalar key)
++  | .literal element => LiteralAction element key literal
++  | .index opcode => IndexAction bits opcode
++  | .load => Load
++  | .store => Store
++
++theorem public_action_selected {Value User : Type} (bits : Nat) (indices : IndexOpcodes)
++    (opcodes : Epoch.Opcodes) (literals : LiteralOpcodes) (key : String) (opcode : PublicOpcode)
++    (selected : publicOpcode indices opcodes literals key = some opcode)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value) :
++    (entryMeaning (User := User) bits indices opcodes scalar literals literal).action key =
++      opcode.action bits key scalar literal := by
++  cases literalFound : literalAt literals key with
++  | some element =>
++    have chosen : opcode = .literal element := by
++      simpa only [publicOpcode, literalFound, Option.some.injEq] using selected.symm
++    subst opcode
++    simp only [entryMeaning, withLiterals, literalFound, PublicOpcode.action]
++  | none =>
++    cases old : Epoch.opcodeAt opcodes key with
++    | none =>
++      cases generated : indexOpcodeAt indices key <;>
++        simp_all [publicOpcode, Epoch.memoryOpcode, entryMeaning, withLiterals, finalMeaning,
++          withMemory, withIndex, Epoch.scalarAllocationBase, PublicOpcode.action]
++    | some oldOpcode =>
++      cases oldOpcode <;> cases generated : indexOpcodeAt indices key <;>
++        simp_all [publicOpcode, Epoch.memoryOpcode, entryMeaning, withLiterals, finalMeaning,
++          withMemory, withIndex, Epoch.scalarAllocationBase, PublicOpcode.action]
++
++/-- Same explicit arguments/results, related public heaps; private clocks and
++private cells are unconstrained. Outputs are matched, not assumed deterministic.
++-/
++theorem PublicOpcode.transfer {Value User : Type} (opcode : PublicOpcode) (bits bound : Nat) (key : String)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (outside : ExternalValues bound inputs)
++    (before other after : CallerWorld Value User) (same : PublicRelated bound before other)
++    (outputs : List (Runtime Value)) (run : opcode.action bits key scalar literal inputs before outputs after) :
++    ∃ final, opcode.action bits key scalar literal inputs other outputs final ∧ PublicRelated bound after final := by
++  cases opcode with
++  | binary element =>
++    obtain ⟨left, right, result, arguments, computed, returned, rfl⟩ := run
++    exact ⟨other, ⟨left, right, result, arguments, computed, returned, rfl⟩, same⟩
++  | literal element =>
++    obtain ⟨arguments, value, computed, returned, rfl⟩ := run
++    exact ⟨other, ⟨arguments, value, computed, returned, rfl⟩, same⟩
++  | index opcode =>
++    cases inputs with
++    | nil => exact False.elim run
++    | cons first remaining =>
++      cases remaining with
++      | nil => exact False.elim run
++      | cons second rest =>
++        cases rest with
++        | cons => exact False.elim run
++        | nil =>
++          cases first <;> cases second
++          all_goals first | exact False.elim run | skip
++          obtain ⟨leftBound, rightBound, resultBound, returned, rfl⟩ := run
++          exact ⟨other, ⟨leftBound, rightBound, resultBound, returned, rfl⟩, same⟩
++  | load =>
++    obtain ⟨type, descriptor, valid, coordinates, value, arguments, inside, loaded, returned, rfl⟩ := run
++    have external : ¬ descriptor.allocation < bound := outside (.view type descriptor valid) (by rw [arguments]; simp)
++    refine ⟨other, ⟨type, descriptor, valid, coordinates, value, arguments, inside, ?_, returned, rfl⟩, same⟩
++    rw [← same.read descriptor.allocation _ external]
++    exact loaded
++  | store =>
++    obtain ⟨type, descriptor, valid, coordinates, value, arguments, inside, returned, rfl⟩ := run
++    refine ⟨⟨other.observed, GraphLoopsReuse.replaceCell other.heap descriptor.allocation
++      (descriptor.alignedBase + descriptor.offset + linearOffset descriptor.strides coordinates) value⟩,
++      ⟨type, descriptor, valid, coordinates, value, arguments, inside, returned, rfl⟩, ?_⟩
++    exact same.store descriptor.allocation _ value
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean
+@@ -0,0 +1,102 @@
++/- UNCOMPILED successor. Exact boundary data for the caller-context chain.
++Finite syntactic/binding checks are premises; no whole-callee/run equivalence is.
++Intermediate transport uses the actual materialization theorem in reverse;
++no false expanded→itself normalization check or whole-world equality is assumed.
++-/
++import Merlin.GraphLoopsMemorySCFAfterContextCall
++
++set_option autoImplicit false
++namespace Merlin.GraphLoopsMemorySCF.After
++open GraphLoopsShape
++
++structure ContextBoundary where
++  source : Module
++  bits : Nat
++  indices : IndexOpcodes
++  plan : Epoch.PlanContext
++  kernel : Epoch.Kernel
++  memory : GraphLoopsMemorySCF.Model.Projection
++  expansions : List Expansion
++  actualFinal : Module
++  swaps : List (Nat × Nat)
++  sourceFrame : List String
++  finalFrame : List String
++  literals : LiteralOpcodes
++  reachable : List String
++
++def ContextBoundary.expanded (data : ContextBoundary) : Module := expandedModule data.plan data.kernel data.expansions
++
++def ContextBoundary.Facts (data : ContextBoundary) : Prop :=
++  data.source.Valid data.bits ∧ SourceIndexAbsent data.indices data.source ∧
++  data.plan.Valid ∧ data.plan.module = Epoch.normalizedModule data.source ∧
++  data.kernel.Facts data.plan ∧ Epoch.MemoryBinding data.plan data.kernel data.memory ∧
++  GraphLoopsMemorySCF.Model.check data.memory = true ∧
++  ExpansionBinding data.bits data.plan data.kernel data.indices data.expansions ∧
++  BoundaryFacts data.plan data.kernel data.expansions ∧
++  GraphLoopsShape.After.check ⟨data.bits, data.expanded, data.actualFinal, data.swaps, data.sourceFrame, data.finalFrame⟩ = true ∧
++  KernelLiteralSupport data.source data.actualFinal data.kernel data.reachable data.literals ∧
++  LiteralModuleFacts data.literals data.source ∧ LiteralModuleFacts data.literals data.actualFinal
++
++instance (data : ContextBoundary) : Decidable data.Facts := by
++  unfold ContextBoundary.Facts
++  infer_instance
++
++def ContextBoundary.meaning {Value User : Type} (data : ContextBoundary)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value) : Interpretation Value (CallerWorld Value User) :=
++  entryMeaning data.bits data.indices data.plan.opcodes scalar data.literals literal
++
++theorem ContextBoundary.kernel_boundary {Value User : Type} (data : ContextBoundary) (checked : data.Facts)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (typed : ValuesHold data.kernel.function.parameters inputs)
++    (callers : Epoch.CallersValid data.plan.objects.length data.plan.callers
++      (assign emptyEnv data.kernel.function.parameters inputs))
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.source
++      data.kernel.function.name inputs heap user observed ↔
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.actualFinal
++      data.kernel.function.name inputs heap user observed := by
++  rcases checked with ⟨sourceValid, sourceAbsent, planValid, normalized, kernelFacts,
++    memoryBinding, memoryAccepted, expansion, boundary, materialized, support, _, _⟩
++  have selected := checked_actual_chain data.source data.bits sourceValid data.indices sourceAbsent
++    data.plan planValid normalized data.kernel kernelFacts data.memory memoryBinding memoryAccepted data.expansions
++    expansion boundary data.actualFinal data.swaps data.sourceFrame data.finalFrame materialized
++    scalar inputs typed callers heap user observed
++  have first := literal_outcomes_extension data.plan.objects.length
++    (finalMeaning data.bits data.indices data.plan.opcodes scalar) data.literals literal data.source data.reachable
++    support.2.1 support.2.2.2.1 data.kernel.function.name support.1 inputs heap user observed
++  have last := literal_outcomes_extension data.plan.objects.length
++    (finalMeaning data.bits data.indices data.plan.opcodes scalar) data.literals literal data.actualFinal data.reachable
++    support.2.2.1 support.2.2.2.2 data.kernel.function.name support.1 inputs heap user observed
++  exact first.symm.trans (selected.trans last)
++
++/-- Derive the intermediate kernel relation from the actual checked endpoints,
++normalization and actual materialization. Expanded code may still contain cast
++aliases: no identity-normalization/self-check is assumed.
++-/
++theorem ContextBoundary.kernel_intermediate {Value User : Type} (data : ContextBoundary) (checked : data.Facts)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (typed : ValuesHold data.kernel.function.parameters inputs)
++    (callers : Epoch.CallersValid data.plan.objects.length data.plan.callers
++      (assign emptyEnv data.kernel.function.parameters inputs))
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.plan.module
++      data.kernel.function.name inputs heap user observed ↔
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.expanded
++      data.kernel.function.name inputs heap user observed := by
++  have raw := data.kernel_boundary checked scalar literal inputs typed callers heap user observed
++  rcases checked with ⟨sourceValid, _, _, normalized, _, _, _, _, _, materialized, _⟩
++  have first := Epoch.shape_outcomes data.source data.bits sourceValid data.plan.module normalized data.plan.objects.length
++    (data.meaning scalar literal) data.kernel.function.name inputs heap user observed
++  have last : Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.expanded
++      data.kernel.function.name inputs heap user observed ↔
++      Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.actualFinal
++      data.kernel.function.name inputs heap user observed := by
++    unfold Epoch.graphOutcomes
++    apply exists_congr; intro returned
++    apply exists_congr; intro world
++    apply and_congr_left; intro _
++    exact checked_materialization data.bits data.plan data.kernel data.expansions data.actualFinal data.swaps
++      data.sourceFrame data.finalFrame materialized (data.meaning scalar literal) data.kernel.function.name inputs _ returned world
++  exact first.symm.trans (raw.trans last.symm)
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean
+@@ -0,0 +1,113 @@
++/- UNCOMPILED successor. Exact one-call entry decomposition. The actual callee
++runs at the parent's smaller call depth; the suffix has no calls, so complete
++composition needs neither a guessed common depth nor a fuel-monotonicity premise.
++-/
++import Merlin.GraphLoopsMemorySCFAfterContextSuffix
++
++set_option autoImplicit false
++namespace Merlin.GraphLoopsMemorySCF.After
++open GraphLoopsShape
++
++structure CallerContext where
++  function : Function
++  key : String
++  callee : String
++  arguments : List Binding
++  results : List Binding
++  suffix : Code
++  deriving DecidableEq, Repr
++
++def CallerContext.Facts (wrapper : CallerContext) (module : Module) : Prop :=
++  functionAt module wrapper.function.name = some wrapper.function ∧
++    wrapper.function.code = .action wrapper.key wrapper.arguments wrapper.results wrapper.suffix ∧
++    callTarget module.calls wrapper.key = some wrapper.callee ∧
++    (functionAt module wrapper.callee).isSome = true ∧ NoSuffixCalls module wrapper.suffix
++
++instance (wrapper : CallerContext) (module : Module) : Decidable (wrapper.Facts module) := by
++  unfold CallerContext.Facts
++  infer_instance
++
++theorem CallerContext.complete_iff {Value World : Type} (wrapper : CallerContext)
++    (module : Module) (facts : wrapper.Facts module) (meaning : Interpretation Value World)
++    (inputs : List (Runtime Value)) (before : World) (outputs : List (Runtime Value)) (after : World) :
++    complete meaning module false wrapper.function.name inputs before outputs after ↔
++      ValuesHold wrapper.function.parameters inputs ∧
++      ∃ returned middle,
++        complete meaning module false wrapper.callee
++          (readArguments false [] (assign emptyEnv wrapper.function.parameters inputs) wrapper.arguments)
++          before returned middle ∧ ValuesHold wrapper.results returned ∧
++        Eval meaning false (extendAliases (extendAliases [] wrapper.function.parameters) wrapper.results)
++          wrapper.suffix (assign (assign emptyEnv wrapper.function.parameters inputs) wrapper.results returned)
++          middle outputs after := by
++  constructor
++  · rintro ⟨depth, run⟩
++    cases depth with
++    | zero => exact False.elim run
++    | succ depth =>
++      simp only [GraphLoopsShape.invoke, facts.1, Function.invoke, facts.2.1] at run
++      obtain ⟨typed, returned, middle, call, returnTyped, suffix⟩ := run
++      simp only [withCalls, facts.2.2.1, facts.2.2.2.1, ↓reduceIte] at call
++      exact ⟨typed, returned, middle, ⟨depth, call⟩, returnTyped,
++        (suffix_dispatch meaning module depth wrapper.suffix facts.2.2.2.2 _ _ _ _ _).mp suffix⟩
++  · rintro ⟨typed, returned, middle, ⟨depth, call⟩, returnTyped, suffix⟩
++    refine ⟨depth + 1, ?_⟩
++    simp only [GraphLoopsShape.invoke, facts.1, Function.invoke, facts.2.1]
++    refine ⟨typed, returned, middle, ?_, returnTyped,
++      (suffix_dispatch meaning module depth wrapper.suffix facts.2.2.2.2 _ _ _ _ _).mpr suffix⟩
++    simpa only [withCalls, facts.2.2.1, facts.2.2.2.1, ↓reduceIte] using call
++
++/-- Derive entry register typing from typed arguments and checked fresh formals.
++No global intermediate-environment typing assumption is supplied.
++-/
++theorem caller_entry_typed {Value : Type} (parameters : List Binding) (inputs : List (Runtime Value))
++    (fresh : Fresh [] parameters) (typed : ValuesHold parameters inputs) :
++    Typed (extendContext [] parameters) (assign emptyEnv parameters inputs) := by
++  have scope : Scope [] [] := ⟨List.nodup_nil, by simp⟩
++  have same : Agreement [] [] (emptyEnv (Value := Value)) emptyEnv := ⟨by simp [Typed], by simp⟩
++  exact (same.define_many scope typed fresh).1
++
++theorem arguments_typed {Value : Type} (context : Context) (env : GraphLoopsShape.Env Value)
++    (typed : Typed context env) (parameters arguments : List Binding)
++    (kinds : parameters.map Binding.kind = arguments.map Binding.kind) (plain : Plain parameters)
++    (bound : ∀ binding ∈ arguments, binding ∈ context) :
++    ValuesHold parameters (readArguments false [] env arguments) := by
++  induction parameters generalizing arguments with
++  | nil =>
++    cases arguments with
++    | nil => exact .nil
++    | cons => simp only [List.map_nil, List.map_cons] at kinds
++  | cons parameter rest induction =>
++    cases arguments with
++    | nil => simp only [List.map_nil, List.map_cons] at kinds
++    | cons argument tail =>
++      have equal := List.cons.inj kinds
++      refine .cons (Binding.holds_plain parameter _ ?_ (plain parameter List.mem_cons_self)) ?_
++      · exact (typed argument (bound argument List.mem_cons_self)).1.trans equal.1.symm
++      · exact induction tail equal.2 (fun item member => plain item (List.mem_cons_of_mem _ member))
++          (fun item member => bound item (List.mem_cons_of_mem _ member))
++
++def CallerContext.Arguments (wrapper : CallerContext) (kernel : Epoch.Kernel) : Prop :=
++  wrapper.callee = kernel.function.name ∧ Fresh [] wrapper.function.parameters ∧ Plain kernel.function.parameters ∧
++    kernel.function.parameters.map Binding.kind = wrapper.arguments.map Binding.kind ∧
++    (∀ binding ∈ wrapper.arguments, binding ∈ extendContext [] wrapper.function.parameters) ∧
++    NoViewBindings wrapper.results
++
++instance (wrapper : CallerContext) (kernel : Epoch.Kernel) : Decidable (wrapper.Arguments kernel) := by
++  unfold CallerContext.Arguments
++  infer_instance
++
++def CallerContext.Domain {Value : Type} (wrapper : CallerContext) (plan : Epoch.PlanContext)
++    (kernel : Epoch.Kernel) (inputs : List (Runtime Value)) : Prop :=
++  ValuesHold wrapper.function.parameters inputs ∧ ExternalValues plan.objects.length inputs ∧
++    Epoch.CallersValid plan.objects.length plan.callers
++      (assign emptyEnv kernel.function.parameters
++        (readArguments false [] (assign emptyEnv wrapper.function.parameters inputs) wrapper.arguments))
++
++theorem CallerContext.typed_arguments {Value : Type} (wrapper : CallerContext) (kernel : Epoch.Kernel)
++    (facts : wrapper.Arguments kernel) (inputs : List (Runtime Value)) (typed : ValuesHold wrapper.function.parameters inputs) :
++    ValuesHold kernel.function.parameters
++      (readArguments false [] (assign emptyEnv wrapper.function.parameters inputs) wrapper.arguments) :=
++  arguments_typed _ _ (caller_entry_typed wrapper.function.parameters inputs facts.2.1 typed) _ _
++    facts.2.2.2.1 facts.2.2.1 facts.2.2.2.2.1
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean
+@@ -0,0 +1,125 @@
++/- UNCOMPILED successor. Complete supported one-call context composition. Kernel
++observation preservation is DERIVED from the checked boundary, then lifted using
++public-frame suffix simulation. No equality of callee worlds/runs is assumed.
++-/
++import Merlin.GraphLoopsMemorySCFAfterContextBoundary
++
++set_option autoImplicit false
++namespace Merlin.GraphLoopsMemorySCF.After
++open GraphLoopsShape
++
++def ContextBoundary.side (data : ContextBoundary) (candidate : Bool) : Module :=
++  if candidate then data.expanded else data.plan.module
++
++def CallerContext.Checked (wrapper : CallerContext) (data : ContextBoundary) : Prop :=
++  wrapper.Arguments data.kernel ∧ wrapper.Facts data.plan.module ∧ wrapper.Facts data.expanded ∧
++    PublicSuffix data.indices data.plan.opcodes data.literals wrapper.suffix
++
++instance (wrapper : CallerContext) (data : ContextBoundary) : Decidable (wrapper.Checked data) := by
++  unfold CallerContext.Checked
++  infer_instance
++
++theorem CallerContext.side_facts (wrapper : CallerContext) (data : ContextBoundary) (checked : wrapper.Checked data)
++    (candidate : Bool) : wrapper.Facts (data.side candidate) := by
++  cases candidate
++  · exact checked.2.1
++  · exact checked.2.2.1
++
++theorem ContextBoundary.kernel_side {Value User : Type} (data : ContextBoundary) (checked : data.Facts)
++    (candidate : Bool) (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (typed : ValuesHold data.kernel.function.parameters inputs)
++    (callers : Epoch.CallersValid data.plan.objects.length data.plan.callers
++      (assign emptyEnv data.kernel.function.parameters inputs))
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) (data.side candidate)
++      data.kernel.function.name inputs heap user observed ↔
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) (data.side (!candidate))
++      data.kernel.function.name inputs heap user observed := by
++  cases candidate
++  · exact data.kernel_intermediate checked scalar literal inputs typed callers heap user observed
++  · exact (data.kernel_intermediate checked scalar literal inputs typed callers heap user observed).symm
++
++/-- One direction for either choice of source/candidate side. The existential
++callee result is matched by the derived theorem; only its public projection
++feeds the suffix simulation. Callee private clock/cells remain unconstrained.
++-/
++theorem CallerContext.transfer {Value User : Type} (wrapper : CallerContext) (data : ContextBoundary)
++    (boundary : data.Facts) (checked : wrapper.Checked data) (candidate : Bool)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (domain : wrapper.Domain data.plan data.kernel inputs)
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User)
++    (run : Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) (data.side candidate)
++      wrapper.function.name inputs heap user observed) :
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) (data.side (!candidate))
++      wrapper.function.name inputs heap user observed := by
++  obtain ⟨outputs, after, whole, observation⟩ := run
++  obtain ⟨typed, returned, middle, call, returnTyped, suffix⟩ :=
++    (wrapper.complete_iff (data.side candidate) (wrapper.side_facts data checked candidate)
++      (data.meaning scalar literal) inputs _ outputs after).mp whole
++  have calleeTyped := wrapper.typed_arguments data.kernel checked.1 inputs domain.1
++  have kernelCall : complete (data.meaning scalar literal) (data.side candidate) false data.kernel.function.name
++      (readArguments false [] (assign emptyEnv wrapper.function.parameters inputs) wrapper.arguments)
++      ⟨⟨0, user⟩, heap⟩ returned middle := by simpa only [checked.1.1] using call
++  have matched := (data.kernel_side boundary candidate scalar literal _ calleeTyped domain.2.2 heap user
++    (Epoch.observeWorld data.plan.objects.length returned middle)).mp ⟨returned, middle, kernelCall, rfl⟩
++  obtain ⟨otherReturned, otherMiddle, otherCall, sameObservation⟩ := matched
++  obtain ⟨returnsEqual, middleRelated⟩ :=
++    (observation_related data.plan.objects.length otherMiddle middle otherReturned returned).mp sameObservation
++  subst otherReturned
++  have entrySafe : ExternalEnv data.plan.objects.length (assign emptyEnv wrapper.function.parameters inputs) :=
++    external_assign _ emptyEnv (external_empty _) wrapper.function.parameters inputs domain.2.1
++  have suffixSafe := external_assign _ _ entrySafe wrapper.results returned
++    (nonview_values_external _ wrapper.results returned returnTyped checked.1.2.2.2.2.2)
++  obtain ⟨otherAfter, otherSuffix, finalRelated⟩ := suffix_transfer data.bits data.plan.objects.length data.indices
++    data.plan.opcodes data.literals scalar literal wrapper.suffix checked.2.2.2 _ _ suffixSafe
++    middle otherMiddle after middleRelated.symm outputs suffix
++  refine ⟨outputs, otherAfter, ?_, ?_⟩
++  · apply (wrapper.complete_iff (data.side (!candidate)) (wrapper.side_facts data checked (!candidate))
++      (data.meaning scalar literal) inputs _ outputs otherAfter).mpr
++    refine ⟨typed, returned, otherMiddle, ?_, returnTyped, otherSuffix⟩
++    simpa only [checked.1.1] using otherCall
++  · have equal := (observation_related data.plan.objects.length after otherAfter outputs outputs).mpr ⟨rfl, finalRelated⟩
++    exact equal.symm.trans observation
++
++theorem CallerContext.intermediate {Value User : Type} (wrapper : CallerContext) (data : ContextBoundary)
++    (boundary : data.Facts) (checked : wrapper.Checked data)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (domain : wrapper.Domain data.plan data.kernel inputs)
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.plan.module
++      wrapper.function.name inputs heap user observed ↔
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.expanded
++      wrapper.function.name inputs heap user observed :=
++  ⟨wrapper.transfer data boundary checked false scalar literal inputs domain heap user observed,
++    wrapper.transfer data boundary checked true scalar literal inputs domain heap user observed⟩
++
++/-- Original raw source → normalized whole module → context composition →
++actual independently decoded final. Actual final syntax is checked completely.
++-/
++theorem CallerContext.checked_boundary {Value User : Type} (wrapper : CallerContext) (data : ContextBoundary)
++    (boundary : data.Facts) (checked : wrapper.Checked data)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (domain : wrapper.Domain data.plan data.kernel inputs)
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.source
++      wrapper.function.name inputs heap user observed ↔
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.actualFinal
++      wrapper.function.name inputs heap user observed := by
++  have middle := wrapper.intermediate data boundary checked scalar literal inputs domain heap user observed
++  rcases boundary with ⟨sourceValid, sourceAbsent, planValid, normalized, kernelFacts,
++    memoryBinding, memoryAccepted, expansion, facts, materialized, support, literalSource, literalFinal⟩
++  have first := Epoch.shape_outcomes data.source data.bits sourceValid data.plan.module normalized data.plan.objects.length
++    (data.meaning scalar literal) wrapper.function.name inputs heap user observed
++  have last : Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.expanded
++      wrapper.function.name inputs heap user observed ↔
++      Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.actualFinal
++      wrapper.function.name inputs heap user observed := by
++    unfold Epoch.graphOutcomes
++    apply exists_congr; intro returned
++    apply exists_congr; intro world
++    apply and_congr_left; intro _
++    exact checked_materialization data.bits data.plan data.kernel data.expansions data.actualFinal data.swaps
++      data.sourceFrame data.finalFrame materialized (data.meaning scalar literal) wrapper.function.name inputs _ returned world
++  exact first.trans (middle.trans last)
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean
+@@ -0,0 +1,129 @@
++/- UNCOMPILED successor. Caller-visible relation deliberately ignores private
++allocation clocks and private cells. It does not equate complete MemoryWorlds.
++Only constructed public-address actions may use this relation. -/
++import Merlin.GraphLoopsMemorySCFAfterEntriesWitness
++
++set_option autoImplicit false
++namespace Merlin.GraphLoopsMemorySCF.After
++open GraphLoopsShape
++
++abbrev CallerWorld (Value User : Type) := MemoryWorld Value (Epoch.AllocationPublic User)
++
++def PublicRelated {Value User : Type} (bound : Nat) (first second : CallerWorld Value User) : Prop :=
++  first.observed.observed = second.observed.observed ∧
++    Epoch.visibleHeap bound first.heap = Epoch.visibleHeap bound second.heap
++
++theorem PublicRelated.refl {Value User : Type} (bound : Nat) (world : CallerWorld Value User) :
++    PublicRelated bound world world := ⟨rfl, rfl⟩
++
++theorem PublicRelated.symm {Value User : Type} {bound : Nat} {first second : CallerWorld Value User}
++    (same : PublicRelated bound first second) : PublicRelated bound second first := ⟨same.1.symm, same.2.symm⟩
++
++theorem PublicRelated.trans {Value User : Type} {bound : Nat} {first second third : CallerWorld Value User}
++    (left : PublicRelated bound first second) (right : PublicRelated bound second third) :
++    PublicRelated bound first third := ⟨left.1.trans right.1, left.2.trans right.2⟩
++
++theorem PublicRelated.read {Value User : Type} {bound : Nat} {first second : CallerWorld Value User}
++    (same : PublicRelated bound first second) (object index : Nat) (outside : ¬ object < bound) :
++    first.heap object index = second.heap object index := by
++  have cell := congrFun (congrFun same.2 object) index
++  simpa only [Epoch.visibleHeap, outside, ↓reduceIte] using cell
++
++theorem PublicRelated.store {Value User : Type} {bound : Nat} {first second : CallerWorld Value User}
++    (same : PublicRelated bound first second) (object index : Nat) (value : Value) :
++    PublicRelated bound
++      ⟨first.observed, GraphLoopsReuse.replaceCell first.heap object index value⟩
++      ⟨second.observed, GraphLoopsReuse.replaceCell second.heap object index value⟩ := by
++  refine ⟨same.1, ?_⟩
++  funext other cell
++  by_cases private : other < bound
++  · simp only [Epoch.visibleHeap, private, ↓reduceIte]
++  · by_cases objectEqual : other = object
++    · subst other
++      by_cases cellEqual : cell = index
++      · simp [Epoch.visibleHeap, private, GraphLoopsReuse.replaceCell, GraphLoopsReuse.replaceObject, cellEqual]
++      · simpa [Epoch.visibleHeap, private, GraphLoopsReuse.replaceCell, GraphLoopsReuse.replaceObject, cellEqual]
++          using same.read object cell private
++    · simpa [Epoch.visibleHeap, private, GraphLoopsReuse.replaceCell, GraphLoopsReuse.replaceObject, objectEqual]
++        using same.read other cell private
++
++theorem observation_related {Value User : Type} (bound : Nat) (first second : CallerWorld Value User)
++    (outputs other : List (Runtime Value)) :
++    Epoch.observeWorld bound outputs first = Epoch.observeWorld bound other second ↔
++      outputs = other ∧ PublicRelated bound first second := by
++  constructor
++  · intro same
++    exact ⟨congrArg Epoch.Observation.returned same,
++      congrArg Epoch.Observation.user same, congrArg Epoch.Observation.heap same⟩
++  · rintro ⟨rfl, user, heap⟩
++    cases first with | mk firstPublic firstHeap =>
++      cases second with | mk secondPublic secondHeap =>
++        simp only [Epoch.observeWorld, user, heap]
++
++def ExternalValues {Value : Type} (bound : Nat) (values : List (Runtime Value)) : Prop :=
++  ∀ value ∈ values, ExternalInput bound value
++
++def ExternalEnv {Value : Type} (bound : Nat) (env : GraphLoopsShape.Env Value) : Prop :=
++  ∀ name, ExternalInput bound (env name)
++
++theorem external_empty {Value : Type} (bound : Nat) : ExternalEnv bound (emptyEnv (Value := Value)) := by
++  intro name; trivial
++
++theorem external_put {Value : Type} (bound : Nat) (env : GraphLoopsShape.Env Value) (safe : ExternalEnv bound env)
++    (name : Nat) (value : Runtime Value) (outside : ExternalInput bound value) :
++    ExternalEnv bound (put env name value) := by
++  intro other
++  by_cases equal : other = name <;> simp only [put, equal, ↓reduceIte]
++  · exact outside
++  · exact safe other
++
++theorem external_assign {Value : Type} (bound : Nat) (env : GraphLoopsShape.Env Value) (safe : ExternalEnv bound env)
++    (bindings : List Binding) (values : List (Runtime Value)) (outside : ExternalValues bound values) :
++    ExternalEnv bound (assign env bindings values) := by
++  induction bindings generalizing env values with
++  | nil => exact safe
++  | cons binding rest induction =>
++    cases values with
++    | nil => exact safe
++    | cons value remaining =>
++      exact induction (put env binding.name value)
++        (external_put bound env safe binding.name value (outside value List.mem_cons_self)) remaining
++        (fun item member => outside item (List.mem_cons_of_mem _ member))
++
++theorem external_arguments {Value : Type} (bound : Nat) (env : GraphLoopsShape.Env Value) (safe : ExternalEnv bound env)
++    (aliases : Aliases) (bindings : List Binding) : ExternalValues bound (readArguments false aliases env bindings) := by
++  intro value member
++  obtain ⟨binding, _, rfl⟩ := List.mem_map.mp member
++  exact safe binding.name
++
++theorem nonview_external {Value : Type} (bound : Nat) (binding : Binding) (value : Runtime Value)
++    (typed : binding.Holds value) (scalar : NoViewKind binding.kind) : ExternalInput bound value := by
++  have kind := typed.1
++  cases value with
++  | index => trivial
++  | scalar => trivial
++  | view type descriptor valid => rw [← kind] at scalar; exact False.elim scalar
++
++theorem nonview_values_external {Value : Type} (bound : Nat) (bindings : List Binding) (values : List (Runtime Value))
++    (typed : ValuesHold bindings values) (scalar : NoViewBindings bindings) : ExternalValues bound values := by
++  induction typed with
++  | nil => intro value member; cases member
++  | @cons binding value rest remaining holds typed induction =>
++    intro item member
++    rcases List.mem_cons.mp member with rfl | later
++    · exact nonview_external bound binding value holds (scalar binding List.mem_cons_self)
++    · exact induction (fun binding member => scalar binding (List.mem_cons_of_mem _ member)) item later
++
++theorem cast_external {Value : Type} (bound : Nat) (source target : ViewType) (input output : Runtime Value)
++    (safe : ExternalInput bound input) (cast : castResult source target input = some output) : ExternalInput bound output := by
++  cases input with
++  | index => simp only [castResult] at cast
++  | scalar => simp only [castResult] at cast
++  | view actual descriptor valid =>
++    simp only [castResult] at cast
++    split at cast
++    · cases Option.some.inj cast
++      exact safe
++    · contradiction
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean
+@@ -0,0 +1,86 @@
++/- UNCOMPILED successor. Complete whole-entry roster with an explicit, proved
++single-call context route. Prior EntryRoute and old seals remain unchanged.
++-/
++import Merlin.GraphLoopsMemorySCFAfterContextChain
++
++set_option autoImplicit false
++namespace Merlin.GraphLoopsMemorySCF.After
++open GraphLoopsShape
++
++inductive ContextRoute where
++  | kernel
++  | unchanged (reachable : List String)
++  | caller (wrapper : CallerContext)
++  deriving DecidableEq, Repr
++
++structure ContextRow where
++  name : String
++  route : ContextRoute
++  deriving DecidableEq, Repr
++
++def ContextRow.Facts (data : ContextBoundary) (row : ContextRow) : Prop :=
++  match row.route with
++  | .kernel => row.name = data.kernel.function.name
++  | .unchanged reachable => row.name ∈ reachable ∧ ClosedAgreement data.plan.module data.expanded reachable
++  | .caller wrapper => row.name = wrapper.function.name ∧ wrapper.Checked data
++
++instance (data : ContextBoundary) (row : ContextRow) : Decidable (row.Facts data) := by
++  unfold ContextRow.Facts
++  split <;> infer_instance
++
++def ContextRoster (data : ContextBoundary) (sourceHeaders finalHeaders : List EntryHeader) (rows : List ContextRow) : Prop :=
++  DefinedHeaders data.source sourceHeaders ∧ DefinedHeaders data.actualFinal finalHeaders ∧ sourceHeaders = finalHeaders ∧
++    rows.map ContextRow.name = sourceHeaders.map EntryHeader.name ∧ (rows.map ContextRow.name).Nodup ∧
++    ∀ row ∈ rows, row.Facts data
++
++instance (data : ContextBoundary) (sourceHeaders finalHeaders : List EntryHeader) (rows : List ContextRow) :
++    Decidable (ContextRoster data sourceHeaders finalHeaders rows) := by unfold ContextRoster; infer_instance
++
++def ContextRow.Domain {Value : Type} (data : ContextBoundary) (row : ContextRow) (inputs : List (Runtime Value)) : Prop :=
++  match row.route with
++  | .kernel => ExternalValues data.plan.objects.length inputs ∧ ValuesHold data.kernel.function.parameters inputs ∧
++      Epoch.CallersValid data.plan.objects.length data.plan.callers (assign emptyEnv data.kernel.function.parameters inputs)
++  | .unchanged _ => ExternalValues data.plan.objects.length inputs ∧
++      ∃ function, functionAt data.source row.name = some function ∧ ValuesHold function.parameters inputs
++  | .caller wrapper => wrapper.Domain data.plan data.kernel inputs
++
++theorem context_every_definition (data : ContextBoundary) (sourceHeaders finalHeaders : List EntryHeader)
++    (rows : List ContextRow) (facts : ContextRoster data sourceHeaders finalHeaders rows)
++    (function : Function) (defined : function ∈ data.source.functions) : ∃ row ∈ rows, row.name = function.name := by
++  have member : function.name ∈ rows.map ContextRow.name := by
++    rw [facts.2.2.2.1, facts.1.1]
++    exact List.mem_map_of_mem defined
++  exact List.mem_map.mp member
++
++theorem checked_context_roster {Value User : Type} (data : ContextBoundary) (boundary : data.Facts)
++    (sourceHeaders finalHeaders : List EntryHeader) (rows : List ContextRow)
++    (roster : ContextRoster data sourceHeaders finalHeaders rows)
++    (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (row : ContextRow) (member : row ∈ rows) (inputs : List (Runtime Value)) (domain : row.Domain data inputs)
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.source row.name inputs heap user observed ↔
++    Epoch.graphOutcomes data.plan.objects.length (data.meaning scalar literal) data.actualFinal row.name inputs heap user observed := by
++  have rowFacts := roster.2.2.2.2.2 row member
++  cases route : row.route with
++  | kernel =>
++    have name : row.name = data.kernel.function.name := by simpa only [ContextRow.Facts, route] using rowFacts
++    have valid : ExternalValues data.plan.objects.length inputs ∧ ValuesHold data.kernel.function.parameters inputs ∧
++        Epoch.CallersValid data.plan.objects.length data.plan.callers (assign emptyEnv data.kernel.function.parameters inputs) := by
++      simpa only [ContextRow.Domain, route] using domain
++    rw [name]
++    exact data.kernel_boundary boundary scalar literal inputs valid.2.1 valid.2.2 heap user observed
++  | caller wrapper =>
++    have valid : row.name = wrapper.function.name ∧ wrapper.Checked data := by
++      simpa only [ContextRow.Facts, route] using rowFacts
++    have inputsValid : wrapper.Domain data.plan data.kernel inputs := by simpa only [ContextRow.Domain, route] using domain
++    rw [valid.1]
++    exact wrapper.checked_boundary data boundary valid.2 scalar literal inputs inputsValid heap user observed
++  | unchanged reachable =>
++    have valid : row.name ∈ reachable ∧ ClosedAgreement data.plan.module data.expanded reachable := by
++      simpa only [ContextRow.Facts, route] using rowFacts
++    rcases boundary with ⟨sourceValid, _, _, normalized, _, _, _, _, _, materialized, _⟩
++    exact unchanged_entry_outcomes data.source data.bits sourceValid data.plan normalized data.kernel data.expansions
++      reachable valid.2 data.actualFinal data.swaps data.sourceFrame data.finalFrame materialized
++      (data.meaning scalar literal) row.name valid.1 inputs heap user observed
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean
+@@ -0,0 +1,106 @@
++/- UNCOMPILED successor. Complete call-free continuation frame law. Runtime
++support is constructed at entry and maintained after each SSA write, not a
++supplied global intermediate typing invariant. Regions, allocation and calls
++are outside this finite grammar. -/
++import Merlin.GraphLoopsMemorySCFAfterContextActions
++
++set_option autoImplicit false
++namespace Merlin.GraphLoopsMemorySCF.After
++open GraphLoopsShape
++
++def PublicSuffix (indices : IndexOpcodes) (opcodes : Epoch.Opcodes) (literals : LiteralOpcodes) : Code → Prop
++  | .returned bindings => NoViewBindings bindings
++  | .cast _ _ source target rest => source = target ∧ PublicSuffix indices opcodes literals rest
++  | .dimension _ _ _ _ _ _ rest | .constant _ _ rest => PublicSuffix indices opcodes literals rest
++  | .action key _ results rest => (publicOpcode indices opcodes literals key).isSome = true ∧
++      NoViewBindings results ∧ PublicSuffix indices opcodes literals rest
++  | .region _ _ _ _ _ _ => False
++
++def publicSuffixDecidable (indices : IndexOpcodes) (opcodes : Epoch.Opcodes) (literals : LiteralOpcodes) :
++    (code : Code) → Decidable (PublicSuffix indices opcodes literals code)
++  | .returned bindings => inferInstanceAs (Decidable (NoViewBindings bindings))
++  | .cast _ _ source target rest =>
++      letI := publicSuffixDecidable indices opcodes literals rest
++      inferInstanceAs (Decidable (_ ∧ _))
++  | .dimension _ _ _ _ _ _ rest | .constant _ _ rest => publicSuffixDecidable indices opcodes literals rest
++  | .action key _ results rest =>
++      letI := publicSuffixDecidable indices opcodes literals rest
++      inferInstanceAs (Decidable (_ ∧ _ ∧ _))
++  | .region _ _ _ _ _ _ => isFalse (fun impossible => impossible)
++
++instance (indices : IndexOpcodes) (opcodes : Epoch.Opcodes) (literals : LiteralOpcodes) (code : Code) :
++    Decidable (PublicSuffix indices opcodes literals code) := publicSuffixDecidable indices opcodes literals code
++
++def NoSuffixCalls (module : Module) (code : Code) : Prop :=
++  ∀ key ∈ actionKeys code, callTarget module.calls key = none
++
++instance (module : Module) (code : Code) : Decidable (NoSuffixCalls module code) := by
++  unfold NoSuffixCalls
++  infer_instance
++
++/-- Every listed action has a constructorwise frame law from the exact common
++interpretation. No arbitrary state-inspecting operation can satisfy the syntax
++check merely because it returns a scalar.
++-/
++theorem suffix_transfer {Value User : Type} (bits bound : Nat) (indices : IndexOpcodes)
++    (opcodes : Epoch.Opcodes) (literals : LiteralOpcodes) (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (code : Code) (valid : PublicSuffix indices opcodes literals code)
++    (aliases : Aliases) (env : GraphLoopsShape.Env Value) (external : ExternalEnv bound env)
++    (before other after : CallerWorld Value User) (same : PublicRelated bound before other)
++    (outputs : List (Runtime Value))
++    (run : Eval (entryMeaning bits indices opcodes scalar literals literal) false aliases code env before outputs after) :
++    ∃ final, Eval (entryMeaning bits indices opcodes scalar literals literal) false aliases code env other outputs final ∧
++      PublicRelated bound after final := by
++  induction code generalizing aliases env before other after outputs with
++  | returned bindings =>
++    obtain ⟨returned, rfl⟩ := run
++    exact ⟨other, ⟨returned, rfl⟩, same⟩
++  | cast origin result source target rest induction =>
++    obtain ⟨value, cast, suffix⟩ := run
++    have safe := cast_external bound source target (env origin.name) value (external origin.name) cast
++    obtain ⟨final, next, related⟩ := induction valid.2 _ _ (external_put bound env external result.name value safe)
++      before other after same outputs suffix
++    exact ⟨final, ⟨value, cast, next⟩, related⟩
++  | dimension buffer axis result type axisIndex value rest induction =>
++    obtain ⟨actual, dimension, suffix⟩ := run
++    obtain ⟨final, next, related⟩ := induction valid _ _
++      (external_put bound env external result.name (.index actual) trivial) before other after same outputs suffix
++    exact ⟨final, ⟨actual, dimension, next⟩, related⟩
++  | constant result value rest induction =>
++    exact induction valid _ _ (external_put bound env external result.name (.index value) trivial)
++      before other after same outputs run
++  | action key operands results rest induction =>
++    obtain ⟨values, middle, action, typed, suffix⟩ := run
++    have existsOpcode : ∃ opcode, publicOpcode indices opcodes literals key = some opcode := by
++      cases selected : publicOpcode indices opcodes literals key with
++      | none =>
++        have impossible : false = true := by simpa only [selected, Option.isSome_none] using valid.1
++        cases impossible
++      | some opcode => exact ⟨opcode, rfl⟩
++    obtain ⟨opcode, chosen⟩ := existsOpcode
++    have selected := public_action_selected (User := User) bits indices opcodes literals key opcode chosen scalar literal
++    rw [selected] at action
++    obtain ⟨otherMiddle, otherAction, middleRelated⟩ := opcode.transfer bits bound key scalar literal
++      (readArguments false aliases env operands) (external_arguments bound env external aliases operands)
++      before other middle same values action
++    have safe := external_assign bound env external results values (nonview_values_external bound results values typed valid.2.1)
++    obtain ⟨final, next, related⟩ := induction valid.2.2 _ _ safe middle otherMiddle after middleRelated outputs suffix
++    refine ⟨final, ⟨values, otherMiddle, ?_, typed, next⟩, related⟩
++    rw [selected]
++    exact otherAction
++  | region => exact False.elim valid
++
++/-- Call-depth dispatch is eliminated only for actual suffix keys checked absent
++from the call table; the same primitive interpretation remains in force.
++-/
++theorem suffix_dispatch {Value World : Type} (meaning : Interpretation Value World) (module : Module)
++    (depth : Nat) (code : Code) (noCalls : NoSuffixCalls module code)
++    (aliases : Aliases) (env : GraphLoopsShape.Env Value) (before : World) (outputs : List (Runtime Value)) (after : World) :
++    Eval (withCalls meaning module (GraphLoopsShape.invoke meaning module false depth)) false aliases code env before outputs after ↔
++      Eval meaning false aliases code env before outputs after := by
++  apply eval_action_agreement
++  · intro key member
++    simp only [withCalls, noCalls key member]
++  · rfl
++
++end Merlin.GraphLoopsMemorySCF.After
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_after_context.py
+@@ -0,0 +1,108 @@
++"""Prepare complete actual one-kernel-call context/roster candidate queries."""
++
++import hashlib
++
++from .lean_graph_loops_memory_scf_after_context_data import contexts, extend_hint
++from .lean_graph_loops_memory_scf_after_context_witness import witness
++from .lean_graph_loops_memory_scf_after_entries import _header
++from .lean_graph_loops_memory_scf_after_whole import prepare_whole
++from .lean_graph_loops_shape_model import bindings, code, function
++from .lean_graph_loops_unroll import _list, _string
++
++
++def wrapper_literal(row):
++    return "⟨" + ", ".join((function(row["function"]), _string(row["key"]), _string(row["callee"]),
++                            bindings(row["arguments"]), bindings(row["results"]), code(row["suffix"]))) + "⟩"
++
++
++def _row(row):
++    route = row["route"]
++    if route == "caller":
++        value = "(.caller wrapper" + str(row["wrapper"]) + ")"
++    elif route == "unchanged":
++        value = "(.unchanged " + _list(row["reachable"], _string) + ")"
++    else:
++        value = ".kernel"
++    return "⟨" + _string(row["name"]) + ", " + value + "⟩"
++
++
++def obligation(data, bits):
++    wrappers = "\n".join(f"def wrapper{index} : CallerContext := {wrapper_literal(row)}" for index, row in enumerate(data["wrappers"]))
++    text = f"""
++namespace GraphMemoryAfterContext
++open Merlin Merlin.GraphLoopsShape Merlin.GraphLoopsMemorySCF.After
++open GraphShapeEpochObligation GraphMemoryAfterExpansion GraphMemoryAfterWhole
++{wrappers}
++def literals : LiteralOpcodes := {_list(data['literals'], lambda row: '(' + _string(row[0]) + ', ' + _string(row[1]) + ')')}
++def reachable : List String := {_list(data['kernel_reachable'], _string)}
++def boundary : ContextBoundary :=
++  ⟨independentSource, {bits}, indices, plan, kernel, GraphMemorySCFObligation.actual, expansions,
++    GraphMemoryAfterMaterialization.actualFinal, actual.swaps, actual.beforeFrame, actual.afterFrame, literals, reachable⟩
++theorem boundary_facts : boundary.Facts := by
++  refine ⟨source_valid, source_index_absent, of_decide_eq_true plan_valid, source_normalized,
++    of_decide_eq_true kernel_facts, of_decide_eq_true memory_binding, GraphMemorySCFObligation.accepted,
++    of_decide_eq_true expansion_checked, GraphMemoryAfterWhole.boundary_facts, actual_materialized, ?_, ?_, ?_⟩
++  all_goals decide
++def sourceHeaders : List EntryHeader := {_list(data['source_headers'], _header)}
++def finalHeaders : List EntryHeader := {_list(data['final_headers'], _header)}
++def rows : List ContextRow := {_list(data['rows'], _row)}
++theorem roster_facts : ContextRoster boundary sourceHeaders finalHeaders rows := by decide
++theorem complete_roster {{Value User : Type}} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (row : ContextRow) (member : row ∈ rows) (inputs : List (Runtime Value)) (domain : row.Domain boundary inputs)
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed ↔
++    Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed :=
++  checked_context_roster boundary boundary_facts sourceHeaders finalHeaders rows roster_facts
++    scalar literal row member inputs domain heap user observed
++
++theorem every_definition {{Value User : Type}} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (function : Function) (defined : function ∈ independentSource.functions) :
++    ∃ row ∈ rows, row.name = function.name ∧
++      ∀ inputs : List (Runtime Value), row.Domain boundary inputs →
++      ∀ (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),
++      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed ↔
++       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed) := by
++  obtain ⟨row, member, name⟩ := context_every_definition boundary sourceHeaders finalHeaders rows roster_facts function defined
++  exact ⟨row, member, name, fun inputs domain heap user observed =>
++    complete_roster scalar literal row member inputs domain heap user observed⟩
++"""
++    roots = ["boundary_facts", "roster_facts", "complete_roster"]
++    for index, _ in enumerate(data["wrappers"]):
++        text += f"""
++theorem wrapper{index}_checked : wrapper{index}.Checked boundary := by decide
++def wrapper{index}SampleInputs : List (Runtime Unit) := sampleInputs plan.objects.length wrapper{index}.function.parameters
++theorem wrapper{index}_sample_typed : ValuesHold wrapper{index}.function.parameters wrapper{index}SampleInputs :=
++  sample_typed plan.objects.length wrapper{index}.function.parameters (by decide)
++theorem wrapper{index}_sample_domain : wrapper{index}.Domain plan kernel wrapper{index}SampleInputs := by
++  refine ⟨wrapper{index}_sample_typed, sample_external plan.objects.length wrapper{index}.function.parameters, ?_⟩
++  intro caller member
++  simp only [plan, List.mem_cons, List.not_mem_nil, or_false] at member
++  subst caller
++  exact ⟨plan.objects.length, Nat.lt_irrefl _, rfl⟩
++theorem wrapper{index}_complete {{Value User : Type}} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)
++    (inputs : List (Runtime Value)) (domain : wrapper{index}.Domain plan kernel inputs)
++    (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
++    Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource wrapper{index}.function.name
++      inputs heap user observed ↔
++    Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal wrapper{index}.function.name
++      inputs heap user observed :=
++  wrapper{index}.checked_boundary boundary boundary_facts wrapper{index}_checked scalar literal inputs domain heap user observed
++"""
++        roots += [f"wrapper{index}_" + name for name in ("checked", "sample_typed", "sample_domain", "complete")]
++    return text + "\nend GraphMemoryAfterContext\n", ["GraphMemoryAfterContext." + name for name in roots]
++
++
++def prepare_context(adapter, raw_source, raw_final, *, parser, index_bits, max_nodes):
++    hint, source, _ = extend_hint(adapter, raw_source, parser=parser, index_bits=index_bits, max_nodes=max_nodes)
++    whole = prepare_whole(hint, source["frame"], raw_source, raw_final,
++                          parser=parser, index_bits=index_bits, max_nodes=max_nodes)
++    data = contexts(whole, hint)
++    text, roots = obligation(data, index_bits)
++    witness_text, witness_roots, witness_status = witness(hint, data)
++    query = "import Merlin.GraphLoopsMemorySCFAfterContextRoster\n" + whole["query"] + text + witness_text
++    return dict(whole, query=query, context=data, extended_hint=hint, witness=witness_status,
++                final_root="GraphMemoryAfterContext.every_definition",
++                support_roots=list(dict.fromkeys([*whole["support_roots"], whole["final_root"], *roots, *witness_roots])),
++                query_sha256=hashlib.sha256(query.encode()).hexdigest(), context_proved=False,
++                whole_world_equality_assumed=False, repeated_kernel_calls_supported=False,
++                source_extension_is_original_capture=False)
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_after_context_data.py
+@@ -0,0 +1,101 @@
++"""Independent full-module decoding and finite one-call context hints.
++
++New wrappers are source-level test extensions, never original producer captures.
++Hints do not establish semantic equality: emitted Lean checks the full source,
++normalized module, expansion and independently decoded final body.
++"""
++
++from copy import deepcopy
++import hashlib
++
++from .lean_graph_input_admission import parse_admitted
++from .lean_graph_loops_memory_scf_after_entries_data import callgraph, headers, literal_opcodes, reachable
++from .lean_graph_loops_shape_after_projection import decode, normalized_code
++from .lean_graph_loops_shape_capture import export
++
++
++def extend_hint(adapter, raw_source, *, parser, index_bits, max_nodes):
++    exported = export(parse_admitted(raw_source, parser, calls="shape-direct"))
++    actual = decode(exported, index_bits=index_bits, max_nodes=max_nodes)
++    hint = deepcopy(adapter)
++    original_names = {row["name"] for row in hint["shape"]["module"]["functions"]}
++    additions = [row for row in actual["module"]["functions"] if row["name"] not in original_names]
++    hint["shape"]["module"] = actual["module"]
++    hint["shape"]["changed_sites"] = actual["shape_sites"]
++    hint["shape"]["structural_nodes"] = actual["structural_nodes"]
++    hint["shape"]["source_binding"] = hashlib.sha256(raw_source.encode()).hexdigest()
++    hint["shape"]["target_binding"] = "UNTRUSTED-NORMALIZATION-HINT-FOR-SOURCE-LEVEL-EXTENSION"
++    for label in ("normalized_candidate", "candidate_plain"):
++        hint[label]["functions"].extend(dict(row, code=normalized_code(row["code"], {})) for row in additions)
++        hint[label]["calls"] = deepcopy(actual["module"]["calls"])
++    return hint, actual, exported
++
++
++def _suffix_refusals(code, name, calls, opcodes, literals, indices):
++    refused = []
++    call_targets = dict(calls)
++    opcode_map = dict(opcodes)
++    literal_keys, index_keys = {row[0] for row in literals}, {row[0] for row in indices}
++    while code["tag"] != "returned":
++        tag = code["tag"]
++        if tag == "region":
++            refused.append(dict(entry=name, code="continuation_region_not_supported"))
++        elif tag == "action":
++            key = code["key"]
++            selected = opcode_map.get(key, {}).get("tag")
++            if key in call_targets:
++                refused.append(dict(entry=name, code="post_call_callee_not_supported", target=call_targets[key],
++                                    obligation="related initial private-clock/heap stability and contextual call congruence"))
++            elif key not in literal_keys and key not in index_keys and selected not in ("binary", "load", "store"):
++                refused.append(dict(entry=name, code="state_inspecting_or_unknown_suffix_action", key=key))
++            if any(row["kind"]["tag"] == "view" for row in code["results"]):
++                refused.append(dict(entry=name, code="view_result_not_supported"))
++        elif tag == "cast" and code["source"] != code["target"]:
++            refused.append(dict(entry=name, code="nonidentical_alias_not_supported"))
++        code = code["rest"]
++    if any(row["kind"]["tag"] == "view" for row in code["values"]):
++        refused.append(dict(entry=name, code="descriptor_return_not_supported"))
++    return refused
++
++
++def contexts(whole, adapter):
++    source = whole["independent_source"]["module"]
++    final = whole["actual_final"]["model"]["module"]
++    source_headers = headers(whole["source_export"])
++    final_headers = headers(whole["actual_final"]["actual_export"])
++    first_graph, last_graph = callgraph(source), callgraph(final)
++    kernel = adapter["step_binding"]["function"]
++    literals = literal_opcodes(source, final)
++    wrappers, rows, refusals = [], [], []
++    if source_headers != final_headers:
++        refusals.append(dict(code="complete_roster_or_interface_changed"))
++    if any(row["declaration"] for row in source_headers + final_headers):
++        refusals.append(dict(code="external_declaration_not_supported"))
++    for function in adapter["normalized_candidate"]["functions"]:
++        name = function["name"]
++        closure = reachable(name, first_graph, last_graph)
++        if name == kernel:
++            rows.append(dict(name=name, route="kernel"))
++        elif kernel not in closure:
++            rows.append(dict(name=name, route="unchanged", reachable=closure))
++        else:
++            first = function["code"]
++            targets = dict(source["calls"])
++            if first["tag"] != "action" or targets.get(first["key"]) != kernel:
++                refusals.append(dict(entry=name, code="prefix_or_transitive_kernel_call_not_supported",
++                                     obligation="initial-clock and prefix/frame stability must be proved"))
++                rows.append(dict(name=name, route="unchanged", reachable=closure))
++                continue
++            wrapper = dict(function=function, key=first["key"], callee=kernel, arguments=first["operands"],
++                           results=first["results"], suffix=first["rest"])
++            wrappers.append(wrapper)
++            rows.append(dict(name=name, route="caller", wrapper=len(wrappers)-1))
++            refusals.extend(_suffix_refusals(first["rest"], name, source["calls"], adapter["step_binding"]["opcodes"],
++                                             literals, whole["actual_final"]["model"]["index_opcodes"]))
++            if any(binding["kind"]["tag"] == "view" for binding in first["results"]):
++                refusals.append(dict(entry=name, code="private_callee_result_may_escape"))
++    return dict(source_headers=source_headers, final_headers=final_headers, rows=rows, wrappers=wrappers,
++                source_callgraph=first_graph, final_callgraph=last_graph, literals=literals,
++                kernel_reachable=reachable(kernel, first_graph, last_graph), refusals=refusals,
++                provenance="source-level wrapper extension of retained raw modules; not original producer capture",
++                kernel_outcomes="UNOBSERVED", lean_status="UNCOMPILED")
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_after_context_witness.py
+@@ -0,0 +1,182 @@
++"""Construct a nonzero abstract execution for the retained two-epoch wrapper.
++
++Reuses the immutable actual epoch witness builder. Nat addition is an inhabited
++shared relation used for this example, not a numerical/native MLIR fidelity law.
++The complete actual continuation is inspected and bound to emitted proof terms.
++"""
++
++from .lean_graph_loops_shape_epoch_witness import witness_obligation
++from .lean_graph_loops_unroll import _string
++
++
++def _shape(wrapper):
++    """Recognize a witness shape only; semantic correspondence remains in Lean."""
++    parameters = wrapper['function']['parameters']
++    call_results = wrapper['results']
++    first = wrapper['suffix']
++    if len(parameters) != 4 or len(call_results) != 2 or first['tag'] != 'action':
++        return None
++    zero = first['rest']
++    if zero['tag'] != 'constant' or zero['value'] != 0:
++        return None
++    load = zero['rest']
++    if load['tag'] != 'action':
++        return None
++    second = load['rest']
++    if second['tag'] != 'action':
++        return None
++    store = second['rest']
++    if store['tag'] != 'action' or store['rest']['tag'] != 'returned':
++        return None
++    if (any(len(node['results']) != 1 for node in (first, load, second))
++            or store['results']
++            or wrapper['arguments'] != parameters[:3]
++            or first['operands'] != [call_results[0], parameters[3]]
++            or load['operands'] != [parameters[2], zero['result']]
++            or second['operands'] != [load['results'][0], first['results'][0]]
++            or store['operands'] != [second['results'][0], parameters[2], zero['result']]
++            or store['rest']['values'] != [second['results'][0], call_results[1]]):
++        return None
++    return dict(first=first, zero=zero, load=load, second=second, store=store)
++
++
++def witness(adapter, data):
++    if len(data['wrappers']) != 1 or data['refusals']:
++        return '', [], dict(status='NOT_EMITTED', reason='requires one supported wrapper')
++    wrapper = data['wrappers'][0]
++    original = next((row for row in adapter['shape']['module']['functions'] if row['name'] == wrapper['function']['name']), None)
++    if original != wrapper['function']:
++        return '', [], dict(status='NOT_EMITTED', reason='concrete execution witness requires original literal body; normalized aliases retain generic context theorem')
++    shape = _shape(wrapper)
++    if shape is None:
++        return '', [], dict(status='NOT_EMITTED', reason='actual continuation outside concrete witness grammar')
++    if [row['kind'] for row in wrapper['function']['parameters']] != [
++        {'tag': 'scalar', 'type': 'i32'}, {'tag': 'scalar', 'type': 'i32'},
++        {'tag': 'view', 'type': {'shape': [1], 'offset': 0, 'strides': [1], 'element': 'i32', 'space': 0}},
++        {'tag': 'scalar', 'type': 'i32'},
++    ]:
++        return '', [], dict(status='NOT_EMITTED', reason='concrete example requires original i32/singleton caller interface')
++    old, _ = witness_obligation(adapter)
++    begin = old.index('namespace GraphShapeEpochWitness\n')
++    end = old.index('end GraphShapeEpochWitness', begin) + len('end GraphShapeEpochWitness')
++    # Keep only the old proof declarations; the complete adapter query already exists.
++    old = old[begin:end] + '\n'
++    key = {name: _string(shape[name]['key']) for name in ('first', 'load', 'second', 'store')}
++    text = old + f'''
++namespace GraphMemoryAfterContextWitness
++open Merlin Merlin.GraphLoopsShape Merlin.GraphLoopsMemorySCF.After
++open GraphShapeEpochObligation GraphMemoryAfterExpansion GraphMemoryAfterWhole GraphMemoryAfterContext
++abbrev scalar := GraphShapeEpochWitness.scalar
++def literal : LiteralMeaning Nat := fun _ value => value = 1
++abbrev meaning : Interpretation Nat (CallerWorld Nat Unit) := boundary.meaning scalar literal
++theorem source_wrapper_syntax : wrapper0.Facts independentSource := by decide
++def inputs : List (Runtime Nat) :=
++  [.scalar "i32" 17, .scalar "i32" 29, Epoch.view 2 [1] "i32", .scalar "i32" 7]
++def outputs : List (Runtime Nat) := [.scalar "i32" 498, .index 2]
++def middleOutputs : List (Runtime Nat) := [.scalar "i32" 308, .index 2]
++def env : Merlin.GraphLoopsShape.Env Nat :=
++  assign (assign emptyEnv wrapper0.function.parameters inputs) wrapper0.results middleOutputs
++theorem typed : ValuesHold wrapper0.function.parameters inputs := by
++  exact .cons ⟨rfl, by intro index impossible; cases impossible⟩
++    (.cons ⟨rfl, by intro index impossible; cases impossible⟩
++      (.cons ⟨rfl, by intro index impossible; cases impossible⟩
++        (.cons ⟨rfl, by intro index impossible; cases impossible⟩ .nil)))
++theorem domain : wrapper0.Domain plan kernel inputs := by
++  refine ⟨typed, ?_, ?_⟩
++  · intro value member
++    simp only [inputs, List.mem_cons, List.not_mem_nil, or_false] at member
++    rcases member with rfl | rfl | rfl | rfl
++    all_goals first | trivial | decide
++  · intro caller member
++    simp only [plan, List.mem_cons, List.not_mem_nil, or_false] at member
++    subst caller
++    exact ⟨2, by decide, rfl⟩
++theorem call_arguments :
++    readArguments false [] (assign emptyEnv wrapper0.function.parameters inputs) wrapper0.arguments =
++      GraphShapeEpochWitness.inputs := by rfl
++theorem return_typed : ValuesHold wrapper0.results middleOutputs := by
++  exact .cons ⟨rfl, by intro index impossible; cases impossible⟩
++    (.cons ⟨rfl, by intro index impossible; cases impossible⟩ .nil)
++theorem first_selected : meaning.action {key['first']} = Epoch.Binary "i32" (fun a b result => result = a + b) := by rfl
++theorem second_selected : meaning.action {key['second']} = Epoch.Binary "i32" (fun a b result => result = a + b) := by rfl
++theorem load_selected : meaning.action {key['load']} = Load := by rfl
++theorem store_selected : meaning.action {key['store']} = Store := by rfl
++
++/-- Both kernel initialization and caller cell91 are constructed by the frozen
++witness, then transported through derived conservative primitive extensions. -/
++theorem kernel_execution : ∃ world,
++    complete meaning independentSource false kernel.function.name GraphShapeEpochWitness.inputs
++      ⟨⟨0, ()⟩, GraphShapeEpochWitness.initialHeap⟩ middleOutputs world ∧ world.heap 2 0 = some 183 := by
++  obtain ⟨world, run, cell⟩ := GraphShapeEpochWitness.typed_source_inhabited
++  have original : complete (Epoch.graphMeaning plan.opcodes scalar) independentSource false kernel.function.name
++      GraphShapeEpochWitness.inputs ⟨⟨0, ()⟩, GraphShapeEpochWitness.initialHeap⟩ middleOutputs world := by
++    rw [source_term_exact]
++    exact run
++  have indexed := (source_complete_extension boundary.bits indices plan.opcodes scalar independentSource
++    source_index_absent kernel.function.name GraphShapeEpochWitness.inputs _ middleOutputs world).mp original
++  have extended := (closed_literal_extension (finalMeaning boundary.bits indices plan.opcodes scalar)
++    literals literal independentSource reachable (by decide) (by decide) kernel.function.name (by decide)
++    GraphShapeEpochWitness.inputs _ middleOutputs world).mp indexed
++  exact ⟨world, extended, cell⟩
++
++/-- Actual post-call scalar continuation, initialized public load, scalar
++observer update, public store and return. No whole-suffix execution premise. -/
++theorem continuation_execution (world : CallerWorld Nat Unit) (initialized : world.heap 2 0 = some 183) :
++    Eval meaning false (extendAliases (extendAliases [] wrapper0.function.parameters) wrapper0.results)
++      wrapper0.suffix env world outputs
++      ⟨world.observed, GraphLoopsReuse.replaceCell world.heap 2 0 498⟩ := by
++  apply Eval.source_action [.scalar "i32" 315] world
++  · rw [first_selected]
++    exact ⟨308, 7, 315, rfl, rfl, rfl, rfl⟩
++  · exact .cons ⟨rfl, by intro index impossible; cases impossible⟩ .nil
++  · apply Eval.source_constant
++    apply Eval.source_action [.scalar "i32" 183] world
++    · rw [load_selected]
++      exact Load.ready (Epoch.type [1] "i32") (Epoch.descriptor 2 [1] "i32") (Epoch.conforms 2 [1] "i32")
++        [0] 183 world (by decide) initialized
++    · exact .cons ⟨rfl, by intro index impossible; cases impossible⟩ .nil
++    · apply Eval.source_action [.scalar "i32" 498] world
++      · rw [second_selected]
++        exact ⟨183, 315, 498, rfl, rfl, rfl, rfl⟩
++      · exact .cons ⟨rfl, by intro index impossible; cases impossible⟩ .nil
++      · apply Eval.source_action [] ⟨world.observed, GraphLoopsReuse.replaceCell world.heap 2 0 498⟩
++        · rw [store_selected]
++          exact Store.ready (Epoch.type [1] "i32") (Epoch.descriptor 2 [1] "i32") (Epoch.conforms 2 [1] "i32")
++            [0] 498 world (by decide)
++        · exact .nil
++        · exact ⟨rfl, rfl⟩
++
++theorem source_execution : ∃ world,
++    complete meaning independentSource false wrapper0.function.name inputs
++      ⟨⟨0, ()⟩, GraphShapeEpochWitness.initialHeap⟩ outputs world ∧ world.heap 2 0 = some 498 := by
++  obtain ⟨world, call, initialized⟩ := kernel_execution
++  refine ⟨⟨world.observed, GraphLoopsReuse.replaceCell world.heap 2 0 498⟩, ?_, rfl⟩
++  apply (wrapper0.complete_iff independentSource source_wrapper_syntax meaning inputs _ outputs _).mpr
++  refine ⟨typed, middleOutputs, world, ?_, return_typed, continuation_execution world initialized⟩
++  rw [call_arguments]
++  exact call
++
++theorem source_observation : ∃ observed,
++    Epoch.graphOutcomes plan.objects.length meaning independentSource wrapper0.function.name inputs
++      GraphShapeEpochWitness.initialHeap () observed ∧ observed.returned = outputs ∧ observed.heap 2 0 = some 498 := by
++  obtain ⟨world, run, initialized⟩ := source_execution
++  refine ⟨Epoch.observeWorld plan.objects.length outputs world, ⟨outputs, world, run, rfl⟩, rfl, ?_⟩
++  exact initialized
++
++theorem final_observation : ∃ observed,
++    Epoch.graphOutcomes plan.objects.length meaning boundary.actualFinal wrapper0.function.name inputs
++      GraphShapeEpochWitness.initialHeap () observed ∧ observed.returned = outputs ∧ observed.heap 2 0 = some 498 := by
++  obtain ⟨observed, run, returned, initialized⟩ := source_observation
++  exact ⟨observed, (wrapper0_complete scalar literal inputs domain GraphShapeEpochWitness.initialHeap () observed).mp run,
++    returned, initialized⟩
++end GraphMemoryAfterContextWitness
++'''
++    roots = ['GraphShapeEpochWitness.' + name for name in ('epoch_source_inhabited', 'typed_source_inhabited', 'segmented_inhabited')]
++    roots += ['GraphMemoryAfterContextWitness.' + name for name in (
++        'source_wrapper_syntax', 'typed', 'domain', 'call_arguments', 'return_typed', 'first_selected', 'second_selected', 'load_selected', 'store_selected',
++        'kernel_execution', 'continuation_execution', 'source_execution', 'source_observation', 'final_observation',
++    )]
++    return text, roots, dict(status='UNCOMPILED', interpretation='existing Nat-addition witness; no native i32 fidelity law',
++                            seeds=[17,29], initial_caller=91, bias=7, callee_returns=[308,2],
++                            callee_caller=183, wrapper_returns=[498,2], final_caller=498,
++                            initial_private_cells='none; kernel initializers construct cells', source_success_assumed=False)

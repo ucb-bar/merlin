@@ -1,0 +1,75 @@
+{
+  "relation": {
+    "equal": [
+      "returned runtime values",
+      "entire heap outside private partition",
+      "user state"
+    ],
+    "not_equal": [
+      "private allocation clock",
+      "private cells",
+      "native physical identity/resource usage"
+    ]
+  },
+  "entry": {
+    "clock": 0,
+    "typed_arguments": true,
+    "input_descriptors_external": true,
+    "kernel_caller_views": "original canonical singleton contract; aliases allowed",
+    "heap": "arbitrary, reads partial"
+  },
+  "grammar": {
+    "normalized_prefix": "exactly one direct selected-kernel call",
+    "raw_alias_prefix": "allowed via existing shape normalization",
+    "suffix": [
+      "scalar binary partial relation",
+      "scalar literal partial effect-free relation",
+      "bounded index primitive",
+      "index constant",
+      "identical cast",
+      "dimension",
+      "public load",
+      "public store",
+      "scalar/index return"
+    ],
+    "forbidden": [
+      "additional call",
+      "region",
+      "allocation",
+      "release",
+      "unknown state-inspecting action",
+      "descriptor return"
+    ]
+  },
+  "local_support": "external_empty \u2192 external_assign from inputs \u2192 nonview_values_external for call results \u2192 constructorwise suffix SSA induction",
+  "no_escape": "all call results and action results non-view; captured descriptors external; no allocator/view-construction suffix",
+  "observations": "possible finite successful outcomes only",
+  "failure_divergence_native_preserved": false,
+  "source_logical_clock_hint": 2,
+  "target_physical_clock_hint": 1,
+  "clock_hints_kernel_checked": false,
+  "witness": {
+    "status": "UNCOMPILED",
+    "interpretation": "existing Nat-addition witness; no native i32 fidelity law",
+    "seeds": [
+      17,
+      29
+    ],
+    "initial_caller": 91,
+    "bias": 7,
+    "callee_returns": [
+      308,
+      2
+    ],
+    "callee_caller": 183,
+    "wrapper_returns": [
+      498,
+      2
+    ],
+    "final_caller": 498,
+    "initial_private_cells": "none; kernel initializers construct cells",
+    "source_success_assumed": false
+  },
+  "witness_is_native_numeric_evidence": false,
+  "source_success_assumed": false
+}

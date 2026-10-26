@@ -1,0 +1,435 @@
+{
+  "kind": "FIXED_SOURCE_PUBLICATION_NOT_VERIFICATION",
+  "branch": "feat/pass-verification",
+  "owned_sources": [
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+      "sha256": "e2561ad8aac0786f2ccfa4dfd9430daa2ef9bee8d55003575d2c27952128744c",
+      "bytes": 4331
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+      "sha256": "d3f32c3664756137eadb2a7eb979324595b2c37fbd76728109c8694086981114",
+      "bytes": 6678
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_context.py",
+      "sha256": "18daff051b900c0db039b23e995d508e5f14b7e35fc98b73c3aa4e9e8f3bfad1",
+      "bytes": 8682
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+      "sha256": "e8f2d79709042c410e55942b091a795948beee753355ca205b3e24f9d769bbad",
+      "bytes": 7860
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+      "sha256": "6addb52100e7a0d125676e6d5563dc6127d0913361cf8aba95d257687314dd12",
+      "bytes": 3292
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+      "sha256": "d63d3b1c5abcd047f5c96d02847f8ccc54c0b7f9e05997cac02feb05794a717f",
+      "bytes": 2110
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+      "sha256": "2ce36e2c54672bf77529f048146105095e33aa1385b71fb71e0e7d1fc1dbd783",
+      "bytes": 4324
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+      "sha256": "ac5f18053282e6e12d816146a7cb1e71c663fb3e8580eea786896dcbc5574247",
+      "bytes": 5980
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+      "sha256": "05502dbe0083bf14ce2ea1b3a165ebd42cc0cf7e34e6a3340fc41a53bc6c592b",
+      "bytes": 5883
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+      "sha256": "db2ff24827279ded18bcfd9659bd99983aa195b62d1512a16244e8fbde30bf1a",
+      "bytes": 8783
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+      "sha256": "115ecb5e1386e28c8ccec29bef745cecdf7b31a9bf537c50182b28a5673c42b7",
+      "bytes": 8587
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+      "sha256": "0e4f2e2b60ca02cf50845235299ead547edc55ae9eb384d90a18b9abe0f78c6c",
+      "bytes": 7349
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+      "sha256": "6d13e391848a453a0a52a3bc20c217c311fa846048a645001a5cccd4590adf4e",
+      "bytes": 5721
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+      "sha256": "246ab2b3b63c771aeb41b73ca8b5cb934f16a9b6e700caad7438505e7fa50c3c",
+      "bytes": 9032
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+      "sha256": "9c92b1fedea928d04c7fc5fc5941f8f83c915335679a580e3cfb9cfaac7e5b9b",
+      "bytes": 2983
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+      "sha256": "d2726226da4f5eeb42a6cdb6d272ee1b6393731d833e9e313874d2799f79a7e1",
+      "bytes": 5517
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+      "sha256": "67b7939e556f67b15bec8de56eda1d3df87e1b874f4258544e91ec2a501199c9",
+      "bytes": 6401
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+      "sha256": "42c410006a4dfa505a57fa8599aa3d877e48dd8ddd6fe5f83cfe42a7b327c9c2",
+      "bytes": 6384
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+      "sha256": "e073d9318841fdb2b3db2abebdce38aa85956cf42cfe80a7cf849c287ec2cd0e",
+      "bytes": 8657
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+      "sha256": "a5e2bcab4eb4c17a94fda543e175d8d0f6e79036232f8a33261095184a421f0f",
+      "bytes": 6830
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+      "sha256": "acfe7eecf1ff22e9c9c6d4e28e47a42cb82676fc35cb6d36c28134a2db4e6644",
+      "bytes": 5221
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+      "sha256": "e2d459fae17d6184961fdbaf210c3ce5b8b3d4586b1fd35db8350cde33e5fcbe",
+      "bytes": 6484
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+      "sha256": "b00e037024e9cb0cef6fc087abaf2f03e631c2137d3a8acd80ddf2773e0335f3",
+      "bytes": 5522
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+      "sha256": "ec4e7bddea5bd4e1b13359dca6bea0f36dbf1f05939b1b51a12cfdfbcadeb7fe",
+      "bytes": 7084
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+      "sha256": "44478ab6e3b2bbe636943fe369209fa96c58ea679c8bd22d435eb252dbf89366",
+      "bytes": 6254
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+      "sha256": "478311e1d64352a42cd8e71012a001f0276820f9b5f3ba268d30a018fbc18469",
+      "bytes": 6624
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+      "sha256": "b1a40d49a7d095429e82bf0e053e53707b557996c01c308c4a5bdc0524e86e07",
+      "bytes": 5337
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+      "sha256": "a8a8ead22ebbf08b26cea5e9ff901463d97d8a31403032baf2e07fa1f7dd9744",
+      "bytes": 5522
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+      "sha256": "b8e4442e6d2a90ea9ae7b0d6204ff96c39a4aeef8e3a6babe102ff5f95342c62",
+      "bytes": 10015
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+      "sha256": "8c3244e49b74bdd4592941bc1bdfd06e3dc5ad30a8dfbef04fc739f25a9f3b45",
+      "bytes": 7471
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+      "sha256": "a0d4e5ef523b2cf64542589047047423038f09ffd225b8f16fe381d05039cc3f",
+      "bytes": 10284
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+      "sha256": "323a82673fd07e86e8d68fb071302a8372f5ef3f751c7cfc68c7e6acaa7bb7e2",
+      "bytes": 5749
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+      "sha256": "fa5f46ef94f79a50a2aa850a0bec0f484276eebb0e883921f8edbfccfbdfa5db",
+      "bytes": 6799
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+      "sha256": "ee7c3aaed050d0101d76bc2c585542a8a7ed0747a65b613b2ff9f1c6e8eb8e4b",
+      "bytes": 6252
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+      "sha256": "d3e392af113e85e115584d3e8533e5f99fa8bb14379cc41c971233cdbb2f7185",
+      "bytes": 8872
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+      "sha256": "12284514b35a27200d94f52d6f602b7bbb9d7ae7624a8aa88d229ca378c9c33f",
+      "bytes": 4878
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+      "sha256": "d587cbe0e1265b052cc607c08325bc6134adf776d06d54b576a2e17e1c345795",
+      "bytes": 9702
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+      "sha256": "64dc0c518b2b7ef3d489c1b4aa0df349e2a2dc4f8df0c378be7e72602cb3ea1e",
+      "bytes": 5562
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+      "sha256": "a32e89ad3b494224ab0b92f8423b765b30ad53be22b43c794893d1ee21ddbbed",
+      "bytes": 8494
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+      "sha256": "60d318a0983eb04623023eb70f8f944fda0020db50c10a49c2a86363710438d5",
+      "bytes": 11740
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+      "sha256": "743fd49545efc94ecfc609fb6a131355931e91e8dedb736868345905372d9231",
+      "bytes": 7629
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+      "sha256": "bb52da64c94041f36aae5a5455ee50b66a287b170c4a4c8f8fbca6c121eafbc9",
+      "bytes": 5962
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+      "sha256": "84cd8ac53d96f90c0255929bc44d4e5e2dce3173baeed4caa604d6d59af0b7c6",
+      "bytes": 8781
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+      "sha256": "4dab99a0824e89346226ad04e774369fee6fde5cf6ed420cf8e55a213c62f87c",
+      "bytes": 9169
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+      "sha256": "a480ba07dcf62de7829680f93178f85535ef9f19b39f37eac30a8cd51ca09098",
+      "bytes": 8449
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+      "sha256": "60d6a9aca373bd9c4b61fa31726961f30468a582831aab7f3a49611b7b01e7a1",
+      "bytes": 4931
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+      "sha256": "5cff2c32042ca2ccfa8db8c1157b576cba7fb4390837d193cdf64373d7e7a89b",
+      "bytes": 5376
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+      "sha256": "cee17c1e1cc166bd4951664ecf2fb8588e07cbe0dbbec9be9bca37b3b58f07cb",
+      "bytes": 5948
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+      "sha256": "2437a5f3be741e6912f3568dcff5b08f0c15187547b7d02f5bb28bc928c8e82c",
+      "bytes": 11951
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+      "sha256": "2dc0625cca4f37c016ab96389f18075f86a2cea4d74d51a70f1c625770bbbc1a",
+      "bytes": 8422
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+      "sha256": "d1a8dbab64ee787737647b9d6805bd104e82df401e05ca86b1ee7763beb1dc7e",
+      "bytes": 8597
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context.py",
+      "sha256": "7283f9534796db00ecbe23db15b2efbc2abb85d03ef9d72bcd8dc73628538474",
+      "bytes": 7365
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context_data.py",
+      "sha256": "85475002b026afadceb1fbf9bacbb69d9a532dbc8e97634fba8471b39561ed55",
+      "bytes": 6006
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context_witness.py",
+      "sha256": "0fc83cb22dd3c347e8b79e02e38efd74a5780eff2ffd389b93db8e15a6338647",
+      "bytes": 11203
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "sha256": "21c9af7755cb1bf9032932cd0957894993e4c7bfefc12cd282d714495fc31b61",
+      "bytes": 9275
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+      "sha256": "e3bd007e4fe26eec0adb107d2fa84473a606ec211503f92b0e44dcc144d81fc8",
+      "bytes": 4537
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "sha256": "3fbace47addf4df9ecebcd8ec916e0134171cbc717be4439ca366d83cfb201e1",
+      "bytes": 3610
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+      "sha256": "1d75d98ed6c47647a8adbb98f5197c5f75c36c8bf943b551d729ef0f21e3b1da",
+      "bytes": 8640
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+      "sha256": "a6b746a365b9b2cb4da5b5335ddecc9b8e67a8a908dcacbc8723d71571d61ae5",
+      "bytes": 5421
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+      "sha256": "6744c38dd448be15a2e9e9b5d3cd52f8a42063ccf2f690fa1ab0fed395d97144",
+      "bytes": 5836
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+      "sha256": "6733bab311e4b7f3b3f16fcd1f3fbb7ea4d4d37f6671e25eefe77a7ce0a2ba77",
+      "bytes": 4934
+    }
+  ],
+  "owned_count": 61,
+  "new_context_sources": [
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_context.py",
+      "sha256": "18daff051b900c0db039b23e995d508e5f14b7e35fc98b73c3aa4e9e8f3bfad1",
+      "bytes": 8682
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+      "sha256": "d2726226da4f5eeb42a6cdb6d272ee1b6393731d833e9e313874d2799f79a7e1",
+      "bytes": 5517
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+      "sha256": "67b7939e556f67b15bec8de56eda1d3df87e1b874f4258544e91ec2a501199c9",
+      "bytes": 6401
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+      "sha256": "42c410006a4dfa505a57fa8599aa3d877e48dd8ddd6fe5f83cfe42a7b327c9c2",
+      "bytes": 6384
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+      "sha256": "e073d9318841fdb2b3db2abebdce38aa85956cf42cfe80a7cf849c287ec2cd0e",
+      "bytes": 8657
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+      "sha256": "a5e2bcab4eb4c17a94fda543e175d8d0f6e79036232f8a33261095184a421f0f",
+      "bytes": 6830
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+      "sha256": "acfe7eecf1ff22e9c9c6d4e28e47a42cb82676fc35cb6d36c28134a2db4e6644",
+      "bytes": 5221
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+      "sha256": "e2d459fae17d6184961fdbaf210c3ce5b8b3d4586b1fd35db8350cde33e5fcbe",
+      "bytes": 6484
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context.py",
+      "sha256": "7283f9534796db00ecbe23db15b2efbc2abb85d03ef9d72bcd8dc73628538474",
+      "bytes": 7365
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context_data.py",
+      "sha256": "85475002b026afadceb1fbf9bacbb69d9a532dbc8e97634fba8471b39561ed55",
+      "bytes": 6006
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context_witness.py",
+      "sha256": "0fc83cb22dd3c347e8b79e02e38efd74a5780eff2ffd389b93db8e15a6338647",
+      "bytes": 11203
+    }
+  ],
+  "source_inventory": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/source-context-v1/OWNED-SOURCES.json",
+    "sha256": "fdd0d95bbfa71080369dffa3b2609e4ee0e7c04667c70a0b3d7e5165d7a4ce5d",
+    "bytes": 11756
+  },
+  "source_seal": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/source-context-v1/SOURCE-SEAL.json",
+    "sha256": "b6b4f1ac414f1a1b6da223e67c70f5adce4acac8ae5cb0e8cdcc021dceab57ab",
+    "bytes": 41105
+  },
+  "lean_closure": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/source-context-v1/PROJECT-LEAN-SOURCES.json",
+    "sha256": "93e3434defdd08fd134d9045fe2dce6f33fa16441a0f0f6284dfb9ff9f211764",
+    "bytes": 22227
+  },
+  "python_closure": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/source-context-v1/PROJECT-PYTHON-SOURCES.json",
+    "sha256": "a479e3e9f9a984df6b30b7f277f052aaf6445e0c92cdc6f7a09f953ffabae7c9",
+    "bytes": 9155
+  },
+  "source_patch": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/source-context-v1/successor-source.patch",
+    "sha256": "0f696026399c155c86bf98fabc14e1573cd80eb258d299ceb5695f9e397c7c4d",
+    "bytes": 81256
+  },
+  "review_readme": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/context-source-review-v1/README.md",
+    "sha256": "78fbef19db85bc3c9b234ef73c49b49651f91b5baae1ade4d24f636382597c80",
+    "bytes": 11455
+  },
+  "review_seal": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/context-source-review-v1/REVIEW-SEAL.json",
+    "sha256": "553b0e7c9f59faf9400a6205f754c0f92daf2b4d823b72d03064346dde545d40",
+    "bytes": 1490
+  },
+  "review_patch": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/context-source-review-v1/review.patch",
+    "sha256": "0c57a30fdf30cd3fb6a8b25a6e516470078e3c6dce5f4695f2a0bd79ff774e52",
+    "bytes": 661375
+  },
+  "queries": {
+    "path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/source-context-v1/QUERIES.json",
+    "sha256": "936c7cfa255dbbcf67d045a903d52f6a42ce92c4c27da6605a3ec76d4a9c5ffe",
+    "bytes": 541425
+  },
+  "paper": {
+    "path": "out/artifacts/verification/graph-shape-normalization/paper-evidence/memory-after-context-v1.md",
+    "sha256": "d4e054be227bfc07658985fa14ba1a5eb008c97a57ec4207c240eac69eb8c4fc",
+    "bytes": 3728
+  },
+  "current_source_bytes_match_fixed_cut": true,
+  "ongoing_owned_edits": false,
+  "live_owned_jobs": [],
+  "status": {
+    "lean": "UNCOMPILED",
+    "kernel_outcomes": "UNOBSERVED",
+    "qualified": false,
+    "sdk_free_tests": 14
+  },
+  "holds": [
+    "root alone stages/commits/pushes",
+    "fixed61 remain unchanged for Graham review",
+    "original and private runtime incidents unresolved",
+    "no numerical restart"
+  ],
+  "dependency_note": "Context patch is additive11 over prior50; complete61 source snapshot and transitive source closures are in source-context-v1. All old patches/seals retained."
+}

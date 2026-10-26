@@ -1,5 +1,11 @@
 # Shape normalization: whole-module conditional graph preservation
 
+**2026-10-26 source-only successor:** [actual-final memory graph candidate](memory-after-whole-v1.md)
+records the new independently decoded before/final example, complete candidate
+chain and exact remaining paper obligations. All new MemorySCFAfter roots are
+UNCOMPILED; its preparation tests are not formal-checker acceptance. The earlier
+standalone shape discussion below remains historical evidence with its stated limits.
+
 **Proposed paper sentence (independent review pending):** For the admitted static,
 identity-layout view domain, our Lean checker proves that identical-type memref
 cast elimination and static dimension materialization preserve every possible

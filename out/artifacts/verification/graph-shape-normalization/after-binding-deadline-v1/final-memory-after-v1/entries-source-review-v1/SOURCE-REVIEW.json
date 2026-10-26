@@ -1,0 +1,12 @@
+{
+  "prohibited_token_violations": [],
+  "python_ast_parsed": [
+    "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py"
+  ],
+  "lean_compiled": false,
+  "axiom_audited": false,
+  "review": "lexical/static only; not formal evidence"
+}

@@ -1,12 +1,16 @@
 {
-  "status": "ACTIVE_UNQUALIFIED",
-  "branch": "feat/pass-verification",
-  "head": "229f42c627854c49476a101cb393d0b15044fab8",
+  "status": "ACTIVE_BATCH_SEALED",
+  "head": "c399e441e86042752c407a4ba917d4510b16585b",
   "owned_sources": [
     {
       "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
       "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
       "bytes": 4861
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean",
+      "sha256": "39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2",
+      "bytes": 2768
     },
     {
       "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
@@ -29,6 +33,16 @@
       "bytes": 4269
     },
     {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+      "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+      "bytes": 6316
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+      "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+      "bytes": 5453
+    },
+    {
       "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
       "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
       "bytes": 10841
@@ -47,22 +61,82 @@
       "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
       "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
       "bytes": 4589
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean",
+      "sha256": "414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3",
+      "bytes": 9874
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf.py",
+      "sha256": "5a17f1932da0ddd1bbfe9be92a464ba7fd2dac849ad45878433a3c4241eb4da7",
+      "bytes": 7112
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+      "sha256": "c14ceb21489b6ffaf862ceb21554de43f3de5da92e3c155764f2b518f16bbe83",
+      "bytes": 4763
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_cases.py",
+      "sha256": "4ba135144cb7c856ee2465c541d9f7989d5ae4928aa3dd81bc440634b32c1a95",
+      "bytes": 1717
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+      "sha256": "f065b5d82adbaee702bedd60c08d165e0ca81eae030484d18806a971c9f32ae6",
+      "bytes": 8638
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "sha256": "3d522ee9d47732e009a9c0e46932e91bba2896b07fcdf4c40dc5d3806054e6b8",
+      "bytes": 13383
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_runtime.py",
+      "sha256": "3617723bd6463db4ad3af39a5529f3ca2477b4b5a0e4c96a47ca134148c2af99",
+      "bytes": 7240
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_selection.py",
+      "sha256": "cf8569b4a7a05b44f32dbf9738cfb9eb5996a416aca4831fccaa23b0a5acf8a8",
+      "bytes": 5336
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_witness.py",
+      "sha256": "211791bb9d1cb2e1f5e8bf360584a927a12de9b73a23e575c3feee9b4c17dfc5",
+      "bytes": 8413
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf.py",
+      "sha256": "1928f4d28d22c54e28412660ef0a94fe9378e35e00560fee9add0b120c82213b",
+      "bytes": 11463
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_runtime.py",
+      "sha256": "b7dc1536a363bb8315f263bfe5ab4444a60096a3e08556be1ab6aaccdb16deba",
+      "bytes": 3658
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_selection.py",
+      "sha256": "1e83c72893544ed365f7a4eacd464f9a56ac09c501eef27612202c07711a1994",
+      "bytes": 5861
     }
   ],
-  "successful_builds": [
-    "v2",
-    "v4",
-    "v6",
-    "v8",
-    "v9",
-    "v13",
-    "v15",
-    "v17",
-    "v20"
-  ],
-  "latest_root": "Merlin.GraphLoopsMemorySCF.checked_complete_observations",
-  "current_axiom_audit": false,
-  "current_actual_checker": false,
-  "current_qualification": false,
-  "staging_or_publication_by_worker": false
+  "frozen_profile": "memory-scf-mode-v1",
+  "development_tests": 71,
+  "development_tests_all_pass": true,
+  "main_exact_roots": 61,
+  "actual_nonzero_witness_roots": 63,
+  "new_sources_frozen": true,
+  "publication_by_worker": false,
+  "head_observed": "c399e441e86042752c407a4ba917d4510b16585b",
+  "qualification_tests": 71,
+  "fresh_replay_tests": 71,
+  "main_root_count": 61,
+  "inhabited_root_count": 63,
+  "source_only_delivery": "memory-scf-mode-v1/DELIVERY.json",
+  "packet_seal": "memory-scf-mode-v1/SEAL.json",
+  "paper_evidence": "paper-evidence/README.md",
+  "live_owned_jobs": []
 }

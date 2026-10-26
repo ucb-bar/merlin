@@ -1,0 +1,17 @@
+{
+  "kind": "SOURCE_ONLY_UNQUALIFIED",
+  "owned": 61,
+  "new_owned": 11,
+  "lean_project_sources": 118,
+  "python_project_sources": 51,
+  "queries": 14,
+  "new_lean": "UNCOMPILED",
+  "kernel_outcomes": "UNOBSERVED",
+  "kernel_checked": false,
+  "qualified": false,
+  "historical_qualification_applies": false,
+  "prior_owned_unchanged": true,
+  "prior_source_seal_unchanged": true,
+  "sdk_or_runtime_files_read": false,
+  "static_python_closure": "conservative static imports; dynamic imports require review"
+}

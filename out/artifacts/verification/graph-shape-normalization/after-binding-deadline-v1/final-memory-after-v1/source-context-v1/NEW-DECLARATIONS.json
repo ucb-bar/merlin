@@ -1,0 +1,442 @@
+[
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+    "line": 10,
+    "kind": "inductive",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicOpcode",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+    "line": 18,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.publicOpcode",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+    "line": 31,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicOpcode.action",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+    "line": 41,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.public_action_selected",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+    "line": 67,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicOpcode.transfer",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+    "line": 12,
+    "kind": "structure",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextBoundary",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+    "line": 27,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextBoundary.expanded",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+    "line": 29,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextBoundary.Facts",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+    "line": 44,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextBoundary.meaning",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+    "line": 48,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextBoundary.kernel_boundary",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+    "line": 76,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextBoundary.kernel_intermediate",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "line": 11,
+    "kind": "structure",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "line": 20,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.Facts",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "line": 30,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.complete_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "line": 62,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.caller_entry_typed",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "line": 69,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.arguments_typed",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "line": 89,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.Arguments",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "line": 99,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.Domain",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "line": 106,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.typed_arguments",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "line": 11,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextBoundary.side",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "line": 14,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.Checked",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "line": 22,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.side_facts",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "line": 28,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextBoundary.kernel_side",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "line": 46,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.transfer",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "line": 84,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.intermediate",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "line": 99,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerContext.checked_boundary",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 10,
+    "kind": "abbrev",
+    "name": "Merlin.GraphLoopsMemorySCF.After.CallerWorld",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 12,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicRelated",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 16,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicRelated.refl",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 19,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicRelated.symm",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 22,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicRelated.trans",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 26,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicRelated.read",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 32,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicRelated.store",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 50,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.observation_related",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 63,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ExternalValues",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 66,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ExternalEnv",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 69,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.external_empty",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 72,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.external_put",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 80,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.external_assign",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 93,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.external_arguments",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 99,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.nonview_external",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 107,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.nonview_values_external",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "line": 117,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.cast_external",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+    "line": 10,
+    "kind": "inductive",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextRoute",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+    "line": 16,
+    "kind": "structure",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextRow",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+    "line": 21,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextRow.Facts",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+    "line": 31,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextRoster",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+    "line": 39,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.ContextRow.Domain",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+    "line": 47,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.context_every_definition",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+    "line": 55,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.checked_context_roster",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+    "line": 11,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.PublicSuffix",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+    "line": 19,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.publicSuffixDecidable",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+    "line": 34,
+    "kind": "def",
+    "name": "Merlin.GraphLoopsMemorySCF.After.NoSuffixCalls",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+    "line": 45,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.suffix_transfer",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+    "line": 96,
+    "kind": "theorem",
+    "name": "Merlin.GraphLoopsMemorySCF.After.suffix_dispatch",
+    "status": "UNCOMPILED",
+    "discovery": "source inventory; not kernel audit"
+  }
+]

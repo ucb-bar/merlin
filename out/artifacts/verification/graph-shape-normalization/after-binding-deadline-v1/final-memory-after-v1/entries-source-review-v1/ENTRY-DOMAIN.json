@@ -1,0 +1,286 @@
+{
+  "actual_roster": {
+    "source_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "final_headers": [
+      {
+        "name": "kernel",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "index"
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          },
+          {
+            "tag": "view",
+            "type": {
+              "shape": [
+                1
+              ],
+              "offset": 0,
+              "strides": [
+                1
+              ],
+              "element": "i32",
+              "space": 0
+            }
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      },
+      {
+        "name": "untouched",
+        "visibility": "<default-public>",
+        "declaration": false,
+        "parameters": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ],
+        "returned": [
+          {
+            "tag": "scalar",
+            "type": "i32"
+          }
+        ]
+      }
+    ],
+    "rows": [
+      {
+        "name": "kernel",
+        "route": "kernel",
+        "reachable": [
+          "kernel",
+          "touch"
+        ]
+      },
+      {
+        "name": "touch",
+        "route": "unchanged",
+        "reachable": [
+          "touch"
+        ]
+      },
+      {
+        "name": "untouched",
+        "route": "unchanged",
+        "reachable": [
+          "untouched"
+        ]
+      }
+    ],
+    "source_callgraph": {
+      "kernel": [
+        {
+          "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operand_arity\":2,\"properties\":[[\"callee\",\"@touch\"]],\"result_types\":[\"i32\"]}",
+          "target": "touch"
+        },
+        {
+          "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operand_arity\":2,\"properties\":[[\"callee\",\"@touch\"]],\"result_types\":[\"i32\"]}",
+          "target": "touch"
+        }
+      ],
+      "touch": [],
+      "untouched": []
+    },
+    "final_callgraph": {
+      "kernel": [
+        {
+          "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operand_arity\":2,\"properties\":[[\"callee\",\"@touch\"]],\"result_types\":[\"i32\"]}",
+          "target": "touch"
+        },
+        {
+          "key": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.call\",\"operand_arity\":2,\"properties\":[[\"callee\",\"@touch\"]],\"result_types\":[\"i32\"]}",
+          "target": "touch"
+        }
+      ],
+      "touch": [],
+      "untouched": []
+    },
+    "kernel_reachable": [
+      "kernel",
+      "touch"
+    ],
+    "literals": [
+      [
+        "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operand_arity\":0,\"properties\":[[\"value\",\"1 : i32\"]],\"result_types\":[\"i32\"]}",
+        "i32"
+      ]
+    ],
+    "refusals": [],
+    "coverage": "ALL_LISTED_DEFINITIONS_CANDIDATE",
+    "semantic_validation": "UNOBSERVED"
+  },
+  "domains": {
+    "kernel": {
+      "typed": true,
+      "external_views": true,
+      "canonical_caller_views": "allocation >= plan.objects.length; shape[1],offset0,stride[1],base0,element from actual plan",
+      "heap": "arbitrary; partial reads",
+      "returns": [
+        "scalar",
+        "index"
+      ]
+    },
+    "touch": {
+      "typed": true,
+      "external_views": true,
+      "heap": "arbitrary; partial reads",
+      "returns": [
+        "scalar"
+      ]
+    },
+    "untouched": {
+      "typed": true,
+      "heap": "arbitrary",
+      "returns": [
+        "scalar"
+      ],
+      "literal": "shared partial effect-free opaque literal relation"
+    }
+  },
+  "witnesses": {
+    "all_three": "sampleInputs/sampleHeap and EntryDomain roots",
+    "source_execution": "entry2_source_execution derives from actual complete literal/binary body under Unit/True relations",
+    "final_execution": "entry2_final_outcome transported through complete_roster",
+    "all_uncompiled": true
+  },
+  "behavior": {
+    "missing_entry": "no successful derivation; no native error assertion",
+    "wrong_arity": "ValuesHold implies exact length; no success on mismatch",
+    "divergence": "not separately modeled or preserved",
+    "external_declarations": "refused",
+    "wrappers_reaching_changed_kernel": "explicit missing contextual proof refusal"
+  }
+}
