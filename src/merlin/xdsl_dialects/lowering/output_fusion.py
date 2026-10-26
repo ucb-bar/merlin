@@ -189,6 +189,10 @@ def _channel_numbers(op, data, axis_key, channels: int, values: Values):
     operands = [operand for operand in list(op.operands)[: CG._n_inputs(op)] if operand is not data]
     if len(operands) != 1:
         return None, "the stage does not combine its input with exactly one other operand"
+    from xdsl.ir import BlockArgument
+
+    if isinstance(operands[0], BlockArgument) and stage.kind == CG.SCALE:
+        return None, "runtime scale is outside the exact tensor-wide f32 source contract"
     numbers = values.array(operands[0])
     if numbers is None:
         return None, f"the operand of {mq.op_name(op)} is neither a constant nor a stored tensor"
@@ -208,7 +212,11 @@ def _channel_numbers(op, data, axis_key, channels: int, values: Values):
 def source_chain(root, values: Values) -> Chain:
     """The chain of single-use consumers after ``root``, read by structure up to its quantize."""
     from . import contraction_coverage as CC
+    from . import runtime_readout as RR
 
+    composite = RR.match_closed_readout(root) or RR.match_constant_readout(root, values)
+    if composite is not None:
+        return composite
     shape = [int(v) for v in mq.type_shape_dtype(root.results[0].type)[0]] if root.results else []
     axes = CG._root_axes(root)
     column = sorted(axes[1]) if axes else []
@@ -239,6 +247,12 @@ def source_chain(root, values: Values) -> Chain:
             chain.float_dtype = chain.float_dtype or dtype
             chain.stages.append(Stage("convert", op))
         elif stage.kind in (CG.SCALE, CG.BIAS_ADD):
+            symbolic = RR.split_scale_value(op, data) if stage.kind == CG.SCALE else None
+            if symbolic is not None:
+                chain.stages.append(Stage("scale", op, detail={"scale_value": symbolic}))
+                chain.ops.append(op)
+                value = op.results[0]
+                continue
             numbers, why = _channel_numbers(op, data, axis_key, channels, values)
             if why:
                 chain.unread = why
@@ -647,24 +661,120 @@ def _bound(chain: Chain, values: Values, extents: Mapping[int, Any]) -> tuple[in
     return -bound + int(initializer.min()), bound + int(initializer.max())
 
 
+def _residual_channel_axis(chain: Chain, stage: Stage, owner, adapters):
+    """Prove that the dequantize axis reaches the contraction's channel axis."""
+    from merlin.kernels import shapes as KS
+
+    axes = CG._root_axes(chain.root)
+    shape, _ = mq.type_shape_dtype(chain.root.results[0].type)
+    columns = sorted(axes[1]) if axes else []
+    if len(columns) != 1 or columns[0] >= len(shape):
+        raise _Refused(UNREAD, "the residual's output-channel axis is unreadable")
+    column = columns[0]
+    root_maps = KS.indexing_maps(chain.root)
+    if mq.op_name(chain.root) == "linalg.generic" and (
+        not root_maps or KS._dim_position(root_maps[-1][column]) != column
+    ):
+        raise _Refused(UNREAD, "the contraction output-channel layout is not modeled")
+    key = (int(shape[column]), CG._product(shape[column + 1 :]))
+    for op in chain.ops:
+        if op is stage.op:
+            break
+        kind = CG.classify(op)
+        if kind and (kind.kind == CG.VIEW or mq.op_name(op) == "linalg.transpose"):
+            key = _follow(key, op) if key is not None else None
+    shape, _ = mq.type_shape_dtype(stage.detail["operand"].type)
+    axis = _resolve(key, shape) if key is not None else None
+    source_shape, _ = mq.type_shape_dtype(owner.operands[0].type)
+    source_axis = CG._axis_of(owner)
+    if source_axis is None or not -len(source_shape) <= source_axis < len(source_shape):
+        raise _Refused(UNREAD, "the per-channel residual has no valid source axis")
+    source_axis %= len(source_shape)
+    from .scale_geometry import _axis_through
+
+    # Slices, pads and arbitrary movement need an element mapping, not just a
+    # matching shape. Only exact views and explicit transposes are modeled.
+    if any(CG.classify(op).kind != CG.VIEW and mq.op_name(op) != "linalg.transpose" for op in adapters):
+        raise _Refused(UNREAD, "the per-channel residual has an unmodeled layout adapter")
+    followed = _axis_through(adapters, source_axis, source_shape)
+    if axis is None or followed != axis or int(source_shape[source_axis]) != chain.channels:
+        raise _Refused(UNREAD, "the residual scale varies outside the contraction's output channels")
+    maps = KS.indexing_maps(stage.op)
+    identity = list(range(len(shape)))
+    if not maps or any([KS._dim_position(e) for e in m] != identity for m in maps):
+        raise _Refused(UNREAD, "the residual add does not preserve the output-channel layout")
+    return source_axis
+
+
+def _residual_channel_parameters(chain, stage, owner, adapters, values, fdt):
+    """Read the exact f32 scale vector and zero-centered signed byte domain."""
+    import numpy as np
+
+    _residual_channel_axis(chain, stage, owner, adapters)
+    shape, dtype = mq.type_shape_dtype(owner.operands[0].type)
+    out_shape, out_dtype = mq.type_shape_dtype(owner.results[0].type)
+    if (
+        dtype != "i8"
+        or tuple(shape) != tuple(out_shape)
+        or _numpy_float(out_dtype) is not np.float32
+        or fdt is not np.float32
+    ):
+        raise _Refused(UNMODELED, "per-channel residual dequantization requires signed i8 to f32")
+    for key in ("input_dtype", "prov.quant.storage_dtype"):
+        if any(getattr(table.get(key), "data", None) in {"u8", "uint8"} for table in mq._attr_tables(owner)):
+            raise _Refused(UNMODELED, "the per-channel residual storage is unsigned")
+    if len(owner.operands) != 3:
+        raise _Refused(UNREAD, "the residual dequantize has no scale and zero-point vectors")
+    scale_shape, scale_dtype = mq.type_shape_dtype(owner.operands[1].type)
+    zero_shape, zero_dtype = mq.type_shape_dtype(owner.operands[2].type)
+    expected = (int(chain.channels),)
+    if (
+        tuple(scale_shape) != expected
+        or tuple(zero_shape) != expected
+        or scale_dtype != "f32"
+        or zero_dtype not in {"i32", "i64"}
+    ):
+        raise _Refused(UNREAD, "the residual scale and zero point must be channel vectors of f32 and integers")
+    scales, zeros = values.array(owner.operands[1]), values.array(owner.operands[2])
+    if scales is None or zeros is None:
+        raise _Refused(UNREAD, "the residual's scale or zero point is not compile-time data")
+    scales = np.asarray(scales, dtype=np.float32).reshape(-1)
+    zeros = np.asarray(zeros).reshape(-1)
+    if scales.size != chain.channels or zeros.size != chain.channels or np.any(zeros != 0):
+        raise _Refused(INEXACT, "the per-channel residual must be zero-centered in every channel")
+    if not np.isfinite(scales).all():
+        raise _Refused(INEXACT, "the residual scales must be finite")
+    return scales
+
+
 def _residual_values(chain: Chain, stage: Stage, values: Values, fdt):
-    """``{r: the residual's float value}`` for every integer ``r`` of a dequantized residual operand."""
+    """Every residual code's source float value, scalar or broadcast over output channels."""
     import numpy as np
 
     from . import group_numerics as GN
 
     operand = stage.detail.get("operand")
     owner = getattr(operand, "owner", None)
+    adapters = []
     for _ in range(8):  # through views to the dequantize
         if owner is None or not hasattr(owner, "operands"):
             break
         kind = CG.classify(owner)
         if kind is None or kind.kind not in (CG.VIEW, CG.MOVEMENT):
             break
+        adapters.append(owner)
         owner = getattr(owner.operands[0], "owner", None)
     kind = CG.classify(owner) if owner is not None and hasattr(owner, "operands") else None
-    if kind is None or kind.kind != CG.DEQUANTIZE or "per_tensor" not in kind.detail:
-        raise _Refused(UNREAD, "the residual operand is not a per-tensor dequantized integer tensor")
+    if kind is None or kind.kind != CG.DEQUANTIZE:
+        raise _Refused(UNREAD, "the residual operand is not a dequantized integer tensor")
+    if kind.detail == "dequantize_per_channel":
+        scales = _residual_channel_parameters(chain, stage, owner, adapters, values, fdt)
+        # Convert, subtract zero, then multiply in source f32 order. Zero is
+        # required above, so integer-promoted i8/i32 subtraction agrees too.
+        table = {r: np.multiply(np.subtract(fdt(r), fdt(0), dtype=fdt), scales, dtype=fdt) for r in range(-128, 128)}
+        return table, scales
+    if "per_tensor" not in kind.detail:
+        raise _Refused(UNREAD, "the residual is neither per-tensor nor per-channel dequantized")
     source = GN._scale_source(owner)  # noqa: SLF001
     if source.value is None or source.zero_point is None:
         raise _Refused(UNREAD, "the residual's scale or zero point is not a compile-time number")
@@ -677,6 +787,28 @@ def _residual_values(chain: Chain, stage: Stage, values: Values, fdt):
         diff = np.subtract(fdt(r), fdt(source.zero_point), dtype=fdt)
         table[r - int(source.zero_point)] = np.multiply(diff, fdt(source.value), dtype=fdt)
     return table, float(source.value)
+
+
+def _residual_coefficients(chain: Chain, stage: Stage, scales):
+    """One ratio per channel, using exact source numbers rather than rounded division."""
+    from fractions import Fraction
+
+    import numpy as np
+
+    scales = np.broadcast_to(np.asarray(scales), (int(chain.channels),))
+    return {Fraction(float(scale)) / unit for scale, unit in zip(scales, _accumulator_unit(chain, stage), strict=True)}
+
+
+def _residual_is_rational(table, units):
+    from fractions import Fraction
+
+    import numpy as np
+
+    return all(
+        Fraction(float(v)) == r * u
+        for r, value in table.items()
+        for v, u in zip(np.broadcast_to(value, (len(units),)), units, strict=True)
+    )
 
 
 def _accumulator_unit(chain: Chain, upto: Stage):
@@ -706,20 +838,44 @@ def _residual(chain: Chain, path, values: Values, absorbing: bool, *, integer_ex
         accumulate = next((s for s in path.get("accumulator_stages") or () if s.get("kind") == "accumulate"), None)
         if accumulate is None and not integer_extension:
             raise _Refused(UNDECLARED, "the output path accumulates no operand, so the residual stays on the host")
-        unit = _accumulator_unit(chain, stage)
         if integer_extension:
-            coefficients = {Fraction(scale) / u for u in unit}
+            coefficients = _residual_coefficients(chain, stage, scale)
             if len(coefficients) != 1 or next(iter(coefficients)).denominator != 1:
                 raise _Refused(INEXACT, "K-extension residual coefficient is not one exact integer")
             coefficient = int(coefficients.pop())
             return {r * coefficient: value for r, value in table.items()}
-        if any(Fraction(scale) != u for u in unit):
+        if _residual_coefficients(chain, stage, scale) != {Fraction(1)}:
             raise _Refused(
                 INEXACT,
                 "the residual is not at the accumulator's scale (its scale differs from the product of the "
                 "scales before it), so it cannot be added in the accumulator unchanged",
             )
     return table
+
+
+def _runtime_bounds(result, chain, path, values, extents):
+    """Keep contraction admission independent of the symbolic readout theorem."""
+    if result.cut == "requant":
+        try:
+            # Keep contraction admission independent of the symbolic readout theorem.
+            shape, dtype = mq.type_shape_dtype(chain.root.results[0].type)
+            if (
+                len(shape) != 2
+                or dtype != "i32"
+                or any(mq.type_shape_dtype(v.type)[1] != "i8" for v in list(chain.root.operands)[:2])
+            ):
+                raise _Refused(UNREAD, "runtime v1 requires a rank-2 signed i8 contraction to i32")
+            initializer = values.array(chain.root.operands[2])
+            if initializer is None or not initializer.size or (initializer != 0).any():
+                raise _Refused(UNREAD, "runtime v1 requires a proved zero initializer")
+            bound = _bound(chain, values, extents)
+            span = _accumulator_range(path)
+            if span is None or bound[0] < span[0] or bound[1] > span[1]:
+                raise _Refused(INEXACT, "runtime contraction exceeds the accumulator range")
+            result.proof["accumulator_bound"] = list(bound)
+        except _Refused as error:
+            return Decision("bare", [], [], [{"cut": "requant", "code": error.code, "reason": error.reason}])
+    return result
 
 
 def decide(
@@ -730,12 +886,20 @@ def decide(
     *,
     readout_strategy: str | None = None,
     integer_residual_extension: bool = False,
+    runtime_scale_facts: Mapping[str, Any] | None = None,
 ) -> Decision:
     """The longest cut of ``chain`` the declared ``path`` performs exactly, with every refusal."""
     if readout_strategy not in (None, "f32_product_rne", "exact_rational_host"):
         raise ValueError("unknown fusion readout strategy")
     if integer_residual_extension and readout_strategy != "f32_product_rne":
         raise ValueError("integer residual extension requires the single f32 boundary")
+    if any(s.kind == "runtime_readout" or "scale_value" in s.detail for s in chain.stages):
+        from .runtime_readout import prove_runtime_readout
+
+        result = prove_runtime_readout(
+            chain, path, readout_strategy=readout_strategy, runtime_scale_facts=runtime_scale_facts
+        )
+        return _runtime_bounds(result, chain, path, values, extents)
     refusals: list[dict[str, Any]] = []
     kinds = [stage.kind for stage in chain.stages]
     closed = bool(kinds) and kinds[-1] == "quantize" and "convert" in kinds and chain.unread is None
@@ -927,7 +1091,7 @@ def _exact_rational(chain, path, bound, table):
     proof = _definitional_f32(chain, path, bound, table)
     quantize = chain.stages[-1]
     units = _accumulator_unit(chain, quantize)
-    if table and any(Fraction(float(value)) != r * unit for r, value in table.items() for unit in units):
+    if table and not _residual_is_rational(table, units):
         raise _Refused(INEXACT, "residual is not an exact rational accumulator add")
     divisor = Fraction(float(quantize.numbers))
     lo, hi = proof["accumulator_bound"]
@@ -968,7 +1132,7 @@ def _definitional_f32(chain, path, bound, table):
         raise _Refused(UNMODELED, "f32_product_rne requires f32 source scales")
     phase, offsets = 0, [0] * int(chain.channels)
     for stage in chain.stages:
-        if stage.kind != "quantize" and stage.op.results:
+        if stage.kind != "quantize" and stage.op.results and not stage.detail.get("closed_readout"):
             _, dtype = mq.type_shape_dtype(stage.op.results[0].type)
             if _numpy_float(dtype) is not np.float32:
                 raise _Refused(UNMODELED, "the selected f32 chain changes source floating precision")

@@ -8,6 +8,7 @@ its ordinary emitter and independently check actual effects and multiplier bits.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 from merlin.transforms.certificates import ir_digest
 
@@ -29,6 +30,39 @@ class CompositionPlan:
             "emission_obligation": "consume plan and check actual effects and decoded multiplier bits",
             "execution_qualification": "not_established",
         }
+
+
+def plan_contraction_readout(module, root, *, path, scheme, facts, runtime_scale_facts=None):
+    """Plan one source-bound readout for an ordinary provider catalog.
+
+    Providers may request this without running fusion exploration. The same
+    semantic proof and multiplier formation serve both entry points; emission
+    remains an obligation of the consuming provider.
+    """
+    from merlin.targetgen.output_path import validate
+    from merlin.verify.lean_contract import document_digest
+    from merlin.xdsl_dialects.lowering import output_fusion as OF
+
+    path = validate(path)
+    if scheme.get("readout_strategy") not in {"f32_product_rne", "exact_rational_host"}:
+        raise ValueError("readout planning requires an explicit numerical strategy")
+    chain = OF.source_chain(root, OF.Values())
+    route = "epilogue" if chain.stages or chain.ops else "int32_readout"
+    members = (root, *chain.ops)
+    _closed_members(members)
+    decision = _readout_plan(module, root, route, path, scheme, runtime_scale_facts=runtime_scale_facts)
+    operations = tuple(module.walk())
+    return CompositionPlan(
+        route,
+        ir_digest(module),
+        tuple(operations.index(op) for op in members),
+        {
+            **decision,
+            "scheme_sha256": document_digest(scheme),
+            "facts_sha256": document_digest(facts),
+            "output_path_sha256": document_digest(path),
+        },
+    )
 
 
 def composition_routes(declaration):
@@ -148,7 +182,7 @@ def _closed_members(members):
             raise ValueError("composition intermediate has an external observer")
 
 
-def _readout_plan(module, root, route, path, scheme):
+def _readout_plan(module, root, route, path, scheme, *, runtime_scale_facts=None):
     from merlin.targetgen import model_coverage
     from merlin.xdsl_dialects.lowering import output_fusion as OF
 
@@ -160,6 +194,8 @@ def _readout_plan(module, root, route, path, scheme):
         values,
         model_coverage._contraction_extents(module),
         readout_strategy=scheme.get("readout_strategy"),
+        # Transport is authenticated separately; keep facts_sha256 bound to raw facts.
+        runtime_scale_facts=runtime_scale_facts,
     )
     expected = "accumulator" if route == "int32_readout" else "pool" if route == "conv_pool" else "requant"
     if result.cut != expected:
@@ -170,7 +206,7 @@ def _readout_plan(module, root, route, path, scheme):
 
 
 def _k_concat(module, root, path, scheme, facts):
-    from fractions import Fraction
+    from xdsl.ir import Operation
 
     from merlin.targetgen import model_coverage
     from merlin.targetgen.native_mac_bound import signed_matmul_shape
@@ -188,15 +224,17 @@ def _k_concat(module, root, path, scheme, facts):
 
     operand = residual.detail["operand"]
     dequantize = operand.owner
-    if not mq.op_name(dequantize).endswith("dequantize_per_tensor"):
+    name = mq.op_name(dequantize) if isinstance(dequantize, Operation) else ""
+    if name.rpartition(".")[2] not in {"dequantize_per_tensor", "dequantize_per_channel"}:
         raise ValueError("K-concat requires a directly dequantized residual")
-    if mq.type_shape_dtype(dequantize.operands[0].type)[1] != "i8" or GN._scale_source(dequantize).zero_point != 0:
+    if mq.type_shape_dtype(dequantize.operands[0].type)[1] != "i8" or (
+        name.endswith("dequantize_per_tensor") and GN._scale_source(dequantize).zero_point != 0
+    ):
         raise ValueError("K-concat requires a zero-centered signed i8 residual")
     if tuple(dequantize.operands[0].type.get_shape()) != tuple(root.results[0].type.get_shape()):
         raise ValueError("K-concat residual shape differs from contraction result")
     table, scale = OF._residual_values(chain, residual, values, OF._numpy_float(chain.float_dtype))
-    units = OF._accumulator_unit(chain, residual)
-    coefficients = {Fraction(scale) / unit for unit in units}
+    coefficients = OF._residual_coefficients(chain, residual, scale)
     if len(coefficients) != 1:
         raise ValueError("K-concat needs one exact integer residual coefficient")
     bound = OF._bound(chain, values, model_coverage._contraction_extents(module))
@@ -314,6 +352,105 @@ def _sum_plan(members, scheme, path, facet, facts):
     }
 
 
+def mean_realization(path, *, operand_dtype, accumulator_bits):
+    """Static prerequisites of the existing ones-matmul average plan.
+
+    Source window/divisor, all-prefix bounds and multiplier formation remain
+    per-instance obligations of ``_mean_plan``.
+    """
+    if operand_dtype != "i8":
+        raise ValueError("ones-matmul average requires signed i8 input")
+    if type(accumulator_bits) is not int or accumulator_bits < 2:
+        raise ValueError("ones-matmul average needs a declared signed accumulator width")
+    if not path.get("exits", {}).get("requant"):
+        raise ValueError("average requires a requant exit")
+    scales = [s for s in path.get("readout", []) if s["kind"] == "scale"]
+    if len(scales) != 1 or scales[0].get("dtype") != "f32" or scales[0].get("rounding") != "half_even":
+        raise ValueError("average requires the derived f32 RNE scale path")
+    return {
+        "lowering": "ones_matmul",
+        "definitional": "f32_product_rne",
+        "accumulator_bits": accumulator_bits,
+        "obligations": [
+            "closed trailing window",
+            "divisor equals window",
+            "all-prefix sum fits accumulator",
+            "per-case exhaustive f32 division equals reciprocal product after RNE",
+        ],
+    }
+
+
+@lru_cache(maxsize=256)
+def mean_division_matches_product(window):
+    """Exhaust the signed-byte sum domain at the source's f32/RNE boundaries."""
+    import numpy as np
+
+    if type(window) is not int or window <= 0:
+        raise ValueError("mean window must be a positive integer")
+    divisor = np.float32(window)
+    reciprocal = np.float32(1) / divisor
+    # Bound temporary storage even for large, accumulator-safe windows.
+    for start in range(-128 * window, 127 * window + 1, 65536):
+        sums = np.arange(start, min(start + 65536, 127 * window + 1), dtype=np.int64).astype(np.float32)
+        if not np.array_equal(np.rint(sums / divisor), np.rint(sums * reciprocal)):
+            return False
+    return True
+
+
+def require_exact_mean_window(window):
+    if not mean_division_matches_product(window):
+        raise ValueError(f"mean window {window}: f32 division and reciprocal product disagree after RNE")
+
+
+def _composed_mean(members, stages):
+    """``(mean, None, relu)`` for the checked mean prefix followed by a proved tail to one quantize.
+
+    The tail is closed and ordered: the divide's value reaches the quantize through views and at
+    most one ReLU, and no other member exists. Any other stage -- an independent scale, a pad or a
+    spatial pool -- is refused here: those need a source-derived readout/pool geometry and the
+    provider's pooled drain, which this plan does not yet describe.
+    The window, scales and exactness gates stay those of the strict route.
+    """
+    from merlin.xdsl_dialects.lowering import compute_groups as CG
+    from merlin.xdsl_dialects.lowering import group_numerics as GN
+
+    prefix, why = CG.window_mean_prefix(members, stages)
+    if prefix is None:
+        return None, why, False
+    quantizes = [op for op in members if stages[id(op)].kind == CG.QUANTIZE]
+    tail = [
+        op
+        for op in members
+        if op not in (prefix["dequantize"], prefix["reduce"], prefix["divide"], *quantizes)
+        and stages[id(op)].kind != CG.VIEW
+    ]
+    if len(quantizes) != 1 or [stages[id(op)].kind for op in tail] not in ([], [CG.RELU]):
+        return None, "mean tail is not views and at most one ReLU before one quantize", False
+    reached = CG._through_views(quantizes[0].operands[0])
+    if tail:
+        if reached is not tail[0]:
+            return None, "the quantize does not read the mean tail", False
+        reached = CG._through_views(tail[0].operands[0])
+    if reached is not prefix["divide"]:
+        return None, "the mean tail does not read the division", False
+    try:
+        scales = [GN._scale_source(op) for op in (prefix["dequantize"], quantizes[0])]
+    except GN.GroupNumericsError as exc:
+        return None, str(exc), False
+    if any(scale.value is None for scale in scales) or any(scale.zero_point for scale in scales) or not scales[1].value:
+        return None, "a scale of the mean is not a compile-time number, or a zero point is carried", False
+    mean = {
+        "reduce": prefix["reduce"],
+        "rows": prefix["rows"],
+        "window": prefix["window"],
+        "multiplier": scales[0].value / (float(prefix["count"]) * scales[1].value),
+        "bound_lsb": 1,
+        "exactness": "float_reassociation",
+        "out_elements": prefix["out_elements"],
+    }
+    return mean, None, bool(tail)
+
+
 def _mean_plan(members, scheme, path, facts):
     import numpy as np
 
@@ -324,6 +461,10 @@ def _mean_plan(members, scheme, path, facts):
 
     stages = {id(op): CG.classify(op) for op in members}
     mean, why = CG._window_mean_of(members, stages)
+    relu = False
+    if mean is None and why is None:
+        # Not the strict four-member mean: accept only the checked prefix plus a tail proved here.
+        mean, why, relu = _composed_mean(members, stages)
     if mean is None:
         raise ValueError(why or "source is not a closed trailing-window average")
     if scheme.get("readout_strategy") != "f32_product_rne":
@@ -332,12 +473,16 @@ def _mean_plan(members, scheme, path, facts):
     quantize = next(op for op in members if stages[id(op)].kind == CG.QUANTIZE)
     from merlin.common import mlir_query as mq
 
-    if mq.type_shape_dtype(dequantize.operands[0].type)[1] != "i8":
-        raise ValueError("ones-matmul average requires signed i8 input")
+    mean_realization(
+        path,
+        operand_dtype=mq.type_shape_dtype(dequantize.operands[0].type)[1],
+        accumulator_bits=facts.get("accumulator_bits"),
+    )
     divisor = next(op for op in members if stages[id(op)].kind == CG.SCALE)
     count = GN._constant_of(divisor.operands[1])
     if count != mean["window"]:
         raise ValueError("average divisor differs from its source window")
+    require_exact_mean_window(mean["window"])
     bits = facts.get("accumulator_bits")
     if type(bits) is not int or bits < 2 or mean["window"] * 128 >= 1 << (min(bits, 32) - 1):
         raise ValueError("ones-matmul sum exceeds the declared accumulator")
@@ -346,9 +491,14 @@ def _mean_plan(members, scheme, path, facts):
     multiplier = form_multiplier(
         GN._scale_source(dequantize).value, rational(count) * rational(GN._scale_source(quantize).value)
     )
-    readout = _scalar_readout(path, quantize, relu=False)
+    # ReLU after the division commutes with the positive mean multiplier and RNE (both monotone,
+    # both fix zero), so the source order divide -> ReLU -> Q equals the readout's scale/ReLU/RNE.
+    if relu and not multiplier > 0:
+        raise ValueError("a ReLU tail needs a positive mean multiplier to commute with the readout")
+    readout = _scalar_readout(path, quantize, relu=relu)
     return {
         **readout,
+        "relu": relu,
         "lowering": "ones_matmul",
         "rows": mean["rows"],
         "window": mean["window"],
@@ -375,7 +525,7 @@ def _pool_limits(decision, facts):
             raise ValueError("pool window or stride exceeds declared register fields or is unknown")
 
 
-def plan_composition(module, candidate, *, path, scheme, facts, readout_facet=None):
+def plan_composition(module, candidate, *, path, scheme, facts, readout_facet=None, runtime_scale_facts=None):
     """Return a provider-consumable semantic plan or raise a local premise refusal."""
     from merlin.targetgen.native_mac_bound import require_value_mac_bound
     from merlin.targetgen.output_path import validate
@@ -413,7 +563,14 @@ def plan_composition(module, candidate, *, path, scheme, facts, readout_facet=No
     elif route == "avgpool":
         decision = _mean_plan(members, scheme, path, facts)
     else:
-        decision = _readout_plan(module, root, route, path, scheme)
+        decision = _readout_plan(module, root, route, path, scheme, runtime_scale_facts=runtime_scale_facts)
+        if decision.get("proof", {}).get("scale_operand"):
+            from merlin.xdsl_dialects.lowering import output_fusion as OF
+
+            # Composite generics count once; omitted or duplicate source members refuse.
+            consumed = (root, *OF.source_chain(root, OF.Values()).ops)
+            if members != consumed:
+                raise ValueError("runtime plan operation ordinals must cover every consumed source member once")
         if route == "conv_pool":
             _pool_limits(decision, facts)
     return CompositionPlan(

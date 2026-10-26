@@ -733,3 +733,62 @@ def test_frontend_compare_select_relu_retains_closed_sum_group():
         module = mq.parse(text)
         operation = next(op for op in module.walk() if op.name == "linalg.generic")
         assert CG.classify(operation).kind == expected
+
+
+def _mean_members(text):
+    module = mq.parse(text)
+    names = {"quant_ext.dequantize_per_tensor", "quant_ext.quantize_per_tensor", "linalg.reduce", "linalg.generic"}
+    members = [op for op in module.walk() if mq.op_name(op) in names]
+    return members, {id(op): CG.classify(op) for op in members}
+
+
+def _mean_then_relu() -> str:
+    # The capture's mean with a ReLU between the division and the quantize (as a capture writes it).
+    text = _mean()
+    relu = "\n".join(
+        [
+            "    %re = tensor.empty() : tensor<2x8xf32>",
+            "    %relu = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> "
+            '(d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%mean : tensor<2x8xf32>) outs(%re : '
+            "tensor<2x8xf32>) {",
+            "    ^bb0(%rp: f32, %ro: f32):",
+            "      %rz = arith.constant 0.000000e+00 : f32",
+            "      %rr = arith.maximumf %rp, %rz : f32",
+            "      linalg.yield %rr : f32",
+            "    } -> tensor<2x8xf32>",
+        ]
+    )
+    head, tail = text.split('    %pooled = "quant_ext.quantize_per_tensor"(%mean,')
+    return head + relu + '\n    %pooled = "quant_ext.quantize_per_tensor"(%relu,' + tail
+
+
+def test_the_strict_mean_and_its_checked_prefix_agree():
+    members, stages = _mean_members(_mean(in_scale=0.5, out_scale=0.25, count=12.0))
+    mean, why = CG._window_mean_of(members, stages)
+    prefix, prefix_why = CG.window_mean_prefix(members, stages)
+    assert why is None and prefix_why is None
+    assert prefix["reduce"] is mean["reduce"]
+    assert (prefix["rows"], prefix["window"], prefix["count"]) == (mean["rows"], mean["window"], 12.0)
+    assert mean["multiplier"] == 0.5 / (12.0 * 0.25)
+
+
+def test_a_mean_prefix_composes_with_a_tail_only_through_the_prefix():
+    members, stages = _mean_members(_mean_then_relu())
+    assert len(members) == 5
+    # The strict four-member route still refuses to name a mean with a tail it did not check.
+    assert CG._window_mean_of(members, stages) == (None, None)
+    prefix, why = CG.window_mean_prefix(members, stages)
+    assert why is None and (prefix["rows"], prefix["window"], prefix["count"]) == (16, 12, 12.0)
+    relu = next(
+        op
+        for op in members
+        if op not in (prefix["dequantize"], prefix["reduce"], prefix["divide"]) and stages[id(op)].kind != CG.QUANTIZE
+    )
+    assert CG._through_views(relu.operands[0]) is prefix["divide"]
+
+
+def test_a_mean_prefix_keeps_the_strict_refusals():
+    members, stages = _mean_members(_mean(dims=(1, 3)))
+    prefix, why = CG.window_mean_prefix(members, stages)
+    assert prefix is None and "trailing" in why
+    assert CG._window_mean_of(members, stages)[1] == why

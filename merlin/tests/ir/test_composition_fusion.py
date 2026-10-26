@@ -10,7 +10,7 @@ from test_output_fusion import _module as _legacy_module
 
 from merlin.common.mlir_query import parse
 from merlin.compile import fusion_workflow as F
-from merlin.compile.composition_fusion import CompositionPlan, composition_routes
+from merlin.compile.composition_fusion import CompositionPlan, composition_routes, plan_contraction_readout
 from merlin.targetgen.readout_facet import ReadoutFacet
 from merlin.transforms.certificates import ir_digest
 from merlin.verify.lean_contract import document_digest
@@ -170,6 +170,17 @@ def test_f32_epilogue_plan_and_failed_premise_emit_full_unfused_source():
     assert "fallback_from" in emitted[1].receipt
     assert ir_digest(module) == before
     json.dumps(product.receipt)
+
+
+def test_catalog_readout_planning_uses_the_composition_proof():
+    module = parse(_module(out_scale=7.0))
+    root = next(op for op in module.walk() if op.name == "linalg.generic")
+    before = ir_digest(module)
+    plan = plan_contraction_readout(module, root, path=_path(), scheme=SCHEME, facts=FACTS)
+    assert plan.record() == realize(module, "epilogue").artifact.record()
+    assert ir_digest(module) == before
+    with pytest.raises(ValueError, match="explicit numerical strategy"):
+        plan_contraction_readout(module, root, path=_path(), scheme={}, facts=FACTS)
 
 
 def test_pagination_binds_declarations_and_keeps_all_composition_rows():
@@ -377,3 +388,164 @@ def test_failed_unfused_emission_is_not_reported_as_a_successful_fallback():
     )
     assert [r.status for r in results] == ["compiled", "failed"]
     assert "original route emission failed" in results[-1].reason
+
+
+@pytest.mark.parametrize("window", [14, 26, 28, 30, 52, 56, 60])
+def test_mean_refuses_division_reciprocal_rne_disagreement(window):
+    from merlin.compile.composition_fusion import mean_division_matches_product
+
+    sums = np.arange(-128 * window, 127 * window + 1, dtype=np.float32)
+    mismatches = np.rint(sums / np.float32(window)) != np.rint(sums * np.float32(1 / window))
+    assert np.any(mismatches)
+    if window == 14:
+        assert np.count_nonzero(mismatches) == 78
+    assert not mean_division_matches_product(window)
+    module = parse(mean_module(shape=(2, 8, 1, window), dims=(2, 3), in_scale=1.0, out_scale=1.0, count=float(window)))
+    product = realize(module, "avgpool")
+    assert product.receipt["status"] == "declined"
+    assert "division and reciprocal product disagree" in product.receipt["reason"]
+
+
+@pytest.mark.parametrize("window", [1, 3, 4, 12, 16, 24])
+def test_mean_safe_windows_pass_exhaustive_guard(window):
+    from merlin.compile.composition_fusion import mean_division_matches_product
+
+    assert mean_division_matches_product(window)
+
+
+def test_k_concat_block_argument_residual_is_refused_without_crashing():
+    from merlin.xdsl_dialects.lowering import output_fusion as OF
+
+    module = parse(_module(residual=True).replace("5.000000e-01", "2.500000e-01"))
+    root = next(op for op in module.walk() if op.name == "linalg.generic")
+    residual = next(stage for stage in OF.source_chain(root, OF.Values()).stages if stage.kind == "residual")
+    operand = residual.detail["operand"]
+    function = root.parent_op()
+    argument = function.body.block.insert_arg(operand.type, len(function.body.block.args))
+    operand.replace_all_uses_with(argument)
+    function.update_function_type()
+    product = realize(module, "k_concat")
+    assert product.receipt["status"] == "declined"
+    assert "directly dequantized residual" in product.receipt["reason"]
+    assert product.artifact is module
+
+
+def test_a_mean_with_a_relu_tail_plans_through_the_checked_prefix():
+    # The composed mean plan keeps the strict plan's window, scales and multiplier; only ReLU differs.
+    from test_compute_groups import _mean_members, _mean_then_relu
+
+    from merlin.compile import composition_fusion as CF
+
+    members, _ = _mean_members(_mean_then_relu())
+    plan = CF._mean_plan(members, SCHEME, _path(), FACTS)
+    strict = CF._mean_plan(
+        *_mean_members(mean_module(in_scale=0.5, out_scale=0.25, count=12.0))[:1], SCHEME, _path(), FACTS
+    )
+    assert plan["relu"] is True and strict["relu"] is False
+    assert {k: v for k, v in plan.items() if k not in ("relu", "readout_stages")} == {
+        k: v for k, v in strict.items() if k not in ("relu", "readout_stages")
+    }
+    # A tail with any other stage stays refused.
+    text = _mean_then_relu().replace("arith.maximumf %rp, %rz", "arith.mulf %rp, %rz")
+    with pytest.raises(ValueError):
+        CF._mean_plan(_mean_members(text)[0], SCHEME, _path(), FACTS)
+
+
+def _mean_with_tail(lines, *, result, quantized_type, returned_type):
+    """The fixture mean whose quantize reads ``result`` after the extra ``lines`` and returns its type."""
+    text = mean_module(in_scale=0.5, out_scale=0.25, count=12.0)
+    head, tail = text.split('    %pooled = "quant_ext.quantize_per_tensor"(%mean,')
+    tail = tail.replace("(tensor<2x8xf32>, tensor<f32>, tensor<i64>) -> tensor<2x8xi8>", quantized_type)
+    text = head + "\n".join(lines) + f'\n    %pooled = "quant_ext.quantize_per_tensor"({result},' + tail
+    return text.replace("func.return %pooled : tensor<2x8xi8>", f"func.return %pooled : {returned_type}").replace(
+        "-> tensor<2x8xi8> {", f"-> {returned_type} {{"
+    )
+
+
+def _members_with_views(text):
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as CG
+
+    names = {"quant_ext.dequantize_per_tensor", "quant_ext.quantize_per_tensor", "linalg.reduce", "linalg.generic"}
+    names |= set(CG._VIEW_OPS) | {"tensor.insert_slice"}
+    return [op for op in parse(text).walk() if mq.op_name(op) in names]
+
+
+def test_a_mean_with_a_view_only_tail_plans_as_the_strict_mean():
+    from merlin.compile import composition_fusion as CF
+
+    text = _mean_with_tail(
+        [
+            "    %flat = tensor.collapse_shape %mean [[0, 1]] : tensor<2x8xf32> into tensor<16xf32>",
+            "    %back = tensor.expand_shape %flat [[0, 1]] output_shape [2, 8] : tensor<16xf32> into tensor<2x8xf32>",
+        ],
+        result="%back",
+        quantized_type="(tensor<2x8xf32>, tensor<f32>, tensor<i64>) -> tensor<2x8xi8>",
+        returned_type="tensor<2x8xi8>",
+    )
+    members = _members_with_views(text)
+    assert len(members) == 6
+    plan = CF._mean_plan(members, SCHEME, _path(), FACTS)
+    strict = CF._mean_plan(
+        _members_with_views(mean_module(in_scale=0.5, out_scale=0.25, count=12.0)), SCHEME, _path(), FACTS
+    )
+    assert plan["relu"] is False
+    assert {k: v for k, v in plan.items() if k != "readout_stages"} == {
+        k: v for k, v in strict.items() if k != "readout_stages"
+    }
+
+
+def test_a_mean_with_a_pad_tail_is_refused():
+    from merlin.compile import composition_fusion as CF
+
+    text = _mean_with_tail(
+        [
+            "    %pz = arith.constant 0.000000e+00 : f32",
+            "    %border = tensor.splat %pz : tensor<2x10xf32>",
+            "    %padded = tensor.insert_slice %mean into %border[0, 1] [2, 8] [1, 1] : tensor<2x8xf32> into "
+            "tensor<2x10xf32>",
+        ],
+        result="%padded",
+        quantized_type="(tensor<2x10xf32>, tensor<f32>, tensor<i64>) -> tensor<2x10xi8>",
+        returned_type="tensor<2x10xi8>",
+    )
+    with pytest.raises(ValueError, match="mean tail"):
+        CF._mean_plan(_members_with_views(text), SCHEME, _path(), FACTS)
+
+
+def test_a_mean_with_a_pool_tail_is_refused():
+    from merlin.compile import composition_fusion as CF
+
+    text = _mean_with_tail(
+        [
+            "    %lo = arith.constant -3.402823e+38 : f32",
+            "    %pinit = tensor.splat %lo : tensor<2xf32>",
+            "    %spatial = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) "
+            '-> (d0)>], iterator_types = ["parallel", "reduction"]} ins(%mean : tensor<2x8xf32>) outs(%pinit : '
+            "tensor<2xf32>) {",
+            "    ^bb0(%pa: f32, %pb: f32):",
+            "      %pm = arith.maximumf %pa, %pb : f32",
+            "      linalg.yield %pm : f32",
+            "    } -> tensor<2xf32>",
+        ],
+        result="%spatial",
+        quantized_type="(tensor<2xf32>, tensor<f32>, tensor<i64>) -> tensor<2xi8>",
+        returned_type="tensor<2xi8>",
+    )
+    with pytest.raises(ValueError, match="mean tail"):
+        CF._mean_plan(_members_with_views(text), SCHEME, _path(), FACTS)
+
+
+def test_a_relu_tail_needs_a_positive_mean_multiplier():
+    from test_compute_groups import _mean_members, _mean_then_relu
+
+    from merlin.compile import composition_fusion as CF
+
+    negative = _mean_then_relu().replace("dense<0.5> : tensor<f32>", "dense<-0.5> : tensor<f32>", 1)
+    assert negative != _mean_then_relu()
+    with pytest.raises(ValueError, match="positive mean multiplier"):
+        CF._mean_plan(_mean_members(negative)[0], SCHEME, _path(), FACTS)
+    # Without the ReLU the same negative multiplier is not refused by that guard.
+    plain = mean_module(in_scale=-0.5, out_scale=0.25, count=12.0)
+    plan = CF._mean_plan(_mean_members(plain)[0], SCHEME, _path(), FACTS)
+    assert plan["relu"] is False

@@ -883,44 +883,48 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
     return out
 
 
-def _window_mean_of(working: Sequence[Any], stage_of: Mapping[int, Stage | None]) -> tuple[dict | None, str | None]:
-    """``(facts, None)`` when the region is a mean over a trailing window between a dequantize and
-    a quantize, ``(None, why)`` when it is one whose numbers cannot be read, else ``(None, None)``.
+def _through_views(value):
+    owner = getattr(value, "owner", None)
+    # A block argument's owner is its block, never a view.
+    while (
+        owner is not None
+        and hasattr(owner, "name")
+        and mq.op_name(owner) in _VIEW_OPS
+        and getattr(owner, "operands", None)
+    ):
+        value = owner.operands[0]
+        owner = getattr(value, "owner", None)
+    return owner
 
-    The shape is exact: one dequantize, one sum-reduction over the LAST dims from a zero, one
-    division by a constant, one quantize, and views. Its integer form is
-    ``q(sum(x) * s_in / (count * s_out))``: each kept position is a row, the window is what the
-    contraction reduces over, the stored operand is a constant one, and one readout scale carries
-    everything else. Trailing dims only, because only then is a window contiguous in a row.
+
+def _mean_prefix_members(working: Sequence[Any], stage_of: Mapping[int, Stage | None]) -> tuple | None:
+    """``(dequantize, reduce, divide)`` when ``working`` holds one dequantize read, through views, by
+    one sum-reduction whose result one constant-operand division reads, else ``None``.
+
+    This is only the producer side of a mean. Whatever reads the division -- the strict route's
+    quantize, or a tail another owner proves -- is not examined here.
     """
-    from . import group_numerics as GN  # noqa: PLC0415 -- it imports this module
-
-    by_name: dict[str, list[Any]] = {}
-    for member in working:
-        by_name.setdefault(mq.op_name(member), []).append(member)
-    kinds = Counter(stage_of[id(member)].kind for member in working)
-    reduces = by_name.get("linalg.reduce") or []
-    if len(reduces) != 1 or kinds[DEQUANTIZE] != 1 or kinds[QUANTIZE] != 1 or len(working) != 4:
-        return None, None
-    reduce = reduces[0]
-    dequantize = next(m for m in working if stage_of[id(m)].kind == DEQUANTIZE)
-    quantize = next(m for m in working if stage_of[id(m)].kind == QUANTIZE)
-    divide = next(m for m in working if m not in (reduce, dequantize, quantize))
+    reduces = [m for m in working if mq.op_name(m) == "linalg.reduce"]
+    dequantizes = [m for m in working if stage_of[id(m)].kind == DEQUANTIZE]
+    if len(reduces) != 1 or len(dequantizes) != 1:
+        return None
+    reduce, dequantize = reduces[0], dequantizes[0]
+    divides = [m for m in working if m is not reduce and m.operands and _through_views(m.operands[0]) is reduce]
+    if len(divides) != 1:
+        return None
+    divide = divides[0]
     bodies = [[name for name in _body_ops(op) if name not in _BODY_NOISE] for op in (reduce, divide)]
     if bodies != [["arith.addf"], ["arith.divf"]] or _n_inputs(divide) != 2:
-        return None, None
+        return None
+    if _through_views(reduce.operands[0]) is not dequantize:
+        return None
+    return dequantize, reduce, divide
 
-    def through_views(value):
-        owner = getattr(value, "owner", None)
-        while owner is not None and mq.op_name(owner) in _VIEW_OPS and getattr(owner, "operands", None):
-            value = owner.operands[0]
-            owner = getattr(value, "owner", None)
-        return owner
 
-    if through_views(reduce.operands[0]) is not dequantize or through_views(divide.operands[0]) is not reduce:
-        return None, None
-    if through_views(quantize.operands[0]) is not divide:
-        return None, None
+def _mean_prefix_extent(reduce, divide) -> tuple[dict | None, str | None]:
+    """The static window of a recognized mean prefix, or why its numbers cannot be read."""
+    from . import group_numerics as GN  # noqa: PLC0415 -- it imports this module
+
     in_shape, _ = mq.type_shape_dtype(reduce.operands[0].type)
     out_shape, _ = mq.type_shape_dtype(reduce.results[0].type)
     reduced = _int_array(reduce, "dimensions")
@@ -939,6 +943,56 @@ def _window_mean_of(working: Sequence[Any], stage_of: Mapping[int, Stage | None]
     )
     if start != 0 or not isinstance(count, (int, float)) or not count:
         return None, "the reduction does not start from zero, or its divisor is not a compile-time number"
+    return {
+        "rows": _product(in_shape[:kept]),
+        "window": window,
+        "count": count,
+        "out_elements": _product(out_shape),
+    }, None
+
+
+def window_mean_prefix(working: Sequence[Any], stage_of: Mapping[int, Stage | None]) -> tuple[dict | None, str | None]:
+    """The checked producer prefix of a mean whose division feeds a tail proved elsewhere.
+
+    ``(facts, None)`` names the dequantize, reduce and divide members with the static window,
+    ``(None, why)`` is a recognized prefix whose numbers cannot be read, ``(None, None)`` is no
+    mean prefix. The caller owns every member after the divide and the final quantize scale; this
+    function never accepts a tail on its own, so :func:`_window_mean_of` stays the strict route.
+    """
+    members = _mean_prefix_members(working, stage_of)
+    if members is None:
+        return None, None
+    dequantize, reduce, divide = members
+    extent, why = _mean_prefix_extent(reduce, divide)
+    if extent is None:
+        return None, why
+    return {"dequantize": dequantize, "reduce": reduce, "divide": divide, **extent}, None
+
+
+def _window_mean_of(working: Sequence[Any], stage_of: Mapping[int, Stage | None]) -> tuple[dict | None, str | None]:
+    """``(facts, None)`` when the region is a mean over a trailing window between a dequantize and
+    a quantize, ``(None, why)`` when it is one whose numbers cannot be read, else ``(None, None)``.
+
+    The shape is exact: one dequantize, one sum-reduction over the LAST dims from a zero, one
+    division by a constant, one quantize, and views. Its integer form is
+    ``q(sum(x) * s_in / (count * s_out))``: each kept position is a row, the window is what the
+    contraction reduces over, the stored operand is a constant one, and one readout scale carries
+    everything else. Trailing dims only, because only then is a window contiguous in a row.
+    """
+    from . import group_numerics as GN  # noqa: PLC0415 -- it imports this module
+
+    kinds = Counter(stage_of[id(member)].kind for member in working)
+    if kinds[DEQUANTIZE] != 1 or kinds[QUANTIZE] != 1 or len(working) != 4:
+        return None, None
+    members = _mean_prefix_members(working, stage_of)
+    quantize = next(m for m in working if stage_of[id(m)].kind == QUANTIZE)
+    # The strict route: the quantize is the fourth member and reads the division directly.
+    if members is None or quantize in members or _through_views(quantize.operands[0]) is not members[2]:
+        return None, None
+    dequantize, reduce, divide = members
+    extent, why = _mean_prefix_extent(reduce, divide)
+    if extent is None:
+        return None, why
     try:
         scales = [GN._scale_source(op) for op in (dequantize, quantize)]
     except GN.GroupNumericsError as exc:
@@ -947,14 +1001,14 @@ def _window_mean_of(working: Sequence[Any], stage_of: Mapping[int, Stage | None]
         return None, "a scale of the mean is not a compile-time number, or a zero point is carried"
     return {
         "reduce": reduce,
-        "rows": _product(in_shape[:kept]),
-        "window": window,
-        "multiplier": scales[0].value / (float(count) * scales[1].value),
+        "rows": extent["rows"],
+        "window": extent["window"],
+        "multiplier": scales[0].value / (float(extent["count"]) * scales[1].value),
         # The capture divides a float sum and rounds; the unit multiplies an exact integer sum and
         # rounds. The same real number computed two ways can land on either side of a tie.
         "bound_lsb": 1,
         "exactness": "float_reassociation",
-        "out_elements": _product(out_shape),
+        "out_elements": extent["out_elements"],
     }, None
 
 
