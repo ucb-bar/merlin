@@ -1,0 +1,187 @@
+# GENERATED from ../../target/contracts/semantic_probes.yaml plus this provider's plugin block by
+# build_tools/scripts/sync_support_contract.py. Edit the reviewed contract, then re-run it.
+# WHERE this target's BEHAVIOURAL hardware facts are written, for merlin.targetgen.rtl.semantic_facts.
+#
+# The facts themselves are NOT in this file. It names the modules, signals, macros and machines in which
+# the target's own sources state them, and the library reads those sources (the elaborated FIRRTL, the
+# generated parameter header) and derives the answer structurally. Change a source and the derived fact
+# changes; change nothing here. A second target is onboarded with a file like this one, never with code.
+#
+# Every name below is a spelling of THIS design's elaboration or header, so it lives in this target's
+# data directory and nowhere in the library. A name that stops matching (a renamed signal, a module the
+# elaboration no longer defines) makes the fact UNKNOWN with the reason, never a default.
+#
+# The facts are DERIVED where they are used, never shipped: print them with
+#   python -m merlin.targetgen.rtl.semantic_facts --target gemmini --header <declared header> ...
+schema: semantic_probes_v1
+target: gemmini
+
+# ------------------------------------------------------------------------------------------------ sources
+# A source is one of: {artifact: <hardware_pins.yaml artifact>}, {pin: <pin>, path: <pin-relative>},
+# {ext_root: <.env key>, path: <relative>}, {out: <out-root-relative>}, or {abi_header_of: <registry
+# machine>} -- the caller-declared header whose content is the ABI digest the registry declares for that
+# machine. An optional `sha256` is asserted.
+sources:
+  # The elaboration the contract's rtl_source selects: GemminiRocketConfig at chipyard 0acc1e1 with the
+  # generators/gemmini gitlink 8c3f9923, read from the MERLIN_EXT_CHIPYARD checkout. The digest is the
+  # contract's rtl_source.artifact_sha256.fir, so any other elaboration is refused rather than read.
+  elaboration:
+    ext_root: chipyard
+    path: sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.fir
+    sha256: da2c38c1bdc5c7ddf1c12c0d4a10a41323bf420c869351e52f796d41db325485
+  # The generated parameter header the curated harness compiles against (acc_read_full_width = true).
+  header: {pin: gemmini_isa_headers, path: include/gemmini_params.h}
+  # The vendor's own software reference, for corroboration only.
+  vendor_header: {pin: gemmini_isa_headers, path: include/gemmini.h}
+
+# ------------------------------------------------------------------------------ load_completion_ordering
+load_completion_ordering:
+  source: elaboration
+  # The command dependency tracker: each queue's entries, the dependency vector a NEW command gets on
+  # that queue, and the guard under which a new command is of that class.
+  tracker:
+    module: ReservationStation
+    command_field: io.alloc.bits.cmd.inst.funct
+    # The class whose ordering a residual-add / accumulate-on-load pattern depends on.
+    subject: load
+    queues:
+      load:    {entries: "entries_ld", dependency: new_entry.deps_ld, guard: [is_load], membership: is_load}
+      execute: {entries: "entries_ex", dependency: new_entry.deps_ex, guard: [not is_load, is_ex], membership: is_ex}
+      store:   {entries: "entries_st", dependency: new_entry.deps_st, guard: [not is_load, not is_ex], membership: is_store}
+    entry_fields:
+      live: valid          # set at allocation, cleared at retirement
+      issued: bits.issued  # set when the command is dispatched to its unit
+    address_fields: [bits.opa, bits.opb]
+    retire_port: io.completed
+    issue_port: io.issue
+    busy_output: io.busy
+  # What establishes COMPLETION order: the host stalls an instruction until the accelerator is idle.
+  barrier:
+    host_module: Rocket
+    stall: id_do_fence
+    decode_field: id_ctrl.fence
+    accelerator_busy_input: io.rocc.busy
+    instruction: fence            # the host-ISA mnemonic whose decode sets `decode_field`
+    accelerator_module: Gemmini
+    accelerator_busy_output: io.busy
+    tracker_instance: reservation_station
+  # Instructions the declared instruction set tags with the `sync` role: what their decode actually does.
+  sync_decode:
+    module: Gemmini
+    command_field: unrolled_cmd_q.io.deq.bits.cmd.inst.funct
+    selectors:
+      - {guard: [is_flush], membership: is_flush}
+
+# ------------------------------------------------------------------------------- load_scale_saturation
+load_scale_saturation:
+  header: header
+  macros:
+    operand: MVIN_SCALE          # the scale a load of operand-width elements goes through
+    accumulator: MVIN_SCALE_ACC  # the scale a load of accumulator-width elements goes through
+  types:
+    operand: elem_t
+    accumulator: acc_t
+  # Where the scaled operand-width value ENTERS the accumulator: read from the elaboration.
+  accumulator_entry:
+    source: elaboration
+    module: Scratchpad
+    accumulator_write: "bank_ios_1[*].write.bits.data"
+    scaled_operand: mvin_scale_pixel_repeater.io.resp.bits.out
+  # The same claim as read from the Scala source, kept as a citation a reviewer can open.
+  source_citation:
+    pin: gemmini_rocket_rtl
+    path: src/main/scala/gemmini/Scratchpad.scala
+    line: 847
+    contains: "withWidthOf(accType)"
+  corroboration:
+    source: vendor_header
+    contains_all: ["MVIN_SCALE(*a, A_scale)", "MVIN_SCALE(*b, B_scale)"]
+
+# --------------------------------------------------------------------------- accumulator_readout_width
+accumulator_readout_width:
+  macros: {full: ACC_READ_FULL_WIDTH, narrow: ACC_READ_SMALL_WIDTH}
+  types: {full: acc_t, narrow: elem_t}
+  row_elements_macro: DIM
+  # The DMA writer every mvout goes through: its data port is as wide as the widest row it can move.
+  writer: {module: StreamWriter, port: io, path: [req, bits, data]}
+  # Per MACHINE, keyed by its hardware_pins.yaml name: the header it compiles against, and (where one
+  # exists) an elaboration of the same configuration to check the header against.
+  machines:
+    gemmini_verilator_simulator:
+      header: header
+      firrtl: {artifact: gemmini_verilator_firrtl}
+    gemmini_gsim_emulator:
+      header: {abi_header_of: gemmini_gsim_emulator}
+      firrtl: {artifact: gemmini_gsim_model_serialclk}
+    gemmini_rocket_lean_u250_firesim_bitstream:
+      # By the registry's declared ABI digest, among the headers the caller declares: no host path here.
+      header: {abi_header_of: gemmini_rocket_lean_u250_firesim_bitstream}
+      # Re-elaborated from the same configuration NAME; the bitstream's own elaboration was not kept.
+      firrtl:
+        ext_root: chipyard
+        path: sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimLeanGemminiRocketConfig/firechip.chip.FireSim.FireSimLeanGemminiRocketConfig.fir
+        correspondence: configuration_name_only
+
+# ------------------------------------------------------------------------------------------ validation
+# MEASURED behaviour each fact predicts, recorded so the fact carries its own falsification attempt.
+# Paths are out-root-relative; the extractor re-hashes each and records whether it is still present.
+# ------------------------------------------------------------------------------------ accumulate_on_load
+# Whether a plain LOAD can ADD into the accumulator, chosen per command by the address it carries: the
+# LocalAddr metadata's accumulate bit (LocalAddr.scala), set by a load into an accumulator address.
+# Read from the elaboration, never from a loop sequencer: the evidence is the accumulator store and the
+# load path that every load command takes, so it holds for a program that issues no loop descriptor.
+accumulate_on_load:
+  source: elaboration
+  # The accumulator store writes the adder's sum when the write's accumulate bit is set.
+  store:
+    module: AccumulatorMem
+    write_data: mem.io.wdata
+    select: "pipelined_writes[*].bits.acc"
+    sum: io.adder.sum
+  # The accumulator bank's accumulate bit comes from the load path (the scaled operand-width and
+  # accumulator-width load responses carry the address's accumulate field), and the DMA read request
+  # -- what a load command issues -- delivers that field into the path.
+  load:
+    module: Scratchpad
+    write_select: "bank_ios_1[*].write.bits.acc"
+    carried_by:
+      - mvin_scale_pixel_repeater.io.resp.bits.tag.accumulate
+      - vsm_1.io.resp.bits.tag.accumulate
+    request: io.dma.read.req.bits.laddr.accumulate
+  # The commands that reach that path: plain loads. No loop-descriptor role is needed.
+  roles: [operand_load]
+
+validation:
+  load_completion_ordering:
+    - engine: firesim_gemmini_rocket_u250 (queue job 909, staged binary intact)
+      evidence: {out: artifacts/probes/gemmini_acc_race_20260925T022348Z/results.json}
+      predicts: an overwriting load then an accumulating load into the same rows, unfenced, can lose the second operand; with the barrier between them it cannot
+      observed: unfenced 32/48/96/128 wrong elements over four repetitions, every one lhs-only; fenced 0 in every repetition
+      agrees: true
+    - engine: firesim (queue jobs 905 vs 913/915, vendor tiled residual add, whole model)
+      evidence: {out: artifacts/probes/gemmini_acc_race_20260925T022348Z/results.json}
+      predicts: the vendor library's own unfenced residual add is exposed to the same reordering
+      observed: stock groups 19/27 max_abs 53/46 with 69/101 elements over bound; fenced rebuild max_abs 1, 0 over
+      agrees: true
+    - engine: verilator reordering-memory variant v1 (seeded AXI reordering)
+      evidence: {out: artifacts/probes/gemmini_acc_race_20260925T022348Z/sweeps}
+      predicts: order-sensitive unfenced, order-stable fenced
+      observed: unfenced transfer_split fails seeds 1,2,3,6,8 (all lhs-only); fenced 0 of 8 seeds. The v2 variant did NOT reproduce (0 of 8), so the absence of a failure on one memory model is not evidence of order
+      agrees: true
+  load_scale_saturation:
+    - engine: gsim (gemmini_gsim_emulator, GemminiGsimSerialClkConfig), capsules GR2/GR3 run on cand_07's package
+      evidence: {out: artifacts/probes/semantic_facts_validation_20260925/gsim_saturation.json}
+      predicts: output equals sat(rne(a*sa)) + sat(rne(b*sb)) through the readout, not rne(a*sa + b*sb)
+      observed: GR2 256/256 and GR3 1024/1024 elements equal the saturate-before-accumulate model; the no-saturation model misses 120 and 127
+      agrees: true
+    - engine: spike (functional), same ELFs
+      evidence: {out: artifacts/probes/gemmini_acc_race_20260925T022348Z/capsule_runs/cand07}
+      predicts: as above
+      observed: bit-identical to GSIM on both capsules
+      agrees: true
+  accumulator_readout_width:
+    - engine: firesim lean bitstream (whole-model arms, 2026-09-24), classifier group
+      evidence: {out: artifacts/perf-studies/whole-model/gemmini}
+      predicts: a full-width accumulator mvout on the lean machine cannot return int32 rows
+      observed: the one group read out as a raw int32 accumulator returned sum=0 in every arm, argmax 0 against 21; computed on the core instead it agrees
+      agrees: true

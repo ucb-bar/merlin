@@ -630,6 +630,7 @@ quantization:
     # arbitrary_f32 selects declared_observer, never evaluation input ranges.
     axes:
       scale_value: [power_of_two, arbitrary_f32]
+      scale_source: [constant, runtime_input]
       weight_scale_granularity: [tensor, column_block]
       activation_scale_granularity: [tensor]
       readout_exit: [narrow_saturating, accumulator_full]
@@ -644,8 +645,8 @@ quantization:
     schemes:
     # First scheme is the unchanged v1 baseline; no implicit scheme selection.
     - {id: q_pow2_tensor, scale_value: power_of_two, weight_scale_granularity: tensor, operand_sum_rounding: single_rounding, readout_strategy: exact_rational_host}
-    - {id: q_f32_tensor, scale_value: arbitrary_f32, weight_scale_granularity: tensor, operand_sum_rounding: single_rounding, readout_strategy: f32_product_rne}
-    - {id: q_f32_column_block, scale_value: arbitrary_f32, weight_scale_granularity: column_block, operand_sum_rounding: single_rounding, readout_strategy: f32_product_rne}
+    - {id: q_f32_tensor, scale_value: arbitrary_f32, scale_source: constant, weight_scale_granularity: tensor, operand_sum_rounding: single_rounding, readout_strategy: f32_product_rne}
+    - {id: q_f32_column_block, scale_value: arbitrary_f32, block_scale_reduction: max_abs, weight_scale_granularity: column_block, operand_sum_rounding: single_rounding, readout_strategy: f32_product_rne}
     # Offered on EVERY residual add; each load rounds and saturates independently.
     - {id: q_f32_per_operand_sum, scale_value: arbitrary_f32, weight_scale_granularity: column_block, operand_sum_rounding: per_operand, readout_strategy: f32_product_rne}
     - id: q_f32_packed_panel
@@ -1072,7 +1073,38 @@ quantization:
         regime:
         - {step: quantize, dtype: uint8, zero_point: 128, rounding: half_even}
         result: [0, 192, 128]
+    policies:
+      scale_source:
+        constant:
+          value: constant
+          evidence: host_definition
+          basis: the source embeds its synthetic f32 multiplier as a constant
+        runtime_input:
+          value: runtime_input
+          evidence: rtl_derived
+          fact: [interfaces, register_bundle_layouts, bundles, ConfigMvoutRs2, fields, acc_scale, slot_width]
+          fact_value: 32
+          basis: >-
+            ConfigMvoutRs2.acc_scale is a CONFIG_ST rs2 operand (GemminiISA.scala:155-160,
+            StoreController.scala:97-102,237-238); ConfigExRs1.acc_scale is a CONFIG_EX rs1 operand
+            (GemminiISA.scala:203-215, ExecuteController.scala:542-555); ConfigMvinRs1.scale is a
+            CONFIG_LD rs1 operand (GemminiISA.scala:111-123, LoadController.scala:52-54,145).
+            readout_semantics.scalar_abi.scale_dtype and operand_sum.scale_dtype declare f32.
+            Register operands are software-set per call; arithmetic is unchanged. Source checked at
+            Chipyard 0acc1e1de2d3284bcd4d876956932a013ffe1949, RTL gitlink
+            8c3f9923a44a2fe2c7930587be297d6d4f8c09ca; the extracted ISA digest matches this checkout.
+      block_scale_reduction:
+        max_abs:
+          value: max_abs
+          evidence: host_definition
+          basis: grouped_channel_observer shares the largest per-channel absolute range over each channels_per_scale block, including a short tail
+        mean_abs:
+          value: mean_abs
+          evidence: host_definition
+          basis: grouped_channel_observer shares the mean per-channel absolute range over each channels_per_scale block; outlier channels may clip
     unmodeled:
+    - subject: calibrated scale values
+      reason: observer ranges and reduced block scales depend on calibration data; policies are modeled, calibrated values and their accuracy are unmodeled
     - subject: complex-valued arithmetic (complex affine maps, complex addmm with alpha 0)
       reason: per-component quantization of complex products has no declared scheme; these stay host or native-exact constructions
     - subject: integer storage wider than int8 (radix-256 components, F2/F5)
@@ -1101,6 +1133,9 @@ compositions:
   schema: merlin.software_spec.compositions.v1
   status: reviewed
   grading: placement_and_instruction_audit
+  target_count: 50
+  # Each chain is generated under the schemes it uses (primary) plus cross-checks
+  # that each name the coverage they alone supply; no other chain x scheme pair.
   chains:
   - id: contraction_readout
     producer: contraction
@@ -1108,6 +1143,13 @@ compositions:
     readout_stages: from_output_path
     exits: [requant, accumulator]
     dataflows: from_facts
+    quantization_schemes:
+      primary: [q_f32_column_block, q_f32_tensor]
+      cross_checks:
+      - scheme: q_pow2_tensor
+        justification: The only chain carrying q_pow2_tensor, so the power_of_two scale value and its
+          exact_rational_host readout strategy keep a composition witness; every other chain selects
+          arbitrary_f32 schemes read out by f32_product_rne.
     constraints:
     - activation_before_scale_requires_nonnegative_multiplier
     - accumulator_exit_applies_no_readout_stage
@@ -1119,6 +1161,13 @@ compositions:
     producer: operand_sum
     readout_stages: from_output_path
     exits: [requant, accumulator]
+    quantization_schemes:
+      primary: [q_f32_per_operand_sum]
+      cross_checks:
+      - scheme: q_f32_tensor
+        justification: scaled_operand_sum is the only chain with an operand_sum producer, so without this
+          row the single_rounding value of operand_sum_rounding (unit operand multipliers, one rounding at
+          the readout) has no composition witness beside q_f32_per_operand_sum's per_operand rounding.
     constraints:
     - {operand_multiplier_in: '(0, 1]'}
     - load_minimum_not_negated
@@ -1127,6 +1176,8 @@ compositions:
     readout_stages: from_output_path
     exits: [requant]
     reduction_kinds: [max, sum]
+    quantization_schemes:
+      primary: [q_f32_tensor]
     constraints:
     - {max_requires_store_path_pooling: from_facts}
     - scratchpad_source_pooling_fenced
@@ -1136,6 +1187,8 @@ compositions:
     extension: constant_integer_operand
     readout_stages: from_output_path
     exits: [requant, accumulator]
+    quantization_schemes:
+      primary: [q_f32_tensor]
     constraints:
     - coefficient_integer_exact
     - {k_extension_within: from_facts}
@@ -1144,6 +1197,14 @@ compositions:
     multiplicity: {min: 2}
     readout_stages: from_output_path
     exits: [requant, accumulator]
+    quantization_schemes:
+      primary: [q_f32_packed_panel]
+      cross_checks:
+      - scheme: q_f32_tensor
+        axes: {scale_source: runtime_input}
+        justification: shared_input_contractions crosses q_f32_tensor with scale_source runtime_input
+          to witness an input-supplied f32 scale with per_output_readout_independent narrow and
+          accumulator exits; contraction_readout retains q_f32_tensor with scale_source constant.
     constraints:
     - per_output_readout_independent
     - {shared_input_resident: from_facts}

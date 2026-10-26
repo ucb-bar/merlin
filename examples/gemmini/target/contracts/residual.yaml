@@ -27,6 +27,28 @@ endpoint_kind: inline_asm_insn
 # Source-location anchors for extracting this target's RTL facts. These do not
 # declare legal instruction codes, capacity, or executable support.
 rtl_extraction:
+  load_states:
+    fields:
+      - {bundle: ConfigMvinRs1, name: state_id, module: LoadController, field: config_mvin_rs1.state_id, input: cmd_q.io.deq.bits.cmd.rs1}
+      - {bundle: ConfigMvinRs1, name: scale, module: LoadController, field: config_mvin_rs1.scale, input: cmd_q.io.deq.bits.cmd.rs1}
+    selection:
+      module: LoadController
+      command: cmd_q.io.deq.bits.cmd.inst.funct
+      state: state_id
+      config_state: config_mvin_rs1.state_id
+      config_field: {bundle: ConfigMvinRs1, name: state_id}
+      config_class: CONFIG_LD
+      stride_register: strides
+      stride_input: cmd_q.io.deq.bits.cmd.rs2
+      dram_address: cmd_q.io.deq.bits.cmd.rs1
+      row_index: row_counter
+      stride_sink: io.dma.req.bits.vaddr
+      load_classes: [MVIN, MVIN2, MVIN3]
+    scale:
+      register: scales
+      input: config_mvin_rs1.scale
+      sink: io.dma.req.bits.scale
+  # Authored source/role anchors for the legacy FIRRTL reader; core only implements the parser.
   firrtl_role_probe:
     array: {name: mesh, parent_module_contains: Mesh, child_module_prefix: Tile}
     memory: {name: scratchpad, declaration_contains: "smem mem : UInt<", source_contains: Scratchpad.scala, datapath_name: input}
@@ -233,6 +255,7 @@ rocc_operand_roles:
         - {name: subtype, const: LD}
         # GemminiISA.scala:111-121; scale and state slots are RTL-derived.
         - {name: state_id, operand: rs1, bundle: ConfigMvinRs1, field: state_id}
+        - {name: shrink, operand: rs1, bundle: ConfigMvinRs1, field: shrink}
         # gemmini.h config_ld passes the DRAM row stride as the whole rs2 operand.
         - {name: stride, operand: rs2, as: raw}
         - {name: scale, operand: rs1, bundle: ConfigMvinRs1, field: scale, as: f32}

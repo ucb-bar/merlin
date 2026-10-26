@@ -265,12 +265,26 @@ def validate_compositions(block: object) -> dict:
 
     validate(block, "software_compositions")
     seen = set()
-    for chain in block["chains"]:
+    for chain in block.get("chains", []):
         if chain["id"] in seen:
             raise ValueError(f"duplicate composition id {chain['id']!r}")
         seen.add(chain["id"])
         _validate_composition_constraints(chain)
+        _validate_composition_schemes(chain)
     return copy.deepcopy(block)
+
+
+def _validate_composition_schemes(chain: dict) -> None:
+    """A scheme is selected once: as a primary scheme or as one justified cross-check."""
+    selection = chain.get("quantization_schemes")
+    if selection is None:
+        return
+    selected = [(identity, ()) for identity in selection["primary"]]
+    selected += [
+        (row["scheme"], tuple(sorted(row.get("axes", {}).items()))) for row in selection.get("cross_checks", [])
+    ]
+    if len(set(selected)) != len(selected):
+        raise ValueError(f"composition {chain['id']!r} selects a quantization scheme more than once")
 
 
 def _validate_composition_constraints(chain: dict) -> None:

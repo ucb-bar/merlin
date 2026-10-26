@@ -33,6 +33,28 @@ endpoint_kind: inline_asm_insn
 # extraction anchors describe this target's ISA-source layout; core never assumes their names.
 # Decoder-derived legal codes remain authoritative whenever the elaborated HW dialect is available.
 rtl_extraction:
+  load_states:
+    fields:
+      - {bundle: ConfigMvinRs1, name: state_id, module: LoadController, field: config_mvin_rs1.state_id, input: cmd_q.io.deq.bits.cmd.rs1}
+      - {bundle: ConfigMvinRs1, name: scale, module: LoadController, field: config_mvin_rs1.scale, input: cmd_q.io.deq.bits.cmd.rs1}
+    selection:
+      module: LoadController
+      command: cmd_q.io.deq.bits.cmd.inst.funct
+      state: state_id
+      config_state: config_mvin_rs1.state_id
+      config_field: {bundle: ConfigMvinRs1, name: state_id}
+      config_class: CONFIG_LD
+      stride_register: strides
+      stride_input: cmd_q.io.deq.bits.cmd.rs2
+      dram_address: cmd_q.io.deq.bits.cmd.rs1
+      row_index: row_counter
+      stride_sink: io.dma.req.bits.vaddr
+      load_classes: [MVIN, MVIN2, MVIN3]
+    scale:
+      register: scales
+      input: config_mvin_rs1.scale
+      sink: io.dma.req.bits.scale
+  # Authored source/role anchors for the legacy FIRRTL reader; core only implements the parser.
   # Authored source/role anchors for the legacy FIRRTL reader; core only implements the parser.
   firrtl_role_probe:
     array: {name: mesh, parent_module_contains: Mesh, child_module_prefix: Tile}
@@ -57,9 +79,35 @@ rtl_extraction:
     node: pooling_is_enabled
     dynamic_operand_contains: pool
     config_field: has_max_pool
-  # Seal #4: pool padding remains UNKNOWN. StoreController.scala:131-134 marks
-  # out-of-bounds pool addresses as garbage; the downstream numeric value has
-  # not been derived. A pooling build gate alone cannot license padded windows.
+  # The readout the output epilogue is read from (merlin.targetgen.rtl.output_epilogue): the module
+  # that converts, scales, rectifies and narrows the accumulator on move-out, and the port fields
+  # carrying the accumulator vector, the per-command scale and the activation selector
+  # (AccumulatorScale.scala:118-140; the f32 multiply instances are Configs.scala:117-151).
+  output_epilogue:
+    module: AccumulatorScale
+    value: io.in.bits.acc_read_resp.data
+    scale: io.in.bits.acc_read_resp.scale
+    activation: io.in.bits.acc_read_resp.act
+    pool_disable:
+      module: StoreController
+      selector: pool_stride
+      configured_by: config_mvout_rs1.pool_stride
+      enabled: pooling_is_enabled
+    # StoreController.scala:132-134 marks out-of-image addresses as garbage.
+    # Scratchpad.scala:314,323-326 selects numeric zero for that sentinel before
+    # StreamWriter's signed maximum (DMA.scala:597-608); it is not configurable.
+    pool_padding:
+      address:
+        module: StoreController
+        out_of_bounds: _T_8
+        out_of_bounds_checks: ["geq(orow, pool_orows)", "geq(ocol, pool_ocols)"]
+        value: pool_row_addr
+        fields: [is_acc_addr, accumulate, read_full_acc_row, garbage_bit, data]
+      tap:
+        module: Scratchpad
+        address: write_issue_q.io.deq.bits.laddr
+        sentinel: writeData_is_all_zeros
+        data: writer.io.req.bits.data
   # Role anchors for merlin.targetgen.rtl.timing_structure: module, port-prefix and bus-field names
   # only. Every count, width, ID space and stage count is read from the elaborated HW; an anchor the
   # RTL does not contain records that fact UNKNOWN. profile_resources is the reviewed mapping from
@@ -314,6 +362,7 @@ rocc_operand_roles:
         - {name: subtype, const: LD}
         # GemminiISA.scala:111-121; scale and state slots are RTL-derived.
         - {name: state_id, operand: rs1, bundle: ConfigMvinRs1, field: state_id}
+        - {name: shrink, operand: rs1, bundle: ConfigMvinRs1, field: shrink}
         # gemmini.h config_ld passes the DRAM row stride as the whole rs2 operand.
         - {name: stride, operand: rs2, as: raw}
         - {name: scale, operand: rs1, bundle: ConfigMvinRs1, field: scale, as: f32}

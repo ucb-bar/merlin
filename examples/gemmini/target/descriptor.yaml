@@ -222,8 +222,6 @@ workload_spec:
   max_synthesized_capsules: 160
   # Derivation requires sealed Core ATen spec-validation evidence bound to the selected spec.
   phase0_spec_validation: required
-  # Operations only: the spec's declared compositions are out of this corpus's scope.
-  synthesize_compositions: false
 
 host_lane:
   capability_spec: examples/gemmini/platform/host-capabilities-portable-v3.yaml
