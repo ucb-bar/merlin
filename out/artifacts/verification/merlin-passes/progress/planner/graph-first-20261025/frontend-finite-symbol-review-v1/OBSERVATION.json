@@ -1,0 +1,86 @@
+{
+  "status": "OFFLINE finite standard-parser lookup proposal; coordinator review pending; original profile remains PARTIAL",
+  "exact_additional_pair": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+    "l_Lean_Parser_Tactic_simpLemma___boxed"
+  ],
+  "all_noninitial_additional_pairs": [
+    [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "l_Lean_Parser_Tactic_simpLemma___boxed"
+    ]
+  ],
+  "process": {
+    "command": [
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "--inhibit-cache",
+      "--glibc-hwcaps-mask",
+      "",
+      "--library-path",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean:/usr/lib",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-j1",
+      "--root=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/module-runtime-development-v1/build/source",
+      "-o",
+      "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/module-runtime-development-v1/build/compiled/Merlin/GraphRegionsDeclaredCaptureExamples.olean",
+      "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/module-runtime-development-v1/build/source/Merlin/GraphRegionsDeclaredCaptureExamples.lean"
+    ],
+    "pid": 139222,
+    "returncode": 0
+  },
+  "postcheck": {
+    "all_bound_bytes_unchanged": true,
+    "controller_sources_checked": 5,
+    "graph_or_native_qualification": false,
+    "original_manifests_checked": 2,
+    "original_sdk_runtime_bindings_checked": 3276,
+    "project_modules_with_bound_outputs": 26,
+    "project_sources_checked": 30,
+    "system_preload_absent": true
+  },
+  "source_guard": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/module-runtime-development-v1/controller-snapshot/lean_graph_regions_declared_pure_trace.py",
+    "bytes": 9118,
+    "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba"
+  },
+  "tests": [
+    {
+      "case": "genuine_exact_extra_symbol",
+      "passed": true,
+      "accepted": true,
+      "reason": null
+    },
+    {
+      "case": "wrong_symbol",
+      "passed": true,
+      "accepted": false,
+      "reason": "unreviewed optional symbol diagnostic: ('/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so', 'l_Lean_Parser_Tactic_UNBOUND___boxed')"
+    },
+    {
+      "case": "wrong_DSO",
+      "passed": true,
+      "accepted": false,
+      "reason": "unreviewed optional symbol diagnostic: ('/usr/lib/libm.so.6', 'l_Lean_Parser_Tactic_simpLemma___boxed')"
+    },
+    {
+      "case": "wrong_namespace",
+      "passed": true,
+      "accepted": false,
+      "reason": "unknown loader namespace syntax: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [1]"
+    },
+    {
+      "case": "wrong_error",
+      "passed": true,
+      "accepted": false,
+      "reason": "unreviewed loader line 897: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so: error: symbol lookup error: relocation failure: l_Lean_Parser_Tactic_simpLemma___boxed (fatal)"
+    }
+  ],
+  "passed": 5,
+  "total": 5,
+  "known_init_files": 10,
+  "known_link_maps": 10,
+  "sdk_runtime_files_read": 0,
+  "native_invocations": 0,
+  "old_context_promoted": false,
+  "qualification": false
+}

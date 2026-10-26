@@ -1,0 +1,14 @@
+{
+  "thread_id": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "expected_turn_id": "01a1756b-d4a7-7fa0-aa56-6827056e5960",
+  "phase": "accepted",
+  "prompt": "Continue the full graph batch. Coordinator reviewed the exact single optional parser-symbol case: read out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/frontend-finite-symbol-review-v1/README.md and REVIEW.json. Authorize ONLY (original libleanshared.so, l_Lean_Parser_Tactic_simpLemma___boxed) undefined-symbol diagnostic in namespace0 with process rc0, unchanged original3276/source/object refs and otherwise known runtime maps. Five offline negative/positive cases and exact guard identity reviewed; no wildcard/other errors/new expected pins. This supersedes the observer stop ONLY for a NEW versioned DEVELOPMENT context; preserve old profile PARTIAL and v9 UNKNOWN mismatch/hold.\n\nPrefer OFFLINE recovery/binding of already successful Examples source/command/object/runtime trace, not repeating its native invocation just to promote an old observer profile. If association is unavailable retain the exact refusal. Continue FIRST-TIME ParentExamples,30 exact-root audits and the all-site actual-parent/cache/graph correspondence through the existing full assignment. Keep after-compaction ACTIVE top current and chronological held contexts clearly historical. No held oracle, old profile promotion, SDK repair/downloads/numerics/graph-native qualification. Coordinator alone publishes. Continue large batch until a NEW genuine user stop.",
+  "model_override": false,
+  "prior_status": {
+    "type": "active",
+    "activeFlags": []
+  },
+  "result": {
+    "turnId": "01a1756b-d4a7-7fa0-aa56-6827056e5960"
+  }
+}
