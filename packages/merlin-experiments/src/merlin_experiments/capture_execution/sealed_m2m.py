@@ -271,10 +271,26 @@ _REPLAYABLE_LOG_ENV = (
 )
 
 
+def _declared_cpu_capability() -> str:
+    """Select the dispatch recorded by the m2m/native CPU proofs, independent of this host."""
+    from merlin.targetgen import native_ieee_certificate
+
+    # Only read the declaration: the full numerical certificate loader also
+    # requires the original proof host's library and header paths to exist.
+    certificate = strict_json.loads(Path(native_ieee_certificate.__file__).with_suffix(".json").read_bytes())
+    capability = certificate["host"]["capability"]
+    if not isinstance(capability, str) or not capability:
+        raise SealedM2MError("native CPU certificate lacks a declared CPU capability")
+    return capability.lower()
+
+
 def _guest_env(
     output_mount: Path, *, replayable_logs: bool, loader_env: dict[str, str | None] | None = None
 ) -> dict[str, str]:
+    if "ATEN_CPU_CAPABILITY" in (loader_env or {}):
+        raise SealedM2MError("loader environment cannot override recorded ATEN_CPU_CAPABILITY")
     env = {"USER": "capture", "LOGNAME": "capture", "XDG_CACHE_HOME": str(output_mount / "cache")}
+    env["ATEN_CPU_CAPABILITY"] = _declared_cpu_capability()
     if replayable_logs:
         env.update(_REPLAYABLE_LOG_ENV)
     for name, value in (loader_env or {}).items():
@@ -729,7 +745,7 @@ def _declared_loader_env(
         for node in ast.walk(tree)
     ):
         raise SealedM2MError("indirect loader environment read is not selectable")
-    protected = {"USER", "LOGNAME", "XDG_CACHE_HOME", "TORCH_CPP_LOG_LEVEL", "HOME", "PATH"}
+    protected = {"USER", "LOGNAME", "XDG_CACHE_HOME", "TORCH_CPP_LOG_LEVEL", "HOME", "PATH", "ATEN_CPU_CAPABILITY"}
     for name, value in selected.items():
         if (
             not isinstance(name, str)
@@ -1079,8 +1095,18 @@ def _validate_snapshots(
 def _materialized(
     output: Path, source: Path, output_mount: Path, *, worker_member: str = "worker.py"
 ) -> dict[str, Any]:
-    """Delegate to the source-pinned capture validation implementation."""
-    return _validation_functions()._materialized(output, source, output_mount, worker_member=worker_member)
+    """Verify materialization and require the dispatch selected by the recorded policy."""
+    result = _validation_functions()._materialized(output, source, output_mount, worker_member=worker_member)
+    declared = _declared_cpu_capability()
+    try:
+        record = strict_json.loads((output / "meta.json").read_bytes())
+        dispatch = record["determinism"]["cpu_dispatch"]
+        capability = dispatch["capability"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise SealedM2MError("capture lacks an observed CPU dispatch capability") from exc
+    if not isinstance(capability, str) or capability.lower() != declared or dispatch.get("status") != "observed":
+        raise SealedM2MError(f"capture CPU dispatch {capability!r} does not match declared capability {declared!r}")
+    return result
 
 
 def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:

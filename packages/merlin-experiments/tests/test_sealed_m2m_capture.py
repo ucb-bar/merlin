@@ -350,6 +350,9 @@ def test_v2_materialized_receipt_binds_the_executed_package_worker(tmp_path, mon
         },
     }
     (output / "capture_receipt.json").write_text(json.dumps(receipt))
+    (output / "meta.json").write_text(
+        json.dumps({"determinism": {"cpu_dispatch": {"capability": "AVX2", "status": "observed"}}})
+    )
     monkeypatch.setattr(
         application_inventory,
         "verify_capture_receipt",
