@@ -1,3 +1,22 @@
+**CURRENT USER RESUME — 3.5-DAY PAPER DEADLINE.**
+The user resumed all three workers to fix Graham's gate/capture findings and
+finish the strongest existing graph results. Read
+`out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/README.md`
+from the repository root. This supersedes historical end-of-day stops and old
+assignments below. The shared installed Lean runtime hold remains; native
+execution requires a separately justified context. No numerical work or new
+broad pass families. Coordinator owns evidence/runtime/integration; workers
+continue their new full batches after compaction until a NEW user stop.
+
+# Historical user stop — superseded by the current resume above
+
+The user returned and asked ALL agents to wrap up, document progress and continue
+tomorrow. Only safe checkpoint/documentation is authorized now. Read
+`../../graph-first-20261025/USER-STOP-TODAY.md` from this directory. Do not resume
+any task after compaction without a NEW user resume. The selected shared Lean
+runtime binding incident remains UNKNOWN and native work is held. All earlier
+ACTIVE/resume instructions below are historical during this stop.
+
 **CURRENT W MODEL — USER-AUTHORIZED SWITCH, 2026-10-26 02:22 UTC.**
 Repeated GPT-6.1-Sol capacity failures/pending retry were superseded by the user's
 "Switch models if needed" instruction. Same W conversation now runs GPT-6-Astra,

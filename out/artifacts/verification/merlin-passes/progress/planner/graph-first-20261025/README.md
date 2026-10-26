@@ -1,4 +1,25 @@
-# CURRENT USER RESUME — graph transformations before numerics
+**CURRENT USER RESUME — 3.5-DAY PAPER DEADLINE.**
+The user resumed all three workers to fix Graham's gate/capture findings and
+finish the strongest existing graph results. Read
+`out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/README.md`
+from the repository root. This supersedes historical end-of-day stops and old
+assignments below. The shared installed Lean runtime hold remains; native
+execution requires a separately justified context. No numerical work or new
+broad pass families. Coordinator owns evidence/runtime/integration; workers
+continue their new full batches after compaction until a NEW user stop.
+
+# Historical user stop — superseded by the current resume above
+
+Read [the latest user stop](USER-STOP-TODAY.md). All three workers are saving
+safe checkpoints and stopping. The user plans to continue tomorrow; do not
+automatically resume graph, source-only, proof or native work after compaction.
+The [shared selected Lean runtime hold](shared-lean-runtime-hold-v1/README.md)
+remains UNKNOWN. No suspect reread, native retry or qualification promotion.
+The previous resume and ACTIVE frontier below record progress, not permission
+to continue during this stop. Only checkpoint/documentation/publication wrap-up
+remains authorized now; a NEW user resume is required for further work.
+
+# Historical user resume — graph transformations before numerics
 
 Authorization received 2026-10-25, recorded 23:34 UTC. The user said:
 

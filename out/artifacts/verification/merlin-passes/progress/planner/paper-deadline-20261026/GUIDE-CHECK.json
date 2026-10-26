@@ -1,0 +1,7 @@
+{
+  "guide_links_checked": 7,
+  "guide_links_missing": 0,
+  "structure_gate": "existing zephyr_model.py 3557 > 3537 failure",
+  "worker_native_contexts": "held pending concrete new context review",
+  "new_graph_qualification_claimed": false
+}

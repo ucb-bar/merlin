@@ -1,5 +1,13 @@
 # Candidate verification text — independent review pending
 
+Current 2026-10-26 update: all three workers are resumed on compiler-gate authority,
+input admission and actual-after binding fixes from Graham's review. Read
+`../paper-deadline-20261026/README.md` and its human review guide. The installed
+Lean binding failure remains UNKNOWN. A separate private-original-image basic
+kernel probe passed, but graph native contexts still require review and fresh
+qualification. New development milestones do not expand the qualified rows or
+approve this draft. Historical stopped-state reports remain historical.
+
 This draft addresses the two manuscript FIXMEs. It describes the delivered
 structural artifacts, not the intended all-shared-pass end state. Graham should
 review it against the exact statements and IR mapping before it enters the
@@ -15,10 +23,13 @@ ordered loop unrolling and segmentation, and initialized buffer reuse, each
 within its explicitly checked domain. Trusted parsing and projection translate
 the actual before/after IR into proof obligations; Lean checks preservation of
 the modeled observations under recorded operation and environment contracts.
-Unsupported boundaries are refused. The scalar and composed scalar/loop results
-preserve returned values and terminal state on both success and failure. The
-view and storage results equate possible complete outcomes, with descriptor and
-allocation premises; they do not establish failure or divergence equivalence.
+The standalone validators refuse unsupported boundaries; the original compiler
+broker's local/identity completion was not whole-program proof authority, and
+its corrected enforcement route is still being qualified. The scalar and
+composed scalar/loop results preserve returned values and terminal state on both
+success and failure. The view and storage results equate possible complete
+successful outcomes, with descriptor and allocation premises; they do not
+establish failure or divergence equivalence.
 The appendix lists each admitted variant, theorem, mapping and assumption.
 
 A worked example validates an actual four-pass CSE/DCE, loop-invariant motion,

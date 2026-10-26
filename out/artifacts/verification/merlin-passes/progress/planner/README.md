@@ -1,4 +1,21 @@
-**CURRENT: USER RESUMED ALL THREE GRAPH WORKERS — 2026-10-25.**
+**CURRENT USER RESUME — 3.5-DAY PAPER DEADLINE.**
+The user resumed all three workers to fix Graham's gate/capture findings and
+finish the strongest existing graph results. Read
+`out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/README.md`
+from the repository root. This supersedes historical end-of-day stops and old
+assignments below. The shared installed Lean runtime hold remains; native
+execution requires a separately justified context. No numerical work or new
+broad pass families. Coordinator owns evidence/runtime/integration; workers
+continue their new full batches after compaction until a NEW user stop.
+
+**HISTORICAL USER STOP — superseded by the current resume above.**
+Read `graph-first-20261025/USER-STOP-TODAY.md`. The user plans to continue tomorrow;
+only safe checkpoint/documentation is authorized now. Do not resume proof,
+feature, native or source-only work after compaction without a NEW user resume.
+The shared selected Lean runtime hold remains unresolved. Earlier resume and
+continuous-work instructions below are historical.
+
+**HISTORICAL: USER RESUMED ALL THREE GRAPH WORKERS — 2026-10-25.**
 The new user instruction supersedes the historical stop below. Graph
 transformations remain the priority before numerics. Read the current resume
 and claim criteria in `graph-first-20261025/README.md` (planner-relative).
