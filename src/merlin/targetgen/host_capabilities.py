@@ -8,20 +8,23 @@ from __future__ import annotations
 
 import copy
 import json
-from merlin.frontends.linalg_integer_seams import SCHEMA as INTEGER_SEAM_SCHEMA, validate as validate_integer_seam, recognize as recognize_integer_seam
 from collections.abc import Mapping
-from merlin.frontends.linalg_quantization_seams import (
-    SCHEMA as QUANTIZATION_SEAM_SCHEMA,
-    validate as validate_quantization_seam,
-    recognize as recognize_quantization_seam,
-)
 
 from merlin.common.digest import is_sha256
-from merlin.frontends.connected_index_source_body import SCHEMA as CONNECTED_INDEX_SCHEMA, screen as screen_connected_index
 from merlin.frontends.bounded_control_source_body import (
-    SCHEMA as BOUNDED_CONTROL_SCHEMA, ROLES as BOUNDED_CONTROL_ROLES,
-    validate as validate_bounded_control, screen as screen_bounded_control,
+    ROLES as BOUNDED_CONTROL_ROLES,
 )
+from merlin.frontends.bounded_control_source_body import (
+    SCHEMA as BOUNDED_CONTROL_SCHEMA,
+)
+from merlin.frontends.bounded_control_source_body import (
+    screen as screen_bounded_control,
+)
+from merlin.frontends.bounded_control_source_body import (
+    validate as validate_bounded_control,
+)
+from merlin.frontends.connected_index_source_body import SCHEMA as CONNECTED_INDEX_SCHEMA
+from merlin.frontends.connected_index_source_body import screen as screen_connected_index
 from merlin.frontends.linalg_embedding_gather import (
     SCHEMA as EMBEDDING_GATHER_SCHEMA,
 )
@@ -31,9 +34,22 @@ from merlin.frontends.linalg_embedding_gather import (
 from merlin.frontends.linalg_embedding_gather import (
     validate_source_body as validate_embedding_gather_body,
 )
+from merlin.frontends.linalg_integer_seams import SCHEMA as INTEGER_SEAM_SCHEMA
+from merlin.frontends.linalg_integer_seams import recognize as recognize_integer_seam
+from merlin.frontends.linalg_integer_seams import validate as validate_integer_seam
 from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
 from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
 from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
+from merlin.frontends.linalg_quantization_seams import (
+    SCHEMA as QUANTIZATION_SEAM_SCHEMA,
+)
+from merlin.frontends.linalg_quantization_seams import (
+    recognize as recognize_quantization_seam,
+)
+from merlin.frontends.linalg_quantization_seams import (
+    validate as validate_quantization_seam,
+)
+from merlin.targetgen.admission_conditions import validate_emission_obligations, validate_source_conditions
 from merlin.targetgen.host_linkage_contract import (
     required_composite_math_symbol,
     validate_linkage_contract,
@@ -63,6 +79,10 @@ def validate_host_capabilities(
     ):
         raise ValueError("exact_readout requires explicit API, review status and half_to_even rounding")
     special = document.get("native_ieee_special_values")
+    if isinstance(special, dict) and "emission_obligations" in special:
+        validate_emission_obligations(special["emission_obligations"])
+    if isinstance(special, dict) and "admission_conditions" in special:
+        validate_source_conditions(special["admission_conditions"])
     if special is not None and (
         not isinstance(special, dict)
         or special.get("schema") != "merlin.native_ieee_special_values.v1"
@@ -99,6 +119,10 @@ def validate_host_capabilities(
         if not isinstance(row, dict) or not isinstance(row.get("id"), str) or not row["id"] or row["id"] in seen:
             raise ValueError("host capability operations require unique IDs")
         seen.add(row["id"])
+        if "emission_obligations" in row:
+            validate_emission_obligations(row["emission_obligations"])
+        if "admission_conditions" in row:
+            validate_source_conditions(row["admission_conditions"])
         if row.get("status", "reviewed") not in REVIEW_STATUSES:
             raise ValueError(f"host capability {row['id']} has an invalid review status")
         if row.get("placement") != "host" or not isinstance(row.get("signature"), dict) or not row["signature"]:
@@ -168,6 +192,8 @@ def validate_host_capabilities(
                 "description",
                 "source_body",
                 "linkage_contract",
+                "admission_conditions",
+                "emission_obligations",
             }
             if set(row) - allowed or not (row.get("ops") or row.get("families") or row.get("family")):
                 raise ValueError(f"host capability {row['id']} has unsupported fields or no selector")

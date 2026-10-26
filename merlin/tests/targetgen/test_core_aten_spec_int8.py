@@ -27,11 +27,18 @@ def selection():
     base = repo_root() / "examples/gemmini/target"
     spec = load_software_spec(base / "software-spec.yaml")
     resolved, record = resolve_spec(spec, {})
+    host = validate_host_capabilities(
+        load_yaml(repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml")
+    )
+    # Isolate the typed pipeline/rank tests from concrete execution conditions.
+    # The unchanged selected declarations fail closed without those observations
+    # in test_packet2_admission.py.
+    for document in (resolved, host):
+        for row in document["operations"]:
+            row.pop("admission_conditions", None)
     return dict(
         spec=resolved,
-        host=validate_host_capabilities(
-            load_yaml(repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml")
-        ),
+        host=host,
         resolution=record,
         identities=dict(
             software_spec={"path": str(base / "software-spec.yaml")},
@@ -43,16 +50,20 @@ def selection():
 @pytest.mark.parametrize("rank,expected", [(rank, "admitted") for rank in range(6)] + [(6, "unsupported")])
 def test_exact_dequantize_rank_and_dtype(selection, rank, expected):
     signature = host_signature(DEQUANTIZE, rank, dict(zero_point=0))
-    for authority in ("spec", "host"):
-        assert admit_operation(selection[authority], DEQUANTIZE, signature, "host")["status"] == expected
-        for operand in (["i32", "f32", "i64"], ["i8", "f64", "i64"], ["i8", "f32", "i32"]):
-            wrong = {**signature, "ordered_operand_dtypes": operand}
-            assert admit_operation(selection[authority], DEQUANTIZE, wrong, "host")["status"] != "admitted"
+    assert admit_operation(selection["spec"], DEQUANTIZE, signature, "host")["status"] != "admitted"
+    assert admit_operation(selection["host"], DEQUANTIZE, signature, "host")["status"] == expected
+    for operand in (["i32", "f32", "i64"], ["i8", "f64", "i64"], ["i8", "f32", "i32"]):
+        wrong = {**signature, "ordered_operand_dtypes": operand}
+        assert admit_operation(selection["host"], DEQUANTIZE, wrong, "host")["status"] != "admitted"
 
 
 def test_exact_quantize_parameters_and_typed_zero_point(selection):
     signature = host_signature(QUANTIZE, 3, dict(zero_point=0, quant_min=-128, quant_max=127))
-    for authority in ("spec", "host"):
+    # Exact Q retains a binary64 scale; the deleted software f32 reciprocal
+    # declaration cannot supply this boundary.
+    signature["ordered_operand_dtypes"] = ["f32", "f64", "i64"]
+    # Platform capabilities own host Q; the software host twins were deleted.
+    for authority in ("host",):
         assert admit_operation(selection[authority], QUANTIZE, signature, "host")["status"] == "admitted"
         for parameters in (
             dict(zero_point=1, quant_min=-128, quant_max=127),
@@ -445,7 +456,7 @@ def test_software_rank_constraints_refuse_non_ranks(rank):
     from merlin.targetgen.software_spec import validate_software_spec
 
     document = load_yaml(repo_root() / "examples/gemmini/target/software-spec.yaml")
-    document["operations"]["host_dequantize_per_tensor"]["ranks"] = [rank]
+    document["operations"]["contraction"]["ranks"] = [rank]
     with pytest.raises(ValueError, match="nonnegative integers"):
         validate_software_spec(document)
 

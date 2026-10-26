@@ -469,10 +469,13 @@ def prepare_integer_components(
             for b in proof.get("bindings", [])
             if b["source_operation_ordinal"] == ordinal and b.get("numeric", {}).get("family") in {"F2", "F4"}
         ]
+        from merlin.targetgen.admission_conditions import binding_declaration
+
+        identity = binding_declaration(binding[0]) if len(binding) == 1 else None
         contraction = any(it.data.value == "reduction" for it in op.get_iterator_types())
         family = (
             "contraction"
-            if binding and binding[0]["numeric"].get("form") == "bilinear"
+            if identity == "component_bilinear"
             else "reduction"
             if contraction
             else "elementwise_map"
@@ -489,7 +492,8 @@ def prepare_integer_components(
         )
         decision = admit_operation(selection["spec"], family, signature, "accelerator")
         host = admit_operation(selection["host"], family, signature, "host")
-        if decision["status"] != "admitted" or host["status"] != "admitted" or len(binding) != 1:
+        if (decision["status"] != "admitted" or host["status"] != "admitted" or len(binding) != 1
+                or decision.get("declaration") != identity):
             raise Refusal(
                 reason="component software/host/source binding incomplete",
                 software=decision,

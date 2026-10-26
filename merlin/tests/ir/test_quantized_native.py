@@ -148,7 +148,7 @@ def test_reduction_dependent_parallel_product_is_still_a_composition(tmp_path, d
     assert "parallel runtime product" in (tmp_path / "quantized-native-refusal.json").read_text()
 
 
-def test_complex_components_with_frozen_coefficients_reach_numeric_proof(tmp_path, monkeypatch, declared_spec):
+def test_complex_components_require_a_validated_operand_storage_declaration(tmp_path, monkeypatch, declared_spec):
     (tmp_path / "model.mlir").write_text("""module {
       func.func @forward(%x:tensor<1x2xf32>) -> tensor<1x1xf32> {
         %w=arith.constant dense<1.0> : tensor<2x1xf32>
@@ -157,26 +157,17 @@ def test_complex_components_with_frozen_coefficients_reach_numeric_proof(tmp_pat
         %r=linalg.matmul ins(%x,%w:tensor<1x2xf32>,tensor<2x1xf32>) outs(%seed:tensor<1x1xf32>) -> tensor<1x1xf32>
         return %r : tensor<1x1xf32>
     }}""")
-    called = []
+    def forbidden(*args, **kwargs):
+        raise AssertionError("unvalidated complex storage reached component proof")
 
-    def prove(*args, **kw):
-        called.append(True)
-        return dict(status="admitted", exact_dtype_sites=1, quantized_contract=kw["quantized_contract"])
-
-    def reference(directory, mode):
-        (directory / "quantized-native-reference.json").write_text(
-            json.dumps(dict(expected_output_bytes={"0": "00000000"}))
-        )
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr(components, "prepare_integer_components", prove)
-    monkeypatch.setattr(numeric, "_source_reference", reference)
+    monkeypatch.setattr(components, "prepare_integer_components", forbidden)
     report = dict(
         output_count=1,
         cases=[dict(status="bundled", input_abi=[dict(dtype="complex<f32>")], output_abi=[dict(dtype="f32")])],
     )
-    plan = prepare(tmp_path, report, **PREPARE)
-    assert called and plan["native_admission"]["status"] == "device"
+    original = (tmp_path / "model.mlir").read_bytes()
+    assert prepare(tmp_path, report, **PREPARE) is None
+    assert (tmp_path / "model.mlir").read_bytes() == original
 
 
 def test_native_exact_success_does_not_try_quantization(tmp_path, monkeypatch):

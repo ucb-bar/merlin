@@ -4,7 +4,7 @@ import pytest
 from mlir_fixtures import generic
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.targetgen import floating_contract, native_byte_activation, operator_review, quantized_literal_reference
+from merlin.targetgen import floating_contract, native_byte_activation, quantized_literal_reference
 from merlin.targetgen.native_quantized_activation import prepare
 
 
@@ -24,7 +24,6 @@ def setup(monkeypatch, *, precision="quantized_exact", maximum=1):
     if precision != "quantized_exact":
         # An IR whose floating work keeps eager bits (identity/movement) cannot be quantized.
         monkeypatch.setattr(floating_contract, "requires_quantized_model", lambda m: dict(quantized=False, ops=[]))
-    monkeypatch.setattr(operator_review, "review_record", lambda r: dict(operator_accepted=True))
     monkeypatch.setattr(quantized_literal_reference, "qualify", lambda d, r, p, c: {**p, "contract": c})
 
     def compile(d, r, s, p, pkg, module, root, data, binding):
@@ -42,9 +41,10 @@ def setup(monkeypatch, *, precision="quantized_exact", maximum=1):
     selection = dict(
         spec=dict(
             numerical_semantics=dict(
-                quantized_native_fallback=dict(admission="after_native_exact_failure"),
+                quantized_native_fallback=dict(status="reviewed", admission="after_native_exact_failure"),
+                policy_reviews=dict(quantization_nonfinite=dict(status="reviewed")),
                 calibration_domain=dict(
-                    minimum=-maximum,
+                    status="reviewed", minimum=-maximum,
                     maximum=maximum,
                     evaluation_inputs="never_read",
                     scale_policy="enclosing_power_of_two",
@@ -80,3 +80,14 @@ def test_an_extra_effect_is_not_erased_by_source_specialization(tmp_path, monkey
     calls, selection, report = setup(monkeypatch)
     assert prepare(tmp_path, report, selection, None, None, source("f16", extra=True)) is None
     assert calls == []
+
+
+def test_declared_operand_storage_narrowing_is_enforced(tmp_path, monkeypatch):
+    calls, selection, report = setup(monkeypatch)
+    selection["spec"]["numerical_semantics"]["quantized_native_fallback"]["operand_storage"] = ["f32"]
+    assert prepare(tmp_path, report, selection, None, None, source("f16")) is None
+    assert calls == []
+    assert prepare(tmp_path, report, selection, None, None, source("f32")) is not None
+    report["cases"][0]["input_abi"] = [dict(dtype="complex<f32>")]
+    assert prepare(tmp_path, report, selection, None, None, source("f32")) is None
+    assert len(calls) == 1

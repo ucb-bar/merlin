@@ -14,6 +14,11 @@ from pathlib import Path
 
 import yaml
 
+from merlin.targetgen.admission_conditions import (
+    screen_conditions,
+    validate_emission_obligations,
+    validate_source_conditions,
+)
 from merlin.targetgen.operator_review import STATUSES as REVIEW_STATUSES
 from merlin.targetgen.operator_review import review_accepted, review_record
 from merlin.targetgen.transfer_contracts import screen_transfer_contract as screen_transfer_contract
@@ -124,6 +129,26 @@ def validate_numerical_semantics(document: dict) -> dict:
     """Validate the explicit engine selection without importing its implementation."""
     if not isinstance(document, dict):
         raise ValueError("numerical_semantics must be a mapping")
+    reviews = document.get("policy_reviews", {})
+    if not isinstance(reviews, dict):
+        raise ValueError("numerical_semantics.policy_reviews must be a mapping")
+    for field, review in reviews.items():
+        if field not in document or not isinstance(review, dict) or review.get("status") not in REVIEW_STATUSES:
+            raise ValueError(f"invalid numerical policy review for {field!r}")
+    domain_review = reviews.get("calibration_domain")
+    if domain_review is not None and (
+        domain_review.get("scope") != "op_validation_only"
+        or domain_review.get("composition_observers") != "independent_scheme_policy"
+    ):
+        raise ValueError("calibration_domain review must preserve independent composition observer policies")
+    domain = document.get("calibration_domain")
+    if domain is not None and (not isinstance(domain, dict) or domain.get("status") not in REVIEW_STATUSES):
+        raise ValueError("calibration_domain requires an explicit review status")
+    mesh = document.get("native_unit_contract", {}).get("mesh_mac", {})
+    if "component_execution_constraints" in mesh:
+        raise ValueError("component_execution_constraints belong in emission_obligations")
+    if "emission_obligations" in mesh:
+        validate_emission_obligations(mesh["emission_obligations"])
     model = document.get("model")
     if not isinstance(model, dict) or model.get("engine") not in {
         "specir_fp_reduce",
@@ -183,6 +208,24 @@ def validate_numerical_semantics(document: dict) -> dict:
         if field in model and (not isinstance(model[field], str) or not model[field].strip()):
             raise ValueError(f"model.{field} must be a nonempty string")
     return copy.deepcopy(document)
+
+
+def numerical_policy_review(spec: dict) -> dict:
+    """Review the selected quantized model's observer and host IEEE policies."""
+    numeric = spec.get("numerical_semantics", {})
+    documents = {
+        f"numerical_semantics.policy_reviews.{name}": review
+        for name, review in numeric.get("policy_reviews", {}).items()
+    }
+    # Historical recipes include the original domain's review metadata in their
+    # byte identity. A scoped sibling review owns current approval without
+    # rewriting those already selected arithmetic artifacts.
+    if "calibration_domain" in numeric and "calibration_domain" not in numeric.get("policy_reviews", {}):
+        documents["numerical_semantics.calibration_domain"] = numeric["calibration_domain"]
+    return {
+        **review_record(*documents.values(), default="unreviewed"),
+        "rows": {path: review_record(document, default="unreviewed") for path, document in documents.items()},
+    }
 
 
 def validate_readout(readout: object) -> dict:
@@ -269,6 +312,15 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
     if contract is not None and (not isinstance(contract, dict) or contract.get("name") != name):
         raise ValueError(f"{source}: optional capability_contract must match the selected target")
     validate_numerical_semantics(document.get("numerical_semantics"))
+    quantization = document.get("quantization_contract")
+    if quantization is not None and (
+        not isinstance(quantization, dict)
+        or quantization.get("status") not in REVIEW_STATUSES
+        or not isinstance(quantization.get("storage"), list)
+        or not quantization["storage"]
+        or any(not isinstance(dtype, str) or not dtype for dtype in quantization["storage"])
+    ):
+        raise ValueError(f"{source}: quantization_contract requires review status and storage dtypes")
     operations = document.get("operations")
     if isinstance(operations, dict):
         from merlin.targetgen.semantic_families import FAMILIES
@@ -297,6 +349,8 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
         if row["id"] in seen:
             raise ValueError(f"{source}: duplicate operation id {row['id']!r}")
         seen.add(row["id"])
+        if "admission_conditions" in row:
+            validate_source_conditions(row["admission_conditions"])
         if row.get("status", "reviewed") not in REVIEW_STATUSES:
             raise ValueError(f"{source}: operation {row['id']!r} has an invalid review status")
         if "numerical_contract" in row and (
@@ -304,6 +358,8 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
             or (isinstance(row["numerical_contract"], str) and row["numerical_contract"] not in _NUMERICAL_CONTRACTS)
         ):
             raise ValueError(f"{source}: operation {row['id']!r} has an unsupported numerical contract")
+        if "emission_obligations" in row:
+            validate_emission_obligations(row["emission_obligations"])
         # The author names constraints directly; consumers keep one canonical
         # signature representation. Family selectors remain declaration fields.
         flat_constraints = set(row) & (_SIGNATURE_FIELDS - {"family", "families"})
@@ -326,6 +382,8 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                     "hardware",
                     "arithmetic",
                     "unconstrained",
+                    "emission_obligations",
+                    "admission_conditions",
                 }
             )
             if unknown:
@@ -408,6 +466,8 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
             bounds = signature["shape_bounds"]
             if not isinstance(bounds, dict) or any(not isinstance(value, dict) for value in bounds.values()):
                 raise ValueError(f"{source}: operation {row['id']!r} shape_bounds must map axes to constraints")
+        if "execution_constraints" in signature:
+            raise ValueError("execution_constraints belong in emission_obligations")
         _validate_row_domain(row, source)
     if "operation_domains" in document:
         validate_operation_domains(document, source=source)
@@ -739,6 +799,15 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
         if ignored:
             decision["ignored_disjoint_declarations"] = ignored
         return decision
+    # A proved representation uses its own declaration, rather than bypassing its
+    # narrowed execution domain through an ordinary storage-format declaration.
+    represented = [
+        row
+        for row in candidates
+        if signature.get("numerical_family") in (row.get("signature", {}).get("numerical_family") or [])
+        and signature.get("numerical_family") is not None
+    ]
+    candidates = represented or candidates
     unresolved = sorted(row["id"] for row in candidates if "hardware" in row)
     if unresolved:
         raise ValueError(
@@ -756,6 +825,32 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
     for row in candidates:
         constraints = row["signature"]
         missing, refused = [], []
+        dependencies = []
+        numeric_review = None
+        arithmetic = placement in _DOMAIN_PLACEMENTS and row.get("arithmetic") not in {None, "none"}
+        if arithmetic:
+            numeric = spec.get("numerical_semantics", {})
+            if numeric.get("policy_reviews") or numeric.get("calibration_domain"):
+                numeric_review = numerical_policy_review(spec)
+                dependencies.append({"status": numeric_review["review_status"]})
+            quantization = spec.get("quantization_contract")
+            if quantization is not None:
+                dependencies.append(quantization)
+                operand = signature.get("operand_dtype")
+                if operand is None:
+                    missing.append("quantization_contract.storage")
+                elif canonical(operand) not in [canonical(dtype) for dtype in quantization["storage"]]:
+                    refused.append("operand_dtype is outside quantization_contract.storage")
+        special = (spec.get("native_ieee_special_values")
+                   if signature.get("native_ieee_special_values") is True else None)
+        for declaration in (row, special):
+            if not isinstance(declaration, dict) or "admission_conditions" not in declaration:
+                continue
+            state, paths = screen_conditions(declaration["admission_conditions"], signature)
+            if state == "unknown":
+                missing.extend(paths)
+            elif state == "refused":
+                refused.extend(f"admission condition violated: {path}" for path in paths)
         if row.get("admission_basis") == "declared_unchecked" and not review_accepted(row, default="unreviewed"):
             missing.append("unchecked declaration requires explicit operation review")
         missing.extend(sorted(set(constraints) - _SIGNATURE_FIELDS))
@@ -921,7 +1016,16 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                     or (comparison == "multiple_of" and observed % bound)
                 ):
                     refused.append(f"dimension {axis}={observed} violates {comparison}={bound}")
-        review = review_record({"status": spec.get("status", "unreviewed"), "evidence": spec.get("evidence", {})}, row)
+        review = review_record(
+            {"status": spec.get("status", "unreviewed"), "evidence": spec.get("evidence", {})},
+            row,
+            *dependencies,
+            *([special] if isinstance(special, dict) else []),
+        )
+        if signature.get("native_ieee_special_values") is True and (
+            not isinstance(special, dict) or special.get("enabled") is not True
+        ):
+            missing.append("native_ieee_special_values")
         if refused:
             status, reason = "unsupported", "; ".join(refused)
         elif missing or not review["operator_accepted"]:
@@ -941,8 +1045,11 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                 "op": op,
                 "declaration": row["id"],
                 "admission_basis": row.get("admission_basis", "authored"),
+                **({"emission_obligations": copy.deepcopy(row["emission_obligations"])}
+                   if row.get("emission_obligations") else {}),
                 "constraints_status": "refused" if refused else "unknown" if missing else "matched",
                 "unresolved_constraints": missing,
+                **({"numerical_policy_review": numeric_review} if numeric_review is not None else {}),
                 **review,
             }
         )

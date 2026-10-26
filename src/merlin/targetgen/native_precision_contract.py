@@ -16,7 +16,10 @@ def requires_quantized_model(module):
 
 def proves_quantized_model(plan, software):
     from merlin.llvmlower.quantized_native import parameters
+    from merlin.targetgen.software_spec import numerical_policy_review
 
+    if not numerical_policy_review(software)["operator_accepted"]:
+        return False
     engine = plan.get("integer_reference", {}).get("engine")
     if plan.get("quantized_contract") is not None:
         return (

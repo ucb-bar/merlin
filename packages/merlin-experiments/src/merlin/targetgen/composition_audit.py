@@ -147,6 +147,101 @@ def _events(instructions, hardware):
     return commits, computes, loads
 
 
+def _obligation_values(check, instructions, *, target):
+    """Observe effective state at use; unused setup cannot discharge a duty."""
+    needs = {"scaled_accumulate_load"} if (
+        check in {"unit_mvin_scale", "nonnegative_stride"}
+        and any(r.get("class") in _LOADS for r in instructions)
+    ) else set()
+    hardware = _selected_hardware(target, needs)
+    commits, computes, loads = _events(instructions, hardware)
+    transfers = [r["decoded"] for r in instructions if r.get("class") in _LOADS | {"MVOUT"}]
+    if check == "unit_mvin_scale":
+        return [_known(config, "scale") for _, config in loads]
+    if check == "weight_stationary":
+        from merlin.targetgen.rtl.facts import load_facts
+
+        facts = load_facts(target)
+        dataflow = facts.get("facts", facts).get("timing_structure", {}).get("dataflow", {})
+        codes = [int(code) for code, mode in dataflow.get("modes", {}).items() if mode == "weight_stationary"]
+        if dataflow.get("status") != "derived" or len(codes) != 1:
+            raise ValueError("UNKNOWN: weight-stationary select code is underived")
+        return ["WS" if _known(config, "dataflow") == codes[0] else "OS" for _, config in computes]
+    if check == "nonzero_dram":
+        values = [_known(row, "dram") for row in transfers]
+        if any(not isinstance(v, dict) or v.get("kind") != "const" or type(v.get("raw")) is not int for v in values):
+            raise ValueError("UNKNOWN: DRAM address is not observed in retirement")
+        return [v["raw"] for v in values]
+    if check == "transfer_rows":
+        return [_known(row, "rows") for row in transfers]
+    if check == "movement_bytes":
+        # F1 transfers use byte storage; columns are bytes per transferred row.
+        return [_known(row, "cols") for row in transfers]
+    if check == "nonnegative_stride":
+        return ([_known(config, "stride") for _, config in loads]
+                + [_known(config, "out_stride_bytes") for _, config, _, _ in commits])
+    if check == "max_columns":
+        return [_known(store, "cols") for store, _, _, _ in commits]
+    if check == "full_i32":
+        return ["full_i32" if _known(store, "readout") == "i32" else _known(store, "readout")
+                for store, _, _, _ in commits]
+    if check == "primitive_k_bound":
+        return [_known(compute, "a_cols") * 128 * 128 for compute, _ in computes]
+    if check in {"mvout_pool_stride", "mvout_pool_size"}:
+        return [_known(config, check.removeprefix("mvout_")) for _, config, _, _ in commits]
+    if check in {"mvout_scale", "mvout_relu"}:
+        field, identity = ("acc_scale", 1.0) if check == "mvout_scale" else ("acc_act", 0)
+        return [_known(config, field) != identity for _, config, _, _ in commits]
+    if check == "pool_off":
+        return [_known(config, "pool_stride") == 0 and _known(config, "pool_size") == 0
+                for _, config, _, _ in commits]
+    if check == "raw_i32_exit":
+        return [_known(store, "readout") == "i8" or (_known(store, "readout") == "i32" and (
+                    _known(config, "pool_stride") == 0 and _known(config, "pool_size") == 0
+                    and _known(config, "acc_scale") == 1.0 and _known(config, "acc_act") == 0
+                    and 1 <= _known(store, "cols") <= 16))
+                for store, config, _, _ in commits]
+    if check == "pool_window":
+        # _pool already binds the complete window to the declared mode. These
+        # are the row's hardware limits, independently of that mode's values.
+        return [_known(store, "readout") == "i8" and 1 <= _known(store, "cols") <= 16
+                and all(1 <= _known(config, field) <= 3 for field in ("pool_size", "pool_stride"))
+                and all(1 <= _known(config, field) <= 255
+                        for field in ("pool_out_dim", "porows", "pocols", "orows", "ocols"))
+                for store, config, _, _ in commits]
+    raise ValueError(f"UNKNOWN: no retired observation for {check}")
+
+
+def check_emission_obligations(instructions, obligations, *, target):
+    """Enforce declared command duties and retain every unobserved compiler duty."""
+    from merlin.targetgen.admission_conditions import (
+        obligation_condition,
+        screen_conditions,
+        validate_emission_obligations,
+    )
+
+    validate_emission_obligations(obligations)
+    results = {}
+    for name, duty in obligations.items():
+        if duty["status"] == "compiler_obligation":
+            results[name] = copy.deepcopy(duty)
+            continue
+        values = _obligation_values(duty["check"], instructions, target=target)
+        # A transfer-only component may have no mesh work. It must still have
+        # observed DMA; all other checks require their own observation.
+        if (not values and duty["check"] in {"weight_stationary", "primitive_k_bound"}
+                and any(r.get("class") in _LOADS for r in instructions)):
+            results[name] = {**duty, "observation_status": "not_applicable_no_mesh_work"}
+            continue
+        if not values:
+            raise ValueError(f"UNKNOWN: emission obligation {name} has no retired observation")
+        condition = obligation_condition(name, duty)
+        if any(screen_conditions(condition, {name: value})[0] != "matched" for value in values):
+            raise ValueError(f"emission obligation {name} failed {duty['check']}")
+        results[name] = {**duty, "observation_status": "pass", "observed_uses": len(values)}
+    return results
+
+
 def _output_commits(commits, parameters):
     """Select explicit logical output bindings for independent sibling exits."""
     outputs = parameters.get("outputs")
@@ -518,6 +613,8 @@ def check_composition(trace, expected, *, target):
             if row.get("kernel") == binding["symbol"] and row.get("region_id") == binding["region_id"]
         ]
         instructions = _logical_runtime_operands(instructions, target=target)
+        obligations = expected.get("emission_obligations")
+        obligation_report = check_emission_obligations(instructions, obligations, target=target) if obligations else {}
         producer = composition.get("producer")
         if producer == "contraction":
             producer_seen = any(row.get("class") in _COMPUTES for row in instructions)
@@ -545,7 +642,8 @@ def check_composition(trace, expected, *, target):
             ):
                 raise ValueError("UNKNOWN: unsupported composition stage mode")
             check_modes(instructions, modes, expected.get("mode_parameters", {}), target=target)
-        return {"status": "pass", "violations": [], "binding": binding}
+        return {"status": "pass", "violations": [], "binding": binding,
+                "emission_obligations": obligation_report}
     except (KeyError, TypeError, ValueError, AttributeError, ImportError) as error:
         return {
             "status": "fail",

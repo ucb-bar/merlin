@@ -15,6 +15,7 @@ def prepare(directory, report, selection, provider, package, module):
     from merlin.targetgen.native_byte_activation import compile_activation
     from merlin.targetgen.operator_review import review_record
     from merlin.targetgen.quantized_literal_reference import qualify
+    from merlin.targetgen.software_spec import numerical_policy_review
     from merlin.xdsl_dialects.lowering.contraction_coverage import is_compare_select_relu
 
     records = [r for r in report.get("cases", ()) if r.get("status") == "bundled"]
@@ -23,7 +24,11 @@ def prepare(directory, report, selection, provider, package, module):
     if not requires_quantized_model(module)["quantized"]:
         return None
     rule = selection["spec"].get("numerical_semantics", {}).get("quantized_native_fallback")
-    if not rule or not review_record(rule)["operator_accepted"]:
+    if (
+        not rule
+        or not review_record(rule)["operator_accepted"]
+        or not numerical_policy_review(selection["spec"])["operator_accepted"]
+    ):
         return None
     original = str(module)
     from merlin.llvmlower.quantized_zero_threshold import normalize
@@ -38,7 +43,10 @@ def prepare(directory, report, selection, provider, package, module):
         return None
     argument = function.body.block.args[0]
     element = str(getattr(argument.type, "element_type", ""))
-    if element not in {"f16", "bf16", "f32"} or any(n <= 0 for n in argument.type.get_shape()):
+    storage = rule.get("operand_storage", ["f16", "bf16", "f32"])
+    if any(item["dtype"] not in storage for item in records[0].get("input_abi", [])):
+        return None
+    if element not in storage or element not in {"f16", "bf16", "f32"} or any(n <= 0 for n in argument.type.get_shape()):
         return None
     roots = [op for op in function.body.block.ops if op.name == "linalg.generic"]
     if len(roots) != 1 or not is_compare_select_relu(roots[0]):

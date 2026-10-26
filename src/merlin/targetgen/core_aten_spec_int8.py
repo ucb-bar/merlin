@@ -11,6 +11,7 @@ import hashlib
 import math
 from pathlib import Path
 
+from merlin.targetgen.admission_conditions import enforce_provider_emission_obligations
 from merlin.targetgen.operator_review import review_accepted
 from merlin.targetgen.software_spec import admit_operation, load_software_spec
 
@@ -180,7 +181,8 @@ def provider_proof(provider, source, *, package, policy):
     if not callable(getattr(provider, "admit_numeric_schedule", None)):
         return None, None
     try:
-        return provider.admit_numeric_schedule(str(source), package=package, numeric_policy=policy), None
+        proof = provider.admit_numeric_schedule(str(source), package=package, numeric_policy=policy)
+        return enforce_provider_emission_obligations(proof, policy), None
     except ValueError as exc:
         return None, str(exc)
 
@@ -188,6 +190,7 @@ def provider_proof(provider, source, *, package, policy):
 def covering_proof(provider, module, operations, *, package, policy):
     """The provider's proof of module (its ValueError propagates) covering each operation, else ValueError."""
     proof = provider.admit_numeric_schedule(str(module), package=package, numeric_policy=policy)
+    enforce_provider_emission_obligations(proof, policy)
     for op in operations:
         failure = provider_coverage(module, proof, op)
         if failure:

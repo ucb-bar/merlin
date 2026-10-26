@@ -8,6 +8,7 @@ import bisect
 import hashlib
 import json
 import math
+import os
 import subprocess
 from collections import Counter
 from collections.abc import Mapping
@@ -361,7 +362,33 @@ def _instruction_report(expected, observed, elf, opcode):
     }
 
 
-def audit_case_instructions(*, elf, trace, routed, facts):
+def audit_declared_emission(decoded, routed, spec, *, target):
+    """Apply selected row duties to each original source-bound kernel stream."""
+    from merlin.targetgen.admission_conditions import binding_declaration
+
+    from .composition_audit import check_emission_obligations
+    from .trace_check import _bound_trace_view
+
+    bound = _bound_trace_view(decoded, target)
+    view = bound[0] if bound is not None else decoded
+    rows = {row["id"]: row for row in spec["operations"]}
+    reports = {}
+    for binding in routed:
+        identity = binding_declaration(binding)
+        if identity not in rows:
+            raise ValueError(f"UNKNOWN: no selected software declaration {identity}")
+        obligations = rows[identity].get("emission_obligations")
+        if not obligations:
+            continue
+        instructions = [r for r in view["instructions"] if r.get("kernel") == binding["symbol"]]
+        reports[binding["symbol"]] = {
+            "declaration": identity,
+            "obligations": check_emission_obligations(instructions, obligations, target=target),
+        }
+    return reports
+
+
+def audit_case_instructions(*, elf, trace, routed, facts, software_spec=None, target=None):
     """Count executed custom commands inside and outside source-bound ELF kernels.
 
     Port of the functional harness's run14 counter. Inputs must be the original
@@ -388,7 +415,25 @@ def audit_case_instructions(*, elf, trace, routed, facts):
         expected = Counter(row["symbol"] for row in routed)
         ranges = _function_ranges(elf, set(expected))
         observed = _retirement_counts(trace, ranges, opcode, names)
-        return _instruction_report(expected, observed, elf, opcode)
+        report = _instruction_report(expected, observed, elf, opcode)
+        observed_target = target or facts.get("target") or facts.get("facts", facts).get("target")
+        selected = software_spec
+        if selected is None:
+            selected = os.environ.get("MERLIN_CORE_ATEN_SOFTWARE_SPEC")
+        if selected is not None:
+            from merlin.targetgen.rtl.facts import observed_facts
+            from merlin.targetgen.software_spec import load_software_spec
+
+            spec = selected if isinstance(selected, dict) else load_software_spec(selected)
+            if not observed_target:
+                raise ValueError("UNKNOWN: selected emission obligations require an observed target")
+            if observed_target != spec["target"]:
+                raise ValueError("selected emission obligations belong to a different target")
+            target = observed_target
+            with observed_facts(target, facts):
+                decoded = decode_retirement_trace(elf=elf, trace=trace, routed=routed, target=target)
+                report["emission_obligations"] = audit_declared_emission(decoded, routed, spec, target=target)
+        return report
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         return {
             "schema": "run14.observed_native_family_work.v1",
@@ -456,6 +501,7 @@ def audit_native_composition(native, *, policy, facts, target):
         trace=_pinned_native_file(native, "retirement_trace"),
         routed=sidecar["routed"],
         facts=facts,
+        target=target,
     )
     if decoded.get("retirement_trace_sha256") != observed.get("trace_sha256"):
         raise ValueError("UNKNOWN: decoded composition stream is not bound to the executed trace")
@@ -480,6 +526,15 @@ def audit_native_composition(native, *, policy, facts, target):
     if operands(decoded) != operands(replayed):
         raise ValueError("UNKNOWN: decoded composition operands differ from committed register replay")
     decoded = replayed
+    if policy.get("emission_obligations"):
+        from .composition_audit import check_emission_obligations
+        from .trace_check import _bound_trace_view
+
+        bound = _bound_trace_view(decoded, target)
+        view = bound[0] if bound is not None else decoded
+        observed["policy_emission_obligations"] = check_emission_obligations(
+            view["instructions"], policy["emission_obligations"], target=target,
+        )
     frozen = read(declaration, declaration_path.parent)
     consumers = host_chain_consumers(
         _program(declaration, declaration_path.parent).read_text(), frozen, expected["composition"]

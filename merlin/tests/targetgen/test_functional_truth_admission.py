@@ -17,6 +17,14 @@ SPEC = ROOT / "examples/gemmini/target/software-spec.yaml"
 EVIDENCE = json.loads((ROOT / "merlin/tests/data/exactness/core_aten_193_lane_evidence.json").read_text())
 
 
+def _signature_only(spec):
+    # These shape/alias tests isolate source signatures. Concrete execution
+    # conditions are tested against the original declarations separately.
+    for row in spec["operations"]:
+        row.pop("admission_conditions", None)
+    return spec
+
+
 def _case(overload):
     return copy.deepcopy(next(case for case in EVIDENCE["cases"] if case["overload"] == overload))
 
@@ -24,7 +32,7 @@ def _case(overload):
 @pytest.fixture(scope="module")
 def authored():
     # The authored contraction declaration needs no fact resolution; fact-derived rows stay unresolved.
-    return {"spec": resolve_spec(load_software_spec(SPEC), {})[0]}
+    return {"spec": resolve_spec(_signature_only(load_software_spec(SPEC)), {})[0]}
 
 
 def test_native_lane_requires_a_selected_admission():
@@ -56,7 +64,7 @@ def test_broadcast_admission_preserves_the_innermost_axis(overload, shapes, broa
     from merlin.targetgen.functional_truth_admission import source_signature
     from merlin.targetgen.functional_truth_types import Case
 
-    spec = load_software_spec(SPEC)
+    spec = _signature_only(load_software_spec(SPEC))
     row = next(row for row in spec["operations"] if row["id"] == "elementwise_map_standalone")
     row.pop("hardware")
     row["placement"] = "accelerator"
@@ -99,7 +107,7 @@ def test_lane_selection_reopens_authority_at_the_same_paths(tmp_path, monkeypatc
     # Supply capability derivation at its boundary; selection still reads the real spec and facts.
     def select_spec(target, facts, software_spec, host_capabilities):
         return {
-            "spec": resolve_spec(load_software_spec(software_spec), facts)[0],
+            "spec": resolve_spec(_signature_only(load_software_spec(software_spec)), facts)[0],
             "identities": {},
             "capability_contract": {},
             "host": {},
@@ -131,19 +139,95 @@ def test_lane_selection_reopens_authority_at_the_same_paths(tmp_path, monkeypatc
     assert expectation(case, admission=_truth_admission(flow))["lane"] == "host-guard"
 
 
+def test_all_fixture_movement_signatures_are_admitted_without_command_observations(authored, monkeypatch):
+    from merlin.targetgen.operator_review import ACCEPT_ENV
+
+    monkeypatch.setenv(ACCEPT_ENV, "1")
+    # Use the selected declaration rather than an op-name movement roster.
+    movements = [case for case in EVIDENCE["cases"]
+                 if expectation(case, admission=authored).get("admission", {}).get("declaration") == "movement_bitwise"]
+    assert len(movements) == 31
+    assert all(expectation(case, admission=authored)["lane"] == "device" for case in movements)
+
+
 @pytest.mark.skipif(
     not os.environ.get("MERLIN_RTL_FACTS") or not Path(os.environ["MERLIN_RTL_FACTS"]).is_file(),
     reason="the fact-resolved spec needs the selected RTL facts (MERLIN_RTL_FACTS)",
 )
-def test_spec_admission_reproduces_the_recorded_device_lane():
+@pytest.mark.parametrize("enabled", ["1", "0"])
+def test_spec_admission_uses_source_observations_for_recorded_cases(monkeypatch, enabled):
+    from merlin.targetgen.operator_review import ACCEPT_ENV
+
+    monkeypatch.setenv(ACCEPT_ENV, enabled)
     admission = select_admission(
         "gemmini",
         rtl_facts=Path(os.environ["MERLIN_RTL_FACTS"]),
         software_spec=SPEC,
         host_capabilities=ROOT / "examples/gemmini/platform/host-capabilities-core-aten.yaml",
     )
+    decisions = {case["overload"]: expectation(case, admission=admission) for case in EVIDENCE["cases"]}
+    device = {op for op, result in decisions.items() if result["lane"] == "device"}
+    recorded = set(EVIDENCE["device_lane"])
+    assert device == recorded
+    assert len(device) == 57
+
+
+@pytest.mark.skipif(
+    not os.environ.get("MERLIN_RTL_FACTS") or not Path(os.environ["MERLIN_RTL_FACTS"]).is_file(),
+    reason="the fact-resolved spec needs the selected RTL facts (MERLIN_RTL_FACTS)",
+)
+@pytest.mark.parametrize("enabled", ["1", "0"])
+def test_reviewed_fixture_signature_eligibility_is_preserved(monkeypatch, enabled):
+    from merlin.targetgen.operator_review import ACCEPT_ENV
+
+    monkeypatch.setenv(ACCEPT_ENV, enabled)
+    admission = select_admission(
+        "gemmini",
+        rtl_facts=Path(os.environ["MERLIN_RTL_FACTS"]),
+        software_spec=SPEC,
+        host_capabilities=ROOT / "examples/gemmini/platform/host-capabilities-core-aten.yaml",
+    )
+    # Removing optional source conditions does not alter fixture eligibility.
+    _signature_only(admission["spec"])
     device = {
         case["overload"] for case in EVIDENCE["cases"] if expectation(case, admission=admission)["lane"] == "device"
     }
     assert device == set(EVIDENCE["device_lane"])
-    assert len(device) == EVIDENCE["lane_run"]["device"]
+    assert len(device) == 57
+
+
+@pytest.mark.skipif(
+    not os.environ.get("MERLIN_RTL_FACTS") or not Path(os.environ["MERLIN_RTL_FACTS"]).is_file(),
+    reason="the fact-resolved spec needs the selected RTL facts (MERLIN_RTL_FACTS)",
+)
+@pytest.mark.parametrize("enabled,count", [("1", 57), ("0", 51)])
+def test_fixture_admission_preserves_pending_row_gating(monkeypatch, enabled, count):
+    from merlin.targetgen.operator_review import ACCEPT_ENV, PENDING
+
+    monkeypatch.setenv(ACCEPT_ENV, enabled)
+    admission = select_admission(
+        "gemmini",
+        rtl_facts=Path(os.environ["MERLIN_RTL_FACTS"]),
+        software_spec=SPEC,
+        host_capabilities=ROOT / "examples/gemmini/platform/host-capabilities-core-aten.yaml",
+    )
+    # Packet 2 reviews the live row. A pending fixture isolates packet 1's
+    # acceptance-policy regression from the new execution-observation checks.
+    _signature_only(admission["spec"])
+    contraction = next(row for row in admission["spec"]["operations"] if row["id"] == "contraction")
+    contraction["status"] = PENDING
+    device = {
+        case["overload"] for case in EVIDENCE["cases"] if expectation(case, admission=admission)["lane"] == "device"
+    }
+    assert len(device) == count
+    assert len(EVIDENCE["device_lane"]) == EVIDENCE["lane_run"]["device"] == 57
+    expected_drops = {
+        "aten.addmm.default", "aten.bmm.default", "aten.convolution.default",
+        "aten.convolution_backward.default", "aten.cumsum.default", "aten.mm.default",
+    } if enabled == "0" else set()
+    assert set(EVIDENCE["device_lane"]) - device == expected_drops
+    for case in EVIDENCE["cases"]:
+        if case["overload"] in expected_drops:
+            decision = expectation(case, admission=admission)["admission"]
+            assert decision["declaration"] == "contraction"
+            assert decision["status"] == "unknown" and "operation review" in decision["reason"]

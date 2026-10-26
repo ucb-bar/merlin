@@ -99,12 +99,18 @@ def test_authored_native_family_rows_are_honestly_labeled():
     root = repo_root() / "examples/gemmini/target"
     software = load_software_spec(root / "software-spec.yaml")
     rows = {row["id"]: row for row in software["operations"]}
-    authored = "authored, pending operator review"
-    for name in ["movement_bitwise", "component_linear", "component_bilinear"] + HOST_QUANTIZERS:
-        assert rows[name]["status"] == PENDING
-        assert rows[name]["evidence"]["review_status"] == authored
-    assert software["quantization_contract"]["status"] == PENDING
-    assert software["numerical_semantics"]["native_unit_contract"]["status"] == PENDING
+    for name in ["movement_bitwise", "component_linear", "component_bilinear"]:
+        assert rows[name]["status"] == "reviewed"
+        assert rows[name]["evidence"]["review_status"] == "reviewed"
+        assert "review packet" in rows[name]["evidence"]["basis"]
+    assert not set(HOST_QUANTIZERS) & set(rows)
+    assert software["quantization_contract"]["status"] == "reviewed"
+    assert software["numerical_semantics"]["native_unit_contract"]["status"] == "reviewed"
+    for name in ["contraction", "elementwise_map", "elementwise_map_standalone", "pooling_on_readout"]:
+        assert rows[name]["status"] == "reviewed"
+        assert rows[name]["evidence"]["review_status"] == "reviewed"
+        assert "packet2.md" in rows[name]["evidence"]["packet"]
+    assert "host_quantize" not in rows
     host = load_yaml(root.parent / "platform" / "host-capabilities-core-aten.yaml")
     for row in host["operations"]:
         contract = row.get("numerical_contract", {})
@@ -112,7 +118,10 @@ def test_authored_native_family_rows_are_honestly_labeled():
             assert row["status"] == contract["status"] == PENDING
     host_rows = {row["id"]: row for row in host["operations"]}
     for name in ["host_exact_native_boundary"] + HOST_QUANTIZERS:
-        assert host_rows[name]["numerical_contract"]["evidence"]["review_status"] == authored
+        row = host_rows[name]
+        assert row["status"] == row["numerical_contract"]["status"] == "reviewed"
+        assert row["numerical_contract"]["evidence"]["review_status"] == "reviewed"
+        assert "packet2.md" in row["numerical_contract"]["evidence"]["packet"]
 
 
 def test_pending_numerical_claim_does_not_review_a_host_placement(monkeypatch):

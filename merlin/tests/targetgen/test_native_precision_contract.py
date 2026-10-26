@@ -11,9 +11,10 @@ from merlin.targetgen.native_precision_contract import proves_quantized_model, r
 def software():
     return dict(
         numerical_semantics=dict(
-            quantized_native_fallback=dict(admission="after_native_exact_failure"),
+            quantized_native_fallback=dict(status="reviewed", admission="after_native_exact_failure"),
+            policy_reviews=dict(quantization_nonfinite=dict(status="reviewed")),
             calibration_domain=dict(
-                minimum=-1, maximum=1, evaluation_inputs="never_read", scale_policy="enclosing_power_of_two"
+                status="reviewed", minimum=-1, maximum=1, evaluation_inputs="never_read", scale_policy="enclosing_power_of_two"
             ),
             quantization_nonfinite="byte_storage_zero_nan_saturating_infinity",
         )

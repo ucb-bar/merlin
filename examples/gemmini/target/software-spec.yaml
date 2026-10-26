@@ -7,16 +7,27 @@ target: gemmini
 execution_provider_revision: fd21edc7e4a7edb483bb1b73d483fb68bb1c268a
 status: reviewed
 numerical_semantics:
-  # Authored, pending operator review: the selected CPU byte quantizer clamps
+  # Reviewed R8: the selected CPU byte quantizer clamps
   # infinities and casts every NaN sign/payload to storage zero. This is solely
   # an input quantization boundary; rational operation arithmetic stays finite.
   quantization_nonfinite: byte_storage_zero_nan_saturating_infinity
-  # Authored, pending operator review: a single residual NaN is quieted by
+  # Reviewed R8, non-negative residual coefficients only: a residual NaN is quieted by
   # preserving its f32 sign/payload word; finite integer MAC terms cannot
   # introduce a competing NaN. Negative residual coefficients are unproved.
   readout_specials: single_residual_quiet_word_f32
-  # Authored, pending operator review: one required IEEE f32 output conversion.
+  # Reviewed R8: one required IEEE f32 output conversion.
   f32_boundary_overflow: ieee_infinity
+  policy_reviews:
+    quantization_nonfinite: {status: reviewed}
+    readout_specials: {status: reviewed, residual_coefficient: nonnegative}
+    f32_boundary_overflow: {status: reviewed}
+    calibration_domain:
+      status: reviewed
+      scope: op_validation_only
+      composition_observers: independent_scheme_policy
+      # The domain below is the historical v1 recipe payload, including its
+      # status/provenance. This record owns its current review authority.
+      basis: "Operator R6; fixed op-validation convention only; composition tensor/block observers and per-operand sum policies retain their selected domains and reductions"
   calibration_domain:
     schema: merlin.declared_observer_domain.v1
     status: authored_pending_operator_review
@@ -26,6 +37,7 @@ numerical_semantics:
     evaluation_inputs: never_read
     provenance: authored fixed observer range for all static recipe tensors; values outside the range clamp at quantization
   component_domain:
+    status: reviewed
     bounds: full_dtype_storage_domain
     runtime_input_specialization: forbidden
     zero_limb_omission: source_literals_only
@@ -41,32 +53,38 @@ numerical_semantics:
     # Calibration qparams define the quantized program. Runtime examples never
     # narrow its code ranges or choose component kernels.
     quantized_domain: complete_declared_code_range
-    evidence: {review_status: "authored, pending operator review"}
+    evidence: {review_status: reviewed, basis: "Operator R11; review packet R11: documentation of compiler policy in floating_contract.py, not an RTL claim"}
   quantized_native_fallback:
-    status: authored_pending_operator_review
+    status: reviewed
     admission: after_native_exact_failure
-    operand_storage: [f16, bf16, f32, complex_components_f32]
+    operand_storage: [f16, bf16, f32]
     calibration: declared_observer_domain_only
     arithmetic: exact_rational_native_family
     readout: full_int32_then_host_readout_per_scheme
     output: declared_byte_quantize_then_single_dtype_dequantize
     runtime_complex_products: composition_requires_host
-    evidence: {review_status: "authored, pending operator review"}
+    evidence: {review_status: reviewed, basis: "Operator R4; validated real floating storage only; complex components require a separately validated case"}
   native_unit_contract:
-    # Authored, pending operator review: the mesh wraps after every MAC in
-    # either dataflow. Int32 accumulator memory does not widen the mesh.
+    # Int32 accumulator memory does not widen the per-MAC mesh result.
     mesh_mac:
+      status: reviewed
       signed_bits: 20
       overflow: wrap_each_mac
       dataflows: [WS, OS]
-      evidence: {review_status: "authored, pending operator review"}
-    status: authored_pending_operator_review
+      # OS accumulates across computes; a per-compute K proof is insufficient.
+      # Restrict limb components until an OS total-K bound is available.
+      emission_obligations:
+        dataflow: {status: instruction_audit, check: weight_stationary, constraints: {eq: WS}}
+      evidence:
+        review_status: reviewed
+        basis: "Operator R1; review packet R1: Configs.scala:29,38; MacUnit.sv:10; PE.scala:23,108-129; ExecuteController.scala:951; AccumulatorMem.scala:70. OS wrap is reachable at total K >= 32."
+    status: reviewed
     eligibility: source_scalar_dataflow_and_reduction_domains
     allowed_representation: exact_signed_byte_limbs_and_retained_ieee_host_readout
     excluded_constructions: [nonlinear_rounding_construction, parallel_runtime_product_construction, runtime_product_reduction, index_generated_payload_arithmetic, nonuniform_literal_result_construction, nonuniform_literal_coefficient_contraction, forced_ieee_special_division, unproved_payload_carrier, saturation_comparators, readout_offset_rounding, multi_op_identity]
     source_overload_dispatch: forbidden
     result_literals: uniform_fills_are_movement_nonuniform_result_tables_retain_host_construction
-    evidence: {review_status: "authored, pending operator review"}
+    evidence: {review_status: reviewed, basis: "Operator R1; review packet R1: compiler admission policy approved with WS-only limb execution"}
   model:
     engine: integer_reference
   operand_dtype: int8
@@ -92,33 +110,37 @@ numerical_semantics:
     strategy: exact_rational_host
     acc_scale_rounding: half_even
     narrowing: saturate_to_declared_dtype
-    # Authored, pending operator review: one exact host ties-to-even boundary.
+    status: reviewed
+    evidence:
+      review_status: reviewed
+      basis: "Operator R9; review packet R9: Arithmetic.scala:101-107 implements RNE; the source comment at :36 saying away from 0 is incorrect. Host requantization uses exact_readout.requantize_int32."
+    # Integer shift ties round to even, as does the exact host boundary.
     requant_rounding: half_even
     hardware_integer_shift_rounding: rne
     shift: operation_parameter
 quantization_contract:
-  status: authored_pending_operator_review
-  storage: [int8, uint8]
+  status: reviewed
+  storage: [int8]
   ranges: declared_byte_subranges
   zero_points: retained_exact_integer_centering
   weight_scales: [tensor, output_channel]
   admission: selected_provider_exact_centering_and_full_i32_coverage
   requantization: retained_source_host_readout_per_scheme
-  evidence: {review_status: "authored, pending operator review"}
+  evidence: {review_status: reviewed, basis: "Operator R7; review packet R7: Configs.scala:23,27; ExecuteController.scala:836-838. Signed int8 storage only; no hardware zero-point centering, and centred uint8 spans [-255,255]."}
 # Every device declaration states its domain: shapes (ranks), layouts, tails, aliasing,
 # placement and arithmetic. Admission (software_spec.admit_operation) screens these
 # declarations; no separate operation table decides what is accelerated. An axis left open
 # is named under `unconstrained` with the reason it cannot change a valid result.
-# Quantized-island ranks stop at 5: host quantize/dequantize below are declared for 0..5.
+# Quantized-island ranks stop at 5; host Q/DQ support is declared by the platform.
 operation_domains:
   schema: merlin.software_spec.operation_domains.v1
   status: authored_pending_operator_review
   required: [ranks, layouts, tails, aliasing, arithmetic]
 operations:
   contraction:
+    status: reviewed
     # Authored, not derived: the exact-offload outline admits contractions against these authored
-    # bytes and has no fact view to resolve them with. The spec-vs-facts drift check guards every
-    # field here against the selected facts.
+    # bytes and has no fact view to resolve them with. Drift checks cover fact-derived fields.
     # window_mean: the derived recipe quantizes an average pool as this unit's own contraction
     # against a constant one, with the reciprocal of the count folded into the readout scale.
     # Rank 4 (convolution and its backward) is LOWERED to direct per-tap rank-2 matmuls; no im2col
@@ -143,7 +165,45 @@ operations:
     - independent_batches
     aliasing:
     - disjoint_inputs_outputs
+    evidence:
+      review_status: reviewed
+      reviewed_by: Loren Hung, conditional packet 2 approval
+      packet: packet2.md R12; seal3-base 118-145
+      basis: Configs.scala:23-38; PE.scala:23,108-129; AccumulatorMem.scala:63-70; LoadController.scala:108; Configs.scala:114;
+        BeatMerger.scala:71-75
+    emission_obligations:
+      execution_program:
+        status: compiler_obligation
+        condition:
+          all:
+          - all:
+            - path: execution.pe_partial_abs_bound
+              integer: true
+              min: 0
+              max: 524287
+            - path: execution.accumulator_partial_abs_bound
+              integer: true
+              min: 0
+              max: 2147483647
+            - path: execution.pe_bound_scope
+              eq: every_retained_partial_sum_including_total_os_k
+          - path: execution.seed_load
+            eq: unscaled_full_i32_shrink0_once
+          - path: execution.tail_initialization
+            eq: explicit_zero
+          - path: execution.constants
+            eq: signed_int8_or_exact_decomposition
+      raw_i32_exit:
+        status: instruction_audit
+        check: raw_i32_exit
+        constraints:
+          eq: true
+      c_stride:
+        status: compiler_obligation
+        constraints:
+          eq: 1
   elementwise_map:
+    status: reviewed
     hardware: fused
     # A fused stage applies to its producer's result, so it shares the contraction's ranks.
     arithmetic: readout_stages
@@ -152,15 +212,52 @@ operations:
     aliasing: [disjoint_inputs_outputs]
     unconstrained:
       tails: each readout stage maps one accumulator element to one result element; padded lanes never reach a valid result
+    evidence:
+      review_status: reviewed
+      reviewed_by: Loren Hung, conditional packet 2 approval
+      packet: packet2.md R13; seal3-base 146-154
+      basis: AccumulatorScale.scala:118-138,147,154; Configs.scala:117-149; GemminiISA.scala:155-159; raw i32 bypasses
+        activation and scaling
+    emission_obligations:
+      execution_program:
+        status: compiler_obligation
+        condition:
+          any:
+          - all:
+            - path: execution.readout_exit
+              eq: narrow_i8
+            - path: execution.readout_program
+              eq: selected_scheme_order
+            - path: execution.readout_strategy
+              eq: f32_product_rne
+            - path: execution.scale_delivery
+              eq: scalar_per_command_partition
+            - path: execution.relu_commutation
+              eq: nonnegative_multiplier_or_source_order_proof
+          - all:
+            - path: execution.readout_exit
+              eq: accumulator_full
+            - path: execution.readout_stages
+              eq: []
+            - path: execution.columns
+              integer: true
+              min: 1
+              max: 16
+            - path: execution.pooling
+              eq: false
+      raw_i32_exit:
+        status: instruction_audit
+        check: raw_i32_exit
+        constraints:
+          eq: true
+      c_stride:
+        status: compiler_obligation
+        constraints:
+          eq: 1
   elementwise_map_standalone:
     # Operator reviewed 2026-10-01; unchecked RTL paths remain declarations, not facts.
     status: reviewed
-    # The operand sum on the load path (accumulate_on_load). operand_sum is the recipe family it
-    # quantizes. Its general form is the contract's: out = sat(RNE(s_o * act(sum_i w_i x_i + c)))
-    # over at most two int8 tensors and one broadcast constant, per-tensor scales, act in
-    # {none, relu}; int8 or int32 result.
-    # affine_map: the recipe family that quantizes that general form (scalar add/sub/mul/div, neg,
-    # relu, a difference) as integer weights and an int32 constant, then one readout.
+    # Exact integer numerator via unit-scale accumulating loads or bounded weighted mesh.
     families: [elementwise_map, operand_sum, affine_map]
     hardware: standalone
     arithmetic: integer_affine
@@ -172,6 +269,84 @@ operations:
     aliasing: [disjoint_inputs_outputs]
     unconstrained:
       tails: each result element reads only its own operand elements; padded lanes never reach a valid result
+    evidence:
+      review_status: reviewed
+      reviewed_by: Loren Hung, conditional packet 2 approval
+      packet: packet2.md R14; seal3-base 155-174
+      basis: Configs.scala:75-114; Scratchpad.scala:407-421,828-848; VectorScalarMultiplier.scala:130-138; PE.scala:23;
+        exact numerator precedes selected readout
+    emission_obligations:
+      execution_program:
+        status: compiler_obligation
+        condition:
+          all:
+          - path: execution.accumulator_partial_abs_bound
+            integer: true
+            min: 0
+            max: 2147483647
+          - path: execution.load_scale
+            eq: 1.0
+          - any:
+            - all:
+              - path: execution.affine_path
+                eq: unit_scale_accumulating_loads
+              - path: execution.load_scale
+                eq: 1.0
+              - path: execution.weights
+                eq: unit
+            - all:
+              - path: execution.affine_path
+                eq: weighted_integer_mesh
+              - path: execution.weights
+                eq: signed_int8_or_exact_decomposition
+              - all:
+                - path: execution.pe_partial_abs_bound
+                  integer: true
+                  min: 0
+                  max: 524287
+                - path: execution.accumulator_partial_abs_bound
+                  integer: true
+                  min: 0
+                  max: 2147483647
+                - path: execution.pe_bound_scope
+                  eq: every_retained_partial_sum_including_total_os_k
+          - path: execution.seed_load
+            eq: unscaled_full_i32_shrink0_once
+          - any:
+            - all:
+              - path: execution.readout_exit
+                eq: narrow_i8
+              - path: execution.readout_program
+                eq: selected_scheme_order
+              - path: execution.scale_delivery
+                eq: scalar_per_command_partition
+              - path: execution.relu_commutation
+                eq: nonnegative_multiplier_or_source_order_proof
+            - all:
+              - path: execution.readout_exit
+                eq: accumulator_full
+              - path: execution.readout_stages
+                eq: []
+              - path: execution.columns
+                integer: true
+                min: 1
+                max: 16
+              - path: execution.pooling
+                eq: false
+      raw_i32_exit:
+        status: instruction_audit
+        check: raw_i32_exit
+        constraints:
+          eq: true
+      c_stride:
+        status: compiler_obligation
+        constraints:
+          eq: 1
+      load_scale:
+        status: instruction_audit
+        check: unit_mvin_scale
+        constraints:
+          eq: 1.0
   elementwise_map_after_operand_sum:
     status: reviewed
     numerical_contract: operand_sum_exhaustive_i8_v1
@@ -188,6 +363,7 @@ operations:
     unconstrained:
       tails: each result element reads only its own operand elements; padded lanes never reach a valid result
   pooling_on_readout:
+    status: reviewed
     families:
     - reduction
     hardware: fused
@@ -199,6 +375,56 @@ operations:
     aliasing: [disjoint_inputs_outputs]
     unconstrained:
       tails: a padded window is governed by the window_reduction_readout constraint padded_max_requires
+    evidence:
+      review_status: reviewed
+      reviewed_by: Loren Hung, conditional packet 2 approval
+      packet: packet2.md R15; seal3-base 190-201
+      basis: DMA.scala:597-608,616; StoreController.scala:131-133,226; Scratchpad.scala:314,323-325; GemminiISA.scala:125-149;
+        packet Dragon r101/chain.py:54-60 post-ReLU maxpool
+    emission_obligations:
+      execution_program:
+        status: compiler_obligation
+        condition:
+          all:
+          - path: execution.pool_dtype
+            eq: signed_int8
+          - path: execution.pool_result
+            eq: values_only
+          - path: execution.columns
+            integer: true
+            min: 1
+            max: 16
+          - path: execution.pool_size
+            integer: true
+            min: 1
+            max: 3
+          - path: execution.pool_stride
+            integer: true
+            min: 1
+            max: 3
+          - path: execution.pool_grid_max
+            integer: true
+            min: 1
+            max: 255
+          - path: execution.readout_monotone
+            eq: true
+          - path: execution.valid_windows
+            eq: true
+          - any:
+            - path: execution.padded
+              eq: false
+            - all:
+              - path: execution.padded
+                eq: true
+              - path: execution.padding_value
+                eq: 0
+              - path: execution.producer_lower_bound
+                min: 0
+      pool_window:
+        status: instruction_audit
+        check: pool_window
+        constraints:
+          eq: true
   reduction_standalone:
     # Standalone SUM reductions: accumulate-on-load over an outer axis or a window, then one
     # readout scale. Max reductions stay fused (`pooling_on_readout`).
@@ -231,10 +457,11 @@ operations:
     unconstrained:
       tails: movement copies selected bytes; padded lanes are never written back
   movement_bitwise:
-    status: authored_pending_operator_review
+    status: reviewed
     evidence:
-      review_status: "authored, pending operator review"
+      review_status: reviewed
       scope: "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory"
+      basis: "Operator R2; review packet R2: VectorScalarMultiplier.scala:130,137; LoadController.scala:40,72; Configs.scala:66-69; StoreController.scala:43,73-74; DMA.scala:493,500,597-608; BeatMerger.scala:128; MeshWithDelays.scala:155. Disjointness is a compiler obligation, not hardware-enforced."
     families: [movement]
     placement: accelerator
     arithmetic: none
@@ -246,6 +473,21 @@ operations:
       ranks: [0, 1, 2, 3, 4, 5]
       layouts: [row_major_contiguous]
       aliasing: [disjoint_inputs_outputs, result_views_input]
+    # These constrain emitted commands, never source signatures. The generic
+    # native ISA audit replays the selected scales, pooling fields and DMA
+    # bounds at their retired uses. Byte order and complete alias/selector
+    # witnesses still belong to the selected compiler/provider.
+    emission_obligations:
+      mvin_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {eq: 1.0}}
+      minimum_dram_address: {status: instruction_audit, check: nonzero_dram, constraints: {min: 1}}
+      mvout_pool_stride: {status: instruction_audit, check: mvout_pool_stride, constraints: {eq: 0}}
+      mvout_pool_size: {status: instruction_audit, check: mvout_pool_size, constraints: {eq: 0}}
+      maximum_rows_per_command: {status: instruction_audit, check: transfer_rows, constraints: {min: 1, max: 16}}
+      maximum_bytes_per_command: {status: instruction_audit, check: movement_bytes, constraints: {min: 1, max: 64}}
+      transpose: {status: compiler_obligation, constraints: {eq: false}}
+      byte_order: {status: compiler_obligation, constraints: {eq: little}}
+      minimum_stride: {status: instruction_audit, check: nonnegative_stride, constraints: {min: 0}}
+      disjoint_inputs_outputs: {status: compiler_obligation, constraints: {eq: true}}
     numerical_contract:
       family: F1
       arithmetic: none
@@ -255,10 +497,11 @@ operations:
       device_transfer_dtype: int8
       comparison: native_eager_bits
   component_linear:
-    status: authored_pending_operator_review
+    status: reviewed
     evidence:
-      review_status: "authored, pending operator review"
+      review_status: reviewed
       scope: "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory"
+      basis: "Operator R5; review packet R5: Configs.scala:96-107,114; Scratchpad.scala:420-421. Non-unit mvin scaling saturates to int8; non-unit integer weights must use the mesh."
     families: [elementwise_map, reduction]
     placement: accelerator
     arithmetic: integer_components
@@ -272,6 +515,11 @@ operations:
       ranks: [0, 1, 2, 3, 4, 5]
       layouts: [row_major_contiguous]
       aliasing: [disjoint_inputs_outputs]
+    emission_obligations:
+      dataflow: {status: instruction_audit, check: weight_stationary, constraints: {eq: WS}}
+      mvin_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {eq: 1.0}}
+      primitive_k_bound: {status: instruction_audit, check: primitive_k_bound, constraints: {min: 1, max: 524287}}
+      partial_sum_bound: {status: compiler_obligation, condition: {all: [{path: execution.pe_partial_abs_bound, integer: true, min: 0, max: 524287}, {path: execution.accumulator_partial_abs_bound, integer: true, min: 0, max: 2147483647}, {path: execution.pe_bound_scope, eq: every_retained_partial_sum_including_total_os_k}]}}
     numerical_contract:
       representation: signed_radix_256_components
       producer: closed_static_linear_integer
@@ -279,10 +527,11 @@ operations:
       readout: full_i32
       recombination: retained_source_host_exact_integer
   component_bilinear:
-    status: authored_pending_operator_review
+    status: reviewed
     evidence:
-      review_status: "authored, pending operator review"
+      review_status: reviewed
       scope: "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory"
+      basis: "Operator R3; review packet R3: LocalAddr.scala:23; Scratchpad.scala:312-325,673; AccumulatorScale.scala:147; StoreController.scala:225; DMA.scala:598-615. Raw full-i32 output bypasses scale and ReLU; R1 WS-only limb restriction applies."
     families: [contraction]
     placement: accelerator
     arithmetic: integer_components
@@ -296,41 +545,25 @@ operations:
       ranks: [2, 3]
       layouts: [row_major_contiguous]
       aliasing: [disjoint_inputs_outputs]
+    emission_obligations:
+      dataflow: {status: instruction_audit, check: weight_stationary, constraints: {eq: WS}}
+      mvin_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {eq: 1.0}}
+      readout: {status: instruction_audit, check: full_i32, constraints: {eq: full_i32}}
+      mvout_scale: {status: instruction_audit, check: mvout_scale, constraints: {eq: false}}
+      mvout_relu: {status: instruction_audit, check: mvout_relu, constraints: {eq: false}}
+      raw_i32_exit: {status: instruction_audit, check: raw_i32_exit, constraints: {eq: true}}
+      maximum_mvout_columns: {status: instruction_audit, check: max_columns, constraints: {min: 1, max: 16}}
+      mvout_pool_stride: {status: instruction_audit, check: mvout_pool_stride, constraints: {eq: 0}}
+      mvout_pool_size: {status: instruction_audit, check: mvout_pool_size, constraints: {eq: 0}}
+      primitive_k_bound: {status: instruction_audit, check: primitive_k_bound, constraints: {min: 1, max: 524287}}
+      partial_sum_bound: {status: compiler_obligation, condition: {all: [{path: execution.pe_partial_abs_bound, integer: true, min: 0, max: 524287}, {path: execution.accumulator_partial_abs_bound, integer: true, min: 0, max: 2147483647}, {path: execution.pe_bound_scope, eq: every_retained_partial_sum_including_total_os_k}]}}
     numerical_contract:
       representation: signed_radix_256_components
       producer: closed_static_bilinear_integer
       accumulation: exact_i32_with_all_partial_sums_bounded
       readout: full_i32
       recombination: retained_source_host_exact_integer
-  # el4 (fd57639a6) removed every host_* declaration from the accelerator software spec;
-  # host support is selected through the descriptor's platform manifest.
-  host_quantize_exact:
-    status: authored_pending_operator_review
-    evidence:
-      review_status: "authored, pending operator review"
-      change: "Generalized exact rank-agnostic host Q/DQ to ranks 0 through 5; not an extension of prior operator approval"
-    ops: [quantized_decomposed.quantize_per_tensor.default]
-    placement: host
-    ordered_operand_dtypes: [f32, f64, i64]
-    ordered_result_dtypes: [i8]
-  # Exact host dequantization is independent of rank. Phase 1 still owns
-  # lowering, execution and numerical qualification of the emitted compiler.
-  host_dequantize_per_tensor:
-    status: authored_pending_operator_review
-    evidence:
-      review_status: "authored, pending operator review"
-      change: "Generalized exact rank-agnostic host Q/DQ to ranks 0 through 5; not an extension of prior operator approval"
-    ops: [quantized_decomposed.dequantize_per_tensor.default]
-    placement: host
-    ordered_operand_dtypes: [i8, f32, i64]
-    ordered_result_dtypes: [f32]
-    ranks: [0, 1, 2, 3, 4, 5]
-  host_quantize:
-    ops: [quantized_decomposed.quantize_per_tensor.default]
-    placement: host
-    ordered_operand_dtypes: [f32, f32, i64]
-    ordered_result_dtypes: [i8]
-    quantization_parameters: {zero_point: 0, quant_min: -128, quant_max: 127}
+  # Host Q/DQ support is selected through the platform manifest.
 restrictions:
 - declaration: elementwise_map_after_operand_sum
   family: elementwise_map

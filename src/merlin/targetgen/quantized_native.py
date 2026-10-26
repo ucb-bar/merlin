@@ -35,9 +35,18 @@ def prepare(directory, report, *, target, facts, software_spec, host_capabilitie
     if not rule:
         return None
     from merlin.targetgen.operator_review import review_record
+    from merlin.targetgen.software_spec import numerical_policy_review
 
     review = review_record(rule)
-    if not review["operator_accepted"]:
+    if not review["operator_accepted"] or not numerical_policy_review(selection["spec"])["operator_accepted"]:
+        return None
+    storage = rule.get("operand_storage", ["f16", "bf16", "f32"])
+    if any(
+        argument["dtype"] not in storage
+        for record in report["cases"]
+        if record.get("status") == "bundled"
+        for argument in record.get("input_abi", [])
+    ):
         return None
     contract = parameters(selection["spec"])
     if any(
@@ -74,7 +83,8 @@ def prepare(directory, report, *, target, facts, software_spec, host_capabilitie
     ):
         raise Refusal(reason="runtime complex products require a composition")
     if not function.body.block.args or any(
-        str(v.type.element_type) not in {"f16", "bf16", "f32"} for v in function.body.block.args
+        str(v.type.element_type) not in storage or str(v.type.element_type) not in {"f16", "bf16", "f32"}
+        for v in function.body.block.args
     ):
         return None
     from merlin.targetgen.native_construction_patterns import Payloads
