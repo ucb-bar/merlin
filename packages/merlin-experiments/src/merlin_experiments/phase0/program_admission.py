@@ -307,7 +307,7 @@ def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
     ):
         return []
     from merlin.targetgen.contract.interface_emit import parse_interface_mlir
-    from merlin.targetgen.operand_sum_numeric import audit_i8_operand_sum
+    from merlin.targetgen.operand_sum_numeric import audit_i8_operand_sum, audit_i8_per_operand_sum
 
     facets = [
         facet.to_dict() if hasattr(facet, "to_dict") else facet for facet in getattr(evidence, "readout_facets", ())
@@ -333,8 +333,18 @@ def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
                 "status": "unknown",
                 "reason": "selected i8 operand-sum/readout numerics are incomplete or ambiguous",
             }
+        elif attrs.get("operand_sum_rounding", "single_rounding") not in {"single_rounding", "per_operand"}:
+            result = {"status": "unknown", "reason": "undeclared operand-sum rounding"}
+        elif attrs.get("operand_sum_rounding") == "per_operand" and "acc_scale" in stages:
+            result = {
+                "status": "unknown",
+                "reason": "per-operand interface screen requires a separate readout-scale witness",
+            }
         else:
-            result = audit_i8_operand_sum(
+            audit = (
+                audit_i8_per_operand_sum if attrs.get("operand_sum_rounding") == "per_operand" else audit_i8_operand_sum
+            )
+            result = audit(
                 lhs_scale=attrs.get("lhs_scale"),
                 rhs_scale=attrs.get("rhs_scale"),
                 bound_lsb=attrs.get("bound_lsb"),

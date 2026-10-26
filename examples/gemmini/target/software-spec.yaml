@@ -362,6 +362,50 @@ operations:
     aliasing: [disjoint_inputs_outputs]
     unconstrained:
       tails: each result element reads only its own operand elements; padded lanes never reach a valid result
+    # The provider's scaled_operand_sum route (numeric.scaled_operand_sum) realizes this row: the
+    # two byte operands load into the accumulator under f32 load scales, the second accumulating,
+    # then one selected readout drains them. These duties only refuse retired streams outside the
+    # reviewed chain constraint operand_multiplier_in (0, 1]; they admit nothing. Readout
+    # multipliers, pooled drains and the load pairing stay with the composition audit's modes.
+    emission_obligations:
+      load_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {gt: 0.0, max: 1.0}}
+      minimum_stride: {status: instruction_audit, check: nonnegative_stride, constraints: {min: 0}}
+      raw_i32_exit: {status: instruction_audit, check: raw_i32_exit, constraints: {eq: true}}
+      maximum_mvout_columns: {status: instruction_audit, check: max_columns, constraints: {min: 1, max: 16}}
+  elementwise_map_after_per_operand_sum:
+    status: reviewed
+    numerical_contract: operand_sum_per_operand_exhaustive_i8_v1
+    description: >-
+      For each selected scalar f32 operand-scale pair in (0, 1] and each
+      positive finite f32 readout scale with finite products on the full domain,
+      screen all 65,536 ordered signed-i8
+      pairs. Independently RNE and saturate each f32 operand product to i8,
+      add the resulting bytes exactly in i32, optionally ReLU, then multiply
+      in f32, RNE and saturate to i8. Require zero output-code error against
+      the selected two-load device model. This software-model screen is not
+      RTL qualification or a source/provider proof; those remain mandatory.
+      Pooling, bias, residual extensions and accumulator-full exits are outside
+      this contract. Every distinct readout scale needs its own full screen.
+    evidence:
+      review_status: reviewed
+      basis: "Operator review of the per-operand rounded operand-sum row; operand_sum_numeric.audit_i8_per_operand_sum"
+    families: [elementwise_map]
+    hardware: fused_operand_sum
+    arithmetic: integer_affine
+    max_tensor_operands: 2
+    expressions: [affine]
+    broadcasting: [none]
+    ranks: [2]
+    layouts: [row_major_contiguous]
+    aliasing: [disjoint_inputs_outputs]
+    unconstrained:
+      tails: each result element reads only its own operand elements; padded lanes never reach a valid result
+    emission_obligations:
+      load_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {gt: 0.0, max: 1.0}}
+      minimum_stride: {status: instruction_audit, check: nonnegative_stride, constraints: {min: 0}}
+      raw_i32_exit: {status: instruction_audit, check: raw_i32_exit, constraints: {eq: true}}
+      maximum_mvout_columns: {status: instruction_audit, check: max_columns, constraints: {min: 1, max: 16}}
+      pooling: {status: instruction_audit, check: pool_off, constraints: {eq: true}}
   pooling_on_readout:
     status: reviewed
     families:
@@ -572,6 +616,11 @@ restrictions:
   - bias_add
   reason: The direct operand-sum witness covers readout scaling and ReLU, not a bias
     epilogue after the sum.
+- declaration: elementwise_map_after_per_operand_sum
+  family: elementwise_map
+  field: epilogues
+  values: [bias_add]
+  reason: The per-operand screen covers scaling and ReLU only.
 quantization:
   # Seal 4 operator review S4.1-S4.3. These are case axes, never model choices.
   schemes:

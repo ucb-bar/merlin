@@ -290,8 +290,22 @@ def fact_capabilities(
             quantizable.setdefault(str(family), []).append(
                 f"{candidate.get('unit')} {candidate.get('format')}: {(recipe.get('why') or {}).get(family, 'derived')}"
             )
+    from merlin.targetgen.quant_methodology import output_path_of
+
+    path = output_path_of(contract)
+    if path is None and not data_only:
+        from merlin.targetgen.capability_manifests import derived_output_path
+
+        path = derived_output_path(target, facts=dict(raw_facts or {}), contract=dict(contract))
+    operand_sum_placement = _operand_sum_placement(contract, path)
     forms = _forms(
-        families=families, derived=derived, declared=declared, contract=contract, facets=facets, storage=storage
+        families=families,
+        derived=derived,
+        declared=declared,
+        contract=contract,
+        facets=facets,
+        storage=storage,
+        operand_sum_placement=operand_sum_placement,
     )
     # The whole-family view covers every established form, so a declaration of one form never reads
     # as wider than the family.
@@ -317,11 +331,9 @@ def fact_capabilities(
         if verdict["standalone"] and verdict["basis"] == "declared_unchecked":
             dtypes = {_dtype(dtype) for cap in capabilities if not cap.composed_with for dtype in cap.dtypes}
             declarations[family] = {"standalone": {"placement": ["accelerator"], "dtypes": sorted(dtypes)}}
-    from merlin.targetgen.quant_methodology import output_path_of
-
     return {
         "declared_unchecked_forms": declarations,
-        "composition": {"output_path": output_path_of(contract)},
+        "composition": {"output_path": path, "producer_placement": {"operand_sum": operand_sum_placement}},
         "families": families,
         "forms": forms,
         "quantization": {
@@ -330,7 +342,36 @@ def fact_capabilities(
     }
 
 
-def _forms(*, families, derived, declared, contract, facets, storage) -> dict[str, dict[str, dict[str, FactField]]]:
+def _operand_sum_placement(contract: Mapping, path: Mapping | None) -> FactField:
+    """Loads can produce a sum only when the accumulator path and load semantics establish it."""
+    from merlin.targetgen.readout_facet import OPERAND_SUM_SCHEMA
+
+    stages = {stage["kind"] for stage in (path or {}).get("accumulator_stages", [])}
+    missing = [f"output_path.accumulator_stages.{kind}" for kind in ("preload", "accumulate") if kind not in stages]
+    semantics = (contract.get("readout_semantics") or {}).get("operand_sum") or {}
+    prefix = "readout_semantics.operand_sum"
+    if semantics.get("schema") != OPERAND_SUM_SCHEMA:
+        missing.append(f"{prefix}.schema")
+    count = semantics.get("operands")
+    if type(count) is not int or count < 2:
+        missing.append(f"{prefix}.operands")
+    for key in ("operand_dtype", "scale_dtype", "operand_rounding"):
+        if not semantics.get(key) or semantics[key] in ("unknown", "UNKNOWN"):
+            missing.append(f"{prefix}.{key}")
+    if type(semantics.get("operand_saturates")) is not bool:
+        missing.append(f"{prefix}.operand_saturates")
+    if missing:
+        return FactField((), False, tuple(f"missing evidence: {field}" for field in missing))
+    return FactField(
+        ("accelerator",),
+        True,
+        ("derived output_path.accumulator_stages: preload, accumulate", f"{prefix}: {dict(semantics)}"),
+    )
+
+
+def _forms(
+    *, families, derived, declared, contract, facets, storage, operand_sum_placement
+) -> dict[str, dict[str, dict[str, FactField]]]:
     """Each family's established FORMS, field by field: ``standalone`` and ``fused``.
 
     The flat per-family view above is what the drift check compares a whole spec against; a single
@@ -431,10 +472,11 @@ def _forms(*, families, derived, declared, contract, facets, storage) -> dict[st
                     _sorted(granularities), granularity_complete, tuple(granularity_notes)
                 )
             forms["fused"] = form
-        # A standalone operand sum writes an accumulator that can use the SAME unit's readout.
+        # The evidenced load/accumulate path can use the SAME unit's readout, independently of
+        # whether the spec admits a standalone elementwise map.
         # This is a distinct composition from a contraction epilogue: joining their partners and
         # stages in one form would incorrectly license a cross-product of unrelated readout paths.
-        if family == "elementwise_map" and "standalone" in forms:
+        if family == "elementwise_map" and operand_sum_placement.complete:
             from merlin.xdsl_dialects.lowering.compute_groups import RESIDUAL_ADD
 
             eligible = []
@@ -462,7 +504,7 @@ def _forms(*, families, derived, declared, contract, facets, storage) -> dict[st
                     *(set((facet.get("scale") or {}).get("granularities") or ()) for facet, _readout, _ in eligible)
                 )
                 if common_stages:
-                    evidence = tuple(
+                    evidence = operand_sum_placement.evidence + tuple(
                         f"{facet.get('unit')} operand sum on load -> readout {readout.get('selector')!r}: "
                         f"{readout.get('evidence')}"
                         for facet, readout, _applied in eligible
@@ -512,7 +554,9 @@ def semantic_family(row: Mapping[str, Any]) -> str | None:
     return next(iter(found)) if len(found) == 1 else None
 
 
-def resolve_spec(spec: Mapping[str, Any], facts: Mapping[str, Any]) -> tuple[dict, dict]:
+def resolve_spec(
+    spec: Mapping[str, Any], facts: Mapping[str, Any], *, composition_validation=None
+) -> tuple[dict, dict]:
     """Fill every ``hardware:`` declaration and ``eligible_operations: from_facts`` from ``facts``.
 
     Returns the resolved spec and a record of what was filled from which evidence. A form the facts do
@@ -594,7 +638,7 @@ def resolve_spec(spec: Mapping[str, Any], facts: Mapping[str, Any]) -> tuple[dic
             unresolved.append({"format": format_id, "reason": "no accelerator declaration covers a quantizable family"})
         declaration["eligible_operations"] = selected
         eligible_record.append({"format": format_id, "eligible_operations": selected})
-    axes = _resolve_composition_axes(resolved, facts, unresolved)
+    axes = _resolve_composition_axes(resolved, facts, unresolved, composition_validation)
     record = {
         "schema": RESOLUTION_SCHEMA,
         "status": "resolved" if not unresolved else "unresolved",
@@ -608,7 +652,7 @@ def resolve_spec(spec: Mapping[str, Any], facts: Mapping[str, Any]) -> tuple[dic
     return resolved, record
 
 
-def _resolve_composition_axes(resolved: dict, facts: Mapping, unresolved: list) -> dict:
+def _resolve_composition_axes(resolved: dict, facts: Mapping, unresolved: list, composition_validation=None) -> dict:
     """Keep authored declarations intact; place resolved diagnostics beside them."""
     from merlin.targetgen.quantization_spec import resolve_quantization_schemes
     from merlin.targetgen.software_spec import validate_compositions
@@ -630,10 +674,19 @@ def _resolve_composition_axes(resolved: dict, facts: Mapping, unresolved: list) 
         unresolved.extend(missing)
     if "compositions" in resolved:
         block = validate_compositions(resolved["compositions"])
-        chains = [_resolve_chain(chain, facts, context) for chain in block["chains"]]
+        from merlin.targetgen.composition_corpus import validation_binding
+
+        bound = validation_binding(resolved, {"fusion_validation": composition_validation})
+        chains = (
+            [] if bound is not None else [_resolve_chain(chain, facts, context) for chain in block.get("chains", [])]
+        )
         resolved["composition_resolution"] = {
             "schema": "merlin.software_spec.compositions.resolution.v1",
-            "status": "resolved" if all(row["status"] == "resolved" for row in chains) else "unresolved",
+            "status": "validation_required"
+            if bound is not None
+            else "resolved"
+            if all(row["status"] == "resolved" for row in chains)
+            else "unresolved",
             "grading": block["grading"],
             "chains": chains,
         }
@@ -728,7 +781,9 @@ def _resolve_chain(declaration: dict, facts: Mapping, context: Mapping) -> dict:
 
 
 def _producer_placement(family: str, facts: Mapping) -> object:
-    placement = (facts.get("families", {}).get(family) or {}).get("placement")
+    placement = ((facts.get("composition") or {}).get("producer_placement") or {}).get(family)
+    if placement is None:
+        placement = (facts.get("families", {}).get(family) or {}).get("placement")
     if isinstance(placement, FactField) and placement.complete and placement.evidence:
         if set(placement.values) & {"accelerator", "fused_accelerator"}:
             return list(placement.values)

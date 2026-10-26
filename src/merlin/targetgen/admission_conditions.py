@@ -76,6 +76,18 @@ def screen_emission_obligations(obligations, observations):
             for name, obligation in obligations.items()}
 
 
+#: Contracts keep the two distinct source rounding boundaries separate.
+OPERAND_SUM_CONTRACT_ROUNDING = {
+    "operand_sum_exhaustive_i8_v1": "single_rounding",
+    "operand_sum_per_operand_exhaustive_i8_v1": "per_operand",
+}
+
+
+def _contraction_op(op):
+    operator = op.removeprefix("aten.").partition(".")[0]
+    return operator in {"mm", "bmm", "_int_mm", "addmm"} or "matmul" in op or "contraction" in op or "conv" in op
+
+
 def binding_declaration(binding):
     """Select the source-bound declaration identically at admission and audit."""
     identity = binding.get("software_declaration")
@@ -92,10 +104,14 @@ def binding_declaration(binding):
         if form == "linear" or (form is None and "linear" in op):
             return "component_linear"
         raise ValueError("UNKNOWN: component binding lacks a resolved numeric form")
-    operator = op.removeprefix("aten.").partition(".")[0]
-    if (operator in {"mm", "bmm", "_int_mm", "addmm"}
-            or "matmul" in op or "contraction" in op or "conv" in op):
+    if _contraction_op(op):
+        # The source op decides first: a numeric flag never moves a contraction
+        # off its own row's duties.
         return "contraction"
+    if numeric.get("scaled_operand_sum") is True:
+        if numeric.get("operand_sum_rounding") == "per_operand":
+            return "elementwise_map_after_per_operand_sum"
+        return "elementwise_map_after_operand_sum"
     if "pool" in op:
         return "pooling_on_readout"
     if "movement" in op:
@@ -103,6 +119,25 @@ def binding_declaration(binding):
     if "elementwise" in op:
         return "elementwise_map_standalone"
     raise ValueError("UNKNOWN: source binding lacks a software declaration")
+
+
+def declaration_numerics(binding, identity, row):
+    """Refuse a provider numeric route that the selected row's contract does not screen."""
+    numeric = binding.get("numeric", {})
+    if numeric.get("scaled_operand_sum") is not True:
+        return
+    contract = row.get("numerical_contract")
+    rounding = OPERAND_SUM_CONTRACT_ROUNDING.get(contract) if isinstance(contract, str) else None
+    if rounding is None or numeric.get("operand_sum_rounding") != rounding:
+        raise ValueError(
+            f"UNKNOWN: scaled operand-sum rounding {numeric.get('operand_sum_rounding')!r} is not screened by "
+            f"declaration {identity} contract {contract!r}"
+        )
+
+    from merlin.targetgen.operator_review import review_accepted
+
+    if not review_accepted(row):
+        raise ValueError(f"UNKNOWN: declaration {identity} requires operator review acceptance")
 
 
 def enforce_provider_emission_obligations(proof, spec):
@@ -121,6 +156,7 @@ def enforce_provider_emission_obligations(proof, spec):
             identity = binding_declaration(binding)
             if identity not in declarations:
                 raise ValueError(f"UNKNOWN: no selected software declaration {identity}")
+            declaration_numerics(binding, identity, declarations[identity])
             obligations = declarations[identity].get("emission_obligations")
             if not obligations:
                 continue

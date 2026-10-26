@@ -25,7 +25,12 @@ from merlin.targetgen.transfer_contracts import screen_transfer_contract as scre
 from merlin.targetgen.transfer_contracts import validate_transfer_contracts
 
 SCHEMA = "merlin.software_spec.v1"
-_NUMERICAL_CONTRACTS = frozenset({"operand_sum_exhaustive_i8_v1"})
+_NUMERICAL_CONTRACTS = frozenset(
+    {
+        "operand_sum_exhaustive_i8_v1",
+        "operand_sum_per_operand_exhaustive_i8_v1",
+    }
+)
 _IEEE_ROUNDING = frozenset({"rne", "rmm", "rtz", "rdn", "rup"})
 _REDUCTION_ORDERS = frozenset({"index_sequential", "tree", "pairwise"})
 _REDUCTION_CADENCES = frozenset({"per_step", "single_final"})
@@ -969,7 +974,7 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                 missing.append("composed_with")
             elif not set(composed) <= set(constraints["composed_with"]) or not composed:
                 refused.append("required composition is not admitted")
-        if row.get("numerical_contract") == "operand_sum_exhaustive_i8_v1":
+        if isinstance(row.get("numerical_contract"), str) and row["numerical_contract"] in _NUMERICAL_CONTRACTS:
             witness = signature.get("numeric_screen")
             parameters = witness.get("parameters") if isinstance(witness, dict) else None
             valid = (
@@ -991,6 +996,11 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                 and len(witness["witness_sha256"]) == 64
                 and all(char in "0123456789abcdef" for char in witness["witness_sha256"])
             )
+            contract = row["numerical_contract"]
+            if valid:
+                valid = witness.get("numerical_contract", "operand_sum_exhaustive_i8_v1") == contract
+            if valid and contract == "operand_sum_per_operand_exhaustive_i8_v1":
+                valid = parameters.get("operand_sum_rounding") == "per_operand" and parameters["bound_lsb"] == 0
             if not valid or witness.get("status") not in {"within_bound", "exceeds_bound"}:
                 missing.append("numerical_contract")
             elif (

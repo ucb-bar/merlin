@@ -691,3 +691,36 @@ def test_tail_isolation_members_are_generated_with_accelerator_placement(tmp_pat
     assert k_tail["M"] % tile == 0 and k_tail["N"] % tile == 0 and k_tail["K"] % tile != 0
     gemv = extents["SY_contraction_i8_gemv_n_tail"]
     assert gemv["M"] == 1 and gemv["N"] % tile != 0 and gemv["K"] % tile == 0
+
+
+def test_written_per_operand_screen_selects_its_own_contract():
+    from merlin.targetgen.operand_sum_numeric import PER_OPERAND_CONTRACT
+
+    evidence = _evidence()
+    evidence.software_spec["operations"].append(dict(derived_from_facts=dict(form="fused_operand_sum")))
+    evidence.software_spec["numerical_semantics"]["readout"] = dict(
+        acc_scale_rounding="half_even", narrowing="saturate_to_declared_dtype"
+    )
+    evidence.readout_facets = [
+        dict(
+            operand_sum=dict(
+                operands=2, operand_dtype="i8", operand_rounding="half_even", operand_saturates=True, scale_dtype="f32"
+            ),
+            readouts=[dict(selector="i8", applies=["acc_scale", "relu"])],
+            scale=dict(dtype="f32", granularities=["tensor"]),
+            rounding="half_even",
+            clamp=[-128, 127],
+            accumulator_dtype="i32",
+        )
+    ]
+    text = (
+        _RESIDUAL_RELU.replace("1.0625 : f32", "0.5 : f32")
+        .replace("0.3125 : f32", "0.5 : f32")
+        .replace("output_dtype", 'operand_sum_rounding = "per_operand", bound_lsb = 0 : i64, output_dtype')
+    )
+    [screen] = program_admission._operand_sum_numeric_screens_text(text, evidence)
+    assert screen["numerical_contract"] == PER_OPERAND_CONTRACT
+    assert screen["pairs_checked"] == 65536 and screen["max_error_lsb"] == 0
+    bad_text = text.replace("bound_lsb = 0", "bound_lsb = 1")
+    [bad] = program_admission._operand_sum_numeric_screens_text(bad_text, evidence)
+    assert bad["status"] == "unknown"

@@ -8,6 +8,25 @@ from merlin.targetgen import spec_fact_drift as D
 
 _CONTRACT = {
     "name": "fixture",
+    "output_epilogue": {
+        "output_path": {
+            "schema": "output_path_v1",
+            "accumulator": {"dtype": "i32"},
+            "accumulator_stages": [{"kind": "preload", "dtype": "i32"}, {"kind": "accumulate", "dtype": "i32"}],
+            "readout": [],
+            "exits": {"accumulator": True, "requant": False},
+        }
+    },
+    "readout_semantics": {
+        "operand_sum": {
+            "schema": "operand_sum_contract_v1",
+            "operands": 2,
+            "operand_dtype": "i8",
+            "scale_dtype": "f32",
+            "operand_rounding": "half_even",
+            "operand_saturates": True,
+        }
+    },
     "compute_units": [
         {
             "name": "mesh",
@@ -370,6 +389,124 @@ def test_operand_sum_readout_composition_needs_the_same_facet() -> None:
     assert admit_operation(mixed, "relu", signature, "fused_accelerator")["status"] == "unsupported"
 
 
+def _operand_sum_views(contract):
+    facets = copy.deepcopy(_FACETS)
+    facets[0]["operand_sum"] = dict(contract["readout_semantics"]["operand_sum"])
+    # The load path still evidences a fused sum when generic standalone admission is unavailable.
+    return _facts(contract=contract, readout_facets=facets, semantic_facts=None)
+
+
+def _operand_sum_spec():
+    return {
+        "operations": [{"id": "sum_readout", "families": ["elementwise_map"], "hardware": "fused_operand_sum"}],
+        "compositions": {
+            "schema": "merlin.software_spec.compositions.v1",
+            "status": "reviewed",
+            "grading": "placement_and_instruction_audit",
+            "chains": [
+                {
+                    "id": "sum",
+                    "producer": "operand_sum",
+                    "readout_stages": "from_output_path",
+                    "exits": ["accumulator"],
+                    "constraints": [{"operand_multiplier_in": "(0, 1]"}, "load_minimum_not_negated"],
+                }
+            ],
+        },
+    }
+
+
+def test_accumulator_path_derives_operand_sum_without_standalone_map():
+    from merlin.targetgen.composition_facts import derive
+
+    facts = _operand_sum_views(_CONTRACT)
+    assert "standalone" not in facts["forms"]["elementwise_map"]
+    resolved, record = D.resolve_spec(_operand_sum_spec(), facts)
+    assert record["status"] == "resolved"
+    assert _rows(resolved)["sum_readout"]["placement"] == "fused_accelerator"
+    chain = resolved["composition_resolution"]["chains"][0]
+    assert chain["producer_placement"] == {"operand_sum": ["accelerator"]}
+    derived = derive(
+        facts={}, contract=_CONTRACT, software_spec=resolved, output_path=facts["composition"]["output_path"]
+    )
+    assert derived["facts"]["producer_placement"] == chain["producer_placement"]
+    evidence = facts["forms"]["elementwise_map"]["fused_operand_sum"]["placement"].evidence
+    assert any("preload, accumulate" in note for note in evidence)
+    assert any("readout_semantics.operand_sum" in note for note in evidence)
+
+
+def test_operand_sum_uses_the_selected_output_path_deriver(monkeypatch):
+    from merlin.targetgen import capability_manifests
+
+    contract = copy.deepcopy(_CONTRACT)
+    path = contract.pop("output_epilogue")["output_path"]
+    calls = []
+
+    def derive(target, *, facts, contract):
+        calls.append((target, facts, contract))
+        return path
+
+    monkeypatch.setattr(capability_manifests, "derived_output_path", derive)
+    facts = _operand_sum_views(contract)
+    assert calls == [("fixture", _RAW_FACTS, contract)]
+    assert facts["composition"]["producer_placement"]["operand_sum"].complete
+    assert "fused_operand_sum" in facts["forms"]["elementwise_map"]
+    calls.clear()
+    data_only = _facts(contract=contract, data_only=True)
+    assert not calls
+    assert not data_only["composition"]["producer_placement"]["operand_sum"].complete
+
+
+@pytest.mark.parametrize("stage", ["preload", "accumulate"])
+def test_operand_sum_refuses_without_each_accumulator_stage(stage):
+    contract = copy.deepcopy(_CONTRACT)
+    path = contract["output_epilogue"]["output_path"]
+    path["accumulator_stages"] = [row for row in path["accumulator_stages"] if row["kind"] != stage]
+    facts = _operand_sum_views(contract)
+    placement = facts["composition"]["producer_placement"]["operand_sum"]
+    assert not placement.complete and not placement.values
+    assert placement.evidence == (f"missing evidence: output_path.accumulator_stages.{stage}",)
+    assert "fused_operand_sum" not in facts["forms"]["elementwise_map"]
+    resolved, _ = D.resolve_spec(_operand_sum_spec(), facts)
+    assert _rows(resolved)["sum_readout"]["placement"] == "unknown"
+    chain = resolved["composition_resolution"]["chains"][0]
+    assert chain["status"] == "unresolved" and chain["producer_placement"]["operand_sum"] == "UNKNOWN"
+
+
+def test_missing_accumulate_fact_cannot_license_operand_sum():
+    from merlin.targetgen.output_path import from_record
+
+    contract = copy.deepcopy(_CONTRACT)
+    contract["output_epilogue"]["output_path"] = from_record(
+        {
+            "accumulator_dtype": "i32",
+            "bias_preload": {"status": "derived", "dtype": "i32"},
+            "full_width_readout": {"status": "derived"},
+            # No derived accumulate fact, even though preload and load-scale semantics are present.
+        }
+    )
+    facts = _operand_sum_views(contract)
+    resolved, _ = D.resolve_spec(_operand_sum_spec(), facts)
+    assert "fused_operand_sum" not in facts["forms"]["elementwise_map"]
+    assert resolved["composition_resolution"]["chains"][0]["producer_placement"]["operand_sum"] == "UNKNOWN"
+    assert facts["composition"]["producer_placement"]["operand_sum"].evidence == (
+        "missing evidence: output_path.accumulator_stages.accumulate",
+    )
+
+
+@pytest.mark.parametrize(
+    "field", ["schema", "operands", "operand_dtype", "scale_dtype", "operand_rounding", "operand_saturates"]
+)
+def test_operand_sum_requires_the_load_scale_semantics(field):
+    contract = copy.deepcopy(_CONTRACT)
+    del contract["readout_semantics"]["operand_sum"][field]
+    facts = _operand_sum_views(contract)
+    placement = facts["composition"]["producer_placement"]["operand_sum"]
+    assert not placement.complete
+    assert placement.evidence == (f"missing evidence: readout_semantics.operand_sum.{field}",)
+    assert "fused_operand_sum" not in facts["forms"]["elementwise_map"]
+
+
 def test_a_resolved_spec_has_no_drift_against_the_same_facts():
     resolved, _ = D.resolve_spec(_derived_spec(), _facts())
     report = D.spec_fact_drift(resolved, _facts())
@@ -527,12 +664,18 @@ def test_the_gemmini_spec_derives_every_hardware_shaped_field_but_the_contractio
         "elementwise_map",
         "elementwise_map_standalone",
         "elementwise_map_after_operand_sum",
+        "elementwise_map_after_per_operand_sum",
         "pooling_on_readout",
         "reduction_standalone",
         "movement",
     }
     assert rows["elementwise_map_after_operand_sum"]["status"] == "reviewed"
     assert rows["elementwise_map_after_operand_sum"]["numerical_contract"] == "operand_sum_exhaustive_i8_v1"
+    assert rows["elementwise_map_after_per_operand_sum"]["status"] == "reviewed"
+    assert (
+        rows["elementwise_map_after_per_operand_sum"]["numerical_contract"]
+        == "operand_sum_per_operand_exhaustive_i8_v1"
+    )
     assert spec["quantization"]["formats"][0]["eligible_operations"] == "from_facts"
 
 
