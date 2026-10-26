@@ -20,7 +20,8 @@ structure CallSchema where
   instruction : String
   role : String
   argumentOrder : List String
-  selectors : List (Nat × Nat)
+  argumentBits : List Nat
+  selectors : List (Nat × Window)
   readFields : List (String × String)
   outputSelector : String
   outputOffset : String
@@ -32,13 +33,27 @@ structure CallSchema where
 
 def decodeWindow (schema : CallSchema) (raw : RawCall) (bytes : Nat) (fields : String × String) : Option Window := do
   let selector ← raw.arguments.lookup fields.1
-  let backing ← schema.selectors.lookup selector
+  let resource ← schema.selectors.lookup selector
   let offset ← raw.arguments.lookup fields.2
-  pure ⟨backing, offset, bytes⟩
+  if resource.start ≤ offset ∧ offset + bytes ≤ resource.start + resource.bytes then
+    pure ⟨resource.backing, offset, bytes⟩ else none
+
+def argumentsFit : List Nat → List (String × Nat) → Prop
+  | [], [] => True
+  | width :: widths, (_, value) :: rest => 0 < width ∧ value < 2 ^ width ∧ argumentsFit widths rest
+  | _, _ => False
+
+instance argumentsFitDec : (widths : List Nat) → (arguments : List (String × Nat)) → Decidable (argumentsFit widths arguments)
+  | [], [] => isTrue trivial
+  | width :: widths, (_, value) :: rest =>
+    letI := argumentsFitDec widths rest
+    inferInstanceAs (Decidable (0 < width ∧ value < 2 ^ width ∧ argumentsFit widths rest))
+  | [], _ :: _ | _ :: _, [] => isFalse (fun h => h)
 
 def decodeCall (schema : CallSchema) (raw : RawCall) : Option BoundCall := do
   if raw.instruction ≠ schema.instruction ∨ raw.arguments.map Prod.fst ≠ schema.argumentOrder ∨
       ¬schema.argumentOrder.Nodup ∨ ¬(schema.selectors.map Prod.fst).Nodup ∨
+      ¬argumentsFit schema.argumentBits raw.arguments ∨
       raw.assumes ≠ [] ∨ raw.awaits ≠ [] ∨ raw.produces ≠ none ∨ raw.sets ≠ [] ∨
       raw.stages ≠ [] ∨ raw.unit ≠ none then none else do
     let count ← raw.arguments.lookup schema.countField

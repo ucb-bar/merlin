@@ -98,6 +98,10 @@ def worker(args):
     selected_model = original_model(output / "selected", case)
     provider = MultiOutputProvider(output / "provider", selected_model, (), case, grouped=True)
     logical = read_source_multioutput(module, generics)
+    from merlin.compile.connected_regions import plan_connected_region
+
+    region_plan = plan_connected_region(module, generics)
+    region_plan.revalidate()
     mapping = provider.lower_multioutput(logical)
     if mapping is None:
         raise ValueError("actual original provider refused this source")
@@ -114,21 +118,39 @@ def worker(args):
     save(output / "selected-fusion-declarations.json", specification)
     save(output / "selected-storage-declarations.json", json.loads(selected.storage.declarations_json))
     save(output / "selected-record.json", selected.record())
+    save(output / "original-connected-plan.json", region_plan.record())
+    save(output / "original-connected-plan-values.json", [locator(value) for value in region_plan.values])
+    save(
+        output / "selected-storage-windows.json",
+        [asdict(w) for w in (*selected.storage.banks, *selected.storage.external)],
+    )
     if args.physical:
         from merlin.compile.scheduling.multioutput_fusion import compile_source_multioutput
 
         configuration = provider.selection()
         law = configuration.multi_output.composition_law
         product = compile_source_multioutput(
-            module, generics, mapping.kernel, mapping.objects, adapter, selected_model[2], selected_model[3],
-            selected_contracts=selected, bindings=mapping.bindings, composition_law=law,
-            budgets=configuration.budgets, private_ownership=True,
+            module,
+            generics,
+            mapping.kernel,
+            mapping.objects,
+            adapter,
+            selected_model[2],
+            selected_model[3],
+            selected_contracts=selected,
+            bindings=mapping.bindings,
+            composition_law=law,
+            budgets=configuration.budgets,
+            private_ownership=True,
         )
         product.revalidate()
         save(output / "actual-output-kernel.json", asdict(product.compiled.kernel))
         save(output / "actual-output-conformance.json", product.conformance)
         save(output / "declared-composition-law.json", asdict(law))
-        save(output / "actual-output-effects.json", [asdict(adapter.project(call)) for call in product.compiled.kernel.body])
+        save(
+            output / "actual-output-effects.json",
+            [asdict(adapter.project(call)) for call in product.compiled.kernel.body],
+        )
         for index, data in enumerate(product.images()):
             (output / f"actual-image-{index}.bin").write_bytes(data)
     stage_records = []
@@ -180,7 +202,9 @@ def worker(args):
         output_value_locators=[locator(value) for value in logical.outputs],
         original_provider_kernel=ref(output / "original-provider-kernel.json"),
         host_intake=ref(output / "HOST-INTAKE.json"),
-        physical_compilation="actual production compile_source_multioutput" if args.physical else "not run: source-only intake",
+        physical_compilation="actual production compile_source_multioutput"
+        if args.physical
+        else "not run: source-only intake",
         machine_execution_run=False,
         numerical_execution_run=False,
         graph_hashes_used_as_proof=False,
@@ -240,8 +264,14 @@ def main():
     else:
         print(
             json.dumps(
-                capture(args.reference, args.destination, shape=tuple(args.shape), width=args.width,
-                        shared=args.shared, physical=args.physical)
+                capture(
+                    args.reference,
+                    args.destination,
+                    shape=tuple(args.shape),
+                    width=args.width,
+                    shared=args.shared,
+                    physical=args.physical,
+                )
             )
         )
 

@@ -187,6 +187,51 @@ theorem checkScalar_iff {source declaration : Module} {sourceName declarationNam
     simp only [checkScalar, Program.matches_refl, Bool.true_and, decide_eq_true_eq]
     exact valid
 
+/-- A lossy projection is used only to REFUTE exact AST equality. No injectivity
+of this projection (and no digest law) is assumed. The positive checker remains
+the complete structural match above. -/
+def refusalAttribute : Attr → String
+  | .enum dialect name value => dialect ++ ":" ++ name ++ ":" ++ value
+  | .int literal (.int width) => toString literal ++ ":i" ++ toString width
+  | _ => "other"
+
+structure RefusalItem where
+  name : String
+  operands : List Nat
+  results : List (Nat × Nat)
+  attrs : List (String × String)
+  deriving DecidableEq
+
+def refusalItem (op : Op) : RefusalItem :=
+  ⟨op.name, op.operands,
+    op.results.map (fun value => (value.id, match value.ty with | .int width => width | _ => 0)),
+    op.attrs.map fun (key, value) => (key, refusalAttribute value)⟩
+
+def refusalTrace (actual : Module) : List RefusalItem :=
+  match actual.ops with
+  | [.mk "func.func" [] [] _ [] [.mk [.mk _ operations]] []] =>
+    operations.map refusalItem
+  | _ => []
+
+def nestedRefusalTrace : Nat → Op → List RefusalItem
+  | 0, op => [refusalItem op]
+  | depth + 1, op =>
+    refusalItem op ::
+      op.regions.flatMap (fun region => region.blocks.flatMap (fun block => block.ops.flatMap (nestedRefusalTrace depth)))
+
+/-- Bounded diagnostic projection for refutations of complete-source equality.
+Failure to distinguish two modules cannot prove they are equal. -/
+def moduleRefusalTrace (actual : Module) : List RefusalItem :=
+  actual.ops.flatMap (nestedRefusalTrace 32)
+
+theorem checkScalar_refuse_trace {source declaration : Module} {sourceName declarationName : String}
+    {sourceVisibility declarationVisibility : Option String} {program : Program}
+    (different : refusalTrace declaration ≠ refusalTrace (program.module declarationName declarationVisibility)) :
+    checkScalar source declaration sourceName declarationName sourceVisibility declarationVisibility program = false := by
+  apply Bool.eq_false_iff.mpr
+  intro accepted
+  exact different (congrArg refusalTrace (checkScalar_iff.mp accepted).2.1)
+
 /-- Scalar interpretation of the admitted closed typed DAG under a common
 primitive interpretation. This does not define a native machine implementation. -/
 inductive ScalarExecution {α : Type} (meaning : Primitive → List α → α) : Module → Environment α → α → Prop where
