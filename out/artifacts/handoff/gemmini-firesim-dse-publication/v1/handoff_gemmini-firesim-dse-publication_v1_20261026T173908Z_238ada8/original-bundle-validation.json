@@ -1,0 +1,9 @@
+{
+  "status": "pass",
+  "archive_sha256": "0f4abd85fae9fa3528c151ad4f73cd54a940e62b6bdbad4e92ec21b78ef6b95a",
+  "payload_files_verified": 182,
+  "relocated_fixture_proofs": 19,
+  "all_relocated_reference_sources_within_fresh_extraction": true,
+  "hardware_execution": "NOT_RUN",
+  "scope": "Fresh extraction, every payload checksum, all fixture proof relocations and source hashes"
+}

@@ -1,10 +1,179 @@
 # Tuning after the F2 runs
 
-The current remote order is TinyLlama baseline plus ResNet baseline/current
-tuned ResNet, then TinyLlama chunk ML DSE, then tuned TinyLlama E2E. The supplied
-bitstream already sets the expected DDR3 memory model. Abort candidates at the
-current best active-cycle count, excluding startup/loading/warmup. No guessed
-F2 specifications or per-job time/cycle caps apply.
+The proposed additional decisions and their actual implementation status are
+in [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md). ResNet selects the initial
+profile-driven experiments; every optimization must apply by IR semantics and
+capabilities. New full-shape source regions/fixtures are now prepared in
+`out/artifacts/handoff/gemmini-firesim-dse-round2/v1/latest/`; see
+[FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md) and that product's
+readiness record before execution. It contains 18 full-shape ResNet regions,
+21 structurally distinct contraction workloads with 10 tuning owners, and an
+explicit TinyLlama coverage/missing-input roster. No new FireSim result is implied.
+The published branch carries a complete restorable copy; use the fresh-machine
+entry point in [FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md).
+
+New runs follow [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md).
+The supplied bitstream sets the expected DDR3 memory model. Before more paid
+DSE, qualify [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md): the October 26 F2
+adapter completed slow candidates and filtered them afterward; its total-cycle
+cap did not implement the user's live active-cycle cutoff. No TVM optimizer
+monkeypatch or hardware-memory reconfiguration is part of this audit.
+
+## Next ResNet DSE from the raw F2 profile
+
+The supplied `tvm-chunk-raw-20261026.tar.zst` has SHA256
+`b4922d8504b3764409bc6168670cbfb18c463306ffe28539dae6b2949ae687e3`.
+The retained audit is `out/artifacts/audits/gemmini-f2-tvm-followup/v1/latest/`.
+Its `analyze.py`, `audit-summary.json`, `resnet-operators.csv`,
+`resnet-regions.json` and `winning-knobs.json` bind the raw receipts/traces to
+the actual prepared graph. See its `README.md` for the complete findings.
+
+The default/tuned full-model pair repeated exactly: 3,028,578,593 versus
+3,027,080,096 active cycles, a **0.0495% reduction**. The library still tunes
+only the classifier: **1/68 extracted tasks, 1/67 eligible, 1/21 contractions**.
+The earlier 24/672 figure describes that local classifier's declared compact
+space before pruning, not ResNet-wide coverage or FireSim search coverage.
+
+The instrumented model has 3,031,383,095 active cycles. Its 128 operator
+intervals sum to 3,031,358,387, leaving 24,708 cycles outside those intervals:
+
+| Placement | Operator cycles | Share of operator sum |
+| --- | ---: | ---: |
+| CPU functions | 2,141,496,755 | 70.64% |
+| Gemmini functions, including their host wrappers/epilogues | 889,861,632 | 29.36% |
+
+This is function placement attribution, not a hardware-stall breakdown.
+Host-only quantization/layout/im2col and residual/epilogue functions account
+for most elapsed cycles, including any cache/DRAM, instruction-fetch and
+dependency stalls. It does not prove CPU compute saturation. The exact ELF
+audit in `out/artifacts/audits/gemmini-resnet-elf-attribution/v1/latest/` verifies
+the 128 timed calls, host-only call graphs and Gemmini completion-fence calls.
+Serialized/idle-device phases are an inference under the platform's fence
+contract, not measured array utilization. Profile available CPU retirement/
+memory-hierarchy and Gemmini activity/wait counters before prioritizing new
+host scheduling work. The classifier
+itself is only 712,174 cycles in the profiled tuned graph (0.0235%). Improving
+only device functions cannot address the 70.64% host portion; with host work
+fixed, even eliminating all their costs saves at most 29.36% of this profile.
+
+Use **real connected regions with full shapes**, selected by this profile:
+
+| Region | Package calls, half-open | Measured cycles | Share |
+| --- | --- | ---: | ---: |
+| Stem, including quantization/input preparation/pooling | [0,4) | 482,857,415 | 15.93% |
+| First bottleneck, including projection shortcut and residual merge | [4,13) | 403,898,232 | 13.32% |
+| Larger early prefix, including three bottlenecks and fused boundary preparation | [0,27) | 1,564,004,578 | 51.59% |
+
+Package-call numbers are **not semantic Relax binding indices**. The region
+manifest identifies actual symbols/live-ins/live-outs; map them through the
+semantic inventory before slicing. Produce independent boundary inputs and all
+live-out references from the same frozen numerical release. Do not shorten K,
+crop the image or remove residual/layout work to make the proxy faster. The
+earlier preparation had actual source-region exports and independent
+INT64-contraction fixtures for stem, first bottleneck and an early prefix,
+checked through host LLVM. The early source prefix stops before the next stage's
+quantization; its boundary differs from the fused historical package window
+above. Current preparation expands to 18 regions with zero-error host checks
+and a complete new-source baseline ELF that passed Spike controls. New FireSim
+costs, deployment and model quality still need measurement.
+
+1. Reconcile the existing ResNet capture with the current numerical policy.
+   All 54 stored epilogue scale arrays repeat within groups of 16, and static
+   activation scales are present. Actual source inspection also shows FP32
+   bias added after INT32-to-FP32 conversion. Round-two preparation now supplies
+   an actual INT32 path and all 54 bound proofs; compiled/quality gates remain
+   separate. Preserve the old source/receipts.
+   Publish the fixed-set FP32/top-1 comparison separately; a v00 logits check
+   is not the new accuracy gate.
+2. Start with the stem and first-bottleneck regions. Prioritize the existing
+   full-shape contractions M/N/K = **12544/64/160** (stem, logical K=147 with
+   packing padding), **3136/256/64** (expansion/shortcut) and **3136/64/576**
+   (3×3). Default reuse groups are mostly one tile. Search M/N/K reuse,
+   traversal, OS/WS, cache placement/hoisting and legal pipelining through
+   stock MetaSchedule traces; do not prescribe a winning parameter tuple.
+3. Keep calibration/rounding fixed. Hold invariant graph preparation fixed
+   during the first operator study. Remove no-op decisions by structural/code
+   equivalence; retain alternatives only when they change generated work.
+   Only expose bias/readout fusion when numerical and hardware proofs hold.
+   Never spend a trial toggling an option that the recognizer cannot apply.
+4. Begin with **48 proposals globally across the five initial owner chunks**,
+   batches of four: stem eight, first stage-one block sixteen, and the first
+   block of each remaining stage eight. Inspect completed work, admitted labels
+   and marginal gains before the optional 20-proposal ResNet continuation.
+   Reserve 24 proposals for TinyLlama once its actual inputs are prepared; keep
+   all campaigns within 96 proposals and the same shared four-hour deadline.
+   This is a proposal budget, not a runtime prediction. Reuse all actual
+   independent slots with shared physical locks and persistent managers.
+5. Include a diagnostic region run with mcycle/minstret and verified available
+   memory/activity counters, as described by the ELF audit's
+   `next-profile-plan.json`. Keep its instrumentation overhead separate from
+   unprofiled performance comparisons. Do not infer CPU compute bottlenecks
+   or array utilization from function latency alone.
+6. Validate winners on the **whole connected regions**, then the larger early
+   prefix or complete model. Use a separate incumbent for each measured scope.
+   Finish with unprofiled full ResNet baseline/tuned pairs and all-logit checks;
+   do not publish sums of operator minima as an E2E gain. Full runs are feasible
+   candidates here: the four archived unprofiled runs took 157.49–159.49 seconds
+   each on that particular image/installation. Those observations are not a
+   runtime guarantee for another manager or newly prepared release.
+
+The current FireSim driver selects **contractions only** and fixes the graph.
+It does not tune the dominant CPU-only quantization/im2col functions. Improving
+that coverage requires exposing their loops to supported TVM CPU schedule rules
+or adding proven graph/lowering alternatives, then measuring connected regions.
+That is additional compiler work, not a knob already searched in this run.
+Keep it separate from claiming that a larger Gemmini tile search solves host
+cost. Use stock scheduling/search APIs and general IR-derived legality.
+
+## TinyLlama follow-up and search evidence
+
+The two rounds made **804 proposals plus nine default/seed measurements**.
+There are 264/267/258 distinct proposal traces for decode K/V, prefill K/V and
+down-panel across both rounds; 813 ELF hashes are distinct, which does not prove
+813 distinct schedules. Reconstructing the compact decisions from the source
+and every trace gives:
+
+| Chunk | Distinct decision tuples | Declared compact combinations | Coverage before legality/code equivalence |
+| --- | ---: | ---: | ---: |
+| Decode K/V | 264 | 560 | 47.14% |
+| Prefill K/V | 267 | 2,240 | 11.92% |
+| Down-panel | 258 | 576 | 44.79% |
+
+This denominator includes the 8/16/8 root-epilogue Gemmini sketch families,
+divisor-based M/N/K reuse groups up to 64 tiles, and unroll 0/16. All observed
+decision tuples fall within it. It precedes memory legality and code-equivalence
+pruning and excludes other graph/placement/epilogue spaces. It is not coverage
+of all legal code-distinct TVM schedules, full TinyLlama or model layers. The
+reproducible calculation and source hashes are in `decision-coverage.json`.
+
+Whole rebuilt chunks improve 804,251→449,424 (decode K/V, **1.79×**),
+7,475,291→6,685,020 (prefill K/V, **1.12×**), and 893,044→635,920 (down-panel,
+**1.40×**). The down-panel task improved again in the larger round:
+173,881→168,979 cycles (**2.82%**). It retains K=5632 but only N=128 of the
+parent N=2048 output channels; its exact record cannot match the parent shape.
+
+These are historical dynamic-row/per-channel-weight probes. Prepare meaningful
+chunks from the new frozen-scale release before further qualification. Keep
+full-K projections and surrounding conversion/epilogue work; use full-output
+down projection confirmation before reuse, then the actual 32+32 E2E session.
+Full TinyLlama/PPL qualification remains NOT_RUN in this archive.
+
+The search used stock EvolutionarySearch/XGB and a supported custom feature
+adapter that applies stock PerStoreFeature before tensorization. Only **23/804
+proposals** were admitted as successful runner labels. The other **781** completed
+but were reported as dominated errors and stored with the stock 1e10 failure
+cost. Thus `training_samples=256` does not mean 256 valid cycle labels. A trained
+booster and late improvements establish that learned search ran, but do not
+establish convergence or superiority to an equal-budget random search. Do not
+change TVM's algorithms to manufacture such a claim. One API-conformance debt
+remains in the legacy backend: it puts raw cycles in `RunnerResult.run_secs`.
+The new FireSim driver wraps that runner through the supported `PyRunner` API
+and converts using a required, documented target cycle-counter frequency.
+Raw-cycle evidence remains separate; new databases use seconds. The FPGA host
+frequency and emulation throughput are not substitutes for that frequency.
+Old databases remain unchanged. No TVM source or search algorithm is patched.
+
+## Historical local campaign
 
 The four-hour local campaign is complete. The next work is the **remote-only**
 FireSim handoff in [FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md): ready

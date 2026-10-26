@@ -1,5 +1,13 @@
 # Agent instructions: EL4 TVM comparison
 
+For all new runs read [the current numerical policy](../../numerics/CURRENT_RUN_POLICY.md)
+first. The user's 2026-10-26 W8A8/grouped-16/static-activation and model-quality
+update supersedes older numerical descriptions below; preserve historical
+releases without relabeling them. Small meaningful FireSim tuning chunks are
+explicitly authorized. Follow [FIRESIM_CHUNK_TUNING.md](FIRESIM_CHUNK_TUNING.md)
+and [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md); the October 26 remote adapter
+did not implement live active-cycle pruning despite its old boolean fields.
+
 Read root `AGENT.md`/`CLAUDE.md`, this directory's [README.md](README.md),
 [EL4_ASSETS.md](EL4_ASSETS.md), [UPSTREAM_AUDIT.md](UPSTREAM_AUDIT.md), and the
 companion TVM `apps/gemmini/{README,OWNERSHIP,TUNING,FIRESIM,AGENTS}.md`.
@@ -57,7 +65,8 @@ establishes the requested three-model FireSim result.
    `v00` inputs with their existing hashes. Publish a resolved models configuration
    with ResNet `native`, TinyLlama `portable_exp_trig` and SmolVLA
    `portable_neural_f32`; the generic models file defaults to native. Preserve
-   the existing tolerances and source-versus-quantized quality reporting policy.
+   historical tolerances for historical reproduction; apply the current
+   numerical policy and its separate quality gates to every new release.
 2. **Make preparation portable.** Follow `EL4_ASSETS.md`. Verify the stored
    ResNet/TinyLlama derivations. Close SmolVLA's processed-observation hash gate;
    fix/adapt the ignored `--data` path and use the selected LeRobot 0.6 processors,
@@ -100,8 +109,10 @@ establishes the requested three-model FireSim result.
    evidence, also with compact comparison. Legacy full-array transport remains
    separate. Follow the mode table in README; do not require a strict upgrade
    merely to choose lightweight reproducibility. Retain original SSM/upload/boot
-   evidence. Paid FPGA jobs are complete models; keep small controls on functional
-   engines. The old queue is a separate deployment option.
+   evidence. The user also authorizes meaningful small FireSim DSE chunks with
+   real boundaries/full reductions and whole-chunk confirmation. Keep initial
+   correctness controls on functional engines. The old queue is a separate
+   deployment option.
 8. **Complete validation and report.** For full arrays, export UART with
    `read_package_session.py`, bind the manager output roster and use
    `merlin.model_check.baseline_numerics`. Compact mode compares every element in

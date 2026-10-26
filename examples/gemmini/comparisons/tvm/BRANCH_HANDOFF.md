@@ -1,5 +1,22 @@
 # Run the committed FireSim ELFs
 
+For new ResNet/TinyLlama DSE start with the
+[published delivery README](../../../../out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/README.md).
+The same `comparisons/tvm-workload-tuning` branch contains the new baseline ELF,
+all source changes and the complete input bundle in checksum-verified parts.
+Its restore command needs Python 3.12+, without a compiler or TVM installation.
+Do not apply the old archived source patch over the current branch.
+
+[FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md) records current scope and
+pending TinyLlama/observer gates. The six ELFs described below retain their
+historical numerical identities.
+
+These committed executables reproduce the historical numerical programs. All
+new candidates/releases must follow [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md).
+For the next profile-directed ResNet study read [TUNING_PLAN.md](TUNING_PLAN.md).
+Before more paid DSE, qualify [live active-cycle enforcement](ADAPTER_CONTRACT.md);
+the October 26 adapter's completed-result filter did not implement that policy.
+
 The prepared ELFs are now **committed to the Merlin handoff branch**. Clone
 only Merlin to run them; no separate ELF download or TVM checkout is required.
 

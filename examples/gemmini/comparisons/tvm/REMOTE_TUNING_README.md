@@ -1,5 +1,16 @@
 # Remote handoff: TVM/Gemmini tuning audit
 
+Use [FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md) for the current
+portable inputs and parallel DSE launcher. Historical reproduction follows below.
+
+New runs follow [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md).
+The October 26 raw F2 archive has now been audited; use the new
+[profile-directed ResNet plan](TUNING_PLAN.md#next-resnet-dse-from-the-raw-f2-profile).
+Existing TinyLlama probe timings are historical dynamic-row diagnostics.
+Before more paid DSE, demonstrate [live active-cycle pruning](ADAPTER_CONTRACT.md).
+The previous remote adapter's total-cycle cap/completion filter did not satisfy
+that policy; its enforcement booleans must not be reused with the current pool.
+
 Start with [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md). The prepared ELFs are now
 committed on the Merlin branch and run without a TVM checkout. Source/fixture
 transfers are only needed for generating further tuning candidates.

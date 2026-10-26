@@ -1,0 +1,24 @@
+artifacts:
+- ELFS/resnet-baseline.elf
+- PROVENANCE.md
+- README.md
+- SHA256SUMS
+- firesim-round2-handoff.tar.gz.part-000
+- firesim-round2-handoff.tar.gz.part-001
+- firesim-round2-handoff.tar.gz.part-002
+- firesim-round2-handoff.tar.gz.part-003
+- firesim-round2-handoff.tar.gz.part-004
+- original-bundle-validation.json
+- publication-checks.json
+- restore.py
+- transfer-manifest.json
+git_sha: 238ada8
+notes: Git-portable publication of the frozen FireSim inputs, baseline ELF and source pins; no FPGA execution
+run_id: handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8
+sources:
+- path: /home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/firesim-round2-handoff.tar.gz
+  sha256: 0f4abd85fae9fa3528c151ad4f73cd54a940e62b6bdbad4e92ec21b78ef6b95a
+target: gemmini-firesim-dse-publication
+timestamp: 20261026T173908Z
+topic: handoff
+version: 1

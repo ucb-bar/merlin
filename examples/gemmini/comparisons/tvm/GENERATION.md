@@ -1,5 +1,19 @@
 # TVM Gemmini Generation
 
+For additional optimization/DSE proposals use
+[OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md): it separates existing traced
+decisions from proposed integration and requires general IR-derived rules.
+The FireSim driver now exposes the existing FuseOps level and saves its Relax
+Trace; host-only DSE and bounded im2col packing remain additional work.
+
+New numerical releases follow [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md).
+Calibration scales and rounding/bias semantics are fixed numerical inputs,
+not performance knobs. [TUNING_PLAN.md](TUNING_PLAN.md) records the next
+profile-directed DSE scope; [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md) defines
+the required live cutoff. The ownership/implementation inventory below remains
+the compiler reference; it does not imply that every listed choice was searched
+in the October 26 F2 campaigns.
+
 Updated 2026-10-24 after the bounded FASED-memory tuning study.
 
 The current integration is a **Gemmini backend implemented inside a TVM fork**, with TVM controlling mathematical lowering, scheduling, tensorization, and schedule search. The project supplies the Gemmini-specific hardware descriptions, intrinsic implementations, scheduling rules, memory lowering, runtime, and measurement adapters.

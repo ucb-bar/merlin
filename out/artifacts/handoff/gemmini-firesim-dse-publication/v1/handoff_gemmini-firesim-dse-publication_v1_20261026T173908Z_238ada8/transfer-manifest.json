@@ -1,0 +1,55 @@
+{
+  "schema": "gemmini_firesim_dse_git_delivery_v1",
+  "branch": "comparisons/tvm-workload-tuning",
+  "source_code_commit": "238ada8d3ec8579fd50451a2236264c3060ed287",
+  "archive": {
+    "filename": "firesim-round2-handoff.tar.gz",
+    "bytes": 170024497,
+    "sha256": "0f4abd85fae9fa3528c151ad4f73cd54a940e62b6bdbad4e92ec21b78ef6b95a",
+    "parts": [
+      {
+        "name": "firesim-round2-handoff.tar.gz.part-000",
+        "bytes": 41943040,
+        "sha256": "eb9d607623d22176994755058016a9d2365746edd4b4ed5640f5943a26edcc41"
+      },
+      {
+        "name": "firesim-round2-handoff.tar.gz.part-001",
+        "bytes": 41943040,
+        "sha256": "76045e8ec9dbaf0dcd73d6af3606f71d8e1ab031ed1f610ffc146fd773d766f6"
+      },
+      {
+        "name": "firesim-round2-handoff.tar.gz.part-002",
+        "bytes": 41943040,
+        "sha256": "fb77f2ea5010add65b0f56b298ac21581dcbdfa87476505063a75093ba809c92"
+      },
+      {
+        "name": "firesim-round2-handoff.tar.gz.part-003",
+        "bytes": 41943040,
+        "sha256": "ad9ba0ed95c917bbf846446607ba0d7e1b9e62b0adfdfa6326f320d1a495d2ec"
+      },
+      {
+        "name": "firesim-round2-handoff.tar.gz.part-004",
+        "bytes": 2252337,
+        "sha256": "40bc154e99d85212f17eb2678348ef9b813eba8f6a2f1990d2772f49f2645d27"
+      }
+    ]
+  },
+  "baseline": {
+    "path": "ELFS/resnet-baseline.elf",
+    "bytes": 26530200,
+    "sha256": "4ec5e14fa82724d6aff3526a6beeb273dfa18637d4e316b386f5cbe487d44acf"
+  },
+  "tvm": {
+    "repository": "https://github.com/grammy117/tvm",
+    "branch": "gemmini/firesim-chunks",
+    "commit": "3423bd6818ab752ddd9cdb5d5773743e48c65f1d"
+  },
+  "qualification": {
+    "source_checks": "18/18 host checks exact; full ResNet positive/wrong-oracle Spike controls passed",
+    "firesim": "NOT_RUN",
+    "tinyllama_current_policy_exports": "MISSING",
+    "live_observer": "NOT_QUALIFIED",
+    "model_quality": "NOT_RUN"
+  },
+  "source_bundle_policy": "Sources already committed in this branch. Do not apply the archived historical working-tree patch over them."
+}

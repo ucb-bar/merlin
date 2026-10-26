@@ -374,3 +374,20 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/handoff/gemmini-firesim-elfs/v1/handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10/SHA256SUMS
 !/out/artifacts/handoff/gemmini-firesim-elfs/v1/handoff_gemmini-firesim-elfs_v1_20261026T045007Z_04f3e10/ELFS/*.elf
 !/out/artifacts/handoff/gemmini-firesim-elfs/v1/latest
+
+# User-requested DSE handoff: exactly this frozen bundle and baseline release.
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/latest
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/README.md
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/PROVENANCE.md
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/SHA256SUMS
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/manifest.yaml
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/transfer-manifest.json
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/original-bundle-validation.json
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/publication-checks.json
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/restore.py
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/ELFS/resnet-baseline.elf
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/firesim-round2-handoff.tar.gz.part-000
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/firesim-round2-handoff.tar.gz.part-001
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/firesim-round2-handoff.tar.gz.part-002
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/firesim-round2-handoff.tar.gz.part-003
+!/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/firesim-round2-handoff.tar.gz.part-004

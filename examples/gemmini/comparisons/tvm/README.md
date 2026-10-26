@@ -1,5 +1,21 @@
 # TVM comparison: ResNet50, TinyLlama and SmolVLA FireSim handoff
 
+The current DSE preparation is [FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md):
+18 ResNet chunks, structural tuning ownership, TinyLlama coverage gaps, parallel
+campaign budgets and live active-cycle observer qualification.
+
+See [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md) for the proposed general
+optimization knobs, what is actually implemented, and the next FireSim
+preparation. Model-specific profiles select experiments, never compiler rules.
+
+All future runs use [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md):
+frozen W8A8 scales, groups of 16 weight output channels, and the new matched-FP32
+quality gates. Earlier numerical descriptions and prepared ELFs retain their
+historical identity. The October 26 raw F2 evidence now supports the next
+[profile-directed ResNet plan](TUNING_PLAN.md#next-resnet-dse-from-the-raw-f2-profile).
+For new DSE, the runner must satisfy [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md);
+the supplied F2 adapter's total-cycle cap did not enforce live active-cycle limits.
+
 For a fresh checkout, start at [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md).
 The six prepared ELFs are committed on this Merlin branch. Initial execution
 needs only this checkout and the existing DDR3 ELF launcher; a TVM checkout is

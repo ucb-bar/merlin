@@ -1,5 +1,32 @@
 # FireSim handoff: baseline runs, TinyLlama DSE, then E2E
 
+**Current preparation:** [FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md)
+supersedes the run roster below for new DSE. Its portable bundle contains 18
+ResNet regions from the new INT32-bias source, structural ownership, shared
+budgets and a TinyLlama missing-coverage roster. The older committed ELFs below
+remain historical controls with their original numerical identities.
+
+For the next preparation, [OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md)
+distinguishes available graph/operator choices from proposed host/packing work.
+Actual trained-weight ResNet source regions and independent fixtures are in the
+restorable bundle at `out/artifacts/handoff/gemmini-firesim-dse-publication/v1/latest/`.
+Follow its README and pending admission gates. The new baseline passed Spike
+controls; FireSim execution and fixed-set accuracy remain NOT_RUN.
+
+**2026-10-26 follow-up:** all new runs use
+[CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md). The archive from
+the completed F2 run now informs [TUNING_PLAN.md](TUNING_PLAN.md), including
+profile-directed ResNet regions. The old checkpoint probes are dynamic-row
+diagnostics; explicitly request `--legacy-diagnostic` to reproduce them, and
+use frozen calibrated scales for new qualification.
+
+**Runner limitation found in the raw evidence:** the supplied remote adapter
+used a total-target-cycle cap and a completed-result filter. It did not perform
+the live active-cycle cutoff described below. Before another paid DSE campaign,
+qualify [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md). The current pool's v3 request
+requires explicit active-measured/in-flight scopes and rejects the old adapter's
+boolean-only response. Baseline execution of committed ELFs remains available.
+
 For a clean remote checkout use [BRANCH_HANDOFF.md](BRANCH_HANDOFF.md). The
 prepared ELFs are committed on the Merlin branch. Running them requires no
 TVM checkout, compiler setup or separate ELF archive. Compiler sources are only
@@ -47,7 +74,7 @@ The profiled ResNet ELF is optional diagnostics, not a required fourth baseline.
 | `tinyllama-prefill-kv.elf` | Two M=32, N=256, K=2048 projections |
 | `tinyllama-decode-down-panel.elf` | M=1, N=128 output panel, full K=5632 |
 
-The three chunk guests include row quantization, INT8 GEMM, FP32 rescaling and
+The three historical chunk guests include row quantization, INT8 GEMM, FP32 rescaling and
 all-output checks. Their ELF sizes are 0.73–1.34 MiB, measured from the files;
 this is not a prediction of execution time. Each warms once and measures once.
 All six prepared guests passed positive and wrong-oracle Spike controls.
@@ -125,7 +152,7 @@ No Python/compiler setup is needed merely to load an already prepared ELF.
 For automated tuning, `tune_firesim_chunks.py` reuses the existing builder and
 stock TVM search. `firesim_job_pool.py` connects those measurements to the
 installed ELF runner. The optional pool integration uses `pool.template.json`
-and `ADAPTER_CONTRACT.md`: ELF in, correctness/active cycles out, a live incumbent
+and [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md): ELF in, correctness/active cycles out, a live incumbent
 limit, and the shared study deadline. Record an existing deployment identifier
 if available; do not start a hardware/memory characterization task.
 
@@ -136,12 +163,13 @@ Set one deadline before launching any study, and reuse it for all processes:
 
 ```bash
 DEADLINE_EPOCH=$(date -d '+4 hours' +%s)
-CHUNK="$DELIVERY/tinyllama-chunks/decode-kv"
+CHUNK="$FROZEN_RELEASE/exact-chunks/decode-kv"
 "$PY" "$MERLIN/examples/gemmini/comparisons/tvm/tune_firesim_chunks.py" \
+  --target-clock-hz "$TARGET_CYCLE_COUNTER_HZ" \
   --program "$CHUNK/program.json" --fixture "$CHUNK/fixture.npz" \
   --pool "$POOL" --toolchain "$TOOLCHAIN" \
   --output-dir "$RUN/decode-kv" --deadline-epoch "$DEADLINE_EPOCH" \
-  --trials 12 --batch 4 --builders "$BUILDERS"
+  --trials 12 --batch 4 --builders "$BUILDERS" --graph-fusion-level 2
 ```
 
 Run prefill K/V and the down panel concurrently when resources permit, sharing
@@ -151,6 +179,12 @@ useful work fits the same deadline. Add
 prior traces; never import their historical Verilator costs as FireSim timings.
 `validated-database/` exports admitted labels; `database/` retains search history
 including failure penalties. Retain raw runner output and partial progress.
+
+`FROZEN_RELEASE` must identify a prepared release conforming to the current
+numerical policy, with actual calibration/scales, independent references and a
+layer placement/output ledger. It is not supplied by renaming the old dynamic
+probe directory. No replacement static-scale TinyLlama release is created by
+the audit; quality gates remain explicit until evaluated.
 
 For actual exports, use `prepare_firesim_chunks.py inventory --program ACTUAL.pt2
 --output-dir NEW`, collect independent live-in/live-out references, and freeze
@@ -164,6 +198,11 @@ an exact small interval:
 ```
 
 The slicer preserves full dimensions/constants and residual/cache live-outs.
+`prepare_exported_chunks.py` additionally freezes explicit functional source-FX
+regions with source-derived live boundaries and checked INT64 contraction
+references. It is a preparation tool, not a compiler optimization. Its proof
+records numerical admission as pending rather than inferring it from timing.
+
 Compile and independently validate each winning whole chunk. The N=128 down
 panel cannot supply an N=2048 record: confirm promising choices with a short
 stock search on the full shape before E2E. CSE is already a no-op on the shared

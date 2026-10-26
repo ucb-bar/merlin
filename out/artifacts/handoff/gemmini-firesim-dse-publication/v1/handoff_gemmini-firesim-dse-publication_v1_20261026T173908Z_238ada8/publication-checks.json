@@ -1,0 +1,23 @@
+{
+  "status": "pass",
+  "unit_tests": "37 passed",
+  "archive_restoration": {
+    "status": "pass",
+    "payload_files_verified": 182,
+    "archive_sha256": "0f4abd85fae9fa3528c151ad4f73cd54a940e62b6bdbad4e92ec21b78ef6b95a",
+    "source_policy": "Use committed branch sources; do not apply archived historical patches"
+  },
+  "fixture_proofs_relocated": 19,
+  "raw_baseline_elf_sha256": "4ec5e14fa82724d6aff3526a6beeb273dfa18637d4e316b386f5cbe487d44acf",
+  "source_tests": "Policy scope, full-shape live edges, wide oracle accumulation, INT32 bias bounds, seconds API, observer/source bindings and cumulative budget/deadline",
+  "structure": "Rechecked: nine inherited module-size failures; every other section passed",
+  "hardware_jobs_launched": 0,
+  "publication_static_checks": [
+    "artifact layout passed with exact release exclusions",
+    "no-regex staged passed",
+    "no-target-name staged passed",
+    "Ruff restore helper passed",
+    "git diff --check passed"
+  ],
+  "staged_git_checkout_restore": "pass: complete Git archive export, raw ELF hash, five-part restore, 182 payload checksums, 19 relocated proofs"
+}
