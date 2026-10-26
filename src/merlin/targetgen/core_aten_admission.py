@@ -102,19 +102,9 @@ def prepare(directory, report, implementation, **kwargs):
     # Static descriptor queries are exported through a tensor wrapper, but
     # carry no tensor data. A capture-owned proof distinguishes them from real
     # literal fills and rank-zero tensor arithmetic without an overload roster.
-    from merlin.targetgen.core_aten_capture import descriptor_specialization_matches
+    from merlin.targetgen.core_aten_capture import static_descriptor_folds
 
-    folds = []
-    for record in original_report["cases"]:
-        if record.get("status") not in {None, "bundled"} or not record.get("capture_directory"):
-            continue
-        from pathlib import Path
-
-        receipt_path = Path(record["capture_directory"]) / "capture.json"
-        receipt = json.loads(receipt_path.read_text())
-        specialization = receipt.get("capture_meta", {}).get("static_metadata_specialization")
-        if specialization and descriptor_specialization_matches(record["case"], receipt):
-            folds.append(specialization)
+    folds = static_descriptor_folds(original_report["cases"])
     if folds:
         admission.update(status="host", reason_code="constant_metadata_fold_no_tensor_data", descriptor_folds=folds)
     # F1 kernels have private results. A checked storage contract copies their

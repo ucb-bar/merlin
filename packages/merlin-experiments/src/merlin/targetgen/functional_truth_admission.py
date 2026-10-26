@@ -149,14 +149,22 @@ def _storage_name(operand: str | None) -> str | None:
     return None
 
 
-def source_signature(case, raw: Mapping, family_code: str, spec: Mapping, *, components=False) -> tuple[str, dict] | None:
-    """The observed admission signature of a native construction, or ``None`` when it has none."""
+def source_signature(
+    case, raw: Mapping, family_code: str, spec: Mapping, *, components=False, contraction_rank=None
+) -> tuple[str, dict] | None:
+    """The observed admission signature of a native construction, or ``None`` when it has none.
+
+    ``contraction_rank`` is the result rank of the contraction the captured source performs,
+    when one was observed; it replaces the operator's result rank for a contraction.
+    """
     construction = CONSTRUCTIONS.get(family_code)
     if construction is None:
         return None
     family, arithmetic = construction
     result = case.outs[0] if case.outs else None
     rank = len(result.shape) if result is not None else 0
+    if family == "contraction" and contraction_rank is not None:
+        rank = contraction_rank
     signature = {
         "family": family,
         "arithmetic": arithmetic,
@@ -229,21 +237,105 @@ def _storage_only(module, *, arithmetic=()) -> bool:
     return True
 
 
-def admit(case, raw: Mapping, family_code: str, admission: Mapping, *, source_module=None) -> dict:
-    """Screen one native construction against the selected spec at accelerator placement."""
+def _reads_arguments(module) -> bool:
+    """Some operation of the (normalized) source reads a function argument.
+
+    Returning an argument unchanged (an input boundary the caller observes) reads no data.
+    """
+    return any(
+        use.operation.name != "func.return"
+        for op in module.walk()
+        if op.name == "func.func"
+        for argument in op.body.block.args
+        for use in argument.uses
+    )
+
+
+def _nonfinite_literals(module) -> bool:
+    """Some floating literal of the source is NaN or infinite."""
+    import math
+
+    from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, FloatAttr
+
+    for op in module.walk():
+        if op.name != "arith.constant":
+            continue
+        value = op.properties.get("value") or op.attributes.get("value")
+        if isinstance(value, FloatAttr):
+            words = [value.value.data]
+        elif isinstance(value, DenseIntOrFPElementsAttr):
+            words = [word for word in value.get_values() if isinstance(word, float)]
+        else:
+            continue
+        if any(not math.isfinite(word) for word in words):
+            return True
+    return False
+
+
+def _data_comparisons(module) -> bool:
+    """The source orders a data word against another value, as a threshold or compare/select does.
+
+    Loop-index comparisons are addressing. A word compared with itself is an IEEE special-value
+    test (``uno``/``ord``), which typed component proofs carry; it orders nothing.
+    """
+    from xdsl.dialects.builtin import IndexType
+
+    return any(
+        op.name in {"arith.cmpi", "arith.cmpf"}
+        and not all(isinstance(v.type, IndexType) for v in op.operands)
+        and op.operands[0] is not op.operands[1]
+        for op in module.walk()
+    )
+
+
+def _contraction_rank(module) -> int | None:
+    """The largest result rank of a contraction the source performs, or ``None`` without one."""
+    from merlin.kernels.shapes import observe_contractions
+
+    ranks = [len(op.results[0].type.get_shape()) for op, _shape in observe_contractions(module)]
+    return max(ranks) if ranks else None
+
+
+def _normalized(source_module):
+    from merlin.llvmlower.entry_weight_projection import _pure_dce
+    from merlin.targetgen.core_aten_numeric import normalize_closed_identities
+
+    normalized = source_module.clone()
+    normalize_closed_identities(normalized)
+    for function in normalized.walk():
+        if function.name == "func.func":
+            _pure_dce(function)
+    return normalized
+
+
+def admit(case, raw: Mapping, family_code: str, admission: Mapping, *, source_module=None, descriptor_folds=()) -> dict:
+    """Screen one native construction against the selected spec at accelerator placement.
+
+    With the captured source, the projection reads what that source computes:
+
+    * ``descriptor_folds`` are the capture's proofs that the result folds from the inputs'
+      static descriptors (:func:`core_aten_capture.static_descriptor_folds`). With a source
+      that reads no argument, such a result has no tensor data for any unit to place.
+    * A source of storage selectors alone is movement, unless it materializes a nonfinite
+      literal: exact literal producers cover finite words only.
+    * A contraction's rank is the rank of the contraction in the source (an im2col
+      convolution contracts a matrix), not the operator's result rank.
+    * Radix components are a closed linear producer. A source that compares data words
+      (a threshold, a compare/select) is not linear in them, so the component form does
+      not carry it.
+    """
     from merlin.targetgen.software_spec import admit_operation
 
     spec = admission["spec"]
+    normalized = contraction_rank = None
     if source_module is not None:
-        from merlin.llvmlower.entry_weight_projection import _pure_dce
-        from merlin.targetgen.core_aten_numeric import normalize_closed_identities
-
-        normalized = source_module.clone()
-        normalize_closed_identities(normalized)
-        for function in normalized.walk():
-            if function.name == "func.func":
-                _pure_dce(function)
-        if _storage_only(normalized):
+        normalized = _normalized(source_module)
+        if descriptor_folds and not _reads_arguments(normalized):
+            return {
+                "status": "not_native",
+                "reason": "result folds from static input descriptors and reads no tensor data",
+            }
+        if _storage_only(normalized) and not _nonfinite_literals(normalized):
             from merlin.targetgen.native_unit_policy import construction_evidence
 
             excluded = (spec.get("numerical_semantics", {}).get("native_unit_contract") or {}).get("excluded_constructions")
@@ -260,13 +352,16 @@ def admit(case, raw: Mapping, family_code: str, admission: Mapping, *, source_mo
             # A masked additive scan is linear in its inputs. Its hypothetical
             # triangular-matrix construction does not impose a bilinear rank.
             family_code = "N2"
-    observed = source_signature(case, raw, family_code, spec)
+        contraction_rank = _contraction_rank(normalized)
+    observed = source_signature(case, raw, family_code, spec, contraction_rank=contraction_rank)
     if observed is None:
         return {"status": "not_native", "reason": f"{family_code} is not a native construction"}
     _family, signature = observed
     decision = _component_refusal(signature, spec) or admit_operation(spec, case.ov, signature, "accelerator")
     if source_module is not None and decision["status"] != "admitted":
-        alternative = source_signature(case, raw, family_code, spec, components=True)[1]
+        alternative = source_signature(
+            case, raw, family_code, spec, components=True, contraction_rank=contraction_rank
+        )[1]
         if alternative.get("arithmetic") == "integer_components" and alternative != signature:
             represented = _component_refusal(alternative, spec) or admit_operation(spec, case.ov, alternative, "accelerator")
             if represented["status"] == "admitted":
@@ -277,6 +372,17 @@ def admit(case, raw: Mapping, family_code: str, admission: Mapping, *, source_mo
         and decision.get("declaration") != binding_declaration(signature)
     ):
         decision = {"status": "unsupported", "reason": "source component form requires its own declaration"}
+    if (
+        decision["status"] == "admitted"
+        and signature.get("arithmetic") == "integer_components"
+        and normalized is not None
+        and _data_comparisons(normalized)
+    ):
+        decision = {
+            "status": "unsupported",
+            "declaration": decision.get("declaration"),
+            "reason": "the source compares data words; a linear component producer does not carry the comparison",
+        }
     return {**decision, "observed_signature": signature}
 
 

@@ -350,3 +350,96 @@ def test_fixture_admission_preserves_pending_row_gating(monkeypatch, enabled, co
             decision = expectation(case, admission=admission)["admission"]
             assert decision["declaration"] == "contraction"
             assert decision["status"] == "unknown" and "operation review" in decision["reason"]
+
+
+def _full_spec():
+    return {"spec": resolve_spec(load_software_spec(SPEC), {})[0]}
+
+
+def _int_case(overload, dtype="int32"):
+    case = _case(overload)
+    for tensor in [*case["arguments"]["args"]["items"], case["expected"]]:
+        if isinstance(tensor, dict) and tensor.get("kind") == "tensor":
+            tensor["dtype"] = dtype
+    return case
+
+
+_THRESHOLD = "%z=arith.constant 0 : i32\n%c=arith.cmpi slt,%a,%z : i32\n%v=arith.select %c,%z,%a : i32"
+_SELF_TEST = (
+    "%z=arith.constant 1 : i32\n%s=arith.subi %a,%z : i32\n%c=arith.cmpi eq,%a,%a : i32\n%v=arith.select %c,%s,%a : i32"
+)
+_LINEAR = "%z=arith.constant 1 : i32\n%v=arith.subi %a,%z : i32"
+
+
+@pytest.mark.parametrize(
+    "body,compares", [(_LINEAR, False), (_SELF_TEST, False), (_THRESHOLD, True)], ids=["linear", "self", "threshold"]
+)
+def test_component_form_does_not_carry_a_data_compare_select(body, compares):
+    from mlir_fixtures import pointwise
+
+    from merlin.targetgen.functional_truth_admission import admit
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _int_case("aten.relu.default")
+    module = pointwise(["tensor<2x3xi32>"], "tensor<2x3xi32>", body)
+    decision = admit(Case(case, "test"), case, "N3", _full_spec(), source_module=module)
+    assert decision["observed_signature"]["arithmetic"] == "integer_components"
+    assert decision["status"] == ("unsupported" if compares else "admitted")
+    assert decision["declaration"] == "component_linear"
+
+
+def test_contraction_rank_is_the_rank_the_source_contracts():
+    from mlir_fixtures import forward
+
+    from merlin.targetgen.functional_truth_admission import admit
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _int_case("aten.convolution.default")
+    module = forward(
+        "%x:tensor<9x9xi32>,%y:tensor<9x2xi32>",
+        "tensor<9x2xi32>",
+        "%zero=arith.constant 0 : i32\n%init=tensor.splat %zero : tensor<9x2xi32>\n"
+        "%r=linalg.matmul ins(%x,%y:tensor<9x9xi32>,tensor<9x2xi32>) outs(%init:tensor<9x2xi32>) -> tensor<9x2xi32>",
+    )
+    operator = admit(Case(case, "test"), case, "N1", _full_spec())
+    source = admit(Case(case, "test"), case, "N1", _full_spec(), source_module=module)
+    assert operator["observed_signature"]["rank"] == 4 and operator["status"] != "admitted"
+    assert source["observed_signature"]["rank"] == 2
+    assert source["status"] == "admitted" and source["declaration"] == "component_bilinear"
+
+
+_FOLD = {"authority": "static_capture_input_descriptors", "inputs": [], "queries": [{"value": 3}]}
+
+
+@pytest.mark.parametrize("folds,reads", [((_FOLD,), False), ((), False), ((_FOLD,), True)])
+def test_descriptor_fold_without_tensor_reads_has_no_device_placement(folds, reads):
+    from mlir_fixtures import forward, generic
+
+    from merlin.targetgen.functional_truth_admission import admit
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _case("aten.sym_size.int")
+    if reads:
+        body = generic([("%x", "tensor<2x3xf32>")], "tensor<2x3xf32>", "%v=arith.negf %a : f32")
+        module = forward("%x:tensor<2x3xf32>", "(tensor<2x3xf32>, tensor<2x3xf32>)", body, ret="%r, %x")
+    else:
+        body = "%c=arith.constant 3.0 : f32\n%r=tensor.splat %c : tensor<f32>"
+        module = forward("%x:tensor<2x3xf32>", "(tensor<f32>, tensor<2x3xf32>)", body, ret="%r, %x")
+    decision = admit(Case(case, "test"), case, "T0", _full_spec(), source_module=module, descriptor_folds=folds)
+    folded = decision.get("reason") == "result folds from static input descriptors and reads no tensor data"
+    assert folded == (bool(folds) and not reads)
+
+
+@pytest.mark.parametrize("literal,admitted", [("1.25", True), ("0x7FC00000", False)])
+def test_storage_only_fill_is_movement_only_for_finite_literals(literal, admitted):
+    from mlir_fixtures import forward
+
+    from merlin.targetgen.functional_truth_admission import admit
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _case("aten.full.default")
+    module = forward("", "tensor<2x3xf32>", f"%c=arith.constant {literal} : f32\n%r=tensor.splat %c : tensor<2x3xf32>")
+    decision = admit(Case(case, "test"), case, "T0", _full_spec(), source_module=module)
+    assert (decision["status"] == "admitted") == admitted
+    if admitted:
+        assert decision["declaration"] == "movement_bitwise"

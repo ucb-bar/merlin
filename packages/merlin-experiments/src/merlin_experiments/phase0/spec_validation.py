@@ -240,8 +240,16 @@ def spec_expectation(directory: Path, case: Mapping[str, Any], admission: Mappin
         from merlin.frontends.linalg_mlir import parse_mlir_file
 
         module = parse_mlir_file(source_path)
+    # The capture's own record of a result folded from static input descriptors, the same
+    # reading the lane's placement makes.
+    folds = []
+    batch_map = directory / "core_aten_batch_map.json"
+    if batch_map.is_file():
+        from merlin.targetgen.core_aten_capture import static_descriptor_folds
+
+        folds = static_descriptor_folds(json.loads(batch_map.read_bytes()).get("cases", []))
     # The functional rules name the construction; only shared spec admission decides placement.
-    decision = admit(source, case, derive(source).family, admission, source_module=module)
+    decision = admit(source, case, derive(source).family, admission, source_module=module, descriptor_folds=folds)
     if decision.get("declaration"):
         decision["source"] = declaration_location(admission, "software", decision["declaration"])
     path = directory / "spec-int8-admission.json"

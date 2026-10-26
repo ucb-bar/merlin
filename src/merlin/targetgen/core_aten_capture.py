@@ -203,6 +203,23 @@ def descriptor_specialization_matches(case: dict, capture: dict) -> bool:
     )
 
 
+def static_descriptor_folds(records: list[dict]) -> list[dict]:
+    """The capture-recorded static descriptor folds of a batch's bundled records.
+
+    Placement and spec admission share this one reading: a bundle whose result
+    the frontend folded from its inputs' static descriptors carries no tensor data.
+    """
+    folds = []
+    for record in records:
+        if record.get("status") not in {None, "bundled"} or not record.get("capture_directory"):
+            continue
+        receipt = json.loads((Path(record["capture_directory"]) / "capture.json").read_text())
+        specialization = receipt.get("capture_meta", {}).get("static_metadata_specialization")
+        if specialization and descriptor_specialization_matches(record["case"], receipt):
+            folds.append(specialization)
+    return folds
+
+
 def capture_case_corpus(
     corpus: dict[str, Any],
     output_root: str | Path,
