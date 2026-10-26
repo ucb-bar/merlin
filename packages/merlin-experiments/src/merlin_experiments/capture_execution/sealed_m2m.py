@@ -113,7 +113,7 @@ _MAX_SELECTED_CAPTURE_SECONDS = 14_400
 
 # This literal is part of the selected issuer identity. Refuse changes to the
 # extracted verifier; historical issuer admission remains unchanged.
-_VALIDATION_SOURCE_SHA256 = "b5b6c46235ea873015013f9a4a314d91680dfbfad43592f7027f8fcfa87b9664"
+_VALIDATION_SOURCE_SHA256 = "e5cda3b1d5e5789fed0fb2c0db4e45cada1fde231f5505f28e22a03d67920dab"
 
 
 def _validation_functions():
@@ -163,6 +163,24 @@ def _command(output_mount: Path) -> tuple[str, ...]:
 
 #: The worker's float tokens. A float capture selects no recipe; an int8 capture must select one.
 _FLOAT_DTYPES = frozenset({"fp32", "f32"})
+# torch's c10 cpuinfo initialization parses /proc/cpuinfo on the first float16 CPU reduction (and prints an
+# error on bf16 matmul). The guest root has no /proc, so give it exactly one file: an empty /proc mount point
+# in the plan-verified root is covered with a tmpfs and a FIXED, byte-pinned cpuinfo is bound read-only into
+# it. The host file is deliberately not used: its bytes (model, flags, "cpu MHz") differ between hosts and
+# between reads, and a fresh procfs would also expose meminfo, stat and uptime. The fixed file is only a
+# parse stub for the library; it does not describe the host, and dispatch is still decided by the bound
+# ATEN_CPU_CAPABILITY and the observed-dispatch check. Its digest is part of the issuer identity (this literal)
+# and of the sandbox policy.
+_GUEST_CPUINFO = Path(__file__).with_name("guest_cpuinfo.txt")
+_GUEST_CPUINFO_SHA256 = "f90d7201717138aaab2eb41aac1143cdba39e933feb659e192a7b44f218e7fe3"
+
+
+def _cpuinfo_mount() -> tuple[str, ...]:
+    if _GUEST_CPUINFO.is_symlink() or not _GUEST_CPUINFO.is_file():
+        raise SealedM2MError("selected guest cpuinfo is absent or indirect")
+    if _file_digest(_GUEST_CPUINFO) != _GUEST_CPUINFO_SHA256:
+        raise SealedM2MError("selected guest cpuinfo bytes changed")
+    return ("--tmpfs", "/proc", "--ro-bind", str(_GUEST_CPUINFO), "/proc/cpuinfo")
 
 
 def _worker_options(options: Any) -> dict[str, Any]:
@@ -331,7 +349,7 @@ def _policy(
                 "guest_env": _guest_env(output_mount, replayable_logs=replayable_logs, loader_env=loader_env),
                 "command": command,
                 "output_mount": str(output_mount),
-                "mounts": ["guest-root:ro", "source:ro", "capture:rw", "tmp:tmpfs", "dev:private"],
+                "mounts": ["guest-root:ro", "source:ro", "capture:rw", "tmp:tmpfs", "dev:private", f"proc:cpuinfo:{_GUEST_CPUINFO_SHA256}"],
                 "timeout_seconds": timeout_seconds,
                 **({"runtime_reuse": runtime_reuse} if runtime_reuse is not None else {}),
             }
@@ -372,6 +390,7 @@ def _sandbox_argv(
         str(output_mount),
         "--tmpfs",
         "/tmp",
+        *_cpuinfo_mount(),
         "--dev",
         "/dev",
         "--",
@@ -550,6 +569,7 @@ def _probe_sandbox(bwrap: Path) -> None:
         "/",
         "--tmpfs",
         "/tmp",
+        *_cpuinfo_mount(),
         "--dev",
         "/dev",
         "--",
@@ -1455,7 +1475,7 @@ def _issue(
     else:
         link_runtime(plan, runtime, verified_cache=verified_cache, selected_system_libraries=selected_system_libraries)
     output = run_dir / "capture"
-    for name in ("source", "capture-out", "tmp", "dev"):
+    for name in ("source", "capture-out", "tmp", "dev", "proc"):
         (runtime / name).mkdir()
     (runtime / output.relative_to("/")).mkdir(parents=True)
     _validate_snapshots(

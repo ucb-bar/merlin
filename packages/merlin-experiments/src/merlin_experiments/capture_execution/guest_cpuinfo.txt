@@ -1,0 +1,6 @@
+processor	: 0
+vendor_id	: GenuineIntel
+cpu family	: 6
+model		: 85
+model name	: Fixed
+flags		: fpu sse sse2 avx avx2

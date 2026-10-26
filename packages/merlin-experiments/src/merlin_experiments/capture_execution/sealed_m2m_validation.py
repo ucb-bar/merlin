@@ -116,7 +116,7 @@ def _validate_snapshots(
         readonly_runtime,
     )
 
-    for name in ("source", "capture-out", "tmp", "dev"):
+    for name in ("source", "capture-out", "tmp", "dev", "proc"):
         path = runtime / name
         if path.is_symlink() or not path.is_dir() or any(path.iterdir()):
             raise SealedM2MError(f"guest mount point /{name} is not empty")
