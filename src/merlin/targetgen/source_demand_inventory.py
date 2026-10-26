@@ -113,7 +113,7 @@ def model_op_demands_checked(
     from math import prod
 
     from merlin.common import mlir_query as mq
-    from merlin.kernels import shapes as ks
+    from merlin.compile.analysis import contraction_shapes as ks
     from merlin.xdsl_dialects.lowering import contraction_coverage as cc
 
     try:

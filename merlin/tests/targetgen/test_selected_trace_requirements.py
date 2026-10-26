@@ -130,8 +130,9 @@ def test_weight_bank_stay_class_cannot_replace_accumulation_destination_flag(tmp
         target="synthetic", protocol=protocol, facts=backend._data()["facts"], raw_isa=isa, word_bits=64,
     )
     result = trace_check.check(_trace(backend, (6, 4)), {"modes": {"k_accumulate": True}}, target="synthetic")
-    assert result["status"] == "fail" and result["trace_requirement_status"] == "unavailable_fields"
-    assert result["unavailable_requirements"] == ["k_accumulate"]
+    # Unobservable is missing evidence, not a violation; it still never completes the requirement.
+    assert result["status"] == "pass" and result["trace_requirement_status"] == "unavailable_fields"
+    assert result["unavailable_requirements"] == ["k_accumulate"] and not trace_check.requirements_complete(result)
 
 
 @pytest.mark.parametrize("bits,passed", [
@@ -164,7 +165,8 @@ def test_accumulation_consumes_actual_source_width_and_register_bits(tmp_path, m
                                {"instruction_classes": ["PRELOAD_CMD"], "modes": {"k_accumulate": True}},
                                target="synthetic")
     assert result["trace_requirement_status"] == expected
-    assert (result["status"] == "pass") == (expected == "pass")
+    assert (result["status"] == "pass") == (expected != "failed")  # unavailable is not a violation
+    assert trace_check.requirements_complete(result) == (expected == "pass")
 
 
 def test_refusal_coverage_requires_original_evidence_and_retains_host_veto(tmp_path, monkeypatch):

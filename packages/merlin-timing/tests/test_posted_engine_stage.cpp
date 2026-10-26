@@ -28,4 +28,24 @@ int main(){
  assert(snapshot.origin&&snapshot.origin->pc==0x80001000&&snapshot.origin->bits==0x123&&snapshot.origin->committed_instruction==19&&snapshot.origin->actor=="original_future_load");
  // Event custody is an owned snapshot; later producer edits cannot retag it.
  future.origin->pc=0x80002000;assert(snapshot.origin->pc==0x80001000);
+ // An in-order CPU can have a later issue frontier while an already posted
+ // DMA response still owns an earlier physical edge. The pure query and
+ // actual detached commit must agree without rewinding CPU admission.
+ Engine ahead(8,{{0,1,0}});ahead.advance_issue(100);
+ PostedTimeline delayed({16,16,64});auto async=delayed.token();assert(async);
+ OwnedStage response;response.earliest=3;response.latency=0;response.demands={{0,1,Cycle{1}}};
+ assert(ahead.earliest_stage_start(response.event(3))==3);
+ assert(PostedEngineStage::post(delayed,ahead,response,{},*async));
+ assert(delayed.advance(5,true)&&delayed.completed(*async)==3);
+ assert(ahead.issue_frontier()==100);
+ // Physical reservations still constrain detached service.
+ auto next=delayed.token();assert(next);response.earliest=3;
+ assert(PostedEngineStage::post(delayed,ahead,response,{},*next)==false); // closed frontier
+ Engine occupied(8,{{0,1,0}});occupied.advance_issue(100);
+ Demand reserve{0,1,Cycle{8}};Event busy{0,{},{},{&reserve,1},Cycle{0}};
+ assert(occupied.submit_detached(busy).start==0);
+ assert(occupied.earliest_stage_start(response.event(3))==8);
+ assert(occupied.submit_detached(response.event(3)).start==8);
+ assert(occupied.issue_frontier()==100);
+
 }

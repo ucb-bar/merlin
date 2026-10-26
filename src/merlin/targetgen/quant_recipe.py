@@ -461,7 +461,9 @@ def with_shared_grid_operand_sums(
     return body
 
 
-def with_activation_contractions(recipe: Mapping[str, Any]) -> dict[str, Any]:
+def with_activation_contractions(
+    recipe: Mapping[str, Any], *, minimum_reduction: int | None = None,
+) -> dict[str, Any]:
     """``recipe`` (a derived ``quant_recipe_v1`` document) that ALSO quantizes activation contractions.
 
     The switch is the family :data:`ACTIVATION_CONTRACTION` in ``families``; everything else is the
@@ -473,6 +475,8 @@ def with_activation_contractions(recipe: Mapping[str, Any]) -> dict[str, Any]:
     run-time vector the readout cannot hold. Only a static per-tensor integer recipe is extended:
     any other form is refused with the reason, never approximated. The content digest changes with
     the family, so a capture made under the variant is never served for one made without it.
+    ``minimum_reduction`` explicitly replaces the historical >16 profitability screen; it
+    does not change integer formats, software admission, or numerical quality bounds.
     """
     if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
         raise ValueError("only a derived quant_recipe_v1 can be extended")
@@ -500,6 +504,13 @@ def with_activation_contractions(recipe: Mapping[str, Any]) -> dict[str, Any]:
         "int8 x int8 into the accumulator with both operands on the activation spec, one static "
         "scale per tensor each; the readout's one scale is their product"
     )
+    if minimum_reduction is not None:
+        body["activation_contraction_policy"] = {
+            "schema": "activation_contraction_admission_v1", "minimum_reduction": minimum_reduction,
+        }
+    from ._activation_contractions import activation_reduction_minimum
+
+    activation_reduction_minimum(body)
     body["recipe_sha256"] = digest(body)
     return body
 
@@ -856,6 +867,10 @@ def _main(argv: Sequence[str] | None = None) -> int:
     variant = sub.add_parser("activation-contractions", help=with_activation_contractions.__doc__.splitlines()[0])
     variant.add_argument("recipe", type=Path)
     variant.add_argument("out", type=Path)
+    variant.add_argument(
+        "--minimum-reduction", type=int, default=None,
+        help="explicit inclusive activation reduction minimum; default retains the profitability screen",
+    )
     residual = sub.add_parser("shared-grid-sums", help=with_shared_grid_operand_sums.__doc__.splitlines()[0])
     residual.add_argument("recipe", type=Path)
     residual.add_argument("out", type=Path)
@@ -908,7 +923,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "native-outputs":
         body = with_native_output_quantization(source, operators=args.operators, reader_policy=args.reader_policy)
     elif args.command == "activation-contractions":
-        body = with_activation_contractions(source)
+        body = with_activation_contractions(source, minimum_reduction=args.minimum_reduction)
     elif args.command == "static-planes":
         owners = None if args.owners is None else [o for o in args.owners.split(",") if o]
         body = with_static_planes(source, planes=args.planes, observer=args.observer, owners=owners)

@@ -441,7 +441,7 @@ def _kind_for_facet(facet: str) -> str | None:
     stationary-weight wavefront from a rank-1 outer-product tile -- both push weights and drain
     accumulators. Synthesizing either would assert a datapath nobody observed, so the honest answer is
     None and the caller declines to synthesize."""
-    from merlin.kernels import engines as _eng
+    from merlin.compile.analysis import engine_facets as _eng
 
     kinds = [k for k, f in _eng.ENGINE_FACET.items() if f == facet]
     return kinds[0] if len(kinds) == 1 else None
@@ -798,7 +798,7 @@ def derive_manifest(
         # `unchecked_engine` findings are the load-bearing part. No rung can observe a SIMT engine
         # today, so a SIMT declaration is UNCHECKED rather than unsupported, and the report says which
         # it is. Collapsing those two would action a gap in our instruments as a fact about silicon.
-        from merlin.kernels import engines as _eng
+        from merlin.compile.analysis import engine_facets as _eng
 
         engines = _cd.derive_engines(name, manifest, facts)
         evidence.update(engines.to_dict())

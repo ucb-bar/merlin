@@ -320,6 +320,21 @@ def _validate_readout(block):
             )
 
 
+#: Simulated cycles an operator-budgeted gSIM run may reach in this process tree. A measurement whose
+#: wall budget outlasts the selected command's ``+max-cycles`` hang bound sets it (derived from that
+#: budget and the engine's observed rate), so the cap does not end the run before the budget does. It
+#: only raises the selected cap; the selected wall deadline still bounds the process.
+GSIM_BUDGET_MAX_CYCLES_ENV = "MERLIN_GSIM_BUDGET_MAX_CYCLES"
+
+
+def _gsim_budget_max_cycles():
+    raw = os.environ.get(GSIM_BUDGET_MAX_CYCLES_ENV, "").strip()
+    if not raw:
+        return None
+    _require(raw.isdigit() and 0 < int(raw) <= (1 << 63) - 1, "budgeted gSIM cycle bound must be a positive integer")
+    return int(raw)
+
+
 def _gsim_startup_transport():
     selected = os.environ.get("MERLIN_GSIM_STARTUP_PRELOAD")
     _require(selected in {None, "", "0", "1"}, "selected gSIM startup preload must be 0 or 1")
@@ -558,6 +573,18 @@ class BoundRoCCBackend:
         return tuple(argv)
 
     def _engine_identity(self, engine):
+        """The selected engine's validated identity, reused while its pinned files are unchanged."""
+        from merlin.runtime.backends import engine_identity_memo as M
+
+        block = self._engine(engine)
+        paths = [block["binary"]["path"]]
+        if isinstance(block.get("receipt"), dict):
+            paths += M.receipt_paths(block["receipt"]["path"])
+        key = (self.target, engine, hashlib.sha256(self._selection_json.encode()).hexdigest(),
+               json.dumps(block, sort_keys=True, default=str), os.environ.get("MERLIN_GSIM_STARTUP_PRELOAD", ""))
+        return M.cached(key, paths, lambda: self._validated_engine_identity(engine))
+
+    def _validated_engine_identity(self, engine):
         block = self._engine(engine)
         binary = _check_pin(block["binary"], executable=True)
         identity = {
@@ -819,13 +846,17 @@ class BoundRoCCBackend:
         )
         flags = before.get("extension", {}).get("flags", [])
         template = self.execution_argv_template(simulator)
-        if private_max_cycles is not None:
+        budget_cycles = _gsim_budget_max_cycles() if simulator == "gsim" and private_max_cycles is None else None
+        if private_max_cycles is not None or budget_cycles is not None:
             cycle_args = [arg for arg in template if arg.startswith("+max-cycles=")]
             _require(
                 len(cycle_args) == 1 and cycle_args[0].removeprefix("+max-cycles=").isdigit(),
                 "selected gSIM command has no unique source-bound cycle limit",
             )
-            template = tuple(f"+max-cycles={private_max_cycles}" if arg == cycle_args[0] else arg for arg in template)
+            cycles = private_max_cycles
+            if cycles is None:
+                cycles = max(int(cycle_args[0].removeprefix("+max-cycles=")), budget_cycles)
+            template = tuple(f"+max-cycles={cycles}" if arg == cycle_args[0] else arg for arg in template)
         _require(
             (_gsim_startup_transport() if simulator == "gsim" else None) == before.get("startup_transport"),
             "selected startup transport changed before execution",

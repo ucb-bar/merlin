@@ -107,6 +107,10 @@ def validate_host_capabilities(
                 STATIC_F32_MAXIMUM_SOURCE_BODY_SCHEMA,
                 validate_static_f32_maximum_source_body,
             )
+            from merlin.frontends.linalg_f32_reductions import (
+                STATIC_F32_SUM_SOURCE_BODY_SCHEMA,
+                validate_static_f32_sum_source_body,
+            )
             from merlin.frontends.linalg_math_patterns import (
                 STATIC_F32_MATH_SOURCE_BODY_SCHEMA,
                 validate_static_f32_math_source_body,
@@ -260,6 +264,13 @@ def validate_host_capabilities(
                     or row["numerical_contract"].get("status") != "unreviewed"
                 ):
                     raise ValueError("f32 maximum source_body needs one exact typed placement-only selector")
+            elif isinstance(body, dict) and body.get("schema") == STATIC_F32_SUM_SOURCE_BODY_SCHEMA:
+                validate_static_f32_sum_source_body(body)
+                if (row.get("ops") != ["aten.sum.dim_IntList"] or "families" in row or "family" in row
+                        or row["signature"] != {"family": "reduction",
+                            "ordered_operand_dtypes": ["f32", "f32"], "ordered_result_dtypes": ["f32"]}
+                        or row.get("numerical_contract", {}).get("status") != "unreviewed"):
+                    raise ValueError("f32 sum source_body needs one exact typed placement-only selector")
             elif isinstance(body, dict) and body.get("schema") == MIXED_SCHEMA:
                 validate_mixed(body)
                 if required_composite_math_symbol(body["schema"], body["operation"]) and "linkage_contract" not in row:
@@ -433,11 +444,58 @@ def _screen_f32_maximum_source_body(
     }
 
 
+def _screen_f32_sum_source_body(declaration, row, signature, source_operations, source_context):
+    """Reprove every +zero-initialized addf reduction at the selected width."""
+    from dataclasses import asdict
+
+    from merlin.common import mlir_query as mq
+    from merlin.frontends.linalg_f32_reductions import recognize_static_f32_sum
+    from merlin.frontends.linalg_patterns import InvalidLinalgPattern
+    from merlin.targetgen.application_inventory import operation_structure
+
+    width = _selected_index_bits(source_context)
+    if width is None:
+        return {"status": "unknown", "reason": "f32 sum needs a selected compiler index observation"}
+    if not source_operations:
+        return {"status": "unknown", "reason": "f32 sum requires parsed source operations"}
+    if (type(source_operations) is not tuple or type(row.get("count")) is not int
+            or row["count"] != len(source_operations) or row.get("mlir_operation") != "linalg.reduce"
+            or row.get("frontend_op") != "aten.sum.dim_IntList"
+            or len({id(op) for op in source_operations}) != len(source_operations)):
+        return {"status": "unsupported", "reason": "f32 sum source occurrence roster differs"}
+    patterns = []
+    for op in source_operations:
+        if mq.attr_str(op, "prov.aten") != "aten.sum.dim_IntList":
+            return {"status": "unsupported", "reason": "f32 sum source frontend identity differs"}
+        try:
+            pattern = recognize_static_f32_sum(op, index_bits=width)
+        except InvalidLinalgPattern as error:
+            return {"status": "unsupported", "reason": f"f32 sum structural proof refused: {error}"}
+        structure = operation_structure(op)
+        if (row.get("ordered_operand_types") != structure["ordered_operand_types"]
+                or row.get("ordered_result_types") != structure["ordered_result_types"]
+                or signature.get("family") != "reduction"
+                or signature.get("ordered_operand_dtypes") != ["f32", "f32"]
+                or signature.get("ordered_result_dtypes") != ["f32"]
+                or signature.get("rank") != len(pattern.output_shape)):
+            return {"status": "unsupported", "reason": "f32 sum source differs from observed typed ABI"}
+        patterns.append(json.loads(json.dumps(asdict(pattern))))
+    return {"status": "admitted", "reason": "every source root is a selected-width +zero addf reduction",
+            "proof": {"schema": declaration["source_body"]["schema"], "declaration": declaration["id"],
+                      "operation": declaration["source_body"]["operation"],
+                      "patterns": patterns,
+                      "selected_index_observation": copy.deepcopy(source_context["selected_index_observation"])}}
+
+
 def _screen_source_body(
     declaration: dict, row: dict, signature: dict, source_operations: tuple | None, source_context: Mapping | None
 ) -> dict:
     """Match every supplied parsed occurrence; never treat an omitted source as evidence."""
     from dataclasses import asdict
+    from merlin.frontends.linalg_f32_reductions import STATIC_F32_SUM_SOURCE_BODY_SCHEMA
+
+    if declaration["source_body"]["schema"] == STATIC_F32_SUM_SOURCE_BODY_SCHEMA:
+        return _screen_f32_sum_source_body(declaration, row, signature, source_operations, source_context)
 
     if declaration["source_body"]["schema"] == CONNECTED_INDEX_SCHEMA:
         return screen_connected_index(declaration, row, signature, source_operations, source_context)

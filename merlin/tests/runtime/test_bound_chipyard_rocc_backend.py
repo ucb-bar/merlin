@@ -793,6 +793,33 @@ def test_ordinary_integer_runner_stimulus_reaches_strict_harness(selection):
         _bound(selection).render_harness(cb, target="synthetic", inputs={})
 
 
+def test_integer_stimulus_precheck_uses_the_selected_contract_storage_budget(selection, monkeypatch):
+    """A per-op integer case above the renderer default (an LM-head-sized weight) is refused only by the
+    budget the renderer itself applies: the contract's selection, else the renderer's default."""
+    from merlin.runtime import commandbuffer
+    from merlin.targetgen.contract.compile import _ordinary_integer_harness_inputs
+
+    cb = _program()
+    del cb["kernel_abi"]
+    cb["tensors"]["X"]["shape"] = [2048, 8193]  # 16 MiB + 2 KiB of int8 weight
+    cb["commands"] = [{"opcode": "MOVE", "operands": {"src": "X", "dst": "Y"}}]
+
+    class Leaf:
+        def to_list(self):
+            return [[0]]
+
+    monkeypatch.setattr(commandbuffer, "materialize_inputs", lambda _cb: {"X": Leaf()})
+    assert _bound(selection).logical_storage_budget_bytes() == 16 << 20
+    with pytest.raises(ValueError, match="storage budget"):
+        _ordinary_integer_harness_inputs(cb)
+    with pytest.raises(ValueError, match="storage budget"):
+        _ordinary_integer_harness_inputs(cb, max_storage_bytes=_bound(selection).logical_storage_budget_bytes())
+    selection[0]["logical_harness"] = {"storage_budget_bytes": 128 << 20}
+    budget = _bound(selection).logical_storage_budget_bytes()
+    assert budget == 128 << 20
+    assert _ordinary_integer_harness_inputs(cb, max_storage_bytes=budget) == {"X": [[0]]}
+
+
 def test_integer_stimulus_fallback_does_not_replace_model_or_float_inputs():
     from merlin.targetgen.contract.compile import _ordinary_integer_harness_inputs
 

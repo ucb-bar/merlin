@@ -19,6 +19,7 @@ from merlin.runtime.execution_memory import MemoryMapBinding, MemoryReservation,
 
 from . import chain_image_abi as abi
 from . import chain_image_boot as boot
+from . import chain_image_counter as counters
 from . import chain_image_data as data
 from . import chain_image_layout as layout
 from . import chain_image_objects as objects
@@ -110,6 +111,8 @@ def build(selection_path: Path, destination: Path):
         raise ValueError("select explicit chain transport and a finite bounded compilation timeout")
     if destination.exists() or destination.is_symlink() or destination.parent.resolve() != destination.parent:
         raise ValueError("chain image output must be a fresh canonical directory")
+    if selection["transport"] == "timing_only_v1" and selection.get("group_profile", False):
+        raise ValueError("timing-only chain cannot include between-call group profile transport")
     compiler = selection["compiler"]
     if destination.is_relative_to(Path(compiler["path"])):
         raise ValueError("chain packaging cannot write into the frozen compiler")
@@ -166,11 +169,24 @@ def build(selection_path: Path, destination: Path):
                 )
             profile = dict(zip(("reset", "dump"), (mapping[hook] for hook in hooks), strict=True))
         group_profiles.append(profile)
-    counter_program = names[counter["program"]]
-    if counter["symbol"] not in {
-        line.split()[0] for line in Path(counter_program["mapping"]["path"]).read_text().splitlines()
-    }:
-        raise ValueError("selected counter is not defined by its retained program objects")
+    counter_support = None
+    if counter.get("kind") == counters.KIND:
+        if type(counter["program"]) is not int or not 0 <= counter["program"] < len(plan["programs"]):
+            raise ValueError("source counter must select one actual original program")
+        counter_support = counters.prepare(
+            counter, plan["programs"][counter["program"]]["production"], destination / "counter",
+            nm=Path(tools["nm"]["path"]), timeout=timeout,
+        )
+        counter_symbol = counter_support["symbol"]
+    else:
+        if "kind" in counter:
+            raise ValueError("unknown chain counter selection kind")
+        counter_program = names[counter["program"]]
+        if counter["symbol"] not in {
+            line.split()[0] for line in Path(counter_program["mapping"]["path"]).read_text().splitlines()
+        }:
+            raise ValueError("selected counter is not defined by its retained program objects")
+        counter_symbol = counter_program["prefix"] + counter["symbol"]
     objects.reopen(counter["contract"])
     header = destination / "chain_data.h"
     header.write_text(
@@ -180,7 +196,7 @@ def build(selection_path: Path, destination: Path):
             storage,
             reference,
             transport=selection["transport"],
-            counter_symbol=counter_program["prefix"] + counter["symbol"],
+            counter_symbol=counter_symbol,
             group_profiles=group_profiles,
         )
     )
@@ -255,6 +271,8 @@ def build(selection_path: Path, destination: Path):
         *blobs,
         *(objects.reopen(obj) for name in names for obj in name["objects"]),
     ]
+    if counter_support is not None:
+        linked.append(objects.reopen(counter_support["object"]))
     elf = destination / "chain.elf"
     argv, libraries = layout.final_link(
         seed["link"], objects=linked, script=script, output=elf, wraps=[name for row in names for name in row["wraps"]]
@@ -306,6 +324,7 @@ def build(selection_path: Path, destination: Path):
         objects.completed_program(program["production"]["receipt_pin"])
     for support in profile_support:
         profiling.verify(support)
+    counters.verify(counter_support)
     if hash_tree(Path(compiler["path"]))["sha256"] != compiler["sha256"]:
         raise ValueError("compiler changed during chain packaging")
     recipe.completed(elf)
@@ -336,6 +355,7 @@ def build(selection_path: Path, destination: Path):
         "reference": reference,
         "memory_admission": memory,
         "counter": counter,
+        "counter_support": counter_support,
         "boot": boot_record,
         "argument_abi": abi_records,
         "recipe": objects.pin(recipe.path),
@@ -343,7 +363,8 @@ def build(selection_path: Path, destination: Path):
         "producer": objects.pin(Path(__file__)),
         "scientific_qualification": False,
         "producer_sources": [
-            objects.pin(Path(p.__file__)) for p in (data, boot, abi, layout, objects, planning, profiling, sections)
+            objects.pin(Path(p.__file__))
+            for p in (data, boot, abi, counters, layout, objects, planning, profiling, sections)
         ],
         "scope": "New retained-object chain packaging; numerical/placement/hardware qualification pending.",
     }

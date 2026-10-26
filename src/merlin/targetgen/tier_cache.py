@@ -107,6 +107,13 @@ Two stores are read, narrowest first:
 
 Disable with ``MERLIN_TIER_CERT_CACHE=0``; point it elsewhere by setting that variable to a directory.
 Name a promotion ledger with ``MERLIN_TIER_CERT_LEDGER`` (os.pathsep-separated paths).
+
+**Across relaunches.** The judge's identity names its files by absolute path, so a run relaunched from a
+new frozen framework export is a new instrument even when its grading bytes are identical, and nothing
+carries between runs. ``MERLIN_TIER_CERT_PORTABLE=1`` names them relative to the repository instead, so a
+certificate earned by the same program under byte-identical grading code carries into the next run (and
+says so in its ``carried`` block). It is off by default because carrying into a new run is an operator
+decision: a reviewed joint seed must approve it (``inherit_certificates_for_identical_executables``).
 """
 
 from __future__ import annotations
@@ -147,6 +154,9 @@ RECORD_VERSION = 1
 _CACHE_ENV = "MERLIN_TIER_CERT_CACHE"
 #: Environment knob: promotion ledgers (``qa/tier_state.json``) to consult, os.pathsep-separated.
 _LEDGER_ENV = "MERLIN_TIER_CERT_LEDGER"
+#: Environment knob, ``1`` to identify the judge by repository-relative file names instead of absolute
+#: paths. Off by default. See :func:`instrument_digest`.
+PORTABLE_ENV = "MERLIN_TIER_CERT_PORTABLE"
 
 #: Spellings of "off". A value that is neither one of these nor a usable directory is a PATH.
 _OFF = frozenset({"0", "off", "no", "false", "none", "disabled"})
@@ -451,6 +461,47 @@ def _engine_token(target: str | None, tier: str, rtl_tier: bool) -> str | None:
     return engine or None
 
 
+def portable() -> bool:
+    """Whether the judge is identified by repository-relative names (``MERLIN_TIER_CERT_PORTABLE=1``)."""
+    return (os.environ.get(PORTABLE_ENV, "") or "").strip() == "1"
+
+
+def _portable_source_digest(files) -> str:
+    """:func:`merlin.common.provenance.source_digest` over the same bytes, naming each file relative to
+    the implementation checkout it was read from.
+
+    The ordinary digest names each file by its absolute path. A run executes from a frozen export of the
+    framework, and every relaunch uses a new export directory, so byte-identical grading code was a
+    different instrument after every restart and no certificate ever carried into the next run: measured
+    over one campaign, nine relaunches produced nine instruments and every gSIM certificate was bought
+    again. Relative names keep the judge identical exactly when its bytes are. A file outside the
+    repository keeps its absolute name, so it can only match the same file.
+    """
+    import hashlib
+
+    from merlin.common.paths import checkout_root
+
+    # The implementation's own source tree (a frozen export, or a checkout): the operator's selected
+    # repository can be another tree, and the grading code is never read from there.
+    root = checkout_root()
+    root = root.resolve() if root is not None else None
+    labelled = []
+    for path in files:
+        resolved = Path(path).resolve()
+        label = str(resolved)
+        if root is not None and resolved.is_relative_to(root):
+            label = "checkout:" + resolved.relative_to(root).as_posix()
+        labelled.append((label, resolved))
+    digest = hashlib.sha256()
+    for label, resolved in sorted(labelled):
+        digest.update(label.encode("utf-8"))
+        try:
+            digest.update(resolved.read_bytes())
+        except OSError:
+            digest.update(b"<unreadable>")
+    return digest.hexdigest()
+
+
 def instrument_digest(target: str | None, tier: str, *, rtl_tier: bool) -> str | None:
     """Identity of the JUDGE for one (target, tier): the grading path's bytes plus the engine.
 
@@ -459,7 +510,7 @@ def instrument_digest(target: str | None, tier: str, *, rtl_tier: bool) -> str |
     working tree is a different instrument, and a certificate earned under it does not silently carry
     into a clean one.
     """
-    key = (str(target or ""), str(tier), bool(rtl_tier))
+    key = (str(target or ""), str(tier), bool(rtl_tier), portable())
     if key in _INSTRUMENT_MEMO:
         return _INSTRUMENT_MEMO[key]
     value = None
@@ -468,14 +519,13 @@ def instrument_digest(target: str | None, tier: str, *, rtl_tier: bool) -> str |
     if files and engine is not None:
         from merlin.common.provenance import source_digest
 
-        value = _digest_of(
-            {
-                "version": RECORD_VERSION,
-                "grading_path": source_digest([str(p) for p in files]),
-                "engine": engine,
-                "tier": str(tier),
-            }
-        )
+        payload = {"version": RECORD_VERSION, "engine": engine, "tier": str(tier)}
+        if portable():
+            payload["grading_path"] = _portable_source_digest(files)
+            payload["path_basis"] = "checkout_relative"
+        else:
+            payload["grading_path"] = source_digest([str(p) for p in files])
+        value = _digest_of(payload)
     _INSTRUMENT_MEMO[key] = value
     return value
 

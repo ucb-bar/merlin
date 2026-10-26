@@ -218,13 +218,18 @@ def verify_capture_receipt(path: str | Path) -> dict:
         reference = artifacts.get("integer-reference.json")
         source = agreement.get("source") or {}
         tool_sources = (doc.get("tool") or {}).get("source_sha256") or {}
+        reference_key = "m2m/capture/pt2e_integer_reference.py"
+        if (metadata.get("integerization_receipt") or {}).get("schema") == "merlin.dynamic_integer_reference.v1":
+            reference_key = "merlin/targetgen/_dynamic_integer_reference.py"
+            tool_sources = (doc.get("tool") or {}).get("reference_sources") or {}
         if (
             not isinstance(pointer, dict)
             or pointer.get("path") != "integer-reference.json"
             or not isinstance(reference, dict)
             or pointer.get("sha256") != reference.get("sha256")
             or not isinstance(source, dict)
-            or source.get("sha256") != tool_sources.get("m2m/capture/pt2e_integer_reference.py")
+            or not is_sha256(source.get("sha256"))
+            or source.get("sha256") != tool_sources.get(reference_key)
         ):
             errors.append("independent integer reference or its source is not bound by the capture receipt")
     dynamic_evidence = None
@@ -254,6 +259,12 @@ def verify_capture_receipt(path: str | Path) -> dict:
                 emitted=integer.get("integer_mm_emitted"),
                 exported=integer.get("exported_integer_mm_count"),
             )
+            if integer.get("schema") == "merlin.dynamic_integer_reference.v1":
+                from merlin.targetgen._dynamic_integer_reference import validate_receipt
+
+                validate_receipt(integer, annotated=stats.get("annotated_contractions"),
+                                 dynamic_calls=stats["dynamic_contractions"]["device_calls"],
+                                 exported=integer.get("exported_integer_mm_count"))
         except (ValueError, TypeError, KeyError, OSError) as exc:
             errors.append(f"dynamic integerization evidence is invalid: {exc}")
     result = {
@@ -321,6 +332,25 @@ def verified_static_integerization(projection: dict | None, *, receipt_sha256: s
     ):
         return False
     receipt = projection.get("integerization_receipt") or {}
+    if isinstance(receipt, dict) and receipt.get("schema") == "merlin.dynamic_integer_reference.v1":
+        from merlin.capture.integerization import dynamic_integerization_count
+        from merlin.targetgen._dynamic_integer_reference import validate_receipt
+
+        try:
+            calls = dynamic_integerization_count(projection.get("dynamic_integerization"), emitted=0,
+                exported=receipt.get("exported_integer_mm_count"), program_sha256=capture["sha256"])
+            validate_receipt(receipt, annotated=0, dynamic_calls=calls,
+                             exported=receipt.get("exported_integer_mm_count"))
+            agreement = receipt["golden_agreement"]
+            pointer, reference = agreement.get("output") or {}, projection.get("reference_artifact") or {}
+            source = agreement.get("source") or {}
+            return (projection.get("software_numerical_engine") == "integer_reference"
+                    and pointer.get("path") == "integer-reference.json"
+                    and is_sha256(source.get("sha256")) and isinstance(source.get("path"), str)
+                    and is_sha256(pointer.get("sha256")) and pointer.get("sha256") == reference.get("sha256")
+                    and type(reference.get("bytes")) is int and reference["bytes"] > 0)
+        except (ValueError, TypeError, KeyError):
+            return False
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
         return False
     count = receipt.get("quantized_contractions_seen")
@@ -642,6 +672,7 @@ def _application_operation_inventory(
     not a second independent accelerator demand. Unknowns remain rows, never disappear from a count.
     """
     from merlin.common import mlir_query as mq
+    from merlin.compile.analysis import contraction_shapes
     from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen import model_coverage as mc
     from merlin.targetgen import semantic_families as sf
@@ -663,7 +694,7 @@ def _application_operation_inventory(
             f"declared application capture {p}: cannot inventory MLIR: {type(exc).__name__}: {exc}"
         ) from exc
     try:
-        extents = mc._contraction_extents(module)  # noqa: PLC2701 -- region-coverage shape authority
+        extents = contraction_shapes.contraction_extents(module)  # region-coverage shape authority
     except Exception as exc:
         raise ValueError(
             f"declared application capture {p}: cannot inventory shapes: {type(exc).__name__}: {exc}"

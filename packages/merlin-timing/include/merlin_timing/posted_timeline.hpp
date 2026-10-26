@@ -20,13 +20,14 @@ class PostedTimeline {
  public:
   enum class Kind : std::size_t {source_arrival,memory_accept,response_beat,local_publish,operand_consume,command_retire,completion,other,count};
   struct Token {std::uint64_t id;};
+  struct OrderedWriterHandoff {ValueId value;Token previous_complete,previous_consumed;};
   struct ClassSummary {std::uint64_t posted=0,dispatched=0,dependency_delay_cycles=0;std::size_t pending=0,blocked_on_tokens=0;};
   struct Summary {std::array<ClassSummary,std::size_t(Kind::count)> classes{};std::size_t peak_pending=0,unresolved_tokens=0;Cycle closed=0;bool failed=false;};
   struct Spec {std::size_t pending, tokens;std::uint64_t dispatched;};
   struct Progress {Cycle closed;std::size_t pending;std::uint64_t dispatched;bool complete,failed;};
   using Action=std::function<void(PostedTimeline &,Cycle)>;
   explicit PostedTimeline(Spec spec):spec_(spec) {
-    if(!spec.pending||!spec.tokens||!spec.dispatched||spec.pending>1048576||spec.tokens>16777216)
+    if(!spec.pending||!spec.tokens||!spec.dispatched||spec.pending>1048576||spec.tokens>67108864)
       throw std::invalid_argument("invalid bounded posted timeline");
   }
   std::optional<Token> token() {
@@ -70,7 +71,26 @@ class PostedTimeline {
   // Explicit declarations describe value visibility, never future port booking.
   bool bind_deferred_values(const merlin_timing::Event &event,View<ValueId> declared,
       Token admitted,Token complete,std::vector<Token>&dependencies) {
+    return bind_ordered_deferred_values(event,declared,admitted,complete,dependencies,{});
+  }
+  // A source owner may prove that a predecessor has entered an ordered
+  // internal pipeline. Such a handoff changes only same-value writer ordering:
+  // external readers still wait for final publication, and independent WAR
+  // obligations remain intact. The caller owns FIFO publication order and
+  // internal forwarding; this kernel does not infer them from latency.
+  bool bind_ordered_deferred_values(const merlin_timing::Event &event,View<ValueId> declared,
+      Token admitted,Token complete,std::vector<Token>&dependencies,View<OrderedWriterHandoff>handoffs) {
     if(!valid(admitted)||!valid(complete))return fail("unbound deferred value owner");
+    for(std::size_t i=0;i<handoffs.size;++i){const auto&h=handoffs[i];
+      if(!valid(h.previous_complete)||!valid(h.previous_consumed)||
+         std::find(declared.data,declared.data+declared.size,h.value)==declared.data+declared.size)
+        return fail("ordered handoff is not an original declared writer");
+    }
+    const auto predecessor=[&](ValueId value,Token writer){
+      for(std::size_t i=0;i<handoffs.size;++i)if(handoffs[i].value==value&&handoffs[i].previous_complete.id==writer.id)
+        return handoffs[i].previous_consumed;
+      return writer;
+    };
     for(std::size_t i=0;i<declared.size;++i){
       if(std::find(event.writes.data,event.writes.data+event.writes.size,declared[i])==event.writes.data+event.writes.size)
         return fail("deferred declaration is not an actual writer");
@@ -80,7 +100,7 @@ class PostedTimeline {
     const auto depend=[&](Token t){if(!completed(t))dependencies.push_back(t);};
     const auto read=[&](ValueId id,bool retained){
       const auto found=visibility_.find(id);if(found==visibility_.end())return;
-      auto &state=found->second;if(state.writer)depend(*state.writer);
+      auto &state=found->second;if(state.writer)depend(predecessor(id,*state.writer));
       state.readers.erase(std::remove_if(state.readers.begin(),state.readers.end(),
         [&](auto t){return completed(t).has_value();}),state.readers.end());
       state.readers.push_back(retained?complete:admitted);
@@ -89,7 +109,7 @@ class PostedTimeline {
     for(std::size_t i=0;i<event.retained_reads.size;++i)read(event.retained_reads[i],true);
     for(std::size_t i=0;i<event.writes.size;++i){
       const auto found=visibility_.find(event.writes[i]);if(found==visibility_.end())continue;
-      auto &state=found->second;if(state.writer&&state.writer->id!=complete.id)depend(*state.writer);
+      auto &state=found->second;if(state.writer&&state.writer->id!=complete.id)depend(predecessor(event.writes[i],*state.writer));
       for(auto reader:state.readers)if(reader.id!=admitted.id&&reader.id!=complete.id)depend(reader);
       state.readers.clear();state.writer=complete;
     }

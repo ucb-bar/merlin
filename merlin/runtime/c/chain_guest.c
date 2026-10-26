@@ -50,6 +50,9 @@ void htif_exit(int);
 void merlin_arena_reset(void);
 unsigned long long merlin_memref_rank_mismatches(void);
 #include "chain_data.h"
+#ifndef CHAIN_TIMING_ONLY
+#define CHAIN_TIMING_ONLY 0
+#endif
 
 static void decimal(uint64_t n) {
 	char text[24];
@@ -325,6 +328,13 @@ static int run_chain(void) {
 		htif_puts("CHAIN_ERROR v1 compiled_argument_ABI\n");
 		return 2;
 	}
+#if CHAIN_TIMING_ONLY
+	/* Buffer scalar observations only. No array copy, comparison or console
+	 * transport occurs inside the continuous session interval. */
+	static uint64_t ticks[CHAIN_STEPS], errors[CHAIN_STEPS];
+	uint64_t forward_sum = 0;
+	uint64_t session_begin = chain_counter_now();
+#endif
 	for (int i = 0; i < CHAIN_STEPS; ++i) {
 		const chain_step *step = &STEPS[i];
 		const chain_program *program = &PROGRAMS[step->program];
@@ -349,6 +359,11 @@ static int run_chain(void) {
 		if (invoke_calls != 1)
 			step_errors |= 1;
 		runtime_errors |= step_errors;
+#if CHAIN_TIMING_ONLY
+		ticks[i] = invoke_end - invoke_begin;
+		errors[i] = step_errors;
+		forward_sum += ticks[i];
+#else
 		htif_puts("CHAIN_STEP v1");
 		field(step->program);
 		field(step->step);
@@ -376,12 +391,33 @@ static int run_chain(void) {
 				full_array(step->program, step->step, o);
 			++arrays;
 		}
+#endif
 	}
+#if CHAIN_TIMING_ONLY
+	uint64_t session_end = chain_counter_now();
+	uint64_t transport_begin = chain_counter_now();
+	for (int i = 0; i < CHAIN_STEPS; ++i) {
+		htif_puts("CHAIN_STEP v1");
+		field(STEPS[i].program);
+		field(STEPS[i].step);
+		field(ticks[i]);
+		field(errors[i]);
+		htif_putc('\n');
+	}
+#endif
 	htif_puts("CHAIN_END v1");
 	field(CHAIN_STEPS);
 	field(arrays);
 	field(mismatches);
 	htif_putc('\n');
+#if CHAIN_TIMING_ONLY
+	uint64_t transport_end = chain_counter_now();
+	htif_puts("CHAIN_TIMING v1");
+	field(session_end - session_begin);
+	field(forward_sum);
+	field(transport_end - transport_begin);
+	htif_putc('\n');
+#endif
 	htif_puts("DONE\n");
 	return runtime_errors ? 2 : (mismatches ? 1 : 0);
 }

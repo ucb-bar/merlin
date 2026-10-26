@@ -30,10 +30,45 @@ from dataclasses import dataclass
 from math import prod
 from typing import Any
 
-
-class HarnessRenderError(RuntimeError):
-    """The buffer cannot be called through the logical ABI, or the declared contract data is incomplete."""
-
+from merlin.compile.logical_abi import (
+    Buffer as Buffer,
+)
+from merlin.compile.logical_abi import (
+    HarnessRenderError as HarnessRenderError,
+)
+from merlin.compile.logical_abi import (
+    LogicalAbi as LogicalAbi,
+)
+from merlin.compile.logical_abi import (
+    _ordered as _ordered,
+)
+from merlin.compile.logical_abi import (
+    _output_buffer as _output_buffer,
+)
+from merlin.compile.logical_abi import (
+    _produced as _produced,
+)
+from merlin.compile.logical_abi import (
+    _shape as _shape,
+)
+from merlin.compile.logical_abi import (
+    kernel_abi_from_commands as kernel_abi_from_commands,
+)
+from merlin.compile.logical_abi import (
+    kernel_arg_order as kernel_arg_order,
+)
+from merlin.compile.logical_abi import (
+    logical_abi as logical_abi,
+)
+from merlin.compile.logical_abi import (
+    logical_inputs as logical_inputs,
+)
+from merlin.compile.logical_abi import (
+    logical_interface as logical_interface,
+)
+from merlin.compile.logical_abi import (
+    logical_outputs as logical_outputs,
+)
 
 #: Backend modules conventionally expose their renderer's refusal as ``CodegenError``.
 CodegenError = HarnessRenderError
@@ -45,56 +80,6 @@ _COHERENT_OUTPUT_DTYPES = frozenset({"i8", "i16", "i32", "i64", "f32"})
 # --------------------------------------------------------------------------------------------------
 # declared data
 # --------------------------------------------------------------------------------------------------
-@dataclass(frozen=True)
-class LogicalAbi:
-    """``logical_kernel_abi`` from the OOT backend contract."""
-
-    version: int
-    symbol_pattern: str
-    whole_program_order: tuple[str, ...]
-    default_order: tuple[str, ...]
-    published_by: frozenset[str]
-    alignment_bytes: int
-    poison_byte: int
-    blob_min_elements: int | None
-
-
-def logical_abi(path=None) -> LogicalAbi:
-    import yaml
-
-    from merlin.common.paths import contract_dir
-
-    source = path if path is not None else contract_dir() / "mlir_oot_backend_contract.yaml"
-    with open(source, encoding="utf-8") as handle:
-        document = yaml.safe_load(handle) or {}
-    block = document.get("logical_kernel_abi") if isinstance(document, dict) else None
-    if not isinstance(block, dict):
-        raise HarnessRenderError(f"{source}: no logical_kernel_abi block; the harness ABI is undeclared")
-    order = block.get("argument_order") or {}
-    pointee = block.get("pointee") or {}
-    outputs = block.get("outputs") or {}
-    try:
-        abi = LogicalAbi(
-            version=int(block["version"]),
-            symbol_pattern=str(block["symbol"]),
-            whole_program_order=tuple(order["whole_program"]),
-            default_order=tuple(order["default"]),
-            published_by=frozenset(str(op) for op in block["published_by"]),
-            alignment_bytes=int(pointee["alignment_bytes"]),
-            poison_byte=int(outputs["poison_byte"]),
-            blob_min_elements=(int(block["blob_min_elements"]) if block.get("blob_min_elements") else None),
-        )
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HarnessRenderError(f"{source}: logical_kernel_abi is incomplete ({type(exc).__name__}: {exc})") from exc
-    known = {"declared_whole_program_args", "logical_inputs_in_declaration_order", "logical_outputs_in_result_order"}
-    unknown = sorted(set(abi.whole_program_order + abi.default_order) - known)
-    if unknown:
-        raise HarnessRenderError(f"logical_kernel_abi orders by token(s) {unknown} this renderer does not resolve")
-    if abi.alignment_bytes <= 0 or abi.alignment_bytes & (abi.alignment_bytes - 1):
-        raise HarnessRenderError("logical_kernel_abi.pointee.alignment_bytes must be a positive power of two")
-    if not 0 <= abi.poison_byte <= 255:
-        raise HarnessRenderError("logical_kernel_abi.outputs.poison_byte must be one byte")
-    return abi
 
 
 @dataclass(frozen=True)
@@ -239,172 +224,6 @@ def container_words(values, dtype: str) -> list[int]:
 # --------------------------------------------------------------------------------------------------
 # the logical interface of a command buffer
 # --------------------------------------------------------------------------------------------------
-@dataclass(frozen=True)
-class Buffer:
-    name: str
-    kind: str  # "input" | "output" | "scratch" | "inout"
-    shape: tuple[int, ...]
-    dtype: str
-
-    @property
-    def elements(self) -> int:
-        return prod(self.shape) if self.shape else 1
-
-    @property
-    def matrix(self) -> tuple[int, int]:
-        """The ``OUT`` line's (rows, cols): leading logical extents multiply into rows."""
-        if not self.shape:
-            return 1, 1
-        return prod(self.shape[:-1]), self.shape[-1]
-
-
-def _shape(value, *, name: str) -> tuple[int, ...]:
-    if not isinstance(value, (list, tuple)) or any(
-        not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in value
-    ):
-        raise HarnessRenderError(f"tensor {name!r} needs a shape of positive integer extents, got {value!r}")
-    return tuple(value)
-
-
-def _produced(cb) -> set[str]:
-    return {
-        name
-        for cmd in cb.get("commands") or []
-        for key, name in (cmd.get("operands") or {}).items()
-        if key == "dst" and isinstance(name, str)
-    }
-
-
-def logical_inputs(cb) -> list[str]:
-    """Every declared leaf the reference reads, in declaration order: not produced by a command, not
-    derived by a harness recipe (a derived matrix is a compiler's lowering detail, never a pointer),
-    and not an output or intermediate."""
-    from merlin.runtime.commandbuffer import harness_derived_tensors
-
-    produced, derived = _produced(cb), harness_derived_tensors(cb)
-    return [
-        name
-        for name, spec in (cb.get("tensors") or {}).items()
-        if name not in produced
-        and name not in derived
-        and (spec or {}).get("role", "input") not in ("output", "intermediate")
-    ]
-
-
-def logical_outputs(cb, published_by) -> list[str]:
-    """The results, in order: every destination Merlin's reference publishes (program order), then every
-    declared role=output tensor not yet listed -- including one no command produces, which is how a
-    program routed entirely onto the host lane declares its results."""
-    tensors = cb.get("tensors") or {}
-    names: list[str] = []
-    for cmd in cb.get("commands") or []:
-        if cmd.get("opcode") in published_by:
-            dst = (cmd.get("operands") or {}).get("dst")
-            if isinstance(dst, str) and dst not in names:
-                names.append(dst)
-    for name, spec in tensors.items():
-        if (spec or {}).get("role") == "output" and name not in names:
-            names.append(name)
-    declared = cb.get("outputs")
-    if declared:
-        names = [name for name in names if name in set(declared)]
-    return names
-
-
-def _output_buffer(cb, name: str) -> Buffer:
-    """An output's logical shape/dtype: its declaration, else Merlin's own derivation for the command
-    that produces it. Anything else is refused -- an output nobody sized cannot be read back."""
-    from merlin.runtime.commandbuffer import declared_output_dtypes
-
-    tensors = cb.get("tensors") or {}
-    dtypes = declared_output_dtypes(cb)
-    spec = tensors.get(name)
-    if isinstance(spec, dict) and spec.get("shape") is not None:
-        return Buffer(name, "output", _shape(spec["shape"], name=name), dtypes.get(name) or str(spec.get("dtype")))
-    for cmd in cb.get("commands") or []:
-        ops, attrs = cmd.get("operands") or {}, cmd.get("attributes") or {}
-        if ops.get("dst") != name:
-            continue
-        if cmd.get("opcode") == "COMMIT":
-            from merlin.targetgen.contract.interface_emit import _commit_out_shape
-
-            dtype = attrs.get("output_dtype")
-            if not dtype:
-                raise HarnessRenderError(f"COMMIT {name!r} declares no output_dtype")
-            return Buffer(name, "output", tuple(_commit_out_shape(cb, ops["src"], attrs)), str(dtype))
-        if cmd.get("opcode") == "MOVEMENT":
-            src = tensors.get(ops.get("src")) or {}
-            dtype = attrs.get("output_dtype") or src.get("dtype")
-            return Buffer(name, "output", _shape(src.get("shape"), name=name), str(dtype))
-    raise HarnessRenderError(f"result {name!r} has no declared tensor and no derivable logical shape")
-
-
-def logical_interface(cb, abi: LogicalAbi) -> list[Buffer]:
-    """The ordered pointer arguments of ``cb`` under the logical ABI."""
-    tensors = cb.get("tensors") or {}
-    kabi = cb.get("kernel_abi") or {}
-    if kabi.get("kind") == "whole_program":
-        args = kabi.get("args")
-        outputs = kabi.get("outputs") or []
-        if not isinstance(args, list) or not args:
-            raise HarnessRenderError("a whole-program buffer must declare kernel_abi.args")
-        buffers = []
-        for arg in args:
-            name, access = (arg or {}).get("tensor"), (arg or {}).get("access")
-            spec = tensors.get(name)
-            if not isinstance(spec, dict) or access not in ("read", "write", "readwrite"):
-                raise HarnessRenderError(f"whole-program argument {arg!r} is not a typed, declared tensor")
-            if name in outputs and access != "write":
-                raise HarnessRenderError(f"whole-program output {name!r} must be write-only under the logical ABI")
-            kind = (
-                "input"
-                if access == "read"
-                else ("output" if name in outputs else ("inout" if access == "readwrite" else "scratch"))
-            )
-            buffers.append(Buffer(name, kind, _shape(spec.get("shape"), name=name), str(spec.get("dtype") or "")))
-        if len({b.name for b in buffers}) != len(buffers):
-            raise HarnessRenderError("whole-program arguments must be distinct tensors")
-        if set(outputs) - {b.name for b in buffers if b.kind == "output"}:
-            raise HarnessRenderError("every whole-program output must be a write/readwrite argument")
-        return _ordered(abi.whole_program_order, {"declared_whole_program_args": buffers})
-    inputs = [
-        Buffer(n, "input", _shape(tensors[n].get("shape"), name=n), str(tensors[n].get("dtype") or "i8"))
-        for n in logical_inputs(cb)
-    ]
-    outputs = [_output_buffer(cb, n) for n in logical_outputs(cb, abi.published_by)]
-    if not outputs:
-        raise HarnessRenderError("the buffer declares no result the reference reports; nothing to read back")
-    return _ordered(
-        abi.default_order,
-        {"logical_inputs_in_declaration_order": inputs, "logical_outputs_in_result_order": outputs},
-    )
-
-
-def _ordered(order, resolved) -> list[Buffer]:
-    out: list[Buffer] = []
-    for token in order:
-        if token not in resolved:
-            raise HarnessRenderError(f"logical_kernel_abi token {token!r} does not apply to this buffer")
-        out.extend(resolved[token])
-    return out
-
-
-def kernel_arg_order(cb, abi: LogicalAbi | None = None) -> list[str]:
-    """The pointer argument names, in call order (no values, no rendering)."""
-    return [b.name for b in logical_interface(cb, abi or logical_abi())]
-
-
-def kernel_abi_from_commands(cb) -> dict:
-    """The logical pointer ABI as a ``kernel_abi`` record (an explicit declaration is returned unchanged)."""
-    declared = cb.get("kernel_abi")
-    if isinstance(declared, dict) and declared.get("args"):
-        return declared
-    buffers = logical_interface(cb, logical_abi())
-    return {
-        "kind": "logical_v2",
-        "args": [{"tensor": b.name, "access": "write" if b.kind == "output" else "read"} for b in buffers],
-        "outputs": [b.name for b in buffers if b.kind == "output"],
-    }
 
 
 # --------------------------------------------------------------------------------------------------

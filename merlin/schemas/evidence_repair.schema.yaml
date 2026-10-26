@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Sealed Evidence Repair Receipt
+purpose: >-
+  The record an operator-approved repair of sealed Phase 0 evidence leaves beside the derivation it
+  repaired (`<derivation>.repair-receipt-<TS>.json`). Sealed evidence is re-read by path and digest,
+  so restoring a deleted member is only acceptable when the restored bytes equal the pin, and only
+  auditable when the restoration says what was missing, where each byte came from, when, by whom
+  and why. Written read-only and exclusively (never overwritten); its `protects` list makes the
+  repaired tree cited evidence for every cleanup that consults merlin.common.cited_evidence.
+required_top_level_fields:
+  - schema
+  - root
+  - protects
+  - at
+  - by
+  - reason
+  - tool
+  - policy
+  - before
+  - restored
+  - after
+producer: merlin_experiments.corpus.evidence_custody.repair
+consumers:
+  - operators auditing sealed evidence
+  - merlin.common.cited_evidence (protects)
+validation_notes: >-
+  `schema` is merlin.evidence_repair.v1. Every `restored` row carries the member path relative to
+  `root`, the pinned digest, the records that pin it, the source path, and the digest of the bytes
+  actually written; `restored_sha256` equals `sha256` for every row. `before.missing` lists what was
+  absent; `after.status` is `intact` for a complete repair. `failure` is set when a repair stopped
+  part-way: the rows already restored are still recorded.
+example: |
+  schema: merlin.evidence_repair.v1
+  root: /work/project/tasks/t/.tmp/closure/public-derivation-v2/derivation
+  protects: [/work/project/tasks/t/.tmp/closure/public-derivation-v2/derivation]
+  at: "2026-10-26T03:39:12+00:00"
+  by: operator@example.com
+  reason: disk cleanup deleted digest-pinned members
+  approval: operator approved repairing the sealed derivation
+  tool: {module: merlin_experiments.corpus.evidence_custody, git_sha7: 3968bab, user: ubuntu, pid: 1}
+  policy: restore only members whose pinned digest equals the source's
+  before: {status: damaged, pinned_members: 167, missing: [{member: materialized/app/pytorch-opset.json}], tampered: []}
+  restored:
+    - member: materialized/app/pytorch-opset.json
+      sha256: 0d59d010e4d697c1e95f4f8566ebb6e19d50f879f4b8d321794c2f6d64ba80ed
+      pinned_by: [materialized/app/meta.json]
+      source: /work/project/tasks/t/.tmp/captures/app/run/capture/pytorch-opset.json
+      source_sha256: 0d59d010e4d697c1e95f4f8566ebb6e19d50f879f4b8d321794c2f6d64ba80ed
+      restored_sha256: 0d59d010e4d697c1e95f4f8566ebb6e19d50f879f4b8d321794c2f6d64ba80ed
+  failure: null
+  after: {status: intact, pinned_members: 167, missing: [], tampered: []}

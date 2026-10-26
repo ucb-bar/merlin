@@ -14,6 +14,34 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from merlin.compile.logical_abi import (
+    DERIVATION_RECIPE_KEYS as DERIVATION_RECIPE_KEYS,
+)
+from merlin.compile.logical_abi import (
+    IM2COL_RECIPE_KEY as IM2COL_RECIPE_KEY,
+)
+from merlin.compile.logical_abi import (
+    POOL_ATTR_ARITY as POOL_ATTR_ARITY,
+)
+from merlin.compile.logical_abi import (
+    POOL_PAD_VALUE_ATTR as POOL_PAD_VALUE_ATTR,
+)
+from merlin.compile.logical_abi import (
+    PRODUCING_KEYS as PRODUCING_KEYS,
+)
+from merlin.compile.logical_abi import (
+    _produces as _produces,
+)
+from merlin.compile.logical_abi import (
+    declared_output_dtypes as declared_output_dtypes,
+)
+from merlin.compile.logical_abi import (
+    harness_derived_tensors as harness_derived_tensors,
+)
+from merlin.compile.logical_abi import (
+    pool_params as pool_params,
+)
+
 from .tensor import Tensor, pool_out_dims  # noqa: F401  (pool_out_dims re-exported: see its docstring)
 
 #: The attribute names a POOLING epilogue stage reads, and the arity each one must have.
@@ -24,41 +52,8 @@ from .tensor import Tensor, pool_out_dims  # noqa: F401  (pool_out_dims re-expor
 #: configured on the same instruction that reads the accumulator out. By the time an engine reaches the
 #: readout the tensor is a 2-D ``[rows, channels]`` and no conv geometry is in scope, so the extent the
 #: rows unflatten to (``pool_in_dims`` = the ABI's ``orows``/``ocols``) must be declared, not guessed.
-POOL_ATTR_ARITY = {"pool_in_dims": 2, "pool_size": 2, "pool_stride": 2, "pool_padding": 4}
 #: Optional companion: the value a padded cell contributes to the max. No default on purpose -- see
 #: :meth:`Tensor.maxpool2d_rows`.
-POOL_PAD_VALUE_ATTR = "pool_pad_value"
-
-
-def pool_params(attrs: dict[str, Any], *, op: str) -> dict[str, Any]:
-    """Read a pooling epilogue's geometry out of a command's attributes, FAILING CLOSED.
-
-    Every engine that applies a pooling stage (the capsule golden, the reference recomputation and the
-    simulator) parses it through this one function, so they cannot disagree about which attribute names
-    carry the geometry or about what an absent one means. An absent or wrong-arity attribute RAISES and
-    names itself: a pooling stage whose window silently defaulted would return a correctly-shaped tensor
-    of numbers nobody computed, and the integer gate would then enforce it.
-    """
-    out: dict[str, Any] = {}
-    for key, arity in POOL_ATTR_ARITY.items():
-        v = attrs.get(key)
-        if v is None:
-            if key == "pool_padding":  # the one parameter with a meaningful "none"
-                out[key] = (0, 0, 0, 0)
-                continue
-            raise ValueError(
-                f"{op}: a pooling epilogue stage needs attribute {key!r} "
-                f"({arity} int(s)) and the command does not declare it"
-            )
-        if not isinstance(v, (list, tuple)) or len(v) != arity:
-            raise ValueError(f"{op}: pooling attribute {key!r} must be a list of {arity} int(s), got {v!r}")
-        try:
-            out[key] = tuple(int(x) for x in v)
-        except (TypeError, ValueError) as e:
-            raise ValueError(f"{op}: pooling attribute {key!r} has a non-integer entry: {v!r}") from e
-    pv = attrs.get(POOL_PAD_VALUE_ATTR)
-    out["pad_value"] = None if pv is None else int(pv)
-    return out
 
 
 def apply_pool_stage(t: Tensor, stage: str, attrs: dict[str, Any], *, op: str) -> Tensor:
@@ -647,30 +642,6 @@ def conv_im2col(ifm: Tensor, *, kh: int, kw: int, ci: int, stride, padding, dila
 #: :func:`harness_derived_tensors` REPORTS which tensors were built that way, which is what a caller
 #: needs in order to ask whether the emitted program computed its own operands. A key added to the
 #: materializer and not to this tuple would silently become invisible to that question.
-IM2COL_RECIPE_KEY = "im2col_recipes"
-DERIVATION_RECIPE_KEYS: tuple[str, ...] = (IM2COL_RECIPE_KEY,)
-
-
-def harness_derived_tensors(cb: dict[str, Any]) -> dict[str, str]:
-    """``{derived tensor name: the params key that derives it}`` for one command buffer.
-
-    Reads only the ABI's own vocabulary (``params.<recipe key>[].target``), so it is target-agnostic
-    and opcode-agnostic: it answers "which of this buffer's tensors did the HARNESS build, rather
-    than the emitted program", for any endpoint that speaks this ABI. An empty result means every
-    tensor in the buffer is either a declared leaf or produced by a command.
-    """
-    out: dict[str, str] = {}
-    params = cb.get("params") or {}
-    if not isinstance(params, dict):
-        return out
-    for key in DERIVATION_RECIPE_KEYS:
-        for recipe in params.get(key) or ():
-            if not isinstance(recipe, dict):
-                continue
-            name = recipe.get("target")
-            if isinstance(name, str) and name:
-                out[name] = key
-    return out
 
 
 def operand_flow(cb: dict[str, Any]) -> tuple[set[str], set[str]]:
@@ -812,25 +783,6 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
 #: Operand keys that name a WRITE by spelling. Not exhaustive by construction -- the schema lets a
 #: buffer spell its destination `result`, `y`, or anything else -- so :func:`dataflow_operands` also
 #: accepts a key whose tensor DECLARES `role: output`. See `_produces` there.
-PRODUCING_KEYS = ("dst", "out", "output")
-
-
-def _produces(key: str, name: str, tensors: dict) -> bool:
-    """Is this operand position a WRITE?
-
-    By key spelling first, then by the named tensor's declared ``role``. Keying on spelling alone made
-    the binder's reach depend on which words someone had listed: a buffer spelling its destination
-    ``result`` or ``y`` -- both allowed by the schema -- had its output counted as a READ, so no
-    produced tensor was declared and the whole buffer bound to nothing.
-
-    This does NOT reintroduce role as the way to CHOOSE the output; that stays dataflow, for the reason
-    in :func:`dataflow_operands` (a fused buffer declares three ``role: output`` tensors and two are
-    intermediates). Role decides only whether a POSITION writes; dataflow still decides which write is
-    the result.
-    """
-    if key in PRODUCING_KEYS:
-        return True
-    return str((tensors.get(name) or {}).get("role", "")).lower() == "output"
 
 
 def dataflow_operands(cb: dict[str, Any]) -> tuple[list[str], str] | None:
@@ -891,41 +843,6 @@ def dataflow_operands(cb: dict[str, Any]) -> tuple[list[str], str] | None:
     if out is None or not leaves:
         return None
     return leaves, out
-
-
-def declared_output_dtypes(cb: dict[str, Any]) -> dict[str, str]:
-    """``{tensor name: declared element dtype}`` for every tensor a readback can land in.
-
-    ONE fact, read the way the harness reads it, so the writer and the reader of a buffer cannot
-    disagree about what is in it. A command that names a destination may DECLARE the container its
-    result lands in (``attributes.output_dtype`` — a movement is precisely a container widening, and
-    a commit's readout dtype is not the accumulator's), and that declaration is what a harness sizes
-    the destination buffer from; a tensor that no command re-declares carries its own ``dtype``. The
-    command's declaration wins for exactly the destination it names, which is the same resolution
-    order a target harness applies when it allocates the buffer.
-
-    Target-agnostic: only the buffer's own vocabulary is read (``dst``/``out``/``output`` keys, the
-    ``role`` a tensor declares, the ``output_dtype`` attribute the ABI defines). A buffer with no
-    commands still answers — its declared outputs are its ``role: output`` tensors — which is the
-    case a program that runs entirely on the host lane presents.
-    """
-    tensors = cb.get("tensors") or {}
-    dtypes: dict[str, str] = {}
-    for name, spec in tensors.items():
-        if not isinstance(spec, dict):
-            continue
-        dtype = spec.get("dtype")
-        if dtype:
-            dtypes[str(name)] = str(dtype)
-    for cmd in cb.get("commands") or []:
-        ops = cmd.get("operands") or {}
-        declared = (cmd.get("attributes") or {}).get("output_dtype")
-        if not declared:
-            continue
-        for key, name in ops.items():
-            if isinstance(name, str) and _produces(key, name, tensors) and name in dtypes:
-                dtypes[name] = str(declared)
-    return dtypes
 
 
 def _flatten(nested) -> list[int]:

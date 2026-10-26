@@ -23,6 +23,32 @@ class ArgumentAddress:
 def _value(op, args, pointer_bits):
     if _poison_flags(op):
         raise ValueError("pointer projection refuses unproved poison assertions")
+    if op.name == "llvm.getelementptr":
+        # Only an actual one-dimensional byte displacement has a layout-free
+        # interpretation. Other element layouts, assertion flags and indices
+        # remain unknown; no object bounds or nonalias premise follows here.
+        element = op.properties.get("elem_type")
+        flags = op.properties.get("noWrapFlags")
+        indices = op.properties.get("rawConstantIndices")
+        if (not isinstance(element, IntegerType) or element.width.data != 8
+                or flags is None or flags.value.data != 0 or indices is None
+                or type(args[0]) is not ArgumentAddress):
+            return None
+        raw = tuple(indices.get_values())
+        if len(raw) != 1:
+            return None
+        index = raw[0]
+        if index == llvm.GEP_USE_SSA_VAL:
+            if (len(args) != 2 or type(args[1]) is not int
+                    or not isinstance(op.operands[1].type, IntegerType)
+                    or op.operands[1].type.width.data != pointer_bits):
+                return None
+            index = args[1] % (1 << pointer_bits)
+            if index >= 1 << (pointer_bits - 1):
+                index -= 1 << pointer_bits
+        elif len(args) != 1:
+            return None
+        return ArgumentAddress(args[0].argument, args[0].offset + index)
     if op.name == "llvm.ptrtoint":
         if (
             len(args) != 1

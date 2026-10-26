@@ -1106,7 +1106,7 @@ def _build_facts(
         raise ValueError("build_facts requires an explicit target (no default is assumed)")
     from . import datapaths as datapath_reader
     from . import feature_gates as feature_reader
-    from . import hw_graph, memory_roles, mlc_bridge, source_selection, timing, timing_structure
+    from . import command_ordering, hw_graph, memory_roles, mlc_bridge, source_selection, timing, timing_structure
     from .facts import target_contract_path
 
     readers = [
@@ -1259,6 +1259,8 @@ def _build_facts(
     build_features = extract_elaborated_rtl_features(target, v1, elaborated_fir)
     v1.setdefault("interfaces", []).append(build_features)
     sourced.append(f"elaborated_features({build_features['status']})")
+    # COMMAND ORDERING (queues, release points, spans): probes the dispatch module with the layouts above
+    sourced += command_ordering.add_to_facts(target, v1)
 
     # WHO THESE FACTS ARE ABOUT, inside the body -- not only in ``inputs``. A pin is matched to a target
     # by what its body DECLARES (``facts._facts_declares`` reads ``facts.target``), never by the

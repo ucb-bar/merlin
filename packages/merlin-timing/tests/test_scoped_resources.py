@@ -114,3 +114,100 @@ def test_scalar_fence_class_is_separate_from_accelerator_command_census():
     source['feature_counts']['target.class.fence']=3
     source['feature_counts']['target.commands']=8
     assert S.project(source)['commands']['compute'] is None
+
+
+def test_utilization_views_distinguish_time_capacity_padding_and_queue_units():
+    source = report()
+    r = source["scoped_resource_activity"]["resources"][1]
+    r.update(queued_entry_cycles=12, queue_active_cycles=4, peak_queue_entries=3)
+    value = S.project(source, structural=dict(useful_macs=800, structural_peak_macs_per_cycle=256))
+    views = value["utilization_views"]
+    assert views["compute"]["compute_ceiling_attainment"]["value"] == 800 / 2560
+    assert views["compute"]["compute_ceiling_attainment"]["numerator"]["quantity"] == "source_useful_macs"
+    assert views["compute"]["useful_fraction_of_padded_work"]["value"] == 0.5
+    load = views["resources"][1]
+    assert load["capacity_reservation_fraction"] == 0.5
+    assert load["reservation_active_fraction"] == 0.5
+    assert load["denominators"] == dict(capacity_reservation_unit_cycles=10, active_model_cycles=10)
+    assert load["queue"]["average_waiting_entries"] == 1.2
+    assert load["queue"]["active_fraction"] == 0.4
+    assert load["queue"]["capacity_normalized_pressure"] is None
+    assert load["queue"]["capacity_normalized_pressure_availability"] == "UNKNOWN"
+    assert views["overlaps"][0]["value"] == 0.5
+    assert views["traffic"][0]["value"] == 6.4
+    assert views["traffic"][0]["boundary"] == "device_requested_read"
+    assert views["traffic"][0]["denominator"]["value"] == 10
+    assert views["traffic"][0]["bandwidth_capacity_fraction"] is None
+    assert views["provenance"] == {key: source[key] for key in ("scope_sha256", "model_sha256", "elf_sha256")}
+    assert not views["resource_times_additive"]
+
+
+def test_utilization_missing_producers_stay_unknown_and_zero_queues_are_not_hardware_proof():
+    source = report()
+    source["cycle_breakdown"] = {"host_cycles": 9, "storage_byte_highwater": 1024}
+    views = S.project(source)["utilization_views"]
+    assert views["compute"]["compute_ceiling_attainment"]["availability"] == "UNKNOWN"
+    assert views["resources"][0]["queue"]["average_waiting_entries"] == 0
+    assert views["hardware_queue_pressure"]["availability"] == "UNKNOWN"
+    assert views["physical_engine_occupancy"]["availability"] == "UNKNOWN"
+    assert all(v["availability"] == "UNKNOWN" and v["value"] is None for v in views["host"].values())
+    assert all(v["availability"] == "UNKNOWN" and v["value"] is None for v in views["storage"].values())
+    absent = next(v for v in views["traffic"] if v["boundary"] == "modeled_dram_requests")
+    assert absent["availability"] == "UNKNOWN" and absent["value"] is None
+
+
+def test_utilization_incomplete_resources_do_not_discard_valid_work_or_invent_zero_activity():
+    source = report()
+    source["scoped_resource_activity"]["complete"] = False
+    views = S.project(source, structural={"structural_peak_macs_per_cycle": 10})["utilization_views"]
+    assert views["compute"]["compute_ceiling_attainment"]["value"] == 10  # Not capped to a fake utilization percentage.
+    assert views["resource_availability"] == "UNKNOWN" and views["resources"] == []
+    source["timing_complete"] = False
+    views = S.project(source)["utilization_views"]
+    assert views["availability"] == "UNKNOWN"
+    assert views["denominator"]["value"] is None
+    assert views["compute"]["useful_fraction_of_padded_work"]["value"] is None
+    assert views["traffic"] == []
+
+
+@pytest.mark.parametrize("peak", [0, -1, True, float("nan"), float("inf"), 1e308])
+def test_utilization_invalid_structural_peak_is_refused(peak):
+    with pytest.raises(C.ContractError):
+        S.project(report(), structural={"structural_peak_macs_per_cycle": peak})
+
+
+def test_compact_utilization_keeps_availability_provenance_and_denominators_bounded():
+    value = S.project(report(), structural={"structural_peak_macs_per_cycle": 256})
+    views = value["utilization_views"]
+    views["resources"] *= 20
+    views["overlaps"] *= 20
+    brief = S.compact(value)["utilization_views"]
+    assert len(brief["resources"]) == 16 and brief["resources_omitted"] == 24
+    assert len(brief["overlaps"]) == 8 and brief["overlaps_omitted"] == 12
+    assert brief["compute"] == views["compute"]
+    assert brief["provenance"] == views["provenance"]
+    assert brief["denominator"] == views["denominator"]
+    assert brief["host"] == views["host"] and brief["storage"] == views["storage"]
+    assert len(views["resources"]) == 40  # Compact does not mutate the full projection.
+
+
+def test_compact_utilization_keeps_late_registered_busy_resources_visible():
+    source = report()
+    template = source['scoped_resource_activity']['resources'][1]
+    source['scoped_resource_activity']['resources'] = [
+        dict(template, resource_id=i, name=f'generic.resource.{i}',
+             busy_unit_cycles=1, active_cycles=1) for i in range(20)
+    ]
+    source['scoped_resource_activity']['resources'][-1].update(
+        busy_unit_cycles=10, active_cycles=10)
+    source['scoped_resource_activity']['overlaps'] = []
+    value = S.project(source)
+    before = copy.deepcopy(value)
+    brief = S.compact(value)
+    raw_ids = [r['resource_id'] for r in brief['resources']]
+    view_ids = [r['resource_id'] for r in brief['utilization_views']['resources']]
+    assert raw_ids == view_ids and raw_ids[0] == 19
+    assert brief['utilization_views']['resources'][0]['capacity_reservation_fraction'] == 1
+    assert brief['estimated_cycles_same_window'] == 10
+    assert not brief['qualification_issued']
+    assert value == before

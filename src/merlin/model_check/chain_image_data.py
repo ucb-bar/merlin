@@ -16,12 +16,16 @@ from .chain_image_objects import payload, pin
 from .chain_image_plan import _storage
 from .full_quantized import sealed_reference
 
-TRANSPORTS = {"full_arrays_v1", "all_element_comparison_v1"}
+TRANSPORTS = {"full_arrays_v1", "all_element_comparison_v1", "timing_only_v1"}
 KINDS = {"f32": 1, "f64": 2, "bf16": 3, "f16": 4, "i1": 5, "i8": 0, "i16": 0, "i32": 0, "i64": 0}
 
 
 def references(selection, plan, directory):
     """Consume an explicitly admitted supplement; never derive new references."""
+    if selection["transport"] == "timing_only_v1" and any(
+        key in selection for key in ("reference", "reference_identity", "bundle")
+    ):
+        raise ValueError("timing-only transport supplies no reference or numerical verdict")
     compact = selection["transport"] == "all_element_comparison_v1"
     path = directory / "references.bin"
     source_pins, offsets, seal_binding = [], [], None
@@ -138,11 +142,14 @@ def render(plan, namespaced, layout, reference, *, transport, counter_symbol, sa
         group_profiles = [None] * len(plan["programs"])
     if len(group_profiles) != len(plan["programs"]):
         raise ValueError("group profiling requires one hook selection per program")
+    if transport == "timing_only_v1" and any(group_profiles):
+        raise ValueError("timing-only transport cannot dump group profiles between forwards")
     rows = [
         f"#define CHAIN_PROGRAMS {len(plan['programs'])}",
         f"#define CHAIN_STEPS {len(plan['schedule'])}",
         f"#define CHAIN_MAX_ARGS {max(p['n_args'] for p in plan['programs'])}",
         f"#define CHAIN_COMPACT {int(transport == 'all_element_comparison_v1')}",
+        f"#define CHAIN_TIMING_ONLY {int(transport == 'timing_only_v1')}",
         f"#define CHAIN_SAMPLES {samples}",
         f"#define CHAIN_ATOL {float(plan['float_policy']['atol']).hex()}",
         f"#define CHAIN_RTOL {float(plan['float_policy']['rtol']).hex()}",

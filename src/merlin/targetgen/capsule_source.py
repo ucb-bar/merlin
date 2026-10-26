@@ -154,6 +154,21 @@ def _require_pt2e_integerization_receipt(
     program. Missing fields are never treated as zero or as success.
     """
     receipt = meta.get("integerization_receipt")
+    if isinstance(receipt, dict) and receipt.get("schema") == "merlin.dynamic_integer_reference.v1":
+        from merlin.targetgen.application_inventory import verified_static_integerization, verify_capture_receipt
+
+        if capture_root is None:
+            raise M2MUnavailable("dynamic independent reference needs its complete capture directory")
+        actual = capture_root / "model.mlir"
+        if not actual.is_file() or actual.read_text() != program:
+            raise M2MUnavailable("dynamic independent reference program differs from its capture")
+        observed = verify_capture_receipt(actual)
+        projection = observed.get("capture_integerization")
+        if (observed.get("status") != "verified_materialized"
+                or not isinstance(projection, dict) or projection.get("integerization_receipt") != receipt
+                or not verified_static_integerization(projection, receipt_sha256=observed.get("receipt_sha256"))):
+            raise M2MUnavailable("dynamic independent reference lacks complete bound source/output/census proof")
+        return
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
         raise M2MUnavailable("static W8A8 model has no supported integerization receipt")
 
@@ -1900,7 +1915,7 @@ def _generic_form_linalg_summary(linalg_mlir: str) -> dict:
 
     from merlin.common import mlir_query as mq
     from merlin.common import quant_formats as qf
-    from merlin.kernels import shapes as ks
+    from merlin.compile.analysis import contraction_shapes as ks
 
     module = mq.parse(linalg_mlir)
     shapes = {id(op): shape for op, shape in ks.observe_contractions(module)}
@@ -3296,7 +3311,20 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     # The existing bundle format records only the first eager tensor as golden.npy.
     # fp16/BF16 values lift losslessly into f32; integer/f64 references do not.
     # Never silently certify a multi-result or integer-result ABI with that file.
-    if not native_integer and (len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"}):
+    complete_reference = (not native_integer and len(output_abi) > 1)
+    if complete_reference:
+        from merlin.targetgen.application_inventory import verified_static_integerization
+        from merlin.targetgen.materialized_reference import complete_float_outputs
+
+        if not verified_static_integerization(observed.get("capture_integerization"),
+                                              receipt_sha256=observed["receipt_sha256"]):
+            raise M2MUnavailable("multiple materialized outputs require the complete independent integer reference")
+        try:
+            golden_values = complete_float_outputs(meta, read_bound("integer-reference.json"))
+        except (ValueError, TypeError, KeyError) as error:
+            raise M2MUnavailable(str(error)) from error
+    if not native_integer and not complete_reference and (
+            len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"}):
         raise M2MUnavailable(
             "materialized golden.npy needs one losslessly represented floating result; "
             "other ABIs need complete references"
@@ -3314,7 +3342,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     order = json.loads(read_bound("input_order.json"))
     if not isinstance(order, dict) or sorted(order.values()) != list(range(count)):
         raise M2MUnavailable("materialized input-order mapping is not a complete positional ABI")
-    if not native_integer:
+    if not native_integer and not complete_reference:
         golden_array = np.load(io.BytesIO(read_bound("golden.npy")), allow_pickle=False)
         if list(golden_array.shape) != output_abi[0].get("shape") or str(golden_array.dtype) != "float32":
             raise M2MUnavailable("materialized golden shape/dtype differs from the output ABI")
@@ -3716,11 +3744,12 @@ def write_model_capsule(
         if art.meta["materialized_capture"].get("workload_role") == "performance_scale":
             origin = Path(art.meta["materialized_capture"]["path"]).parent
             from .materialized_integer_capture import reference_members, selected
+            from .materialized_reference import reference_members as float_reference_members
 
             references = (
                 reference_members(art.meta["materialized_artifact_identities"])
                 if selected(art.meta["materialized_capture"])
-                else ("golden.npy",)
+                else float_reference_members(art.meta["materialized_artifact_identities"])
             )
             for member in ("meta.json", "inputs.npz", "input_order.json", *references):
                 raw = (origin / member).read_bytes()

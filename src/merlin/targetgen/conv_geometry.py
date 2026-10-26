@@ -226,7 +226,7 @@ def _im2col_km(op) -> "tuple[int, int] | None":
     yields None, so the geometry is dropped rather than guessed.
     """
     from merlin.common import mlir_query as mq
-    from merlin.kernels.shapes import _shaped  # noqa: PLC2701
+    from merlin.compile.analysis.contraction_shapes import _shaped  # noqa: PLC2701
 
     frontier = [r for r in getattr(op, "results", ())]
     for _ in range(6):
@@ -315,7 +315,7 @@ def geometries(src) -> list[ConvGeometry]:
     nothing" so the caller falls back rather than failing a build over one capture.
     """
     from merlin.common import mlir_query as mq
-    from merlin.kernels.shapes import _shaped, indexing_maps  # noqa: PLC2701
+    from merlin.compile.analysis.contraction_shapes import _shaped, indexing_maps  # noqa: PLC2701
 
     try:
         module = mq.parse(src)

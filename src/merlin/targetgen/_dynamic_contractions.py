@@ -200,7 +200,12 @@ def feeds_row_softmax(node: Any) -> bool:
 
 
 def softmax_produced(value: Any) -> bool:
-    """Whether ``value`` is a softmax's output, through casts and the empty-row guard."""
+    """Whether ``value`` is a softmax's output through supported identity steps.
+
+    An exported inference dropout remains an ATen node even when it is an
+    identity. Recognize only a literal disabled training flag or zero probability;
+    stochastic dropout must never acquire the probability-plane transformation.
+    """
     import torch
 
     aten = _aten()
@@ -210,6 +215,12 @@ def softmax_produced(value: Any) -> bool:
         if value.target in (aten._softmax.default, aten.softmax.int):
             return True
         if value.target in (aten.to.dtype, aten._to_copy.default, aten.clone.default, aten.contiguous.default):
+            value = value.args[0]
+        elif value.target == aten.dropout.default:
+            probability = value.args[1] if len(value.args) > 1 else value.kwargs.get("p")
+            training = value.args[2] if len(value.args) > 2 else value.kwargs.get("train")
+            if not (training is False or type(probability) in (int, float) and probability == 0):
+                return False
             value = value.args[0]
         elif value.target == aten.where.ScalarSelf:
             value = value.args[2]

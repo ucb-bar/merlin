@@ -29,6 +29,7 @@ def _host(text, entry_symbol):
     from xdsl.parser import Parser
 
     from merlin.common.ir_lock import IR_LOCK
+    from merlin.perf.emitted_work import assembly_site_kind, summarize_emitted_work
     from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
 
     context = Context(allow_unregistered=True)
@@ -38,9 +39,20 @@ def _host(text, entry_symbol):
         module = Parser(context, text).parse_module()
     if sum(1 for _ in module.walk()) > MAX_OPERATIONS:
         raise ValueError("host operation limit exceeded")
-    rows = [{"symbol": op.sym_name.data, "selected_entry": op.sym_name.data == entry_symbol,
-             "activity": analyze_host_cfg_activity(op)}
-            for op in module.walk() if isinstance(op, llvm.FuncOp) and op.body.blocks]
+    rows = []
+    for op in module.walk():
+        if not isinstance(op, llvm.FuncOp) or not op.body.blocks:
+            continue
+        row = {"symbol": op.sym_name.data, "selected_entry": op.sym_name.data == entry_symbol,
+               "activity": analyze_host_cfg_activity(op)}
+        if row["selected_entry"]:
+            try:
+                row["emitted_work"] = {"status": "observed", **summarize_emitted_work(
+                    op, command_kind=assembly_site_kind, max_operations=MAX_OPERATIONS,
+                )}
+            except (ValueError, TypeError, KeyError) as error:
+                row["emitted_work"] = _unknown(error)
+        rows.append(row)
     return {"status": "observed" if rows else "UNKNOWN", "functions": rows,
             "scope": "emitted LLVM before native optimization; supported constant CFG execution counts only",
             "cpu_cycles": None, "physical_traffic_bytes": None}

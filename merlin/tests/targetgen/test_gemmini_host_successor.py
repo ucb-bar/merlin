@@ -44,7 +44,7 @@ def test_existing_declaration_semantics_are_preserved():
         assert current == previous
 
 
-def test_default_descriptor_resolves_successor_without_changing_payload(tmp_path, monkeypatch):
+def test_default_descriptor_resolves_reviewed_host_view_without_changing_payload(tmp_path, monkeypatch):
     relative = "examples/gemmini/target/descriptor.yaml"
     descriptor = tmp_path / relative
     descriptor.parent.mkdir(parents=True)
@@ -60,7 +60,11 @@ def test_default_descriptor_resolves_successor_without_changing_payload(tmp_path
     monkeypatch.setattr(HostLane, "resolve", lambda self, **kwargs: (tmp_path / self.package, identity))
     path, document, observed = lane.resolve_capabilities(root=tmp_path, descriptor=descriptor)
     assert path == spec
-    assert document["review"]["successor"] == "attention-host-placement-v2-20261019"
+    # The default lane selects the reviewed host view (reviewed tanh-GELU contract), not a successor.
+    assert lane.capability_spec == "examples/gemmini/platform/host-capabilities.yaml"
+    assert document == yaml.safe_load(spec.read_bytes())
+    rows = {row["id"]: row for row in document["operations"]}
+    assert rows["host_review_tanh_gelu_f32"]["numerical_contract"]["status"] == "reviewed"
     assert observed["capability_spec_sha256"] == sha256(spec.read_bytes()).hexdigest()
     assert observed["package_sha256"] == identity["package_sha256"]
     assert len(_new_rows()) == 9

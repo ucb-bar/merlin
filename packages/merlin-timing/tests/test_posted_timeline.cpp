@@ -31,7 +31,9 @@ int main(){
  // Software custody bound is explicit and can exceed one million identities
  // without changing event ordering or any modeled hardware capacity.
  PostedTimeline large({2,8388608,16});assert(large.specification().tokens==8388608);assert(large.token()->id==1);
- bool oversized=false;try{PostedTimeline invalid({2,16777217,16});}catch(const std::invalid_argument&){oversized=true;}assert(oversized);
+ PostedTimeline diagnostic32({2,33554432,16});assert(diagnostic32.token()->id==1);
+ PostedTimeline diagnostic64({2,67108864,16});assert(diagnostic64.token()->id==1);
+ bool oversized=false;try{PostedTimeline invalid({2,67108865,16});}catch(const std::invalid_argument&){oversized=true;}assert(oversized);
  PostedTimeline no_frontier({2,2,4});assert(!no_frontier.step(false));
  // A settled edge observes every ready offer, including an offer created
  // by a same-edge callback that was posted AFTER the arbitration callback.

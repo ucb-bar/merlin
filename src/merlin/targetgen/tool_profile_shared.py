@@ -2,7 +2,7 @@
 
 This is host preparation, never candidate-selected dependency discovery. It
 combines the existing reviewed SDK export with preceding common facilities.
-Only the exporter's three fixed namespace initializers replace source bytes.
+Only the exporter's declared namespace initializers replace source bytes.
 """
 
 from __future__ import annotations
@@ -41,13 +41,63 @@ _NAMESPACE_MODULES_V6 = (
 _NAMESPACE_MODULES_V7 = (*_NAMESPACE_MODULES_V6,)
 _NAMESPACE_MODULES_V8 = (*_NAMESPACE_MODULES_V6,)
 _NAMESPACE_MODULES_V16 = (*_NAMESPACE_MODULES_V8, "merlin.xdsl_dialects", "merlin.sched.primitives")
+_NAMESPACE_MODULES_V20 = (*_NAMESPACE_MODULES_V16, "merlin.frontends", "merlin.integrations", "merlin.runtime",
+                          "merlin.xdsl_dialects.lowering")
 
 
 def _namespace_modules(version):
     library_modules(version)
-    return {6: _NAMESPACE_MODULES_V6, 7: _NAMESPACE_MODULES_V7, 8: _NAMESPACE_MODULES_V8,
-            16: _NAMESPACE_MODULES_V16, 17: _NAMESPACE_MODULES_V16, 18: _NAMESPACE_MODULES_V16,
-            19: _NAMESPACE_MODULES_V16}[version]
+    return {
+        6: _NAMESPACE_MODULES_V6,
+        7: _NAMESPACE_MODULES_V7,
+        8: _NAMESPACE_MODULES_V8,
+        16: _NAMESPACE_MODULES_V16,
+        17: _NAMESPACE_MODULES_V16,
+        18: _NAMESPACE_MODULES_V16,
+        19: _NAMESPACE_MODULES_V16,
+        20: _NAMESPACE_MODULES_V20,
+        21: _NAMESPACE_MODULES_V20,
+        22: _NAMESPACE_MODULES_V20,
+    }[version]
+
+
+# V22 excludes protected SDK sources. Arm tool grants name whole files, and some of
+# those lie inside packages withheld from every author (``AUTHOR_WITHHELD_PREFIXES``): the operator
+# CCA spine and the compatibility shims of analyses that moved out of it. Directory grants also carry
+# modules the access policy declares grader/oracle surfaces (``MODULE_ACCESS``; the RTL bridge's
+# bit-exact cosim under ``targetgen/rtl/``). V22 stages none of them; the CCA calls stay reachable
+# through their host broker. The generic analyses that staged tool sources import (eagerly or lazily)
+# are staged instead, as exact files below ``merlin/``.
+_SDK_SUPPORT_SOURCES_V22 = (
+    "compile/analysis/__init__.py",
+    "compile/analysis/contraction_shapes.py",
+    "compile/analysis/disassembly.py",
+    "compile/analysis/intrinsics_header.py",
+    "compile/analysis/rocc_commands.py",
+)
+
+
+def withholds_author_packages(version) -> bool:
+    """Whether this SDK release excludes every author-inaccessible module from its staged sources."""
+    library_modules(version)
+    return version >= 22
+
+
+def sdk_support_sources(version) -> tuple[str, ...]:
+    """Exact extra source files (relative to ``merlin/``) a release stages for its tool grants."""
+    return _SDK_SUPPORT_SOURCES_V22 if withholds_author_packages(version) else ()
+
+
+def staged_module(relative: str) -> str:
+    """The import identity of one staged file (a data file belongs to its directory's package)."""
+    parts = relative.split("/")
+    if parts[-1].endswith(".py"):
+        parts[-1] = parts[-1][:-3]
+        if parts[-1] == "__init__":
+            parts.pop()
+    else:
+        parts.pop()
+    return ".".join(parts)
 
 
 def _selected_inventory(namespaces, public, modules, exported, *, version):
@@ -81,12 +131,21 @@ def _manifest_version(document, version):
         return "inventory_version" not in document and schema == (
             "merlin.shared_scheduling_library.v2" if binding else "merlin.shared_scheduling_library.v1"
         )
-    if version in (16, 17, 18, 19):
-        schemas = {16: "merlin.shared_scheduling_library.v10", 17: "merlin.shared_scheduling_library.v11",
-                   18: "merlin.shared_scheduling_library.v12",
-                   19: "merlin.shared_scheduling_library.v13"}
-        return (schema == schemas[version]
-                and type(document.get("inventory_version")) is int and document["inventory_version"] == version)
+    if version in (16, 17, 18, 19, 20, 21, 22):
+        schemas = {
+            16: "merlin.shared_scheduling_library.v10",
+            17: "merlin.shared_scheduling_library.v11",
+            18: "merlin.shared_scheduling_library.v12",
+            19: "merlin.shared_scheduling_library.v13",
+            20: "merlin.shared_scheduling_library.v14",
+            21: "merlin.shared_scheduling_library.v15",
+            22: "merlin.shared_scheduling_library.v16",
+        }
+        return (
+            schema == schemas[version]
+            and type(document.get("inventory_version")) is int
+            and document["inventory_version"] == version
+        )
     return (
         version in (7, 8)
         and schema == {7: "merlin.shared_scheduling_library.v2", 8: "merlin.shared_scheduling_library.v3"}[version]
@@ -298,24 +357,44 @@ _V6_PRE_CONFIGURATION_PUBLIC = (
 # Exact subsequent release: configuration source APIs preceded the parallel
 # scheduling additions. Keep this historical roster independent of live exports.
 _V6_CONFIGURATION_MODULES = tuple(
-    name for module in _V6_PRE_CONFIGURATION_MODULES
-    for name in ((module, "merlin.compile.scheduling.configuration_ir")
-                 if module == "merlin.compile.scheduling.configuration" else (module,))
+    name
+    for module in _V6_PRE_CONFIGURATION_MODULES
+    for name in (
+        (module, "merlin.compile.scheduling.configuration_ir")
+        if module == "merlin.compile.scheduling.configuration"
+        else (module,)
+    )
 )
 _V6_CONFIGURATION_PUBLIC = (
-    "merlin.compile.scheduling.block_schedule", "merlin.compile.scheduling.compact_dense",
-    "merlin.compile.scheduling.dense_source", "merlin.compile.scheduling.configuration",
-    "merlin.compile.scheduling.configuration_ir", "merlin.compile.scheduling.device_spills",
-    "merlin.compile.scheduling.fusion", "merlin.compile.scheduling.fusion_semantics",
-    "merlin.compile.scheduling.library_sources", "merlin.compile.scheduling.pointwise_source",
-    "merlin.compile.scheduling.program_limits", "merlin.compile.scheduling.row_softmax",
-    "merlin.compile.scheduling.schedule_pipeline", "merlin.compile.scheduling.staged_dense",
-    "merlin.compile.scheduling.selected_contracts", "merlin.compile.scheduling.spill_conformance",
-    "merlin.compile.scheduling.temporary_storage", "merlin.llvmlower.cpu_softmax",
-    "merlin.sched.ir.expr", "merlin.sched.ir.integer_domain", "merlin.sched.ir.kernel",
-    "merlin.sched.ir.parse", "merlin.sched.isa.types", "merlin.semantic_compiler.allocation_types",
-    "merlin.targetgen.isa_dialect_gen", "merlin.targetgen.isa_spec", "merlin.transforms.dense_ir",
-    "merlin.transforms.dense_planning", "merlin.transforms.pipeline_state",
+    "merlin.compile.scheduling.block_schedule",
+    "merlin.compile.scheduling.compact_dense",
+    "merlin.compile.scheduling.dense_source",
+    "merlin.compile.scheduling.configuration",
+    "merlin.compile.scheduling.configuration_ir",
+    "merlin.compile.scheduling.device_spills",
+    "merlin.compile.scheduling.fusion",
+    "merlin.compile.scheduling.fusion_semantics",
+    "merlin.compile.scheduling.library_sources",
+    "merlin.compile.scheduling.pointwise_source",
+    "merlin.compile.scheduling.program_limits",
+    "merlin.compile.scheduling.row_softmax",
+    "merlin.compile.scheduling.schedule_pipeline",
+    "merlin.compile.scheduling.staged_dense",
+    "merlin.compile.scheduling.selected_contracts",
+    "merlin.compile.scheduling.spill_conformance",
+    "merlin.compile.scheduling.temporary_storage",
+    "merlin.llvmlower.cpu_softmax",
+    "merlin.sched.ir.expr",
+    "merlin.sched.ir.integer_domain",
+    "merlin.sched.ir.kernel",
+    "merlin.sched.ir.parse",
+    "merlin.sched.isa.types",
+    "merlin.semantic_compiler.allocation_types",
+    "merlin.targetgen.isa_dialect_gen",
+    "merlin.targetgen.isa_spec",
+    "merlin.transforms.dense_ir",
+    "merlin.transforms.dense_planning",
+    "merlin.transforms.pipeline_state",
 )
 
 
@@ -608,8 +687,14 @@ def host_source_digest(profile, row):
     )
 
 
-def _tool_sources(root, tools):
-    """Existing explicit tool grants only; publication still belongs to each arm."""
+def _tool_sources(root, tools, *, withhold=False):
+    """Existing explicit tool grants only; publication still belongs to each arm.
+
+    ``withhold`` drops every file of an author-inaccessible module (withheld package or access-policy
+    grader/oracle module) rather than staging it.
+    """
+    from merlin.common.access import author_inaccessible
+
     from .tool_registry import spec
 
     if type(tools) is not tuple or any(type(name) is not str for name in tools) or len(set(tools)) != len(tools):
@@ -629,8 +714,9 @@ def _tool_sources(root, tools):
                     continue
                 if source.is_symlink() or (not source.is_dir() and not source.is_file()):
                     raise ValueError("shared release tool grant contains linked or special sources")
-                if source.is_file():
-                    selected.add(source.relative_to(root).as_posix())
+                staged = source.relative_to(root).as_posix()
+                if source.is_file() and not (withhold and author_inaccessible(staged_module(staged))):
+                    selected.add(staged)
                 if len(selected) > 4096:
                     raise ValueError("shared release tool sources exceed the fixed file bound")
     return sorted(selected)
@@ -667,7 +753,15 @@ def prepare_shared_source_release(
     )
     relatives = [name.replace(".", "/") + ".py" for name in (*namespaces, *public, *implementation, *automatic)]
     relatives += ["merlin/" + relative for relative in substrate_data(substrate)]
-    relatives += _tool_sources(root, tools)
+    withhold = withholds_author_packages(version)
+    relatives += _tool_sources(root, tools, withhold=withhold)
+    relatives += ["merlin/" + relative for relative in sdk_support_sources(version)]
+    if withhold:
+        from merlin.common.access import author_inaccessible
+
+        leaked = sorted({relative for relative in relatives if author_inaccessible(staged_module(relative))})
+        if leaked:
+            raise ValueError("author SDK release would stage withheld sources: " + ", ".join(leaked[:4]))
     if sum((root / relative).stat().st_size for relative in set(relatives)) > 32 << 20:
         raise ValueError("shared source release exceeds the fixed 32 MiB preparation bound")
     before = {relative: _read(root, relative) for relative in dict.fromkeys(relatives)}
@@ -695,7 +789,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--python-source-root", required=True, type=Path)
     parser.add_argument("--license-directory", required=True, type=Path)
-    parser.add_argument("--library-version", type=int, choices=(6, 7, 8, 16, 17, 18, 19), default=6)
+    parser.add_argument("--library-version", type=int, choices=(6, 7, 8, 16, 17, 18, 19, 20, 21, 22), default=6)
     parser.add_argument("--tool", action="append", default=[], help="existing tool registry name to stage, not grant")
     parser.add_argument("--source-binding", action="store_true", help="explicit version-8 typed-source/LLVM lexer APIs")
     args = parser.parse_args(argv)

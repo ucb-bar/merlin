@@ -47,8 +47,8 @@ def task_instruction_binding(
 
 def target_instruction_facts(target):
     """Reuse the host decoder's ISA and target-derived descriptive role map."""
-    from merlin.kernels.decode.rocc import funct_table_for, policy_instruction_declarations
-    from merlin.kernels.endpoints import endpoints_for
+    from merlin.compile.analysis.compute_endpoints import endpoints_for
+    from merlin.compile.analysis.rocc_commands import funct_table_for, policy_instruction_declarations
     from merlin.targetgen.rocc import decode
 
     names, provenance = policy_instruction_declarations(funct_table_for(target))

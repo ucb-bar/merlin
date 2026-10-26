@@ -244,35 +244,10 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
 
 
 def _commit_out_shape(cb: dict[str, Any], acc_name: str, attrs: dict[str, Any] | None = None) -> tuple[int, int]:
-    """(m, n) for a commit: m from the matmul lhs rows, n from the resident weight cols.
+    """Original logical COMMIT result geometry, shared with the public ABI resolver."""
+    from merlin.compile.logical_abi import commit_output_shape
 
-    A POOLING epilogue reduces m: the accumulator's rows unflatten to a ``pool_in_dims`` plane and the
-    window walks it, so the committed tensor has fewer rows than the matmul produced. Printing the
-    matmul's row count for a pooled commit would emit a module whose declared result type disagrees
-    with what any engine executing it computes -- a type error the grammar cannot catch because the
-    grammar is what would be lying."""
-    tensors = cb.get("tensors", {})
-    res_src: dict[str, str] = {}
-    for cmd in cb.get("commands", []):
-        if cmd["opcode"] == "RES_PACK":
-            res_src[cmd["operands"]["dst"]] = cmd["operands"]["src"]
-    for cmd in cb.get("commands", []):
-        if cmd["opcode"] in ("MATMUL_RESIDENT", "MATMUL") and cmd["operands"]["dst"] == acc_name:
-            lhs = cmd["operands"]["lhs"]
-            rhs = cmd["operands"]["rhs"]
-            w = res_src.get(rhs, rhs)
-            m = int(tensors[lhs]["shape"][0])
-            n = int(tensors[w]["shape"][1])
-            if "maxpool" in ((attrs or {}).get("epilogue") or []):
-                from merlin.runtime.commandbuffer import pool_params
-                from merlin.runtime.tensor import pool_out_dims
-
-                p = pool_params(attrs or {}, op=f"COMMIT of {acc_name!r}")
-                H, W = p["pool_in_dims"]
-                Ho, Wo = pool_out_dims(H, W, p["pool_size"], p["pool_stride"], p["pool_padding"])
-                m = (m // (H * W)) * Ho * Wo
-            return m, n
-    raise ValueError(f"no matmul produces accumulator {acc_name!r}")
+    return commit_output_shape(cb, acc_name, attrs)
 
 
 # --------------------------------------------------------------------------- parse

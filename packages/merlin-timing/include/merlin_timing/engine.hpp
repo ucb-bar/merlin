@@ -144,6 +144,9 @@ public:
   // The original submit/barrier semantics and v1 callers are unchanged.
   Result submit_detached(const Event &event) {
     const auto saved = issue_;
+    // Source actors own an independent admission edge. Retain value and
+    // resource hazards while keeping a later CPU frontier out of this commit.
+    if (issue_) issue_ = Cycle{0};
     try {
       const auto result = submit(event);
       issue_ = saved;

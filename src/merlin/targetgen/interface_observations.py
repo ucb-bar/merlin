@@ -75,11 +75,32 @@ _GEOMETRY_ATTRIBUTES = frozenset(
 )
 
 
-def _per_tensor_scales(attributes: dict) -> bool:
+#: Command attributes that RECORD one scale per tensor the command names, in operand order and then
+#: the result (a residual sum's ``source_scales`` is ``[lhs, rhs, out]``). They are arrays over
+#: tensors, not over a tensor's channels, so they state a per-tensor granularity when they hold exactly
+#: one scalar for each named tensor.
+_PER_TENSOR_RECORDS = frozenset({"source_scales"})
+
+
+def _scalar(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _per_tensor_scales(attributes: dict, operands: dict | None = None) -> bool:
     """Whether every multiplier a command states is one value for the whole tensor: no attribute other
-    than its stage list and its geometry is an array or a mapping (a per-channel scale would be one)."""
+    than its stage list and its geometry is an array or a mapping (a per-channel scale would be one).
+
+    A per-tensor record is the exception only in its exact form, one scalar per tensor of
+    ``operands``; any other length or a nested entry remains an array and so not per-tensor."""
+    named = len(operands) if operands else None
     return all(
         not isinstance(value, (list, dict))
+        or (
+            key in _PER_TENSOR_RECORDS
+            and isinstance(value, list)
+            and len(value) == named
+            and all(_scalar(item) for item in value)
+        )
         for key, value in attributes.items()
         if key != "epilogue" and key not in _GEOMETRY_ATTRIBUTES and value is not None
     )
@@ -97,10 +118,11 @@ def _stage_rows(
     destination_declared: bool,
     attributes: dict,
     column_source: dict | None = None,
+    operands: dict | None = None,
 ) -> list[dict]:
     from merlin.targetgen.semantic_families import from_op
 
-    scalar_scales = _per_tensor_scales(attributes)
+    scalar_scales = _per_tensor_scales(attributes, operands)
     return [
         _row(
             index,
@@ -358,7 +380,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             # rule a commit's stages are observed by. A command with no multiplier states none.
             stated = {key: value for key, value in attributes.items() if key != "epilogue" and value is not None}
             multiplied = any(isinstance(value, float) for value in stated.values())
-            scalar = _per_tensor_scales(attributes)
+            scalar = _per_tensor_scales(attributes, operands)
             row["composed_observation"] = {
                 "epilogues": [],
                 "composed_with": [],
@@ -399,6 +421,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
                     destination_declared=_typed(tensors, destination) is not None,
                     attributes=attributes,
                     column_source=column_sources.get(str(destination)),
+                    operands=operands,
                 )
             )
     return rows

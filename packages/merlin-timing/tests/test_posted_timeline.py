@@ -7,7 +7,7 @@ def test_posted_source_timeline(tmp_path):
     root=Path(__file__).resolve().parents[1]
     compiler=shutil.which("c++")
     assert compiler
-    for name in ("posted_timeline","posted_engine_stage"):
+    for name in ("posted_timeline","posted_engine_stage","posted_ordered_writer"):
         check_source(root,compiler,tmp_path,name)
 
 def check_source(root,compiler,tmp_path,name):

@@ -19,7 +19,9 @@ _CAPTURE_PREFIX = "source-capture-"
 
 def capture_reference_closure(identities: dict, *, source_mode: str | None = None) -> dict:
     """Declare the exact expected-output artifact copied by the capture writer."""
-    references = (_CAPTURE_REFERENCE,)
+    from .materialized_reference import reference_members as float_reference_members
+
+    references = float_reference_members(identities)
     if source_mode is not None:
         from .materialized_integer_capture import MODE, reference_members
 
@@ -64,7 +66,8 @@ def capsule_answer_members(directory: Path, *, capsule: dict | None = None) -> d
     # Filename classification also protects the complete source copies when a
     # closure or schema was stripped. It never reads expected tensor values.
     members.update({path.name: "golden" for path in directory.iterdir()
-                    if path.is_file() and path.name.startswith(("source-capture-golden.", "source-capture-goldens."))})
+                    if path.is_file() and path.name.startswith((
+                        "source-capture-golden.", "source-capture-goldens.", "source-capture-integer-reference."))})
     coverage = directory / "expected_instruction_coverage.yaml"
     if coverage.is_file():
         members[coverage.name] = "golden"

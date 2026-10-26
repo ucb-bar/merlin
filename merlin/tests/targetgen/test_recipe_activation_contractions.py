@@ -122,6 +122,48 @@ def test_the_family_is_spelled_the_same_on_both_sides_of_the_capture_boundary():
     assert values["MIN_ACTIVATION_REDUCTION"] == values["MIN_REDUCTION"]
 
 
+def test_explicit_small_reduction_policy_is_bound_and_default_is_unchanged(tmp_path):
+    from merlin.targetgen._activation_contractions import activation_reduction_minimum
+
+    default = QR.with_activation_contractions(_recipe())
+    assert "activation_contraction_policy" not in default
+    assert activation_reduction_minimum(default) == 17
+    explicit = QR.with_activation_contractions(_recipe(), minimum_reduction=1)
+    assert activation_reduction_minimum(explicit) == 1
+    assert explicit["recipe_sha256"] == QR.digest(explicit) != default["recipe_sha256"]
+    for key in ("activation", "weight", "bias_domain"):
+        assert explicit[key] == default[key]
+    source, target = tmp_path / "in.json", tmp_path / "out.json"
+    source.write_text(json.dumps(_recipe()))
+    assert QR._main(["activation-contractions", str(source), str(target), "--minimum-reduction", "1"]) == 0
+    assert json.loads(target.read_text()) == explicit
+
+
+@pytest.mark.parametrize("minimum", [True, False, 0, -1, 1.5, "1"])
+def test_small_reduction_policy_requires_positive_integer(minimum):
+    with pytest.raises(ValueError, match="positive integer"):
+        QR.with_activation_contractions(_recipe(), minimum_reduction=minimum)
+
+
+@pytest.mark.parametrize("block", [None, {}, {"schema": "wrong", "minimum_reduction": 1},
+                                   {"schema": "activation_contraction_admission_v1", "minimum_reduction": 1,
+                                    "skip_quality": True}])
+def test_small_reduction_policy_is_closed(block):
+    from merlin.targetgen._activation_contractions import activation_reduction_minimum
+
+    with pytest.raises(ValueError):
+        activation_reduction_minimum({**QR.with_activation_contractions(_recipe()),
+                                      "activation_contraction_policy": block})
+
+
+def test_small_reduction_policy_requires_declared_family():
+    from merlin.targetgen._activation_contractions import activation_reduction_minimum
+
+    with pytest.raises(ValueError, match="requires the activation_contraction family"):
+        activation_reduction_minimum({**_recipe(), "activation_contraction_policy": {
+            "schema": "activation_contraction_admission_v1", "minimum_reduction": 1}})
+
+
 # --- the quantizer (capture venv) ------------------------------------------------------------------
 
 _SCRIPT = r"""

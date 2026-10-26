@@ -168,6 +168,7 @@ class BuildRuntimeView:
                     "merlin.llvmlower.codegen",
                     "merlin.llvmlower.toolchain",
                     "merlin.targetgen.contract.compile",
+                    "merlin.targetgen.contract.ordinary_inputs",
                 )
             )
         )

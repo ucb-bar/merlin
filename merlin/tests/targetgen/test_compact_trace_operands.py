@@ -85,4 +85,5 @@ def test_native_decode_publishes_compact_observation(monkeypatch):
     result = decode.decode_text(source, target='synthetic')
     assert len(result['instructions']) == 1
     assert result['instructions'][0]['rs1']['raw'] == 0
-    assert result['summary']['counted_loops']['instruction_multiplicity'] == 'static_sites_only'
+    assert result['summary']['counted_loops']['instruction_multiplicity'] == 'executions_per_kernel_call'
+    assert result['instructions'][0]['executions'] == 1

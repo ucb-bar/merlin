@@ -55,6 +55,10 @@ validation_notes: >-
   record, `{buffer_instance: <path>}` or `{from, minus}` (`null` leaves a field to fitting). Only names
   are declared; entries, widths, ID spaces, stage counts and modes are read from the elaborated HW,
   and an anchor the RTL does not contain records that fact UNKNOWN.
+  `dispatch.ordering: {reset, allocate: {valid, ready, funct, rs1, rs2}, issue: {valid, ready, id,
+  funct, rs1, rs2} (suffixes after each class prefix), completion: {valid, id}, config_fields:
+  [{bundle, operand}]}` anchors `merlin.targetgen.rtl.command_ordering`, which drives that module
+  alone to observe each command's queue, same- and cross-queue release points and span formulas.
   Missing declarations disable their optional reader, while malformed declarations fail closed.
   `output_epilogue: {module, value, scale, activation}` names the elaborated module that moves the
   accumulator out and, inside it, the accumulator element, the scale operand and the activation

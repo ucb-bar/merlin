@@ -495,6 +495,9 @@ def generate_bundles(
                 COMMON_SUBSTRATE_V10,
                 COMMON_SUBSTRATE_V11,
                 COMMON_SUBSTRATE_V12,
+                COMMON_SUBSTRATE_V13,
+                COMMON_SUBSTRATE_V14,
+                COMMON_SUBSTRATE_V15,
             )
 
             if common_substrate not in {
@@ -508,6 +511,9 @@ def generate_bundles(
                 COMMON_SUBSTRATE_V10,
                 COMMON_SUBSTRATE_V11,
                 COMMON_SUBSTRATE_V12,
+                COMMON_SUBSTRATE_V13,
+                COMMON_SUBSTRATE_V14,
+                COMMON_SUBSTRATE_V15,
             }:
                 attach_common_substrate(
                     out[bid],
@@ -536,6 +542,9 @@ def generate_bundles(
             "merlin.common_compiler_substrate.v10",
             "merlin.common_compiler_substrate.v11",
             "merlin.common_compiler_substrate.v12",
+            "merlin.common_compiler_substrate.v13",
+            "merlin.common_compiler_substrate.v14",
+            "merlin.common_compiler_substrate.v15",
         }:
             # The common generated task is the sole authoring instruction owner.
             # Legacy target task directories remain operator inputs, not grants.
@@ -609,13 +618,26 @@ def _tool_blurbs(manifest: dict[str, Any]) -> str:
         return "- (this manifest predates tool recording; regenerate the bundle to list the tools it grants)"
     from . import tool_registry as TR
 
+    def spellings(key: str) -> set[str]:
+        return {row["path"] for row in manifest.get(key, ()) if isinstance(row, dict) and row.get("path")}
+
+    allowed, denied = spellings("allowed"), spellings("denied")
+    prefix = "merlin/python/merlin/"
+
+    def granted(path: str) -> bool:
+        # A registry path is granted in its logical spelling or at its selected source release copy.
+        tail = "/merlin/" + path.removeprefix(prefix)
+        return not any(p == path or p.endswith(tail) for p in denied) and any(
+            p == path or p.endswith(tail) for p in allowed
+        )
+
     rows = []
     for name in names:
         spec = TR.TOOLS.get(name)
         if spec is None:
             rows.append(f"### `{name}`\n\nGranted, but no registry entry describes it — report this.")
             continue
-        rows.append(f"### `{name}`\n\n{spec.blurb}")
+        rows.append(f"### `{name}`\n\n{TR.describe_grant(spec, granted)}")
     return "\n\n".join(rows)
 
 
@@ -948,6 +970,9 @@ def _main(argv: list[str] | None = None) -> int:
         COMMON_SUBSTRATE_V10,
         COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
     )
 
     ap.add_argument(
@@ -965,6 +990,9 @@ def _main(argv: list[str] | None = None) -> int:
             COMMON_SUBSTRATE_V10,
             COMMON_SUBSTRATE_V11,
             COMMON_SUBSTRATE_V12,
+            COMMON_SUBSTRATE_V13,
+            COMMON_SUBSTRATE_V14,
+            COMMON_SUBSTRATE_V15,
         ),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )

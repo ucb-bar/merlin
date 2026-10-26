@@ -377,6 +377,7 @@ def build(
     readonly_input_indices: tuple[int, ...] = (),
     max_readonly_input_bytes: int = 1 << 20,
     group_profile: bool = False,
+    dense_input_views: bool = False,
     weights_source: str | Path | None = None,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
@@ -479,8 +480,13 @@ def build(
 
     # Refusal during validation must not leave a previous build's success receipt.
     (Path(work) / COMPILATION_RECIPE).unlink(missing_ok=True)
+    from ...llvmlower.device_input_views import validate_selection as validate_input_views
     from ..device_descriptor_results import DeviceDescriptorResults
 
+    validate_input_views(dense_input_views, backend=backend, device=device, unsupported=(
+        source_recomputation, source_optimizations, graph_optimizations, shared_source_lowerings,
+        shared_row_lowering, prepared_model_transform, host_provider_builder,
+    ))
     descriptor_results = DeviceDescriptorResults(device)
     descriptor_check = descriptor_results.revalidate
     if descriptor_results.selected and (host_llvm_transform is not None or host_llvm_transform_chain is not None):
@@ -798,13 +804,21 @@ def build(
             )
             recomputation_check()
             recomputation_options.update(source_recomputation.options())
-        if descriptor_results.selected:
+        if descriptor_results.selected or dense_input_views:
             from ...llvmlower.device_offload import SIDECAR_NAME
 
-            descriptor_results.bind_input(prepared_path, work / SIDECAR_NAME, compilation)
+            if descriptor_results.selected:
+                descriptor_results.bind_input(prepared_path, work / SIDECAR_NAME, compilation)
             early_device_objects = build_routed_objects()
-            if early_device_objects[2] is not None:
+            if descriptor_results.selected and early_device_objects[2] is not None:
                 descriptor_results.bind_shim(early_device_objects[2], compilation)
+            if dense_input_views:
+                from ...llvmlower.device_input_views import prepare as prepare_dense_input_views
+
+                prepared_path = prepare_dense_input_views(
+                    prepared_path, work / SIDECAR_NAME, early_device_objects[2], work / "dense_input_views", compilation
+                )
+                retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
         res = lower_model_file(
             prepared_path,
             work / "lower",

@@ -70,6 +70,7 @@
       "enum": [
         "behavioral_specimen",
         "pytorch_model_slice",
+        "materialized_performance_capture",
         "handauthored_compiler_test",
         "uplifted_from_bareMetalC",
         "spec_derived",
@@ -341,6 +342,15 @@
       "type": "string",
       "enum": ["L0", "L1", "L2", "L3", "L4", "L5"],
       "description": "Deepest tier bought for this capsule's TIMING measurement -- an exclusion from the measurement matrix, deliberately a DIFFERENT field from `max_oracle_tier`. A tier is bought for one of two reasons and a ceiling on one must never silence the other: `max_oracle_tier` caps CORRECTNESS (the capsule is screened cheaply and its correctness rests on an `extends` sibling), while a performance claim NEEDS the cycle-accurate count on whatever rung the capsule's own acceptance block names in `performance.acceptance.evidence.timing_tier`. Capping correctness therefore does NOT decline the timing rung, or a cell that was measured would read back as though it never was. Declare this only to state that a member is genuinely not to be measured at that rung; the tier is then recorded as `skipped` with `measurement_excluded: true`, which is a statement about the measurement matrix and NOT a correctness verdict."
+    },
+    "performance_scope": {
+      "type": "string",
+      "enum": ["scored", "excluded"],
+      "description": "Whether this case counts in performance scoring (the headline, the CASES totals and the roofline summary). `excluded` keeps the case graded for correctness at every required tier; it is declared, by the Phase 0 redundancy stage, for a case whose contraction work another case already scores (same shape, different readout semantics) or that represents too small a share of its program. Absent means `scored`."
+    },
+    "performance_demand": {
+      "type": "object",
+      "description": "Provenance of a case the Phase 0 performance-demand stage derived from captured programs' layer inventories: the plan digest, whether the shape is the exact layer or its nearest admissible representative, and every model/program/regime class it represents with its share of that program's contraction MACs."
     },
     "extends": {
       "type": "string",

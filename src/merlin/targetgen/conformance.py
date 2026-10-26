@@ -962,7 +962,7 @@ def geometry_axis(captures: dict[str, str | Path], target: str) -> dict:
     sibling, and saying so here is what keeps the axis from demanding a cert nobody can run.
     """
     from merlin.capture import shape_taxonomy as ST
-    from merlin.kernels import shapes as KS
+    from merlin.compile.analysis import contraction_shapes as KS
 
     by_class: dict[str, dict] = {}
     unreadable: dict[str, str] = {}

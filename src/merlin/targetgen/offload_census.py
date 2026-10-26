@@ -194,7 +194,7 @@ def instruction_use(artifacts: Iterable[str], *, target: str) -> dict[str, Any]:
     different endpoint, or facts not derived) reports why it cannot be measured; it does not report
     that everything was used.
     """
-    from merlin.kernels.decode.rocc import funct_table_for
+    from merlin.compile.analysis.rocc_commands import funct_table_for
 
     table = funct_table_for(target)
     names, opcode = table.get("names"), table.get("custom_opcode")
@@ -544,6 +544,28 @@ def apply_host_compute_veto(
     return vetoed
 
 
+#: The fields a recorded veto rewrites in ``capsule_result.json``; everything else stays as executed.
+VETO_FIELDS = ("status", "failure", "host_compute")
+VETO_PRIOR_STATUS = "status_before_host_compute_veto"
+
+
+def is_recorded_veto(before: Mapping[str, Any], after: Mapping[str, Any]) -> bool:
+    """Whether ``after`` is exactly ``before`` with a host-compute veto recorded by :func:`_record_veto`.
+
+    Readers that pinned a completed result before the score applied the veto use this to tell that
+    rewrite apart from any other change: same execution evidence, a failed status, the veto category
+    and the status it replaced."""
+    if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+        return False
+    failure = after.get("failure")
+    if (after.get("status") != "fail" or after.get(VETO_PRIOR_STATUS) != before.get("status")
+            or not isinstance(failure, Mapping) or failure.get("category") != VETO_CATEGORY):
+        return False
+    untouched = (*VETO_FIELDS, VETO_PRIOR_STATUS)
+    return ({k: v for k, v in before.items() if k not in untouched}
+            == {k: v for k, v in after.items() if k not in untouched})
+
+
 def _record_veto(path: Path, result: Mapping[str, Any]) -> None:
     """Put a veto where every reader of the run looks for a failure. Never raises: a result file
     that cannot be rewritten leaves the in-memory verdict standing, which still fails the count."""
@@ -553,8 +575,8 @@ def _record_veto(path: Path, result: Mapping[str, Any]) -> None:
         stored = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(stored, dict):
             return
-        stored["status_before_host_compute_veto"] = stored.get("status")
-        stored.update({key: result[key] for key in ("status", "failure", "host_compute")})
+        stored[VETO_PRIOR_STATUS] = stored.get("status")
+        stored.update({key: result[key] for key in VETO_FIELDS})
         path.write_text(json.dumps(stored, indent=1), encoding="utf-8")
     except (OSError, ValueError, KeyError):
         return

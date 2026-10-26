@@ -296,16 +296,21 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
     word_bits = getattr(semantics, "word_bits", getattr(semantics, "_width", None))
     if type(word_bits) is not int:
         word_bits = None  # Historical external providers retain their original unselected behavior.
-    from .static_operands import counted_loop_observations, known_integer_bits
+    from .static_operands import counted_loop_facts, known_integer_bits
 
-    loop_observation, bindings = counted_loop_observations(module)
+    loops = counted_loop_facts(module)
+    loop_observation, bindings, ranges = loops["observation"], loops["bindings"], loops["ranges"]
+    executions = loops["executions"]
     idx = 0
     for op in module.walk():
         if getattr(op, "name", "") != "llvm.inline_asm":
             continue
         template = _asm_template(op)
         if template == "fence":
-            trace.instructions.append({"index": idx, "class": "FENCE", "funct": None, "decoded": {}})
+            trace.instructions.append(
+                {"index": idx, "class": "FENCE", "funct": None, "decoded": {},
+                 "executions": executions.get(op.parent_block())}
+            )
         elif template.startswith(".insn"):
             parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
             if parsed is not None:
@@ -316,7 +321,7 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
                 rs2 = _resolve(ops[1], _word_bits=word_bits, _bindings=block_bindings) if len(ops) >= 2 else None
                 for original, resolved in zip(ops[:2], (rs1, rs2)):
                     if resolved is not None and resolved.kind == "unknown":
-                        known = known_integer_bits(original, bindings.get(op.parent_block(), {}))
+                        known = known_integer_bits(original, bindings.get(op.parent_block(), {}), ranges)
                         if known is not None and known[0] and (word_bits is None or known[2] == word_bits):
                             resolved.known_bits = dict(mask=known[0], value=known[1], width=known[2])
                 klass, dec = semantics.decode_instruction(funct, _operand(rs1), _operand(rs2), isa)
@@ -328,6 +333,9 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
                         "rs1": _operand(rs1),
                         "rs2": _operand(rs2),
                         "decoded": dec,
+                        # Times this site runs per kernel call (None: not proved), from the
+                        # counted-loop proof; the row itself stays one static site.
+                        "executions": executions.get(op.parent_block()),
                     }
                 )
             else:

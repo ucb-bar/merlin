@@ -1201,7 +1201,8 @@ def prepare_for_lowering(
     from ...llvmlower.impr_features import LMUL_GROUP_SENTINEL, lmul_group_feature
 
     if LMUL_GROUP_SENTINEL in features:
-        from ...kernels.shapes import contraction_shapes as _cshapes0
+        from merlin.compile.analysis.contraction_shapes import contraction_shapes as _cshapes0
+
         from ...llvmlower.lmul_group import LmulDerivationError, group_lmul_for_shapes
 
         features = features - {LMUL_GROUP_SENTINEL}
@@ -1359,7 +1360,7 @@ def prepare_for_lowering(
             f for f in features if parse_perop_mr_sentinel(f) is None and parse_perop_nr_sentinel(f) is None
         } | {PEROP_BLOCK_NAME}
     if PEROP_BLOCK_NAME in features:
-        from ...kernels.shapes import contraction_shapes as _cshapes
+        from merlin.compile.analysis.contraction_shapes import contraction_shapes as _cshapes
 
         # The N-tile cap follows the board's vector length: a fixed element count on a wider unit
         # is spent as a smaller LMUL rather than as more work per instruction (measured: the same

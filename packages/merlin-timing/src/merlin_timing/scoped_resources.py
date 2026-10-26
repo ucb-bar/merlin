@@ -18,7 +18,7 @@ def _count(value, name):
     return value
 
 
-def project(report: dict, *, structural: dict | None = None) -> dict:
+def _project(report: dict, *, structural: dict | None = None) -> dict:
     """Project one original public native report; same function offline/in-loop."""
     if report.get('profile') != 'phase1-public':
         raise C.ContractError('public feedback requires the public observation profile')
@@ -143,11 +143,208 @@ def project(report: dict, *, structural: dict | None = None) -> dict:
     return result
 
 
+def _measure(value, *, source, numerator, denominator, meaning, reason=None):
+    """One diagnostic ratio with explicit availability and arithmetic custody."""
+    return dict(
+        availability="available" if value is not None else "UNKNOWN",
+        value=value,
+        source_kind=source,
+        numerator=numerator,
+        denominator=denominator,
+        meaning=meaning,
+        **({"reason": reason} if value is None else {}),
+    )
+
+
+def _utilization_views(value, structural):
+    """Only already validated same-window quantities enter these views.
+
+    Generic reservation queues have neither hardware queue capacity nor stall
+    authority. No resource names are interpreted as physical engine counters.
+    """
+    cycles = value["estimated_cycles_same_window"]
+    complete = value["status"] == "modeled" and cycles is not None
+    provenance = {key: value[key] for key in ("scope_sha256", "model_sha256", "elf_sha256")}
+    denominator = dict(quantity="same_window_modeled_cycles", value=cycles, unit="model_cycles")
+
+    def unknown(reason):
+        return _measure(None, source="unknown", numerator=None, denominator=None, meaning=reason, reason=reason)
+
+    result = dict(
+        schema="merlin.scoped_utilization_views.v1",
+        provenance=provenance,
+        availability="available" if complete else "UNKNOWN",
+        denominator=denominator,
+        resources=[],
+        overlaps=[],
+        traffic=[],
+        host={
+            name: unknown("No scoped host cycle-attribution producer")
+            for name in ("preparation_cycle_fraction", "dispatch_cycle_fraction", "synchronization_wait_fraction")
+        },
+        storage=dict(
+            capacity_occupancy=unknown("No scoped byte-capacity and lifetime occupancy producer"),
+            byte_highwater=unknown("No scoped byte-capacity and lifetime occupancy producer"),
+        ),
+        physical_engine_occupancy=unknown(
+            "No scoped actor-lifetime union producer: controller bookings may be dispatch-only; "
+            "DMA/reader/response/compute lifetimes are not physical engine occupancy counters"
+        ),
+        hardware_queue_pressure=unknown(
+            "Generic start queues do not measure hardware ROB occupancy or dependency stalls"
+        ),
+        resource_times_additive=False,
+    )
+    result["compute"] = dict(
+        compute_ceiling_attainment=unknown(
+            "Source/observed useful work, structural peak and complete modeled window required"
+        ),
+        useful_fraction_of_padded_work=unknown("Complete scoped useful and nominal padded MAC counts required"),
+    )
+    if not complete:
+        result["reason"] = "Complete validated same-window modeled cycles are unavailable"
+        return result
+    compute = value["compute"]
+    useful = compute["useful_macs"]
+    padded = compute["nominal_padded_macs"]
+    source_useful = structural.get("useful_macs")
+    if source_useful is not None:
+        source_useful = _count(source_useful, "source useful MACs")
+    peak = structural.get("structural_peak_macs_per_cycle")
+    if peak is not None:
+        peak = C.number(peak, "structural peak MACs per cycle", positive=True)
+    work = source_useful if source_useful is not None else useful
+    if work is not None and peak is not None:
+        peak_work = C.number(peak * cycles, "structural peak work over modeled window", positive=True)
+        result["compute"]["compute_ceiling_attainment"] = _measure(
+            work / peak_work,
+            source="source_work_and_structural_peak_over_modeled_cycles"
+            if source_useful is not None
+            else "observed_shape_work_and_structural_peak_over_modeled_cycles",
+            numerator=dict(
+                quantity="source_useful_macs" if source_useful is not None else "observed_useful_shape_macs",
+                value=work,
+                unit="MACs",
+            ),
+            denominator=dict(
+                quantity="structural_peak_times_modeled_window",
+                value=peak_work,
+                unit="MACs",
+                peak_macs_per_cycle=peak,
+                modeled_cycles=cycles,
+            ),
+            meaning="Compute ceiling attainment, not measured array occupancy; not capped at one",
+        )
+    result["compute"]["useful_fraction_of_padded_work"] = _measure(
+        compute["useful_fraction_of_padded_work"],
+        source="observed_same_window_work",
+        numerator=dict(quantity="observed_useful_shape_macs", value=useful, unit="MACs"),
+        denominator=dict(quantity="nominal_padded_macs", value=padded, unit="MACs"),
+        meaning="Useful share of nominal padded arithmetic, independent of elapsed time",
+        reason="Useful/padded counts absent or padded work is zero",
+    )
+    for row in value["resources"]:
+        result["resources"].append(
+            dict(
+                resource_id=row["resource_id"],
+                name=row["name"],
+                availability="available",
+                source_kind="modeled_capacity_reservations",
+                capacity=dict(value=row["capacity"], unit="reservation_units"),
+                capacity_reservation_fraction=row["capacity_normalized_activity"],
+                reservation_active_fraction=row["active_fraction"],
+                denominators=dict(
+                    capacity_reservation_unit_cycles=row["capacity"] * cycles, active_model_cycles=cycles
+                ),
+                numerators=dict(reserved_unit_cycles=row["busy_unit_cycles"], active_model_cycles=row["active_cycles"]),
+                queue=dict(
+                    availability="available",
+                    source_kind="modeled_generic_start_queue",
+                    average_waiting_entries=row["average_modeled_waiting_entries"],
+                    active_fraction=row["queue_active_cycles"] / cycles,
+                    peak_entries=row["peak_queue_entries"],
+                    numerators=dict(entry_cycles=row["queued_entry_cycles"], active_cycles=row["queue_active_cycles"]),
+                    denominator_model_cycles=cycles,
+                    capacity_normalized_pressure=None,
+                    capacity_normalized_pressure_availability="UNKNOWN",
+                    reason=("Hardware queue capacity/occupancy is not supplied; zero generic waiting "
+                            "does not prove absent hardware pressure"),
+                ),
+                meaning=("Named modeled resource bookings may represent scalar dispatch only, "
+                         "not DMA/engine busy time or stalls"),
+            )
+        )
+    for pair in value["overlaps"]:
+        result["overlaps"].append(
+            dict(
+                left=pair["left"],
+                right=pair["right"],
+                **_measure(
+                    pair["fraction_of_window"],
+                    source="modeled_reservation_intersection",
+                    numerator=dict(
+                        quantity="both_resources_active_cycles", value=pair["active_cycles"], unit="model_cycles"
+                    ),
+                    denominator=denominator,
+                    meaning=("Named resource booking overlap; zero does not establish absent "
+                             "load/compute/store execution overlap"),
+                ),
+            )
+        )
+    for row in value["traffic"]:
+        result["traffic"].append(
+            dict(
+                boundary=row["boundary"],
+                **_measure(
+                    row["bytes_per_model_cycle"],
+                    source=row["source_kind"],
+                    numerator=dict(quantity="bytes_at_named_boundary", value=row["bytes"], unit="bytes"),
+                    denominator=denominator,
+                    meaning="Bytes per modeled cycle at this boundary; not physical bandwidth utilization",
+                    reason="The selected scoped byte counter is absent",
+                ),
+                bandwidth_capacity_fraction=None,
+                bandwidth_capacity_fraction_availability="UNKNOWN",
+                capacity_reason="No independently validated service capacity for this traffic boundary",
+            )
+        )
+    if value["activity_status"] != "modeled":
+        result["resource_availability"] = "UNKNOWN"
+        result["resource_reason"] = value.get("reason", "No validated scoped reservation producer")
+    else:
+        result["resource_availability"] = "available"
+    return result
+
+
+def project(report: dict, *, structural: dict | None = None) -> dict:
+    """Project validated scoped diagnostics and common utilization views."""
+    value = _project(report, structural=structural)
+    value["utilization_views"] = _utilization_views(value, structural or {})
+    from .source_activity import project as source_actor_feedback
+    value["source_actor_activity"] = source_actor_feedback(report)
+    value["utilization_views"]["source_actor_lifetimes"] = value["source_actor_activity"]
+    return value
+
+
 def compact(value):
     """Bounded common projection for terminal, automatic and offline feedback."""
     result = {key:value.get(key) for key in ('schema','status','source_kind','scope_sha256','model_sha256','elf_sha256','estimated_cycles_same_window',
         'activity_status','compute','traffic','commands','host','resources','overlaps','suggestions','unknown','reason',
-        'latency_is_objective','resource_cycles_additive','qualification_issued')}
+        'latency_is_objective','resource_cycles_additive','qualification_issued','source_actor_activity')}
+
+    views=value.get('utilization_views')
+    if views is not None:
+        result['utilization_views']=dict(views)
+        for key,limit in (('resources',16),('overlaps',8)):
+            items=views.get(key) or []
+            if key == 'resources':
+                # Resource IDs describe provider registration order, not
+                # importance. Keep hot late-registered banks/writers visible
+                # in the same bounded feedback as the reservation rows below.
+                items=sorted(items,key=lambda r:(-r.get('capacity_reservation_fraction',0),
+                                                  r.get('resource_id',0)))
+            result['utilization_views'][key]=items[:limit]
+            result['utilization_views'][key+'_omitted']=max(0,len(items)-limit)
 
     rows=value.get('resources') or []
     ranked=sorted(rows,key=lambda r:(-r.get('capacity_normalized_activity',0),r.get('resource_id',0)))

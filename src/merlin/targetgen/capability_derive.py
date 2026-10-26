@@ -215,7 +215,7 @@ def _role_dtypes(role: str, units: list[dict], fallback: tuple[str, ...]) -> tup
     facet = _ROLE_ENGINE.get(role)
     if facet is None:
         return fallback
-    from merlin.kernels import engines as _eng
+    from merlin.compile.analysis import engine_facets as _eng
 
     owned = [u for u in units if _eng.ENGINE_FACET.get(str(u.get("kind"))) == facet]
     formats = tuple(dict.fromkeys(d for u in owned for d in _unit_dtypes(u)))

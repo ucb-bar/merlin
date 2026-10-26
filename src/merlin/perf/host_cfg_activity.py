@@ -417,13 +417,14 @@ def _pointer_setup_operations(function: Any) -> frozenset[Operation]:
     return frozenset(op for op in reversed(operations) if op in proved and address_only_uses(op.results[0]))
 
 
-def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | None = None) -> dict[str, Any]:
-    """Account one submitted LLVM function at the emitted IR level."""
-    cfg = require_prepared_host_cfg(function, prepared_cfg) if prepared_cfg is not None else prepare_host_cfg(function)
+def _loop_multiplicity(function: Any, cfg: PreparedHostCFG, index: Mapping[Any, int]):
+    """``(loops, problems, multiplicity, constant_counted)``: each block's executions per call.
+
+    Counted loops multiply their blocks' counts (a pretested header runs once more); a CFG this cannot
+    prove falls back to the complete constant-control enumeration, and otherwise every block's count is
+    ``None`` with the reasons in ``problems``.
+    """
     blocks = cfg.blocks
-    if not blocks:
-        return {"schema": "host_cfg_activity_v1", "status": "UNKNOWN", "problems": ["empty function"]}
-    index = {block: i for i, block in enumerate(blocks)}
     predecessors = cfg.predecessors
     problems: list[str] = []
     for block in blocks:
@@ -495,6 +496,25 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
                 )
     else:
         multiplicity = {block: None for block in blocks}
+    return loops, problems, multiplicity, constant_counts is not None
+
+
+def block_multiplicity(function: Any, *, prepared_cfg: PreparedHostCFG | None = None) -> dict[Any, int | None]:
+    """Each block's executions per call of ``function`` (``None`` where the CFG is not proved)."""
+    cfg = require_prepared_host_cfg(function, prepared_cfg) if prepared_cfg is not None else prepare_host_cfg(function)
+    if not cfg.blocks:
+        return {}
+    return _loop_multiplicity(function, cfg, {block: i for i, block in enumerate(cfg.blocks)})[2]
+
+
+def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | None = None) -> dict[str, Any]:
+    """Account one submitted LLVM function at the emitted IR level."""
+    cfg = require_prepared_host_cfg(function, prepared_cfg) if prepared_cfg is not None else prepare_host_cfg(function)
+    blocks = cfg.blocks
+    if not blocks:
+        return {"schema": "host_cfg_activity_v1", "status": "UNKNOWN", "problems": ["empty function"]}
+    index = {block: i for i, block in enumerate(blocks)}
+    loops, problems, multiplicity, constant_counted = _loop_multiplicity(function, cfg, index)
 
     static = Counter()
     dynamic = Counter()
@@ -640,7 +660,7 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
         "status": "derived" if not problems and not unknown_payload else "UNKNOWN",
         "problems": sorted(set(problems)),
         "control_count_basis": "bounded_constant_control_v1"
-        if constant_counts is not None
+        if constant_counted
         else "constant_induction_v1",
         "loop_count": len(loops),
         "loops": [row for row, _ in loops],

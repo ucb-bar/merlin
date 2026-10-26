@@ -80,9 +80,22 @@ COMMON_SUBSTRATE_V9 = "merlin.common_compiler_substrate.v9"
 COMMON_SUBSTRATE_V10 = "merlin.common_compiler_substrate.v10"
 COMMON_SUBSTRATE_V11 = "merlin.common_compiler_substrate.v11"
 COMMON_SUBSTRATE_V12 = "merlin.common_compiler_substrate.v12"
-_SHARED_SUBSTRATES = {COMMON_SUBSTRATE_V6: 6, COMMON_SUBSTRATE_V7: 7, COMMON_SUBSTRATE_V8: 8,
-                      COMMON_SUBSTRATE_V9: 16, COMMON_SUBSTRATE_V10: 17, COMMON_SUBSTRATE_V11: 18,
-                      COMMON_SUBSTRATE_V12: 19}
+COMMON_SUBSTRATE_V13 = "merlin.common_compiler_substrate.v13"
+COMMON_SUBSTRATE_V14 = "merlin.common_compiler_substrate.v14"
+# V15 binds inventory 22 with explicit shared scheduling APIs and author SDK exclusions.
+COMMON_SUBSTRATE_V15 = "merlin.common_compiler_substrate.v15"
+_SHARED_SUBSTRATES = {
+    COMMON_SUBSTRATE_V6: 6,
+    COMMON_SUBSTRATE_V7: 7,
+    COMMON_SUBSTRATE_V8: 8,
+    COMMON_SUBSTRATE_V9: 16,
+    COMMON_SUBSTRATE_V10: 17,
+    COMMON_SUBSTRATE_V11: 18,
+    COMMON_SUBSTRATE_V12: 19,
+    COMMON_SUBSTRATE_V13: 20,
+    COMMON_SUBSTRATE_V14: 21,
+    COMMON_SUBSTRATE_V15: 22,
+}
 _ISA_SUBSTRATES = frozenset(
     {
         COMMON_SUBSTRATE_V3,
@@ -95,6 +108,9 @@ _ISA_SUBSTRATES = frozenset(
         COMMON_SUBSTRATE_V10,
         COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
     }
 )
 _PY = "merlin/python/merlin/"
@@ -233,6 +249,9 @@ def _policy_version(version: str) -> str:
         COMMON_SUBSTRATE_V10: "3",
         COMMON_SUBSTRATE_V11: "3",
         COMMON_SUBSTRATE_V12: "3",
+        COMMON_SUBSTRATE_V13: "3",
+        COMMON_SUBSTRATE_V14: "3",
+        COMMON_SUBSTRATE_V15: "3",
     }[version]
 
 
@@ -481,6 +500,59 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     return copy.deepcopy(profile)
 
 
+def _withhold_author_packages(bundle: dict, python_source_root: Path, inventory: int) -> None:
+    """Turn grants of author-inaccessible modules into denials for an SDK release that omits them.
+
+    Arm tool grants predate the withheld-package policy and name some operator files (the CCA spine)
+    directly. The release no longer stages those, and a grant of an absent file would fail the input
+    snapshot, so the exact grant becomes a recorded denial. A directory grant stays, and every
+    access-policy grader/oracle module or withheld package below it is recorded as a denial (deny-wins),
+    so the policy is visible in the bundle even though the release omits the file. The generic analyses
+    the remaining tools import are granted at the files the release stages for them. Older releases are
+    unchanged.
+    """
+    from merlin.common.access import AUTHOR_WITHHELD_PREFIXES, MODULE_ACCESS, author_inaccessible
+
+    from .tool_profile_shared import sdk_support_sources, staged_module, withholds_author_packages
+
+    if not withholds_author_packages(inventory):
+        return
+    selected = str(Path(python_source_root) / "merlin") + "/"
+    kept, directories = [], []
+    for row in bundle["allowed"]:
+        path = row.get("path")
+        prefix = next((p for p in (_PY, selected) if isinstance(path, str) and path.startswith(p)), None)
+        relative = path[len(prefix) :] if prefix is not None else None
+        if relative is not None and author_inaccessible(staged_module("merlin/" + relative)):
+            bundle["denied"].append(
+                {"path": path, "reason": "author-inaccessible module; reached only through its broker"}
+            )
+            continue
+        kept.append(row)
+        if relative is not None and relative.endswith("/"):
+            directories.append((prefix, relative))
+    bundle["allowed"] = kept
+    origins = {name: "withheld package" for name in AUTHOR_WITHHELD_PREFIXES}
+    origins.update((m, f"access-policy {e.origin} module") for e in MODULE_ACCESS for m in e.modules)
+    source = Path(__file__).resolve().parents[1]  # this installed ``merlin`` package
+    denied = {row.get("path") for row in bundle["denied"]}
+    for name, why in origins.items():
+        if not name.startswith("merlin."):
+            continue
+        stem = name.removeprefix("merlin.").replace(".", "/")
+        relative = stem + "/" if (source / stem).is_dir() else stem + ".py"
+        for prefix, directory in directories:
+            if relative.startswith(directory) and prefix + relative not in denied:
+                denied.add(prefix + relative)
+                bundle["denied"].append({"path": prefix + relative, "reason": f"{why}; never an author input"})
+    granted = {row.get("path") for row in kept}
+    for relative in sdk_support_sources(inventory):
+        if _PY + relative not in granted and selected + relative not in granted:
+            bundle["allowed"].append(
+                {"path": _PY + relative, "mode": "ro", "note": "generic analysis imported by granted tools"}
+            )
+
+
 def attach_common_substrate(
     bundle: dict,
     *,
@@ -572,6 +644,8 @@ def attach_common_substrate(
                 if path != _logical("merlin.verify.lean_contract")
                 and not (version in _SHARED_SUBSTRATES and path in {_logical(module) for module in public})
             )
+    if version in _SHARED_SUBSTRATES:
+        _withhold_author_packages(bundle, python_source_root, _SHARED_SUBSTRATES[version])
     from .tool_profile_toolchain import attach_selected_toolchain
 
     toolchain = attach_selected_toolchain(bundle, tools, lean_toolchain_manifest)
@@ -679,6 +753,9 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V10,
         COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
     }:
         lines.append(
             "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
@@ -697,6 +774,9 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V10,
         COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
     }:
         lines.append(
             "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
@@ -726,10 +806,14 @@ def tool_profile_prompt(bundle: dict) -> str:
             "follow from SDK availability. Missing capabilities remain unavailable."
         )
     if profile["common_substrate"] in (
-        COMMON_SUBSTRATE_V9, COMMON_SUBSTRATE_V10, COMMON_SUBSTRATE_V11, COMMON_SUBSTRATE_V12
+        COMMON_SUBSTRATE_V9, COMMON_SUBSTRATE_V10, COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12, COMMON_SUBSTRATE_V13, COMMON_SUBSTRATE_V14, COMMON_SUBSTRATE_V15,
     ):
-        catalog_call = ("scheduling_capabilities()" if profile["common_substrate"] == COMMON_SUBSTRATE_V9
-                        else f"scheduling_capabilities({_SHARED_SUBSTRATES[profile['common_substrate']]})")
+        catalog_call = (
+            "scheduling_capabilities()"
+            if profile["common_substrate"] == COMMON_SUBSTRATE_V9
+            else f"scheduling_capabilities({_SHARED_SUBSTRATES[profile['common_substrate']]})"
+        )
         lines.append(
             "Discover current executable scheduling APIs with "
             f"`merlin.compile.scheduling.api_catalog.{catalog_call}` or "
@@ -747,12 +831,24 @@ def tool_profile_prompt(bundle: dict) -> str:
             "Scalar state checking does not establish target visibility/clobber laws or loop-carried "
             "event ownership; readout overlap requires its separate selected completion capability."
         )
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V12:
+    if profile["common_substrate"] in {
+        COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
+    }:
         lines.append(
             "V19 additionally provides a source-checked final-K producer/readout frontier on the original "
             "full accumulator view. It requires a separate target RAW retirement and pending-write read "
             "readiness capability, with original store snapshots/backpressure and a final full drain. "
             "It supplies no fixed-cycle spacing or loop-carried event ownership."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V15:
+        lines.append(
+            "V22 keeps every V21 scheduling API, including loop-carried completion events and "
+            "effect-checked schedule composition. Operator-only kernel packages and access-policy "
+            "grader/oracle modules are not part of the V22 SDK; the CCA calls remain available "
+            "through their staged broker clients."
         )
     for name in profile["treatment_tools"]:
         if name in _OPTIONAL_TOOLS:

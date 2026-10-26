@@ -72,6 +72,9 @@ def _original_context(admission, entry):
         COMMON_SUBSTRATE_V10,
         COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
     )
 
     admission.verify()
@@ -86,6 +89,9 @@ def _original_context(admission, entry):
         COMMON_SUBSTRATE_V10,
         COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
     }:
         raise ValueError("host choices require the original substrate V3 profile")
     row = admission.profile["semantic_inputs"]["software_spec"]

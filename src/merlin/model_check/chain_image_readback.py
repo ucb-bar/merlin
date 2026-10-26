@@ -14,6 +14,7 @@ from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_cons
 
 from .chain_group_profile import reconcile as reconcile_profiles
 from .chain_group_profile import separate as separate_profiles
+from .chain_image_counter import verify as verify_counter_support
 from .chain_image_objects import payload, reopen
 from .chain_image_profile import verify as verify_profile_support
 
@@ -50,6 +51,7 @@ def verify_image(record):
             invocation_record.verify(reopen(record))
     for record in image.get("group_profile", {}).get("support", []):
         verify_profile_support(record)
+    verify_counter_support(image.get("counter_support"))
     reopen(image["plan"]["input_blob"])
     reopen(image["reference"]["blob"])
     expected_steps = [{"program": p["index"], "step": i} for p in image["plan"]["programs"] for i in range(p["steps"])]
@@ -100,6 +102,10 @@ def decode(image, console):
     never digest/sample equality. This pure decoder supplies no execution origin.
     The caller must bind the actually consumed image and native placement gates.
     """
+    if image["transport"] == "timing_only_v1":
+        from .chain_image_timing import decode_timing
+
+        return decode_timing(image, console)
     compact = image["transport"] == "all_element_comparison_v1"
     if not compact and image["transport"] != "full_arrays_v1":
         raise ValueError("unknown chain readback transport")

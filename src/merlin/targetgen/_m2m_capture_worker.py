@@ -262,51 +262,9 @@ def _output_abi(outputs):
 
 
 def _integerized_agreement(before, after, *, atol: float, rtol: float) -> dict:
-    """Compare two independently supplied executions on the capture input."""
-    import torch
+    from merlin.targetgen._dynamic_integer_reference import compare_outputs
 
-    left, left_abi = _output_abi(before)
-    right, right_abi = _output_abi(after)
-    rows = []
-    compatible = left_abi == right_abi and bool(left)
-    for original, rewritten in zip(left, right):
-        lhs = original.detach().to(torch.float64)
-        rhs = rewritten.detach().to(torch.float64)
-        same_shape = lhs.shape == rhs.shape
-        finite = bool(torch.isfinite(lhs).all() and torch.isfinite(rhs).all()) if same_shape else False
-        if same_shape and finite and lhs.numel():
-            delta = (lhs - rhs).abs()
-            max_abs = float(delta.max())
-            max_rel = float((delta / lhs.abs().clamp_min(1e-12)).max())
-            within = bool(torch.all(delta <= atol + rtol * lhs.abs()))
-        elif same_shape and finite:
-            max_abs = max_rel = 0.0
-            within = True
-        else:
-            max_abs = max_rel = 0.0
-            within = False
-        rows.append(
-            {
-                "max_abs": max_abs,
-                "max_rel": max_rel,
-                "within_tolerance": within,
-                "finite": finite,
-                "atol": atol,
-                "rtol": rtol,
-                "shape": list(original.shape),
-            }
-        )
-    passed = compatible and len(rows) == len(left) and all(row["within_tolerance"] for row in rows)
-    return {
-        "status": "passed" if passed else "failed",
-        "samples": 1,
-        "atol": atol,
-        "rtol": rtol,
-        "max_abs": max((row["max_abs"] for row in rows), default=0.0),
-        "max_rel": max((row["max_rel"] for row in rows), default=0.0),
-        "outputs": rows,
-        "finite": compatible and all(row["finite"] for row in rows),
-    }
+    return compare_outputs(before, after, atol=atol, rtol=rtol, output_abi=_output_abi)
 
 
 def _fp32_stage_observation(
@@ -1224,6 +1182,13 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             integerization_receipt["golden_agreement"] = golden_agreement
         else:
             integerization_receipt["golden_agreement"] = portable_agreement
+    if (q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized
+            and not pt2e_selected and (recipe or {}).get("software_numerical_engine") == "integer_reference"):
+        from merlin.targetgen import _dynamic_integer_reference as dynamic_reference
+
+        integerization_receipt = dynamic_reference.capture_reference(
+            mdl, tuple(inputs), out, output_abi=_output_abi, to_native=_to_native, recipe=recipe
+        )
     act_census = None
     if a.quantize_activation_contractions:
         # THE CONTRACTIONS quantize_ CANNOT REACH. The scheme replaces Linear weights; a matmul of two
@@ -1279,13 +1244,19 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     n_opaque = sum(opaque.values())
     if integerization_receipt is not None:
         integerization_receipt["exported_integer_mm_count"] = _exported_integer_mm_count(res.module)
+    dynamic_only_reference = (integerization_receipt or {}).get("schema") == "merlin.dynamic_integer_reference.v1"
     integerization_ok = integerization_receipt is None or (
-        integer_partition is not None
+        (dynamic_only_reference or integer_partition is not None)
         and integerization_receipt.get("accumulator_bound_checked") is True
         and integerization_receipt["exported_integer_mm_count"] > 0
         and integerization_receipt["integer_mm_emitted"] <= integerization_receipt["exported_integer_mm_count"]
         and integerization_receipt["golden_agreement"]["status"] == "passed"
     )
+    if dynamic_only_reference:
+        dynamic_reference.validate_receipt(integerization_receipt,
+            annotated=quant_stats.get("annotated_contractions"),
+            dynamic_calls=(quant_stats.get("dynamic_contractions") or {}).get("device_calls"),
+            exported=integerization_receipt["exported_integer_mm_count"])
     # A recipe requests a format; only the applied transform and its emitted
     # arithmetic establish the captured scheme. In particular, an already-
     # integer graph that skipped observers must not inherit the request's label.
@@ -1468,6 +1439,8 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             capture_trace=True,
             conversion_result=res,
         )
+    if dynamic_only_reference and a.materialize_bundle:
+        dynamic_reference.bind_reference_source(out)
     if completed is not None:
         completed(
             dict(module=mdl, inputs=tuple(inputs), session=session, quant=q, conversion_result=res, metadata=meta)

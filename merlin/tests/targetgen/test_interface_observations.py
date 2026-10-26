@@ -208,3 +208,32 @@ def test_a_convolutions_geometry_is_not_mistaken_for_a_per_channel_scale():
     rows = command_rows(_cb([pack, per_channel], tensors))
     stages = [row for row in rows if row.get("composed_observation", {}).get("epilogues")]
     assert all(row["composed_observation"]["scale_granularity"] is None for row in stages)
+
+
+def test_a_residual_sums_ordered_source_scales_are_per_tensor():
+    """The builder records a residual sum's quantizer scales as ``source_scales = [lhs, rhs, out]``: one
+    scalar per tensor the command names. That array is over tensors, not a tensor's channels, so the sum
+    and its fused stage are still observed per-tensor; any other form of the record is not."""
+    from merlin.targetgen import corpus_spec as CS
+    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+    binding = CS.CorpusBinding(
+        target="fixture", tile_dim=16, operand_dtype="int8", accum_dtype="int32", integer=True,
+        tiers=["L2", "L3"], compare="exact",
+    )  # fmt: skip
+    entry = {
+        "name": "T_residual", "kind": "layer", "source_role": "derived_sweep", "source_reference": "test",
+        "op": "residual_add", "M": 9, "N": 24, "lhs_scale": 0.57, "rhs_scale": 1.03, "bound_lsb": 2,
+        "epilogue": ["relu"], "source_scales": [0.0072, 0.0130, 0.0126],
+    }  # fmt: skip
+    _capsule, text = CS.build_residual_add(entry, binding)
+    program = parse_interface_mlir(text)
+    rows = command_rows(program)
+    assert [row["operation"] for row in rows] == ["residual_add", "relu"]
+    assert [row["composed_observation"]["scale_granularity"] for row in rows] == ["tensor", "tensor"]
+
+    command = program["commands"][0]
+    for malformed in ([0.0072, 0.0130], [[0.0072, 0.0072], 0.0130, 0.0126], [True, 0.0130, 0.0126]):
+        written = {**command, "attributes": {**command["attributes"], "source_scales": malformed}}
+        rows = command_rows({**program, "commands": [written]})
+        assert [row["composed_observation"]["scale_granularity"] for row in rows] == [None, None]

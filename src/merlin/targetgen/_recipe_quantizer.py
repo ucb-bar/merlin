@@ -177,6 +177,12 @@ def _require(recipe: Mapping[str, Any]) -> tuple[Mapping[str, Any], Mapping[str,
         raise RecipeError(f"unsupported recipe schema {recipe.get('schema')!r}")
     if recipe.get("status") != "derived":
         raise RecipeError(f"the recipe is {recipe.get('status')!r}, not derived: {recipe.get('underivable')}")
+    from _activation_contractions import activation_reduction_minimum
+
+    try:
+        activation_reduction_minimum(recipe)
+    except ValueError as error:
+        raise RecipeError(str(error)) from error
     weight, activation = recipe.get("weight"), recipe.get("activation")
     if not isinstance(weight, Mapping) or not isinstance(activation, Mapping):
         raise RecipeError("a derived recipe carries a weight and an activation spec")
@@ -613,6 +619,9 @@ def build_quantizer(
 
         shared_sums = IS.SharedGridSums(recipe)
     # Families the recipe's ``dynamic`` block takes out of static annotation (_dynamic_contractions).
+    from _activation_contractions import activation_reduction_minimum
+
+    minimum_reduction = activation_reduction_minimum(recipe)
     dynamic_block = dict(recipe.get("dynamic") or {})
     dynamic_families = set(dynamic_block.get("families") or ())
     if "contraction" in dynamic_families and _weight_rounding(recipe) is not None:
@@ -715,7 +724,7 @@ def build_quantizer(
         # decides which spec its second operand takes.
         if not software_allows(node, "contraction" if family == ACTIVATION_CONTRACTION else family):
             return False
-        if family == ACTIVATION_CONTRACTION and int(node.args[0].meta["val"].shape[-1]) <= MIN_ACTIVATION_REDUCTION:
+        if family == ACTIVATION_CONTRACTION and int(node.args[0].meta["val"].shape[-1]) < minimum_reduction:
             # A small reduction is a historical profitability heuristic, not an
             # unsupported instruction. An explicit normalized P×V recipe must
             # also cover short prefill/decode contexts. Keep unrelated outer
@@ -1558,6 +1567,8 @@ def apply_recipe(
         "api": "pt2e",
         "nested_graph_cleanup": nested_cleanup,
         "recipe_sha256": recipe.get("recipe_sha256"),
+        **({"activation_contraction_policy": dict(recipe["activation_contraction_policy"])}
+           if "activation_contraction_policy" in recipe else {}),
         "plan_sha256": layer_plan.get("plan_sha256"),
         "layers_on_host": [d for d in layer_plan.get("layers") or () if d.get("placement") == "host"],
         "operators_refused_by_placement": quantizer.refused_by_placement,

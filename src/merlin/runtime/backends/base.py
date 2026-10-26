@@ -60,7 +60,7 @@ def target_class_for(target: str) -> TargetClass | None:
     time; returns None if they are unavailable rather than failing a backend lookup.
     """
     try:
-        from merlin.kernels import engines as _engines
+        from merlin.compile.analysis import engine_facets as _engines
     except Exception:  # noqa: BLE001 — kernels unavailable in this sandbox
         return None
     got = _engines.target_class_for(_engines.engines_for(target))
