@@ -613,30 +613,29 @@ def _stage_source(plan: dict[str, Any], source: Path) -> None:
     from .sealed_m2m import (
         SCHEMA_V3,
         SealedM2MError,
+        _copy_source_tree,
         _snapshot_tree,
         shutil,
     )
 
-    shutil.copytree(
+    _copy_source_tree(
         Path(plan["m2m_root"]) / "m2m",
         source / "m2m-src/m2m",
-        symlinks=False,
         ignore=lambda _directory, names: {name for name in names if name == "__pycache__"},
     )
     if plan.get("frozen_origin") is not None:
         shutil.copy2(plan["frozen_origin"]["path"], source / "m2m-origin.json")
-    shutil.copytree(Path(plan["workload_root"]), source / "workload", symlinks=False)
-    shutil.copytree(
+    _copy_source_tree(Path(plan["workload_root"]), source / "workload")
+    _copy_source_tree(
         Path(plan["merlin_root"]),
         source / "merlin-src/merlin",
-        symlinks=False,
         ignore=lambda _directory, names: {name for name in names if name == "__pycache__"},
     )
     if _snapshot_tree(source / "merlin-src/merlin") != plan["selected_trees"]["merlin"]:
         raise SealedM2MError("Merlin package snapshot differs from selected bytes")
     bundled_schemas = source / "merlin-src/merlin/_data/schemas"
     if not bundled_schemas.exists():
-        shutil.copytree(Path(plan["schemas_root"]), bundled_schemas, symlinks=False)
+        _copy_source_tree(Path(plan["schemas_root"]), bundled_schemas)
     if plan.get("recipe"):
         selected_recipe = source / "inputs/quant_recipe.json"
         selected_recipe.parent.mkdir()
@@ -648,4 +647,4 @@ def _stage_source(plan: dict[str, Any], source: Path) -> None:
             if row["kind"] == "file":
                 shutil.copy2(row["source"], destination)
             else:
-                shutil.copytree(row["source"], destination, symlinks=False)
+                _copy_source_tree(Path(row["source"]), destination)

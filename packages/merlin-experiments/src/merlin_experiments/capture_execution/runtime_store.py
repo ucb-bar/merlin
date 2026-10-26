@@ -170,7 +170,7 @@ def _verified_cached_entry(
         marker_sha256 = _file_digest(marker)
         entry_stat = entry.stat()
         entry_identity = (entry_stat.st_dev, entry_stat.st_ino, entry_stat.st_mtime_ns, entry_stat.st_ctime_ns)
-        rows = _tree(entry)
+        rows = _tree(entry, allow_directory_symlinks=True)
         for name in rows:
             member = entry if name == "." else entry / name
             info = member.lstat()
@@ -313,19 +313,19 @@ def verify_effective_rows(plan, rows, *, selected_system_libraries=None):
 
 
 def _build(plan: dict[str, Any], destination: Path) -> None:
-    from .sealed_m2m import SealedM2MError, _snapshot_tree
+    from .sealed_m2m import SealedM2MError, _copy_source_tree, _snapshot_tree
     from .sealed_static import _file_digest
 
     venv = Path(plan["venv"])
     venv_copy = destination / "opt/capture-venv"
     venv_copy.parent.mkdir(parents=True)
-    shutil.copytree(
-        venv, venv_copy, symlinks=False, ignore=lambda directory, names: {"lib64"} if Path(directory) == venv else set()
+    _copy_source_tree(
+        venv, venv_copy, ignore=lambda directory, names: {"lib64"} if Path(directory) == venv else set()
     )
     base = Path(plan["base"])
     base_copy = destination / base.relative_to("/")
     base_copy.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(base.resolve(), base_copy, symlinks=False)
+    _copy_source_tree(base.resolve(), base_copy)
     libraries = []
     for name in plan["system_libs"]:
         path = Path(name)
@@ -407,6 +407,8 @@ def link_runtime(
 
 
 def _link_entry(entry: Path, runtime: Path) -> None:
+    from .sealed_static import _directory_symlink
+
     directories: list[tuple[Path, int]] = []
     for current, names, files in os.walk(entry, followlinks=False):
         here = Path(current)
@@ -416,7 +418,9 @@ def _link_entry(entry: Path, runtime: Path) -> None:
         directories.append((target_dir, stat.S_IMODE(here.stat().st_mode)))
         for name in names:
             if (here / name).is_symlink():
-                raise ValueError(f"runtime store contains a directory link: {here / name}")
+                link = _directory_symlink(here / name, entry)
+                (target_dir / name).symlink_to(link["target"], target_is_directory=True)
+        names[:] = [name for name in names if not (here / name).is_symlink()]
         for name in files:
             source = here / name
             if source.is_symlink() or not source.is_file():

@@ -29,7 +29,16 @@ from .precision_staging import output_staging_error as output_staging_error
 from .python_preflight import _loader_env_reads
 from .sealed_inventory import _snapshot_rows, _verify_replayed_output, _verify_staged_selection
 from .sealed_python import _FLAGS, _TIMEOUT_SECONDS
-from .sealed_static import _bwrap_binary, _canonical_path, _digest, _file_digest, _json, _tree
+from .sealed_static import (
+    SealedCaptureError,
+    _bwrap_binary,
+    _canonical_path,
+    _digest,
+    _directory_symlink,
+    _file_digest,
+    _json,
+)
+from .sealed_static import _tree as _strict_tree
 
 SCHEMA_V1 = "merlin.sealed_m2m_fp32.v1"
 SCHEMA = "merlin.sealed_m2m_cpu.v2"
@@ -97,7 +106,7 @@ _MAX_SELECTED_CAPTURE_SECONDS = 14_400
 
 # This literal is part of the selected issuer identity. Refuse changes to the
 # extracted verifier; historical issuer admission remains unchanged.
-_VALIDATION_SOURCE_SHA256 = "6202c1cc88c6dea776dd4cd43933f9f38aefd13d9316bc5124a5d9e8aa12cda1"
+_VALIDATION_SOURCE_SHA256 = "b5b6c46235ea873015013f9a4a314d91680dfbfad43592f7027f8fcfa87b9664"
 
 
 def _validation_functions():
@@ -587,8 +596,9 @@ def _source_tree(
     """Digest normalized file bytes, names and modes without retaining a huge manifest.
 
     The selected Python package may exclude validated transient bytecode caches;
-    the venv may skip its known directory alias. File symlinks are
-    dereferenced by copytree and thus by this inventory; outside targets are
+    the venv may skip its known directory alias. Relative internal directory
+    aliases retain their link text without traversing the target twice. File
+    symlinks are dereferenced by copying and thus by this inventory; outside targets are
     permitted only for the three CPython executable aliases, whose selected
     base interpreter is independently snapshotted. The opt-in readonly view
     removes only write bits to predict the exact mode transformation at freeze.
@@ -615,8 +625,13 @@ def _source_tree(
             elif (here / "lib64").exists():
                 raise SealedM2MError("venv /lib64 is not the expected /lib alias")
         for name in directories:
-            if (here / name).is_symlink():
-                raise SealedM2MError(f"directory link is outside the supported snapshot policy: {here / name}")
+            path = here / name
+            if path.is_symlink():
+                try:
+                    link = _directory_symlink(path, root)
+                except SealedCaptureError as exc:
+                    raise SealedM2MError(str(exc)) from exc
+                records.append((path.relative_to(root).as_posix(), *sorted(link.items())))
         directory_mode = stat.S_IMODE(here.stat().st_mode)
         records.append(
             (
@@ -630,11 +645,17 @@ def _source_tree(
                 ),
             )
         )
+        directories[:] = [name for name in directories if not (here / name).is_symlink()]
         for name in sorted(files):
             path = here / name
             member = path.relative_to(root).as_posix()
             if path.is_symlink():
-                resolved = path.resolve(strict=True)
+                try:
+                    resolved = path.resolve(strict=True)
+                except FileNotFoundError as exc:
+                    raise SealedM2MError(f"dangling source link: {member}") from exc
+                except (OSError, RuntimeError) as exc:
+                    raise SealedM2MError(f"unresolvable source link: {member}") from exc
                 if not resolved.is_file():
                     raise SealedM2MError(f"non-file link in source: {member}")
                 if not resolved.is_relative_to(root) and not (
@@ -662,8 +683,35 @@ def _source_tree(
     return {"members": len(records), "bytes": total, "sha256": _digest(_json(sorted(records)))}
 
 
+def _copy_source_tree(root: Path, destination: Path, *, ignore=None) -> None:
+    """Keep directory aliases, dereference file aliases and copy directory modes last."""
+
+    def copy(directory: Path, target: Path) -> None:
+        target.mkdir(parents=True, exist_ok=False)
+        names = os.listdir(directory)
+        ignored = set() if ignore is None else set(ignore(str(directory), names))
+        for name in names:
+            if name in ignored:
+                continue
+            source, copied = directory / name, target / name
+            if source.is_symlink() and source.is_dir():
+                copied.symlink_to(_directory_symlink(source, root)["target"], target_is_directory=True)
+            elif source.is_dir():
+                copy(source, copied)
+            else:
+                shutil.copy2(source, copied)
+        shutil.copystat(directory, target)
+
+    copy(root, destination)
+
+
+def _tree(root: Path) -> dict[str, dict[str, Any]]:
+    """Inventory sealed M2M aliases without changing the static capture policy."""
+    return _strict_tree(root, allow_directory_symlinks=True)
+
+
 def _snapshot_tree(root: Path) -> dict[str, Any]:
-    # _tree rejects every symlink and checks file identity during hashing.
+    # File identities are checked while hashing; directory aliases retain their text.
     return _snapshot_rows(_tree(root))
 
 
@@ -989,8 +1037,8 @@ def prepare_plan(
     if torch_so is None or numpy_so is None:
         raise SealedM2MError("selected torch/NumPy ELF roots are absent")
     libs = _system_libs(interpreter, torch_so, numpy_so)
-    # Inventory *before* copying: `du` does not dereference a directory link,
-    # whereas copytree does.  These exact normalized bytes and topology are
+    # Inventory *before* copying: directory aliases retain their topology and
+    # file aliases are dereferenced. These exact normalized bytes and topology are
     # part of the plan and are rechecked at issuance, before any 9 GB copy.
     selected_trees = {
         "venv": _source_tree(venv, skip_lib64=True),

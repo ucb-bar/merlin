@@ -87,7 +87,45 @@ def _canonical_path(value: Path, *, exists: bool) -> Path:
     return path
 
 
-def _tree(root: Path) -> dict[str, dict[str, Any]]:
+def _require_link_directory(component: Path, link: Path) -> None:
+    """Refuse resolution dependencies on any other link, including the target."""
+    try:
+        mode = component.lstat().st_mode
+    except FileNotFoundError as exc:
+        raise SealedCaptureError(f"dangling directory link: {link}") from exc
+    except OSError as exc:
+        raise SealedCaptureError(f"unresolvable directory link: {link}") from exc
+    if stat.S_ISLNK(mode):
+        raise SealedCaptureError(f"unresolvable directory link has a symlink component: {link}: {component}")
+    if not stat.S_ISDIR(mode):
+        raise SealedCaptureError(f"non-directory symlink target component: {link}: {component}")
+
+
+def _directory_symlink(path: Path, root: Path) -> dict[str, str]:
+    """Validate one exact relative link text against real directories in its tree."""
+    target = os.readlink(path)
+    if Path(target).is_absolute():
+        raise SealedCaptureError(f"absolute directory link is unsupported: {path}")
+    relative = path.parent.relative_to(root) / target
+    lexical_target = Path(os.path.normpath(relative))
+    if ".." in lexical_target.parts:
+        raise SealedCaptureError(f"directory link points outside selected tree: {path}")
+    current = root
+    _require_link_directory(current, path)
+    # Check even components cancelled by '..': the kernel would traverse those
+    # directories too, so normalizing away another link could change the referent.
+    for part in relative.parts:
+        if part == "..":
+            if current == root:
+                raise SealedCaptureError(f"directory link points outside selected tree: {path}")
+            current = current.parent
+        else:
+            current = current / part
+        _require_link_directory(current, path)
+    return {"kind": "symlink", "target": target}
+
+
+def _tree(root: Path, *, allow_directory_symlinks: bool = False) -> dict[str, dict[str, Any]]:
     """Bind exact directory membership, file content and execute permissions."""
     if root.is_symlink() or not root.is_dir():
         raise SealedCaptureError(f"tree is absent or indirect: {root}")
@@ -95,7 +133,10 @@ def _tree(root: Path) -> dict[str, dict[str, Any]]:
 
     def visit(path: Path, name: str) -> None:
         if path.is_symlink():
-            raise SealedCaptureError(f"tree contains a symlink: {name}")
+            if not allow_directory_symlinks:
+                raise SealedCaptureError(f"tree contains a symlink: {name}")
+            members[name] = _directory_symlink(path, root)
+            return
         before = path.stat(follow_symlinks=False)
         mode = stat.S_IMODE(before.st_mode)
         if stat.S_ISDIR(before.st_mode):
