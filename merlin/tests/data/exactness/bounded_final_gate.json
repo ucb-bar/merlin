@@ -1,7 +1,7 @@
 {
   "schema": "merlin.exactness_final_gate.v1",
   "model2mlir_revision": "31fd3989fe44a0cd1cadd24e1aa66b7936d96233",
-  "gemmini_mlir_revision": "fd21edc7e4a7edb483bb1b73d483fb68bb1c268a",
+  "gemmini_mlir_revision": "6ea4332dba297aba86c0e32344aff5c5e6ac5e56",
   "selected_cases": [
     {
       "arguments": {
@@ -8157,8 +8157,8 @@
       "sha256": "9ee32b00b75e3259bd9fc8273187dd799aa8ef4db63a2636de67fcd96e260397"
     },
     "gemmini_mlir": {
-      "revision": "fd21edc7e4a7edb483bb1b73d483fb68bb1c268a",
-      "sha256": "f3d9a4e9002f90dc58d149481c29d3447e355d846052cc9fcd42e484200285f9"
+      "revision": "6ea4332dba297aba86c0e32344aff5c5e6ac5e56",
+      "sha256": "1b45b3ce9fc82a5c41f54b6ca30ab32a12cb368421b05a12b12ead2c5bc162a6"
     }
   }
 }

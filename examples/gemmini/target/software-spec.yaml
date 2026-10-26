@@ -4,7 +4,7 @@
 # Internal arithmetic, accumulator storage and readout retain distinct numeric policies.
 schema: merlin.software_spec.v1
 target: gemmini
-execution_provider_revision: fd21edc7e4a7edb483bb1b73d483fb68bb1c268a
+execution_provider_revision: 6ea4332dba297aba86c0e32344aff5c5e6ac5e56
 status: reviewed
 numerical_semantics:
   # Reviewed R8: the selected CPU byte quantizer clamps

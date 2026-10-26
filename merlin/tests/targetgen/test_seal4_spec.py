@@ -95,8 +95,10 @@ def test_historical_spec_retains_exact_parent_bytes_and_software_pin():
     assert historical.read_bytes() == parent
     current = (TARGET / "software-spec.yaml").read_bytes()
     assert current.splitlines()[:4] == parent.splitlines()[:4]
+    # The historical spec keeps the provider seals 1-3 ran; the current spec may move forward.
     assert (
-        yaml.safe_load(current)["execution_provider_revision"] == yaml.safe_load(parent)["execution_provider_revision"]
+        yaml.safe_load(historical.read_bytes())["execution_provider_revision"]
+        == (yaml.safe_load(parent)["execution_provider_revision"])
     )
     variants = yaml.safe_load(current)["quantization"]["methodology"]["model_variants"]
     assert {row["model"] for row in variants}.isdisjoint({"resnet50", "tiny_llama"})
