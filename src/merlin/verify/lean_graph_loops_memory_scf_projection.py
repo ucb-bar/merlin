@@ -35,8 +35,7 @@ class ReuseBinding(Decoder):
             sourceContext=_key(first),
             targetContext=_key(second),
             objects=[
-                {key: epoch[key] for key in ("slot", "shape", "elementBits", "alignment")}
-                for epoch in self.epochs
+                {key: epoch[key] for key in ("slot", "shape", "elementBits", "alignment")} for epoch in self.epochs
             ],
             instructions=self.instructions,
             epochs=self.epochs,
@@ -120,9 +119,16 @@ class SegmentBinding:
     def constant(self, identity, *, target=False):
         op, kind = (self.target_defs if target else self.source_defs).get(identity, (None, None))
         if (
-            op is None or kind != "index" or op["name"] != "arith.constant" or op["attributes"]
-            or op["operands"] or op["regions"] or set(dict(op["properties"])) != {"value"}
-            or len(op["results"]) != 1 or type(op["index_constant"]) is not int or op["index_constant"] < 0
+            op is None
+            or kind != "index"
+            or op["name"] != "arith.constant"
+            or op["attributes"]
+            or op["operands"]
+            or op["regions"]
+            or set(dict(op["properties"])) != {"value"}
+            or len(op["results"]) != 1
+            or type(op["index_constant"]) is not int
+            or op["index_constant"] < 0
         ):
             raise ValueError("static nonnegative exact index constant required")
         return op["index_constant"]
@@ -150,7 +156,7 @@ class SegmentBinding:
             if _key(op) in self.expected:
                 if cursor + 1 >= len(second["operations"]):
                     raise ValueError("missing complete generated initializer boundary")
-                a, b = self.segment(op, *second["operations"][cursor:cursor + 2], env)
+                a, b = self.segment(op, *second["operations"][cursor : cursor + 2], env)
                 cursor += 2
             else:
                 if cursor >= len(second["operations"]):
@@ -161,14 +167,21 @@ class SegmentBinding:
             after.append(b)
         if cursor != len(second["operations"]):
             raise ValueError("extra operation outside complete boundary")
-        return dict(arguments=first["arguments"], operations=before), dict(arguments=first["arguments"], operations=after)
+        return dict(arguments=first["arguments"], operations=before), dict(
+            arguments=first["arguments"], operations=after
+        )
 
     def segment(self, source, stride, outer, env):
         epoch = self.expected[_key(source)]
         if (
-            source["name"] != "scf.for" or source["attributes"] or source["properties"] or source["results"]
-            or len(source["operands"]) != 3 or _metadata(outer) != _metadata(source)
-            or outer["results"] or len(outer["operands"]) != 3
+            source["name"] != "scf.for"
+            or source["attributes"]
+            or source["properties"]
+            or source["results"]
+            or len(source["operands"]) != 3
+            or _metadata(outer) != _metadata(source)
+            or outer["results"]
+            or len(outer["operands"]) != 3
         ):
             raise ValueError("supported exact no-carry initializer control required")
         lower, upper, step = [self.constant(value) for value in source["operands"]]
@@ -181,11 +194,24 @@ class SegmentBinding:
         if outer["operands"] != [*self.mapped(source["operands"][:2], env), stride_value]:
             raise ValueError("generated outer bounds/stride binding changed")
         source_body, outer_body = _one_block(source), _one_block(outer)
-        if _types(source_body["arguments"]) != ["index"] or _types(outer_body["arguments"]) != ["index"] or len(outer_body["operations"]) != 4:
+        if (
+            _types(source_body["arguments"]) != ["index"]
+            or _types(outer_body["arguments"]) != ["index"]
+            or len(outer_body["operations"]) != 4
+        ):
             raise ValueError("exact outer IV, add/min/inner/yield required")
         add, minimum, inner, final_yield = outer_body["operations"]
-        for op, name, properties in ((add, "arith.addi", [["overflowFlags", "#arith.overflow<none>"]]), (minimum, "arith.minui", [])):
-            if op["name"] != name or op["attributes"] or op["properties"] != properties or op["regions"] or _types(op["results"]) != ["index"]:
+        for op, name, properties in (
+            (add, "arith.addi", [["overflowFlags", "#arith.overflow<none>"]]),
+            (minimum, "arith.minui", []),
+        ):
+            if (
+                op["name"] != name
+                or op["attributes"]
+                or op["properties"] != properties
+                or op["regions"]
+                or _types(op["results"]) != ["index"]
+            ):
                 raise ValueError("generated bound arithmetic semantics changed")
         if _metadata(inner) != _metadata(source) or inner["results"] or len(inner["operands"]) != 3:
             raise ValueError("generated inner loop semantics changed")
@@ -196,15 +222,31 @@ class SegmentBinding:
         plan = dict(
             bounds=dict(bits=self.bits, lower=lower, upper=upper, step=step, tile=actual_stride),
             targetLower=self.constant(outer["operands"][0], target=True),
-            targetUpper=self.constant(outer["operands"][1], target=True), targetStride=actual_stride,
+            targetUpper=self.constant(outer["operands"][1], target=True),
+            targetStride=actual_stride,
             targetInnerStep=self.constant(inner["operands"][2], target=True),
-            sourceBody=_key(left), targetBody=_key(right), carryTypes=[], sourceInitial=[], outerInitial=[],
-            sourceResults=[], outerResults=[], innerResults=[], outerArgumentTypes=["index"],
-            outerIV=outer_body["arguments"][0][0], outerCarryArguments=[], strideValue=stride_value,
-            upperValue=outer["operands"][1], originalStepValue=self.mapped([source["operands"][2]], env)[0],
-            addOperands=add["operands"], addResult=add["results"][0][0], minOperands=minimum["operands"],
-            minResult=minimum["results"][0][0], innerOperands=inner["operands"], innerResultValues=[],
-            outerYield=final_yield["operands"], sourceYieldArity=0,
+            sourceBody=_key(left),
+            targetBody=_key(right),
+            carryTypes=[],
+            sourceInitial=[],
+            outerInitial=[],
+            sourceResults=[],
+            outerResults=[],
+            innerResults=[],
+            outerArgumentTypes=["index"],
+            outerIV=outer_body["arguments"][0][0],
+            outerCarryArguments=[],
+            strideValue=stride_value,
+            upperValue=outer["operands"][1],
+            originalStepValue=self.mapped([source["operands"][2]], env)[0],
+            addOperands=add["operands"],
+            addResult=add["results"][0][0],
+            minOperands=minimum["operands"],
+            minResult=minimum["results"][0][0],
+            innerOperands=inner["operands"],
+            innerResultValues=[],
+            outerYield=final_yield["operands"],
+            sourceYieldArity=0,
         )
         self.plans.append(dict(epoch=epoch, middleInitializer=_key(source), projection=plan))
         hole = dict(initializer_boundary=epoch)
@@ -226,9 +268,21 @@ def project_exports(before, middle, after, *, index_bits, max_nodes):
         epoch = row["epoch"]
         plan = row["projection"]
         plan.update(sourceContext=_key(first), targetContext=_key(last))
-        configs.append(dict(object=epoch, key=reuse.epochs[epoch]["initializer"]["body"],
-                            program=initializer_program(reuse, reuse.epochs[epoch]), tile=plan["bounds"]["tile"],
-                            middleInitializer=row["middleInitializer"], segment=plan))
-    return dict(reuse=original_model, configurations=configs, middleBinding=_key(middle["tree"]),
-                structural_nodes=reuse.nodes + segment.nodes, python_projection_trusted=True,
-                raw_parser_formally_verified=False)
+        configs.append(
+            dict(
+                object=epoch,
+                key=reuse.epochs[epoch]["initializer"]["body"],
+                program=initializer_program(reuse, reuse.epochs[epoch]),
+                tile=plan["bounds"]["tile"],
+                middleInitializer=row["middleInitializer"],
+                segment=plan,
+            )
+        )
+    return dict(
+        reuse=original_model,
+        configurations=configs,
+        middleBinding=_key(middle["tree"]),
+        structural_nodes=reuse.nodes + segment.nodes,
+        python_projection_trusted=True,
+        raw_parser_formally_verified=False,
+    )

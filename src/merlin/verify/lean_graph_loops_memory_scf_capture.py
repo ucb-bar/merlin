@@ -14,11 +14,11 @@ import sys
 from pathlib import Path
 
 if __package__:
-    from .lean_graph_loops_capture import _producer_sources, _reference
+    from .lean_graph_loops_capture import _producer_sources
     from .lean_graph_loops_reuse_capture import export
     from .lean_graph_loops_segment_capture import loaded_xdsl_sources
 else:
-    from lean_graph_loops_capture import _producer_sources, _reference
+    from lean_graph_loops_capture import _producer_sources
     from lean_graph_loops_reuse_capture import export
     from lean_graph_loops_segment_capture import loaded_xdsl_sources
 
@@ -27,7 +27,7 @@ def buffer_reference(path, data):
     return dict(path=str(path.resolve()), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
 
 
-def run(*, source, revision, before, output, middle=None, after=None, tile=2):
+def run(*, source, revision, before, output, middle=None, after=None, tile=2, index_bits=64):
     sys.dont_write_bytecode = True
     from merlin.transforms import loops, planning
     from merlin.transforms.certificates import ir_text, parse_ir
@@ -50,7 +50,7 @@ def run(*, source, revision, before, output, middle=None, after=None, tile=2):
         middle = output / "middle.mlir"
         middle.write_bytes(middle_bytes)
         middle_export = export(first)
-        segmented = loops.segment_loops(first, tile=tile)
+        segmented = loops.segment_loops(first, [tile], index_bits=index_bits)
         first.verify()
         after_bytes = ir_text(first).encode()
         after = output / "after.mlir"
@@ -65,14 +65,28 @@ def run(*, source, revision, before, output, middle=None, after=None, tile=2):
         final.verify()
         middle_export, after_export = export(center), export(final)
         destination, changed = output, None
-    identities = _producer_sources(source, revision, (Path(loops.__file__).resolve(), Path(planning.__file__).resolve()))
+    identities = _producer_sources(
+        source, revision, (Path(loops.__file__).resolve(), Path(planning.__file__).resolve())
+    )
     xdsl = loaded_xdsl_sources()
-    result = dict(schema="merlin.graph.memory_scf.actual_triple.v1", producer_revision=revision,
-                  producer_source=identities, xdsl_loaded_source=xdsl,
-                  before=buffer_reference(before, original), middle=buffer_reference(middle, middle_bytes), after=buffer_reference(after, after_bytes),
-                  before_export=before_export, middle_export=middle_export, after_export=after_export,
-                  changed=changed, python_projection_trusted=True, untrusted_plan_used_as_authority=False,
-                  raw_parser_formally_verified=False, native_or_hardware_proved=False)
+    result = dict(
+        schema="merlin.graph.memory_scf.actual_triple.v1",
+        producer_revision=revision,
+        producer_source=identities,
+        xdsl_loaded_source=xdsl,
+        before=buffer_reference(before, original),
+        middle=buffer_reference(middle, middle_bytes),
+        after=buffer_reference(after, after_bytes),
+        before_export=before_export,
+        middle_export=middle_export,
+        after_export=after_export,
+        changed=changed,
+        index_bits=index_bits,
+        python_projection_trusted=True,
+        untrusted_plan_used_as_authority=False,
+        raw_parser_formally_verified=False,
+        native_or_hardware_proved=False,
+    )
     if before.read_bytes() != original or middle.read_bytes() != middle_bytes or after.read_bytes() != after_bytes:
         raise ValueError("input buffer writer during fresh actual triple capture")
     if identities != _producer_sources(source, revision, ()) or xdsl != loaded_xdsl_sources():
@@ -89,8 +103,13 @@ def main():
         parser.add_argument("--" + name, type=Path)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--tile", type=int, default=2)
+    parser.add_argument("--index-bits", type=int, required=True)
     result = run(**vars(parser.parse_args()))
-    print(json.dumps(dict(schema=result["schema"], producer_revision=result["producer_revision"], changed=result["changed"])))
+    print(
+        json.dumps(
+            dict(schema=result["schema"], producer_revision=result["producer_revision"], changed=result["changed"])
+        )
+    )
 
 
 if __name__ == "__main__":
