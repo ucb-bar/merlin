@@ -1,0 +1,169 @@
+@Merlin.GraphStateIntegerInstance.complete : ∀ {World Error : Type}
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.registry),
+  (∀ (identity : Nat) (arguments : List Int) (world : World) (values : List Int) (final : World),
+      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
+          (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).inputs arguments →
+        external.run identity arguments world = Except.ok (values, final) →
+          Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
+            (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).outputs values) →
+    Merlin.GraphState.Integer.PreservesEntriesCanonical
+      (Merlin.GraphStateIntegerInstance.Suffix.M Merlin.GraphState.Integer.primitive external)
+      Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries
+'Merlin.GraphStateIntegerInstance.complete' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphStateIntegerInstance.prefix_actual : ∀ {World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry),
+  Merlin.GraphState.Integer.ExactModel model →
+    Merlin.GraphState.Integer.LocalTyping model Merlin.GraphState.Integer.Canonical →
+      Merlin.GraphState.Integer.PreservesEntriesCanonical model Merlin.GraphStateIntegerInstance.originalEntries
+        Merlin.GraphStateIntegerInstance.middleEntries
+'Merlin.GraphStateIntegerInstance.prefix_actual' depends on axioms: [propext, Quot.sound]
+Merlin.GraphStateIntegerInstance.exactMiddle : Merlin.GraphStateIntegerInstance.middleEntries =
+  Merlin.GraphStateIntegerInstance.Suffix.originalEntries
+'Merlin.GraphStateIntegerInstance.exactMiddle' does not depend on any axioms
+Merlin.GraphStateIntegerInstance.originalRegistry : Merlin.GraphStateIntegerInstance.registry =
+  [{ inputs := [Merlin.GraphState.Scalar.Ty.index, Merlin.GraphState.Scalar.Ty.index],
+      outputs := [Merlin.GraphState.Scalar.Ty.index] },
+    { inputs := [], outputs := [Merlin.GraphState.Scalar.Ty.index] },
+    { inputs := [], outputs := [Merlin.GraphState.Scalar.Ty.index] },
+    { inputs := [], outputs := [Merlin.GraphState.Scalar.Ty.index] },
+    { inputs := [], outputs := [Merlin.GraphState.Scalar.Ty.index] },
+    { inputs := [], outputs := [Merlin.GraphState.Scalar.Ty.index] },
+    { inputs := [], outputs := [Merlin.GraphState.Scalar.Ty.index] },
+    { inputs := [Merlin.GraphState.Scalar.Ty.index, Merlin.GraphState.Scalar.Ty.index],
+      outputs := [Merlin.GraphState.Scalar.Ty.index] },
+    { inputs := [Merlin.GraphState.Scalar.Ty.bits 32, Merlin.GraphState.Scalar.Ty.index],
+      outputs := [Merlin.GraphState.Scalar.Ty.bits 32] },
+    { inputs := [Merlin.GraphState.Scalar.Ty.bits 32, Merlin.GraphState.Scalar.Ty.index], outputs := [] },
+    { inputs := [Merlin.GraphState.Scalar.Ty.bits 32], outputs := [] }]
+'Merlin.GraphStateIntegerInstance.originalRegistry' does not depend on any axioms
+@Merlin.GraphStateIntegerInstance.Suffix.complete : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.Suffix.registry),
+  Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStateIntegerInstance.Suffix.M primitive external)
+    Merlin.GraphStateIntegerInstance.Suffix.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries
+'Merlin.GraphStateIntegerInstance.Suffix.complete' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphStateIntegerInstance.F3.actual : ∀ {World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry),
+  Merlin.GraphState.Integer.ExactModel model →
+    Merlin.GraphState.Integer.LocalTyping model Merlin.GraphState.Integer.Canonical →
+      ∀ (values : List Int) (world : World),
+        Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.inputs
+            values →
+          Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateIntegerInstance.F3.before values world =
+            Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateIntegerInstance.F3.after values world
+'Merlin.GraphStateIntegerInstance.F3.actual' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphStateIntegerInstance.F3.reached : ∀ {World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry),
+  Merlin.GraphState.Integer.LocalTyping model Merlin.GraphState.Integer.Canonical →
+    ∀ (values : List Int) (world : World),
+      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.inputs
+          values →
+        Merlin.GraphState.Integer.Reached model Merlin.GraphState.Integer.Canonical
+            Merlin.GraphStateIntegerInstance.F3.before values world ∧
+          Merlin.GraphState.Integer.Reached model Merlin.GraphState.Integer.Canonical
+            Merlin.GraphStateIntegerInstance.F3.after values world
+'Merlin.GraphStateIntegerInstance.F3.reached' depends on axioms: [propext, Classical.choice, Quot.sound]
+Merlin.GraphStateIntegerInstance.F3.localRewrites : Merlin.GraphState.Integer.Relation
+  Merlin.GraphStateIntegerInstance.registry Merlin.GraphStateIntegerInstance.F3.inputs
+  Merlin.GraphStateIntegerInstance.F3.outputs Merlin.GraphStateIntegerInstance.F3.first
+  Merlin.GraphStateIntegerInstance.F3.second
+'Merlin.GraphStateIntegerInstance.F3.localRewrites' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphStateIntegerInstance.F4.actual : ∀ {World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry),
+  Merlin.GraphState.Integer.ExactModel model →
+    Merlin.GraphState.Integer.LocalTyping model Merlin.GraphState.Integer.Canonical →
+      ∀ (values : List Int) (world : World),
+        Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.inputs
+            values →
+          Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateIntegerInstance.F4.before values world =
+            Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateIntegerInstance.F4.after values world
+'Merlin.GraphStateIntegerInstance.F4.actual' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphStateIntegerInstance.F4.reached : ∀ {World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry),
+  Merlin.GraphState.Integer.LocalTyping model Merlin.GraphState.Integer.Canonical →
+    ∀ (values : List Int) (world : World),
+      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.inputs
+          values →
+        Merlin.GraphState.Integer.Reached model Merlin.GraphState.Integer.Canonical
+            Merlin.GraphStateIntegerInstance.F4.before values world ∧
+          Merlin.GraphState.Integer.Reached model Merlin.GraphState.Integer.Canonical
+            Merlin.GraphStateIntegerInstance.F4.after values world
+'Merlin.GraphStateIntegerInstance.F4.reached' depends on axioms: [propext, Classical.choice, Quot.sound]
+Merlin.GraphStateIntegerInstance.F4.localRewrites : Merlin.GraphState.Integer.Relation
+  Merlin.GraphStateIntegerInstance.registry Merlin.GraphStateIntegerInstance.F4.inputs
+  Merlin.GraphStateIntegerInstance.F4.outputs Merlin.GraphStateIntegerInstance.F4.first
+  Merlin.GraphStateIntegerInstance.F4.second
+'Merlin.GraphStateIntegerInstance.F4.localRewrites' depends on axioms: [propext]
+@Merlin.GraphState.Integer.programs_sound : ∀ {World Error : Type} {registry : List Merlin.GraphState.Scalar.Signature}
+  (model : Merlin.GraphState.Scalar.Model Int World Error registry),
+  Merlin.GraphState.Integer.ExactModel model →
+    Merlin.GraphState.Integer.LocalTyping model Merlin.GraphState.Integer.Canonical →
+      ∀ {inputs outputs : List Merlin.GraphState.Scalar.Ty} {before after : Merlin.GraphState.Scalar.Program}
+        {first second : Merlin.GraphState.Scalar.Code},
+        Merlin.GraphState.Scalar.normalize registry (Merlin.GraphState.Scalar.vars inputs.length) before = some first →
+          Merlin.GraphState.Scalar.normalize registry (Merlin.GraphState.Scalar.vars inputs.length) after =
+              some second →
+            Merlin.GraphState.Integer.Relation registry inputs outputs first second →
+              ∀ (values : List Int) (world : World),
+                Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical inputs values →
+                  Merlin.GraphState.Integer.ResultTyped Merlin.GraphState.Integer.Canonical outputs
+                      (Merlin.GraphState.Scalar.evalProgram model before values world) ∧
+                    Merlin.GraphState.Scalar.evalProgram model before values world =
+                      Merlin.GraphState.Scalar.evalProgram model after values world
+'Merlin.GraphState.Integer.programs_sound' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphState.Integer.Relation.sound : ∀ {World Error : Type} {registry : List Merlin.GraphState.Scalar.Signature}
+  (model : Merlin.GraphState.Scalar.Model Int World Error registry),
+  Merlin.GraphState.Integer.ExactModel model →
+    Merlin.GraphState.Integer.LocalTyping model Merlin.GraphState.Integer.Canonical →
+      ∀ {environment results : List Merlin.GraphState.Scalar.Ty} {first second : Merlin.GraphState.Scalar.Code},
+        Merlin.GraphState.Integer.Relation registry environment results first second →
+          ∀ (values : List Int) (world : World),
+            Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical environment values →
+              Merlin.GraphState.Integer.ResultTyped Merlin.GraphState.Integer.Canonical results
+                  (Merlin.GraphState.Scalar.evalCode model first values world) ∧
+                Merlin.GraphState.Scalar.evalCode model first values world =
+                  Merlin.GraphState.Scalar.evalCode model second values world
+'Merlin.GraphState.Integer.Relation.sound' depends on axioms: [propext]
+@Merlin.GraphState.Integer.typed_result : ∀ {World Error : Type} {registry : List Merlin.GraphState.Scalar.Signature}
+  {rep : Merlin.GraphState.Scalar.Ty → Int → Prop} (model : Merlin.GraphState.Scalar.Model Int World Error registry),
+  Merlin.GraphState.Integer.LocalTyping model rep →
+    ∀ {types results : List Merlin.GraphState.Scalar.Ty} {program : Merlin.GraphState.Scalar.Program},
+      Merlin.GraphState.Scalar.Typed registry types results program →
+        ∀ (values : List Int) (world : World),
+          Merlin.GraphState.Integer.Values rep types values →
+            Merlin.GraphState.Integer.ResultTyped rep results
+              (Merlin.GraphState.Scalar.evalProgram model program values world)
+'Merlin.GraphState.Integer.typed_result' depends on axioms: [propext]
+@Merlin.GraphState.Integer.typed_reached : ∀ {World Error : Type} {registry : List Merlin.GraphState.Scalar.Signature}
+  {rep : Merlin.GraphState.Scalar.Ty → Int → Prop} (model : Merlin.GraphState.Scalar.Model Int World Error registry),
+  Merlin.GraphState.Integer.LocalTyping model rep →
+    ∀ {types results : List Merlin.GraphState.Scalar.Ty} {program : Merlin.GraphState.Scalar.Program},
+      Merlin.GraphState.Scalar.Typed registry types results program →
+        ∀ (values : List Int) (world : World),
+          Merlin.GraphState.Integer.Values rep types values →
+            Merlin.GraphState.Integer.Reached model rep program values world
+'Merlin.GraphState.Integer.typed_reached' depends on axioms: [propext]
+Merlin.GraphState.Integer.canonical_iff : ∀ (width : Nat) (value : Int),
+  Merlin.GraphState.Integer.Canonical (Merlin.GraphState.Scalar.Ty.bits width) value ↔ 0 ≤ value ∧ value < ↑(2 ^ width)
+'Merlin.GraphState.Integer.canonical_iff' depends on axioms: [propext]
+@Merlin.GraphState.Integer.compose_suffix : ∀ {World Error : Type} {registry : List Merlin.GraphState.Scalar.Signature}
+  (model : Merlin.GraphState.Scalar.Model Int World Error registry)
+  {before middle after : List Merlin.GraphState.Pipeline.Entry},
+  Merlin.GraphState.Integer.PreservesEntriesCanonical model before middle →
+    Merlin.GraphState.Pipeline.PreservesEntries model middle after →
+      Merlin.GraphState.Integer.PreservesEntriesCanonical model before after
+'Merlin.GraphState.Integer.compose_suffix' depends on axioms: [propext]
+@Merlin.GraphState.Integer.index_model_typing : ∀ {World Error : Type}
+  {registry : List Merlin.GraphState.Scalar.Signature} {controls : Merlin.GraphState.Pipeline.Controls}
+  (valid : Merlin.GraphState.Pipeline.ControlValid registry controls)
+  (external : Merlin.GraphState.Pipeline.External World Error registry),
+  (∀ (identity : Nat) (arguments : List Int) (world : World) (values : List Int) (final : World),
+      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
+          (Merlin.GraphState.Scalar.signature registry identity).inputs arguments →
+        external.run identity arguments world = Except.ok (values, final) →
+          Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
+            (Merlin.GraphState.Scalar.signature registry identity).outputs values) →
+    Merlin.GraphState.Integer.LocalTyping
+      (Merlin.GraphState.Pipeline.indexModel valid Merlin.GraphState.Integer.primitive external)
+      Merlin.GraphState.Integer.Canonical
+'Merlin.GraphState.Integer.index_model_typing' depends on axioms: [propext, Quot.sound]

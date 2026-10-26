@@ -1,0 +1,7 @@
+Merlin/GraphStatePipelineLoops.lean:86:59: warning: This simp argument is unused:
+  ih
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [List.foldl_cons, same]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`

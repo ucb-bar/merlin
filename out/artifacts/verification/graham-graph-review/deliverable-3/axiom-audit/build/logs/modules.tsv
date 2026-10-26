@@ -1,0 +1,94 @@
+Merlin.ResourceGeometry	0	1
+Merlin.StateEffects	0	0
+Merlin.GraphLoopsReuse	0	0
+Merlin.GraphLoopsReuseProtocol	0	3
+Merlin.GraphLoopsReuseSemantics	0	0
+Merlin.GraphLoopsReuseGeometry	0	1
+Merlin.GraphLoopsReuseLifetime	0	0
+Merlin.GraphLoopsReuseModel	0	1
+Merlin.GraphLoopsReuseCountermodels	0	0
+Merlin.GraphLoopsSegment	0	1
+Merlin.GraphLoopsSegmentBounds	0	1
+Merlin.GraphLoopsSegmentModel	0	0
+Merlin.GraphLoopsSegmentState	0	1
+Merlin.GraphLoopsUnroll	0	0
+Merlin.GraphLoopsUnrollGrouping	0	1
+Merlin.GraphLoopsMemorySCF	0	0
+Merlin.GraphLoopsMemorySCFScope	0	1
+Merlin.GraphLoopsMemorySCFLoops	0	0
+Merlin.GraphLoopsMemorySCFCoverage	0	1
+Merlin.GraphLoopsMemorySCFRect	0	0
+Merlin.GraphLoopsMemorySCFEffects	0	0
+Merlin.GraphLoopsMemorySCFOperational	0	1
+Merlin.GraphLoopsMemorySCFSimulation	0	0
+Merlin.GraphLoopsMemorySCFComposition	0	1
+Merlin.GraphLoopsMemorySCFModes	0	0
+Merlin.GraphLoopsMemorySCFModel	0	1
+Merlin.GraphLoopsMemorySCFWitness	0	0
+Merlin.GraphLoopsMemorySCFBounds	0	1
+Merlin.GraphLoopsShape	0	0
+Merlin.GraphLoopsShapeSSA	0	1
+Merlin.GraphLoopsShapeBindings	0	0
+Merlin.GraphLoopsShapeCode	0	1
+Merlin.GraphLoopsShapeSound	0	1
+Merlin.GraphLoopsShapeModule	0	0
+Merlin.GraphLoopsShapeMemory	0	1
+Merlin.GraphLoopsShapeModel	0	0
+Merlin.GraphLoopsShapeWitness	0	1
+Merlin.GraphLoopsShapeCountermodels	0	0
+Merlin.GraphLoopsUnrollBounds	0	1
+Merlin.GraphRegions	0	1
+MerlinVerify.Core.AST	0	1
+MerlinVerify.Core.Eq	0	7
+Merlin.GraphRegionsFusion	0	0
+Merlin.GraphRegionsDeclaredScalar	0	1
+Merlin.GraphRegionsDeclaredMatch	0	0
+Merlin.GraphRegionsDeclaredEvaluation	0	1
+Merlin.GraphRegionsDeclaredNodes	0	0
+Merlin.GraphRegionsDeclaredMemory	0	2
+Merlin.GraphRegionsDeclaredBridge	0	1
+Merlin.GraphRegionsDeclaredCountermodels	0	0
+Merlin.GraphRegionsDeclaredGeneric	0	0
+Merlin.GraphRegionsDeclaredProjection	0	1
+Merlin.GraphRegionsDeclaredRaw	0	0
+Merlin.GraphStateScalarContract	0	3
+Merlin.GraphStateScalarNormalize	0	0
+Merlin.GraphStateScalarSound	0	1
+Merlin.GraphStateScalarTyping	0	0
+Merlin.GraphStateScalarInitialized	0	1
+Merlin.GraphStateScalar	0	0
+Merlin.GraphStateIntegerRepresentation	0	1
+Merlin.GraphStateIntegerOperations	0	0
+Merlin.GraphStateIntegerExpressions	0	0
+Merlin.GraphStateIntegerCode	0	1
+Merlin.GraphStateIntegerCountermodels	0	0
+Merlin.GraphStatePipelineFailure	0	0
+Merlin.GraphStatePipelineControl	0	1
+Merlin.GraphStatePipelineIndex	0	1
+Merlin.GraphStatePipelineProgram	0	0
+Merlin.GraphStateIntegerProgram	0	1
+Merlin.GraphStateIntegerTrace	0	0
+Merlin.GraphStateIntegerModels	0	0
+Merlin.GraphStatePipelineFold	0	1
+Merlin.GraphStatePipelineLiterals	0	0
+Merlin.GraphStatePipelineSegments	0	1
+Merlin.GraphStatePipelineLoops	0	0
+Merlin.GraphStatePipelineScope	0	1
+query:GraphStateScalarInstance	0	0
+query:GraphStatePipelineInstance	0	1
+query:GraphStateIntegerInstance	0	3
+query:Obligation	0	2
+query:Check	0	2
+print:PrintDeclared	0
+print:PrintInteger	0
+print:PrintIntegerExtra	0
+print:PrintMemorySCF	0
+print:PrintPipeline	0
+print:PrintScalar	0
+print:PrintShape	0
+witness:AllocationGap	0
+witness:DeclaredJointWitness	0
+query:pipeline-symbolic-provider	0
+query:integer-provider	0
+print:PrintPipelineInhabited	0
+print:PrintIntegerInhabited	0

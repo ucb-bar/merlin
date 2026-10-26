@@ -1,0 +1,835 @@
+{
+ "date": "2026-10-26",
+ "inputs_sha256": {
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/ReviewerAudit.lean": "baa439e91dd0ce5a6fe834eeb5aa280953fe160a81edad325095bafc472643d8",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/build-order.txt": "82cb6c2b92df11099488b8dbe3ca7f321c1885263483035fa2c896cc6dc91cff",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print-inhabited/PrintIntegerInhabited.lean": "c671899b537c4af5f2d80b7a9c28821075c6ff774251aacb8894203bf7ca7f8b",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print-inhabited/PrintPipelineInhabited.lean": "01b3af9f1c0dcd089f670ee960e751a42105469e04dbfd7d2de94161bf6cb638",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print/PrintDeclared.lean": "dd4757823aa0c98048824d89bdf8c1a047d1d0b50ba7516cd2d4061609752eed",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print/PrintInteger.lean": "55ecd9f06fbc49c7490ea1d706986b4e81d2d3186544e5a71a3b3327edd54b34",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print/PrintIntegerExtra.lean": "f84f985cebf87ab6d4a9201333788eb398f6fdfc4dd4865e84586687cdf69424",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print/PrintMemorySCF.lean": "edad6962c83b48aa3623225b5421dc7628b3dd83464fbeab96213d95966d0007",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print/PrintPipeline.lean": "95339a68fa548e34b71564549dfa6c9b57fdddc866f841f6c15e1a8799bb815c",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print/PrintScalar.lean": "0074d1e970127d845c83257b0683749d6994f354f8de43803e3f04e55dd1f1b6",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/print/PrintShape.lean": "c3c5e394eeb8c0ae61446c6de94a9e9eb627babee66f78613eb07a810d543eb2",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/queries-inhabited.txt": "df3bae4a3bb2b787b36687fd6a37f8f4d437dd859d2823d0ce52061a20b4667c",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/queries.txt": "0f5770e7892dd195ec5355c4e7280308b566e3df450200875083dd97b6f8d0a4",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/witness/AllocationGap.lean": "f3d8bceecf846ae702dbee262fa314ca5e8e0d99d427050f7cdc082e4409f674",
+  "out/artifacts/verification/graham-graph-review/deliverable-3/witness/DeclaredJointWitness.lean": "1354bf80f8ae8e633d38adee2f34e1171582d46d0b3c60f93fd635178e6ebeca"
+ },
+ "lean": "Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)",
+ "non_std3": {},
+ "nonzero_steps": [],
+ "per_file": {
+  "print-PrintDeclared.stdout": {
+   "Merlin.GraphRegions.checkRealization_native": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphRegions.checkRealization_sound": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphRegions.checked_native_contract": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphRegionsDeclared.checked_calls_preserve_observers": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphRegionsDeclared.completion_premise_required": [
+    "propext"
+   ],
+   "Merlin.GraphRegionsDeclared.derived_local_contract": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphRegionsDeclared.instruction_refines": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphRegionsDeclared.nofault_premise_required": [
+    "propext"
+   ],
+   "Merlin.GraphRegionsDeclared.sequence_refines": [
+    "propext",
+    "Quot.sound"
+   ],
+   "actual_calls_valid": [
+    "propext",
+    "Quot.sound"
+   ],
+   "actual_complete_observers": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "actual_generic_binding": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "actual_kernel_decoded": [
+    "propext"
+   ],
+   "actual_nonzero_witness": [
+    "propext",
+    "Quot.sound"
+   ],
+   "actual_realization": [
+    "propext",
+    "Quot.sound"
+   ]
+  },
+  "print-PrintInteger.stdout": {
+   "Merlin.GraphState.Integer.Relation.sound": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.canonical_iff": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.compose_suffix": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.index_model_typing": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Integer.programs_sound": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Integer.typed_reached": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.typed_result": [
+    "propext"
+   ],
+   "Merlin.GraphStateIntegerInstance.F3.actual": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateIntegerInstance.F3.localRewrites": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateIntegerInstance.F3.reached": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateIntegerInstance.F4.actual": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateIntegerInstance.F4.localRewrites": [
+    "propext"
+   ],
+   "Merlin.GraphStateIntegerInstance.F4.reached": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateIntegerInstance.Suffix.complete": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateIntegerInstance.complete": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateIntegerInstance.exactMiddle": [],
+   "Merlin.GraphStateIntegerInstance.originalRegistry": [],
+   "Merlin.GraphStateIntegerInstance.prefix_actual": [
+    "propext",
+    "Quot.sound"
+   ]
+  },
+  "print-PrintIntegerExtra.stdout": {
+   "Merlin.GraphState.Integer.Countermodels.entry_really_noncanonical": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.Countermodels.hidden_effect_countermodel": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Integer.Countermodels.missing_local_result_contract_refutes_deletion": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.Countermodels.missing_primitive_contract_refutes_deletion": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.Countermodels.noncanonical_entry_refutes_neutral_deletion": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.Countermodels.provider_programs_statically_typed": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.loop_constant": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Integer.provider_total": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Integer.provider_typed": [
+    "propext"
+   ],
+   "Merlin.GraphState.Integer.typed_success": [
+    "propext"
+   ]
+  },
+  "print-PrintIntegerInhabited.stdout": {
+   "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure": [
+    "propext"
+   ],
+   "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success": [
+    "propext"
+   ],
+   "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure": [
+    "propext"
+   ],
+   "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success": [
+    "propext"
+   ],
+   "Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical": [
+    "propext"
+   ],
+   "Merlin.GraphStateIntegerInstance.IntegerProvider.laws": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero": [],
+   "Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached": [
+    "propext"
+   ],
+   "Merlin.GraphStateIntegerInstance.complete": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ]
+  },
+  "print-PrintMemorySCF.stdout": {
+   "Merlin.GraphLoopsMemorySCF.EvalPure.frame": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Model.check_sound": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Model.checked_chain": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Model.checked_complete": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Model.checked_context": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Model.checked_initializer_byte_offset": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Model.checked_inner_control": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Model.checked_outer_control": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Run.covers": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Run.materializes": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Witness.uniform_heap": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Witness.uniform_run_exists": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Witness.uniform_run_values": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.Witness.writes_uniform": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsMemorySCF.checked_complete_observations": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.checked_induced_atomic": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.checked_reuse_then_segment": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.execution_backward": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.execution_forward": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.execution_modes": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.heap_run_iff_log": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.initialization_induced": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.materializes_in_bounds": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.related_initialize_logs": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.segmentation_exact_heaps": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.step_backward": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsMemorySCF.step_forward": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsReuse.Countermodels.allocation_call_budget": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsReuse.Countermodels.overlapping_live_values": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsReuse.Countermodels.pointer_identity": [],
+   "Merlin.GraphLoopsReuse.Countermodels.resource_exhaustion": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsReuse.Countermodels.stale_cell": [],
+   "Merlin.GraphLoopsReuse.Model.checked_complete_observations": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsReuse.Model.checked_context": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsReuse.Witness.protocol": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsReuse.Witness.source_inhabited": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsReuse.Witness.target_inhabited": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsReuse.checked_observations": [
+    "propext",
+    "Quot.sound"
+   ]
+  },
+  "print-PrintPipeline.stdout": {
+   "Merlin.GraphState.Pipeline.checkControl_sound": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Pipeline.entries_cons": [
+    "propext"
+   ],
+   "Merlin.GraphState.Pipeline.scalar_execution": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.F3.actual": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.F3.body_group": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.F3.innerAccepted": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.F3.outer_same": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.F3.segmentBoundsChecked": [],
+   "Merlin.GraphStatePipelineInstance.F3.segment_actual": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.F3.unrollBoundsChecked": [],
+   "Merlin.GraphStatePipelineInstance.F3.unroll_actual": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.F4.actual": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.complete": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.controlAccepted": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.finalEntriesChecked": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.literalsAccepted": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.literalsFit": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStatePipelineInstance.originalEntriesChecked": [
+    "propext"
+   ]
+  },
+  "print-PrintPipelineInhabited.stdout": {
+   "Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_failure": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_success": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_failure": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_success": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.SymbolicWitness.final_initialized": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.SymbolicWitness.input_nonzero": [],
+   "Merlin.GraphStatePipelineInstance.SymbolicWitness.source_initialized": [
+    "propext"
+   ],
+   "Merlin.GraphStatePipelineInstance.complete": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ]
+  },
+  "print-PrintScalar.stdout": {
+   "Merlin.GraphState.Scalar.check_composes": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Scalar.check_initialized": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Scalar.check_operands_initialized": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Scalar.check_sound": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Scalar.check_typed": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Scalar.normalize_sound": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphState.Scalar.preserves_trans": [
+    "propext"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.accepted": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.actual": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.final_join": [],
+   "Merlin.GraphStateScalarInstance.F0.first_actual": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.independently_composed": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.initialized": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.middle_join": [],
+   "Merlin.GraphStateScalarInstance.F0.middle_typed": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.operands_initialized": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.second_actual": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphStateScalarInstance.F0.source_join": [],
+   "Merlin.GraphStateScalarInstance.F0.typed": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ]
+  },
+  "print-PrintShape.stdout": {
+   "GraphShapeObligation.accepted": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "GraphShapeObligation.call_depth": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "GraphShapeObligation.complete": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "GraphShapeObligation.contextual": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "GraphShapeObligation.memory": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "GraphShapeObligation.valid": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsShape.Countermodels.inconsistent_metadata": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsShape.Countermodels.logging_deletion": [],
+   "Merlin.GraphLoopsShape.Countermodels.same_type_cannot_change_buffer": [],
+   "Merlin.GraphLoopsShape.Countermodels.same_type_different_allocation": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsShape.Countermodels.same_type_different_base": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsShape.Countermodels.trapping_deletion": [],
+   "Merlin.GraphLoopsShape.Model.checked_complete": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsShape.Model.checked_context": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsShape.Model.checked_memory": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsShape.Module.checked_calls": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsShape.Module.checked_complete": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsShape.cast_address": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsShape.identical_cast": [],
+   "Merlin.GraphLoopsShape.inconsistent_dimension": [
+    "propext"
+   ],
+   "Merlin.GraphLoopsShape.preservation": [
+    "propext",
+    "Quot.sound"
+   ],
+   "Merlin.GraphLoopsShape.static_dimension": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ]
+  },
+  "witness-AllocationGap.stdout": {
+   "GrahamD3.AllocationGap.accepted": [
+    "propext",
+    "Quot.sound"
+   ],
+   "GrahamD3.AllocationGap.both_fit_capacity_sixteen": [
+    "propext"
+   ],
+   "GrahamD3.AllocationGap.candidate_complete": [
+    "propext",
+    "Quot.sound"
+   ],
+   "GrahamD3.AllocationGap.candidate_exhausts_capacity_eight": [
+    "propext"
+   ],
+   "GrahamD3.AllocationGap.finite_capacity_distinguishes": [
+    "propext"
+   ],
+   "GrahamD3.AllocationGap.model_equates": [
+    "propext",
+    "Quot.sound"
+   ],
+   "GrahamD3.AllocationGap.peaks": [
+    "propext"
+   ],
+   "GrahamD3.AllocationGap.source_complete": [
+    "propext"
+   ],
+   "GrahamD3.AllocationGap.source_fits_capacity_eight": [
+    "propext"
+   ]
+  },
+  "witness-DeclaredJointWitness.stdout": {
+   "GrahamD3.DeclaredJoint.contracts": [
+    "propext",
+    "Quot.sound"
+   ],
+   "GrahamD3.DeclaredJoint.initialized": [
+    "propext"
+   ],
+   "GrahamD3.DeclaredJoint.instantiated": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "GrahamD3.DeclaredJoint.jointly_satisfiable": [
+    "propext",
+    "Quot.sound"
+   ],
+   "GrahamD3.DeclaredJoint.machine_publishes_nonzero": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+   ],
+   "GrahamD3.DeclaredJoint.publication": [
+    "propext",
+    "Quot.sound"
+   ],
+   "GrahamD3.DeclaredJoint.publication_derivable": [
+    "propext",
+    "Quot.sound"
+   ]
+  }
+ },
+ "retained_comparison": {
+  "declared": {
+   "mismatches": {},
+   "not_rechecked": [],
+   "rechecked_roots": 5,
+   "retained_roots": 5
+  },
+  "memory_scf": {
+   "mismatches": {},
+   "not_rechecked": [
+    "GraphMemorySCFObligation.accepted",
+    "GraphMemorySCFObligation.chain",
+    "GraphMemorySCFObligation.complete",
+    "GraphMemorySCFObligation.contextual",
+    "GraphMemorySCFObligation.valid",
+    "GraphReuseObligation.accepted",
+    "GraphReuseObligation.complete",
+    "GraphReuseObligation.contextual",
+    "GraphReuseObligation.valid",
+    "Merlin.GraphLoopsReuse.Geometry.every_cell_covered",
+    "Merlin.GraphLoopsReuse.Geometry.rectangular_initializes",
+    "Merlin.GraphLoopsReuse.LifetimesValid.not_simultaneously_live",
+    "Merlin.GraphLoopsReuse.Model.check_sound",
+    "Merlin.GraphLoopsReuse.Model.checked_initializer_coverage",
+    "Merlin.GraphLoopsReuse.Related.allocate",
+    "Merlin.GraphLoopsReuse.Related.free",
+    "Merlin.GraphLoopsReuse.Related.initialize",
+    "Merlin.GraphLoopsReuse.Related.read",
+    "Merlin.GraphLoopsReuse.Related.store",
+    "Merlin.GraphLoopsReuse.execution_backward",
+    "Merlin.GraphLoopsReuse.execution_forward",
+    "Merlin.GraphLoopsReuse.step_backward",
+    "Merlin.GraphLoopsReuse.step_forward"
+   ],
+   "rechecked_roots": 38,
+   "retained_roots": 61
+  },
+  "shape": {
+   "mismatches": {},
+   "not_rechecked": [
+    "Merlin.GraphLoopsShape.Agreement.alias",
+    "Merlin.GraphLoopsShape.Agreement.define",
+    "Merlin.GraphLoopsShape.Agreement.define_many",
+    "Merlin.GraphLoopsShape.Function.preservation",
+    "Merlin.GraphLoopsShape.Model.check_sound",
+    "Merlin.GraphLoopsShape.Module.checked_memory",
+    "Merlin.GraphLoopsShape.Scope.extend",
+    "Merlin.GraphLoopsShape.cast_descriptor",
+    "Merlin.GraphLoopsShape.cast_result",
+    "Merlin.GraphLoopsShape.dimension_result",
+    "Merlin.GraphLoopsShape.entry_equivalence",
+    "Merlin.GraphLoopsShape.observable_cast_countermodel",
+    "Merlin.GraphLoopsShape.zero_has_no_coordinate"
+   ],
+   "rechecked_roots": 22,
+   "retained_roots": 35
+  }
+ },
+ "reviewer": "Graham independent review (agent)",
+ "reviewer_audit": {
+  "reviewer-audit-declared.stdout": [
+   "roots: [Check, Merlin.GraphRegionsDeclaredCountermodels]",
+   "theorems_in_scope: 882",
+   "axiom_use_counts: [Quot.sound=154, Classical.choice=94, propext=390]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 31",
+   "findings: []"
+  ],
+  "reviewer-audit-integer-provider.stdout": [
+   "roots: [GraphStateIntegerInstance]",
+   "theorems_in_scope: 1056",
+   "axiom_use_counts: [Quot.sound=307, Classical.choice=158, propext=596]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 25",
+   "findings: []"
+  ],
+  "reviewer-audit-integer-query-only.stdout": [
+   "roots: [GraphStateIntegerInstance]",
+   "theorems_in_scope: 1009",
+   "axiom_use_counts: [Quot.sound=282, Classical.choice=151, propext=554]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 25",
+   "findings: []"
+  ],
+  "reviewer-audit-integer.stdout": [
+   "roots: [GraphStateIntegerInstance, Merlin.GraphStateIntegerCountermodels, Merlin.GraphStateIntegerModels]",
+   "theorems_in_scope: 1039",
+   "axiom_use_counts: [Quot.sound=293, Classical.choice=151, propext=581]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 25",
+   "findings: []"
+  ],
+  "reviewer-audit-memory-scf.stdout": [
+   "roots: [Merlin.GraphLoopsMemorySCFBounds, Merlin.GraphLoopsMemorySCFWitness, Merlin.GraphLoopsReuseCountermodels]",
+   "theorems_in_scope: 649",
+   "axiom_use_counts: [Quot.sound=174, Classical.choice=51, propext=296]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 8",
+   "findings: []"
+  ],
+  "reviewer-audit-pipeline-symbolic-provider.stdout": [
+   "roots: [GraphStatePipelineInstance]",
+   "theorems_in_scope: 913",
+   "axiom_use_counts: [Quot.sound=278, Classical.choice=156, propext=494]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 23",
+   "findings: []"
+  ],
+  "reviewer-audit-pipeline.stdout": [
+   "roots: [GraphStatePipelineInstance]",
+   "theorems_in_scope: 891",
+   "axiom_use_counts: [Quot.sound=263, Classical.choice=148, propext=475]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 23",
+   "findings: []"
+  ],
+  "reviewer-audit-scalar.stdout": [
+   "roots: [GraphStateScalarInstance]",
+   "theorems_in_scope: 498",
+   "axiom_use_counts: [Quot.sound=90, Classical.choice=83, propext=239]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 21",
+   "findings: []"
+  ],
+  "reviewer-audit-shape.stdout": [
+   "roots: [Obligation]",
+   "theorems_in_scope: 959",
+   "axiom_use_counts: [Quot.sound=214, Classical.choice=59, propext=401]",
+   "non_std3_axioms: []",
+   "compiler_unsafe_rec_aux_of_safe_defs: 23",
+   "findings: []"
+  ]
+ },
+ "steps": 94,
+ "theorems_printed": 171
+}

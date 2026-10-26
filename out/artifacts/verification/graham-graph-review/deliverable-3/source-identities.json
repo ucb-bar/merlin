@@ -1,0 +1,920 @@
+{
+ "reviewer": "Graham independent review (agent)",
+ "date": "2026-10-26",
+ "verification_checkout": "/home/grammy/blast/merlin-pass-verification",
+ "verification_revision": "58dbc7c00acdb6770d440b773cc2954328c78472",
+ "handoff_base_commit": "c399e441e86042752c407a4ba917d4510b16585b",
+ "handoff_reviewed": "working tree = HEAD 58dbc7c00 (adds sealed-row sections to c399e441e)",
+ "producer_checkout": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+ "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+ "lean_toolchain": {
+  "path": "/home/grammy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+  "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+  "bytes": 9024
+ },
+ "lean_shared_library": {
+  "path": "/home/grammy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+  "sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4",
+  "bytes": 231113560
+ },
+ "lean_sources": [
+  {
+   "path": "merlin/lean/MerlinVerify/Core/AST.lean",
+   "sha256": "022cec55c189ddc40e1ee77e8cc9d8ede4f7734e4ce45a8848e98b96ee5643cd",
+   "bytes": 6765
+  },
+  {
+   "path": "merlin/lean/MerlinVerify/Core/Eq.lean",
+   "sha256": "0bd85efa4087bde2070f157165ad5c9cf07469cfd216314bf2524ced769515f2",
+   "bytes": 16084
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+   "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
+   "bytes": 4861
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean",
+   "sha256": "39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2",
+   "bytes": 2768
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
+   "sha256": "26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2",
+   "bytes": 13452
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean",
+   "sha256": "e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf",
+   "bytes": 5846
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean",
+   "sha256": "17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1",
+   "bytes": 6157
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean",
+   "sha256": "3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4",
+   "bytes": 4269
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+   "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+   "bytes": 6316
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+   "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+   "bytes": 5453
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
+   "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
+   "bytes": 10841
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean",
+   "sha256": "5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562",
+   "bytes": 6094
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean",
+   "sha256": "86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3",
+   "bytes": 3210
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
+   "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
+   "bytes": 4589
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean",
+   "sha256": "414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3",
+   "bytes": 9874
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean",
+   "sha256": "51b46ae3c0e1bb64ca47ec1ec1a2bb36fe96f706d229d8ca4f6302f6e38a5c2c",
+   "bytes": 7525
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean",
+   "sha256": "ff170131b35e0c972c02573437da450ebfb3595efcd47f07f55d54b657483f98",
+   "bytes": 4299
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean",
+   "sha256": "9c2553f3fa45cbdeb03c9f084aa6f84f247a574f98c7a543010c8ffa65018e1a",
+   "bytes": 6933
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean",
+   "sha256": "cb3d7cd2553443fb204209cb369bdad79a31d340619e57efd12106b3f51c6c4a",
+   "bytes": 3194
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean",
+   "sha256": "0011d490dffb9d36ab3d7f1c4b3e944c91ce6a30ae84155367c39b3090b54626",
+   "bytes": 7878
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean",
+   "sha256": "538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0",
+   "bytes": 6086
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean",
+   "sha256": "8b5f9d5a71a7aab8559286e5bdb36dfc02e2abeb24a76ad5710434a20bf3da6f",
+   "bytes": 13700
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+   "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+   "bytes": 9653
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+   "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+   "bytes": 3962
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+   "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+   "bytes": 7091
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+   "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+   "bytes": 2118
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShape.lean",
+   "sha256": "7d4314ce5f13378e3f807be57a39da4c064b16e2fe569b685cddd4a22a9beb4e",
+   "bytes": 4332
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean",
+   "sha256": "0022f37c8c015cd51d4b571592fb01e4723f55152b80240e47d566508f35ebab",
+   "bytes": 4966
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean",
+   "sha256": "57784b3dae571bcc1a9d228605ae1a3fd4b40a2b784afd2d3eb4a0bbc22b1432",
+   "bytes": 8871
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean",
+   "sha256": "d855ed8506c22cd01a4843afa64a259880ba8c43c8eb8c8b7e5e7c4e868095ea",
+   "bytes": 2131
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean",
+   "sha256": "5c53cfb1b3ae15a2aeec82f9acbd3939e32dbd56a0097da8d0aa04c9a8ad3f65",
+   "bytes": 4855
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean",
+   "sha256": "38952ca358eebd28a5a8103a18f002c86ecbcc76b3e82b2642e8f5a4245f6371",
+   "bytes": 3342
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean",
+   "sha256": "17ccc635a1718ad775304b5f9daa0715f6a84c249668f8defaa33cb17a98a823",
+   "bytes": 5961
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean",
+   "sha256": "daa129e43fc43806eaa54560abfe3541f1ebbd1d93b36a97e28ce0df5c552594",
+   "bytes": 7075
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean",
+   "sha256": "93c7be67db0a1eb04ea62bc27adf3ea7b038aa87d01e95ce533a143a30780626",
+   "bytes": 7170
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean",
+   "sha256": "766b552e3edec6b89b0111c0cb18e37743f2351827944fd47b487a75aa84eaf8",
+   "bytes": 5646
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+   "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+   "bytes": 5730
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+   "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+   "bytes": 5106
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+   "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+   "bytes": 9854
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegions.lean",
+   "sha256": "dd54f1b6c42b1f4e84029461e15eb3f87e0810827fadc322326487a165d96bac",
+   "bytes": 18039
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean",
+   "sha256": "238812250de03f62906a8af05f0eea84ab7cf9b918b4b226a6685f504c8aa2b8",
+   "bytes": 7003
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean",
+   "sha256": "56794f6d7e1d57d292e94d1fb9b6654b7f310a1aa88844e3afac107ba8ef5a51",
+   "bytes": 2701
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean",
+   "sha256": "91305aa0c4af5bc7e1b31462c0aa83201dceb10abe60d04c8ce91c05d71dc66d",
+   "bytes": 7506
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean",
+   "sha256": "218ca5a0e2e20649477cf33efb998c23bb93df6e3e992f8f04b768db4862855f",
+   "bytes": 4594
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean",
+   "sha256": "0f8f1e34f085890493e83ffecc1c98bd896fd765e207ece0f9795d2bab65c6d0",
+   "bytes": 13321
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean",
+   "sha256": "655797e30a22b49ab1bc8bc422149586a6375ac234e5c63b794acbb98b2721e0",
+   "bytes": 8378
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean",
+   "sha256": "9be7f585db6e32ceba6e6926e75cf290565dbbaa2d8363855aa500121a172971",
+   "bytes": 5519
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean",
+   "sha256": "a4943fbb742c5d5bc5b4338c1f007faed5a5561e186999de91c686178e806343",
+   "bytes": 3722
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean",
+   "sha256": "07da97265f745171912645dcdbd5ca4f24ec910e221332bdb8cfeeee32b2c04e",
+   "bytes": 5803
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean",
+   "sha256": "e8bf9d1c1b2c1967ef0c7d05c329fb35922ffbd4e10931a972a33bed301d6001",
+   "bytes": 4162
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsFusion.lean",
+   "sha256": "7076119973823d6f1e9e5e09e5f4b8c23a679423c37475f6b78fe99329f45949",
+   "bytes": 9226
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean",
+   "sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+   "bytes": 9070
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean",
+   "sha256": "83249dfd93f8e4e472ba9b4d450a55aa60d6f4a5a730e83349e912e37f494dd2",
+   "bytes": 3419
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean",
+   "sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+   "bytes": 8106
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean",
+   "sha256": "8232ab65cb3e8b4c903b9aba8d2f161070917e7831ea42881841c9a379b8440c",
+   "bytes": 7063
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+   "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+   "bytes": 4850
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean",
+   "sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+   "bytes": 4275
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+   "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+   "bytes": 7321
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean",
+   "sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+   "bytes": 7097
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+   "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+   "bytes": 5747
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+   "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+   "bytes": 4641
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+   "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+   "bytes": 7412
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+   "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+   "bytes": 7569
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+   "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+   "bytes": 1400
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+   "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+   "bytes": 8734
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+   "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+   "bytes": 3197
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+   "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+   "bytes": 2509
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+   "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+   "bytes": 4541
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+   "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+   "bytes": 4654
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+   "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+   "bytes": 8229
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+   "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+   "bytes": 11782
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+   "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+   "bytes": 6170
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+   "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+   "bytes": 9963
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+   "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+   "bytes": 6614
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+   "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+   "bytes": 3246
+  },
+  {
+   "path": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+   "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+   "bytes": 4537
+  }
+ ],
+ "generated_queries": [
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/kernel/GraphStateScalarInstance.lean",
+   "sha256": "544b1dfd1230805af931d3a32f0b7923acd78a404cd0918fcb162b1ae0ddbabc",
+   "bytes": 4039
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/GraphStatePipelineInstance.lean",
+   "sha256": "b2d558f42dd3526a04dbb90e9d0c9eb017249311212bc51063cbf1cfd9f2b6a1",
+   "bytes": 22471
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/GraphStateIntegerInstance.lean",
+   "sha256": "98ab1e5cd4ee4bdf849a1d762c53818db4efa4c416ba8dd0eba69545bd57bd9d",
+   "bytes": 42713
+  },
+  {
+   "path": "out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/pytest/test_actual_whole_module_rank_1/proof/Obligation.lean",
+   "sha256": "2789b79d2678121e91785063c01a40fcc6821eaea6f118996a882fe21eebb307",
+   "bytes": 12148
+  },
+  {
+   "path": "out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/Check.lean",
+   "sha256": "a4abc04170b9ecdc1041dd7d427b4ce517258fbb7d855db82f99a48b63c2835f",
+   "bytes": 26321
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/checked/kernel/GraphStatePipelineInstance.lean",
+   "sha256": "18c4ac46c75076acea2e9514a4eee233d59f605683ab1f131c21d44a6feb4646",
+   "bytes": 27939
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/GraphStateIntegerInstance.lean",
+   "sha256": "03a6deb63cc9c22a94647054722c735033181ed85ce94eeb201b18870f808225",
+   "bytes": 44022
+  }
+ ],
+ "python_projection_sources": [
+  {
+   "path": "src/merlin/verify/lean_graph_loops_memory_scf.py",
+   "sha256": "5a17f1932da0ddd1bbfe9be92a464ba7fd2dac849ad45878433a3c4241eb4da7",
+   "bytes": 7112
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+   "sha256": "c14ceb21489b6ffaf862ceb21554de43f3de5da92e3c155764f2b518f16bbe83",
+   "bytes": 4763
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_memory_scf_cases.py",
+   "sha256": "4ba135144cb7c856ee2465c541d9f7989d5ae4928aa3dd81bc440634b32c1a95",
+   "bytes": 1717
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+   "sha256": "f065b5d82adbaee702bedd60c08d165e0ca81eae030484d18806a971c9f32ae6",
+   "bytes": 8638
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+   "sha256": "3d522ee9d47732e009a9c0e46932e91bba2896b07fcdf4c40dc5d3806054e6b8",
+   "bytes": 13383
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_memory_scf_runtime.py",
+   "sha256": "3617723bd6463db4ad3af39a5529f3ca2477b4b5a0e4c96a47ca134148c2af99",
+   "bytes": 7240
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_memory_scf_selection.py",
+   "sha256": "cf8569b4a7a05b44f32dbf9738cfb9eb5996a416aca4831fccaa23b0a5acf8a8",
+   "bytes": 5336
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_memory_scf_witness.py",
+   "sha256": "211791bb9d1cb2e1f5e8bf360584a927a12de9b73a23e575c3feee9b4c17dfc5",
+   "bytes": 8413
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_reuse.py",
+   "sha256": "0b9287801df6436335843b9d28ad09f181ff5c9e144818a14bc35c749ee9c577",
+   "bytes": 18032
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+   "sha256": "2479ffd848dfac16aa3946f4fdb74d7ff3717c584f95e8692355743caf21d258",
+   "bytes": 6509
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_reuse_cases.py",
+   "sha256": "e0eb58c226d0337d41e2ad92ba458ca0d77b44b5062efd807c7abadf1fa10274",
+   "bytes": 7345
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_reuse_projection.py",
+   "sha256": "fcf75ecc44039a2a5b6a8a69cff1b7a8a9a23ac449100fe21c88464a56266102",
+   "bytes": 18764
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_reuse_runtime.py",
+   "sha256": "d0f99cf17bd807c00d398dcd45bcf806da90febbbcbb90fb80703a8a2b0bfa0f",
+   "bytes": 6036
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape.py",
+   "sha256": "6b0cfce1f83371ef485c66b430f1769cbfb425760729dff7fcdcb9fcb23e01ed",
+   "bytes": 6668
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+   "sha256": "8a92666910b573f37941594d04de202d48628fc3e5246ed8359b15fe864cd97a",
+   "bytes": 6202
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape_cases.py",
+   "sha256": "1b90874912fbc702869f607ab3708bd957eeabd715de9d62773e504fdbf0bcf3",
+   "bytes": 4364
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape_model.py",
+   "sha256": "24650e08cac546b7bd9ffaad2fdbf979d766728675a92f15fa129999087ff320",
+   "bytes": 8067
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape_projection.py",
+   "sha256": "e98a10afc170db23b378488450b874f6178bdaa6ce1f0115cb09a02d12e5414c",
+   "bytes": 13895
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape_runtime.py",
+   "sha256": "2cd2c1dd1ed8eebd6b7acf7a601a637cbaac11eb72d8ae33314ea626898e8c28",
+   "bytes": 7571
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape_selection.py",
+   "sha256": "93b303bbaa02345c76bd0c11ba76966ed6fad6323cb5545b1165fa777d693603",
+   "bytes": 6831
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape_types.py",
+   "sha256": "f596e44c9a933c08f99e1057d14f3b1a1b8e03684c1c1db6344aaa3f08bd60dc",
+   "bytes": 1977
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_loops_shape_witness.py",
+   "sha256": "a2b80da642ac8fcee4e945f5514b19bfe904e930015882b56a3bccf463acb58d",
+   "bytes": 10383
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_ast.py",
+   "sha256": "f14077f533c73685d10ec716951529c8098f158613a5383d141db64ea070db5b",
+   "bytes": 5430
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_bound.py",
+   "sha256": "8a130251c5961b7e31c54b76f41283b7409df8d194a7a0fd26789b79d8c1cbe0",
+   "bytes": 18041
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_bound_qualify.py",
+   "sha256": "803952b9dea1e0e3fd6a27b3a58f3bb56c023806071699be07f5089774d27784",
+   "bytes": 7434
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_capture.py",
+   "sha256": "898cef71246d8ef510ba157a6e691da7437d1373d6ef94f05d8b642cf6e47565",
+   "bytes": 11987
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_check.py",
+   "sha256": "3bd8947279c49249848761a2016dd8344b8202532258c80909d094ef36da88b7",
+   "bytes": 7176
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_context.py",
+   "sha256": "2800a9702c2c2187a0930ce26852d6e3f617ec1fd3a37ac110ee85ed58579bc6",
+   "bytes": 9634
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_oracle.py",
+   "sha256": "c39c16d4c220457c3aabc3a57372e409556ff62d092e8e9de1a12d82c2405c34",
+   "bytes": 4233
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_packet.py",
+   "sha256": "ec84f2d87d1449b7f00f939a95db190d31b4b5e59259d06e2f3b1b83f1c4836f",
+   "bytes": 18518
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_qualify.py",
+   "sha256": "27e099ddb645608e45bda1a4a83c163d37712d71d939475148504cbb7188fef4",
+   "bytes": 9208
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_regions_declared_verify.py",
+   "sha256": "34b79274140d22336a4ce0a071222554b82001f3a095d6f19208b4cc14cb47e3",
+   "bytes": 14711
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_integer.py",
+   "sha256": "2272475e998de3ce0a47c4d69e6f45e597fdac61565b9a9e31211d1f7db57d1f",
+   "bytes": 8414
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_integer_capture.py",
+   "sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5",
+   "bytes": 8060
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_integer_emit.py",
+   "sha256": "0d41bf9e18ff5204d4c0052308e4e6a27c8b3de2707680c0c593aed96eaaba80",
+   "bytes": 16467
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_integer_kernel.py",
+   "sha256": "eaa2515ab01030b656b716590289ada431df961857bfac005e54db6044fa0dfa",
+   "bytes": 6274
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_integer_models.py",
+   "sha256": "91de1d4ba3c249b4adc53c312c864ce60d76ff4e33d25bbced7173fbaf3f3d78",
+   "bytes": 9769
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_integer_mutate.py",
+   "sha256": "fd9b8516d5ccf80feebf8e0ff1753d384904f7d48db6e37b939c9f1d59ed691e",
+   "bytes": 5936
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_integer_proof.py",
+   "sha256": "adf3091b68dd916413d614ed177f2ad9e96979ad3bdbc13e933fb1edbcac4263",
+   "bytes": 8657
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_integer_receipt.py",
+   "sha256": "420f93195419fcd9198ecd85f01a3a217ffa6c31063a8a52fc253d47f39dda8f",
+   "bytes": 11662
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_pipeline.py",
+   "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+   "bytes": 3144
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_pipeline_capture.py",
+   "sha256": "3960c5ffdb65e70f104a16fb4328eeffde22906afe199719403f0053850ff9be",
+   "bytes": 11606
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+   "sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+   "bytes": 26257
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_pipeline_kernel.py",
+   "sha256": "8e8da1f38ad73889693edd8f94e5cce54c751bea16811cc4b0916c2990efedd1",
+   "bytes": 7618
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_pipeline_models.py",
+   "sha256": "3e94cec2cb4b16ac50b5fb1b69e54b22152d945d36574428cc0ab72294a891e5",
+   "bytes": 15648
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_pipeline_mutate.py",
+   "sha256": "63709019921e1b1c89e1c0b4f47adf95cf00c5cb8efb7407b6dda7090d1956f4",
+   "bytes": 4904
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_pipeline_proof.py",
+   "sha256": "9cfc8f312b8ec1eec09ab98a7cd1753e4342c29e99e707bdbef1f6922cbf01ac",
+   "bytes": 12970
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_pipeline_receipt.py",
+   "sha256": "c5056b7cc9f042f03818f49b0e9897f6b6b49d1b0f8b5d940d834685f6d8febf",
+   "bytes": 19133
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_scalar.py",
+   "sha256": "d1cb71af342dd09008bade5b8d56a4c039781a0bbf37bf7813d508acacb50e43",
+   "bytes": 15186
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_scalar_capture.py",
+   "sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+   "bytes": 20214
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_scalar_chain.py",
+   "sha256": "710ca7a0341e5f0e42a42c63ee1323a84e9c9fa5f31750e60b69ade52d87f986",
+   "bytes": 4106
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_scalar_execution.py",
+   "sha256": "9f99cd0b5ec6b04b2286baa8c6b119767222abf8bb10c2e702f96db59fa59cc8",
+   "bytes": 8899
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_scalar_kernel.py",
+   "sha256": "2a170583ecdab74f9690cbe071e6ef4c4d459daa07c42c07c351e201dfc405e0",
+   "bytes": 10303
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_scalar_models.py",
+   "sha256": "f7530f5cf3fb0c61e52b2234231c652173327d964fa783c63df0740c7fd28ea7",
+   "bytes": 10937
+  },
+  {
+   "path": "src/merlin/verify/lean_graph_state_scalar_receipt.py",
+   "sha256": "0df15962e7e8f73904d9a126dc5b0dffcb8d2b4e2a67464cd978b0d0c1fd8955",
+   "bytes": 15444
+  }
+ ],
+ "documents": [
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/GRAHAM_HANDOFF.md",
+   "sha256": "14446420b085cd991b8b2d4ff99ebcb819701bb08921b413bb49b962c032a491",
+   "bytes": 19203
+  },
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/PAPER_VERIFICATION_DRAFT.md",
+   "sha256": "664550e06d29c44d2d376e7b92d2daa54ba40a083b9fef99c5603f3ed24bcba1",
+   "bytes": 6167
+  },
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/PAPER_TARGET.md",
+   "sha256": "a1d7e2651a29ad85aea0c8dc42d286c45177dcd9bde6d7b765cf7d50b1ae342a",
+   "bytes": 4157
+  },
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/README.md",
+   "sha256": "5d367536d3dd3b56acab6704d59ea999a44d3b5c6ecf3bc31783197042ea81ec",
+   "bytes": 12309
+  },
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/integer-v2-host-status-limitation.json",
+   "sha256": "5c5efa682b9f3f8399bba52268f22efcbd5c579b74c3d3834e1d759d2ec80841",
+   "bytes": 1411
+  },
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/frontend-declared-observation-v1.json",
+   "sha256": "37c2fb15b1fc7b3b32c37d4c38bd6ac1efd46122f197ac33c0ce750f56316950",
+   "bytes": 1845
+  },
+  {
+   "path": "docs/design/merlin_lean_verification.md",
+   "sha256": "5ef01417f8aa95356dcb9d2b562818f0b48a8a9d43cedbdefc2b0309d9502750",
+   "bytes": 100182
+  },
+  {
+   "path": "CLAUDE.md",
+   "sha256": "b7f6d1d71bc78339c4d7e1f2b8f413fcb2c912a5a863695421323b49b3bd0264",
+   "bytes": 21383
+  }
+ ],
+ "retained_packet_files": [
+  {
+   "path": "out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/SEAL.json",
+   "sha256": "628842565a2d9e78d91de7548181bd508f9953f6265a894edc364a07b705eafe",
+   "bytes": 3085
+  },
+  {
+   "path": "out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/AUDIT.json",
+   "sha256": "d933d86ccfb262cbebe68aae1f7e861d10a26003c4cd9135d58010b97b318f35",
+   "bytes": 8021
+  },
+  {
+   "path": "out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/README.md",
+   "sha256": "1ff5d1a0fd5fbdee5322de62f6676f4bb6f657e87bc148e99425a9df7f4d2f42",
+   "bytes": 9867
+  },
+  {
+   "path": "out/artifacts/verification/graph-memory-scf/paper-evidence/README.md",
+   "sha256": "abb29a2f5fe0403fab9c522a026a6a516b708753019c8b33b39acd0781b2e0ab",
+   "bytes": 4168
+  },
+  {
+   "path": "out/artifacts/verification/graph-memory-scf/paper-evidence/CHECKER_OUTPUT.json",
+   "sha256": "799c9e6b18515b718f5755db58087b95308b18365454bb771dea0a60924dbfdc",
+   "bytes": 1930
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-pipeline/review/sealed-v1/AUDIT.json",
+   "sha256": "d519f5590a6f9a243e6b9a8e37f06bba5e509b25f7a486c73c86ded7f083cd76",
+   "bytes": 88298
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-pipeline/review/sealed-v1/STATEMENTS.json",
+   "sha256": "c6d292215fc62169ab83148d2b2c7196d8edc218bc0716cc766f57f9dec6a02a",
+   "bytes": 78531
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-pipeline/review/sealed-v1/MANIFEST.json",
+   "sha256": "55600dbe207fed3446a99d79003f7cf2b50b0c520b71eda44dc0bcf636035b10",
+   "bytes": 1036636
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-pipeline/review/sealed-v1/paper-evidence/EVIDENCE.json",
+   "sha256": "acc912463f43b97712a4a5a436eb467395f56d404a692c8e853b161820c0fdaa",
+   "bytes": 32528
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-pipeline/review/sealed-v1/paper-evidence/PIPELINE_WORKED_EXAMPLE.md",
+   "sha256": "1285a0a3750dbb5a76968784265384458625bb262baf62e8bf26b43455825554",
+   "bytes": 4140
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-integer/review/sealed-v2/AUDIT.json",
+   "sha256": "4e200eb5fef07e307adf08ad0ff041ef28d7e06b60789e5087d4143b78503054",
+   "bytes": 15352
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-integer/review/sealed-v2/README.md",
+   "sha256": "331e9c88d6ab58ffaa8e51dfabcacba5245c7944b0b61591ab72dd48544dd159",
+   "bytes": 13903
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-integer/review/sealed-v2/paper-evidence/EVIDENCE.json",
+   "sha256": "1c428629e32184197b5da51019ec8683d032e2cca7a2c5f2a7d2179babb85e71",
+   "bytes": 56224
+  },
+  {
+   "path": "out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/SEAL.json",
+   "sha256": "19961805c0f9bf33b23354086cab4bfec4fce12af65d0599464689743413491e",
+   "bytes": 1492
+  },
+  {
+   "path": "out/artifacts/verification/graph-shape-normalization/paper-evidence/README.md",
+   "sha256": "284866e02909334c22f858f4f8f2d912a350b16e5a2d59c3cc3b861c36f37875",
+   "bytes": 9666
+  },
+  {
+   "path": "out/artifacts/verification/graph-shape-normalization/paper-evidence/CHECKER_OUTPUT.json",
+   "sha256": "bdecfee6c003cdc6b6d06b3b15b6566c10b443cb087128fa0787739ed4f31a1f",
+   "bytes": 7233
+  },
+  {
+   "path": "out/artifacts/verification/graph-shape-normalization/paper-evidence/COMPOSITION_REFUSAL.json",
+   "sha256": "e70878f90166032847be29bbb7a2b75e1bd76a2c424b1eed0b90c63aa0c5c8a5",
+   "bytes": 2294
+  },
+  {
+   "path": "out/artifacts/verification/graph-regions-declared/qualification-v1/SEAL.json",
+   "sha256": "a9773e5a40806706762fb21d0971d471ee1772e0cbe90747da339ba047bd1122",
+   "bytes": 70320
+  },
+  {
+   "path": "out/artifacts/verification/graph-regions-declared/qualification-v1/STATUS.json",
+   "sha256": "d4c17e6647a101a3b29e87b1fda1fdb8e5db1b6ed1ad0de0781aea42736d8145",
+   "bytes": 864
+  },
+  {
+   "path": "out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/AUDIT.json",
+   "sha256": "aeb7dafab58edc8cc034cb5e306fccb7d93393e363ec9ee325451a7a7b9d2c90",
+   "bytes": 366
+  },
+  {
+   "path": "out/artifacts/verification/graph-regions-declared/paper-evidence/README.md",
+   "sha256": "57e031c909498aa53d6ece947725cda6a175eb1b43c0a53186ef97bbd0bb23c0",
+   "bytes": 10691
+  },
+  {
+   "path": "out/artifacts/verification/graph-buffer-reuse/README.md",
+   "sha256": "fe198356fcbcb0a6ccb5771fcbda6dfc2fed82a31ea4c6b7668e9997ed0aff4e",
+   "bytes": 3036
+  },
+  {
+   "path": "out/artifacts/verification/graph-buffer-reuse/reuse-mode-v1/README.md",
+   "sha256": "31683551d62ed8262e5589367a9c7724452e9b3c80a557a369ef8f2cbfcdcdf2",
+   "bytes": 13850
+  },
+  {
+   "path": "out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/before.mlir",
+   "sha256": "bb5d985ac001a8c9e3b04ff889003965c798796f2b3bc351f0eabf5610190110",
+   "bytes": 2151
+  },
+  {
+   "path": "out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/after.mlir",
+   "sha256": "9e2a5e8315002c1ad00e57508729112d4a5e01871e41ced4ecca1a10bf259ff5",
+   "bytes": 3526
+  },
+  {
+   "path": "out/artifacts/verification/graph-buffer-reuse/actual-neighbor-segment-v1/after.mlir",
+   "sha256": "a98bd7576316e4ad9b4ba873beb9dfe5440e9db1f37460cf52628833f3134773",
+   "bytes": 4238
+  },
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/kernel/report.json",
+   "sha256": "ef288e04fd537c4b715192a063e26e6edaddb37b7f3fe34fd07b467776a077b5",
+   "bytes": 298184
+  },
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/kernel/audit.stdout",
+   "sha256": "268c13295b1380cc43e2d7a24da00d2ef67873f1626c67ff10464b3f151e4879",
+   "bytes": 98671
+  },
+  {
+   "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/audit.stdout",
+   "sha256": "5aa7eccb61ceebbf93c6b2287965678fe3cb6708a3e8b593036ff652b4a31e06",
+   "bytes": 164445
+  },
+  {
+   "path": "out/artifacts/verification/graham-graph-review/deliverable-1/gaps.md",
+   "sha256": "60ba85249666302ab85b6ef74a1ec94505809fa7cd87eb7c45524017cbbfb7b3",
+   "bytes": 8671
+  },
+  {
+   "path": "out/artifacts/verification/graham-graph-review/deliverable-1/sealed-packet-presence.json",
+   "sha256": "c448ebf900326907ceb9d7f174348a4d7f1e5454c847da110c48c19d9e2cd0da",
+   "bytes": 1076
+  },
+  {
+   "path": "out/artifacts/verification/graham-graph-review/deliverable-1/source-index.json",
+   "sha256": "a78a4697c015c12ce15871dca4fbfec2993d8e066c69c760306274aeb39cc47d",
+   "bytes": 662105
+  }
+ ]
+}

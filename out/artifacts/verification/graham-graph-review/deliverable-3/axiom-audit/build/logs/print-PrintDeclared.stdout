@@ -1,0 +1,225 @@
+@actual_complete_observers : ∀ {α M : Type} [inst : Inhabited α] (primitive : Primitive → List α → α)
+  (fallback : (node : Node) → TypedAction node (Tensor 141 α) fun x x_1 => True)
+  (read : M → Window → Option (Tensor 141 α)) (invoke : BoundCall → M → Option M),
+  (∀ (item : CallStage), item ∈ items → InstructionContract read invoke primitive item.call item.stage.program) →
+    ∀ (pack : StateEffects.State (Tensor 141 α) → M),
+      (∀ (entry : StateEffects.State (Tensor 141 α)), Refines read addresses initialKnown entry (pack entry)) →
+        ∀
+          (native :
+            StateEffects.Action
+              { reads := liveIns (List.take 3 (List.drop 4 actualGraph.nodes)),
+                writes :=
+                  liveOuts (List.take 3 (List.drop 4 actualGraph.nodes)) (List.drop 7 actualGraph.nodes)
+                    actualGraph.observations }
+              (Tensor 141 α)),
+          (∀ (entry : StateEffects.State (Tensor 141 α)) (final : M),
+              runCalls invoke items (pack entry) = some final →
+                ∀ (slot : Nat),
+                  slot ∈
+                      liveOuts (List.take 3 (List.drop 4 actualGraph.nodes)) (List.drop 7 actualGraph.nodes)
+                        actualGraph.observations →
+                    read final (addresses slot) = some (native.step entry slot)) →
+            ∀ (initial : StateEffects.State (Tensor 141 α)),
+              SourceBinding actualBefore actualRetained sites actualGraph ∧
+                checkKernel actualKernel originalKernel.name originalKernel.arguments [schema0, schema1, schema2]
+                      [bound0, bound1, bound2] =
+                    true ∧
+                  (∀ (arguments : Environment α),
+                      ScalarExecution primitive scalar0_source arguments (program0.evaluate primitive arguments) ∧
+                        ScalarExecution primitive scalar0_selected arguments (program0.evaluate primitive arguments)) ∧
+                    (∀ (arguments : Environment α),
+                        ScalarExecution primitive scalar1_source arguments (program1.evaluate primitive arguments) ∧
+                          ScalarExecution primitive scalar1_selected arguments
+                            (program1.evaluate primitive arguments)) ∧
+                      (∀ (arguments : Environment α),
+                          ScalarExecution primitive scalar2_source arguments (program2.evaluate primitive arguments) ∧
+                            ScalarExecution primitive scalar2_selected arguments
+                              (program2.evaluate primitive arguments)) ∧
+                        have meaning := registry primitive fallback (List.map CallStage.stage items);
+                        List.map
+                            (executeNodes meaning (List.drop 7 actualGraph.nodes)
+                              (native.step (executeNodes meaning (List.take 4 actualGraph.nodes) initial)))
+                            actualGraph.observations =
+                          List.map (executeNodes meaning actualGraph.nodes initial) actualGraph.observations
+'actual_complete_observers' depends on axioms: [propext, Classical.choice, Quot.sound]
+actual_nonzero_witness : ∀ (index : Fin 141),
+  executeStages witnessPrimitive (List.map CallStage.stage items) witnessInitial stage1.output index = 33 ∧
+    executeStages witnessPrimitive (List.map CallStage.stage items) witnessInitial stage2.output index = 242
+'actual_nonzero_witness' depends on axioms: [propext, Quot.sound]
+actual_calls_valid : checkSequence 141 addresses initialKnown items = true
+'actual_calls_valid' depends on axioms: [propext, Quot.sound]
+actual_kernel_decoded : checkKernel actualKernel originalKernel.name originalKernel.arguments
+    [schema0, schema1, schema2] [bound0, bound1, bound2] =
+  true
+'actual_kernel_decoded' depends on axioms: [propext]
+actual_generic_binding : SourceBinding actualBefore actualRetained sites actualGraph
+'actual_generic_binding' depends on axioms: [propext, Classical.choice, Quot.sound]
+actual_realization : checkRealization actualGraph actualGraph 4 3 [stage0.ordinal, stage1.ordinal, stage2.ordinal]
+    actualPlan actualFused =
+  true
+'actual_realization' depends on axioms: [propext, Quot.sound]
+@derived_local_contract : ∀ {α M : Type} [inst : Inhabited α] {elements : Nat} (primitive : Primitive → List α → α)
+  (fallback : (node : Node) → TypedAction node (Tensor elements α) fun x x_1 => True) (items : List CallStage)
+  (addresses : Nat → Window) (known : List Nat),
+  SequenceValid elements addresses known items →
+    (List.map ScalarStage.node (List.map CallStage.stage items)).Nodup →
+      ∀ (read : M → Window → Option (Tensor elements α)) (invoke : BoundCall → M → Option M),
+        (∀ (item : CallStage), item ∈ items → InstructionContract read invoke primitive item.call item.stage.program) →
+          ∀ (pack : StateEffects.State (Tensor elements α) → M),
+            (∀ (entry : StateEffects.State (Tensor elements α)), Refines read addresses known entry (pack entry)) →
+              ∀ (suffix : List Node) (observations : List Nat),
+                (∀ (slot : Nat),
+                    slot ∈ liveOuts (List.map (fun item => item.stage.node) items) suffix observations →
+                      slot ∈ finalKnown known items) →
+                  ∀
+                    (native :
+                      StateEffects.Action
+                        { reads := liveIns (List.map (fun item => item.stage.node) items),
+                          writes := liveOuts (List.map (fun item => item.stage.node) items) suffix observations }
+                        (Tensor elements α)),
+                    (∀ (entry : StateEffects.State (Tensor elements α)) (final : M),
+                        runCalls invoke items (pack entry) = some final →
+                          ∀ (slot : Nat),
+                            slot ∈ liveOuts (List.map (fun item => item.stage.node) items) suffix observations →
+                              read final (addresses slot) = some (native.step entry slot)) →
+                      CompositionLaw (registry primitive fallback (List.map CallStage.stage items))
+                        (List.map (fun item => item.stage.node) items) suffix observations native
+'Merlin.GraphRegionsDeclared.derived_local_contract' depends on axioms: [propext, Quot.sound]
+@checked_calls_preserve_observers : ∀ {α M : Type} [inst : Inhabited α] {elements : Nat}
+  (primitive : Primitive → List α → α)
+  (fallback : (node : Node) → TypedAction node (Tensor elements α) fun x x_1 => True) {before after : Graph}
+  {start count : Nat} {selection : List Nat} {plan : Plan} {fused : FusedBody},
+  checkRealization before after start count selection plan fused = true →
+    ∀ (items : List CallStage),
+      List.map (fun item => item.stage.node) items = List.take count (List.drop start before.nodes) →
+        ∀ (addresses : Nat → Window) (known : List Nat),
+          SequenceValid elements addresses known items →
+            (List.map ScalarStage.node (List.map CallStage.stage items)).Nodup →
+              ∀ (read : M → Window → Option (Tensor elements α)) (invoke : BoundCall → M → Option M),
+                (∀ (item : CallStage),
+                    item ∈ items → InstructionContract read invoke primitive item.call item.stage.program) →
+                  ∀ (pack : StateEffects.State (Tensor elements α) → M),
+                    (∀ (entry : StateEffects.State (Tensor elements α)),
+                        Refines read addresses known entry (pack entry)) →
+                      (∀ (slot : Nat),
+                          slot ∈
+                              liveOuts (List.map (fun item => item.stage.node) items)
+                                (List.drop (start + count) before.nodes) before.observations →
+                            slot ∈ finalKnown known items) →
+                        ∀
+                          (native :
+                            StateEffects.Action
+                              { reads := liveIns (List.take count (List.drop start before.nodes)),
+                                writes :=
+                                  liveOuts (List.take count (List.drop start before.nodes))
+                                    (List.drop (start + count) before.nodes) before.observations }
+                              (Tensor elements α)),
+                          (∀ (entry : StateEffects.State (Tensor elements α)) (final : M),
+                              runCalls invoke items (pack entry) = some final →
+                                ∀ (slot : Nat),
+                                  slot ∈
+                                      liveOuts (List.take count (List.drop start before.nodes))
+                                        (List.drop (start + count) before.nodes) before.observations →
+                                    read final (addresses slot) = some (native.step entry slot)) →
+                            ∀ (initial : StateEffects.State (Tensor elements α)),
+                              have meaning := registry primitive fallback (List.map CallStage.stage items);
+                              List.map
+                                  (executeNodes meaning (List.drop (start + count) before.nodes)
+                                    (native.step (executeNodes meaning (List.take start before.nodes) initial)))
+                                  before.observations =
+                                List.map (executeNodes meaning before.nodes initial) before.observations
+'Merlin.GraphRegionsDeclared.checked_calls_preserve_observers' depends on axioms: [propext, Quot.sound]
+@sequence_refines : ∀ {α M : Type} [inst : Inhabited α] {elements : Nat}
+  {read : M → Window → Option (Tensor elements α)} {invoke : BoundCall → M → Option M}
+  (primitive : Primitive → List α → α) (addresses : Nat → Window) (items : List CallStage) (known : List Nat),
+  SequenceValid elements addresses known items →
+    (∀ (item : CallStage), item ∈ items → InstructionContract read invoke primitive item.call item.stage.program) →
+      ∀ {logical : StateEffects.State (Tensor elements α)} {memory : M},
+        Refines read addresses known logical memory →
+          ∃ final,
+            runCalls invoke items memory = some final ∧
+              Refines read addresses (finalKnown known items)
+                (executeStages primitive (List.map CallStage.stage items) logical) final
+'Merlin.GraphRegionsDeclared.sequence_refines' depends on axioms: [propext, Quot.sound]
+@instruction_refines : ∀ {α M : Type} [inst : Inhabited α] {elements : Nat}
+  {read : M → Window → Option (Tensor elements α)} {invoke : BoundCall → M → Option M}
+  {primitive : Primitive → List α → α} {stage : ScalarStage} {call : BoundCall} {addresses : Nat → Window}
+  {known : List Nat},
+  callValid elements stage addresses call →
+    (∀ (slot : Nat), slot ∈ stage.inputs → slot ∈ known) →
+      (∀ (slot : Nat), slot ∈ known → slot ≠ stage.output → (addresses slot).Disjoint (addresses stage.output)) →
+        InstructionContract read invoke primitive call stage.program →
+          ∀ {logical : StateEffects.State (Tensor elements α)} {memory : M},
+            Refines read addresses known logical memory →
+              ∃ next,
+                invoke call memory = some next ∧
+                  Refines read addresses (known ++ [stage.output]) (stage.step primitive logical) next
+'Merlin.GraphRegionsDeclared.instruction_refines' depends on axioms: [propext, Quot.sound]
+@checkRealization_native : ∀ {Value : Type} {typing : Nat → Value → Prop} {before after : Graph} {start count : Nat}
+  {selection : List Nat} {plan : Plan} {fused : FusedBody},
+  checkRealization before after start count selection plan fused = true →
+    ∀ (meaning : (node : Node) → TypedAction node Value typing)
+      (native :
+        StateEffects.Action
+          { reads := liveIns (List.take count (List.drop start before.nodes)),
+            writes :=
+              liveOuts (List.take count (List.drop start before.nodes)) (List.drop (start + count) before.nodes)
+                before.observations }
+          Value),
+      (∀ (entry : StateEffects.State Value),
+          WellTyped typing entry →
+            AgreeOn
+              (liveOuts (List.take count (List.drop start before.nodes)) (List.drop (start + count) before.nodes)
+                before.observations)
+              (native.step entry) (FusedBody.execute meaning fused entry)) →
+        ∀ (initial : StateEffects.State Value),
+          WellTyped typing initial →
+            List.map
+                (executeNodes meaning (List.drop (start + count) before.nodes)
+                  (native.step (executeNodes meaning (List.take start before.nodes) initial)))
+                before.observations =
+              List.map (executeNodes meaning before.nodes initial) before.observations
+'Merlin.GraphRegions.checkRealization_native' depends on axioms: [propext, Quot.sound]
+@checkRealization_sound : ∀ {Value : Type} {typing : Nat → Value → Prop} {before after : Graph} {start count : Nat}
+  {selection : List Nat} {plan : Plan} {fused : FusedBody},
+  checkRealization before after start count selection plan fused = true →
+    ∀ (meaning : (node : Node) → TypedAction node Value typing) (initial : StateEffects.State Value),
+      WellTyped typing initial →
+        before.Valid ∧
+          before = after ∧
+            List.map
+                (executeNodes meaning (List.drop (start + count) before.nodes)
+                  (FusedBody.execute meaning fused (executeNodes meaning (List.take start before.nodes) initial)))
+                before.observations =
+              List.map (executeNodes meaning before.nodes initial) before.observations
+'Merlin.GraphRegions.checkRealization_sound' depends on axioms: [propext, Quot.sound]
+@checked_native_contract : ∀ {Value : Type} {typing : Nat → Value → Prop} {region suffix : List Node}
+  {observations : List Nat} {fused : FusedBody},
+  checkFusion region suffix observations fused = true →
+    ∀ (meaning : (node : Node) → TypedAction node Value typing)
+      (native : StateEffects.Action { reads := liveIns region, writes := liveOuts region suffix observations } Value),
+      (∀ (initial : StateEffects.State Value),
+          WellTyped typing initial →
+            AgreeOn (liveOuts region suffix observations) (native.step initial)
+              (FusedBody.execute meaning fused initial)) →
+        ∀ (earlier : List Node) (initial : StateEffects.State Value),
+          WellTyped typing initial →
+            List.map (executeNodes meaning suffix (native.step (executeNodes meaning earlier initial))) observations =
+              List.map (executeNodes meaning (earlier ++ region ++ suffix) initial) observations
+'Merlin.GraphRegions.checked_native_contract' depends on axioms: [propext, Quot.sound]
+@nofault_premise_required : ∀ {α M : Type} [inst : Inhabited α] {elements : Nat}
+  {read : M → Window → Option (Tensor elements α)} {invoke : BoundCall → M → Option M}
+  {primitive : Primitive → List α → α} {call : BoundCall} {program : Program} (memory : M)
+  (arguments : List (Tensor elements α)),
+  List.map (read memory) call.reads = List.map some arguments →
+    invoke call memory = none → ¬InstructionContract read invoke primitive call program
+'Merlin.GraphRegionsDeclared.nofault_premise_required' depends on axioms: [propext]
+@completion_premise_required : ∀ {α M : Type} [inst : Inhabited α] {elements : Nat}
+  {read : M → Window → Option (Tensor elements α)} {invoke : BoundCall → M → Option M}
+  {primitive : Primitive → List α → α} {call : BoundCall} {program : Program} (memory next : M)
+  (arguments : List (Tensor elements α)),
+  List.map (read memory) call.reads = List.map some arguments →
+    invoke call memory = some next →
+      read next call.output ≠ some (tensorEvaluate program primitive arguments) →
+        ¬InstructionContract read invoke primitive call program
+'Merlin.GraphRegionsDeclared.completion_premise_required' depends on axioms: [propext]

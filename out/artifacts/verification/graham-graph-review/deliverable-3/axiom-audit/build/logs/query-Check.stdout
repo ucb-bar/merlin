@@ -1,0 +1,5 @@
+'actual_kernel_decoded' depends on axioms: [propext]
+'actual_calls_valid' depends on axioms: [propext, Quot.sound]
+'actual_generic_binding' depends on axioms: [propext, Classical.choice, Quot.sound]
+'actual_complete_observers' depends on axioms: [propext, Classical.choice, Quot.sound]
+'actual_nonzero_witness' depends on axioms: [propext, Quot.sound]

@@ -1,0 +1,18 @@
+-- Graham D3 reviewer-authored audit file: statements and transitive axioms only.
+import GraphStatePipelineInstance
+#check @Merlin.GraphStatePipelineInstance.complete
+#print axioms Merlin.GraphStatePipelineInstance.complete
+#check @Merlin.GraphStatePipelineInstance.SymbolicWitness.input_nonzero
+#print axioms Merlin.GraphStatePipelineInstance.SymbolicWitness.input_nonzero
+#check @Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_success
+#print axioms Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_success
+#check @Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_success
+#print axioms Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_success
+#check @Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_failure
+#print axioms Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_failure
+#check @Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_failure
+#print axioms Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_failure
+#check @Merlin.GraphStatePipelineInstance.SymbolicWitness.source_initialized
+#print axioms Merlin.GraphStatePipelineInstance.SymbolicWitness.source_initialized
+#check @Merlin.GraphStatePipelineInstance.SymbolicWitness.final_initialized
+#print axioms Merlin.GraphStatePipelineInstance.SymbolicWitness.final_initialized

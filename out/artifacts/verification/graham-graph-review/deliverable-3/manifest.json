@@ -1,0 +1,1253 @@
+{
+ "reviewer": "Graham independent review (agent)",
+ "date": "2026-10-26",
+ "verification_revision": "58dbc7c00acdb6770d440b773cc2954328c78472",
+ "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+ "files": [
+  {
+   "path": "assumption-review.md",
+   "sha256": "00107d0822c30fd9ca9098d9437f8f134dd04cd2ada3f0df2c1afc5a84cda50b",
+   "bytes": 37192
+  },
+  {
+   "path": "axiom-audit/ReviewerAudit.lean",
+   "sha256": "baa439e91dd0ce5a6fe834eeb5aa280953fe160a81edad325095bafc472643d8",
+   "bytes": 3513
+  },
+  {
+   "path": "axiom-audit/axiom-summary.json",
+   "sha256": "5fdbfc844dbc824b445621177e29b4d448d4c06131fed3720a98ef825a130ddb",
+   "bytes": 24357
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCF.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCF.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFBounds.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFBounds.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFComposition.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFComposition.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFCoverage.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFCoverage.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFEffects.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFEffects.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFLoops.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFLoops.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFModel.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFModel.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFModes.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFModes.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFOperational.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFOperational.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFRect.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFRect.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFScope.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFScope.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFSimulation.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFSimulation.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFWitness.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsMemorySCFWitness.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuse.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuse.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseCountermodels.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseCountermodels.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseGeometry.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseGeometry.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseLifetime.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseLifetime.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseModel.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseModel.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseProtocol.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseProtocol.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseSemantics.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsReuseSemantics.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsSegment.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsSegment.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsSegmentBounds.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsSegmentBounds.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsSegmentModel.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsSegmentModel.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsSegmentState.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsSegmentState.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShape.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShape.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeBindings.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeBindings.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeCode.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeCode.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeCountermodels.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeCountermodels.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeMemory.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeMemory.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeModel.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeModel.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeModule.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeModule.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeSSA.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeSSA.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeSound.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeSound.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeWitness.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsShapeWitness.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsUnroll.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsUnroll.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsUnrollBounds.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsUnrollBounds.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsUnrollGrouping.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphLoopsUnrollGrouping.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegions.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegions.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredBridge.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredBridge.stdout",
+   "sha256": "77ca84e33741cef838937405e83d3cc91e82e73497371cfb1ba1ebd912d2146c",
+   "bytes": 202
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredCountermodels.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredCountermodels.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredEvaluation.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredEvaluation.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredGeneric.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredGeneric.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredMatch.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredMatch.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredMemory.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredMemory.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredNodes.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredNodes.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredProjection.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredProjection.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredRaw.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredRaw.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredScalar.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsDeclaredScalar.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsFusion.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphRegionsFusion.stdout",
+   "sha256": "0c0aea503e4328af27b849bd263c7370010342e92eff2db24fe5692aacff08d0",
+   "bytes": 193
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerCode.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerCode.stdout",
+   "sha256": "00700c6d93238bd3f0dc428d9f23b21e5f0b0f0fa5f4c3e753a0dd4d74255656",
+   "bytes": 156
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerCountermodels.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerCountermodels.stdout",
+   "sha256": "0d1f190078e4e6e2e46aff3e6d7bbc55d386dc8aff7066381315157ae183ffe9",
+   "bytes": 497
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerExpressions.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerExpressions.stdout",
+   "sha256": "dd2c492d84e4a63704914f3ef260e11bacf7cddb3fbdce30b8d652bdc316b614",
+   "bytes": 397
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerModels.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerModels.stdout",
+   "sha256": "e45885c82c498776d171d7dbee9864ff310d74b193119f5ffe81288d910f83bb",
+   "bytes": 226
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerOperations.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerOperations.stdout",
+   "sha256": "2357b4bdf965cffc0ca5a675a5ea227e36925805cafa45cfd77dda60ae068818",
+   "bytes": 382
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerProgram.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerProgram.stdout",
+   "sha256": "eedca83ea47ce818b46873376581c4a98e658bffee2583817d73fbaab7a29516",
+   "bytes": 230
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerRepresentation.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerRepresentation.stdout",
+   "sha256": "13796281ec2b927e0be02823082f237c7087d555512c9586ed1b0f31c88f4e91",
+   "bytes": 145
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerTrace.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateIntegerTrace.stdout",
+   "sha256": "9824444561e59d23c1d0517bcab6b8997f1ce62b16f2e4070f919c6f87b3c5ef",
+   "bytes": 71
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineControl.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineControl.stdout",
+   "sha256": "d26e646b82a94bc5defdc9d648acb65e0c8267f7a5bc76b4f6aacd5bfd5a23cb",
+   "bytes": 325
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineFailure.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineFailure.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineFold.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineFold.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineIndex.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineIndex.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineLiterals.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineLiterals.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineLoops.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineLoops.stdout",
+   "sha256": "742cba6927d5116ba5af68031710ca27ed61d89bc30ebc7cfabd09935111c0df",
+   "bytes": 256
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineProgram.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineProgram.stdout",
+   "sha256": "571c70e737a1dc43ba21e890a3378a0b5c38612e9a7d25826bfbec6c3201e47d",
+   "bytes": 355
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineScope.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineScope.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineSegments.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStatePipelineSegments.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalar.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalar.stdout",
+   "sha256": "2180adb1c003eca58b6a084343277b5adf39afa69aae49b31632b5cd674b169e",
+   "bytes": 514
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarContract.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarContract.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarInitialized.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarInitialized.stdout",
+   "sha256": "979225906af878de921e11e4687fd674470bdcc005ccb508cea7b95c37699303",
+   "bytes": 263
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarNormalize.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarNormalize.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarSound.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarSound.stdout",
+   "sha256": "c72c81ee54250a89ce688d2c822886b5767477c262445a383bb7a85ead649668",
+   "bytes": 156
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarTyping.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.GraphStateScalarTyping.stdout",
+   "sha256": "8dfda2f349a8254f991d11d0c7fb81ba2600fc260272f438273ae427760d09a6",
+   "bytes": 103
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.ResourceGeometry.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.ResourceGeometry.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.StateEffects.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/Merlin.StateEffects.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/MerlinVerify.Core.AST.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/MerlinVerify.Core.AST.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/MerlinVerify.Core.Eq.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/MerlinVerify.Core.Eq.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/lean-version.txt",
+   "sha256": "eb22144228dd41cd51a0c84af4f976cd0cef473102dcf99b60be756b11f2b95a",
+   "bytes": 106
+  },
+  {
+   "path": "axiom-audit/build/logs/modules.tsv",
+   "sha256": "e69b68edc02e71536d12e430d499be6f8cfd417be102cb03d5abd8ddafc8952b",
+   "bytes": 3141
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintDeclared.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintDeclared.stdout",
+   "sha256": "1c0141bb680aa7630bb784d534e917cee6bf51091b113e0ac95955378d268231",
+   "bytes": 16410
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintInteger.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintInteger.stdout",
+   "sha256": "da4590bd7eb5b500393a810cd120613ddab411bd4c910313da2fd9ad6c19bb0d",
+   "bytes": 13824
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintIntegerExtra.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintIntegerExtra.stdout",
+   "sha256": "b590808b00eed5213c784a6b5fcf66677585aec625086d4d6f327a6215989342",
+   "bytes": 5453
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintIntegerInhabited.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintIntegerInhabited.stdout",
+   "sha256": "80b1edafed79b61ff305f3b449883ace126f1081c8e03768e82cd0428ae8c36a",
+   "bytes": 4333
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintMemorySCF.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintMemorySCF.stdout",
+   "sha256": "34432324dfbeed882ed6c0da6125e13e3daed8cedb2de60f880f472a63be0a9b",
+   "bytes": 30929
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintPipeline.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintPipeline.stdout",
+   "sha256": "5b053eb42496c541e5e8b160ac30dd958ff43f6e20cbfe1a061efcacf8bd50ff",
+   "bytes": 10398
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintPipelineInhabited.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintPipelineInhabited.stdout",
+   "sha256": "40a2e4f25d786a8ce327dcd56c57f787adafb01a1d5c083be3c6dae89c86016d",
+   "bytes": 3900
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintScalar.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintScalar.stdout",
+   "sha256": "46d786ab70f08fe63ae9572ca08cec6571ea282bf712c5f92826abfa8977a9e7",
+   "bytes": 9314
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintShape.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/print-PrintShape.stdout",
+   "sha256": "34d0f2fbc16e5981c9a56f8d350812f2d00de99d9cfeeeb41b31d5b06042e58d",
+   "bytes": 10971
+  },
+  {
+   "path": "axiom-audit/build/logs/query-Check.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-Check.stdout",
+   "sha256": "10246e64d5e111735096d5d1b844b466a13e16ea180f8a808b8067f0b733def5",
+   "bytes": 352
+  },
+  {
+   "path": "axiom-audit/build/logs/query-GraphStateIntegerInstance.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-GraphStateIntegerInstance.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-GraphStatePipelineInstance.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-GraphStatePipelineInstance.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-GraphStateScalarInstance.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-GraphStateScalarInstance.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-Obligation.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-Obligation.stdout",
+   "sha256": "b10bf701789e46ed12b1286d2f14aa99f011cf6cdb8659c5cf1962664e09153e",
+   "bytes": 2980
+  },
+  {
+   "path": "axiom-audit/build/logs/query-integer-provider.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-integer-provider.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-pipeline-symbolic-provider.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/query-pipeline-symbolic-provider.stdout",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-declared.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-declared.stdout",
+   "sha256": "855886df82bcc3dd64609d86674f3e7918fbb51c602e48adfdebba9c25842981",
+   "bytes": 278
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-integer-provider.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-integer-provider.stdout",
+   "sha256": "59f3810343a36023b79920fd52c1bfa9d118bed272c03b60361cfa5863771084",
+   "bytes": 258
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-integer-query-only.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-integer-query-only.stdout",
+   "sha256": "c1771e3bd66aa865a0e9fea39448efdaf020780795d5d60dd250e97b1973596a",
+   "bytes": 258
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-integer.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-integer.stdout",
+   "sha256": "788b96c771faad74a84291c940d737aa4d141dfee9bde2ffd9ec5d3cec4a154d",
+   "bytes": 329
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-memory-scf.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-memory-scf.stdout",
+   "sha256": "27e18e91b6d1d551cd5a1c4e74dff9ec96a6d620652cd882f500450ff9f5586e",
+   "bytes": 334
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-pipeline-symbolic-provider.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-pipeline-symbolic-provider.stdout",
+   "sha256": "13865327a6da13f15e9e2a499bbaf54fa9de42d8026a131a4c46635d9ab6ecf2",
+   "bytes": 258
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-pipeline.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-pipeline.stdout",
+   "sha256": "a4c4d066f4e9244b48c08bc38d5162865dd18f764dd99b89cd023c3216c392af",
+   "bytes": 258
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-scalar.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-scalar.stdout",
+   "sha256": "a1920b70b6902141e31291ebdae883c9473d3d2d0d2d126dff7874d9c3f66c6f",
+   "bytes": 253
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-shape.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/reviewer-audit-shape.stdout",
+   "sha256": "856976717020b2be54c0ad01b467afefb96f96b066be3068a68a609ab6bf4348",
+   "bytes": 241
+  },
+  {
+   "path": "axiom-audit/build/logs/witness-AllocationGap.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/witness-AllocationGap.stdout",
+   "sha256": "fadee78d76cc678d4f89cb65f6cf016a5d4dbe0cd1d37b6165a9bfa21862fcd8",
+   "bytes": 703
+  },
+  {
+   "path": "axiom-audit/build/logs/witness-DeclaredJointWitness.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build/logs/witness-DeclaredJointWitness.stdout",
+   "sha256": "1c6ae30313ceb04e84af1e5eb5ded1a8264dbe8335e2d772685e7c76c0517002",
+   "bytes": 792
+  },
+  {
+   "path": "axiom-audit/build/object-identities.json",
+   "sha256": "357a19a37689816495c8c691074475251308c3cd9883084c80b868ed905fdf73",
+   "bytes": 14384
+  },
+  {
+   "path": "axiom-audit/build-and-audit.sh",
+   "sha256": "8690c2313331b5e25d4809fda26b0d5e72646043eee2033e8e74edc60d34a7c3",
+   "bytes": 2336
+  },
+  {
+   "path": "axiom-audit/build-inhabited.sh",
+   "sha256": "02d3a5ea2761a823953c0c178f5ac3bb8319d06ae84ae2ad88f7417c9b601560",
+   "bytes": 1328
+  },
+  {
+   "path": "axiom-audit/build-order.txt",
+   "sha256": "82cb6c2b92df11099488b8dbe3ca7f321c1885263483035fa2c896cc6dc91cff",
+   "bytes": 6832
+  },
+  {
+   "path": "axiom-audit/build-run.stderr",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "bytes": 0
+  },
+  {
+   "path": "axiom-audit/build-run.stdout",
+   "sha256": "5ebef92e48afa6e805aee4abd4be9ae776e4fbe0a01a8a9b8de116edb1a17ffb",
+   "bytes": 29
+  },
+  {
+   "path": "axiom-audit/closure-declared-extra.json",
+   "sha256": "07614039177a2e6e7c9bc17070e136019f8501cf0146edbf375b361893aa2218",
+   "bytes": 13960
+  },
+  {
+   "path": "axiom-audit/closure-declared.json",
+   "sha256": "b9d6b29dec166f112b4d9d43cb0c124916c0cee92904b7fce58093ef72144929",
+   "bytes": 15354
+  },
+  {
+   "path": "axiom-audit/closure-inhabited-queries.json",
+   "sha256": "38dc1d691f96cbfb38407008a0717393b76508faf10211405c5522c5b81fe879",
+   "bytes": 49588
+  },
+  {
+   "path": "axiom-audit/closure-integer-extra.json",
+   "sha256": "5abe8107238cbf2ffedab775b60aa68e7127439ed2b1fd2437f39fc3dbe837cd",
+   "bytes": 13372
+  },
+  {
+   "path": "axiom-audit/closure-integer.json",
+   "sha256": "ff0347f233be7104e30f3b23c4a529b687dc3aa19b0ea263a9d44026671385dc",
+   "bytes": 40201
+  },
+  {
+   "path": "axiom-audit/closure-memory-scf.json",
+   "sha256": "f6e43fd8d2b543e732b0af5ba1bb2caff49bd9a72db8581a2026c95432688c5b",
+   "bytes": 16601
+  },
+  {
+   "path": "axiom-audit/closure-pipeline.json",
+   "sha256": "254d70ec5534d4b6e9decd862bc1370ac2868dfd368eaeb6c5dbe1c0068e7e96",
+   "bytes": 24191
+  },
+  {
+   "path": "axiom-audit/closure-scalar.json",
+   "sha256": "8e47441ea6c9bc6cead35f6573f3731267323ab6485ef0680da100b2038bd0be",
+   "bytes": 9801
+  },
+  {
+   "path": "axiom-audit/closure-shape.json",
+   "sha256": "da7e87b5b33008884373a18d39e3c8b7d8dc4a5bd2a5ed606af4bc48f21a8f18",
+   "bytes": 22291
+  },
+  {
+   "path": "axiom-audit/closure-witness.json",
+   "sha256": "139b01547c5dd8defe5ec6e30719f99ae6c8c29c3a0f0fadb937f66e34661acc",
+   "bytes": 8157
+  },
+  {
+   "path": "axiom-audit/print/PrintDeclared.lean",
+   "sha256": "dd4757823aa0c98048824d89bdf8c1a047d1d0b50ba7516cd2d4061609752eed",
+   "bytes": 1700
+  },
+  {
+   "path": "axiom-audit/print/PrintInteger.lean",
+   "sha256": "55ecd9f06fbc49c7490ea1d706986b4e81d2d3186544e5a71a3b3327edd54b34",
+   "bytes": 2099
+  },
+  {
+   "path": "axiom-audit/print/PrintIntegerExtra.lean",
+   "sha256": "f84f985cebf87ab6d4a9201333788eb398f6fdfc4dd4865e84586687cdf69424",
+   "bytes": 1635
+  },
+  {
+   "path": "axiom-audit/print/PrintMemorySCF.lean",
+   "sha256": "edad6962c83b48aa3623225b5421dc7628b3dd83464fbeab96213d95966d0007",
+   "bytes": 4808
+  },
+  {
+   "path": "axiom-audit/print/PrintPipeline.lean",
+   "sha256": "95339a68fa548e34b71564549dfa6c9b57fdddc866f841f6c15e1a8799bb815c",
+   "bytes": 2280
+  },
+  {
+   "path": "axiom-audit/print/PrintScalar.lean",
+   "sha256": "0074d1e970127d845c83257b0683749d6994f354f8de43803e3f04e55dd1f1b6",
+   "bytes": 2260
+  },
+  {
+   "path": "axiom-audit/print/PrintShape.lean",
+   "sha256": "c3c5e394eeb8c0ae61446c6de94a9e9eb627babee66f78613eb07a810d543eb2",
+   "bytes": 2518
+  },
+  {
+   "path": "axiom-audit/print-inhabited/PrintIntegerInhabited.lean",
+   "sha256": "c671899b537c4af5f2d80b7a9c28821075c6ff774251aacb8894203bf7ca7f8b",
+   "bytes": 1457
+  },
+  {
+   "path": "axiom-audit/print-inhabited/PrintPipelineInhabited.lean",
+   "sha256": "01b3af9f1c0dcd089f670ee960e751a42105469e04dbfd7d2de94161bf6cb638",
+   "bytes": 1352
+  },
+  {
+   "path": "axiom-audit/queries-inhabited.txt",
+   "sha256": "df3bae4a3bb2b787b36687fd6a37f8f4d437dd859d2823d0ce52061a20b4667c",
+   "bytes": 481
+  },
+  {
+   "path": "axiom-audit/queries.txt",
+   "sha256": "0f5770e7892dd195ec5355c4e7280308b566e3df450200875083dd97b6f8d0a4",
+   "bytes": 999
+  },
+  {
+   "path": "axiom-audit/roots/DeclaredExtraRoots.lean",
+   "sha256": "ead097d7f9f73cde783ad1f35a8327baf7fbffa878d13b3e8b21a9e29a0840c2",
+   "bytes": 127
+  },
+  {
+   "path": "axiom-audit/roots/IntegerExtraRoots.lean",
+   "sha256": "e5221ebce3d72baa1f017386863725438203bd77cab17d7e779e73313c9181d0",
+   "bytes": 162
+  },
+  {
+   "path": "axiom-audit/roots/MemorySCFRoots.lean",
+   "sha256": "b423e7b6833475dc395af7ae25c07465389e3aa7763e50b2926c60303c60adc4",
+   "bytes": 203
+  },
+  {
+   "path": "axiom-audit/run-reviewer-audit.sh",
+   "sha256": "1328ba39f6a2ed664bcc29bbce16d5ec7e9cfe8b844c82736a6d80c142e81acd",
+   "bytes": 1316
+  },
+  {
+   "path": "axiom-audit/summarize.py",
+   "sha256": "556831af0def4c672640d9093f60e50a7b1dd3ac42dedb57b053d592e79c8a36",
+   "bytes": 4559
+  },
+  {
+   "path": "axiom-audit/toposort.py",
+   "sha256": "ab1c5194667f912b5fbb20d4094ad337224a7c1bb1deb168a6752460514b8180",
+   "bytes": 969
+  },
+  {
+   "path": "scratch/lean_closure_scan.py",
+   "sha256": "23c113207b9ad760e6ccfc2f6abc7f14c66e0907b967658bf01db565fe78e6ff",
+   "bytes": 5855
+  },
+  {
+   "path": "scratch/locations.tsv",
+   "sha256": "4151d9beecc4699ed20fbdf495bf720f376d4c94a043e309e4a586d4974fd07f",
+   "bytes": 12365
+  },
+  {
+   "path": "source-identities.json",
+   "sha256": "8d7f2f5a0b0fdee436d656fd04d71aa515a1b0b3de9bd67e6fabb8946073ef94",
+   "bytes": 34485
+  },
+  {
+   "path": "witness/AllocationGap.lean",
+   "sha256": "f3d8bceecf846ae702dbee262fa314ca5e8e0d99d427050f7cdc082e4409f674",
+   "bytes": 8153
+  },
+  {
+   "path": "witness/DeclaredJointWitness.lean",
+   "sha256": "1354bf80f8ae8e633d38adee2f34e1171582d46d0b3c60f93fd635178e6ebeca",
+   "bytes": 10754
+  }
+ ]
+}

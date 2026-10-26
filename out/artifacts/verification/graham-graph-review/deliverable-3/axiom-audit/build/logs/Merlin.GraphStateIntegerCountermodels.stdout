@@ -1,0 +1,7 @@
+'Merlin.GraphState.Integer.Countermodels.noncanonical_entry_refutes_neutral_deletion' depends on axioms: [propext,
+ Quot.sound]
+'Merlin.GraphState.Integer.Countermodels.missing_local_result_contract_refutes_deletion' depends on axioms: [propext,
+ Quot.sound]
+'Merlin.GraphState.Integer.Countermodels.missing_primitive_contract_refutes_deletion' depends on axioms: [propext,
+ Quot.sound]
+'Merlin.GraphState.Integer.Countermodels.hidden_effect_countermodel' depends on axioms: [propext, Quot.sound]

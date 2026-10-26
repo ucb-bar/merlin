@@ -1,0 +1,559 @@
+{
+ "external_imports": [
+  "Init.Data.List.Lemmas",
+  "Lean.Elab.Tactic.Omega"
+ ],
+ "merlin_modules": 28,
+ "violation_total": 0,
+ "queries": [
+  {
+   "path": "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/roots/MemorySCFRoots.lean",
+   "sha256": "b423e7b6833475dc395af7ae25c07465389e3aa7763e50b2926c60303c60adc4",
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  }
+ ],
+ "files": [
+  {
+   "module": "Merlin.GraphLoopsMemorySCF",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+   "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
+   "lines": 106,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFBounds",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean",
+   "sha256": "39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2",
+   "lines": 45,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFComposition",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
+   "sha256": "26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2",
+   "lines": 193,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 21,
+     "token": "instance",
+     "text": "instance (objects : GraphLoopsReuse.Objects) (config : Configuration) : Decidable (config.Valid objects) :="
+    },
+    {
+     "line": 51,
+     "token": "initialize",
+     "text": "| .initialize _ _ => False"
+    },
+    {
+     "line": 67,
+     "token": "initialize",
+     "text": "Step objects configs meaning candidate segmented (.initialize config.object config.key) before \u27e8before.observed, after\u27e9"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFCoverage",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean",
+   "sha256": "e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf",
+   "lines": 92,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFEffects",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean",
+   "sha256": "17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1",
+   "lines": 113,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 107,
+     "token": "Classical",
+     "text": "Classical.choose (initialized index inside) else first"
+    },
+    {
+     "line": 111,
+     "token": "Classical",
+     "text": "exact (by simpa only [values, dite_eq_left inside] using Classical.choose_spec (initialized index inside))"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFLoops",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean",
+   "sha256": "3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4",
+   "lines": 68,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFModel",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+   "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+   "lines": 105,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 38,
+     "token": "instance",
+     "text": "instance (reuse : GraphLoopsReuse.Model.Projection) (boundary : Boundary) : Decidable (boundary.Valid reuse) :="
+    },
+    {
+     "line": 42,
+     "token": "initialize",
+     "text": "| .initialize object key => \u2203 config \u2208 configs p, config.object = object \u2227 config.key = key"
+    },
+    {
+     "line": 45,
+     "token": "instance",
+     "text": "instance (p : Projection) (instruction : GraphLoopsReuse.Instruction) : Decidable (Bound p instruction) := by"
+    },
+    {
+     "line": 55,
+     "token": "instance",
+     "text": "instance (p : Projection) : Decidable (Valid p) :="
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFModes",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+   "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+   "lines": 73,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFOperational",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
+   "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
+   "lines": 147,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFRect",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean",
+   "sha256": "5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562",
+   "lines": 94,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 25,
+     "token": "instance",
+     "text": "instance (program : Initializer) : Decidable program.One := inferInstanceAs (Decidable (_ \u2227 _ \u2227 _ \u2227 _))"
+    },
+    {
+     "line": 26,
+     "token": "instance",
+     "text": "instance (program : Initializer) : Decidable program.Two := inferInstanceAs (Decidable (_ \u2227 _ \u2227 _ \u2227 _ \u2227 _))"
+    },
+    {
+     "line": 27,
+     "token": "instance",
+     "text": "instance (program : Initializer) : Decidable program.WellFormed := inferInstanceAs (Decidable (_ \u2227 _ \u2227 _ \u2227 _))"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFScope",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean",
+   "sha256": "86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3",
+   "lines": 59,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFSimulation",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
+   "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
+   "lines": 68,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsMemorySCFWitness",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean",
+   "sha256": "414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3",
+   "lines": 157,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsReuse",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean",
+   "sha256": "51b46ae3c0e1bb64ca47ec1ec1a2bb36fe96f706d229d8ca4f6302f6e38a5c2c",
+   "lines": 122,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 37,
+     "token": "instance",
+     "text": "instance (slot : Nat \u2192 Nat) (live : List Nat) : Decidable (SlotUnique slot live) :="
+    },
+    {
+     "line": 71,
+     "token": "initialize",
+     "text": "theorem Related.initialize {Value Public : Type} {slot extent : Nat \u2192 Nat} {ready : List Nat}"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsReuseCountermodels",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean",
+   "sha256": "ff170131b35e0c972c02573437da450ebfb3595efcd47f07f55d54b657483f98",
+   "lines": 85,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 45,
+     "token": "initialize",
+     "text": ".allocate 0 true, .initialize 0 \"first\", .load 0 \"read\", .release 0 false,"
+    },
+    {
+     "line": 46,
+     "token": "initialize",
+     "text": ".allocate 1 false, .initialize 1 \"second\", .load 1 \"read\", .release 1 true]"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsReuseGeometry",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean",
+   "sha256": "9c2553f3fa45cbdeb03c9f084aa6f84f247a574f98c7a543010c8ffa65018e1a",
+   "lines": 144,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 16,
+     "token": "instance",
+     "text": "instance (shape : List Nat) : Decidable (Positive shape) :="
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsReuseLifetime",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean",
+   "sha256": "cb3d7cd2553443fb204209cb369bdad79a31d340619e57efd12106b3f51c6c4a",
+   "lines": 57,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 19,
+     "token": "initialize",
+     "text": "| some (.initialize actual _) => actual == object"
+    },
+    {
+     "line": 28,
+     "token": "instance",
+     "text": "instance (objects : Objects) (instructions : List Instruction) (life : Lifetime) :"
+    },
+    {
+     "line": 37,
+     "token": "instance",
+     "text": "instance (objects : Objects) (instructions : List Instruction) (lives : List Lifetime) :"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsReuseModel",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean",
+   "sha256": "0011d490dffb9d36ab3d7f1c4b3e944c91ce6a30ae84155367c39b3090b54626",
+   "lines": 143,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 39,
+     "token": "instance",
+     "text": "instance (bits : Nat) (object : Object) : Decidable (ValidObject bits object) :="
+    },
+    {
+     "line": 70,
+     "token": "instance",
+     "text": "instance (objects : Objects) : Decidable (CompatibleObjects objects) :="
+    },
+    {
+     "line": 80,
+     "token": "instance",
+     "text": "instance (objects : Objects) (init : Initializer) : Decidable (init.Valid objects) :="
+    },
+    {
+     "line": 85,
+     "token": "initialize",
+     "text": "| .initialize object key => \u2203 init \u2208 projection.initializers, init.object = object \u2227 init.sourceBody = key"
+    },
+    {
+     "line": 88,
+     "token": "instance",
+     "text": "instance (projection : Projection) (instruction : Instruction) : Decidable (InitializerBound projection instruction) := by"
+    },
+    {
+     "line": 98,
+     "token": "instance",
+     "text": "instance (p : Projection) : Decidable (Valid p) :="
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsReuseProtocol",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean",
+   "sha256": "538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0",
+   "lines": 124,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 25,
+     "token": "initialize",
+     "text": "| initialize (object : Nat) (key : String)"
+    },
+    {
+     "line": 48,
+     "token": "instance",
+     "text": "instance (objects : Objects) (status : Status) : Decidable (Invariant objects status) :="
+    },
+    {
+     "line": 54,
+     "token": "initialize",
+     "text": "| .initialize object _ => \u27e8status.live, object :: status.ready, status.reserved\u27e9"
+    },
+    {
+     "line": 62,
+     "token": "initialize",
+     "text": "| .initialize object _ => object \u2208 status.live \u2227 object \u2209 status.ready"
+    },
+    {
+     "line": 67,
+     "token": "instance",
+     "text": "instance (objects : Objects) (status : Status) (instruction : Instruction) :"
+    },
+    {
+     "line": 74,
+     "token": "instance",
+     "text": "instance (objects : Objects) (status : Status) (instruction : Instruction) :"
+    },
+    {
+     "line": 117,
+     "token": "initialize",
+     "text": "(admitted : Admitted objects status (.initialize object key)) :"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsReuseSemantics",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean",
+   "sha256": "8b5f9d5a71a7aab8559286e5bdb36dfc02e2abeb24a76ad5710434a20bf3da6f",
+   "lines": 195,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 45,
+     "token": "initialize",
+     "text": "Step objects primitives candidate (.initialize object key) initial (initializeMemory objects candidate object values initial)"
+    },
+    {
+     "line": 80,
+     "token": "initialize",
+     "text": "exact related.initialize object values admitted.initialize_separate"
+    },
+    {
+     "line": 114,
+     "token": "initialize",
+     "text": "exact related.initialize object values admitted.initialize_separate"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsSegment",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+   "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+   "lines": 169,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 42,
+     "token": "private",
+     "text": "private theorem block_end (lower step tile : Nat) :"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsSegmentBounds",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+   "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+   "lines": 81,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 23,
+     "token": "instance",
+     "text": "instance (bounds : Bounds) : Decidable bounds.Valid :="
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsSegmentModel",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+   "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+   "lines": 134,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 63,
+     "token": "instance",
+     "text": "instance (projection : Projection) : Decidable (Numeric projection) :="
+    },
+    {
+     "line": 66,
+     "token": "instance",
+     "text": "instance (projection : Projection) : Decidable (Structural projection) :="
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsSegmentState",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+   "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+   "lines": 39,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsUnroll",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+   "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+   "lines": 112,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 24,
+     "token": "instance",
+     "text": "instance (lower upper step count : Nat) : Decidable (CountCorrect lower upper step count) := by"
+    },
+    {
+     "line": 27,
+     "token": "private",
+     "text": "private theorem next_end (lower step count : Nat) :"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsUnrollGrouping",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+   "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+   "lines": 167,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.ResourceGeometry",
+   "path": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+   "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+   "lines": 69,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.StateEffects",
+   "path": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+   "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+   "lines": 90,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 27,
+     "token": "instance",
+     "text": "instance (first second : List Nat) : Decidable (Disjoint first second) :="
+    },
+    {
+     "line": 35,
+     "token": "instance",
+     "text": "instance (first second : Footprint) : Decidable (Independent first second) :="
+    }
+   ],
+   "set_option": []
+  }
+ ]
+}

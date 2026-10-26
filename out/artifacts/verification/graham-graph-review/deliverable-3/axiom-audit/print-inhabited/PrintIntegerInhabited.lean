@@ -1,0 +1,20 @@
+-- Graham D3 reviewer-authored audit file: statements and transitive axioms only.
+import GraphStateIntegerInstance
+#check @Merlin.GraphStateIntegerInstance.complete
+#print axioms Merlin.GraphStateIntegerInstance.complete
+#check @Merlin.GraphStateIntegerInstance.IntegerProvider.laws
+#print axioms Merlin.GraphStateIntegerInstance.IntegerProvider.laws
+#check @Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical
+#print axioms Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical
+#check @Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero
+#print axioms Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero
+#check @Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success
+#print axioms Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success
+#check @Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success
+#print axioms Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success
+#check @Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure
+#print axioms Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure
+#check @Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure
+#print axioms Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure
+#check @Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached
+#print axioms Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached

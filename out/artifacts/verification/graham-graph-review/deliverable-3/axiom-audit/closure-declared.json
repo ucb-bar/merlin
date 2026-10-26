@@ -1,0 +1,547 @@
+{
+ "external_imports": [
+  "Init.Data.List.Lemmas"
+ ],
+ "merlin_modules": 14,
+ "violation_total": 0,
+ "queries": [
+  {
+   "path": "out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/Check.lean",
+   "sha256": "a4abc04170b9ecdc1041dd7d427b4ce517258fbb7d855db82f99a48b63c2835f",
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  }
+ ],
+ "files": [
+  {
+   "module": "Merlin.GraphRegions",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegions.lean",
+   "sha256": "dd54f1b6c42b1f4e84029461e15eb3f87e0810827fadc322326487a165d96bac",
+   "lines": 337,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 291,
+     "token": "instance",
+     "text": "instance (available : List Nat) (nodes : List Node) : Decidable (ValidNodes available nodes) :="
+    },
+    {
+     "line": 298,
+     "token": "instance",
+     "text": "instance (graph : Graph) : Decidable graph.Valid := by"
+    }
+   ],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredBridge",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean",
+   "sha256": "238812250de03f62906a8af05f0eea84ab7cf9b918b4b226a6685f504c8aa2b8",
+   "lines": 103,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredEvaluation",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean",
+   "sha256": "91305aa0c4af5bc7e1b31462c0aa83201dceb10abe60d04c8ce91c05d71dc66d",
+   "lines": 129,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredGeneric",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean",
+   "sha256": "218ca5a0e2e20649477cf33efb998c23bb93df6e3e992f8f04b768db4862855f",
+   "lines": 70,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 38,
+     "token": "instance",
+     "text": "instance (stage : ScalarStage) (shape names : List Nat) (unused : Nat) :"
+    }
+   ],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredMatch",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean",
+   "sha256": "0f8f1e34f085890493e83ffecc1c98bd896fd765e207ece0f9795d2bab65c6d0",
+   "lines": 255,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 97,
+     "token": "private",
+     "text": "private def valuePairs (values : List Value) : List (Nat \u00d7 Ty) := values.map fun value => (value.id, value.ty)"
+    },
+    {
+     "line": 99,
+     "token": "private",
+     "text": "private theorem valuePairs_injective {first second : List Value} (same : valuePairs first = valuePairs second) :"
+    },
+    {
+     "line": 151,
+     "token": "instance",
+     "text": "instance (primitive : Primitive) : Decidable primitive.Valid := by"
+    },
+    {
+     "line": 165,
+     "token": "instance",
+     "text": "instance (widths : List Nat) (instructions : List Instruction) : Decidable (instructionsValid widths instructions) :="
+    },
+    {
+     "line": 168,
+     "token": "instance",
+     "text": "instance (program : Program) : Decidable program.Valid := by unfold Program.Valid; infer_instance"
+    }
+   ],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredMemory",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean",
+   "sha256": "655797e30a22b49ab1bc8bc422149586a6375ac234e5c63b794acbb98b2721e0",
+   "lines": 152,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 19,
+     "token": "instance",
+     "text": "instance (first second : Window) : Decidable (first.Disjoint second) := by"
+    },
+    {
+     "line": 47,
+     "token": "instance",
+     "text": "instance (elements : Nat) (stage : ScalarStage) (addresses : Nat \u2192 Window) (call : BoundCall) :"
+    }
+   ],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredNodes",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean",
+   "sha256": "9be7f585db6e32ceba6e6926e75cf290565dbbaa2d8363855aa500121a172971",
+   "lines": 106,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredProjection",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean",
+   "sha256": "a4943fbb742c5d5bc5b4338c1f007faed5a5561e186999de91c686178e806343",
+   "lines": 74,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredRaw",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean",
+   "sha256": "07da97265f745171912645dcdbd5ca4f24ec910e221332bdb8cfeeee32b2c04e",
+   "lines": 126,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 46,
+     "token": "instance",
+     "text": "instance argumentsFitDec : (widths : List Nat) \u2192 (arguments : List (String \u00d7 Nat)) \u2192 Decidable (argumentsFit widths arguments)"
+    },
+    {
+     "line": 108,
+     "token": "instance",
+     "text": "instance sequenceValidDec (elements : Nat) (addresses : Nat \u2192 Window) :"
+    }
+   ],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsDeclaredScalar",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean",
+   "sha256": "e8bf9d1c1b2c1967ef0c7d05c329fb35922ffbd4e10931a972a33bed301d6001",
+   "lines": 103,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.GraphRegionsFusion",
+   "path": "src/merlin/verify/lean/Merlin/GraphRegionsFusion.lean",
+   "sha256": "7076119973823d6f1e9e5e09e5f4b8c23a679423c37475f6b78fe99329f45949",
+   "lines": 156,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.StateEffects",
+   "path": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+   "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+   "lines": 90,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 27,
+     "token": "instance",
+     "text": "instance (first second : List Nat) : Decidable (Disjoint first second) :="
+    },
+    {
+     "line": 35,
+     "token": "instance",
+     "text": "instance (first second : Footprint) : Decidable (Independent first second) :="
+    }
+   ],
+   "set_option": []
+  },
+  {
+   "module": "MerlinVerify.Core.AST",
+   "path": "merlin/lean/MerlinVerify/Core/AST.lean",
+   "sha256": "022cec55c189ddc40e1ee77e8cc9d8ede4f7734e4ce45a8848e98b96ee5643cd",
+   "lines": 173,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 61,
+     "token": "opaque",
+     "text": "| opaque (text : String)"
+    },
+    {
+     "line": 88,
+     "token": "opaque",
+     "text": "| opaque (text : String)"
+    },
+    {
+     "line": 91,
+     "token": "instance",
+     "text": "deriving instance Inhabited for Ty"
+    },
+    {
+     "line": 92,
+     "token": "instance",
+     "text": "deriving instance Inhabited for Attr"
+    },
+    {
+     "line": 115,
+     "token": "instance",
+     "text": "deriving instance Inhabited for Op"
+    },
+    {
+     "line": 116,
+     "token": "instance",
+     "text": "deriving instance Inhabited for Region"
+    },
+    {
+     "line": 117,
+     "token": "instance",
+     "text": "deriving instance Inhabited for Block"
+    }
+   ],
+   "set_option": []
+  },
+  {
+   "module": "MerlinVerify.Core.Eq",
+   "path": "merlin/lean/MerlinVerify/Core/Eq.lean",
+   "sha256": "0bd85efa4087bde2070f157165ad5c9cf07469cfd216314bf2524ced769515f2",
+   "lines": 279,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 26,
+     "token": "opaque",
+     "text": "| .opaque a, .opaque b => a == b"
+    },
+    {
+     "line": 26,
+     "token": "opaque",
+     "text": "| .opaque a, .opaque b => a == b"
+    },
+    {
+     "line": 48,
+     "token": "opaque",
+     "text": "| .opaque a, .opaque b => a == b"
+    },
+    {
+     "line": 48,
+     "token": "opaque",
+     "text": "| .opaque a, .opaque b => a == b"
+    },
+    {
+     "line": 70,
+     "token": "opaque",
+     "text": "| .opaque _, .opaque _, h => by simp_all [Ty.beq]"
+    },
+    {
+     "line": 70,
+     "token": "opaque",
+     "text": "| .opaque _, .opaque _, h => by simp_all [Ty.beq]"
+    },
+    {
+     "line": 89,
+     "token": "opaque",
+     "text": "| .int _, .none, h | .int _, .opaque _, h"
+    },
+    {
+     "line": 92,
+     "token": "opaque",
+     "text": "| .sint _, .none, h | .sint _, .opaque _, h"
+    },
+    {
+     "line": 95,
+     "token": "opaque",
+     "text": "| .uint _, .none, h | .uint _, .opaque _, h"
+    },
+    {
+     "line": 98,
+     "token": "opaque",
+     "text": "| .index, .none, h | .index, .opaque _, h"
+    },
+    {
+     "line": 101,
+     "token": "opaque",
+     "text": "| .float _, .none, h | .float _, .opaque _, h"
+    },
+    {
+     "line": 104,
+     "token": "opaque",
+     "text": "| .tensor .., .function .., h | .tensor .., .none, h | .tensor .., .opaque _, h"
+    },
+    {
+     "line": 107,
+     "token": "opaque",
+     "text": "| .memref .., .function .., h | .memref .., .none, h | .memref .., .opaque _, h"
+    },
+    {
+     "line": 110,
+     "token": "opaque",
+     "text": "| .vector .., .function .., h | .vector .., .none, h | .vector .., .opaque _, h"
+    },
+    {
+     "line": 114,
+     "token": "opaque",
+     "text": "| .function .., .opaque _, h"
+    },
+    {
+     "line": 117,
+     "token": "opaque",
+     "text": "| .none, .function .., h | .none, .opaque _, h"
+    },
+    {
+     "line": 118,
+     "token": "opaque",
+     "text": "| .opaque _, .int _, h | .opaque _, .sint _, h | .opaque _, .uint _, h | .opaque _, .index, h"
+    },
+    {
+     "line": 118,
+     "token": "opaque",
+     "text": "| .opaque _, .int _, h | .opaque _, .sint _, h | .opaque _, .uint _, h | .opaque _, .index, h"
+    },
+    {
+     "line": 118,
+     "token": "opaque",
+     "text": "| .opaque _, .int _, h | .opaque _, .sint _, h | .opaque _, .uint _, h | .opaque _, .index, h"
+    },
+    {
+     "line": 118,
+     "token": "opaque",
+     "text": "| .opaque _, .int _, h | .opaque _, .sint _, h | .opaque _, .uint _, h | .opaque _, .index, h"
+    },
+    {
+     "line": 119,
+     "token": "opaque",
+     "text": "| .opaque _, .float _, h | .opaque _, .tensor .., h | .opaque _, .memref .., h"
+    },
+    {
+     "line": 119,
+     "token": "opaque",
+     "text": "| .opaque _, .float _, h | .opaque _, .tensor .., h | .opaque _, .memref .., h"
+    },
+    {
+     "line": 119,
+     "token": "opaque",
+     "text": "| .opaque _, .float _, h | .opaque _, .tensor .., h | .opaque _, .memref .., h"
+    },
+    {
+     "line": 120,
+     "token": "opaque",
+     "text": "| .opaque _, .vector .., h | .opaque _, .function .., h | .opaque _, .none, h => by"
+    },
+    {
+     "line": 120,
+     "token": "opaque",
+     "text": "| .opaque _, .vector .., h | .opaque _, .function .., h | .opaque _, .none, h => by"
+    },
+    {
+     "line": 120,
+     "token": "opaque",
+     "text": "| .opaque _, .vector .., h | .opaque _, .function .., h | .opaque _, .none, h => by"
+    },
+    {
+     "line": 137,
+     "token": "opaque",
+     "text": "| .bool _, .bool _, h | .str _, .str _, h | .opaque _, .opaque _, h => by simp_all [Attr.beq]"
+    },
+    {
+     "line": 137,
+     "token": "opaque",
+     "text": "| .bool _, .bool _, h | .str _, .str _, h | .opaque _, .opaque _, h => by simp_all [Attr.beq]"
+    },
+    {
+     "line": 162,
+     "token": "opaque",
+     "text": "| .unit, .opaque _, h"
+    },
+    {
+     "line": 166,
+     "token": "opaque",
+     "text": "| .bool _, .opaque _, h"
+    },
+    {
+     "line": 170,
+     "token": "opaque",
+     "text": "| .int .., .opaque _, h"
+    },
+    {
+     "line": 174,
+     "token": "opaque",
+     "text": "| .float .., .dict _, h | .float .., .symbolRef .., h | .float .., .opaque _, h"
+    },
+    {
+     "line": 178,
+     "token": "opaque",
+     "text": "| .str _, .opaque _, h"
+    },
+    {
+     "line": 182,
+     "token": "opaque",
+     "text": "| .type _, .symbolRef .., h | .type _, .opaque _, h"
+    },
+    {
+     "line": 186,
+     "token": "opaque",
+     "text": "| .array _, .dict _, h | .array _, .symbolRef .., h | .array _, .opaque _, h"
+    },
+    {
+     "line": 191,
+     "token": "opaque",
+     "text": "| .denseArray .., .opaque _, h"
+    },
+    {
+     "line": 195,
+     "token": "opaque",
+     "text": "| .dense .., .dict _, h | .dense .., .symbolRef .., h | .dense .., .opaque _, h"
+    },
+    {
+     "line": 200,
+     "token": "opaque",
+     "text": "| .affineMap _, .opaque _, h"
+    },
+    {
+     "line": 204,
+     "token": "opaque",
+     "text": "| .enum .., .dict _, h | .enum .., .symbolRef .., h | .enum .., .opaque _, h"
+    },
+    {
+     "line": 208,
+     "token": "opaque",
+     "text": "| .dict _, .symbolRef .., h | .dict _, .opaque _, h"
+    },
+    {
+     "line": 213,
+     "token": "opaque",
+     "text": "| .symbolRef .., .opaque _, h"
+    },
+    {
+     "line": 214,
+     "token": "opaque",
+     "text": "| .opaque _, .unit, h | .opaque _, .bool _, h | .opaque _, .int .., h | .opaque _, .float .., h"
+    },
+    {
+     "line": 214,
+     "token": "opaque",
+     "text": "| .opaque _, .unit, h | .opaque _, .bool _, h | .opaque _, .int .., h | .opaque _, .float .., h"
+    },
+    {
+     "line": 214,
+     "token": "opaque",
+     "text": "| .opaque _, .unit, h | .opaque _, .bool _, h | .opaque _, .int .., h | .opaque _, .float .., h"
+    },
+    {
+     "line": 214,
+     "token": "opaque",
+     "text": "| .opaque _, .unit, h | .opaque _, .bool _, h | .opaque _, .int .., h | .opaque _, .float .., h"
+    },
+    {
+     "line": 215,
+     "token": "opaque",
+     "text": "| .opaque _, .str _, h | .opaque _, .type _, h | .opaque _, .array _, h"
+    },
+    {
+     "line": 215,
+     "token": "opaque",
+     "text": "| .opaque _, .str _, h | .opaque _, .type _, h | .opaque _, .array _, h"
+    },
+    {
+     "line": 215,
+     "token": "opaque",
+     "text": "| .opaque _, .str _, h | .opaque _, .type _, h | .opaque _, .array _, h"
+    },
+    {
+     "line": 216,
+     "token": "opaque",
+     "text": "| .opaque _, .denseArray .., h | .opaque _, .dense .., h | .opaque _, .affineMap _, h"
+    },
+    {
+     "line": 216,
+     "token": "opaque",
+     "text": "| .opaque _, .denseArray .., h | .opaque _, .dense .., h | .opaque _, .affineMap _, h"
+    },
+    {
+     "line": 216,
+     "token": "opaque",
+     "text": "| .opaque _, .denseArray .., h | .opaque _, .dense .., h | .opaque _, .affineMap _, h"
+    },
+    {
+     "line": 217,
+     "token": "opaque",
+     "text": "| .opaque _, .enum .., h | .opaque _, .dict _, h | .opaque _, .symbolRef .., h => by"
+    },
+    {
+     "line": 217,
+     "token": "opaque",
+     "text": "| .opaque _, .enum .., h | .opaque _, .dict _, h | .opaque _, .symbolRef .., h => by"
+    },
+    {
+     "line": 217,
+     "token": "opaque",
+     "text": "| .opaque _, .enum .., h | .opaque _, .dict _, h | .opaque _, .symbolRef .., h => by"
+    },
+    {
+     "line": 238,
+     "token": "opaque",
+     "text": "| .int _ | .sint _ | .uint _ | .float _ | .opaque _ | .index | .none => by simp [Ty.beq]"
+    },
+    {
+     "line": 253,
+     "token": "opaque",
+     "text": "| .unit | .bool _ | .str _ | .opaque _ | .affineMap _ | .enum .. | .symbolRef .. => by"
+    },
+    {
+     "line": 271,
+     "token": "instance",
+     "text": "instance : DecidableEq Ty := fun a b =>"
+    },
+    {
+     "line": 275,
+     "token": "instance",
+     "text": "instance : DecidableEq Attr := fun a b =>"
+    }
+   ],
+   "set_option": []
+  }
+ ]
+}

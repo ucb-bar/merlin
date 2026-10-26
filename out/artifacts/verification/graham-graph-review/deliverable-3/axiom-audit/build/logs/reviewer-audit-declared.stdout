@@ -1,0 +1,8 @@
+roots: [Check, Merlin.GraphRegionsDeclaredCountermodels]
+modules_in_environment: 669
+theorems_in_scope: 882
+definitions_in_scope: 1076
+axiom_use_counts: [Quot.sound=154, Classical.choice=94, propext=390]
+non_std3_axioms: []
+compiler_unsafe_rec_aux_of_safe_defs: 31
+findings: []
