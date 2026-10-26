@@ -100,8 +100,8 @@ def _kernel_command_inventory(path: Path, *, symbol: str, table: Mapping[str, An
     """Read only the named kernel symbol, never decoy opcodes in the harness."""
     import subprocess
 
-    from merlin.kernels.decode.objdump import tokenize_text, word_of
-    from merlin.kernels.decode.rocc import decode_stream, fields_of
+    from merlin.compile.analysis.disassembly import tokenize_text, word_of
+    from merlin.compile.analysis.rocc_commands import decode_stream, fields_of
     from merlin.llvmlower import toolchain
     from merlin.perf.compiled_static_features import linked_entry_extent
 

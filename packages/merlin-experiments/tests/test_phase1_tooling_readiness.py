@@ -103,6 +103,25 @@ def test_selected_source_grants_still_fail_when_one_is_missing(tmp_path, monkeyp
     assert sum(not check["ok"] for check in checks) == 1
 
 
+def test_a_registry_path_the_bundle_records_as_denied_is_withheld_not_missing(tmp_path, monkeypatch):
+    # Substrate v15 withholds author-inaccessible modules from tool grants and records each as a denial;
+    # readiness must accept that, but a path that is neither granted nor denied still refuses the launch.
+    _, te, _ = _inputs(tmp_path)
+    source = tmp_path / "source"
+    logical = R.TR.spec("merlin_infra").bundle_paths
+
+    def path(item):
+        return str(source / "merlin" / item.removeprefix("merlin/python/merlin/")) + ("/" if item.endswith("/") else "")
+
+    allowed = [{"path": path(item)} for item in logical[:-1]]
+    monkeypatch.setattr(R, "python_source_dir", lambda: tmp_path / "unrelated-install")
+    denied_bundle = {"allowed": allowed, "denied": [{"path": path(logical[-1])}]}
+    checks = R._grant_checks(te, denied_bundle, ("merlin_infra",))
+    assert all(check["ok"] for check in checks)
+    assert "recorded denial" in checks[-1]["detail"]
+    assert sum(not check["ok"] for check in R._grant_checks(te, {"allowed": allowed}, ("merlin_infra",))) == 1
+
+
 def test_new_verification_profile_accepts_exact_legacy_client_leaves(tmp_path, monkeypatch):
     _, te, _ = _inputs(tmp_path)
     root = tmp_path / "selected-src" / "merlin"
@@ -386,3 +405,11 @@ def test_fresh_lowest_level_missing_snapshot_is_no_go(tmp_path):
         context, None, ws, {"arm": "raw_baseline", "compiler_tool_profile": {}}, (), tmp_path, run_dir, None, "frozen"
     )
     assert result["status"] == "no_go"
+
+
+def test_cca_spine_probe_skips_withheld_cca_modules_and_keeps_rtl_backend():
+    denied = {"denied": [{"path": "/sdk/merlin/kernels/cca_contract.py"}]}
+    assert R._cca_withheld(denied) and not R._cca_withheld({"denied": [{"path": "/sdk/merlin/common/x.py"}]})
+    withheld = R._sandbox_probe("t", ("cca_spine",), "", withheld_cca=True)
+    assert "merlin.kernels" not in withheld and "rtl_backend" in withheld
+    assert "from merlin.kernels import cca_contract" in R._sandbox_probe("t", ("cca_spine",), "")

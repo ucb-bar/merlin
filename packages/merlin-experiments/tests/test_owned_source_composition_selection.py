@@ -149,7 +149,10 @@ def test_optional_prepack_without_hoistable_source_keeps_valid_baseline(tmp_path
     assert _resolve_weight_preparation(None, requested=False) == (False, {"status": "not_requested"})
 
 
-def test_saved_composition_reopens_actual_candidate_and_original_owner_instead_of_flat_join(tmp_path):
+@pytest.mark.parametrize("share_preparations", [False, True])
+def test_saved_composition_reopens_actual_candidate_and_original_owner_instead_of_flat_join(
+    tmp_path, share_preparations
+):
     from merlin.compile.model_execution_inputs import strict_tree_sha256
 
     module, groups = source()
@@ -158,6 +161,10 @@ def test_saved_composition_reopens_actual_candidate_and_original_owner_instead_o
     preference = package / "source_composition.json"
     preference.write_text(json.dumps({"schema": "merlin.source-composition-preferences.v1",
                                       "shared_input_siblings": True, "prepack_weights": False}))
+    if share_preparations:
+        request = json.loads(preference.read_text())
+        request["share_exact_tensor_preparations"] = True
+        preference.write_text(json.dumps(request))
     function = next(op for op in module.body.block.ops if op.name == "func.func")
     indices = {id(op): i for i, op in enumerate(function.body.block.ops)}
     placement = {"eligible_source_regions": [
@@ -173,6 +180,9 @@ def test_saved_composition_reopens_actual_candidate_and_original_owner_instead_o
     receipt = {"inputs": {"device": {"name": "test-endpoint", "package": str(package),
                                      "package_tree": strict_tree_sha256(package)}, "prepack_weights": False}}
 
+    if share_preparations:
+        receipt["inputs"]["share_exact_tensor_preparations"] = True
+
     def audit(record=selection):
         return _rederive_composition_selection(tmp_path, receipt, record, module=module, groups=groups,
                                                placement=placement, target="test-endpoint")
@@ -184,6 +194,36 @@ def test_saved_composition_reopens_actual_candidate_and_original_owner_instead_o
     with pytest.raises(ValueError, match="independently resolved"):
         audit()
     receipt["inputs"]["prepack_weights"] = False
+    receipt["inputs"]["share_exact_tensor_preparations"] = not share_preparations
+    with pytest.raises(ValueError, match="independently resolved"):
+        audit()
+    if share_preparations:
+        receipt["inputs"]["share_exact_tensor_preparations"] = True
+    else:
+        receipt["inputs"].pop("share_exact_tensor_preparations")
+    receipt["inputs"]["dense_input_views"] = True
+    with pytest.raises(ValueError, match="independently resolved"):
+        audit()
+    receipt["inputs"].pop("dense_input_views")
     preference.write_text(preference.read_text() + " ")
     with pytest.raises(ValueError, match="compiled snapshot"):
         audit()
+
+
+@pytest.mark.parametrize("choice", [False, True])
+@pytest.mark.parametrize("option", ["share_exact_tensor_preparations", "dense_input_views"])
+def test_exact_preparation_sharing_is_a_pinned_optional_request(tmp_path, choice, option):
+    request = {"schema": "merlin.source-composition-preferences.v1",
+               "shared_input_siblings": False, "prepack_weights": False,
+               option: choice}
+    path = tmp_path / "source_composition.json"
+    path.write_text(json.dumps(request))
+    selected, pin = _composition_preferences(tmp_path)
+    assert selected == {key: value for key, value in request.items() if key != "schema"}
+    from hashlib import sha256
+
+    assert pin["sha256"] == sha256(path.read_bytes()).hexdigest()
+    request[option] = 1
+    path.write_text(json.dumps(request))
+    with pytest.raises(ValueError, match="unsupported"):
+        _composition_preferences(tmp_path)

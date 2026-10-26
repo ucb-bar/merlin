@@ -97,6 +97,13 @@ def contract_traits(contract):
     if contract.get('endpoint_kind') == 'inline_asm_insn':
         observe('submission.cpu_issued', 'endpoint_kind=inline_asm_insn')
         observe('submission.instruction_issued', 'endpoint_kind=inline_asm_insn')
+        # Inline instructions execute inside host code, so a scalar host core runs the program.
+        observe('host.scalar', 'endpoint_kind=inline_asm_insn: accelerator instructions are issued by host code')
+    # Declared instruction roles that move data into and out of accelerator storage are explicit,
+    # compiler-issued transfers; the role names are the contract's own vocabulary, not a target tag.
+    roles = (contract.get('corpus_instruction_roles') or {}).get('by_role') or {}
+    if isinstance(roles, dict) and roles.get('memory') and (roles.get('acc_readout') or roles.get('readout')):
+        observe('memory.explicit_dma', 'corpus_instruction_roles.by_role: explicit memory load and readout instructions')
     for index, unit in enumerate(contract.get('compute_units', [])):
         if unit.get('kind') == 'systolic':
             observe('compute.systolic', f'compute_units[{index}].kind=systolic')
@@ -186,11 +193,21 @@ def select(catalog, *, capabilities, public_modules, workload=None, limit=12):
                          'scope': 'proposal only; no implementation or runtime binding granted',
                          'directions': [entry['mechanism']], 'gaps': entry['required_validation']})
     applicable = [row for row in rows if row['status'] == 'supported']
-    discovery = [row for row in rows if row['status'] == 'unknown']
+    # Unknown only because the workload has not been checked: every other requirement is supported,
+    # so one `--ir` run on the actual source decides them. Kept apart from genuine capability questions.
+    pending = [row for row in rows if row['status'] == 'unknown' and all(
+        state == 'supported' for key, state in row['requirements'].items() if not key.startswith('workload.'))]
+    pending_ids = {row['id'] for row in pending}
+    discovery = [row for row in rows if row['status'] == 'unknown' and row['id'] not in pending_ids]
     return {'schema': 'merlin.optimization_suggestions.v1',
             'authority': 'advisory applicability only; no legality, execution or performance credit',
             'ordering': 'catalog order for display only, not pass order or ranking',
             'suggestions': applicable[:limit], 'suggestions_omitted': len(applicable[limit:]),
+            'pending_workload_check': [{'id': row['id'], 'family': row['family'], 'api': row['api'],
+                                        'symbol': row['symbol'],
+                                        'workload_requirements': {key: state for key, state in row['requirements'].items()
+                                                                  if key.startswith('workload.')}}
+                                       for row in pending],
             'discovery': discovery[:limit], 'discovery_omitted': len(discovery[limit:]),
             'all_mechanisms': rows, 'starter_sets': starters,
             'abstractions': abstraction_map(modules),

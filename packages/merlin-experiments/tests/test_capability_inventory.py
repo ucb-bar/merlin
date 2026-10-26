@@ -2,7 +2,6 @@
 import json
 
 import pytest
-
 from merlin_experiments.phase1 import capability_inventory as C
 from merlin_experiments.phase1 import capability_source as S
 from merlin_experiments.phase1 import run_inputs as R
@@ -34,7 +33,7 @@ def policy():
 def inventory(tmp_path):
     small = capsule(tmp_path, 'small')
     diagnostic = capsule(tmp_path, 'calibration', size=12)
-    large = capsule(tmp_path, 'large', size=1024)
+    large = capsule(tmp_path, 'large', size=65536)
     small['oracle'] = {'path': 'not-opened', 'secret': 'PRIVATE_CANARY'}
     small['capture_tool'] = 'PRIVATE_CANARY'
     return C.build([small, diagnostic], scalability=[large], policy=policy())
@@ -150,9 +149,11 @@ def test_staged_inventory_is_sealed_and_legacy_treatment_stays_compatible(tmp_pa
 
 def test_selected_staging_uses_native_roster_and_verifies_scalability(tmp_path, monkeypatch):
     from types import SimpleNamespace
-    from merlin.targetgen import capsule_common
+
     from merlin_experiments.phase1 import joint_control
-    from merlin_experiments.phase1.feedback import rolling_scalability
+    from merlin_experiments.phase1.feedback import public_programs, rolling_scalability
+
+    from merlin.targetgen import capsule_common
 
     small, cal, large = [capsule(tmp_path, n) for n in ('small', 'calibration', 'large')]
     calls = []
@@ -161,6 +162,7 @@ def test_selected_staging_uses_native_roster_and_verifies_scalability(tmp_path, 
     monkeypatch.setattr(capsule_common, 'load_capsule', lambda *a, **kw: large)
     monkeypatch.setattr(rolling_scalability, 'Selection', lambda context: SimpleNamespace(
         cases={'large': tmp_path / 'large'}, verify=lambda: calls.append('verified')))
+    monkeypatch.setattr(public_programs, 'selected', lambda context: None)
     for n in ('workspace', 'run'):
         (tmp_path / n).mkdir()
         (tmp_path / n / 'TASK.md').write_text('Task\n')
@@ -169,3 +171,22 @@ def test_selected_staging_uses_native_roster_and_verifies_scalability(tmp_path, 
     assert result['total'] == 3 and calls == ['verified']
     monkeypatch.setattr(joint_control, 'selected', lambda: None)
     assert C.stage_selected(tmp_path, tmp_path, context=None, public_roots=[], contract=None, excluded=None) is None
+
+
+def test_selected_programs_have_own_denominator_roles_and_spike_obligations(tmp_path):
+    small = capsule(tmp_path, 'small')
+    programs = []
+    for name, size in [('program_control', 16), ('program_region', 65536)]:
+        cap = capsule(tmp_path, name, size=size)
+        cap.update(kind='model', operation={'op': 'model'}, required_oracle_tiers=['L0', 'L1', 'L2'])
+        programs.append(cap)
+    v = C.build([small], programs=programs, policy=policy())
+    assert v['total'] == 3 and v['cohorts'][C.PROGRAM_COHORT] == 2
+    assert v['members']['program_control']['workload_role'] == 'diagnostic_control'
+    region = v['members']['program_region']
+    assert region['workload_role'] == 'connected' and region['selfcheck_suite'] == 'programs'
+    assert region['development_engines'] == ['spike'] and region['gsim_role'] == 'not_selected'
+    assert 'Complete connected programs' in C.summary(v)
+    programs[0]['required_oracle_tiers'].append('L3')
+    with pytest.raises(ValueError, match='Spike-only'):
+        C.build([small], programs=programs, policy=policy())

@@ -1730,6 +1730,29 @@ def test_sealed_byte_drift_refuses_before_any_native_process(release_fixture, ca
     assert not (release_fixture["root"] / "out/native-receipt").exists()
 
 
+def test_seal_records_member_digests_and_immutability_and_names_drift(release_fixture, capsys):
+    """Verification says WHICH sealed member changed or vanished; host-private names stay withheld."""
+    report = _prepare(release_fixture, capsys)
+    sealed = _seal(release_fixture, report, capsys)
+    seal_path = Path(sealed["seal"])
+    document = json.loads(seal_path.read_text())
+    assert "corpus/isa/generated_member/README.md" in document["members"]
+    assert document["immutability"]["immutable"]["mode"] == "off"  # the suite's default; never a silent claim
+    assert document["immutability"]["immutable"]["granted"] == 0
+    assert sealed["immutability"]["records"]["read_only"]["files"] == 2
+    assert not os.access(seal_path, os.W_OK) or os.geteuid() == 0
+    public = release_fixture["release"] / "payload/corpus/isa/generated_member/README.md"
+    hidden = release_fixture["release"] / "payload/corpus/hidden/private_member_identity/golden.yaml"
+    for member in (public, hidden):
+        member.chmod(0o600)  # deliberate operator tampering, not a normal writable release
+        member.write_text("changed after review")
+    with pytest.raises(SpecError) as refused:
+        corpus_release.verify(seal_path, Path(sealed["descriptor"]))
+    message = str(refused.value)
+    assert "tampered 2" in message and "corpus/isa/generated_member/README.md" in message
+    assert "private_member_identity" not in message and "a host-private member" in message
+
+
 def test_snapshot_mismatch_cannot_borrow_reviewed_seal(release_fixture, capsys):
     from merlin.targetgen.sandbox.bwrap import materialize_bundle_inputs
 
@@ -1907,7 +1930,9 @@ def test_private_seal_and_metadata_tampering_is_refused(release_fixture, capsys,
     else:
         document = json.loads(Path(sealed["seal"]).read_text())
         document["review_digest"] = "0" * 64
+        Path(sealed["seal"]).chmod(0o600)  # the seal record is read-only; tampering must lift that first
         Path(sealed["seal"]).write_text(json.dumps(document))
+        Path(sealed["seal"]).chmod(0o400)
     assert main(["corpus", "inspect", str(fixture["release"])]) == 2
     output = capsys.readouterr()
     assert "private_member_identity" not in output.out + output.err
@@ -2198,9 +2223,11 @@ def test_the_gemmini_descriptor_derives_its_model_policy():
 
 def test_explicit_public_reference_release_grants(release_fixture, capsys):
     """References enter original bundle generation before admission and sealing."""
-    from merlin_experiments.corpus.release import prepare
-    from merlin.targetgen.target_experiment import load_target_experiment
     import hashlib
+
+    from merlin_experiments.corpus.release import prepare
+
+    from merlin.targetgen.target_experiment import load_target_experiment
 
     fixture = release_fixture
     assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
@@ -2210,9 +2237,11 @@ def test_explicit_public_reference_release_grants(release_fixture, capsys):
     leaf = refs / "example.c"
     leaf.write_text("int reference_example(void) { return 0; }\n")
     manifest = refs / "reference-manifest.json"
-    manifest.write_text(json.dumps({"schema": "operator.allowed_reference_sources.v1", "members": [
-        {"path": "example.c", "sha256": hashlib.sha256(leaf.read_bytes()).hexdigest()}
-    ]}))
+    manifest.write_text(json.dumps({"schema": "operator.allowed_reference_sources.v2", "review_id": "release-test",
+        "origins": [{"name": "public_example", "kind": "public_repository", "container": ".",
+            "identity": "1" * 40, "public_url": "https://example.org/compiler", "license": "LICENSE",
+            "allowed_purpose": "reference_reading", "files": [{"member": "example.c", "destination": "example.c",
+                "sha256": hashlib.sha256(leaf.read_bytes()).hexdigest()}]}]}))
     report = prepare(fixture["run"], fixture["release"], generated_only=False,
                      selected_variants=("public_v0",), public_reference_manifest=manifest)
     descriptor = load_target_experiment(report["descriptor"])
@@ -2221,5 +2250,5 @@ def test_explicit_public_reference_release_grants(release_fixture, capsys):
     for path in (fixture["release"] / "payload/experiment/input_bundles").glob("*/input_bundle_manifest.yaml"):
         bundle = yaml.safe_load(path.read_text())
         assert grant in bundle["allowed"]
-    assert (fixture["release"] / "payload/experiment/reference-kernels/example.c").read_bytes() == leaf.read_bytes()
+    assert (fixture["release"] / "payload/experiment/reference-kernels/public_example/example.c").read_bytes() == leaf.read_bytes()
     assert not (fixture["release"] / "private/seal.json").exists()

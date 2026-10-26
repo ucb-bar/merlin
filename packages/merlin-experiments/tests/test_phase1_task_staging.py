@@ -255,3 +255,22 @@ def test_joint_task_and_standing_prompt_describe_actual_routing(tmp_path, monkey
     assert joint_control.selfcheck_policy(lambda *_args, **_kwargs: pytest.fail("must refuse"))(
         ["--sim", "spike", "--tiers", "L3"]
     ) == 2
+
+
+def test_gemmini_full_model_task_names_the_selected_common_substrate_profile(tmp_path, monkeypatch):
+    """The selected profile's scheduling discovery reaches the only TASK.md the full-model path writes."""
+    from merlin.targetgen import tool_profile
+
+    conf = config(tmp_path / "operator", "gemmini")
+    conf = replace(conf, experiment="full", bundle_id="merlin_assisted_rtlchecks_hwbringup_v0")
+    monkeypatch.setattr(TS, "load_target_experiment", lambda _: object())
+    scope = {"required_public_dev_capsules": 120, "held_out_capsules": 20}
+    seen = []
+    monkeypatch.setattr(tool_profile, "verify_tool_profile", lambda bundle, **_: None)  # tool selection reads it too
+    monkeypatch.setattr(tool_profile, "tool_profile_prompt",
+                        lambda bundle: seen.append(bundle) or "\n\n## Common compiler infrastructure\n"
+                        "Discover with `scheduling_capabilities(19)`.\n")
+    (conf.bundle_dir / "input_bundle_manifest.yaml").write_text("compiler_tool_profile: {selected: v12}\n")
+    task = TS.full_model_task(conf, "bwrap", scope)
+    assert seen == [{"compiler_tool_profile": {"selected": "v12"}}]
+    assert task.endswith("Discover with `scheduling_capabilities(19)`.\n")

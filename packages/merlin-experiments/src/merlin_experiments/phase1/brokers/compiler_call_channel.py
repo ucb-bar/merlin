@@ -27,10 +27,10 @@ from pathlib import Path
 from merlin.common import owned_children
 from merlin.common.cpu_pool import (
     VERIFICATION,
-    cpu_priority,
     CompilerCPUTransfer,
     borrow_compiler_cpu,
     check_compiler_cpu,
+    cpu_priority,
     shared_compute_enabled,
     shared_compute_pool,
     transfer_compiler_cpu,
@@ -43,10 +43,18 @@ MAX_REQUEST_BYTES = 256 * 1024
 MAX_REQUESTS = 64
 MAX_PENDING_ENTRIES = 256
 COMMON_ACTIONS = frozenset({"common-transform", "common-check"})
+
+
 def _valid_request_id(value):
     parts = value.split("_")
-    return (value.isascii() and len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit()
-            and len(parts[2]) == 32 and all(character in "0123456789abcdef" for character in parts[2]))
+    return (
+        value.isascii()
+        and len(parts) == 3
+        and parts[0].isdigit()
+        and parts[1].isdigit()
+        and len(parts[2]) == 32
+        and all(character in "0123456789abcdef" for character in parts[2])
+    )
 
 
 def _sha(path):
@@ -60,7 +68,11 @@ def _sha(path):
             digest.update(block)
         after = os.fstat(stream.fileno())
     if (before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
-            after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    ):
         raise ValueError("compiler call input moved during identity read")
     return digest.hexdigest()
 
@@ -80,7 +92,11 @@ def _read(descriptor, name, limit):
         data = stream.read(limit + 1)
         after = os.fstat(stream.fileno())
     if len(data) > limit or (info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns) != (
-            after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    ):
         raise ValueError("compiler channel request moved during read")
     return json.loads(data)
 
@@ -105,9 +121,13 @@ def _write(descriptor, name, body):
 
 
 def _validate_request(request, request_id, deadline):
-    if not isinstance(request, dict) or set(request) != {
-        "protocol", "request_id", "requester", "requested_at_unix_ns", "deadline_unix_ns", "action", "transform"
-    } or request["protocol"] != 3 or request["request_id"] != request_id:
+    if (
+        not isinstance(request, dict)
+        or set(request)
+        != {"protocol", "request_id", "requester", "requested_at_unix_ns", "deadline_unix_ns", "action", "transform"}
+        or request["protocol"] != 3
+        or request["request_id"] != request_id
+    ):
         raise ValueError("compiler channel requires the original common request protocol and identity")
     if request["action"] not in COMMON_ACTIONS:
         raise ValueError("compiler channel admits only original transformation and preservation checks")
@@ -138,29 +158,43 @@ def _dispatch(service, request, request_id, *, deadline, proof_root, package_sha
             "merlin.common_compiler_substrate.v10",
             "merlin.common_compiler_substrate.v11",
             "merlin.common_compiler_substrate.v12",
+            "merlin.common_compiler_substrate.v13",
+            "merlin.common_compiler_substrate.v14",
+            "merlin.common_compiler_substrate.v15",
         ):
             raise FileNotFoundError("common check was not admitted by the original compiler profile")
         method = service.check if request["action"] == "common-check" else service.apply
         body = method(request["transform"], work_root=proof_root, timeout_s=remaining)
     except Exception as error:
-        body = {"status": "unavailable" if isinstance(error, FileNotFoundError) else "unknown",
-                "reason": scrub_host_paths(str(error)), "all_pass": False}
+        body = {
+            "status": "unavailable" if isinstance(error, FileNotFoundError) else "unknown",
+            "reason": scrub_host_paths(str(error)),
+            "all_pass": False,
+        }
     payload = request.get("transform") if isinstance(request, dict) else None
     if isinstance(payload, dict):
-        fields = (("before_ir", "source_sha256"), ("after_ir", "target_sha256")) if "before_ir" in payload else (
-            ("source_ir", "source_sha256"),)
+        fields = (
+            (("before_ir", "source_sha256"), ("after_ir", "target_sha256"))
+            if "before_ir" in payload
+            else (("source_ir", "source_sha256"),)
+        )
         for name, key in fields:
             if isinstance(payload.get(name), str):
                 body.setdefault(key, hashlib.sha256(payload[name].encode()).hexdigest())
-    body.update(selfcheck_protocol=3, selfcheck_request_id=request_id, submission_sha256=package_sha256,
-        invocation_input_sha256=input_sha256, grade_started_at_unix_ns=started, graded_at_unix_ns=time.time_ns(),
-        compiler_tool_profile_sha256=service.profile["sha256"])
+    body.update(
+        selfcheck_protocol=3,
+        selfcheck_request_id=request_id,
+        submission_sha256=package_sha256,
+        invocation_input_sha256=input_sha256,
+        grade_started_at_unix_ns=started,
+        graded_at_unix_ns=time.time_ns(),
+        compiler_tool_profile_sha256=service.profile["sha256"],
+    )
     return body
 
 
 class _Cancelled(BaseException):
     pass
-
 
 
 def _verify_owner_selection(owner):
@@ -176,8 +210,13 @@ def _verify_owner_selection(owner):
     from merlin.targetgen.tool_profile import verify_tool_profile
 
     if type(owner) is not dict or set(owner) != {
-        "workspace", "bundle_manifest", "repo", "archive_sha256", "snapshot_sha256",
-        "profile_sha256", "snapshot_marker_sha256",
+        "workspace",
+        "bundle_manifest",
+        "repo",
+        "archive_sha256",
+        "snapshot_sha256",
+        "profile_sha256",
+        "snapshot_marker_sha256",
     }:
         raise ValueError("compiler channel has no exact original owner selection")
     workspace, archive, repo = (Path(owner[name]) for name in ("workspace", "bundle_manifest", "repo"))
@@ -195,22 +234,43 @@ def _verify_owner_selection(owner):
     if marker.resolve() != marker or _sha(marker) != owner["snapshot_marker_sha256"]:
         raise ValueError("compiler channel changed its original snapshot marker")
     document = json.loads(marker.read_bytes())
-    if (document.get("version") != 4 or document.get("repo") != str(repo)
-        or document.get("content_sha256") != owner["snapshot_sha256"]):
+    if (
+        document.get("version") != 4
+        or document.get("repo") != str(repo)
+        or document.get("content_sha256") != owner["snapshot_sha256"]
+    ):
         raise ValueError("compiler channel changed its original snapshot owner")
+
 
 def _owner_digest(owner):
     return hashlib.sha256(json.dumps(owner, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def _serve(selection, control, cpu_transfer=None):
-    if set(selection) != {"schema", "workspace", "package", "package_sha256", "input_path", "input_sha256",
-                          "command_name", "deadline", "owner", "parent_pid"} or selection["schema"] != SCHEMA:
+    if (
+        set(selection)
+        != {
+            "schema",
+            "workspace",
+            "package",
+            "package_sha256",
+            "input_path",
+            "input_sha256",
+            "command_name",
+            "deadline",
+            "owner",
+            "parent_pid",
+        }
+        or selection["schema"] != SCHEMA
+    ):
         raise ValueError("compiler channel has no original host selection")
     owner = selection["owner"]
     _verify_owner_selection(owner)
-    context = (borrow_compiler_cpu(cpu_transfer, owner_sha256=_owner_digest(owner))
-               if cpu_transfer is not None else contextlib.nullcontext())
+    context = (
+        borrow_compiler_cpu(cpu_transfer, owner_sha256=_owner_digest(owner))
+        if cpu_transfer is not None
+        else contextlib.nullcontext()
+    )
     with context:
         _serve_requests(selection, control)
 
@@ -219,8 +279,11 @@ def _serve_requests(selection, control):
     owner = selection["owner"]
     service = None
     workspace, package, input_path = map(Path, (selection["workspace"], selection["package"], selection["input_path"]))
-    if (input_path.resolve() != input_path or input_path.is_symlink()
-        or _sources(package) != selection["package_sha256"]):
+    if (
+        input_path.resolve() != input_path
+        or input_path.is_symlink()
+        or _sources(package) != selection["package_sha256"]
+    ):
         raise ValueError("compiler channel changed its original compiler invocation")
     if _sha(input_path) != selection["input_sha256"]:
         raise ValueError("compiler channel input changed before dispatch")
@@ -252,15 +315,27 @@ def _serve_requests(selection, control):
                 proof = control / "proofs" / request_id
                 proof.mkdir(parents=True, mode=0o700)
                 if service is None:
-                    service = CommonTransformService(workspace=Path(owner["workspace"]),
-                        bundle_manifest=Path(owner["bundle_manifest"]), repo=Path(owner["repo"]))
-                    if (service.profile["sha256"] != owner["profile_sha256"]
+                    service = CommonTransformService(
+                        workspace=Path(owner["workspace"]),
+                        bundle_manifest=Path(owner["bundle_manifest"]),
+                        repo=Path(owner["repo"]),
+                    )
+                    if (
+                        service.profile["sha256"] != owner["profile_sha256"]
                         or service.snapshot_digest != owner["snapshot_sha256"]
                         or service.snapshot_marker_digest != owner["snapshot_marker_sha256"]
-                        or hashlib.sha256(service.bundle_bytes).hexdigest() != owner["archive_sha256"]):
+                        or hashlib.sha256(service.bundle_bytes).hexdigest() != owner["archive_sha256"]
+                    ):
                         raise ValueError("compiler channel changed its original frozen owner")
-                body = _dispatch(service, request, request_id, deadline=deadline, proof_root=proof,
-                    package_sha256=selection["package_sha256"], input_sha256=selection["input_sha256"])
+                body = _dispatch(
+                    service,
+                    request,
+                    request_id,
+                    deadline=deadline,
+                    proof_root=proof,
+                    package_sha256=selection["package_sha256"],
+                    input_sha256=selection["input_sha256"],
+                )
                 check_compiler_cpu()
                 _write(descriptor, "resp_" + request_id + ".json", body)
                 _write(descriptor, "done_" + request_id, "ok")
@@ -282,8 +357,9 @@ def main(argv=None):
     parser.add_argument("--cpu-lifetime-fd", type=int)
     args = parser.parse_args(argv)
     descriptors = (args.cpu_lease_fd, args.cpu_slot_fd, args.cpu_lifetime_fd)
-    if (any(value is not None for value in descriptors)
-            and not all(type(value) is int and value >= 0 for value in descriptors)):
+    if any(value is not None for value in descriptors) and not all(
+        type(value) is int and value >= 0 for value in descriptors
+    ):
         raise ValueError("compiler CPU transfer requires all original inherited descriptors")
     transfer = CompilerCPUTransfer(*descriptors) if descriptors[0] is not None else None
     selected = args.selection
@@ -296,8 +372,10 @@ def main(argv=None):
     finally:
         os.close(descriptor)
     owned_children.become_child_subreaper()
+
     def cancel(*args):
         raise _Cancelled()
+
     signal.signal(signal.SIGTERM, cancel)
     if ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGTERM, 0, 0, 0) != 0:
         raise RuntimeError("compiler-call broker parent lifetime binding unavailable")
@@ -322,8 +400,7 @@ class CompilerCallTransport:
         return (("MERLIN_COMMON_WORKSPACE", str(self.workspace)),)
 
     def env_prefix(self, prefix):
-        return prefix + "".join("export " + key + "=" + shlex.quote(value) + "; "
-                                for key, value in self.environment())
+        return prefix + "".join("export " + key + "=" + shlex.quote(value) + "; " for key, value in self.environment())
 
     def remaining_timeout(self):
         value = self.deadline - time.monotonic()
@@ -333,15 +410,21 @@ class CompilerCallTransport:
 
 
 def _service_owner(service):
-    return {"workspace": str(service.workspace), "bundle_manifest": str(service.bundle_manifest),
-            "repo": str(service.repo), "archive_sha256": hashlib.sha256(service.bundle_bytes).hexdigest(),
-            "snapshot_sha256": service.snapshot_digest, "profile_sha256": service.profile["sha256"],
-            "snapshot_marker_sha256": service.snapshot_marker_digest}
+    return {
+        "workspace": str(service.workspace),
+        "bundle_manifest": str(service.bundle_manifest),
+        "repo": str(service.repo),
+        "archive_sha256": hashlib.sha256(service.bundle_bytes).hexdigest(),
+        "snapshot_sha256": service.snapshot_digest,
+        "profile_sha256": service.profile["sha256"],
+        "snapshot_marker_sha256": service.snapshot_marker_digest,
+    }
 
 
 @contextlib.contextmanager
-def compiler_call_transport(service, *, workspace, package, input_path, command_name, timeout_s,
-                            proof_parent=None, borrow_compute=False):
+def compiler_call_transport(
+    service, *, workspace, package, input_path, command_name, timeout_s, proof_parent=None, borrow_compute=False
+):
     """Optionally lease one original CPU through candidate work and its RPC child.
 
     The original broker borrows that same live slot through private inherited
@@ -353,6 +436,7 @@ def compiler_call_transport(service, *, workspace, package, input_path, command_
     if not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s) or timeout_s <= 0:
         raise ValueError("compiler call transport requires its finite original invocation budget")
     deadline = time.monotonic() + timeout_s
+
     # Snapshot scans are custody work, not compiler execution. Admit them at
     # verification priority before borrowing the execution slot, and release
     # that slot (including the reaped broker's duplicate) before the final scan.
@@ -360,8 +444,7 @@ def compiler_call_transport(service, *, workspace, package, input_path, command_
     # mask decision is cached here. An already-held outer lease remains owned
     # by its caller and is never released or replaced by this transport.
     def verify_owner():
-        with cpu_priority(VERIFICATION), shared_compute_pool(
-                timeout_s=max(0, deadline - time.monotonic())):
+        with cpu_priority(VERIFICATION), shared_compute_pool(timeout_s=max(0, deadline - time.monotonic())):
             service._verify()
 
     verify_owner()
@@ -373,34 +456,53 @@ def compiler_call_transport(service, *, workspace, package, input_path, command_
                 if remaining <= 0:
                     raise TimeoutError("compiler call exhausted its CPU admission deadline")
                 stack.enter_context(shared_compute_pool(timeout_s=remaining))
-                transfer = stack.enter_context(transfer_compiler_cpu(owner_sha256=_owner_digest(_service_owner(service))))
+                transfer = stack.enter_context(
+                    transfer_compiler_cpu(owner_sha256=_owner_digest(_service_owner(service)))
+                )
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("compiler call exhausted its CPU admission deadline")
-            with _compiler_call_transport(service, workspace=workspace, package=package, input_path=input_path,
-                                         command_name=command_name, timeout_s=remaining, proof_parent=proof_parent,
-                                         cpu_transfer=transfer) as transport:
+            with _compiler_call_transport(
+                service,
+                workspace=workspace,
+                package=package,
+                input_path=input_path,
+                command_name=command_name,
+                timeout_s=remaining,
+                proof_parent=proof_parent,
+                cpu_transfer=transfer,
+            ) as transport:
                 yield transport
     finally:
         verify_owner()
 
 
 @contextlib.contextmanager
-def _compiler_call_transport(service, *, workspace, package, input_path, command_name, timeout_s,
-                             proof_parent=None, cpu_transfer=None):
+def _compiler_call_transport(
+    service, *, workspace, package, input_path, command_name, timeout_s, proof_parent=None, cpu_transfer=None
+):
     """Stage only the existing common client channel for a single compiler call."""
     if type(service) is not CommonTransformService:
         raise ValueError("compiler call transport requires the exact original common owner")
     workspace, package, input_path = map(Path, (workspace, package, input_path))
-    if (workspace.resolve() != workspace or workspace.is_symlink() or not workspace.is_dir()
-        or input_path.resolve() != input_path or input_path.is_symlink()):
+    if (
+        workspace.resolve() != workspace
+        or workspace.is_symlink()
+        or not workspace.is_dir()
+        or input_path.resolve() != input_path
+        or input_path.is_symlink()
+    ):
         raise ValueError("compiler call transport requires its isolated ordinary input/output workspace")
     if not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s) or timeout_s <= 0:
         raise ValueError("compiler call transport requires its finite original invocation budget")
     package_sha256, input_sha256 = _sources(package), _sha(input_path)
     parent = Path(proof_parent) if proof_parent is not None else workspace.parent
-    if (parent.resolve() != parent or parent.is_symlink()
-        or parent.is_relative_to(workspace) or parent.is_relative_to(package)):
+    if (
+        parent.resolve() != parent
+        or parent.is_symlink()
+        or parent.is_relative_to(workspace)
+        or parent.is_relative_to(package)
+    ):
         raise ValueError("compiler proof owner cannot be in an untrusted mounted workspace")
     channel = workspace / ".qa_channel"
     channel.mkdir(mode=0o700)
@@ -409,25 +511,50 @@ def _compiler_call_transport(service, *, workspace, package, input_path, command
     startup_deadline = min(deadline, time.monotonic() + 30)
     with tempfile.TemporaryDirectory(prefix="original-proof-", dir=parent) as raw:
         control = Path(raw)
-        selection = {"schema": SCHEMA, "workspace": str(workspace), "package": str(package),
-            "package_sha256": package_sha256, "input_path": str(input_path), "input_sha256": input_sha256,
-            "command_name": command_name, "deadline": deadline, "parent_pid": os.getpid(),
-            "owner": _service_owner(service)}
+        selection = {
+            "schema": SCHEMA,
+            "workspace": str(workspace),
+            "package": str(package),
+            "package_sha256": package_sha256,
+            "input_path": str(input_path),
+            "input_sha256": input_sha256,
+            "command_name": command_name,
+            "deadline": deadline,
+            "parent_pid": os.getpid(),
+            "owner": _service_owner(service),
+        }
         path = control / "selection.json"
         path.write_text(json.dumps(selection, sort_keys=True))
         path.chmod(0o400)
         from merlin.common.paths import python_import_roots
-        env = {**os.environ, "PYTHONPATH": os.pathsep.join(map(str, python_import_roots())),
-               "PYTHONDONTWRITEBYTECODE": "1"}
+
+        env = {
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(map(str, python_import_roots())),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
         with (control / "broker.stdout").open("wb") as stdout, (control / "broker.stderr").open("wb") as stderr:
             command = [sys.executable, "-m", __name__, "--selection", str(path)]
             descriptors = ()
             if cpu_transfer is not None:
-                command += ["--cpu-lease-fd", str(cpu_transfer.metadata_fd), "--cpu-slot-fd", str(cpu_transfer.slot_fd),
-                            "--cpu-lifetime-fd", str(cpu_transfer.lifetime_fd)]
+                command += [
+                    "--cpu-lease-fd",
+                    str(cpu_transfer.metadata_fd),
+                    "--cpu-slot-fd",
+                    str(cpu_transfer.slot_fd),
+                    "--cpu-lifetime-fd",
+                    str(cpu_transfer.lifetime_fd),
+                ]
                 descriptors = cpu_transfer.pass_fds
-            process = subprocess.Popen(command, cwd=control, env=env, stdout=stdout, stderr=stderr,
-                pass_fds=descriptors, start_new_session=True)
+            process = subprocess.Popen(
+                command,
+                cwd=control,
+                env=env,
+                stdout=stdout,
+                stderr=stderr,
+                pass_fds=descriptors,
+                start_new_session=True,
+            )
             try:
                 while not (control / "ready.json").is_file():
                     if process.poll() is not None:

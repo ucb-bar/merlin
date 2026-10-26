@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from merlin_experiments.phase1.feedback import joint_test_scope as S
 
 
@@ -18,6 +20,22 @@ def corpus(tmp_path, monkeypatch):
     candidate = tmp_path / 'submission'
     candidate.mkdir()
     return root, candidate
+
+
+def test_performance_scope_joins_declared_capsules_and_the_policy_roster(tmp_path, monkeypatch):
+    root, candidate = corpus(tmp_path, monkeypatch)
+    doc = json.loads((root / 'm1' / 'capsule.yaml').read_text())
+    (root / 'm1' / 'capsule.yaml').write_text(json.dumps({**doc, 'performance_scope': 'excluded'}))
+    policy = {'final_only_capsules': ['final'], 'performance_scope': {'excluded': ['conv', 'hidden', 'gone']}}
+    monkeypatch.setattr(S.joint_control, 'selected', lambda: {'policy': policy})
+    monkeypatch.setenv('MERLIN_JOINT_GRADE_MILESTONE', '1')
+    _, scope = S.select(root, submission=candidate)
+    assert scope['performance_scope']['excluded'] == ['conv', 'm1']
+    assert scope['performance_scope']['scored'] == 2
+    assert S.excluded_cases(scope) == {'conv', 'm1'} and S.excluded_cases(None) == frozenset()
+    (root / 'm1' / 'capsule.yaml').write_text(json.dumps({**doc, 'performance_scope': 'maybe'}))
+    with pytest.raises(ValueError, match='performance_scope'):
+        S.select(root, submission=candidate)
 
 
 def test_unknown_impact_smoke_never_claims_full_coverage(tmp_path, monkeypatch):

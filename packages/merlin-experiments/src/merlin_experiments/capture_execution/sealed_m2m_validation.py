@@ -192,6 +192,13 @@ def _materialized(
         path = source / "m2m-src" / name
         if not path.is_file() or _file_digest(path) != digest:
             raise SealedM2MError(f"M2M source digest differs: {name}")
+    reference_sources = (payload.get("tool") or {}).get("reference_sources")
+    if reference_sources is not None:
+        member = "merlin/targetgen/_dynamic_integer_reference.py"
+        if (not isinstance(reference_sources, dict) or set(reference_sources) != {member}
+                or not (source / "merlin-src" / member).is_file()
+                or _file_digest(source / "merlin-src" / member) != reference_sources[member]):
+            raise SealedM2MError("independent reference source differs from its selected snapshot")
     return {"status": result["status"], "receipt_sha256": result["receipt_sha256"]}
 
 
@@ -239,12 +246,14 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
             raise SealedM2MError("int8 recipe snapshot differs from the selected plan")
         stats = metadata.get("quantization_stats") or {}
         agreement = (metadata.get("integerization_receipt") or {}).get("golden_agreement") or {}
+        reference_kind = ("dynamic_integer" if (metadata.get("integerization_receipt") or {}).get("schema")
+                          == "merlin.dynamic_integer_reference.v1" else "pt2e_integer")
         if (
             metadata.get("scheme") != "int8_static_act_int8_weight"
             or metadata.get("recipe_sha256") != recipe.get("recipe_sha256")
             or stats.get("recipe_sha256") != recipe.get("recipe_sha256")
             or agreement.get("status") != "passed"
-            or agreement.get("reference") != "pt2e_integer"
+            or agreement.get("reference") != reference_kind
             or metadata.get("software_numerical_engine") not in (None, "integer_reference")
         ):
             raise SealedM2MError("int8 capture lacks selected recipe and independent integer-reference agreement")

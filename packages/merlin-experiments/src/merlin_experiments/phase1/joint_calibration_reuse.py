@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import re
 from pathlib import Path, PurePosixPath
 
 from merlin.common import invocation_record as I
@@ -81,9 +80,11 @@ def _runtime_components(process, *, runtime, backend, elf, expected):
     _require(_pin(old_elf)["sha256"] == _pin(elf)["sha256"], "physical process consumed another ELF")
     _require(tail[12] == expected["cwd"], "physical process cwd differs")
     script = tail[18]
-    match = re.fullmatch(r'printf READY >&([0-9]+); read -r native_go <&\1; '
-        r'\[\[ \$native_go == GO \]\] \|\| exit 126; exec \1>&-; exec /usr/bin/env -- "\$@"', script)
-    _require(match is not None, "original native process bootstrap differs")
+    descriptor = script.removeprefix("printf READY >&").partition(";")[0]
+    _require(script.startswith("printf READY >&") and descriptor.isascii() and descriptor.isdigit()
+             and script == (f"printf READY >&{descriptor}; read -r native_go <&{descriptor}; "
+                            f'[[ $native_go == GO ]] || exit 126; exec {descriptor}>&-; exec /usr/bin/env -- "$@"'),
+             "original native process bootstrap differs")
     _require(process.get("environment") == I.environment_identity({}), "original native wrapper environment differs")
     identity = runtime.verify(backend)
     image = F.inventory(F.canonical(old_image), max_files=runtime.max_files, max_bytes=runtime.max_bytes)

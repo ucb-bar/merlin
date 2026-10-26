@@ -122,7 +122,15 @@ def resolved_tools(
     if manifest_file.is_file():
         from merlin.targetgen.tool_profile import verify_tool_profile
 
-        manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+        from merlin.common import stat_memo
+
+        # The live conformance observer resolves tools on every refresh; parsing this multi-megabyte
+        # manifest each time was ~10% of the runner's CPU. The parse is reused while the file's stat
+        # identity is unchanged; the profile is still verified on every call.
+        manifest = stat_memo.cached(
+            "bundle_manifest_yaml", str(manifest_file), lambda: stat_memo.file_signature(manifest_file),
+            lambda: yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {},
+        )
         verify_tool_profile(manifest, tools=tuple(out))
     elif set(out) & {"isa_dialect_generation", "lean_proof_authoring"}:
         raise ValueError("optional ISA/Lean tools require an explicit versioned bundle manifest")
@@ -443,6 +451,14 @@ measured results.
         raise RuntimeError(
             "Gemmini full-model task exceeds its 10 KB pre-resource budget"  # target-ok: selected full-model path
         )
+    # The selected common-substrate profile (scheduling API discovery, preservation policy) is
+    # launch-specific like the resources appended after this budget, and the full-model task is the
+    # only TASK.md this path writes; without it the author never learns which scheduling catalog exists.
+    manifest = config.bundle_dir / "input_bundle_manifest.yaml"
+    if manifest.is_file():
+        from merlin.targetgen.tool_profile import tool_profile_prompt
+
+        body += tool_profile_prompt(yaml.safe_load(manifest.read_text(encoding="utf-8")) or {})
     return body
 
 
@@ -476,14 +492,21 @@ def verify_shared_pass_prompt(config, workspace, run_dir):
     from merlin.targetgen.generate_prompt import shared_pass_prompt_block
 
     from .feedback.public_scalability import prompt_block
+    from .feedback.public_programs import prompt_block as program_prompt
 
     from . import joint_control
-    block = prompt_block(load_target_experiment(config.context.descriptor)) + joint_control.prompt_block()
+    block = (prompt_block(load_target_experiment(config.context.descriptor))
+             + program_prompt(load_target_experiment(config.context.descriptor)) + joint_control.prompt_block())
     if block and (
         (workspace / "TASK.md").read_text().count(block) != 1
         or (workspace / "TASK.md").read_bytes() != (run_dir / "TASK.md").read_bytes()
     ):
         raise ValueError("required public scalability instructions changed")
+    from ..corpus import public_program_suite as programs
+    program_selection = programs.selected(load_target_experiment(config.context.descriptor))
+    if program_selection is not None:
+        programs.public_view(program_selection[0], workspace / "public_program_sources",
+                             target=config.context.target, verify=True)
     selected = _shared_pass_record(config, run_dir)
     files = {
         run_dir / "shared_pass_requirement.json": None if selected is None else selected["requirement"],
@@ -704,10 +727,16 @@ def _build_task(
 
 def build_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, policy_root=None):
     _build_selected_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
+    from ..corpus import public_program_suite as programs
+    program_selection = programs.selected(load_target_experiment(config.context.descriptor))
+    if program_selection is not None:
+        programs.public_view(program_selection[0], ws / "public_program_sources", target=config.context.target)
     from .feedback.public_scalability import prompt_block
+    from .feedback.public_programs import prompt_block as program_prompt
     from . import joint_control
 
-    block = prompt_block(load_target_experiment(config.context.descriptor)) + joint_control.prompt_block()
+    block = (prompt_block(load_target_experiment(config.context.descriptor))
+             + program_prompt(load_target_experiment(config.context.descriptor)) + joint_control.prompt_block())
     if block:
         task = ws / "TASK.md"
         task.write_text(task.read_text() + block)

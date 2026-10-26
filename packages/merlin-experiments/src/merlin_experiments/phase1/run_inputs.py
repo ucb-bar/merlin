@@ -360,10 +360,18 @@ def treatment_snapshot_record(ws: Path, run_dir: Path, bundle_dir: Path, resolve
         specs.extend((f"{kind}/{name}", root / name, True)
                      for kind, root in (("served", ws), ("archived", run_dir))
                      for name in capability_docs)
-    for name in ("construction_actions.py", "CONSTRUCTION_ACTIONS.json"):
+    for name in ("construction_actions.py", "CONSTRUCTION_ACTIONS.json", "OPTIMIZATION_BY_OPERATION.json"):
         if any((root / name).exists() or (root / name).is_symlink() for root in (ws, run_dir)):
             specs.extend((f"{kind}/{name}", root / name, True)
                          for kind, root in (("served", ws), ("archived", run_dir)))
+    # Staged task-section skills (and their record) are served instructions too. A run without them
+    # keeps its historical record shape.
+    from .task_disclosure import staged_paths
+
+    specs.extend((name, path, True) for name, path in staged_paths(ws, run_dir))
+    from .skill_staging import staged_paths as staged_author_skills
+
+    specs.extend((name, path, True) for name, path in staged_author_skills(ws, run_dir))
     specs.extend(
         (f"source_bundle/{name}", bundle_dir / name, name == "input_bundle_manifest.yaml")
         for name in _TREATMENT_BUNDLE_DECLARATIONS

@@ -26,7 +26,7 @@ def test_all_denominators_bounded_failures_and_no_private_payload():
     assert 'DO_NOT_COPY' not in text and 'PRIVATE_HIDDEN_NAME' not in text
     assert len(text) < 6000
     assert 'Passing code may be improved' in text
-    assert 'not automatically to current edits' in text
+    assert 'not automatically current-source qualification' in text
 
 
 def test_missing_and_distinct_tier_counts():

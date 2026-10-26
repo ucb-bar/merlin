@@ -3,19 +3,20 @@
 Private policy and wall clock are inherited only by trusted evaluation children.
 A partial physical witness set never acquires the historical Phase 1 certificate.
 """
+
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
-from functools import wraps
 import fcntl
 import hashlib
 import json
 import os
-from pathlib import Path
 import sys
 import time
 import uuid
+from contextlib import contextmanager
+from functools import wraps
+from pathlib import Path
 
 ENV = "MERLIN_JOINT_CAMPAIGN_STATE"
 
@@ -24,9 +25,11 @@ def policy(path):
     value = json.loads(Path(path).read_text())
     if value.get("version") != 1:
         raise ValueError("joint campaign policy must have version 1")
-    for key, default, low, high in (("duration_s", 43200, 3600, 43200),
-                                   ("final_model_s", 10800, 1, 14400),
-                                   ("drain_s", 1800, 1, 3600)):
+    for key, default, low, high in (
+        ("duration_s", 43200, 3600, 43200),
+        ("final_model_s", 10800, 1, 14400),
+        ("drain_s", 1800, 1, 3600),
+    ):
         value.setdefault(key, default)
         if type(value[key]) is not int or not low <= value[key] <= high:
             raise ValueError(f"invalid joint campaign {key}")
@@ -37,8 +40,11 @@ def policy(path):
         raise ValueError("invalid joint compiler execution mode")
     external = mode == "snapshot_external_v1"
     gsim = value.setdefault("gsim", {})
-    for key, default in (("max_jobs", 20 if external else 2), ("per_job_s", 1200),
-                         ("worker_budget_s", value["duration_s"] * 20 if external else 14400)):
+    for key, default in (
+        ("max_jobs", 20 if external else 2),
+        ("per_job_s", 1200),
+        ("worker_budget_s", value["duration_s"] * 20 if external else 14400),
+    ):
         gsim.setdefault(key, default)
         if type(gsim[key]) is not int or not 1 <= gsim[key] <= default:
             raise ValueError(f"invalid joint gSIM {key}")
@@ -50,33 +56,91 @@ def policy(path):
         if not isinstance(correctness, dict):
             raise ValueError("joint gSIM correctness policy must be an object")
         names = correctness.get("capsules")
-        if (not isinstance(names, list) or not names or len(names) > 2048
-                or any(type(x) is not str or not x or x == "all" or "," in x for x in names)
-                or len(set(names)) != len(names)):
+        if (
+            not isinstance(names, list)
+            or not names
+            or len(names) > 2048
+            or any(type(x) is not str or not x or x == "all" or "," in x for x in names)
+            or len(set(names)) != len(names)
+        ):
             raise ValueError("joint gSIM correctness requires an explicit unique capsule roster")
         original = value.get("correctness_curriculum", {}).get("original_capsules")
         if original is not None and set(names) != set(original):
             raise ValueError("physical correctness must retain every original correctness capsule")
-        for key, default, maximum in (("max_jobs", 20, 20), ("per_job_s", 1200, 1200),
-                                       ("worker_budget_s", 864000, 864000)):
+        for key, default, maximum in (
+            ("max_jobs", 20, 20),
+            ("per_job_s", 1200, 1200),
+            ("worker_budget_s", 864000, 864000),
+        ):
             correctness.setdefault(key, default)
             if type(correctness[key]) is not int or not 1 <= correctness[key] <= maximum:
                 raise ValueError(f"invalid joint gSIM correctness {key}")
+    # Optional sections are validated, never filled in: a stored policy must compare equal on resume.
+    from .joint_gsim_measurement import SECTION as MEASUREMENT
+    from .joint_gsim_measurement import validate as validate_measurement
+
+    validate_measurement(value.get(MEASUREMENT))
+    from .feedback.regression_sampling import SECTION as SAMPLING
+    from .feedback.regression_sampling import validate as validate_sampling
+
+    validate_sampling(value.get(SAMPLING))
     from .feedback.construction_plan import policy as construction_policy
+
     construction_policy(value.get("construction_plan"))
     from .joint_measurements import limits
+
     limits(value)
+    prohibited_instruction_roles({"policy": value})
     return value
+
+
+#: The joint policy's instruction rule: roles of the closed vocabulary the author's kernels may not issue.
+ROLES_KEY = "prohibited_instruction_roles"
+
+
+def prohibited_instruction_roles(state=None):
+    """The roles the selected campaign policy prohibits (``()`` without a campaign or a rule).
+
+    Read from the run's stored policy, so every grader of the campaign (background, self-check and
+    final coverage) holds a kernel to the rule the run was launched with."""
+    state = selected() if state is None else state
+    roles = ((state or {}).get("policy") or {}).get(ROLES_KEY, [])
+    if not isinstance(roles, list) or any(type(r) is not str for r in roles) or len(set(roles)) != len(roles):
+        raise ValueError(f"joint campaign {ROLES_KEY} must be a list of unique role names")
+    from merlin.compile.analysis.instruction_roles import check_roles
+
+    try:
+        check_roles(roles)
+    except KeyError as error:
+        raise ValueError(f"joint campaign {ROLES_KEY}: {error.args[0]}") from None
+    return tuple(roles)
+
+
+def instruction_policy_line(policy):
+    """One plain prompt line naming the prohibited roles, derived from the policy ("" without any)."""
+    roles = prohibited_instruction_roles({"policy": policy})
+    if not roles:
+        return ""
+    from merlin.compile.analysis.instruction_roles import ROLES
+
+    named = "; ".join(f"`{role}`: {ROLES[role]}" for role in roles)
+    return (
+        f"\n\nProhibited instruction role{'s' if len(roles) > 1 else ''} {named}. Build every schedule from "
+        "the target's other commands; a case whose executed command stream issues a command with a "
+        "prohibited role fails at L2.\n"
+    )
 
 
 def validate(options):
     if not getattr(options, "joint_campaign", ""):
         return
     selected_policy = policy(options.joint_campaign)
-    if ("compiler_execution_mode" in selected_policy and selected_policy["compiler_execution_mode"]
-            != getattr(options, "compiler_execution", "profile_strict_v1")):
+    if "compiler_execution_mode" in selected_policy and selected_policy["compiler_execution_mode"] != getattr(
+        options, "compiler_execution", "profile_strict_v1"
+    ):
         raise ValueError("joint policy and compiler execution mode differ")
     from .joint_seed import selected as selected_seed
+
     seed = selected_seed(options, selected_policy)
     if options.sandbox != "bwrap" or options.continuous or options.schedule != "continuous":
         raise ValueError("joint campaign requires native --schedule continuous and bwrap")
@@ -96,6 +160,7 @@ def configure(options, run_dir, *, resume=False):
     path = Path(run_dir) / "joint_campaign.json"
     digest = hashlib.sha256(Path(source).read_bytes()).hexdigest()
     from .joint_epochs import performance_pin
+
     timing = performance_pin()
     if resume:
         old = json.loads(path.read_text())
@@ -105,12 +170,20 @@ def configure(options, run_dir, *, resume=False):
             raise ValueError("joint performance selection changed on resume; use a reviewed epoch")
     else:
         from .joint_epochs import inherited_state
+
         inherited = inherited_state(options, value, digest)
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             raise ValueError("joint campaign state already exists")
-        path.write_text(json.dumps(inherited or {"version": 1, "policy": value, "policy_sha256": digest,
-                                    "started_at_epoch": None, "performance_selection": timing}, indent=2) + "\n")
+        state = inherited or {
+            "version": 1,
+            "policy": value,
+            "policy_sha256": digest,
+            "started_at_epoch": None,
+            "performance_selection": timing,
+        }
+        state.setdefault("effective_settings", effective_settings(value))
+        path.write_text(json.dumps(state, indent=2) + "\n")
         path.chmod(0o600)
     os.environ[ENV] = str(path.resolve())
     return value
@@ -119,6 +192,16 @@ def configure(options, run_dir, *, resume=False):
 def selected():
     path = os.environ.get(ENV)
     return json.loads(Path(path).read_text()) if path else None
+
+
+def effective_settings(policy):
+    """The derived knobs of the optional lanes this policy selects, recorded in the run's state."""
+    from .feedback.regression_sampling import SECTION as SAMPLING
+    from .feedback.regression_sampling import settings as sampling
+    from .joint_gsim_measurement import SECTION as MEASUREMENT
+    from .joint_gsim_measurement import settings as measurement
+
+    return {MEASUREMENT: measurement(policy), SAMPLING: sampling(policy)}
 
 
 def start():
@@ -158,9 +241,12 @@ def stop_reason():
     if value is None:
         return None
     from .joint_epochs import stop_reason as epoch_stop
+
     return epoch_stop(Path(os.environ[ENV]).parent) or (
         "joint campaign freeze/drain boundary reached"
-        if value["started_at_epoch"] is not None and remaining(drain=True) <= 0 else None)
+        if value["started_at_epoch"] is not None and remaining(drain=True) <= 0
+        else None
+    )
 
 
 def gsim_ledger():
@@ -181,8 +267,9 @@ def held_capsules(value=None):
 
 def correctness_ledger():
     value = selected()
-    return Path(value.get("gsim_correctness_ledger", str(
-        Path(os.environ[ENV]).with_name("joint_gsim_correctness_budget.json"))))
+    return Path(
+        value.get("gsim_correctness_ledger", str(Path(os.environ[ENV]).with_name("joint_gsim_correctness_budget.json")))
+    )
 
 
 def physical_policy(capsule):
@@ -191,55 +278,153 @@ def physical_policy(capsule):
 
 
 @contextmanager
-def physical_correctness(capsule):
+def _correctness_data(path):
+    """The correctness ledger under its lock; written back however the block ends."""
+    with path.open("a+") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        handle.seek(0)
+        data = json.loads(handle.read() or '{"reserved_s":0,"active":[],"admissions":[]}')
+        data.setdefault("waiting", [])
+        try:
+            yield data
+        finally:
+            handle.seek(0)
+            handle.truncate()
+            json.dump(data, handle)
+            handle.flush()
+
+
+def correctness_background_slots(starting=()):
+    """Correctness gSIM slots background work may start now (0 while an author waits); read-only.
+
+    ``starting``: the caller's launched request ids whose children have not taken a slot yet.
+    """
+    from . import joint_gsim_queue as Q
+
+    value = selected()
+    if value is None:
+        return None
+    path = correctness_ledger()
+    try:
+        with path.open() as handle:
+            fcntl.flock(handle, fcntl.LOCK_SH)
+            data = json.loads(handle.read() or "{}")
+    except FileNotFoundError:
+        data = {}
+    data = {"active": list(data.get("active", ())), "waiting": list(data.get("waiting", ()))}
+    Q.settle(data)
+    return Q.background_slots(data, value["policy"]["gsim_correctness"]["max_jobs"], starting)
+
+
+@contextmanager
+def physical_correctness(capsule, *, wait=None, progress=None, queue=None, poll_s=1.0):
     """Budget one mandatory run; native promotion owns prerequisites and reuse.
 
     This does not authorize model fitting or certify any output. Unknown, failed,
     interrupted and timed-out native results leave the correctness obligation open.
     Separate accounting prevents mandatory cases consuming calibration permissions.
+
+    Every slot busy with budget left: an author request (``wait``, the default for its class)
+    waits in the ledger's order, publishing its place to ``progress`` and recording the wait in
+    ``queue``; background work raises :class:`.joint_gsim_queue.SlotBusy` instead. Budget
+    exhaustion, the roster and the campaign window/stop stay refusals, also while waiting.
     """
     value = selected()
     if value is None:
         yield None
         return
+    from . import joint_gsim_queue as Q
     from .joint_epochs import stop_reason as epoch_stop
-    left = remaining()
-    if (capsule not in correctness_capsules(value) or left <= 0
-            or epoch_stop(Path(os.environ[ENV]).parent)):
+
+    def closed():
+        return remaining() <= 0 or epoch_stop(Path(os.environ[ENV]).parent)
+
+    if capsule not in correctness_capsules(value) or closed():
         raise ValueError("gSIM correctness request outside required roster/campaign window")
     spec = value["policy"]["gsim_correctness"]
-    reservation = min(float(spec["per_job_s"]), left)
+    request_class = Q.request_class()
+    wait = request_class == Q.AUTHOR if wait is None else wait
     token = uuid.uuid4().hex
     path = correctness_ledger()
-    with path.open("a+") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        handle.seek(0)
-        data = json.loads(handle.read() or '{"reserved_s":0,"active":[],"admissions":[]}')
-        active = []
-        for row in data["active"]:
-            try:
-                os.kill(row["pid"], 0)
-                active.append(row)
-            except ProcessLookupError:
-                pass  # Dead workers retain their reservation, but release concurrency.
-        if (len(active) >= spec["max_jobs"]
-                or data["reserved_s"] + reservation > spec["worker_budget_s"]):
-            raise ValueError("joint gSIM correctness concurrency or worker budget exhausted; obligation remains pending")
-        active.append({"pid": os.getpid(), "token": token, "capsule": capsule})
-        data["admissions"].append({"capsule": capsule, "token": token,
-            "purpose": "required_correctness", "at_epoch": time.time(), "reserved_s": reservation})
-        data.update(active=active, reserved_s=data["reserved_s"] + reservation)
-        handle.seek(0); handle.truncate(); json.dump(data, handle); handle.flush()
+    queued_at = first_ahead = None
+    try:
+        while True:
+            if closed():
+                raise ValueError(
+                    "campaign deadline or stop reached while queued for a gSIM correctness slot; "
+                    "obligation remains pending"
+                )
+            reservation = min(float(spec["per_job_s"]), remaining())
+            with _correctness_data(path) as data:
+                Q.settle(data)  # Dead workers retain their reservation, but release concurrency.
+                if data["reserved_s"] + reservation > spec["worker_budget_s"]:
+                    Q.leave(data, token)
+                    raise ValueError(
+                        f"joint gSIM correctness worker budget exhausted ({data['reserved_s']:.0f} s reserved "
+                        f"+ {reservation:.0f} s for this job > {spec['worker_budget_s']} s); "
+                        "obligation remains pending"
+                    )
+                Q.enqueue(data, token, capsule=capsule, request_class=request_class, now=time.time())
+                state = Q.describe(data, token, spec["max_jobs"])
+                if Q.admissible(data, token, spec["max_jobs"]):
+                    Q.leave(data, token)
+                    waited = None if queued_at is None else round(time.time() - queued_at, 1)
+                    data["active"].append(
+                        {
+                            "pid": os.getpid(),
+                            "token": token,
+                            "capsule": capsule,
+                            "request": os.environ.get(Q.REQUEST_ENV) or None,
+                        }
+                    )
+                    data["admissions"].append(
+                        {
+                            "capsule": capsule,
+                            "token": token,
+                            "purpose": "required_correctness",
+                            "at_epoch": time.time(),
+                            "reserved_s": reservation,
+                            **({"queued_s": waited, "queued_ahead": first_ahead} if waited is not None else {}),
+                        }
+                    )
+                    data["reserved_s"] += reservation
+                    break
+                if not wait:
+                    Q.leave(data, token)
+                    raise Q.SlotBusy(
+                        f"joint gSIM correctness concurrency full ({state['busy']} of {state['slots']} slots "
+                        f"busy, {state['ahead']} waiting ahead); obligation remains pending and the request "
+                        "stays queued"
+                    )
+            if queued_at is None:
+                queued_at, first_ahead = time.time(), state["ahead"]
+            Q.publish(progress, Q.WAITING_STATUS, dict(state, queued_since_epoch=queued_at))
+            time.sleep(poll_s)
+    except BaseException:
+        try:
+            with _correctness_data(path) as data:
+                Q.leave(data, token)  # A refusal or an interrupted wait gives up its place.
+        except (OSError, ValueError):
+            pass  # the original failure is the one to report; a dead waiter is settled anyway
+        raise
+    if queued_at is not None:
+        record = {
+            "state": "admitted",
+            "ahead_at_enqueue": first_ahead,
+            "waited_s": round(time.time() - queued_at, 1),
+            "note": f"queued for a gSIM slot ({first_ahead} ahead) for "
+            f"{time.time() - queued_at:.0f} s before it started",
+        }
+        Q.publish(progress, Q.ADMITTED_STATUS, record)
+        if queue is not None:
+            queue.update(record)
     begun = time.monotonic()
     try:
         yield max(1, int(reservation))
     finally:
-        with path.open("r+") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-            data = json.load(handle)
+        with _correctness_data(path) as data:
             data["active"] = [r for r in data["active"] if r["token"] != token]
             data["reserved_s"] -= max(0, reservation - (time.monotonic() - begun))
-            handle.seek(0); handle.truncate(); json.dump(data, handle)
 
 
 @contextmanager
@@ -272,10 +457,14 @@ def physical_witness(capsule):
         if len(active) >= spec["max_jobs"] or data["reserved_s"] + spec["per_job_s"] > spec["worker_budget_s"]:
             raise ValueError("joint gSIM concurrency or aggregate worker budget exhausted")
         from .joint_measurements import admit
+
         admit(data, capsule, value["policy"])
         active.append(os.getpid())
         data.update(active=active, reserved_s=data["reserved_s"] + spec["per_job_s"])
-        handle.seek(0); handle.truncate(); json.dump(data, handle); handle.flush()
+        handle.seek(0)
+        handle.truncate()
+        json.dump(data, handle)
+        handle.flush()
     begun = time.monotonic()
     try:
         yield min(spec["per_job_s"], max(1, int(remaining(drain=True))))
@@ -286,11 +475,14 @@ def physical_witness(capsule):
             data["active"].remove(os.getpid())
             # Return unused reservation only after the original worker completed.
             data["reserved_s"] -= max(0, spec["per_job_s"] - (time.monotonic() - begun))
-            handle.seek(0); handle.truncate(); json.dump(data, handle)
+            handle.seek(0)
+            handle.truncate()
+            json.dump(data, handle)
 
 
 def selfcheck_policy(function):
     """Apply routing before any request can reach a simulator, in its owned child."""
+
     @wraps(function)
     def wrapped(argv=None, **kwargs):
         if selected() is None:
@@ -304,6 +496,7 @@ def selfcheck_policy(function):
         parser.add_argument("--tiers", default="")
         parser.add_argument("--timeout", type=int, default=1200)
         parser.add_argument("--out")
+        parser.add_argument("--progress-out", default="")
         request, rest = parser.parse_known_args(args)
         try:
             if remaining() <= 0:
@@ -311,25 +504,69 @@ def selfcheck_policy(function):
             sim = "spike" if request.sim in {"required", "auto"} else request.sim
             if sim not in {"spike", "gsim"}:
                 raise ValueError("joint development supports Spike and selected gSIM witnesses only")
-            if sim == "spike" and any(t.strip() not in {"L0", "L1", "L2"} for t in request.tiers.split(",") if t.strip()):
+            if sim == "spike" and any(
+                t.strip() not in {"L0", "L1", "L2"} for t in request.tiers.split(",") if t.strip()
+            ):
                 raise ValueError("joint Spike requests cannot select physical tiers")
             forwarded = rest + ["--sim", sim, "--capsules", request.capsules]
             if request.tiers:
                 forwarded += ["--tiers", request.tiers]
             if request.out:
                 forwarded += ["--out", request.out]
+            if request.progress_out:
+                forwarded += ["--progress-out", request.progress_out]
+            if sim == "gsim" and request.capsules.startswith("panel:"):  # feedback.shape_panel admits each case
+                left = max(1, int(remaining()))
+                return function(forwarded + ["--timeout", str(min(request.timeout, left))], **kwargs)
             if sim == "gsim":
-                admission = physical_correctness if request.capsules in correctness_capsules() else physical_witness
-                with admission(request.capsules) as budget:
-                    return function(forwarded + ["--timeout", str(min(request.timeout, budget))], **kwargs)
+                from .joint_gsim_measurement import admission as measurement
+                from .joint_gsim_measurement import requested as measurement_request
+                from .gsim_wall_cap import request_refusal
+
+                over_cap = None if measurement_request() is not None else request_refusal(request.capsules)
+                if over_cap is not None:
+                    raise ValueError(over_cap)  # before any slot is taken or waited for
+
+                admission = (
+                    measurement
+                    if measurement_request() is not None
+                    else physical_correctness
+                    if request.capsules in correctness_capsules()
+                    else physical_witness
+                )
+                queue = {}
+                options = (
+                    {"progress": request.progress_out or None, "queue": queue}
+                    if admission is physical_correctness
+                    else {}
+                )
+                with admission(request.capsules, **options) as budget:
+                    status = function(forwarded + ["--timeout", str(min(request.timeout, budget))], **kwargs)
+                if queue and request.out:
+                    _note_queue_wait(Path(request.out), queue)
+                return status
             return function(forwarded + ["--timeout", str(min(request.timeout, max(1, int(remaining()))))], **kwargs)
         except ValueError as exc:
             report = {"all_pass": False, "error": str(exc), "joint_policy_refused": True}
+            if getattr(exc, "retryable", False):
+                report["joint_policy_retryable"] = True
             if request.out:
                 Path(request.out).write_text(json.dumps(report))
             print(json.dumps(report))
             return 2
+
     return wrapped
+
+
+def _note_queue_wait(path, queue):
+    """Say on the verdict that it waited for a gSIM slot before it started."""
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return
+    if isinstance(document, dict):
+        document["gsim_slot_queue"] = queue
+        path.write_text(json.dumps(document))
 
 
 def selfcheck_routing_guidance():
@@ -340,17 +577,30 @@ def selfcheck_routing_guidance():
         "Explicit `--sim gsim` accepts one named required original correctness capsule under its "
         "separate correctness budget, or one calibration witness subject to question review. "
         "Required correctness does not consume calibration permissions or qualify a fit. "
+        "When every correctness gSIM slot is busy the request waits for one in arrival order "
+        "(its progress says `queued for a gSIM slot (N ahead)`); collect it later with `--attach`. "
         "Unlisted cases, multi-capsule gSIM requests and "
-        "scalability gSIM/L3 requests are refused."
+        "scalability gSIM/L3 requests are refused." + _measurement_guidance()
     )
+
+
+def _measurement_guidance():
+    from .joint_gsim_measurement import guidance
+
+    text = guidance()
+    return " " + text if text else ""
 
 
 def prompt_block():
     value = selected()
     if value is None:
         return ""
-    p = value["policy"]
+    return _campaign_prompt_block(value["policy"]) + instruction_policy_line(value["policy"])
+
+
+def _campaign_prompt_block(p):
     from .full_compiler_workspace import selected as full_selection
+
     if p.get("compiler_execution_mode") == "snapshot_external_v1" and full_selection() is not None:
         return _full_compiler_prompt_block(p)
     return "\n\n## Joint compiler development campaign\n\n" + (
@@ -364,9 +614,9 @@ def prompt_block():
         "Each worker reports touched modules, named focused checks, the first actionable failure, "
         "concise correctness/performance/model confidence and artifact paths; never paste raw logs. "
         "After edits, run relevant named selfcheck subsets. Optionally declare affected operation "
-        "families in submission/joint-test-scope.json as {\"families\":[\"matmul\"]}; this only "
+        'families in submission/joint-test-scope.json as {"families":["matmul"]}; this only '
         "prioritizes the rolling correctness queue and grants no coverage. Alternatively name 1–16 unique "
-        "permitted development IDs with {\"capsules\":[\"case_id\"]}; do not combine this with families. "
+        'permitted development IDs with {"capsules":["case_id"]}; do not combine this with families. '
         "This is a priority hint, not a limit on queued cases or public IDs available to named selfchecks. "
         "Automatic grading refills the unresolved queue on an immutable snapshot within a bounded "
         "admission window; only actual starts count for fairness. At most two immutable compiler "
@@ -436,16 +686,20 @@ def development_roots(root):
 def stage_evidence(verdict):
     value = selected()
     if value is not None:
-        verdict["joint_campaign"] = {"scope": "development", "physical_certificate": False,
-                                     "final_only_pending": sorted(held_capsules(value)),
-                                     "physical_correctness_required": sorted(correctness_capsules(value)),
-                                     "performance_qualification": "unknown"}
+        verdict["joint_campaign"] = {
+            "scope": "development",
+            "physical_certificate": False,
+            "final_only_pending": sorted(held_capsules(value)),
+            "physical_correctness_required": sorted(correctness_capsules(value)),
+            "performance_qualification": "unknown",
+        }
     return verdict
 
 
 def _full_compiler_prompt_block(policy):
     """Editable compiler advice plus actual selected physical/resource limits."""
     from .joint_measurements import limits
+
     bounds = limits(policy)
     witness = policy.get("gsim", {})
     correctness = policy.get("gsim_correctness", {})
@@ -469,9 +723,10 @@ def _full_compiler_prompt_block(policy):
         "connected workloads from the start; small originals primarily establish correctness and model "
         "evidence. Full-model Spike development checks are available throughout the remaining campaign; "
         "there is no final-model-window waiting requirement in this execution mode. "
-        + selfcheck_routing_guidance() + "\n\n"
-        f"Selected campaign duration: {policy['duration_s']/3600:g} hours from author launch; "
-        f"editing stops {policy['drain_s']/60:g} minutes before deadline for freeze/drain. "
+        + selfcheck_routing_guidance()
+        + "\n\n"
+        f"Selected campaign duration: {policy['duration_s'] / 3600:g} hours from author launch; "
+        f"editing stops {policy['drain_s'] / 60:g} minutes before deadline for freeze/drain. "
         f"Required gSIM correctness: {len(correctness.get('capsules', ()))} declared cases, "
         f"concurrency {correctness.get('max_jobs', 'unselected')}, "
         f"per-job budget {correctness.get('per_job_s', 'unselected')} seconds. "

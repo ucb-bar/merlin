@@ -75,6 +75,38 @@ def verify(request, environment, expected):
     return snapshot
 
 
+def _performance_guidance(workspace, run_dir, inventory, *, repo=None, descriptor=None):
+    """The joint pass menu and the architecture-selected optimization suggestions, for either library mode.
+
+    Both used to be reached only from the selected-library branch, so every run on the editable full
+    compiler source (each continuation since the full source became the default) received neither.
+    A suggestion failure is advice lost, not a failed launch: it is reported and the run continues.
+    """
+    from .joint_control import selected as joint_selected
+
+    if not joint_selected():
+        return ""
+    from .joint_pass_guidance import prompt
+
+    text = prompt()
+    if repo is None:
+        print("[optimization-suggestions] skipped: no repository root to read the catalogue from", flush=True)
+        return text
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        from .optimization_suggestions import prepare
+
+        contract = load_target_experiment(descriptor).declared_contract_path() if descriptor else None
+        added = prepare(workspace, run_dir, repo=repo, inventory=inventory, contract_path=contract)
+    except Exception as error:  # noqa: BLE001 -- advice only; never fails the launch
+        print(f"[optimization-suggestions] unavailable: {type(error).__name__}: {error}", flush=True)
+        return text
+    if not added:
+        print("[optimization-suggestions] skipped: catalogue or software specification not staged", flush=True)
+    return text + added
+
+
 def append_guidance(workspace, run_dir, record, selection, *, repo=None, descriptor=None,
                     staging_record=None):
     from .full_compiler_workspace import selected as full_selection
@@ -116,6 +148,11 @@ def append_guidance(workspace, run_dir, record, selection, *, repo=None, descrip
         details = json.dumps(full.record(), sort_keys=True, indent=2) + "\n"
         (workspace / 'FULL_COMPILER_SOURCE_SELECTION.json').write_text(details)
         (run_dir / 'FULL_COMPILER_SOURCE_SELECTION.json').write_text(details)
+        # The editable full source is the public library here: its member modules are what the
+        # optimization catalogue's APIs are checked against.
+        inventory = {"public_modules": [{"module": module} for _, _, module in full.members if module],
+                     "contract_sha256": full.manifest_sha256}
+        text += _performance_guidance(workspace, run_dir, inventory, repo=repo, descriptor=descriptor)
         task = workspace / 'TASK.md'
         task.write_text(task.read_text() + text)
         (run_dir / 'TASK.md').write_bytes(task.read_bytes())
@@ -143,15 +180,7 @@ def append_guidance(workspace, run_dir, record, selection, *, repo=None, descrip
     )
     from .generated_isa_library import prompt as scaffold_prompt
     text += scaffold_prompt(snapshot)
-    from .joint_control import selected as joint_selected
-    if joint_selected():
-        from .joint_pass_guidance import prompt
-        text += prompt()
-        if repo is not None:
-            from merlin.targetgen.target_experiment import load_target_experiment
-            from .optimization_suggestions import prepare
-            contract = load_target_experiment(descriptor).declared_contract_path() if descriptor else None
-            text += prepare(workspace, run_dir, repo=repo, inventory=inventory, contract_path=contract)
+    text += _performance_guidance(workspace, run_dir, inventory, repo=repo, descriptor=descriptor)
     from merlin.targetgen.compiler_library_fork import enabled, stage
     if enabled(snapshot):
         stage(snapshot, workspace / "submission")

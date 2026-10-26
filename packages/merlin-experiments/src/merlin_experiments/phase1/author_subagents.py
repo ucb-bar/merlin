@@ -17,6 +17,14 @@ and simulations run on that pool, so more concurrent helpers than pool CPUs only
 The capacity changes no prompt bytes and grants no tool, mount, network or model selection: helpers
 are threads of the same Codex process, inside the same outer sandbox and permission profile as the
 lead. Whether the author delegates is decided by its instructions, not by this ceiling.
+
+``--author-helper-effort`` optionally records a helper reasoning effort, written as
+``agents.default_subagent_reasoning_effort`` (codex-cli 0.162.0 accepts the key as a string and
+refuses a non-string at config load; an unknown ``agents`` key would instead be read as an agent
+role). Unset, nothing is written and helpers keep the lead's effort, the historical behavior. The
+same CLI's ``spawn_agent`` contract says full-history forks (``fork_turns`` omitted or ``"all"``)
+inherit the parent's model and reasoning effort, so the default reaches helpers spawned with
+``fork_turns "none"``; the record and the author's guidance both say so.
 """
 
 from __future__ import annotations
@@ -31,6 +39,10 @@ DEFAULT_CEILING = 16
 #: The CLI's own ceiling when the key is unset (measured; see the module docstring).
 PROVIDER_DEFAULT = 3
 _EXPLICIT = frozenset({"option", "codex_max_subagents", "environment"})
+#: The codex-cli config key for the effort of helpers spawned without a full-history fork.
+HELPER_EFFORT_KEY = "default_subagent_reasoning_effort"
+HELPER_EFFORT_SCOPE = ("helpers spawned with fork_turns none; full-history forks inherit the lead's model "
+                       "and reasoning effort (codex-cli spawn_agent contract)")
 
 
 def parse_count(value) -> int:
@@ -41,6 +53,14 @@ def parse_count(value) -> int:
     if not text.isascii() or not text.isdecimal() or int(text) < 1:
         raise ValueError("author subagent capacity must be a positive integer")
     return int(text)
+
+
+def parse_effort(value) -> str:
+    """A reasoning-effort word as the CLI's own levels are spelled (lowercase ASCII letters)."""
+    text = value.strip() if isinstance(value, str) else ""
+    if not text or not text.isascii() or not text.isalpha() or not text.islower():
+        raise ValueError("author helper effort must be a lowercase reasoning-effort word such as low or medium")
+    return text
 
 
 def _derived(environ: Mapping[str, str]) -> tuple[int, str, int | None]:
@@ -60,14 +80,19 @@ def selection(options, environ: Mapping[str, str] | None = None) -> dict | None:
     environment = os.environ if environ is None else environ
     explicit = getattr(options, "author_max_subagents", None)
     delegation = getattr(options, "codex_max_subagents", None)
+    helper_effort = getattr(options, "author_helper_effort", None)
     raw = str(environment.get(ENV, "")).strip()
     if getattr(options, "driver", "") != "codex":
         if explicit is not None:
             raise ValueError("--author-max-subagents requires the Codex driver")
+        if helper_effort is not None:
+            raise ValueError("--author-helper-effort requires the Codex driver")
         return None
     if getattr(options, "sandbox", "") != "bwrap":
         if explicit is not None or raw:
             raise ValueError("author subagent capacity requires the isolated bwrap Codex home")
+        if helper_effort is not None:
+            raise ValueError("--author-helper-effort requires the isolated bwrap Codex home")
         return None
     if explicit is not None and delegation is not None and parse_count(explicit) != parse_count(delegation):
         raise ValueError("--author-max-subagents conflicts with the --codex-max-subagents delegation bound")
@@ -89,6 +114,8 @@ def selection(options, environ: Mapping[str, str] | None = None) -> dict | None:
         "delegation_prompt": delegation is not None,
         "provider_default_when_unset": PROVIDER_DEFAULT,
         "scope": "per-session helper-thread ceiling in the frozen Codex home; no prompt, tool or access change",
+        **({HELPER_EFFORT_KEY: parse_effort(helper_effort), "helper_effort_scope": HELPER_EFFORT_SCOPE}
+           if helper_effort is not None else {}),
     }
 
 
@@ -100,6 +127,11 @@ def verify_resume(options, run_config: Mapping, environ: Mapping[str, str] | Non
     """
     current = selection(options, environ)
     recorded = run_config.get("author_subagents") if isinstance(run_config, Mapping) else None
+    if current is not None and HELPER_EFFORT_KEY in current:
+        # An explicit helper effort must be the recorded one; omitting it keeps the recorded selection.
+        prior_effort = recorded.get(HELPER_EFFORT_KEY) if isinstance(recorded, Mapping) else None
+        if prior_effort != current[HELPER_EFFORT_KEY]:
+            raise RuntimeError("author helper reasoning effort selection changed")
     if current is None or current["source"] not in _EXPLICIT:
         return
     prior = recorded.get("max_concurrent_threads_per_session") if isinstance(recorded, Mapping) else None
@@ -113,6 +145,20 @@ def recorded_capacity(run_dir: Path) -> int | None:
     A present but malformed record fails closed: a selection that cannot be applied exactly must not
     silently fall back to the provider's default.
     """
+    record = _recorded(run_dir)
+    return None if record is None else parse_count(record.get("max_concurrent_threads_per_session"))
+
+
+def recorded_helper_effort(run_dir: Path) -> str | None:
+    """The helper reasoning effort this run recorded, or ``None`` (helpers keep the lead's effort)."""
+    record = _recorded(run_dir)
+    if record is None or HELPER_EFFORT_KEY not in record:
+        return None
+    return parse_effort(record[HELPER_EFFORT_KEY])
+
+
+def _recorded(run_dir: Path) -> dict | None:
+    """This run's recorded selection, ``None`` without one; a malformed record fails closed."""
     path = Path(run_dir) / "environment.yaml"
     if not path.is_file():
         return None
@@ -125,15 +171,29 @@ def recorded_capacity(run_dir: Path) -> int | None:
         return None
     if not isinstance(record, dict) or record.get("schema") != SCHEMA:
         raise ValueError("recorded author subagent capacity is malformed")
-    return parse_count(record.get("max_concurrent_threads_per_session"))
+    return record
 
 
 def launch_kwargs(run_dir: Path, sandbox: str) -> dict:
-    """Provider keyword for the recorded capacity; isolated homes only."""
+    """Provider keywords for the recorded capacity and helper effort; isolated homes only."""
     if sandbox != "bwrap":
         return {}
-    count = recorded_capacity(run_dir)
-    return {} if count is None else {"subagent_capacity": count}
+    count, effort = recorded_capacity(run_dir), recorded_helper_effort(run_dir)
+    return {**({} if count is None else {"subagent_capacity": count}),
+            **({} if effort is None else {"helper_effort": effort})}
+
+
+def home_config(capacity: int | None, helper_effort: str | None = None) -> str:
+    """Root-level dotted keys for the frozen Codex home, placed before its permission/provider tables."""
+    if capacity is None:
+        if helper_effort is not None:
+            raise ValueError("a helper reasoning effort requires the recorded subagent capacity")
+        return ""
+    keys = ("features.multi_agent = true\nagents.enabled = true\n"
+            f"agents.max_concurrent_threads_per_session = {capacity}\n")
+    if helper_effort is not None:
+        keys += f'agents.{HELPER_EFFORT_KEY} = "{parse_effort(helper_effort)}"\n'
+    return keys
 
 
 def effective_capacity(delegation: int | None, capacity: int | None, sandbox: str) -> int | None:
@@ -146,14 +206,25 @@ def effective_capacity(delegation: int | None, capacity: int | None, sandbox: st
     return delegation if delegation is not None else capacity
 
 
-def summary_record(capacity: int | None, delegation: int | None) -> dict:
+def summary_record(capacity: int | None, delegation: int | None, helper_effort: str | None = None) -> dict:
     """What one round actually configured, for its codex_summary.json."""
     return {
         "max_concurrent_threads_per_session": capacity,
         "configured": capacity is not None,
         "delegation_prompt": delegation is not None,
         **({} if capacity is not None else {"provider_default": PROVIDER_DEFAULT}),
+        **({HELPER_EFFORT_KEY: helper_effort, "helper_effort_scope": HELPER_EFFORT_SCOPE}
+           if helper_effort is not None else {}),
     }
+
+
+def helper_effort_note(helper_effort: str | None) -> str:
+    """One factual sentence for the lead when the operator selected a helper effort; else empty."""
+    if helper_effort is None:
+        return ""
+    return (f'\n\nHelpers you spawn with fork_turns "none" run at reasoning effort '
+            f"{parse_effort(helper_effort)} (the operator's helper setting); full-history forks keep "
+            "your own effort.")
 
 
 def round_guidance(capacity: int | None, delegation: int | None) -> str:

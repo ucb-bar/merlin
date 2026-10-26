@@ -85,6 +85,9 @@ _PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ec
 # Replay-only predecessor; failure detail changed, successful policy and comparisons did not.
 _PRE_REPLAY_DIAGNOSTICS_ISSUER_SHA256 = "4356dafad28f9b81ba77988074c44214d1b52c304cdb29bae63108b4e3276343"
 _PRE_PUBLICATION_DIAGNOSTICS_ISSUER_SHA256 = sealed_failure.PRE_RETENTION_ISSUER_SHA256
+# Exact predecessor before the additional independent dynamic-reference source binding.
+# Replay only: its unchanged selected source/runtime/output bytes still execute and compare afresh.
+_PRE_DYNAMIC_REFERENCE_ISSUER_SHA256 = "b1a7e83ea8daabb5f7e708118c674116c2d817d7ff912f34c99e031c11bd141f"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -97,7 +100,7 @@ _MAX_SELECTED_CAPTURE_SECONDS = 14_400
 
 # This literal is part of the selected issuer identity. Refuse changes to the
 # extracted verifier; historical issuer admission remains unchanged.
-_VALIDATION_SOURCE_SHA256 = "6202c1cc88c6dea776dd4cd43933f9f38aefd13d9316bc5124a5d9e8aa12cda1"
+_VALIDATION_SOURCE_SHA256 = "40dddb0acec90a7f13af8e7f3edd48a7b8a6ee876288ce6d572120b531139c10"
 
 
 def _validation_functions():
@@ -1528,6 +1531,8 @@ def replay_verify(
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if native_integer.selected(plan.get("worker_options")) or "runtime_reuse" in plan:
         supported_issuer = {expected_issuer}
+    if schema in {SCHEMA, SCHEMA_V3} and doc.get("capture_selection_sha256") is not None:
+        supported_issuer.add(_PRE_DYNAMIC_REFERENCE_ISSUER_SHA256)
     if (
         doc.get("status") != "pending_replay"
         or doc.get("issuer_sha256") not in supported_issuer

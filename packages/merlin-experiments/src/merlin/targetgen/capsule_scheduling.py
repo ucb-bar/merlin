@@ -8,9 +8,12 @@ corpus whose first member was a full-shape layer ran that one capsule alone for 
 Here a capsule starts the moment a worker is free and the ``extends`` sibling it cites (if selected)
 has FINISHED -- a dependent still never starts before its evidence exists, which is the one ordering
 the waves were for. Ready members start longest first (declared operand volume, or with
-``MERLIN_CAPSULE_ORDER=measured-longest-first`` the costs this run already measured). Calibration runs
-once for the whole suite, on the CHEAPEST ready members, and only while tiers remain unpriced. Results
-come back in input order.
+``MERLIN_CAPSULE_ORDER=measured-longest-first`` the costs this run already measured). A background
+snapshot grade instead admits by information value (``information-first``, its default): members whose
+newest result is failing, missing or from other source bytes first, cheapest per reached component
+next, long members last -- its admission window is short, and longest-first spent it on the slowest
+members. Calibration runs once for the whole suite, on the CHEAPEST ready members, and only while tiers
+remain unpriced. Results come back in input order.
 """
 
 from __future__ import annotations
@@ -39,10 +42,12 @@ _DEFER_PROBE: ContextVar[Callable[[], str | None] | None] = ContextVar("merlin_c
 #: runs roots of this run; their completed capsule results price ``measured-longest-first``.
 TIMING_HISTORY_ENV = "MERLIN_CAPSULE_TIMING_HISTORY"
 _TIMING_HISTORY: ContextVar[tuple[Path, ...] | None] = ContextVar("merlin_capsule_timing_history", default=None)
-_ORDERS = ("", "legacy", "operators-small-first", "measured-longest-first")
+_ORDERS = ("", "legacy", "operators-small-first", "measured-longest-first", "information-first")
 #: Parsed timing rows by (path, size, mtime_ns): one long run re-reads its history every grade.
 _PARSED: dict[tuple, tuple[str, dict[str, float], dict[str, int]] | None] = {}
 _PARSED_LOCK = threading.Lock()
+#: Newest-outcome rows by (path, size, mtime_ns), for ``information-first``.
+_OUTCOMES: dict[tuple, dict | None] = {}
 
 
 def active_defer_probe() -> Callable[[], str | None] | None:
@@ -64,13 +69,29 @@ def timing_history(runs_roots: Iterable[str | Path]) -> Iterator[None]:
         _TIMING_HISTORY.reset(token)
 
 
-_ADMISSION_OBSERVER: ContextVar[tuple[Callable[[str], None], Callable[[], bool] | None] | None] = ContextVar("merlin_admission_observer", default=None)
+_ADMISSION_OBSERVER: ContextVar[tuple[Callable[[str], None], Callable[[], bool] | None, Callable[[], bool] | None] | None] = ContextVar("merlin_admission_observer", default=None)
+#: Seconds a gate-held member may still start after its grade's admission window closed
+#: (``MERLIN_SNAPSHOT_GATE_HOLD_S``; 0 disables holding).
+GATE_HOLD_S = 1800.0
+
+
+def gate_hold_seconds() -> float:
+    raw = os.environ.get("MERLIN_SNAPSHOT_GATE_HOLD_S", "").strip()
+    try:
+        value = float(raw) if raw else GATE_HOLD_S
+    except ValueError:
+        return GATE_HOLD_S
+    return value if isfinite(value) and value >= 0 else GATE_HOLD_S
 
 
 @contextmanager
-def observe_admission(callback, *, stop_requested=None):
-    """Notify the trusted snapshot owner when this queue can admit no further work."""
-    token = _ADMISSION_OBSERVER.set((callback, stop_requested))
+def observe_admission(callback, *, stop_requested=None, current=None):
+    """Notify the trusted snapshot owner when this queue can admit no further work.
+
+    ``current()`` says whether the owner's snapshot is still the author's source; while it is, a
+    gate-held member (see :func:`run_pipelined`) may still start after the admission window.
+    """
+    token = _ADMISSION_OBSERVER.set((callback, stop_requested, current))
     try:
         yield
     finally:
@@ -93,17 +114,95 @@ _ROLLING_ADMISSION: ContextVar[dict | None] = ContextVar("merlin_rolling_admissi
 @contextmanager
 def rolling_admission(*, on_start=None, admission_deadline_monotonic=None,
                       admission_costs=None, admission_priority=None, admission_window_s=None,
-                      admission_allow_oversized_first=False):
+                      admission_allow_oversized_first=False, admission_hold=None):
     """Trusted per-snapshot admission scope; never a numerical/performance authority."""
     token = _ROLLING_ADMISSION.set(dict(on_start=on_start,
         admission_deadline_monotonic=admission_deadline_monotonic,
         admission_costs=admission_costs, admission_priority=admission_priority,
         admission_window_s=admission_window_s,
-        admission_allow_oversized_first=admission_allow_oversized_first))
+        admission_allow_oversized_first=admission_allow_oversized_first,
+        admission_hold=admission_hold))
     try:
         yield
     finally:
         _ROLLING_ADMISSION.reset(token)
+
+
+_RELEVANCE: ContextVar[dict | None] = ContextVar("merlin_admission_relevance", default=None)
+
+
+@contextmanager
+def admission_relevance(*, source_sha256=None, reach=None, superseded=None):
+    """Trusted per-snapshot facts that order and narrow admission; never a result or a credit.
+
+    ``source_sha256`` is the graded snapshot's digest (the ``compiler_source.candidate_sha256`` its
+    results record); ``reach(member)`` the compiler components that member's commands reach (``None``:
+    unknown); ``superseded(member)`` why that unstarted member may no longer be admitted because the
+    author's source changed what it reaches (``None``: still valid for the current source). A started
+    member always drains on its own snapshot; nothing here re-attributes a result.
+    """
+    token = _RELEVANCE.set(dict(source_sha256=source_sha256, reach=reach, superseded=superseded))
+    try:
+        yield
+    finally:
+        _RELEVANCE.reset(token)
+
+
+def newest_outcomes(runs_roots: Iterable[str | Path]) -> dict[str, dict]:
+    """``{capsule: {"passed": bool, "source_sha256": str | None}}`` from each capsule's newest result.
+
+    Only the newest ``runs/<suite>/<capsule>/capsule_result.json`` per capsule is read. A result
+    still being written, or one that does not name its own capsule, is no outcome (the member then
+    ranks as missing). Ordering input only: it never reuses, skips or credits a member.
+    """
+    dated = []
+    for root in runs_roots:
+        base = Path(root)
+        if base.is_absolute() and base.is_dir():
+            for path in (base / "runs").glob("*/*/capsule_result.json"):
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                dated.append((stat.st_mtime_ns, str(path), path, stat.st_size))
+    outcomes: dict[str, dict] = {}
+    for mtime, _, path, size in sorted(dated, reverse=True):
+        name = path.parent.name
+        if name in outcomes:
+            continue
+        key = (str(path), size, mtime)
+        with _PARSED_LOCK:
+            known = key in _OUTCOMES
+            row = _OUTCOMES.get(key)
+        if not known:
+            try:
+                document = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue  # not history yet; an older result of this capsule may still answer
+            row = None
+            if isinstance(document, dict) and document.get("capsule") == name:
+                source = (document.get("compiler_source") or {}).get("candidate_sha256")
+                row = {"passed": document.get("status") == "pass" and not document.get("failure"),
+                       "source_sha256": source if isinstance(source, str) and source else None}
+            with _PARSED_LOCK:
+                if len(_OUTCOMES) > 65536:
+                    _OUTCOMES.clear()
+                _OUTCOMES[key] = row
+        if row is not None:
+            outcomes[name] = row
+    return outcomes
+
+
+def information_rank(outcome: Mapping | None, source_sha256: str | None) -> int:
+    """0 when the newest result is failing, missing or earned on other source bytes, else 1.
+
+    Fail closed: an unknown graded source makes every result stale. Equality of the whole snapshot
+    digest is the freshness proof, so an edit outside a member's reach still counts as an edit here.
+    """
+    if (not outcome or outcome.get("passed") is not True or not source_sha256
+            or outcome.get("source_sha256") != source_sha256):
+        return 0
+    return 1
 
 
 def selected_history() -> tuple[Path, ...]:
@@ -357,6 +456,7 @@ def run_pipelined(
     admission_priority: Callable[[dict], Any] | None = _ADMISSION_UNSET,
     admission_window_s: float | None = _ADMISSION_UNSET,
     admission_allow_oversized_first: bool = _ADMISSION_UNSET,
+    admission_hold: Callable[[dict], bool] | None = _ADMISSION_UNSET,
 ) -> list[dict]:
     """Grade ``capsules`` with at most ``max_workers`` in flight, each as soon as its sibling finished.
 
@@ -378,6 +478,16 @@ def run_pipelined(
     ``admission_window_s`` begins after queue preparation and is capped by any absolute deadline.
     Optional oversized-first admission prevents an aged expensive member starving forever; it
     retains its original execution timeout. Supplied costs replace unscoped cost/cycle ordering.
+    ``admission_hold(member)`` marks a member that waits on prerequisites in this same queue (a
+    whole-model capstone behind its operator gate): when the admission window closes it may still
+    start once ``can_start`` admits it, while prerequisite work is running, the owner's snapshot is
+    current and :func:`gate_hold_seconds` have not passed. Nothing else is admitted late.
+    ``information-first`` (the default inside a background snapshot owner's admission, see
+    :func:`observe_admission`) starts members whose newest result is failing, missing or stale before
+    the others, then ascending measured cost per reached component (:func:`admission_relevance`),
+    after any caller ``priority``/``admission_priority``. An :func:`admission_relevance` ``superseded``
+    hook withholds only the unstarted members it names; admission closes once no unstarted member
+    remains admissible.
     """
     scope = _ROLLING_ADMISSION.get() or {}
     on_start = scope.get("on_start") if on_start is _ADMISSION_UNSET else on_start
@@ -388,6 +498,7 @@ def run_pipelined(
     admission_window_s = scope.get("admission_window_s") if admission_window_s is _ADMISSION_UNSET else admission_window_s
     admission_allow_oversized_first = (scope.get("admission_allow_oversized_first", False)
         if admission_allow_oversized_first is _ADMISSION_UNSET else admission_allow_oversized_first)
+    admission_hold = scope.get("admission_hold") if admission_hold is _ADMISSION_UNSET else admission_hold
     if admission_window_s is not None and (_seconds(admission_window_s) is None or admission_window_s <= 0):
         raise ValueError("admission window must be finite positive seconds")
     if type(admission_allow_oversized_first) is not bool:
@@ -400,9 +511,15 @@ def run_pipelined(
         raise ValueError("admission costs must be finite nonnegative wall seconds")
     order = os.environ.get("MERLIN_CAPSULE_ORDER", "").strip()
     if order not in _ORDERS:
-        raise ValueError("MERLIN_CAPSULE_ORDER must be legacy, operators-small-first or measured-longest-first")
+        raise ValueError("MERLIN_CAPSULE_ORDER must be legacy, operators-small-first, measured-longest-first"
+                         " or information-first")
+    if not order and background_admission_selected():
+        order = "information-first"  # a short admission window is spent where feedback is worth most
     small_operators_first = order == "operators-small-first"
     measured_first = order == "measured-longest-first"
+    information_first = order == "information-first"
+    relevance = _RELEVANCE.get() or {}
+    superseded_member = relevance.get("superseded")
     estimate: dict[str, float] = {}
     if measured_first:
         from merlin.targetgen.tier_policy import budget_seconds
@@ -410,8 +527,21 @@ def run_pipelined(
         if budget_seconds() is not None:
             # Under a certify budget the start order decides which members are certified at all.
             raise ValueError("measured-longest-first requires an unlimited certify budget")
+    if measured_first or information_first:
         estimate = (cost_estimates(capsules, admission_costs, {}) if scoped_costs_supplied
                     else cost_estimates(capsules, *measured_costs(selected_history())))
+    rank: dict[str, tuple[int, float]] = {}
+    if information_first:
+        outcomes = newest_outcomes(selected_history())
+        reach = relevance.get("reach")
+        for cap in capsules:
+            name = str(cap["name"])
+            try:
+                reached = reach(cap) if reach is not None else None
+            except Exception:  # noqa: BLE001 -- unknown reach orders as one component, never skips
+                reached = None
+            rank[name] = (information_rank(outcomes.get(name), relevance.get("source_sha256")),
+                          estimate[name] / max(1, len(reached or ())))
     head_wait = os.environ.get("MERLIN_CAPSULE_CALIBRATION_S")
     if head_wait is not None:
         try:
@@ -449,6 +579,7 @@ def run_pipelined(
     deferred = None
     admission_closed = None
     admitted: set[str] = set()
+    member_deferred: dict[str, str] = {}
     admission_notified = False
 
     def notify_closed(reason):
@@ -502,9 +633,28 @@ def run_pipelined(
         if deferred is None and defer_pending is not None:
             reason = defer_pending()
             deferred = reason if isinstance(reason, str) and reason else None
+        if deferred is None and admission_closed is None and superseded_member is not None:
+            pending = [cap for i, cap in enumerate(capsules) if i not in results and cap["name"] not in admitted]
+            if pending and all(withheld(cap) for cap in pending):
+                admission_closed = member_deferred[str(pending[0]["name"])]
         if deferred is not None or admission_closed is not None:
             notify_closed(deferred or admission_closed)
         return deferred is not None or admission_closed is not None
+
+    def withheld(cap):
+        """Whether the relevance hook superseded this unstarted member (sticky; errors fail closed)."""
+        name = str(cap["name"])
+        if superseded_member is None or name in admitted:
+            return False
+        if name not in member_deferred:
+            try:
+                reason = superseded_member(cap)
+            except Exception:  # noqa: BLE001 -- an unattributable member is treated as changed
+                reason = "background source dependencies unavailable"
+            if not (isinstance(reason, str) and reason):
+                return False
+            member_deferred[name] = reason
+        return True
 
     def deferred_results():
         for i, cap in enumerate(capsules):
@@ -522,6 +672,46 @@ def run_pipelined(
                         "detail": deferred or admission_closed},
                 }
         return [results[i] for i in range(len(capsules))]
+
+    hold_until = None
+    hold_current = {"checked": -1.0, "value": False}
+
+    def snapshot_current():
+        observer = _ADMISSION_OBSERVER.get()
+        current = observer[2] if observer is not None and len(observer) > 2 else None
+        if current is None:
+            return False
+        now = time.monotonic()
+        if now - hold_current["checked"] >= 15:  # a source digest per scheduling pass would be wasteful
+            try:
+                hold_current["value"] = bool(current())
+            except Exception:  # noqa: BLE001 -- an unknown source never extends admission
+                hold_current["value"] = False
+            hold_current["checked"] = now
+        return hold_current["value"]
+
+    def holding():
+        """Whether a gate-held member may still start after this queue's window closed."""
+        nonlocal hold_until
+        if admission_hold is None or deferred is not None or admission_closed is None:
+            return False
+        if admission_closed not in ("snapshot admission deadline reached",
+                                    "remaining ready work exceeds snapshot admission window"):
+            return False
+        if hold_until is None:
+            hold_until = time.monotonic() + gate_hold_seconds()
+        return time.monotonic() < hold_until and snapshot_current()
+
+    def take_held():
+        selectable = [item for item in ready
+                      if admission_hold(capsules[item[1]])
+                      and (can_start is None or can_start(capsules[item[1]]))]
+        if not selectable:
+            return None
+        item = min(selectable, key=lambda entry: ((priority(capsules[entry[1]]) if priority else 0), entry))
+        ready.remove(item)
+        heapq.heapify(ready)
+        return item
 
     # LONGEST FIRST (by declared operand volume, then input order): the classical makespan rule. The
     # member that bounds the suite starts as soon as a worker is free instead of after the small ones.
@@ -544,6 +734,8 @@ def run_pipelined(
             and admission_deadline_monotonic is None
             and not small_operators_first
             and not measured_first
+            and not information_first
+            and superseded_member is None
         ):
             return heapq.heappop(ready) if ready else None
         selectable = [
@@ -553,6 +745,7 @@ def run_pipelined(
             and admission_fits(capsules[item[1]])
             and (boundary_readiness is None or boundary_readiness.allows(capsules[item[1]]))
             and (not calibration or calibration_eligible is None or calibration_eligible(capsules[item[1]]))
+            and not withheld(capsules[item[1]])
         ]
         if not selectable:
             return None
@@ -566,6 +759,13 @@ def run_pipelined(
             # admitted) still leads; the name is the final deterministic tie-break.
             def key(entry):
                 return ((priority(capsules[entry[1]]) if priority else 0), -estimate[entry[2]], entry[0], entry[2])
+        elif information_first and not calibration:
+            # A short window buys the most feedback per second: failing, missing or stale results
+            # first, then the cheapest per reached component; long members last. Caller priority
+            # (models when admitted, curriculum fairness via admission_priority) still leads.
+            def key(entry):
+                return ((priority(capsules[entry[1]]) if priority else 0), *rank[entry[2]], estimate[entry[2]],
+                        entry[0], entry[2])
         else:
             key = (
                 (lambda entry: (-entry[0], entry[1]))
@@ -595,6 +795,10 @@ def run_pipelined(
 
     def finish_blocked():
         nonlocal admission_closed
+        if ready and superseded_member is not None and all(withheld(capsules[item[1]]) for item in ready):
+            # Nothing runs and every ready member is superseded: no unaffected member can still start.
+            admission_closed = member_deferred[ready[0][2]]
+            return
         # Work that cannot fit this window is deferred, not an operator/correctness refusal.
         if admission_deadline_monotonic is not None and any(
             (can_start is None or can_start(capsules[item[1]]))
@@ -670,6 +874,16 @@ def run_pipelined(
                 *_, name = item
                 start(capsules[index[name]])
                 running[submit(pool, capsules[index[name]], max_workers)] = name
+            if len(running) < max_workers and ready and admission_closed is not None and holding():
+                # The window closed while a capstone still waited on prerequisites of this queue; it
+                # starts once its gate opens. With nothing running and the gate shut it is deferred.
+                while len(running) < max_workers:
+                    item = take_held()
+                    if item is None:
+                        break
+                    *_, name = item
+                    start(capsules[index[name]])
+                    running[submit(pool, capsules[index[name]], max_workers)] = name
             if len(results) + len(running) == len(capsules):
                 notify_closed("all selected work admitted or completed")
             if not running:

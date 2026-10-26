@@ -73,58 +73,9 @@ def independent_frozen_source_eligibility(capsule: Mapping[str, Any], *, target:
     not native-execution evidence. This can run even when the legacy model
     grade fails before producing a coverage certificate.
     """
-    root_value = capsule.get("__dir__")
-    interface_name = capsule.get("interface_mlir") or capsule.get("linalg_mlir")
-    attrs = (capsule.get("operation") or {}).get("attributes") or {}
-    fmt = attrs.get("dtype")
-    if (
-        not isinstance(root_value, str)
-        or not isinstance(interface_name, str)
-        or not interface_name
-        or Path(interface_name).is_absolute()
-        or ".." in Path(interface_name).parts
-        or not isinstance(fmt, str)
-        or not fmt
-    ):
-        raise NativeModelExecutionError("frozen model has no exact local interface and routing dtype")
-    root = Path(root_value)
-    if not root.is_dir() or root.is_symlink():
-        raise NativeModelExecutionError("frozen model capsule directory is absent or indirect")
-    source = root / interface_name
-    if source.is_symlink() or not source.is_file():
-        raise NativeModelExecutionError("frozen model interface is absent or indirect")
-    raw = source.read_bytes()
-    import yaml
+    from merlin.targetgen.frozen_source_eligibility import census
 
-    from merlin.targetgen import target_registry
-    from merlin.targetgen.capsule_source import model_op_demands_checked
-    from merlin.targetgen.coverage_certificate import for_target
-    from merlin.targetgen.routing import route_plan
-
-    source_text = raw.decode("utf-8")
-    selected_contract = target_registry.resolve(target).capability_contract_path
-    if not selected_contract.is_absolute() or selected_contract.is_symlink() or not selected_contract.is_file():
-        raise NativeModelExecutionError("selected target capability contract is absent or indirect")
-    contract_pin = _digest(selected_contract)
-    contract = yaml.safe_load(selected_contract.read_text(encoding="utf-8"))
-    if not isinstance(contract, dict) or contract.get("name") != target:
-        raise NativeModelExecutionError("selected target capability contract names a different target")
-    with target_registry.observed_contract(target, contract, source_path=selected_contract):
-        demands = model_op_demands_checked(source_text, fmt)
-        certificate = for_target(route_plan(demands, target), target, linalg_mlir=source_text, execution=None)
-    if _digest(source)["sha256"] != hashlib.sha256(raw).hexdigest():
-        raise NativeModelExecutionError("frozen source changed during independent eligibility census")
-    if _digest(selected_contract) != contract_pin:
-        raise NativeModelExecutionError("selected capability contract changed during eligibility census")
-    if (
-        certificate.get("target") != target
-        or certificate.get("source_mlir_sha256") != hashlib.sha256(raw).hexdigest()
-        or certificate.get("n_regions") != len(demands)
-    ):
-        raise NativeModelExecutionError("independent source denominator lacks exact identity")
-    certificate["source_inventory_scope"] = "frozen_source_only_no_legacy_execution"
-    certificate["eligibility_capability_contract"] = contract_pin
-    return certificate
+    return census(capsule, target=target, error=NativeModelExecutionError)
 
 
 def _logical_values(raw: bytes, *, tensor: str, dtype: str, shape: tuple[int, ...]) -> Any:

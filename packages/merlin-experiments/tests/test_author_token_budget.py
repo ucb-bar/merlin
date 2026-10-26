@@ -29,6 +29,17 @@ def test_joint_default_and_legacy_absence():
     assert budget.assess(usage(20), None)["status"] == "not_selected"
 
 
+def test_unbounded_selection_records_no_target_even_for_a_joint_campaign():
+    assert policy(author_token_unbounded=True) is None
+    assert budget.guidance(SimpleNamespace(joint_campaign="selected", author_token_unbounded=True)) == ""
+    for extra in ({"author_token_target": 1_000}, {"author_token_reserve": 0}, {"author_token_admission": True}):
+        with pytest.raises(ValueError, match="unbounded"):
+            policy(author_token_unbounded=True, **extra)
+    budget.verify_resume(SimpleNamespace(author_token_unbounded=True), {})
+    with pytest.raises(ValueError, match="changed on resume"):
+        budget.verify_resume(SimpleNamespace(author_token_unbounded=True), {"author_token_budget": policy()})
+
+
 @pytest.mark.parametrize("total,status", [(31_999_999, "working"), (32_000_000, "reserve"),
                                          (40_000_000, "over_target"), (42_000_000, "over_target")])
 def test_all_tokens_without_double_counting_cache_or_reasoning(total, status):

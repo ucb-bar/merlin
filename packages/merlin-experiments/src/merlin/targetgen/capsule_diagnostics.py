@@ -26,6 +26,10 @@ def _candidate_exception_diagnostic(exc: Exception, *, stage: str) -> dict:
     }
 
 
+#: Marks the middle a clipped diagnostic dropped; readers comparing details split on it.
+ELISION = "[…]"
+
+
 def _clip(msg: str, budget: int) -> str:
     """Clip a long exception to ``budget`` chars KEEPING BOTH ENDS -- the head names the failure, the tail
     usually carries the operand/shape specifics.
@@ -42,7 +46,7 @@ def _clip(msg: str, budget: int) -> str:
         return msg
     head = budget * 2 // 3  # bias to the head: that is the diagnosis
     tail = budget - head - 5
-    return f"{msg[:head]} […] {msg[-tail:]}" if tail > 0 else msg[:budget]
+    return f"{msg[:head]} {ELISION} {msg[-tail:]}" if tail > 0 else msg[:budget]
 
 
 def _readback_refusal(exc: BaseException) -> BaseException | None:

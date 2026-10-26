@@ -20,6 +20,11 @@ def _scoped_review(plan, runtime, active_review):
     model = PERF._read({'path': runtime['model'], 'sha256': runtime['model_sha256']})
     if model.get('diagnostics', {}).get('scoped_resources', {}).get('enabled') is not True:
         return
+    from . import joint_initial_calibration_review as initial
+    initial_pin = os.environ.get(initial.ENV)
+    if initial_pin:
+        initial.verify(json.loads(initial_pin), plan=plan, runtime=runtime, active_review=active_review)
+        return  # Exact retained denials are still applied by assert_allowed below.
     selection = plan.get('selection_document')
     if selection is None and plan.get('selection'):
         selection = PERF._read(plan['selection'])

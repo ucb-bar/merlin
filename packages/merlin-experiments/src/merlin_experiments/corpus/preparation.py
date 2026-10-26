@@ -13,11 +13,11 @@ from pathlib import Path
 
 import yaml
 
+from merlin_experiments.corpus.preparation_io import ordinary_tree as ordinary_tree
+from merlin_experiments.corpus.preparation_io import private_json as private_json
+
 from ..spec import SpecError, read_yaml
 from .phase_selection import validate_phase_selections
-
-from merlin_experiments.corpus.preparation_io import private_json as private_json
-from merlin_experiments.corpus.preparation_io import ordinary_tree as ordinary_tree
 
 
 def retain_deferred_performance(generated: Path, destination: Path, provenance: dict, *, target: str) -> None:
@@ -1129,6 +1129,8 @@ def scaffold(
     logical_storage_budget_bytes: int | None = None,
     operator_public_members: tuple[str, ...] = (),
     public_scalability: dict | None = None,
+    public_program_suite: dict | None = None,
+    host_capability_selection: tuple[Path, str] | None = None,
     public_reference_manifest: Path | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
@@ -1169,8 +1171,13 @@ def scaffold(
         "sha256": copy_input(shim, experiment / "scripts/agent_selfcheck.py"),
     }
     document = copy.deepcopy(read_yaml(te.path))
+    if host_capability_selection is not None:
+        inputs["host_capability_selection"] = _select_host_capability(
+            document, host_capability_selection, descriptor=te.path
+        )
     if public_reference_manifest is not None:
         from merlin.common.paths import repo_root
+
         from . import public_references
 
         reference_root = experiment / "reference-kernels"
@@ -1183,6 +1190,9 @@ def scaffold(
 
         verify(Path(public_scalability["path"]), target=te.target)
         document.setdefault("workload_spec", {})[KEY] = copy.deepcopy(public_scalability)
+    program_view = _stage_public_program_view(document, public_program_suite, experiment, target=te.target)
+    if program_view is not None:
+        inputs["public_program_sources"] = program_view
     if operator_public_members and not te.graded_release_admission:
         grading = document.get("grading") or {}
         cohort = grading.get("expected_cohort")
@@ -1216,7 +1226,8 @@ def scaffold(
     operand_selection = None
     operand_revision = None
     if operand_protocol_revision is not None:
-        if operand_protocol_selection is None or type(operand_protocol_revision) is not tuple or len(operand_protocol_revision) != 2:
+        if (operand_protocol_selection is None or type(operand_protocol_revision) is not tuple
+                or len(operand_protocol_revision) != 2):
             raise SpecError("observer revision requires an explicit selection and pinned review")
         review_source, review_sha = operand_protocol_revision
         staged_review = experiment / "contracts/operand-revision.json"
@@ -1374,9 +1385,12 @@ def scaffold(
             host_index_bits=host_index_bits,
             arms=arms,
             **(
-                {"public_inputs": (str(Path(public_scalability["path"]) / "public_sources"),)}
-                if public_scalability is not None
-                else {}
+                {"public_inputs": tuple([
+                    *([str(Path(public_scalability["path"]) / "public_sources")]
+                      if public_scalability is not None else []),
+                    *([program_view["path"]] if program_view is not None else []),
+                ])}
+                if public_scalability is not None or program_view is not None else {}
             ),
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
@@ -1388,6 +1402,70 @@ def scaffold(
     if selected_levels is not None or selected_variants is not None:
         inputs["bundle_generation"]["selection"] = {"arms": list(arms), "variants": list(variants)}
     return inputs
+
+
+
+
+def _select_host_capability(document, selection, *, descriptor, root=None):
+    """Pin a reviewed support file while preserving the existing host package."""
+    from dataclasses import replace
+
+    from merlin.common.digest import sha256_file
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.target_experiment import HostLaneMatrix
+
+    if not isinstance(selection, tuple) or len(selection) != 2:
+        raise SpecError("host capability selection requires an exact source file and digest")
+    source, digest = Path(selection[0]), selection[1]
+    ordinary_tree(source)
+    if (not source.is_absolute() or source != source.resolve() or not source.is_file()
+            or not isinstance(digest, str) or sha256_file(source) != digest):
+        raise SpecError("selected host capability source changed or is indirect")
+    owner = (root or repo_root()).resolve()
+    matrix = HostLaneMatrix.from_mapping(document.get("host_lane"), descriptor=descriptor)
+    if matrix is None:
+        raise SpecError("host capability selection requires an existing declared host lane")
+    lane = matrix.profiles[matrix.default]
+    if lane.capability_spec is None or source != owner / lane.capability_spec:
+        raise SpecError("host capability selection must retain the declared support file ownership")
+    _, before = lane.resolve(root=owner, descriptor=descriptor)
+    selected = replace(lane, capability_spec_sha256=digest)
+    path, view, after = selected.resolve_capabilities(root=owner, descriptor=descriptor)
+    if path != source or view["status"] != "reviewed" or after["package_sha256"] != before["package_sha256"]:
+        raise SpecError("host capability selection changes package or lacks reviewed support")
+    if sha256_file(source) != digest:
+        raise SpecError("selected host capability source changed during selection")
+    host = document["host_lane"]
+    profile = host["profiles"][matrix.default] if "profiles" in host else host
+    profile["capability_spec_sha256"] = digest
+    return {"path": str(source), "sha256": digest, "profile": matrix.default,
+            "capability_spec": lane.capability_spec, "package_sha256": before["package_sha256"],
+            "scope": "reviewed source support declaration only; no numerical or runtime qualification"}
+
+
+def verify_host_capability(document, record, *, descriptor, root=None):
+    """Reopen the selected support/package before inspect or seal, without rewriting."""
+    selected = copy.deepcopy(document)
+    actual = _select_host_capability(selected, (Path(record["path"]), record["sha256"]),
+                                     descriptor=descriptor, root=root)
+    if actual != record or selected != document:
+        raise SpecError("prepared host capability source, profile or package changed")
+
+
+def _stage_public_program_view(document, selection, experiment, *, target):
+    """Bind selected complete programs before admission; grant only public sources."""
+    from . import public_program_suite as programs
+
+    if selection is None:
+        if (document.get("workload_spec") or {}).get(programs.KEY) is not None:
+            raise SpecError("public program source refresh requires an explicit selected roster")
+        return None
+    # Validate the exact pin as well as the complete source and exclusion tree.
+    path = programs._pin(selection)
+    programs.read(path, target=target)
+    view = programs.public_view(path, experiment / "public-program-sources", target=target)
+    document.setdefault("workload_spec", {})[programs.KEY] = copy.deepcopy(selection)
+    return view
 
 
 def admission(descriptor: Path, *, coverage_output: Path | None = None) -> dict:
@@ -1403,6 +1481,9 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     from .public_scalability import selected as selected_scalability
 
     scalability = selected_scalability(te)  # Separate from the core RTL denominator.
+    from .public_program_suite import selected as selected_programs
+
+    programs = selected_programs(te)  # Complete programs add obligations, never core RTL credit.
     from merlin.targetgen import capsule_runner
     from merlin.targetgen.contract.materialize import (
         _TIER_ORDER,
@@ -1488,6 +1569,13 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
             }
             if scalability is not None
             else {}
+        ),
+        **(
+            {"public_programs": {"required": True, "source_cases": len(programs[2]),
+                                 "suite_sha256": (te.workload_spec or {})["public_program_suite"]["sha256"],
+                                 "engine": "spike", "tiers": ["L0", "L1", "L2"],
+                                 "status": "admitted_not_executed"}}
+            if programs is not None else {}
         ),
         "public_source": public["n_source_capsules"],
         "public_admitted": public["n_admitted_capsules"],

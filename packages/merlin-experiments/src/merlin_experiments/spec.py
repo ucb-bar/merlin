@@ -14,7 +14,6 @@ from importlib.resources import files
 from pathlib import Path
 from uuid import uuid4
 
-import jsonschema
 import yaml
 
 
@@ -123,13 +122,17 @@ def load_spec(path: str | Path) -> ExperimentSpec:
             raise SpecError("duplicate phase after normalizing numeric keys")
         document["phases"] = normalized
     schema = json.loads(files("merlin_experiments").joinpath("resources/experiment.schema.json").read_text())
+    # Imported here: interpreters that only run broker workers (the model capture Python) need not
+    # carry the schema validator just because they import this package.
+    import jsonschema
+
     try:
         jsonschema.Draft202012Validator(schema).validate(document)
     except jsonschema.ValidationError as exc:
         raise SpecError(f"{source}: {exc.message}") from exc
     roles = (document.get("policy") or {}).get("prohibited_instruction_roles")
     if roles is not None:
-        from merlin.kernels.roles import ROLES
+        from merlin.compile.analysis.instruction_roles import ROLES
 
         unknown = sorted(set(roles) - set(ROLES))
         if unknown:

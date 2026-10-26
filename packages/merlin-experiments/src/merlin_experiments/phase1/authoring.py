@@ -509,7 +509,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                     f"[continuous] grade {t}: {v.get('n_passed')}/{v.get('n_capsules')} all_pass={v.get('all_pass')}",
                     flush=True,
                 )
-                _checkpoint(t)
+                try:
+                    _checkpoint(t)
+                except Exception as e:  # noqa: BLE001 — e.g. a full disk; the next grade checkpoints again
+                    print(f"[continuous] checkpoint {t} skipped: {type(e).__name__}: {e}", flush=True)
                 _sink_telemetry_now(f"continuous grade {t}")
                 if v.get("all_pass"):
                     stop.set()  # converged: stop grading; the session is torn down below

@@ -303,3 +303,54 @@ def test_fast_grade_missing_manifest_is_explicit_readiness_not_generic_failure(t
     with pytest.raises(SubmissionNotReady, match='manifest.yaml'):
         fast_grade(tmp_path / 'workspace', tmp_path / 'run', 0, 1, inputs=None)
     assert not (tmp_path / 'run').exists()
+
+
+def test_a_superseded_draining_grade_leases_below_the_newer_compiler(tmp_path):
+    from merlin.common.cpu_pool import GRADE, PREPARATION, lease_priority
+
+    ws, run = tmp_path / 'workspace', tmp_path / 'run'
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("{}")
+    stop, release_old, seen = threading.Event(), threading.Event(), {}
+    sources = iter(['a' * 64, 'b' * 64])
+    current = {'source': next(sources)}
+
+    def first(tick):
+        seen['old_before'] = lease_priority()
+
+        def execute(cap, parallel):
+            current['source'] = next(sources)  # the author edited: the next grade is of another compiler
+            assert release_old.wait(3), 'newer snapshot never started beside the drain'
+            seen['old_after'] = lease_priority()  # this capsule thread's next lease
+            return {'capsule': 'old', 'status': 'pass'}
+
+        run_pipelined([{'name': 'old'}], execute, max_workers=2)
+        return {'all_pass': False}
+
+    def second(tick):
+        seen['new'] = lease_priority()
+        stop.set()
+        release_old.set()
+        return {'all_pass': False}
+
+    dual_snapshots.run(ws, run, stop, interval_s=0, first_grade=first, grade=second,
+                       source_identity=lambda: current['source'], poll_s=.002)
+    assert seen == {'old_before': GRADE, 'new': GRADE, 'old_after': PREPARATION}
+    owners = {json.loads(p.read_text())['source']: json.loads(p.read_text())
+              for p in (run / '_qa_work/background_snapshot_owners').glob('*.json')}
+    assert owners['a' * 64]['lease_priority'] == PREPARATION and owners['b' * 64]['lease_priority'] == GRADE
+
+
+def test_a_third_owner_needs_plentiful_free_slots(monkeypatch):
+    from merlin_experiments.phase1.feedback import dual_snapshots as D
+
+    for name in ("MERLIN_BACKGROUND_MAX_OWNERS", "MERLIN_BACKGROUND_EXTRA_OWNER_FREE_SLOTS"):
+        monkeypatch.delenv(name, raising=False)
+    assert D.max_owners(None, 20) == 2          # no pool selected: the classic two owners
+    assert D.max_owners(4, 20) == 2             # a quarter of the pool (5) is not free
+    assert D.max_owners(5, 20) == 3
+    monkeypatch.setenv("MERLIN_BACKGROUND_MAX_OWNERS", "2")
+    assert D.max_owners(20, 20) == 2
+    monkeypatch.setenv("MERLIN_BACKGROUND_MAX_OWNERS", "4")
+    monkeypatch.setenv("MERLIN_BACKGROUND_EXTRA_OWNER_FREE_SLOTS", "10")
+    assert D.max_owners(9, 20) == 2 and D.max_owners(10, 20) == 4

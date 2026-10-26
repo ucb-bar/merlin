@@ -56,6 +56,12 @@ BUILTINS = ("TASK_ROOT", "PREP", "RUN_ID")
 #: TODO(author-subagent-cap): when a driver-neutral author subagent option lands in
 #: ``merlin_experiments.phase1.options``, bind ``author.max_subagents`` to it here (one place).
 SUBAGENT_FLAGS = {"codex": "--codex-max-subagents"}
+#: The controller option for a driver's helper reasoning effort; other drivers refuse ``author.helper_effort``.
+HELPER_EFFORT_FLAGS = {"codex": "--author-helper-effort"}
+#: Controller options for the recorded author context selection; other drivers refuse these keys.
+CONTEXT_FLAGS = {"compact_limit": {"codex": "--author-compact-limit"}, "task_skills": {"codex": "--author-task-skills"}}
+#: The controller option staging the harness author skills; drivers without native skill discovery refuse it.
+SKILL_FLAGS = {"codex": "--author-skills", "claudecode": "--author-skills"}
 
 #: Explicit client-runtime selections of a driver's ``author.<driver>`` section, in argv order.
 CLIENT_FLAGS = {
@@ -249,6 +255,30 @@ def _check_author(document: dict) -> None:
     driver = author["driver"]
     if "max_subagents" in author and driver not in SUBAGENT_FLAGS:
         raise ConfigError(f"author.max_subagents has no controller option for driver {driver!r}")
+    if "helper_effort" in author:
+        from .author_subagents import parse_effort
+
+        if driver not in HELPER_EFFORT_FLAGS:
+            raise ConfigError(f"author.helper_effort has no controller option for driver {driver!r}")
+        try:
+            parse_effort(author["helper_effort"])
+        except ValueError as exc:
+            raise ConfigError(f"author.helper_effort: {exc}") from exc
+    for key, flags in CONTEXT_FLAGS.items():
+        if key in author:
+            if driver not in flags:
+                raise ConfigError(f"author.{key} has no controller option for driver {driver!r}")
+            from .providers.codex_context import parse_limit, parse_switch
+
+            try:
+                (parse_limit if key == "compact_limit" else parse_switch)(author[key])
+            except ValueError as exc:
+                raise ConfigError(f"author.{key}: {exc}") from exc
+    if "skills" in author:
+        if driver not in SKILL_FLAGS:
+            raise ConfigError(f"author.skills has no controller option for driver {driver!r}")
+        if not isinstance(author["skills"], bool):
+            raise ConfigError("author.skills: must be true or false")
     for section in CLIENT_FLAGS:
         if section in author and section != driver:
             raise ConfigError(f"author.{section} selects a client for driver {section!r}, not {driver!r}")
@@ -419,6 +449,14 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
     pairs += [(flag, x(client[key])) for key, flag in CLIENT_FLAGS.get(driver, ()) if key in client]
     if "max_subagents" in author:
         pairs.append((SUBAGENT_FLAGS[driver], str(author["max_subagents"])))
+    if "helper_effort" in author:
+        pairs.append((HELPER_EFFORT_FLAGS[driver], author["helper_effort"]))
+    if "compact_limit" in author:
+        pairs.append((CONTEXT_FLAGS["compact_limit"][driver], str(author["compact_limit"])))
+    if "task_skills" in author:
+        pairs.append((CONTEXT_FLAGS["task_skills"][driver], "on" if author["task_skills"] else "off"))
+    if "skills" in author:
+        pairs.append((SKILL_FLAGS[driver], "on" if author["skills"] else "off"))
     for key, flag in (("token_target", "--author-token-target"), ("token_reserve", "--author-token-reserve"),
                       ("token_turn_allowance", "--author-token-turn-allowance")):
         if key in author:

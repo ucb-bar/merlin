@@ -24,6 +24,9 @@ _CHECK_SUBSTRATES = (
     "merlin.common_compiler_substrate.v10",
     "merlin.common_compiler_substrate.v11",
     "merlin.common_compiler_substrate.v12",
+    "merlin.common_compiler_substrate.v13",
+    "merlin.common_compiler_substrate.v14",
+    "merlin.common_compiler_substrate.v15",
 )
 
 

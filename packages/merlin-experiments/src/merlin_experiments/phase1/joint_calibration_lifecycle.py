@@ -110,7 +110,7 @@ class Watcher:
 
 
 def start(*, state_path, descriptor, repo, python, environment, output, directory,
-          cpus=None, profile=None, request_epoch=True, poll_seconds=30):
+          cpus=None, profile=None, request_epoch=True, poll_seconds=30, activation=None):
     """Spawn against the exact admitted profile and existing shared resources."""
     if state_path is None:
         return Watcher(None, dict(status="skipped_no_campaign", reason="no selected joint campaign"))
@@ -121,7 +121,7 @@ def start(*, state_path, descriptor, repo, python, environment, output, director
         return Watcher(None, dict(status="skipped_no_profile", reason="native_calibration is not selected"))
     if profile is not None and any(profile.get(k) != selected.get(k) for k in ("path", "sha256")):
         raise ValueError("watcher profile differs from the admitted native_calibration selection")
-    _read(selected)
+    profile_document = _read(selected)
     if state.get("started_at_epoch") is None:
         raise ValueError("calibration watcher requires the already-started admitted campaign clock")
     if not 5 <= poll_seconds <= 60:
@@ -130,6 +130,15 @@ def start(*, state_path, descriptor, repo, python, environment, output, director
     descriptor = F.canonical(Path(descriptor))
     env = dict(environment)
     env["MERLIN_JOINT_CAMPAIGN_STATE"] = str(state_path)
+    from . import joint_initial_calibration_review as initial, joint_calibration_admission as admission
+    for key, variable in (("initial_calibration_review", initial.ENV),
+                          ("native_calibration_admission_review", admission.ENV)):
+        pin = profile_document.get(key)
+        if pin is not None:
+            _read(pin)
+            if env.get(variable) and json.loads(env[variable]) != pin:
+                raise ValueError("watcher review environment differs from its selected profile")
+            env[variable] = json.dumps(pin, sort_keys=True)
     pools = {k: env.get(k) for k in ("MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_GSIM_SLOT_ROOT")}
     if any(not value or not Path(value).is_dir() for value in pools.values()):
         raise ValueError("calibration watcher requires the existing shared compute/gSIM pools")
@@ -151,14 +160,19 @@ def start(*, state_path, descriptor, repo, python, environment, output, director
             "--profile-sha256", selected["sha256"], "--state", str(state_path), "--descriptor", str(descriptor),
             "--repo", str(repo), "--output", str(output), "--poll-seconds", str(poll_seconds),
             "--stop-file", str(stop_file)]
-        if not request_epoch:
+        if activation is not None:
+            if activation not in {"candidate_only", "future_requests", "drained_epoch"}:
+                raise ValueError("unknown calibration activation mode")
+            command += ["--activation", activation]
+        elif not request_epoch:
             command.append("--evidence-only")
         with (directory / "watcher.log").open("xb") as log:
             child = subprocess.Popen(command, cwd=repo, env=env, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True, pass_fds=(lease.fileno(),))
         report = dict(status="watcher_started", pid=child.pid, argv=command, started_at=time.time(),
             profile=selected, state=str(state_path), cwd=str(repo), shared_pools=pools,
-            request_epoch=request_epoch, owner=str(directory / "owner.json"),
+            request_epoch=(activation == "drained_epoch" if activation is not None else request_epoch),
+            activation=activation, owner=str(directory / "owner.json"),
             status_file=str(output / "status.json"))
         _write(directory / "owner.json", report)
         return Watcher(child, report, directory, stop_file, lease,
@@ -166,3 +180,27 @@ def start(*, state_path, descriptor, repo, python, environment, output, director
     except BaseException:
         lease.close()
         raise
+
+
+def start_for_author(*, run_dir, context, round_index):
+    """Ordinary launch shares the campaign watcher and pools; failure is advisory.
+
+    The author clock has already started. No clock, model, grant or budget is
+    changed here. New ordinary launches use nonstop future-request activation.
+    """
+    import secrets
+    import sys
+    from . import joint_control
+    run_dir = Path(run_dir)
+    try:
+        watcher = start(state_path=os.environ.get(joint_control.ENV),
+            descriptor=context.descriptor, repo=context.repo, python=sys.executable,
+            environment=dict(os.environ), output=run_dir / "calibration_supervisor",
+            directory=run_dir / "calibration_watchers" / f"round-{round_index}-{secrets.token_hex(6)}",
+            activation="future_requests")
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
+        watcher = Watcher(None, dict(status="blocked_watcher_start", reason=str(error),
+                                    changes_authoring=False))
+    if os.environ.get(joint_control.ENV):
+        _write(run_dir / "calibration_watcher_status.json", watcher.report)
+    return watcher

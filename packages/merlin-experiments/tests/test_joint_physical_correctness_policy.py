@@ -83,9 +83,12 @@ def test_shared_process_concurrent_admissions_are_individually_retired(required)
     with J.physical_correctness(names[0]):
         with J.physical_correctness(names[1]):
             assert len(json.loads(J.correctness_ledger().read_text())['active']) == 2
+            # A caller that does not wait (background work) is told the slots are busy; an author
+            # request would wait for one instead (test_joint_gsim_slot_queue).
             with pytest.raises(ValueError, match='concurrency'):
-                with J.physical_correctness(names[2]):
+                with J.physical_correctness(names[2], wait=False):
                     pytest.fail('third slot admitted')
+            assert json.loads(J.correctness_ledger().read_text())['waiting'] == []
         active = json.loads(J.correctness_ledger().read_text())['active']
         assert len(active) == 1 and active[0]['capsule'] == names[0]
     assert json.loads(J.correctness_ledger().read_text())['active'] == []

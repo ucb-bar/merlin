@@ -10,6 +10,12 @@ import pytest
 from merlin_experiments.phase1 import capsule_timing_archive as A
 
 
+@pytest.fixture(autouse=True)
+def _private_content_store(tmp_path, monkeypatch):
+    """Captured compiler source shares bytes through the content store; keep this test's private."""
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", str(tmp_path / "cas"))
+
+
 def _capsule(root, run, name, cycles):
     capsule = root / "_qa_work" / run / "runs" / "gemmini-capsule-bench" / name
     (capsule / "generated").mkdir(parents=True, exist_ok=True)

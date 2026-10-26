@@ -74,7 +74,7 @@ def test_unresolved_residency_is_unavailable_and_not_complete(monkeypatch):
                               {"class": "MVOUT"}, {"class": "MVOUT"}, {"class": "FENCE"}]}
     monkeypatch.setattr(TC, "_bound_trace_view", lambda *_: (trace, {}, [], True))
     result = TC.check(trace, {"modes": {"resident_reuse": True}}, target="fixture")
-    assert result["status"] == "fail"
+    assert result["status"] == "pass"  # unresolved identities are missing evidence, not a violation
     assert result["trace_requirement_status"] == "unavailable_fields"
     assert result["unavailable_requirements"] == ["resident_reuse"]
     assert not TC.requirements_complete(result)

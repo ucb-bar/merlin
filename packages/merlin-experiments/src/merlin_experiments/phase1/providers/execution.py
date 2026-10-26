@@ -22,6 +22,7 @@ from .. import author_subagents
 from ..context import InvocationContext
 from ..feedback import lifecycle as FL
 from ..telemetry import startup as _START
+from . import codex_context
 
 _MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
 _MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
@@ -137,6 +138,34 @@ def billing_mode(model: str, *, config: ProviderConfig) -> str:
         return ET.METERED
 
 
+_ASSEMBLY_VERIFIED: dict[str, bool] = {}
+
+
+def _assemble(stage, function, /, *args, **kwargs):
+    """One sandbox assembly step, computed in a grader worker process once proven identical there.
+
+    Assembly is Python in the runner, which also hosts the background grader's threads: measured, the
+    same steps took 10-32 s in the launch preflight and 59-174 s for the first turn while a grade ran,
+    all of it waiting for the interpreter lock. The first call of each step in this process (the
+    preflight) computes the argv both in process and in a worker and keeps the in-process one; later
+    calls use the worker only if the two were identical, and a worker failure falls back in process
+    (:func:`merlin.targetgen.grade_offload.call`). A mismatch keeps the step in process for the run."""
+    from merlin.targetgen import grade_offload
+
+    grade_offload.register(function)
+    verified = _ASSEMBLY_VERIFIED.get(stage)
+    if verified is None:
+        inline = function(*args, **kwargs)
+        try:
+            _ASSEMBLY_VERIFIED[stage] = grade_offload.call(function, *args, **kwargs) == inline
+        except Exception:  # noqa: BLE001 -- an unverifiable step simply stays in process
+            _ASSEMBLY_VERIFIED[stage] = False
+        return inline
+    if verified:
+        return grade_offload.call(function, *args, **kwargs)
+    return function(*args, **kwargs)
+
+
 # Sandbox verification is on the author launch/resume critical path. Change only
 # admission priority: do not reserve a core or hold a lease over the paid turn.
 @with_priority(AUTHOR)
@@ -165,7 +194,7 @@ def sandbox_plan(
     base_options = {"repo": context.repo, "include_claude_home": False}
     if codex_mode:
         base_options["inherit_environment"] = False
-    parts = _START.call("sandbox_base", _BW.base_argv, ws, bundle, **base_options)
+    parts = _START.call("sandbox_base", _assemble, "sandbox_base", _BW.base_argv, ws, bundle, **base_options)
     home = None
     if not codex_mode:
         parts += _CH.without_operator_state(_BW.claude_runtime_binds())
@@ -185,6 +214,8 @@ def sandbox_plan(
     if joint_control.selected() is not None:
         parts += ["--unsetenv", "MERLIN_JOINT_CAMPAIGN_STATE"]
         parts += ["--unsetenv", "MERLIN_JOINT_PERFORMANCE_SELECTION"]
+        parts += ["--unsetenv", "MERLIN_JOINT_PERFORMANCE_REQUEST"]
+        parts += ["--unsetenv", "MERLIN_NATIVE_CALIBRATION_INITIAL_REVIEW"]
     # Per-driver runtime binds (e.g. the Codex CLI's package dir + an isolated
     # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
     # answer surface: masking is applied last and therefore wins.
@@ -192,13 +223,14 @@ def sandbox_plan(
     # A trusted toolchain bind may overlap a declared arm grant (LLVM is both).
     # Reassert the frozen per-run bundle after every such bind so no live
     # worktree/tool input can override the snapshot, then apply answer masks.
-    parts = _START.call("snapshot_overlay", _BW.reapply_bundle_snapshot, parts, ws, bundle, repo=context.repo)
+    parts = _START.call("snapshot_overlay", _assemble, "snapshot_overlay", _BW.reapply_bundle_snapshot,
+                        parts, ws, bundle, repo=context.repo)
     from ..compiler_library import sandbox_overlay
 
     parts, library_environment = _START.call("library_overlay", sandbox_overlay,
         parts, workspace=ws, bundle=bundle, context=context, private_run_dir=private_run_dir
     )
-    parts = _START.call("final_answer_masks", _BW.apply_final_answer_masks,
+    parts = _START.call("final_answer_masks", _assemble, "final_answer_masks", _BW.apply_final_answer_masks,
         parts, load_target_experiment(context.descriptor), ws, bundle, repo=context.repo
     )
     # Sibling homes hold other launches' sessions; only this launch's home, at the CLI's paths, is visible.
@@ -379,7 +411,12 @@ def launch(
                                       if bundle.get("compiler_tool_profile") is not None else None),
         )
     primary_error = None
+    calibration_watcher = None
     try:
+        if sandbox == "bwrap":
+            from .. import joint_calibration_lifecycle
+            calibration_watcher = joint_calibration_lifecycle.start_for_author(
+                run_dir=run_dir, context=config.context, round_index=rnd)
         # Route to the selected driver (explicit --driver, or auto-by-model-id). A non-Anthropic model can't
         # drive the claude CLI (Anthropic API only) → the Bedrock Converse backend runs the same masked-
         # sandbox agentic loop (incl. the self_check tool wired to the shim above) + a compatible transcript;
@@ -481,6 +518,8 @@ def launch(
                 # The helper-thread ceiling this run RECORDED (environment.yaml), so the frozen home
                 # carries exactly the audited value, including across a resume.
                 **author_subagents.launch_kwargs(run_dir, sandbox),
+                # The recorded context ceiling and task-skill selection (codex_context), likewise.
+                **codex_context.launch_kwargs(run_dir, sandbox),
                 **codex_call_kwargs(
                     config.provider.codex_runtime, context=config.context, run_dir=run_dir, model=model
                 ),
@@ -528,5 +567,9 @@ def launch(
     finally:
         if model_gate is not None:
             visible_model_gate.stop_gate(model_gate)
+        if calibration_watcher is not None:
+            # Keep brokers and leases alive until the current bounded native
+            # calibration operation drains. Never kill its simulator children.
+            calibration_watcher.stop()
         FL.stop_brokers(ws, broker, primary_error=primary_error)
     return rc, tpath

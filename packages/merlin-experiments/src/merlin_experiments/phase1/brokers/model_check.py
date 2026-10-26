@@ -327,6 +327,9 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    from merlin_experiments.phase1.telemetry.resilient_output import install
+
+    install()  # A full log volume drops log lines, never the broker.
     from merlin.common.cpu_pool import AUTHOR, cpu_priority
 
     with cpu_priority(AUTHOR, export=True):  # Author-requested model checks lease first.

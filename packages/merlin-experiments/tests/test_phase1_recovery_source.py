@@ -10,6 +10,12 @@ from merlin_experiments.phase1.feedback import public_owned_host_selection as S
 from merlin.targetgen import capsule_runner as R
 
 
+@pytest.fixture(autouse=True)
+def _private_content_store(tmp_path, monkeypatch):
+    """Captured compiler source shares bytes through the content store; keep this test's private."""
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", str(tmp_path / "cas"))
+
+
 def test_host_only_selection_is_installed_without_instruction_declaration(tmp_path, monkeypatch):
     monkeypatch.setenv(S.ENV, 'untrusted inherited')
     model = {'board': 'fixture_board', 'arena_mb': 32}
@@ -69,7 +75,9 @@ def test_source_movement_during_execution_does_not_authorize_timing(tmp_path):
 def test_retained_snapshot_tampering_refuses_timing(tmp_path):
     _, generated, captured, artifacts = prepare(tmp_path)
     source = R._finish_compiler_source(captured, generated)
-    (generated / captured['snapshot'] / 'compiler.py').write_text('changed')
+    retained = generated / captured['snapshot'] / 'compiler.py'
+    retained.unlink()  # retained source is read-only; replacing the name is how it could change
+    retained.write_text('changed')
     assert A._compiler_candidate({'compiler_source': source}, generated, artifacts) is None
 
 

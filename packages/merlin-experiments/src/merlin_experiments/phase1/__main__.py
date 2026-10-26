@@ -139,4 +139,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    from .telemetry.resilient_output import install
+
+    install()  # A full log volume drops log lines, never the runner's graders.
     raise SystemExit(main())

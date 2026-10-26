@@ -246,7 +246,35 @@ def _content(root: Path, prepared: dict) -> dict:
             or selected.get("phase1_gates") != promoted.get("phase1_gates")
         ):
             raise SpecError("promoted Phase 1 gates differ from retained policy descriptor")
+    selected_host = (prepared.get("scaffolding") or {}).get("host_capability_selection")
+    if selected_host is not None:
+        from .preparation import verify_host_capability
+
+        descriptor = root / "payload/experiment/target_experiment.yaml"
+        verify_host_capability(read_yaml(descriptor), selected_host, descriptor=descriptor)
+    _verify_public_programs(root, prepared)
     return {"preparation_sha256": _digest(prepared), "payload_sha256": observed}
+
+
+
+def _verify_public_programs(root: Path, prepared: dict) -> None:
+    """Reopen private program custody and its answer-free payload before review."""
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    from . import public_program_suite as programs
+
+    te = load_target_experiment(root / "payload/experiment/target_experiment.yaml")
+    binding = (te.workload_spec or {}).get(programs.KEY)
+    expected = (prepared.get("assembly") or {}).get("public_programs")
+    if binding is None and expected is None:
+        return
+    if binding != expected:
+        raise SpecError("public program descriptor differs from its prepared source selection")
+    selected = programs.selected(te)
+    if selected is None:
+        raise SpecError("prepared public program selection is absent")
+    programs.public_view(selected[0], root / "payload/experiment/public-program-sources",
+                         target=te.target, verify=True)
 
 
 def _stage_instruction_model(plan: dict, private: Path) -> dict | None:
@@ -354,6 +382,52 @@ def _freeze_payload(root: Path) -> None:
     payload.chmod(0o500)
 
 
+def _member_digests(payload: Path) -> dict[str, str]:
+    """Every payload file's digest, so a later verification can name what changed or vanished."""
+    out = {}
+    for member in sorted(payload.rglob("*")):
+        if member.is_file() and not member.is_symlink():
+            out[member.relative_to(payload).as_posix()] = hashlib.sha256(member.read_bytes()).hexdigest()
+    return out
+
+
+def _payload_drift(root: Path, sealed: dict) -> str | None:
+    """Which sealed payload members are missing, tampered or new; host-private names are withheld."""
+    recorded = sealed.get("members")
+    if not isinstance(recorded, dict):
+        return None
+    payload = root / "payload"
+    observed = _member_digests(payload)
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        private = [
+            Path(p) for p in load_target_experiment(payload / "experiment/target_experiment.yaml").hidden_roots()
+        ]
+    except Exception:  # noqa: BLE001 -- with no readable descriptor every name is withheld
+        private = None
+
+    def shown(member: str) -> str:
+        path = payload / member
+        if private is None or any(path.is_relative_to(r) for r in private):
+            return "a host-private member"
+        return member
+
+    rows = {
+        "missing": sorted(m for m in recorded if m not in observed),
+        "tampered": sorted(m for m in recorded if m in observed and observed[m] != recorded[m]),
+        "unsealed": sorted(m for m in observed if m not in recorded),
+    }
+    if not any(rows.values()):
+        return None
+    parts = []
+    for kind, members in rows.items():
+        if members:
+            names = sorted({shown(m) for m in members})
+            parts.append(f"{kind} {len(members)}: " + ", ".join(names[:20]) + (" ..." if len(names) > 20 else ""))
+    return "; ".join(parts)
+
+
 def inspect_release(path: Path) -> dict:
     """Return only safe counts/commitments, never member identities or review text."""
     root = _private_root(path)
@@ -419,6 +493,8 @@ def prepare(
     logical_storage_budget_bytes: int | None = None,
     public_supplement: Path | None = None,
     public_scalability: Path | None = None,
+    public_program_suite: Path | None = None,
+    host_capability_selection: tuple[Path, str] | None = None,
     public_reference_manifest: Path | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
@@ -480,6 +556,7 @@ def prepare(
         *([Path(python_source_root)] if python_source_root is not None else []),
         *([public_supplement.expanduser().resolve().parent] if public_supplement is not None else []),
         *([public_scalability.expanduser().resolve().parent] if public_scalability is not None else []),
+        *([public_program_suite.expanduser().resolve().parent] if public_program_suite is not None else []),
         *([public_reference_manifest.expanduser().resolve().parent] if public_reference_manifest is not None else []),
     )
     for existing in immutable:
@@ -536,6 +613,12 @@ def prepare(
                     private_roots=[p for p in private_sources if p.exists()],
                 )
                 assembly["public_scalability"] = scalability
+            programs = None
+            if public_program_suite is not None:
+                from .public_program_suite import stage as stage_programs
+
+                programs = stage_programs(public_program_suite, root / "private/public_programs", target=te.target)
+                assembly["public_programs"] = programs
             selected_contract = _selected_capability_contract(plan, generated)
             scaffolding = scaffold(
                 te,
@@ -561,8 +644,19 @@ def prepare(
                 logical_storage_budget_bytes=logical_storage_budget_bytes,
                 **({"operator_public_members": tuple(supplement["members"])} if supplement is not None else {}),
                 **({"public_scalability": scalability} if scalability is not None else {}),
-                **({"public_reference_manifest": public_reference_manifest} if public_reference_manifest is not None else {}),
+                **({"public_program_suite": programs} if programs is not None else {}),
+                **({"host_capability_selection": host_capability_selection}
+                   if host_capability_selection is not None else {}),
+                **({"public_reference_manifest": public_reference_manifest}
+                   if public_reference_manifest is not None else {}),
             )
+            if public_reference_manifest is not None:
+                from .performance_baselines import verify_corpus
+
+                # Staged reference-compiler cycles must name public cases of THIS corpus, same interface.
+                baselines = verify_corpus(payload / "experiment" / "reference-kernels", payload / "corpus")
+                if baselines is not None:
+                    scaffolding["performance_baselines"] = baselines
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")
             instruction_semantics = _stage_instruction_model(plan, root / "private")
@@ -667,6 +761,11 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
             raise SpecError("reviewed inputs or native admission changed during sealing")
         _freeze_payload(root)
         token = pin(root, reason="explicitly reviewed corpus release")
+        # Read-only is what verification requires; the immutable attribute is what stops a cleanup
+        # that restores write bits first. Whether the host granted it is recorded, never assumed.
+        from merlin.common.immutability import seal_tree
+
+        immutability = seal_tree([root / "payload"])
         private_json(
             root / "private" / "seal.json",
             {
@@ -675,10 +774,14 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
                 "identity": _content(root, prepared),
                 "review": {"reviewed_by": reviewed_by, "note": review_note, "at": datetime.now(UTC).isoformat()},
                 "retention_pin": token,
+                "members": _member_digests(root / "payload"),
+                "immutability": immutability,
             },
         )
+        records = seal_tree([root / "private" / "seal.json", root / "private" / "preparation.json"])
     result = inspect_release(root)
     result["seal"] = str(root / "private" / "seal.json")
+    result["immutability"] = {"payload": immutability, "records": records}
     return result
 
 
@@ -694,9 +797,16 @@ def verify(seal_path: Path, descriptor: Path) -> dict:
     if descriptor.resolve() != expected_descriptor:
         raise SpecError("functional descriptor is not the one bound by the corpus seal")
     prepared = _read(root / "private" / "preparation.json")
-    workload = _verify_workload_coverage(root, prepared)
     sealed = _read(path)
-    identity = _content(root, prepared)
+    try:
+        identity = _content(root, prepared)
+    except SpecError:
+        # Name what changed, from the per-member digests the seal recorded (older seals have none).
+        drift = _payload_drift(root, sealed)
+        if drift is None:
+            raise
+        raise SpecError(f"sealed corpus payload is tampered or incomplete: {drift}") from None
+    workload = _verify_workload_coverage(root, prepared)
     if any(member.stat().st_mode & 0o222 for member in [root / "payload", *(root / "payload").rglob("*")]):
         raise SpecError("sealed corpus payload became writable")
     if sealed.get("identity") != identity or sealed.get("review_digest") != _digest(identity):

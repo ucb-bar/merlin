@@ -349,7 +349,10 @@ def verify_written(capsule, directory):
     relocation = frontend["source_portability"]
     # Reconstruct the exact raw source using its receipt-bound recorded weights path.
     meta = None
-    references = N.reference_members(receipt["artifacts"]) if native_integer else ("golden.npy",)
+    from merlin.targetgen.materialized_reference import reference_members as float_reference_members
+
+    references = (N.reference_members(receipt["artifacts"]) if native_integer
+                  else float_reference_members(receipt["artifacts"]))
     for member in ("meta.json", "inputs.npz", "input_order.json", *references):
         raw = (directory / ("source-capture-" + member)).read_bytes()
         if (
@@ -438,12 +441,22 @@ def verify_written(capsule, directory):
                 raise ValueError("integer public complete reference differs from its actual capture")
         N.inputs(meta, (directory / "source-capture-inputs.npz").read_bytes())
     else:
-        if len(names) != 1:
-            raise ValueError("public program reference omits a published output")
-        actual = np.asarray(golden["outputs"][names[0]], dtype=np.float32)
-        expected = np.load(directory / "source-capture-golden.npy", allow_pickle=False)
-        if actual.shape != expected.shape or actual.tobytes() != expected.tobytes():
-            raise ValueError("public program complete reference differs from its actual capture")
+        if len(names) > 1:
+            from merlin.targetgen.capsule_privacy import capture_reference_closure
+            from merlin.targetgen.materialized_reference import complete_float_outputs
+
+            if capsule.get("reference_closure") != capture_reference_closure(receipt["artifacts"]):
+                raise ValueError("public complete reference closure omits expected-output leaves")
+            values = complete_float_outputs(meta, (directory / "source-capture-integer-reference.json").read_bytes())
+            if len(names) != len(values):
+                raise ValueError("public program reference omits a published output")
+        else:
+            values = [np.load(directory / "source-capture-golden.npy", allow_pickle=False)]
+        for name, value in zip(names, values, strict=True):
+            actual = np.asarray(golden["outputs"][name], dtype=np.float32)
+            expected = np.asarray(value, dtype=np.float32)
+            if actual.shape != expected.shape or actual.tobytes() != expected.tobytes():
+                raise ValueError("public program complete reference differs from its actual capture")
     with np.load(directory / "source-capture-inputs.npz", allow_pickle=False) as archive:
         if set(archive.files) != {"in" + str(i) for i in range(len(capsule["inputs"]))}:
             raise ValueError("public program input closure differs")

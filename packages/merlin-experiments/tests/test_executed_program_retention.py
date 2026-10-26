@@ -7,8 +7,16 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from merlin.targetgen import build_cache, executed_program, oracle_readback
 from merlin.targetgen.capsule_source_identity import _capture_compiler_source, _finish_compiler_source
+
+
+@pytest.fixture(autouse=True)
+def _private_store(tmp_path, monkeypatch):
+    """Captured compiler source shares bytes through the content store; keep each test's private."""
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", str(tmp_path / "cas"))
 
 
 def _sha(data: bytes) -> str:
@@ -132,3 +140,37 @@ def test_the_readback_adapter_retains_what_each_oracle_run_executed(tmp_path, mo
     (record,) = executed_program.collect(work)
     assert (record["engine"], record["engine_sha256"]) == ("spike", "3" * 64)
     assert json.loads((work / Path(record["elf"]["path"]).parent / "executed_program.json").read_text()) == record
+
+
+def test_compiler_source_snapshots_share_bytes_and_skip_build_state(tmp_path):
+    package = tmp_path / "package"
+    (package / "compiler").mkdir(parents=True)
+    (package / "compiler" / "lower.py").write_text("print('lower')\n")
+    (package / "__pycache__").mkdir()
+    (package / "__pycache__" / "lower.pyc").write_bytes(b"cache")
+    captured = [_capture_compiler_source(package, tmp_path / name) for name in ("one", "two")]
+    snapshots = [tmp_path / name / c["snapshot"] for name, c in zip(("one", "two"), captured)]
+    files = [s / "compiler" / "lower.py" for s in snapshots]
+    assert files[0].stat().st_ino == files[1].stat().st_ino
+    assert not any((s / "__pycache__").exists() for s in snapshots)
+    assert not list(tmp_path.glob("*/compiler-source/.*.partial"))
+    (package / "compiler" / "lower.py").write_text("print('edited in place')\n")
+    assert files[0].read_text() == "print('lower')\n"
+    assert _finish_compiler_source(captured[0], tmp_path / "one")["status"] == "source_changed"
+
+
+def test_compiler_source_capture_never_waits_for_a_compute_slot(tmp_path, monkeypatch):
+    """A grade holds its CPU slot while a worker captures its compiler; the capture must not need one."""
+    from merlin.common import cpu_pool
+
+    def no_slot(*_args, **_kwargs):
+        raise AssertionError("compiler source capture leased a compute slot")
+
+    monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
+    monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_MIN_BYTES", "1")
+    monkeypatch.setattr(cpu_pool, "shared_compute_pool", no_slot)
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "large.py").write_text("x = 1\n" * 50000)
+    captured = _capture_compiler_source(package, tmp_path / "generated")
+    assert (tmp_path / "generated" / captured["snapshot"] / "large.py").is_file()

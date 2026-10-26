@@ -127,8 +127,6 @@ def _shared_source(package=None):
 
 def _capture_compiler_source(package_dir, generated):
     """Retain the actual compiler before lowering, without generated build state."""
-    import shutil
-
     from merlin_experiments.phase2.retained_revisions import source_inventory
 
     from merlin.common.tree_hash import hash_tree
@@ -153,7 +151,7 @@ def _capture_compiler_source(package_dir, generated):
     if destination.resolve().is_relative_to(source) or destination.is_symlink():
         raise ValueError("compiler source evidence cannot be linked or candidate-owned")
     if not destination.exists():
-        shutil.copytree(source, destination, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        _place_source(source, destination)
     if hash_tree(source) != before or hash_tree(destination) != before:
         raise ValueError("compiler source changed while capturing capsule input")
     return {
@@ -161,6 +159,44 @@ def _capture_compiler_source(package_dir, generated):
         "candidate_sha256": before["sha256"],
         "snapshot": "compiler-source/" + before["sha256"],
     }
+
+
+def _place_source(source: Path, destination: Path) -> None:
+    """Freeze the compiler as read-only links to one shared copy of each distinct file.
+
+    Every capsule of a grade, and every self-check, retained its own copy of the same compiler: 67
+    identical 16 MB trees in one grade and 14 GB of copies across one run's self-checks. The
+    content store keeps one copy of each distinct file and links it here, so an unchanged file costs
+    nothing in later grades either. The retained bytes are still a copy the candidate cannot reach:
+    an in-place edit of the source changes its own inode, never the store's. Placement is staged
+    and renamed, so an interrupted one (a full disk) never leaves a partial tree under the final
+    name for the next capsule to reuse.
+    """
+    import os
+    import shutil
+
+    from merlin.common import content_store
+
+    try:
+        # Its own namespace: these links must not change the link counts of the run's frozen inputs.
+        root = content_store.store_root("compiler-source")
+    except OSError:
+        root = None  # an unwritable store degrades to a private read-only copy
+    staging = destination.with_name(f".{destination.name}.{os.getpid()}.partial")
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        # Full digests, no read leases: a lease recheck waits for a CPU slot this grade already holds.
+        with content_store.without_read_leases():
+            content_store.place_tree(
+                source, staging, root, ignore=shutil.ignore_patterns("build", "__pycache__", ".git")
+            )
+        try:
+            staging.rename(destination)
+        except OSError:
+            if not destination.is_dir():
+                raise  # not a concurrent capture of the same bytes winning the rename
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def _finish_compiler_source(captured, generated):
@@ -227,7 +263,9 @@ def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
         if lexical.is_symlink() or not canonical.is_relative_to(source):
             raise ValueError(f"model capsule snapshot source is a symlink or escapes its directory: {lexical}")
 
-    content_store.place_tree(source, destination, content_store.store_root(), observe=require_local_source)
+    # Its own store namespace: per-grade pins must not change the link counts of the run's frozen inputs.
+    store = content_store.store_root("model-capsule")
+    content_store.place_tree(source, destination, store, observe=require_local_source)
     # We own these directory entries, not the shared file inodes. Owner-only
     # directories keep withheld assets private and allow cleanup to unlink
     # read-only assets without chmodding a shared store object.

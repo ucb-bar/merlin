@@ -284,3 +284,22 @@ def test_scheduler_priority_matches_witness_queue_without_physical_authority(tmp
     chosen, report = progress.select(records, policy=policy(), hint=['case19'])
     assert chosen[-1][2] == 'case19'  # Prior attempt overrides persistent hint/witness priority.
     assert not report['exact_correctness_reused']
+
+
+@pytest.mark.parametrize('remaining', [0, -5])
+def test_expired_clock_admits_nothing_new_and_does_not_fail_the_grade(tmp_path, monkeypatch, remaining):
+    from merlin.targetgen import capsule_scheduling as scheduler
+    progress = C.Progress(tmp_path/'progress', identity=None, runs_root=tmp_path/'runs')
+    progress.select(corpus(tmp_path), policy=policy(), hint=[])
+    monkeypatch.setattr(scheduler, 'measured_costs', lambda *a, **kw: ({}, {}))
+    ran = []
+    with C.admission(progress, timeout=30, remaining_s=remaining, history=[]):
+        results = scheduler.run_pipelined(
+            [{'name': 'case05'}, {'name': 'case06'}],
+            lambda cap, workers: ran.append(cap['name']) or {'capsule': cap['name'], 'status': 'pass'},
+            max_workers=2,
+        )
+    assert ran == []  # even the oversized-first allowance starts nothing after the deadline
+    assert len(results) == 2 and all(r.get('status') != 'pass' for r in results)
+    assert progress.admission_window_s is None
+    assert json.loads((progress.root/'progress.json').read_text())['in_flight'] == {}

@@ -22,6 +22,11 @@ def selection(tmp_path):
         'merlin/compile_cli.py': '', 'merlin/compile_core.py': '',
         'merlin/runtime/reference.py': 'private_oracle=123\n',
         'merlin/compile/needs_private.py': 'import merlin.runtime.reference\n',
+        'merlin/compile/capture_client.py': (
+            'import merlin.targetgen._dynamic_integer_reference\n'
+            'import merlin.targetgen.materialized_reference\n'),
+        'merlin/targetgen/_dynamic_integer_reference.py': 'private_oracle=123\n',
+        'merlin/targetgen/materialized_reference.py': 'private_reference_reader=123\n',
         'merlin/kernels/known_answer.py': 'do_not_copy=1\n',
     }
     for name, text in sources.items():
@@ -44,6 +49,10 @@ def test_complete_public_sources_exclude_answers_and_report_unavailable_dependen
     assert selection.permits('merlin.runtime.new_host_schedule')
     assert not selection.permits('merlin.runtime.reference')
     assert not selection.permits('merlin_experiments.phase1.feedback')
+    for module in ('merlin.targetgen._dynamic_integer_reference', 'merlin.targetgen.materialized_reference'):
+        assert module in selection.diagnostics
+        assert not selection.permits(module)
+        assert module not in {row[2] for row in selection.members}
 
 
 def test_staging_preserves_continuation_edits_without_links(selection, tmp_path):

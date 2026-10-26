@@ -31,6 +31,31 @@ class _Stderr:
         pass  # Raw bounded stderr remains in the actual invocation evidence.
 
 
+#: Bytes of a failed command's stderr tail read back for its stated reason.
+_REASON_TAIL_BYTES = 8192
+
+
+def provider_reason(stage_directory) -> str | None:
+    """The last line a failed observation command wrote to stderr (the provider's own refusal).
+
+    A census failure says only that the command did not finish; the reason the provider printed (for
+    example a completion it could not attribute) stays in the invocation's raw stderr. Host paths are
+    scrubbed; ``None`` when nothing was written or the evidence is unreadable."""
+    from merlin.common.path_scrub import scrub_host_paths
+
+    try:
+        streams = sorted(Path(stage_directory).glob("invocations/*/stderr.bin"), key=lambda p: p.stat().st_mtime)
+        if not streams:
+            return None
+        with streams[-1].open("rb") as handle:
+            handle.seek(max(0, streams[-1].stat().st_size - _REASON_TAIL_BYTES))
+            tail = handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    lines = [line.strip() for line in tail.splitlines() if line.strip()]
+    return scrub_host_paths(lines[-1])[:240] if lines else None
+
+
 def _run(argv, *, prefix, directory, workspace, backing, limits, dependencies, require_done, ownership,
          stdout_protocol="text", extra_inputs=()):
     directory.mkdir(mode=0o700)
@@ -73,7 +98,8 @@ def _run(argv, *, prefix, directory, workspace, backing, limits, dependencies, r
     return record.path, actual, (record.directory / "stdout.bin").read_bytes()
 
 
-def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numerical_pass, owned_scope=None, output_export=None):
+def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numerical_pass, owned_scope=None, output_export=None,
+            native_relocation=None):
     """Observe one already graded original ELF, never an author-selected command.
 
     Complete original numerical admission precedes this call. Plain and annotated
@@ -109,6 +135,11 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             raise StageGateError("archive count program/output escaped the original numerical job")
         stage = "producer_validation"
         producer = BOX._producer
+        if native_relocation is not None:
+            from .archive_elf_source import NativeElfRelocation
+            if type(native_relocation) is not NativeElfRelocation or owned_scope is not None:
+                raise StageGateError("native ELF relocation requires its original kernel producer")
+            producer = native_relocation.producer
         if owned_scope is not None:
             from .owned_model_observation import OwnedModelScope, scope_digest
             if type(owned_scope) is not OwnedModelScope:
@@ -149,6 +180,9 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         if owned_scope is not None:
             from . import owned_model_observation
             dependencies += (Path(owned_model_observation.__file__).resolve(),)
+        if native_relocation is not None:
+            from . import archive_elf_source
+            dependencies += (Path(archive_elf_source.__file__).resolve(),)
         review_argv = [str(runtime.disassembler), "-d", "--no-show-raw-insn", str(copied)]
         stage = "scope_disassembly"
         review_process, _actual, listing = _run(
@@ -179,6 +213,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             "counter_asm": selection["counter_asm"],
             "entry_symbol": runtime.entry_symbol,
             "completion_symbol": runtime.completion_symbol,
+            **({"native_relocation": native_relocation.record()} if native_relocation is not None else {}),
             **window,
         }
         binding = {
@@ -263,6 +298,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             "runtime_sha256": runtime.sha256,
             "report": {"path": str(retained), "sha256": pin["sha256"]},
             "processes": processes,
+            **({"native_relocation": native_relocation.record()} if native_relocation is not None else {}),
             **({"output_export": export_record} if output_export is not None else {}),
             "functional_identical": True,
             "complete_counts": True,
@@ -272,13 +308,18 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             "authority": "empirical screening input only",
         }
     except (OSError, ValueError, RuntimeError, KeyError, AttributeError, TypeError) as error:
+        stated = None
+        if isinstance(directory, Path) and stage in ("functional_execution", "annotated_execution"):
+            stated = provider_reason(directory / ("functional" if stage == "functional_execution" else "annotated"))
         if isinstance(directory, Path) and directory.exists():
             write_json(
-                directory / "failure_private.json", {"category": type(error).__name__, "detail": str(error)[:1000]}
+                directory / "failure_private.json",
+                {"category": type(error).__name__, "detail": str(error)[:1000], "provider_reason": stated},
             )
         return {
             "status": "UNKNOWN",
             "reason": "original boxed archive count observation unavailable: " + type(error).__name__,
+            **({"provider_reason": stated} if stated else {}),
             "failure_stage": stage,
             "failure_category": type(error).__name__,
             "deadline_exhausted": str(error) in {

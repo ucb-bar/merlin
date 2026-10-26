@@ -17,6 +17,12 @@ from merlin.common import invocation_record as I
 from merlin.targetgen import capsule_runner as CR
 
 
+@pytest.fixture(autouse=True)
+def _private_content_store(tmp_path, monkeypatch):
+    """Captured compiler source shares bytes through the content store; keep this test's private."""
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", str(tmp_path / "cas"))
+
+
 def _pin(path):
     return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             "size_bytes": path.stat().st_size}

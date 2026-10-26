@@ -2,6 +2,21 @@
 
 
 COEVOLUTION_FEEDBACK_GUIDANCE = (
+    "The performance objective is complete-call or complete-region elapsed cycles under a matched "
+    "timing provider, inputs and scope. Lead performance comparisons and iteration summaries with "
+    "measured or modeled cycles, their confidence, roofline gap and explicitly sourced utilization. "
+    "Instruction counts, commands and fences are diagnostics, not performance scores. A variant with "
+    "fewer instructions can be slower; do not select or describe a speedup from those counts. When "
+    "timing is UNKNOWN, retain an unranked hypothesis, investigate the missing mechanism in parallel "
+    "and optimize another region with supported timing. Never fall back to instruction-count ranking. "
+    "High utilization is a diagnostic, not permission to increase whole-call latency or padded work.\n\n"
+    "Inspect multiple system utilization views: useful compute peak attainment, padding efficiency, "
+    "load/compute/store activity and overlap, CPU issue and submission, memory traffic by boundary, "
+    "queue pressure and local-storage lifetimes. Report their denominator and measured/modeled/bound "
+    "provenance. A modeled capacity reservation is not measured engine occupancy; missing activity "
+    "or host-wait attribution stays UNKNOWN. Resource intervals overlap and must not be summed into "
+    "elapsed cycles. Use these views to choose the next bottleneck experiment, then evaluate its "
+    "complete-call cycle result.\n\n"
     "For meaningful optimization trials, retain a compact hypothesis, parent/source/library identities, "
     "actual pass order and options, before/after IR and emitted-program hashes, relevant results and "
     "keep/reject reason. Inspect the actual transformed product reaching emission; a catalog entry or "
@@ -13,6 +28,12 @@ COEVOLUTION_FEEDBACK_GUIDANCE = (
     "continue. Label model-derived compute-peak attainment and resource activity explicitly; neither "
     "establishes measured processing-element occupancy. Compare complete selected regions, including "
     "packing, dispatch, synchronization and boundaries, and prioritize large/connected performance. "
+    "Drive this work from a whole-model profile and coverage map: group the actual graph by operator, "
+    "shape, layout, numerical boundary and invocation count, including host regions. Spread exploration "
+    "across expensive regions and distinct execution patterns; an isolated GEMM improvement does not "
+    "establish a model improvement. Use representative connected regions to inspect preparation reuse, "
+    "intermediate lifetimes and synchronization, then compare complete-chain timing when supported. "
+    "Reuse unaffected evidence; missing timing remains visible rather than making a region disappear. "
     "No extra discovery or verification gate is introduced by this guidance.\n\n"
 )
 

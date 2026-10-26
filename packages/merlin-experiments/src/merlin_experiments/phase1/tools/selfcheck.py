@@ -34,6 +34,25 @@ _NAME_FIRST = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012
 _NAME_CHARS = _NAME_FIRST | frozenset("._-")
 #: Completed requests ``--list`` shows beside the in-flight ones.
 _LIST_COMPLETED = 5
+#: ``--panel FAMILY`` travels as the capsule selector ``panel:FAMILY``; it grades one case per shape class.
+_PANEL = "panel:"
+_PANEL_CASES = 6
+
+#: Progress a child publishes while it waits for a gSIM correctness slot (the broker's
+#: ``joint_gsim_queue.WAITING_STATUS``; restated because this shim imports nothing from merlin).
+_GSIM_QUEUE_STATUS = "queued_for_gsim_slot"
+
+
+def _gsim_queue(progress) -> dict | None:
+    """The queue block of a request waiting for a gSIM slot, else ``None``."""
+    if isinstance(progress, dict) and progress.get("status") == _GSIM_QUEUE_STATUS:
+        queue = progress.get("gsim_slot_queue")
+        return queue if isinstance(queue, dict) else {}
+    return None
+
+
+def _gsim_queue_note(queue: dict) -> str:
+    return f"queued for a gSIM slot ({queue.get('ahead', '?')} ahead)"
 
 _WORKFLOW = """\
 keep working while checks run:
@@ -42,9 +61,16 @@ keep working while checks run:
   python agent_selfcheck.py --attach ID                         # collect the verdict
   python agent_selfcheck.py --list                              # requests in flight
 
+Operator-selected connected model sources use `--suite programs --sim spike --tiers L0,L1,L2`.
+The original model owner checks all outputs; programs never acquire core or RTL credit.
+
 Several requests may run at once. Put every capsule an edit affects in ONE request: its capsules run
 in parallel across the CPU pool, and per-request setup dominates small checks. `--capsules failing`
 re-checks what did not pass in your most recent completed check.
+
+Before changing a default that governs many shapes: `python agent_selfcheck.py --panel dense
+--wait-budget 5` checks one case per shape class (square, tall, wide, thin M=1, ragged, a model
+layer) on gSIM and compares each with its own best earlier cycles of the same evidence kind.
 
 variants: copy submission/ to variants/NAME/, change it, and check it with --submission variants/NAME.
 A variant result is labelled with its name and digest and is a self-check only: only submission/ is
@@ -240,7 +266,10 @@ def _list_requests(ch: Path) -> dict:
         else:
             row["state"] = "running" if (ch / f"claimed_{rid}").exists() else "queued"
             progress = _read_json(ch / f"progress_{rid}.json")
-            if isinstance(progress, dict):
+            queue = _gsim_queue(progress)
+            if queue is not None:
+                row.update(state=_GSIM_QUEUE_STATUS, note=_gsim_queue_note(queue))
+            elif isinstance(progress, dict):
                 row.update(n_finished=progress.get("n_finished"), n_expected=progress.get("n_expected"))
         running.append(row)
 
@@ -308,6 +337,8 @@ def _request_budget_seconds(timeout: int, *, capsules: str, workers: int, suite_
     worker_count = max(1, int(workers))
     if capsules in ("all", "changed"):  # `changed` builds and screens every public capsule first
         count = max(1, int(suite_size or _SUITE_SIZE_FALLBACK))
+    elif capsules.startswith(_PANEL):
+        count = _PANEL_CASES
     else:
         count = max(1, len({name.strip() for name in capsules.split(",") if name.strip()}))
     serial = min(_CALIBRATION_CAP, count)
@@ -367,9 +398,9 @@ def main(argv=None):
     )
     ap.add_argument(
         "--suite",
-        choices=("core", "scalability"),
+        choices=("core", "scalability", "programs"),
         default="core",
-        help="core RTL certification or the separately required public Spike-only suite",
+        help="core conformance, required scalability, or operator-selected public programs (Spike only)",
     )
     # DEFAULTS TO THE CERTIFYING SIM, not the screen. The capsules declare a cycle-accurate cert
     # tier as mandatory, and this ladder runs cheapest-measured-first with fail-fast, so the
@@ -388,6 +419,14 @@ def main(argv=None):
         default="all",
         help="'all', 'failing', 'changed' (build and screen every public capsule, reuse exact-byte RTL "
         "certificates, simulate only those whose bytes are neither certified nor known to fail), or names",
+    )
+    ap.add_argument(
+        "--panel",
+        default="",
+        metavar="FAMILY",
+        help="check one representative per shape class (square, tall, wide, thin M=1, ragged, a "
+        "model layer) of FAMILY (dense, conv, gemv, ...) and compare each with its best earlier cycles "
+        "of the same evidence kind; gSIM by default",
     )
     ap.add_argument("--workers", type=int, default=0, help="0 uses the host's selected grading worker count")
     # This bounds the entire capsule check, including source setup, object builds,
@@ -451,12 +490,35 @@ def main(argv=None):
         help="collect (or keep waiting on) a request id instead of submitting a new one",
     )
     ap.add_argument("--list", action="store_true", help="list in-flight and recent requests, then exit")
+    ap.add_argument("--mechanism-question", default="", help="propose a public model question to the trusted diagnostic owner; does not grade or grant gSIM")
+    ap.add_argument("--mechanism-discriminator", default="", help="what the proposed witnesses distinguish")
+    ap.add_argument("--mechanism-purpose", choices=("unresolved_cost", "structural_validation"), default="unresolved_cost")
     a = ap.parse_args(argv)
-    if a.suite == "scalability":
+    if a.panel:
+        family = a.panel.strip().lower()
+        if not family or not all(c in _NAME_CHARS for c in family) or len(family) > _VARIANT_NAME_MAX:
+            ap.error("--panel takes a family name such as dense, conv or gemv")
+        if a.capsules != "all" or a.suite != "core" or a.mechanism_question:
+            ap.error("--panel selects its own cases; drop --capsules/--suite/--mechanism-question")
+        a.capsules = _PANEL + family
+        # Cycle evidence by default: Spike counts are not cycles (see the panel's evidence rule).
+        if not any(v == "--sim" or v.startswith("--sim=") for v in (argv or sys.argv[1:])):
+            pinned = _required_rtl_engine()
+            a.sim = pinned if pinned in _SIMS and pinned != "spike" else "gsim"
+    if a.mechanism_question:
+        if (not a.mechanism_discriminator.strip() or len(a.mechanism_question) + len(a.mechanism_discriminator) > 2000
+                or a.suite != "core" or a.capsules in ("all", "changed", "failing")):
+            ap.error("mechanism questions need named public capsules, a bounded discriminator, and the core suite")
+        names = a.capsules.split(",")
+        if not 1 <= len(names) <= 4 or len(set(names)) != len(names):
+            ap.error("mechanism questions accept one to four distinct public witnesses")
+    elif a.mechanism_discriminator:
+        ap.error("--mechanism-discriminator requires --mechanism-question")
+    if a.suite in {"scalability", "programs"}:
         # This shim is standalone inside the author sandbox; the host repeats this gate.
         explicit_sim = any(v == "--sim" or v.startswith("--sim=") for v in (argv or sys.argv[1:]))
         if explicit_sim and a.sim != "spike":
-            ap.error("public scalability accepts only --sim spike")
+            ap.error("public Spike suites accept only --sim spike")
         a.sim = "spike"
         tiers = [v.strip() for v in a.tiers.split(",") if v.strip()]
         if (tiers and tiers != ["L0", "L1", "L2"]) or any(
@@ -472,7 +534,7 @@ def main(argv=None):
                 "scale_probe",
             )
         ):
-            ap.error("public scalability requires L0,L1,L2 and refuses inspection/RTL requests")
+            ap.error("public Spike suites require L0,L1,L2 and refuse inspection/RTL requests")
     if a.timeout is None:
         a.timeout = 3600 if a.sim == "gsim" else 1800
     if a.scale_probe and not a.compile_only:
@@ -572,6 +634,10 @@ def main(argv=None):
                     "scale_probe": bool(a.scale_probe),
                     "dynamic_census": bool(a.dynamic_census),
                     "caller_layout": a.caller_layout,
+                    **({"action": "mechanism-question", "mechanism_question": {
+                        "schema": "merlin.mechanism_question_proposal.v1", "question": a.mechanism_question,
+                        "discriminator": a.mechanism_discriminator, "capsules": a.capsules.split(","),
+                        "purpose": a.mechanism_purpose}} if a.mechanism_question else {}),
                 }
             ),
         )
@@ -579,6 +645,7 @@ def main(argv=None):
     progress = ch / f"progress_{rid}.json"
     claimed = ch / f"claimed_{rid}"
     last_progress_finished = -1
+    last_queue_note = None
     announced_claim = False
     waiting_since = time.time()
     last_waiting_note = 0.0
@@ -612,7 +679,13 @@ def main(argv=None):
         if progress.exists():
             try:
                 p = json.loads(progress.read_text(encoding="utf-8"))
-                finished = int(p.get("n_finished", 0))
+                queue = _gsim_queue(p)
+                if queue is not None:
+                    # Waiting for a busy gSIM slot is a queue, not a fault and not a refusal.
+                    if _gsim_queue_note(queue) != last_queue_note:
+                        last_queue_note = _gsim_queue_note(queue)
+                        print(f"[self-check] {last_queue_note}", file=sys.stderr, flush=True)
+                finished = int(p.get("n_finished", 0)) if queue is None else last_progress_finished
                 if finished != last_progress_finished:
                     # stderr keeps stdout machine-readable while making a long foreground check visibly
                     # alive in an interactive terminal.
@@ -668,6 +741,8 @@ def main(argv=None):
             if _v.get("status") == "layout_only":
                 supported = {"public_caller_layout_receipt_v1", "public_caller_layout_receipt_v2"}
                 return 0 if _v.get("schema") in supported else 2
+            if a.mechanism_question or (original or {}).get("action") == "mechanism-question":
+                return 0 if _v.get("status") == "queued_for_trusted_diagnostic_review" else 1
             return 0 if _v.get("all_pass") else 1
         time.sleep(0.4)
     if a.wait_budget > 0 and time.time() < deadline:
@@ -681,6 +756,7 @@ def main(argv=None):
                 snapshot = json.loads(progress.read_text(encoding="utf-8"))
             except (OSError, ValueError, TypeError):
                 snapshot = {}
+        queue = _gsim_queue(snapshot)
         try:
             # Returning on purpose: the request now lives on its deadline, not on this process, so the
             # broker neither drops it as abandoned nor aborts it when this process exits.
@@ -699,9 +775,12 @@ def main(argv=None):
                     "n_expected": snapshot.get("n_expected"),
                     "n_remaining": snapshot.get("n_remaining"),
                     "counts": snapshot.get("counts", {}),
+                    **({"gsim_slot_queue": queue} if queue is not None else {}),
                     "resume_with": f"python agent_selfcheck.py --attach {rid}" + (f" --out {a.out}" if a.out else ""),
                     "note": (
-                        "the check is STILL RUNNING broker-side; this is not a pass, a failure or a "
+                        (f"{_gsim_queue_note(queue)}: the check waits for a free gSIM slot and then runs; "
+                         if queue is not None else "")
+                        + "the check is STILL RUNNING broker-side; this is not a pass, a failure or a "
                         "timeout. Keep working and collect it with the command above -- do NOT write a "
                         "sleep/poll loop, and do not resubmit this same check (that only repeats it); "
                         "checks of other capsules or variants may run alongside it."

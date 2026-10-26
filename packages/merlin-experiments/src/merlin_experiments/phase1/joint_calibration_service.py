@@ -64,7 +64,7 @@ def register(row, root, *, result, compiler, capsule):
         estimated_interval=performance.get('estimated_interval')))
 
 
-def step(*, profile_pin, state_path, context, output, request_epoch=True):
+def step(*, profile_pin, state_path, context, output, request_epoch=True, activation=None):
     """One bounded polling action; no gSIM until legal independent variants exist."""
     profile=PERF._read(profile_pin)
     selected=joint_control.selected()
@@ -91,7 +91,11 @@ def step(*, profile_pin, state_path, context, output, request_epoch=True):
     rows=[r for r in rows if r['source_group_sha256'] not in used and r['id'] not in attempted]
     # Model-only epochs retain the original policy while changing its separately
     # pinned evaluator selection. Never fit or promote against a stale incumbent.
-    current_pin = selected.get('performance_selection') or profile['performance_selection']
+    if activation == 'future_requests':
+        from .joint_model_activation import current as accepted_selection
+        current_pin = accepted_selection(state_path) or profile['performance_selection']
+    else:
+        current_pin = selected.get('performance_selection') or profile['performance_selection']
     current = PERF._read(current_pin)
     initial = PERF._read(profile['performance_selection'])
     from .joint_runtime_revision import validate
@@ -137,7 +141,12 @@ def step(*, profile_pin, state_path, context, output, request_epoch=True):
     raise_if_stopping()
     value=PERF._read(outcome)
     if value.get('timing_epochs'):
-        if not request_epoch:
+        if activation == 'future_requests':
+            from .joint_model_activation import accept
+            response = accept(state_path=state_path, selection_pin=outcome, incumbent_pin=current_pin,
+                review_id='automatic-reviewed-local-native-'+key)
+            return dict(status='model_accepted_for_future_requests', selection=outcome, activation=response)
+        if activation == 'candidate_only' or (activation is None and not request_epoch):
             return dict(status='model_candidate_ready',selection=outcome,
                 reason='Evidence-only lifecycle; selecting a new evaluator requires a separate drained epoch.')
         response=C.request_promotion(outcome,previous_run=Path(state_path).parent,
@@ -154,9 +163,13 @@ def main(argv=None):
     parser.add_argument('--once',action='store_true')
     parser.add_argument('--stop-file',help='Host-owned cooperative watcher shutdown request')
     parser.add_argument('--evidence-only',action='store_true',help='Retain accepted candidates without requesting an evaluator epoch')
+    parser.add_argument('--activation', choices=('candidate_only', 'future_requests', 'drained_epoch'),
+                        help='Prospective model routing; future_requests never stops authoring')
     args=parser.parse_args(argv)
     if not 5<=args.poll_seconds<=60:
         parser.error('poll interval must be 5..60 seconds')
+    if args.evidence_only and args.activation not in (None, 'candidate_only'):
+        parser.error('--evidence-only conflicts with model activation')
     os.environ[joint_control.ENV]=str(Path(args.state).resolve())
     from .context import load_context
     context=load_context(args.descriptor,repo=args.repo)
@@ -170,8 +183,15 @@ def main(argv=None):
                 if joint_control.stop_reason():
                     result=dict(status='native_drain_or_campaign_stop',reason=joint_control.stop_reason())
                 else:
+                    from .joint_mechanism_questions import step as questions_step
+                    try:
+                        diagnostic = questions_step(state_path=args.state, context=context)
+                    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
+                        diagnostic = dict(status='blocked_diagnostic_review', reason=str(error), fit_eligible=False)
+                    options = {'activation': args.activation} if args.activation is not None else {}
                     result=step(profile_pin=pin,state_path=args.state,context=context,output=output,
-                                request_epoch=not args.evidence_only)
+                                request_epoch=not args.evidence_only, **options)
+                    result['mechanism_questions'] = diagnostic
             except StopRequested as error:
                 result=dict(status='watcher_host_stopped',reason=str(error))
             except (ValueError,OSError,RuntimeError,KeyError,TypeError) as error:

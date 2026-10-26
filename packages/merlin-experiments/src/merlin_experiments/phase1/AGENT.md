@@ -46,6 +46,16 @@ Keep scheduling defaults and policy validation separate from mutable runtime ses
 `author_subagents.py` resolves the Codex author's helper-thread ceiling once (option,
 delegation bound, environment, else pool-derived) into `run_config.author_subagents`;
 the provider applies that recorded value, and resume refuses a changed explicit one.
+`providers/codex_context.py` records the Codex context ceiling, its compaction prompt text and the
+task-skill switch once into `run_config.author_context` (same resume rule). `task_disclosure.py`
+stages verbatim copies of the sealed TASK.md's longer sections as `.agents/skills/` after every
+TASK.md append and before the treatment seal, which binds them; TASK.md itself is never rewritten.
+`skill_staging.py` stages every `author_skills/<name>/` (SKILL.md, optional `reference/*.md`, stdlib
+`scripts/*.py`, target-agnostic, procedural) byte-identically into `.agents/skills/` (Codex) and
+`.claude/skills/` (Claude Code) right after them, recorded with its digest in
+`run_config.author_skills` (`--author-skills`, same resume rule) and sealed via `author_skills.json`.
+Its `feedback-files` skill replaces the generated `qa-feedback-files` guide when staged. A new skill
+needs only its directory; `tests/test_author_skill_staging.py` checks every one generically.
 
 `controller.py` composes real admission, task staging, workspace transport and authoring under
 one workspace lease and one restored environment. Native launchers select legacy defaults and

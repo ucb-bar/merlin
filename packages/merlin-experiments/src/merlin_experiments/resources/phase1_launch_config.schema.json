@@ -75,6 +75,10 @@
         "model": {"$ref": "#/$defs/text"},
         "effort": {"$ref": "#/$defs/token"},
         "max_subagents": {"type": "integer", "minimum": 1},
+        "helper_effort": {"$ref": "#/$defs/token", "description": "Reasoning effort of Codex helpers spawned without a full-history fork; unset keeps the lead's effort."},
+        "compact_limit": {"anyOf": [{"type": "integer", "minimum": 100000}, {"const": "off"}], "description": "Codex context ceiling (model_auto_compact_token_limit) with a workspace-aware compact_prompt; unset records the measured default, off keeps the CLI's own compaction."},
+        "task_skills": {"type": "boolean", "description": "Stage TASK.md's longer sections and a feedback-file guide as native Codex workspace skills; TASK.md is unchanged. Unset records on."},
+        "skills": {"type": "boolean", "description": "Stage the harness's procedural author skills byte-identically for native Codex and Claude Code discovery (.agents/skills and .claude/skills), recorded with their digest. Unset records on."},
         "live_conformance_feedback": {"type": "boolean", "description": "Expose current answer-free workflow evidence during authoring; formal grading remains separate."},
         "sandbox": {"enum": ["bwrap", "none"]},
         "codex": {

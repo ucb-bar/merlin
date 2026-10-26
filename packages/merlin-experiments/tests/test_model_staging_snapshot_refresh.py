@@ -32,6 +32,9 @@ def model_execution(execution, monkeypatch, tmp_path):
 
 def test_actual_model_pinning_refreshes_once_before_suite_workers(model_execution, monkeypatch):
     owner, candidate, work, frozen = model_execution
+    # Pin through the frozen inputs' own store, so pinning links their inodes and the entry must refresh.
+    shared = content_store.store_root()
+    monkeypatch.setattr(content_store, 'store_root', lambda namespace=None: shared)
     guards, boundaries = [], []
     real_guard, real_verify = B._RosterGuard.__init__, B.verify_bundle_snapshot
     def guard(self, *args, **kwargs):
@@ -124,3 +127,28 @@ def test_refresh_cannot_close_guard_in_use_by_worker(original):
             finally:
                 done.set()
                 job.result(timeout=10)
+
+
+def test_namespaced_model_pinning_leaves_the_frozen_inputs_and_their_entry_alone(model_execution, monkeypatch):
+    owner, candidate, work, frozen = model_execution
+    links = {path: path.stat().st_nlink for path in frozen.iterdir()}
+    guards = []
+    real_guard = B._RosterGuard.__init__
+
+    def guard(self, *args, **kwargs):
+        guards.append(True)
+        real_guard(self, *args, **kwargs)
+
+    def run(pinned, *args, **kwargs):
+        assert executor.snapshot_entry_for_call() is stale  # still valid: nothing touched its inodes
+        assert {path: path.stat().st_nlink for path in frozen.iterdir()} == links
+        return [{'capsule': 'small_model', 'status': 'pass'}]
+
+    monkeypatch.setattr(C, '_run_suite', run)
+    with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+        executor = P.active_package_executor()
+        stale = executor.snapshot_entry_for_call()
+        with monkeypatch.context() as patch:
+            patch.setattr(B._RosterGuard, '__init__', guard)
+            result = C.run_suite([{'name': 'small_model', 'kind': 'model', '__dir__': str(frozen)}], candidate)
+        assert result[0]['status'] == 'pass' and guards == []  # no re-admission was needed

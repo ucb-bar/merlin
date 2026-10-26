@@ -34,6 +34,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -166,6 +167,32 @@ def _classify_stderr(stderr: str) -> str:
     return sandbox_failure_reason(stderr) or "nonzero_exit"
 
 
+#: Waits before re-running a probe that timed out. A timeout is no answer: creating a namespace
+#: blocks while the kernel tears down many others (stopping a run with dozens of sandboxes held a
+#: fresh launch's probe past its timeout for about a minute), so the probe asks again before saying so.
+PROBE_TIMEOUT_RETRY_WAITS_S = (10.0, 30.0)
+
+
+def _run_probe(argv, timeout):
+    """Run the probe, re-running it after each wait in :data:`PROBE_TIMEOUT_RETRY_WAITS_S` while it
+    times out; the last timeout propagates. Any completed run, success or refusal, is the answer."""
+    for wait in (*PROBE_TIMEOUT_RETRY_WAITS_S, None):
+        try:
+            return subprocess.run(  # noqa: S603 — fixed argv, no shell
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+        except subprocess.TimeoutExpired:
+            if wait is None:
+                raise
+            time.sleep(wait)
+    raise AssertionError("unreachable")
+
+
 def probe_sandbox(
     binary: str | Path | None = None,
     *,
@@ -193,14 +220,7 @@ def probe_sandbox(
         return _CACHE[key]
 
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed argv, no shell
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            env={**os.environ, "LC_ALL": "C"},
-        )
+        completed = _run_probe(argv, timeout)
     except subprocess.TimeoutExpired:
         probe = SandboxProbe(status=SANDBOX_UNKNOWN, reason="probe_timed_out", binary=resolved, argv=tuple(argv))
     except OSError as exc:

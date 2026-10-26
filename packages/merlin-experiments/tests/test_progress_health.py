@@ -134,3 +134,22 @@ def test_final_timeout_response_overrides_unfinished_incremental_progress(tmp_pa
     put(channel / 'resp_one.json', {'selfcheck_request_id': 'one', 'all_pass': False,
                                   'per_capsule': [{'capsule': 'x', 'numeric': {'status': 'skipped'}}]})
     assert sample(tmp_path, True)['requests'][0]['status'] == 'returned'
+
+
+def test_a_policy_refused_selfcheck_is_not_a_grader_exception(tmp_path):
+    # The joint policy's own refusal record: refused before any simulator, the obligation stays pending.
+    refusal = {'all_pass': False, 'joint_policy_refused': True, 'submission_sha256': 'a' * 64,
+               'error': 'joint gSIM correctness concurrency or worker budget exhausted; obligation remains pending',
+               'graded_at_unix_ns': 6000000000}
+    put(tmp_path / 'workspace/.qa_channel/resp_one.json', refusal)
+    put(tmp_path / 'workspace/.qa_channel/resp_two.json', dict(refusal, graded_at_unix_ns=7000000000))
+    result = sample(tmp_path)
+    assert 'GRADE_EXCEPTIONS' not in codes(result)
+    assert result['policy_refusals'] == 2
+    assert {r['status'] for r in result['requests']} == {'refused'}
+    # The same error text without the policy's marker is a real exception, and stays flagged.
+    put(tmp_path / 'workspace/.qa_channel/resp_three.json',
+        {'error': refusal['error'], 'graded_at_unix_ns': 8000000000})
+    result = sample(tmp_path)
+    exception = next(a for a in result['alerts'] if a['code'] == 'GRADE_EXCEPTIONS')
+    assert exception['count'] == 1 and result['policy_refusals'] == 2

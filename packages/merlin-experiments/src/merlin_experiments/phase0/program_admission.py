@@ -316,7 +316,7 @@ def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
     return screens
 
 
-def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> dict | None:
+def screen_written(capsule: dict, directory: Path, *, target: str, evidence, source_context=None) -> dict | None:
     """The written program's screen, or ``None`` when the capsule contains no program to read."""
     from .coverage_commitment import _selected_program
 
@@ -330,7 +330,8 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
     semantic = capsule.get("semantic") or capsule.get("generalization") or {}
     host_only = semantic.get("must_accelerate") is False and semantic.get("eligible") is False
     if "linalg_mlir" in capsule or capsule.get("kind") == "model":
-        entries = account_program(program, name=str(capsule.get("name")), target=target, evidence=evidence)
+        entries = account_program(program, name=str(capsule.get("name")), target=target, evidence=evidence,
+                                  source_context=source_context)
         scope = "written source program: per-operation admission, as for a captured application"
         numeric_screens = []
     else:
@@ -391,7 +392,8 @@ def _check_saved_inventory(screen: dict, materialized: dict, evidence) -> dict:
     return {**screen, "saved_inventory": {"capture_sha256": expected["capture_sha256"], "status": "matched"}}
 
 
-def derive_inventory(inventory: dict, *, target: str, evidence, captures: dict[str, Path] | None = None) -> dict:
+def derive_inventory(inventory: dict, *, target: str, evidence, captures: dict[str, Path] | None = None,
+                     source_context=None) -> dict:
     """The per-operation admission inventory of each declared capture, written at derivation.
 
     ``inventory`` is the derivation's own detailed application inventory of the declared captures,
@@ -416,7 +418,7 @@ def derive_inventory(inventory: dict, *, target: str, evidence, captures: dict[s
     ):
         captures = {name: Path(row["capture_source_path"]) for name, row in inventory["applications"].items()}
     if captures is not None:
-        _join_source_admissions(accounting, captures, evidence=evidence)
+        _join_source_admissions(accounting, captures, evidence=evidence, source_context=source_context)
     applications = {}
     for label, application in sorted(accounting["applications"].items()):
         screen = summarize(application["signatures"], scope="declared iteration capture at derivation")

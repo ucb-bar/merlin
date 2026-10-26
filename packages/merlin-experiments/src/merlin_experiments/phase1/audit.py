@@ -7,10 +7,17 @@ its bundle grant files are read at the historical audit observation points.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+import yaml
+
+from merlin.common.access import author_withheld, module_matches
+from merlin.common.paths import repo_root
+from merlin_experiments.access_policy import MODULE_ACCESS
 
 from .audit_shell import public_feedback_context, published_feedback, read_view
 
@@ -59,6 +66,12 @@ _READ_RE = re.compile(  # regex-ok: unchanged host transcript/shell audit; not t
 _PYC_RE = re.compile(  # regex-ok: retained host Python-command audit, not target-fact derivation
     r"\bpython3?\b[^\n;|&]*\s-c\b"
 )  # regex-ok: unchanged host transcript/shell audit; not target-fact derivation
+
+
+def _private_tmp(path: Path | None) -> bool:
+    """Whether a sandbox path lies in the author's private ``/tmp`` (a fresh tmpfs per sandbox)."""
+    parts = PurePosixPath(path).parts if path is not None else ()
+    return len(parts) > 1 and parts[0] == "/" and parts[1] == "tmp"
 
 
 @dataclass(frozen=True)
@@ -440,6 +453,126 @@ class AnswerAudit:
                     return kind, word
         return None
 
+    def _access_roots(self, bundle: str | None = None) -> dict[str, tuple[Path, ...]]:
+        """Protected and granted locations DERIVED from this run's own grant and deny lists.
+
+        ``denied`` = every denied path and host-only input the bundle declares; ``framework`` = the
+        operator framework root and this run's own operator directory (the bundle's directory, which
+        holds the private inputs); ``allowed`` = every path the bundle grants (it carves exceptions out of
+        those roots only, never out of an explicit denial). Relative entries name framework paths.
+        Read at each audit, like the grant files: nothing is cached across invocations.
+        """
+        bdir = self.bundle_dir if bundle is None else Path(bundle)
+        allowed, denied = self._bundle_grants("", bundle)
+        hosts: list[str] = []
+        manifest = bdir / "input_bundle_manifest.yaml"
+        if manifest.is_file():
+            try:
+                document = yaml.safe_load(manifest.read_text())
+            except (OSError, yaml.YAMLError):
+                document = None  # no carve-outs: the whole framework root stays protected
+            document = document if isinstance(document, dict) else {}
+
+            def paths(role):
+                rows = document.get(role) or []
+                return [r["path"] for r in rows if isinstance(r, dict) and isinstance(r.get("path"), str)]
+
+            allowed, denied, hosts = (*allowed, *paths("allowed")), (*denied, *paths("denied")), paths("host_inputs")
+        root = Path(repo_root()).resolve(strict=False)
+
+        def located(values):
+            return tuple(dict.fromkeys((root / v).resolve(strict=False) for v in values if v and v.strip()))
+
+        return {
+            "allowed": located(allowed),
+            "denied": located((*denied, *hosts)),
+            "framework": (root, bdir.resolve(strict=False)),
+        }
+
+    @staticmethod
+    def _cwd_is_workspace(cmd: str) -> bool:
+        """Whether relative operands of this command are relative to the workspace (no directory change)."""
+        words = cmd.replace(";", " ").replace("&", " ").replace("|", " ").replace("(", " ").split()
+        return not any(w in ("cd", "pushd", "popd") or "chdir" in w for w in words)
+
+    @staticmethod
+    def _operand_text(word: str, tok: str = "") -> str:
+        """The path one command word spells: a quoted literal holding the token, a binding's value, or itself."""
+        for quote in ("'", '"'):
+            quoted = [piece for piece in word.split(quote)[1::2] if not tok or tok in piece]
+            if quoted:
+                return quoted[0]
+        if "=" in word:
+            word = word.partition("=")[2]
+        return word.strip().strip("'\";,()[]{}<>")
+
+    @staticmethod
+    def _operand_path(word: str, workspace: Path | None, relative: bool = True) -> Path | None:
+        """Where one read operand points, as the sandbox sees it (cwd = the workspace).
+
+        ``None`` when that cannot be told: not a path, or relative after a directory change."""
+        raw = word.strip().strip("'\";,()[]{}<>")
+        if not raw or raw.startswith("-") or "://" in raw or "$" in raw or "*" in raw:
+            return None
+        path = Path(raw)
+        if not path.is_absolute():
+            if workspace is None or not relative:
+                return None
+            path = Path(workspace) / path
+        return Path(os.path.normpath(path))
+
+    def _operand_location(self, word: str, workspace: Path | None, roots: dict) -> str:
+        """``owned`` | ``granted`` | ``protected`` | ``public`` | ``unknown`` for one read operand.
+
+        Owned: the author's sandbox-private ``/tmp`` and its writable workspace (resolved, so a symlink
+        planted there cannot launder a host path). Protected: a withheld/grader/oracle module file by its
+        import identity, or a location the run denies, keeps host-only, or the operator framework root
+        outside its grants. Everything else the sandbox shows (system and toolchain trees) is public.
+        Unknown: the operand's location cannot be told, so no exemption applies.
+        """
+        path = self._operand_path(word, workspace, roots.get("relative", True))
+        if path is None:
+            return "unknown"
+        if _private_tmp(path):
+            return "owned"
+        try:
+            path = path.resolve(strict=False)  # a symlink is judged by where it actually leads
+        except (OSError, RuntimeError):
+            return "protected"
+        if workspace is not None and path.is_relative_to(Path(workspace).resolve(strict=False)):
+            return "owned"
+        parts = PurePosixPath(path).parts
+        names = [i for i, part in enumerate(parts) if part in ("merlin", "merlin_experiments")]
+        if names and parts[-1].endswith(".py"):
+            tail = [*parts[names[-1] : -1], parts[-1][:-3]]
+            module = ".".join(tail[:-1] if tail[-1] == "__init__" else tail)
+            if author_withheld(module) or any(module_matches(module, m) for e in MODULE_ACCESS for m in e.modules):
+                if not any(path == a or path.is_relative_to(a) for a in roots["allowed"]):
+                    return "protected"
+        if any(path == d or path.is_relative_to(d) for d in roots["denied"]):
+            return "protected"
+        if any(path == a or path.is_relative_to(a) for a in roots["allowed"]):
+            return "granted"
+        if any(path == f or path.is_relative_to(f) for f in roots["framework"]):
+            return "protected"
+        return "public"
+
+    def _keyword_kind(self, tok: str, word: str, workspace: Path | None, roots: dict | None) -> str | None:
+        """Advisory kind for a BARE keyword token that names no protected path, else ``None``.
+
+        A bare token (a grader module stem such as ``decode``) is a word, not a location: it occurs in
+        the author's own capsule names, notes and greps. It only counts when the operand carrying it is
+        protected by this run's own grants and denials, or when that cannot be told (``None``: the
+        ordinary fail-closed classification follows). Path-shaped answer tokens (goldens, hidden sets,
+        oracle module paths) are locations themselves and keep their own checks.
+        """
+        if roots is None or not tok or "/" in tok or "." in tok:
+            return None
+        if not self._token_is_path_like(word, tok):
+            return "pattern_mention"
+        location = self._operand_location(self._operand_text(word, tok), workspace, roots)
+        return {"owned": "owned_read", "granted": "granted_read", "public": "pattern_mention"}.get(location)
+
     def _classify_bash_read(
         self,
         cmd: str,
@@ -450,6 +583,7 @@ class AnswerAudit:
         granted: frozenset = frozenset(),
         workspace: Path | None = None,
         public_context: bool = False,
+        roots: dict | None = None,
     ) -> str:
         """Classify a flagged Bash read, cheapest-and-most-benign explanation first:
 
@@ -460,12 +594,19 @@ class AnswerAudit:
           'pattern_mention' the token appeared as a search PATTERN, not as a path being read;
           'path_read'       a content read of a withheld path that returned data.
 
-        Only 'path_read' (and oracle_use) break `clean`; the mask remains the real enforcement, this is
-        defence-in-depth."""
+        With ``roots`` (this run's derived grant/deny locations), a bare keyword token is settled first
+        by :func:`_keyword_kind`: the author's own workspace and ``/tmp`` are owned, and a keyword only
+        counts when the operand it names is protected. Only 'path_read' (and oracle_use) break `clean`;
+        the mask remains the real enforcement, this is defence-in-depth."""
+        if public_context and published_feedback(word, workspace) and not self._read_was_blocked(result_text):
+            return "granted_read"
+        keyword = self._keyword_kind(tok, word, workspace, roots) if word else None
+        if keyword == "owned_read":  # the author's own files, whatever the command printed
+            return keyword
+        if roots is not None and word and _private_tmp(self._operand_path(self._operand_text(word, tok), None)):
+            return "owned_read"
         if self._read_was_blocked(result_text):
             return "blocked_probe"
-        if public_context and published_feedback(word, workspace):
-            return "granted_read"
         if self._PATHLIST_RE.search(cmd) and not any(t in (result_text or "") for t in answer_tokens):
             return "recon_probe"
         if self._is_owned_submission_target(word, workspace):
@@ -474,7 +615,7 @@ class AnswerAudit:
             return "granted_read"
         if word and tok and not self._token_is_path_like(word, tok):
             return "pattern_mention"
-        return "path_read"
+        return keyword or "path_read"
 
     # The advisory/violation split is DECLARED once, in the same module the mask and the path tokens come
     # from, so the perf campaign's fail-closed gate consumes the identical vocabulary instead of
@@ -506,6 +647,7 @@ class AnswerAudit:
             return {"clean": True, "hits": [], "note": "no transcript"}
         path_tokens = self._path_tokens(arm)
         granted = self._granted_read_targets(arm, bundle)
+        roots = self._access_roots(bundle)
         results = self._result_text_by_id(tpath)
         for line in tpath.read_text(errors="ignore").splitlines():
             try:
@@ -524,19 +666,27 @@ class AnswerAudit:
                     submission_kind = self._submission_path_kind(fp, workspace)
                     tok = next((t for t in path_tokens if t in fp), None)
                     if submission_kind is not None:
-                        kind = "blocked_probe" if self._read_was_blocked(results.get(b.get("id"))) else submission_kind
+                        # Reading one's own submission is owned whatever it printed; only an escape
+                        # below the submission spelling is a withheld read that the mask may have blocked.
+                        kind = submission_kind
+                        if kind != "owned_read" and self._read_was_blocked(results.get(b.get("id"))):
+                            kind = "blocked_probe"
                         hits.append({"tool": name, "kind": kind, "token": "submission/", "input": fp[:200]})
                     elif tok:
-                        if self._read_was_blocked(results.get(b.get("id"))):
+                        keyword = self._keyword_kind(tok, fp, workspace, roots)
+                        blocked = self._read_was_blocked(results.get(b.get("id")))
+                        if published_feedback(fp, workspace) and not blocked:
+                            kind = "granted_read"
+                        elif keyword == "owned_read" or _private_tmp(self._operand_path(fp, None)):
+                            kind = "owned_read"
+                        elif blocked:
                             kind = "blocked_probe"
                         elif self._is_owned_submission_target(fp, workspace):
                             kind = "owned_read"
-                        elif published_feedback(fp, workspace):
-                            kind = "granted_read"
                         elif self._is_granted_target(fp, granted):
                             kind = "granted_read"
                         else:
-                            kind = "path_read"
+                            kind = keyword or "path_read"
                         hits.append({"tool": name, "kind": kind, "token": tok, "input": fp[:200]})
                 elif name == "Bash":
                     cmd = inp.get("command") or ""
@@ -544,22 +694,33 @@ class AnswerAudit:
                     submission_read = self._submission_bash_read(observed, workspace)
                     public_context = public_feedback_context(cmd)
                     matches = [
-                        (self._classify_bash_read(
-                            segment, results.get(b.get("id")), self.answer_tokens,
-                            word=word, tok=tok, granted=granted, workspace=workspace,
-                            public_context=public_context,
-                        ), tok, word)
+                        (
+                            self._classify_bash_read(
+                                segment,
+                                results.get(b.get("id")),
+                                self.answer_tokens,
+                                word=word,
+                                tok=tok,
+                                granted=granted,
+                                workspace=workspace,
+                                public_context=public_context,
+                                roots={**roots, "relative": self._cwd_is_workspace(observed)},
+                            ),
+                            tok,
+                            word,
+                        )
                         for tok, word, segment in self._answer_read_matches(observed, path_tokens)
                     ]
                     # An owned/public first read cannot hide a later withheld read in
                     # the same tool invocation. Preserve one representative hit.
-                    match = next((m for m in matches if m[0] not in self._ADVISORY_KINDS),
-                                 matches[0] if matches else None)
+                    match = next(
+                        (m for m in matches if m[0] not in self._ADVISORY_KINDS), matches[0] if matches else None
+                    )
                     if match and match[0] not in self._ADVISORY_KINDS:
                         submission_read = None
                     if submission_read is not None:
                         kind, word = submission_read
-                        if self._read_was_blocked(results.get(b.get("id"))):
+                        if kind != "owned_read" and self._read_was_blocked(results.get(b.get("id"))):
                             kind = "blocked_probe"
                         hits.append(
                             {

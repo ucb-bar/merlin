@@ -47,7 +47,7 @@ from ..compiler_library import selected_child
 PY = sys.executable
 
 
-def _dedupe_sim_job(ch: Path, jid: str, key: tuple[str, str, str, str], running: dict, completed: dict) -> bool:
+def _dedupe_sim_job(ch: Path, jid: str, key: tuple, running: dict, completed: dict) -> bool:
     """Attach an identical request to its one active or completed simulator job."""
     equivalent = next((active_id for active_id, active in running.items() if active["dedupe_key"] == key), None)
     if equivalent is not None:
@@ -205,9 +205,12 @@ def _current_source_first(requests, ws, *, context=None, capsules_root=None, cer
                     from merlin_experiments.phase1.feedback import model_gate_vouchers
 
                     names = _valid_capsules(str(row.get("capsules", "all")), capsules_root)
+                    from merlin_experiments.phase1.feedback import snapshot_execution
+
+                    independent = snapshot_execution.selected()
                     ready_model = bool(names and names != ["all"]) and all(
                         yaml.safe_load((capsules_root / name / "capsule.yaml").read_text()).get("kind") == "model"
-                        and model_gate_vouchers.lookup(
+                        and (independent or model_gate_vouchers.lookup(
                             ws,
                             digest=current,
                             capsule=name,
@@ -215,7 +218,7 @@ def _current_source_first(requests, ws, *, context=None, capsules_root=None, cer
                             cert_tier=cert_tier,
                             contract=contract,
                         )
-                        is not None
+                        is not None)
                         for name in names
                     )
                 except (OSError, ValueError, TypeError, AttributeError):
@@ -226,6 +229,110 @@ def _current_source_first(requests, ws, *, context=None, capsules_root=None, cer
         return sorted(ordered, key=lambda request: ranks[request])
     except Exception:  # noqa: BLE001 -- an unreadable fingerprint cannot reorder the queue
         return ordered
+
+
+def _promoted_model_continuation(ws, caps, capsules_root, tiers, *, digest, context, contract, cert_tier):
+    """Tiers and protected vouchers for a promoted model certificate.
+
+    Staged admission certifies a model only through its closed L2 voucher.
+    Independent admission (snapshot execution) admits the model by request
+    with no prerequisite credit, so it needs no voucher and re-runs its L2.
+    """
+    import yaml
+
+    from merlin_experiments.phase1.feedback import model_gate_vouchers, snapshot_execution
+
+    vouchers = []
+    for name in caps:
+        declaration = yaml.safe_load((capsules_root / name / "capsule.yaml").read_text())
+        if declaration.get("kind") != "model":
+            continue
+        if snapshot_execution.selected():
+            tiers = "L2,L3"
+            continue
+        voucher = model_gate_vouchers.lookup(
+            ws, digest=digest, capsule=name, context=context, cert_tier=cert_tier, contract=contract
+        )
+        if voucher is None:
+            raise ValueError("promoted model has no protected closed L2 gate voucher")
+        vouchers.append(voucher)
+    return ("L2,L3" if vouchers else tiers), vouchers
+
+
+def _correctness_gsim(request, sim) -> bool:
+    """A promoted job that will take a joint correctness gSIM slot."""
+    from .. import joint_control
+
+    return (bool(request.get("promoted")) and sim == "gsim" and joint_control.selected() is not None
+            and str(request.get("capsules", "")) in joint_control.correctness_capsules())
+
+
+def _joint_gsim_launchable(request, sim, gate: dict, running: dict) -> bool:
+    """Whether a promoted joint correctness gSIM job may start now; any other job is not gated.
+
+    Promotions wait in this broker's queue rather than inside a child whose wall clock is already
+    running: a slot must be free and no author may be waiting for one (authors are served first).
+    ``gate`` holds one launch pass's count of such slots, read once and spent per launch; this
+    broker's running jobs whose children have not taken their slot yet count as busy.
+    """
+    if not _correctness_gsim(request, sim):
+        return True
+    if "free" not in gate:
+        from .. import joint_control
+
+        starting = [jid for jid, job in running.items() if job.get("correctness_gsim")]
+        try:
+            gate["free"] = joint_control.correctness_background_slots(starting)
+        except (OSError, ValueError):
+            gate["free"] = None  # an unreadable ledger is the child's to refuse, with its own reason
+    if gate["free"] is None:
+        return True
+    if gate["free"] < 1:
+        return False
+    gate["free"] -= 1
+    return True
+
+
+def _queue_wait_allowance(request, sim) -> int:
+    """Extra wall clock for an author's joint gSIM job, which may wait for a correctness slot.
+
+    The child bounds its own wait by the campaign clock and its run by ``--timeout``; the outer
+    ``timeout`` must not kill it for time spent waiting.
+    """
+    from .. import joint_control
+
+    if request.get("promoted") or sim != "gsim" or joint_control.selected() is None:
+        return 0
+    try:
+        return max(0, int(joint_control.remaining() or 0))
+    except RuntimeError:
+        return 0
+
+
+def _requeue_refused(ch: Path, jid: str, job: dict, out: dict, claimed: set, queued_since: dict) -> bool:
+    """Leave a promotion queued when its child found every correctness slot busy before it ran.
+
+    Published, such a refusal resolved nothing yet left the capsule's certificate record pending, so
+    those exact bytes were never certified. The request is unclaimed instead and launched again when
+    a slot is free; nothing is recorded for it.
+    """
+    if not (job.get("promoted") and out.get("joint_policy_refused") is True
+            and out.get("joint_policy_retryable") is True):
+        return False
+    if job.get("log"):
+        try:
+            job["log"].close()
+        except Exception:  # noqa: BLE001 -- closing a log must never break the reap
+            pass
+    _release_veril_workers(job["slots"])
+    if job.get("snapshot_root"):
+        shutil.rmtree(job["snapshot_root"], ignore_errors=True)
+    (ch / f"simrun_{jid}").unlink(missing_ok=True)
+    for name in (jid, *job.get("aliases", [])):
+        claimed.discard(name)
+        queued_since.setdefault(name, time.monotonic())
+    print(f"[simjob] {jid} left queued: {out.get('error')}", file=sys.stderr, flush=True)
+    return True
 
 
 def _observe_pending(requests, claimed, queued_since, now):
@@ -818,6 +925,9 @@ def main(
                     "all_pass": False,
                     "error": f"{j['sim']} exceeded its time budget",
                 }
+            if _requeue_refused(ch, jid, j, out, claimed, queued_since):
+                running.pop(jid)
+                continue
             if j.get("promoted") and not out.get("error"):
                 try:
                     _completions.persist(
@@ -838,7 +948,10 @@ def main(
                     )
             resp.write_text(json.dumps(out, indent=2))
             (ch / (f"simerr_{jid}" if out.get("error") else f"simdone_{jid}")).write_text("ok")
-            completed_by_key[j["dedupe_key"]] = (jid, out)
+            if not out.get("joint_policy_refused"):
+                # A refusal ran nothing; an identical later request must be admitted afresh, not answered
+                # from this cache.
+                completed_by_key[j["dedupe_key"]] = (jid, out)
             for alias in j.get("aliases", []):
                 (ch / f"simresp_{alias}.json").write_text(json.dumps(out, indent=2))
                 (ch / (f"simerr_{alias}" if out.get("error") else f"simdone_{alias}")).write_text("deduplicated")
@@ -912,6 +1025,7 @@ def main(
         # launch queued (respect local + global caps)
         queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:
+            gsim_gate = {}
             ordered = _current_source_first(
                 queued,
                 ws,
@@ -978,6 +1092,8 @@ def main(
                     # An author job naming the pinned engine runs the grade's own selection (same
                     # tiers). A promotion keeps its single cert tier and its own ledger accounting.
                     sim = _grade_selection_for(sim)
+                if not _joint_gsim_launchable(r, sim, gsim_gate, running):
+                    continue  # every correctness gSIM slot is busy or wanted by an author; stays queued
                 ncaps = len(_valid_capsules("all", capsules_root) or []) if caps == ["all"] else len(caps)
                 workers = _capsule_workers(r.get("workers", 0), sim=sim, n_capsules=ncaps)
                 veril = _uses_verilator_slots(sim)
@@ -1067,29 +1183,12 @@ def main(
                 model_vouchers = []
                 try:
                     if r.get("promoted") and caps != ["all"]:
-                        import yaml
-
-                        from merlin_experiments.phase1.feedback import model_gate_vouchers
-
-                        for name in caps:
-                            declaration = yaml.safe_load((capsules_root / name / "capsule.yaml").read_text())
-                            if declaration.get("kind") != "model":
-                                continue
-                            voucher = model_gate_vouchers.lookup(
-                                ws,
-                                digest=launched_source_digest,
-                                capsule=name,
-                                context=context,
-                                cert_tier=_CERT_TIER,
-                                contract=contract,
-                            )
-                            if voucher is None:
-                                raise ValueError("promoted model has no protected closed L2 gate voucher")
-                            model_vouchers.append(voucher)
-                        if model_vouchers:
-                            _tiers = "L2,L3"
-                            for voucher in model_vouchers:
-                                argv2 += ["--model-gate-voucher", str(voucher)]
+                        _tiers, model_vouchers = _promoted_model_continuation(
+                            ws, caps, capsules_root, _tiers,
+                            digest=launched_source_digest, context=context, contract=contract, cert_tier=_CERT_TIER,
+                        )
+                        for voucher in model_vouchers:
+                            argv2 += ["--model-gate-voucher", str(voucher)]
                 except (ValueError, OSError) as exc:
                     _release_veril_workers(slots)
                     (ch / f"simresp_{jid}.json").write_text(
@@ -1106,7 +1205,18 @@ def main(
                     continue
                 if _tiers:  # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
-                dedupe_key = (launched_source_digest, capspec, sim, _tiers)
+                from ..joint_model_activation import request_environment, request_binding
+                worker_env = request_environment(_sim_env(context), channel="simjob", request_id=jid,
+                                                 request_bytes=req.read_bytes())
+                from .. import joint_gsim_queue as gsim_queue
+
+                # Promotions never wait inside their child (they wait here, queued); author jobs may.
+                worker_env[gsim_queue.CLASS_ENV] = gsim_queue.BACKGROUND if r.get("promoted") else gsim_queue.AUTHOR
+                worker_env[gsim_queue.REQUEST_ENV] = jid
+                model_binding = request_binding(worker_env)
+                model_identity = (model_binding or {}).get("selection")
+                dedupe_key = (launched_source_digest, capspec, sim, _tiers,
+                              json.dumps(model_identity, sort_keys=True))
                 if _dedupe_sim_job(ch, jid, dedupe_key, running, completed_by_key):
                     _release_veril_workers(slots)
                     shutil.rmtree(snapshot_root, ignore_errors=True)
@@ -1124,10 +1234,10 @@ def main(
                     # Broker-owned frozen source/full policy root only. Requests cannot
                     # provide a gate counter, record path or narrower denominator.
                     from ..feedback.rolling_model_gate import broker_environment
-                    worker_env = _sim_env(context)
                     worker_env.update(broker_environment(
                         ws, promotion_capsules_root or capsules_root, snapshot_root / "submission"))
-                    proc = _spawn_selfcheck(argv2, cwd=ws, env=worker_env, job_log=job_log, timeout_s=to)
+                    proc = _spawn_selfcheck(argv2, cwd=ws, env=worker_env, job_log=job_log,
+                                            timeout_s=to + _queue_wait_allowance(r, sim))
                 except Exception:
                     job_log.close()
                     _release_veril_workers(slots)
@@ -1165,6 +1275,7 @@ def main(
                     "snapshot_root": snapshot_root,
                     "dedupe_key": dedupe_key,
                     "aliases": [],
+                    "correctness_gsim": _correctness_gsim(r, sim),
                 }
                 claimed.add(jid)
         time.sleep(a.poll)
@@ -1177,6 +1288,9 @@ def main(
 
 
 if __name__ == "__main__":
+    from merlin_experiments.phase1.telemetry.resilient_output import install
+
+    install()  # A full log volume drops log lines, never the broker.
     from merlin.common.cpu_pool import AUTHOR, cpu_priority
 
     with cpu_priority(AUTHOR, export=True):  # Author-requested simulation jobs lease first.

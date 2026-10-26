@@ -10,6 +10,13 @@ Given a trace from :mod:`merlin.targetgen.rocc.decode` and a capsule's ``expecte
   residency, movement-only);
 * (optionally) decoded tile counts are consistent with the command-buffer tensor shapes.
 
+Counts are of EXECUTED commands: a decoded site carries ``executions`` (how many times it runs per
+kernel call, from the decoder's counted-loop proof), so a loop body that appears once in the emitted
+code counts as often as it runs (:func:`executed_count`). A site whose count is not proved leaves the
+count unknown, never one. A mode whose deciding operand field the decoder could not resolve on any
+site is recorded as UNAVAILABLE evidence (``trace_requirement_status: unavailable_fields``), not as
+a violation; a field that IS resolved and contradicts the mode still fails.
+
 Returns ``{"status": "pass"|"fail", "violations": [...]}``. Never raises on a mere mismatch — a
 mismatch is data; it raises only on a malformed trace argument.
 
@@ -137,6 +144,49 @@ def instruction_class_coverage(trace, *, target):
 
 def _classes(trace: dict) -> list[str]:
     return [i["class"] for i in trace.get("instructions", [])]
+
+
+def executed_count(instructions, classes) -> int | None:
+    """Commands of ``classes`` executed per kernel call, or ``None`` when a site's count is unproved.
+
+    A site without an ``executions`` field (a trace decoded before the field existed, or by another
+    producer) counts once, as static sites always did."""
+    wanted = {classes} if isinstance(classes, str) else set(classes)
+    total = 0
+    for row in instructions:
+        if row.get("class") not in wanted:
+            continue
+        if "executions" not in row:
+            total += 1
+            continue
+        count = row["executions"]
+        if type(count) is not int or count < 0:
+            return None
+        total += count
+    return total
+
+
+def _single_commit_covers_output(cb, ins) -> bool:
+    """Whether the declared operation has ONE output commit that one resolved readout covers whole.
+
+    Then a second output commit cannot exist, so resident reuse has nothing to show: the extents are
+    the command buffer's own output tensor and the decoder's resolved readout fields, no tile size."""
+    if not isinstance(cb, dict):
+        return False
+    commits = [c for c in cb.get("commands", []) if c.get("opcode") == "COMMIT"]
+    if len(commits) != 1:
+        return False
+    tensor = (cb.get("tensors") or {}).get((commits[0].get("operands") or {}).get("dst"))
+    shape = (tensor or {}).get("shape")
+    if not isinstance(shape, list) or len(shape) < 2 or not all(type(d) is int and d > 0 for d in shape):
+        return False
+    rows, cols = math.prod(shape[:-1]), shape[-1]
+    for row in ins:
+        decoded = row.get("decoded") or {}
+        if (row.get("class") == "MVOUT" and type(decoded.get("rows")) is int and type(decoded.get("cols")) is int
+                and decoded["rows"] >= rows and decoded["cols"] >= cols):
+            return True
+    return False
 
 
 def _first_index(classes: list[str], target: set[str] | str) -> int | None:
@@ -526,11 +576,14 @@ def check(
                     or (mode == "i8" and readout_witness is not None)):
                 continue
             observations = [row for row in ins if row["class"] in classes_needed]
-            if (mode == "k_accumulate" and not observations) or (
-                observations and not any(row.get("decoded", {}).get(field) is not None for row in observations)
-            ):
+            if mode == "k_accumulate" and not observations:
+                # No site that could carry the flag at all: the stream cannot be accumulating.
                 unresolved_fields.append(mode)
                 violations.append(f"mode {mode} has unresolved original operand fields")
+            elif observations and not any(row.get("decoded", {}).get(field) is not None for row in observations):
+                # Not observable from the emitted operands: missing evidence, not a defect.
+                unresolved_fields.append(mode)
+                notes.append(f"mode {mode}: its operand field is unresolved on every emitted site (unavailable)")
         if modes.get("resident_reuse"):
             loads = [row for row in ins if row["class"] in _MVIN]
             if not loads or any(
@@ -539,19 +592,19 @@ def check(
                 for row in loads
             ):
                 unresolved_fields.append("resident_reuse")
-                violations.append("mode resident_reuse has unresolved original load identity/extent fields")
+                notes.append("mode resident_reuse: load identity/extent fields are unresolved (unavailable)")
     def _any(pred) -> bool:
         return any(pred(i) for i in ins)
 
-    if modes.get("i8"):
+    if modes.get("i8") and "i8" not in unresolved_fields:
         if readout_witness is not True and not _any(
             lambda i: i["class"] == "MVOUT" and i.get("decoded", {}).get("readout") == "i8"
         ):
             violations.append("mode i8 declared but no MVOUT has i8 readout")
-    if modes.get("relu"):
+    if modes.get("relu") and "relu" not in unresolved_fields:
         if not _any(lambda i: i["class"] == "CONFIG_ST" and i.get("decoded", {}).get("relu") is True):
             violations.append("mode relu declared but no CONFIG_ST sets relu activation")
-    if modes.get("acc_scale"):
+    if modes.get("acc_scale") and "acc_scale" not in unresolved_fields:
         def _scale_update(instruction):
             value = instruction.get("decoded", {}).get("acc_scale")
             return (instruction["class"] == "CONFIG_ST" and type(value) in (int, float)
@@ -562,7 +615,7 @@ def check(
         ok = _any(_scale_update)
         if not ok:
             violations.append("mode acc_scale declared but no CONFIG_ST has a non-identity scale")
-    if modes.get("k_accumulate"):
+    if modes.get("k_accumulate") and "k_accumulate" not in unresolved_fields:
         # A selected COMPUTE_AND_STAY operation can retain a weight bank. Its
         # class label alone does not prove accumulator write-add; use the actual
         # selected destination accumulation flag for Bound protocols.
@@ -572,9 +625,15 @@ def check(
         if not ok:
             violations.append("mode k_accumulate declared but no accumulate-onto PRELOAD / COMPUTE_ACCUMULATE found")
     if modes.get("resident_reuse"):
-        # reuse = >=2 compute groups (MVOUTs) but the resident region written ONCE.
-        n_mvout = classes.count("MVOUT")
-        if n_mvout < 2:
+        # reuse = >=2 compute groups (MVOUTs) but the resident region written ONCE. Counted as
+        # executed: a looped readout is as many commits as the loop runs.
+        n_mvout = executed_count(ins, "MVOUT")
+        if n_mvout is None:
+            unresolved_fields.append("resident_reuse")
+            notes.append("mode resident_reuse: executed output commits are not proved (unavailable)")
+        elif n_mvout < 2 and _single_commit_covers_output(cb, ins):
+            notes.append("mode resident_reuse: the operation has one output commit, so no reuse can be shown")
+        elif n_mvout < 2:
             violations.append("mode resident_reuse declared but <2 output commits (no reuse visible)")
         violations += _residency_findings(ins)
     if modes.get("load_state_resident"):
@@ -619,7 +678,7 @@ def check(
         available = binding is None or protocol_selected
         if available:
             try:
-                _check_tiles(classes, cb, findings)
+                _check_tiles(lambda cls: executed_count(ins, cls), cb, findings)
             except Exception as error:
                 findings.append(f"legacy tile-strategy observation unavailable: {error}")
         tile_advisory = {
@@ -776,8 +835,11 @@ def _ceil16(x: int) -> int:
     return ((x + 15) // 16) * 16
 
 
-def _check_tiles(classes: list[str], cb: dict, violations: list[str]) -> None:
-    """For a single resident matmul, MVOUT count should equal Mt*Nt over padded dims."""
+def _check_tiles(count, cb: dict, violations: list[str]) -> None:
+    """For a single resident matmul, MVOUT count should equal Mt*Nt over padded dims.
+
+    ``count(cls)`` is the executed command count of a class (:func:`executed_count`); an unproved
+    count makes that relation unobservable rather than a finding."""
     tensors = cb.get("tensors", {})
     cmds = cb.get("commands", [])
     matmuls = [c for c in cmds if c.get("opcode") in ("MATMUL_RESIDENT", "MATMUL")]
@@ -801,8 +863,10 @@ def _check_tiles(classes: list[str], cb: dict, violations: list[str]) -> None:
     commits = [c for c in cmds if c.get("opcode") == "COMMIT"]
     pooled = len(commits) == 1 and "maxpool" in ((commits[0].get("attributes") or {}).get("epilogue") or [])
     exp_mvout = Nt if pooled else Mt * Nt
-    got = classes.count("MVOUT")
-    if got != exp_mvout:
+    got = count("MVOUT")
+    if got is None:
+        violations.append("MVOUT executions are not proved; the tile count is unobserved")
+    elif got != exp_mvout:
         basis = "Nt for retained-plane maxpool" if pooled else "Mt*Nt"
         violations.append(f"MVOUT count {got} != expected {basis}={exp_mvout} (M={M},N={N})")
 
@@ -818,8 +882,8 @@ def _check_tiles(classes: list[str], cb: dict, violations: list[str]) -> None:
     # number of fences, and hard-coding "at most two" would refuse shapes nobody has looked at. What
     # can never be right is one fence per tile, so that is what this names.
     tiles = Mt * Nt
-    flushes = classes.count("FLUSH")
-    if tiles >= 2 and flushes >= tiles:
+    flushes = count("FLUSH")
+    if tiles >= 2 and flushes is not None and flushes >= tiles:
         violations.append(
             f"FLUSH count {flushes} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
             "synchronisation is issued per tile rather than batched around the kernel"
@@ -836,8 +900,8 @@ def _check_tiles(classes: list[str], cb: dict, violations: list[str]) -> None:
     # a false positive costs a candidate. CONFIG_EX is the one whose "issue once" semantics are
     # unambiguous, and `_check_resident_reuse` already treats a second CONFIG_EX as a defect for the
     # resident case; this generalises only that part.
-    configs = classes.count("CONFIG_EX")
-    if tiles >= 2 and configs >= tiles:
+    configs = count("CONFIG_EX")
+    if tiles >= 2 and configs is not None and configs >= tiles:
         violations.append(
             f"CONFIG_EX count {configs} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
             "the dataflow is reconfigured per tile rather than once for the kernel"

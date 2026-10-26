@@ -37,6 +37,8 @@ from . import source_inputs as SI
 from . import treatments as T
 from .context import InvocationContext, readback_record, verify_readback_record
 from .options import RunOptions
+from .providers import codex_context as CTX
+from . import skill_staging as SK
 from .workspaces import select_workspace_root
 
 if TYPE_CHECKING:
@@ -76,6 +78,8 @@ def _verify_client_selection(options, environment: dict) -> None:
     if prior != options.codex_max_subagents:
         raise RuntimeError("explicit Codex delegation limit changed")
     AS.verify_resume(options, environment.get("run_config") or {})
+    CTX.verify_resume(options, environment.get("run_config") or {})
+    SK.verify_resume(options, environment.get("run_config") or {})
     from .telemetry import token_budget
 
     token_budget.verify_resume(options, environment.get("run_config") or {})
@@ -173,6 +177,8 @@ class RunRequest:
             **({"codex_runtime": _client_selection(a)} if a.codex_binary else {}),
             **({"codex_max_subagents": a.codex_max_subagents} if a.codex_max_subagents is not None else {}),
             **({"author_subagents": subagents} if (subagents := AS.selection(a)) is not None else {}),
+            **({CTX.KEY: author_context} if (author_context := CTX.selection(a)) is not None else {}),
+            **({SK.KEY: author_skills} if (author_skills := SK.selection(a)) is not None else {}),
             **({"author_token_budget": budget} if (budget := token_budget.selection(a)) is not None else {}),
             **({"readback_policy": readback_record(self.context)} if self.context.readback_policy is not None else {}),
         }
@@ -1027,6 +1033,15 @@ def _prepare(
     if not _resuming:
         from .construction_study import stage as stage_study
         stage_study(ws, run_dir, a)
+        _skills_record = _run_config.get(SK.KEY) or {}
+        if (CTX.selection(a) or {}).get("task_skills"):
+            from .task_disclosure import stage as stage_disclosure
+
+            # after every TASK.md append, before the treatment seal; staged author skills carry the
+            # feedback-file guide, so the generated one is left out
+            stage_disclosure(ws, run_dir, feedback=not _skills_record.get("enabled"))
+        if _skills_record.get("enabled"):
+            SK.stage(ws, run_dir, _skills_record)  # beside the task-* skills, before the treatment seal
     _resolved_tool_ids = request.resolved_tools()
     CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
     verify_tool_profile(bundle, tools=tuple(_resolved_tool_ids))

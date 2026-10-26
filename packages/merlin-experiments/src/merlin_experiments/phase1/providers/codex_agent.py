@@ -74,6 +74,8 @@ from typing import Any
 from merlin.common.paths import module_source_path
 from merlin_experiments.phase1.providers.authoring_prompt import authoring_prompt
 from merlin_experiments.phase1.providers.codex_usage import usage_to_claude_shape as usage_to_claude_shape
+from merlin_experiments.phase1.providers import codex_context as _CTX
+from merlin_experiments.phase1.providers.codex_context import delegation_user_prompt as delegation_user_prompt
 from merlin_experiments.phase1.telemetry import startup as _START
 
 # --- The measured event contract (codex-cli 0.147.0) ------------------------
@@ -336,6 +338,8 @@ def prepare_codex_home(
     candidate_read_paths: tuple[str, ...] | None = None,
     auth_source: Path | None = None,
     max_concurrent_subagents: int | None = None,
+    helper_effort: str | None = None,
+    author_context: dict | None = None,
 ) -> dict:
     """Build an ISOLATED ``CODEX_HOME`` at *dest* and describe it.
 
@@ -381,13 +385,10 @@ def prepare_codex_home(
         provider=provider,
         trust=f'[projects.{json.dumps(str(workspace))}]\ntrust_level = "trusted"\n',
     )
-    if max_concurrent_subagents is not None:
-        # These are root-level dotted keys, preceding permission/provider tables.
-        # The selected CLI's existing strict-config preflight must accept them.
-        config = (
-            "features.multi_agent = true\nagents.enabled = true\n"
-            f"agents.max_concurrent_threads_per_session = {max_concurrent_subagents}\n" + config
-        )
+    from merlin_experiments.phase1 import author_subagents as _AS
+
+    # Root-level dotted keys precede permission/provider tables; the CLI's strict-config preflight must accept them.
+    config = _AS.home_config(max_concurrent_subagents, helper_effort) + _CTX.home_config(author_context) + config
     config_path = dest / "config.toml"
     config_path.write_text(config)
     auth = real_codex_home() / "auth.json" if auth_source is None else auth_source
@@ -611,28 +612,7 @@ def _link_for_aet(run_dir: Path, raw_path: Path, rnd: int) -> Path | None:
 _CONTINUE_MIN_S = 120
 #: A backstop so a pathological loop cannot spin against the API for the whole budget.
 _CONTINUE_MAX_TURNS = 200
-# Transient capacity refusals may resume the same continuous session, never
-# switch its model or start another grader. Keep retries within its wall budget.
-_CAPACITY_MAX_RETRIES = 3
-_CAPACITY_BACKOFF_S = 20
-
-
-def delegation_user_prompt(prompt: str, limit: int | None) -> str:
-    """Translate the explicit operator opt-in into the actual user instruction."""
-    if limit is None:
-        return prompt
-    if type(limit) is not int or limit < 1:
-        raise ValueError("delegation prompt requires an explicit positive concurrency limit")
-    return prompt + (
-        "\n\nI explicitly request native sub-agent delegation for this compiler implementation. "
-        f"Keep at most {limit} helper sub-agent(s) active concurrently. Delegate an independent frontend "
-        "or lowering implementation task that advances the functional compiler goal in TASK.md; "
-        "continue an existing helper rather than duplicating its work. Assign disjoint source files "
-        "and a concrete compiler behavior to implement. The parent owns integration and must join "
-        "all helper changes before freezing a candidate or requesting a self-check. Keep helpers "
-        "focused on implementation results, not optional verification or documentation. Follow the "
-        "same task, source obligations, tools and permissions; this request grants no additional access."
-    )
+from . import codex_capacity as _CAP  # noqa: E402
 
 
 def build_resume_cmd(
@@ -771,6 +751,8 @@ def run_round(
     continuation_stop: Callable[[], str | None] | None = None,
     max_concurrent_subagents: int | None = None,
     subagent_capacity: int | None = None,
+    helper_effort: str | None = None,
+    author_context: dict | None = None,
     conformance_context: dict | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
@@ -800,7 +782,9 @@ def run_round(
     Explicit ``max_concurrent_subagents`` selects the native multi-agent limit
     in the frozen home; the same strict-config preflight applies on AWS. It does
     not prove that an agent delegated or change its sandbox and runtime grants.
-    ``subagent_capacity`` is the run's recorded ceiling: the same config keys, no prompt change.
+    ``subagent_capacity`` is the run's recorded ceiling: the same config keys, no prompt change;
+    ``helper_effort`` its recorded helper reasoning effort (one config key and one sentence);
+    ``author_context`` its recorded context selection (:mod:`.codex_context`).
     """
     # Explicit round inputs avoid changing another concurrent round's executable
     # or credential-isolated home placement. Defaults retain historical callers.
@@ -879,6 +863,7 @@ def run_round(
             "sandbox": sandbox,
             # Instruction parity between arms is an artifact-level fact, not a hope.
             "workspace_instruction_files": _instruction_files(ws),
+            "workspace_skills": _CTX.staged_skills(ws),
             "tiering_requested_but_unsupported": bool(subagent_model or background_model),
             "started_at": _now(),
             "conformance_context": conformance_context if conformance_context is not None else {
@@ -893,7 +878,8 @@ def run_round(
     # text, so two arms cannot silently differ in what they were asked to do.
     msg = prompt if prompt is not None else authoring_prompt()
     msg = delegation_user_prompt(msg, max_concurrent_subagents)
-    msg += _AS.round_guidance(capacity, max_concurrent_subagents)
+    msg += _AS.round_guidance(capacity, max_concurrent_subagents) + _AS.helper_effort_note(helper_effort)
+    msg += _CTX.round_note(author_context, capacity)
     prompt_path.write_text(msg)
 
     inner_final = last_message_path(ws, final_path, sandbox)
@@ -928,6 +914,10 @@ def run_round(
             home_options["auth_source"] = auth_source
         if capacity is not None:
             home_options["max_concurrent_subagents"] = capacity
+        if helper_effort is not None:  # without a capacity the home refuses it rather than dropping it
+            home_options["helper_effort"] = helper_effort
+        if author_context is not None:
+            home_options["author_context"] = author_context
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
         home_info["attempt"] = home_attempt
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
@@ -959,7 +949,8 @@ def run_round(
     unknown: list[str] = []
     errors: list[str] = []
     recovered_errors: set[int] = set()
-    capacity_retries = 0
+    capacity_retries = capacity_consecutive = 0
+    resumed_after_capacity = False
     thread_id = None
     timed_out = False
     operator_interrupted = None
@@ -987,6 +978,7 @@ def run_round(
     )
     _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
     _CONTINUE_MSG += _AS.continuation_guidance(capacity, max_concurrent_subagents)
+    _CONTINUE_MSG += _CTX.continuation_note(author_context)
     from .token_admission import ManagedTokens
     token_control = ManagedTokens(run_dir, rnd, homes=(codex_home,) if sandbox == 'bwrap' else ())
     turn_index = 0
@@ -996,7 +988,7 @@ def run_round(
     try:
         while True:
             turn_errors_start = len(errors)
-            turn_failed = turn_completed = False
+            turn_failed = turn_completed = turn_progress = False
             _START.turn(turn_index)
             admission = token_control.admit(turn_index)
             if admission is not None:
@@ -1016,7 +1008,10 @@ def run_round(
                     previous_final = rounds / f"{artifact_prefix}.turn{turn_index - 1:02d}.final.txt"
                     previous_final.write_text(inner_final.read_text())
                     inner_final.unlink()
-                cur_prompt.write_text(('' if token_control.phase == 'integration' else _CONTINUE_MSG) + token_control.prompt())
+                standing = '' if token_control.phase == 'integration' else _CONTINUE_MSG
+                note = _CAP.RESUME_NOTE if resumed_after_capacity else ''
+                cur_prompt.write_text(standing + note + token_control.prompt())
+                resumed_after_capacity = False
                 if sandbox == "bwrap":
                     _START.call("config_verify", _verify_frozen_config, codex_home, home_info["config_sha256"])
                 resume_argv = _START.call("resume_argv", build_resume_cmd,
@@ -1242,6 +1237,7 @@ def run_round(
                                 if not isinstance(item, dict):
                                     continue
                                 itype = item.get("type")
+                                turn_progress = turn_progress or (etype == EVENT_ITEM_COMPLETED and _CAP.progress(item))
                                 item_id = str(item.get("id") or f"anon_{seq}")
                                 if itype == ITEM_AGENT_MESSAGE and etype == EVENT_ITEM_COMPLETED:
                                     tr.emit(
@@ -1339,6 +1335,9 @@ def run_round(
             host_stop = operator_interrupted or (continuation_stop() if continuation_stop is not None else None)
             if host_stop is not None and (type(host_stop) is not str or not host_stop.strip()):
                 raise ValueError("host continuation stop must return a nonempty reason or None")
+            if turn_completed or turn_progress:  # the model served this turn: earlier refusals have passed
+                capacity_consecutive = 0
+            backoff_s = _CAP.backoff_s(capacity_consecutive + 1)
             retry_capacity = (
                 continue_session
                 and host_stop is None
@@ -1347,26 +1346,28 @@ def run_round(
                 and not turn_completed
                 and not timed_out
                 and rc != 0
-                and turn_errors
-                and all(error.lower().startswith("selected model is at capacity") for error in turn_errors)
-                and capacity_retries < _CAPACITY_MAX_RETRIES
+                and _CAP.refusal(turn_errors)
+                and capacity_consecutive < _CAP.MAX_CONSECUTIVE
                 and turn_index < _CONTINUE_MAX_TURNS
-                and remaining > _CAPACITY_BACKOFF_S + _CONTINUE_MIN_S
+                and remaining > backoff_s + _CONTINUE_MIN_S
             )
             if retry_capacity:
                 capacity_retries += 1
+                capacity_consecutive += 1
                 tr.emit(
                     {
                         "type": "codex_capacity_retry",
                         "attempt": capacity_retries,
+                        "consecutive": capacity_consecutive,
                         "thread_id": thread_id,
                         "model": resolved,
-                        "backoff_s": _CAPACITY_BACKOFF_S,
+                        "backoff_s": backoff_s,
                         "arrived_at": _now(),
                     }
                 )
-                time.sleep(_CAPACITY_BACKOFF_S)
+                time.sleep(backoff_s)
                 recovered_errors.update(range(turn_errors_start, len(errors)))
+                resumed_after_capacity = True
                 continue
             control_stop = None
             if continue_session and continuation_stop is not None and not timed_out and rc == 0:
@@ -1452,7 +1453,8 @@ def run_round(
         # ChatGPT-auth runs consume a subscription, not metered dollars. Any USD
         # figure downstream is notional and must not enter a money budget.
         "billing_mode": BILLING_MODE,
-        "subagent_capacity": _AS.summary_record(capacity, max_concurrent_subagents),
+        "subagent_capacity": _AS.summary_record(capacity, max_concurrent_subagents, helper_effort),
+        "author_context": _CTX.summary_record(author_context),
         "token_admission": token_control.last,
         "codex_home": home_info,
         "artifacts": {

@@ -4,10 +4,11 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
+from merlin_experiments.phase1 import joint_completion as C
+from merlin_experiments.phase1 import joint_final_coverage as F
 
 from merlin.common.tree_hash import hash_tree
 from merlin.targetgen import capsule_grade as CG
-from merlin_experiments.phase1 import joint_completion as C, joint_final_coverage as F
 
 
 def _score(names):
@@ -80,6 +81,18 @@ def test_final_pass_cannot_drop_failed_or_unmeasured_obligations():
     assert F._rollup({"groups": {"core": group}})["passed"] is True
 
 
+def test_withheld_native_passes_stay_counted_when_closure_fails():
+    caps = [{"name": "a"}, {"name": "b"}]
+    score, group = _score(["a", "b"]), F._capsule_group(caps)
+    score["per_capsule"][1].update(status="fail")
+    score.update(structural_evidence_all_pass=False)
+    F._apply_score(group, score)
+    report = F._rollup({"groups": {"core": group}})
+    assert report["passed"] is False and report["n_passed"] == 0 and report["n_failed"] == 1
+    assert group["obligations"]["a"]["status"] == "skipped"
+    assert report["n_native_passed"] == 1 and report["n_closure_withheld"] == 1
+
+
 @pytest.mark.parametrize("labels,engine,tier,no_oracle", [
     ({"hidden"}, "spike", "L2", False), ({"public"}, "gsim", "L2", False),
     ({"public"}, "spike", "L3", False), ({"public"}, "spike", "L2", True),
@@ -93,9 +106,14 @@ def test_functional_public_mode_cannot_admit_hidden_rtl_or_no_oracle(labels, eng
 
 
 def _native_fixture(tmp_path, monkeypatch):
-    from merlin.targetgen import capsule_runner as CR, target_experiment as TE
     from merlin_experiments.phase1.brokers import model_check as MC
-    from merlin_experiments.phase1.feedback import public_scalability as PS, selfcheck as SC, loop_grading as LG
+    from merlin_experiments.phase1.feedback import loop_grading as LG
+    from merlin_experiments.phase1.feedback import public_programs as PP
+    from merlin_experiments.phase1.feedback import public_scalability as PS
+    from merlin_experiments.phase1.feedback import selfcheck as SC
+
+    from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen import target_experiment as TE
 
     prepared = _prepared(tmp_path)
     frozen = prepared.workspace / "submission"
@@ -108,13 +126,17 @@ def _native_fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(F.joint_control, "selected", lambda: state)
     monkeypatch.setattr(F.joint_control, "remaining", lambda **kw: 0 if kw.get("drain") else 100)
     monkeypatch.setattr(F.joint_control, "require_full_model", lambda **kw: 100)
-    monkeypatch.setattr(TE, "load_target_experiment", lambda p: SimpleNamespace(descriptor_sha256="descriptor", sim_via="fixture"))
+    monkeypatch.setattr(TE, "load_target_experiment", lambda p: SimpleNamespace(
+        descriptor_sha256="descriptor", sim_via="fixture"))
     monkeypatch.setattr(CR, "discover_capsules", lambda root, **kw: [{"name": n} for n in names[str(root)]])
     monkeypatch.setattr(PS, "selected", lambda context: (scale, {"cases": names[str(scale / "cases")]}))
-    monkeypatch.setattr(SC, "_adapters", lambda *a, **kw: ({"L2": SimpleNamespace(_merlin_simulator_engine="spike")}, "spike"))
+    monkeypatch.setattr(PP, 'selected', lambda context: None)
+    monkeypatch.setattr(SC, "_adapters", lambda *a, **kw: (
+        {"L2": SimpleNamespace(_merlin_simulator_engine="spike")}, "spike"))
     monkeypatch.setattr(LG, "compiler_execution", lambda *a, **kw: nullcontext())
     context = SimpleNamespace(repo=tmp_path, descriptor=tmp_path / "descriptor", target="fixture", readback_policy=None)
-    inputs = SimpleNamespace(context=context, public_root=core, contract=None, verify_grade_inputs=None, additional_forbidden=())
+    inputs = SimpleNamespace(context=context, public_root=core, contract=None,
+                             verify_grade_inputs=None, additional_forbidden=())
     calls = []
 
     def grade(candidate, **kw):
@@ -171,3 +193,40 @@ def test_budget_exhausted_during_core_cancels_following_work_without_new_clock(t
     assert len(calls) == 1 and report["n_passed"] == 173
     assert report["n_unfinished"] == 73 and report["n_required"] == 246
     assert report["deadline_epoch"] == 43201 and report["passed"] is False
+
+
+@pytest.mark.parametrize('mutation', ['none', 'wrong_compiler', 'missing_output_grade', 'wrong_engine', 'suite_veto'])
+def test_final_selected_programs_use_original_owner_and_cannot_disappear(tmp_path, monkeypatch, mutation):
+    from merlin_experiments.phase1 import joint_model_activation
+    from merlin_experiments.phase1.feedback import public_programs as PP
+
+    prepared, inputs, frozen, digest, calls = _native_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(PP, 'selected', lambda context: ('selection', {}, {'connected': tmp_path}))
+
+    def grade(candidate, **kwargs):
+        assert candidate == frozen and kwargs['context'] is inputs.context and kwargs['timeout'] <= 100
+        assert joint_model_activation._GRADE.get() is not None
+        calls.append(('program', 'connected'))
+        row = dict(status='pass', numeric={'status': 'pass', 'per_output': {'Y0': {'status': 'pass'}}}, tiers={
+            'L0': 'pass', 'L1': 'pass', 'L2': dict(status='pass', engine='spike',
+                                                 fidelity='functional_model', derived_from_rtl=False)})
+        result = dict(candidate_sha256=digest, expected_cases=['connected'], requested_cases=['connected'],
+                      passed=True, complete=True, observed={'connected': row})
+        if mutation == 'wrong_compiler':
+            result['candidate_sha256'] = 'foreign'
+        elif mutation == 'missing_output_grade':
+            row['numeric'] = 'unknown'
+        elif mutation == 'wrong_engine':
+            row['tiers']['L2']['engine'] = 'gsim'
+        elif mutation == 'suite_veto':
+            result['passed'] = False
+        return result
+
+    monkeypatch.setattr(PP, '_grade', grade)
+    report = F.validate(prepared, inputs=inputs, frozen=frozen, compiler_sha256=digest)
+    assert ('program', 'connected') in calls
+    assert report['n_required'] == 247
+    assert report['passed'] is (mutation == 'none')
+    assert report['groups']['programs']['passed'] is (mutation == 'none')
+    if mutation != 'none':
+        assert report['groups']['programs']['obligations']['connected']['status'] != 'pass'

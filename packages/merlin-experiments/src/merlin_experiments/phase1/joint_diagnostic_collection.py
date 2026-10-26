@@ -111,7 +111,11 @@ def _step(request_pin, state_path, context, output):
     state = joint_control.selected()
     if state is None:
         raise ValueError('diagnostic owner requires the existing campaign state')
-    selected_request = request(request_pin, state)
+    from .joint_model_activation import current as accepted_selection
+    current_pin = (accepted_selection(state_path)
+        if (state_path.parent / 'joint_model_activation' / 'accepted.json').exists()
+        else state.get('performance_selection'))
+    selected_request = request(request_pin, {**state, 'performance_selection': current_pin})
     identity = output / 'request.json'
     if identity.exists():
         if json.loads(identity.read_text()) != request_pin:
@@ -123,7 +127,7 @@ def _step(request_pin, state_path, context, output):
     if state.get('started_at_epoch') is None:
         return dict(status='waiting_for_author_clock', fit_eligible=False)
     profile = PERF._read(selected_request['profile'])
-    current_pin = state.get('performance_selection') or profile['performance_selection']
+    current_pin = current_pin or profile['performance_selection']
     current = PERF._read(current_pin)
     from .joint_runtime_revision import validate
     validate(PERF._read(profile['performance_selection']), current)

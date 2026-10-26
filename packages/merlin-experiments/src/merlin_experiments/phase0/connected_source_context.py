@@ -147,6 +147,11 @@ class ConnectedSourceContext:
 
 
 def require_context(context, captures):
+    from .program_source_context import WholeProgramSourceContext
+
+    if type(context) is WholeProgramSourceContext:
+        context.require(captures)
+        return
     if type(context) is not ConnectedSourceContext or context not in _ISSUED or len(captures) != 1:
         raise ValueError("source admission requires one issued connected source context")
     context._reopen(next(iter(captures.values())))

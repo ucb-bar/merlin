@@ -983,3 +983,15 @@ resource reservation, execution, timing or a new performance objective.
 `generation_paths` checks output and evidence destinations against retained and
 selected source corpora before generation. `generation` keeps the existing
 helper import; no source path is rewritten by this check.
+
+`performance_demand` derives performance cases from pinned captured programs'
+value-free contraction inventories under a declared per-target policy (coverage
+target, tile-relative regime classes, storage/cost bounds, one holdout per class).
+It selects shapes only; programs go through the native interface IR and holdouts
+leave as an owner-only hidden-profile sidecar for the ordinary writer.
+`case_redundancy` collapses exact duplicates (same program bytes, point, stimulus
+and comparison) and gives each contraction work shape one performance scorer;
+others are declared `performance_scope: excluded` and stay graded. Family points
+and whole models never collapse. Generation applies it after writing and records
+the correctness size-class distribution against the recipe's declared classes.
+`performance_corpus` is the CLI glue (`corpus performance-demand` / `performance-epoch`).

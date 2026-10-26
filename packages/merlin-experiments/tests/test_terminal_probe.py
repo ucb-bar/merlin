@@ -196,3 +196,24 @@ def test_sleeping_thread_does_not_paint_idle_core_as_busy_unknown():
     row['measured_utilization_pct'] = 30.
     # Busy core without an observed active owner remains honestly unattributed.
     assert dominant(row) == {} and activity(row) == 'unknown'
+
+
+def test_one_lock_inventory_serves_every_caller_until_it_ages(tmp_path, monkeypatch):
+    # A run's read leases put 10^5 entries in /proc/locks and each read() of it re-walks the list:
+    # re-reading it for every caller of every refresh stalled the console for a minute per refresh.
+    from merlin_experiments.tracking import terminal_probe as P
+
+    proc = tmp_path / 'proc'
+    clock = [100.]
+    monkeypatch.setattr(P.time, 'monotonic', lambda: clock[0])
+    line = '1: FLOCK ADVISORY WRITE {pid} 08:01:77 0 EOF\n'
+    write(proc / 'locks', line.format(pid=10))
+    key = (os.makedev(8, 1), 77)
+    assert P.locks(proc)[key][0]['pid'] == 10
+    write(proc / 'locks', line.format(pid=20))
+    clock[0] += P.LOCKS_MAX_AGE_S / 2
+    assert P.locks(proc, wanted={key})[key][0]['pid'] == 10
+    assert P.locks(proc, max_age_s=0)[key][0]['pid'] == 20
+    write(proc / 'locks', line.format(pid=30))
+    clock[0] += P.LOCKS_MAX_AGE_S + 1
+    assert P.locks(proc)[key][0]['pid'] == 30

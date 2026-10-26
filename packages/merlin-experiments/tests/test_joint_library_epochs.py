@@ -15,7 +15,11 @@ from merlin_experiments.phase1.options import parse_options
 
 @pytest.fixture
 def epoch(tmp_path, monkeypatch):
-    monkeypatch.delenv(J.ENV, raising=False)
+    # setenv records the original state first, so teardown restores it even though the code under test
+    # assigns os.environ[J.ENV] itself; delenv alone records nothing when the variable is unset and the
+    # selection then leaks into later tests on the same worker.
+    monkeypatch.setenv(J.ENV, "")
+    monkeypatch.delenv(J.ENV)
     monkeypatch.delenv(E.PERFORMANCE_ENV, raising=False)
     policy = tmp_path / "policy.json"
     policy.write_text(json.dumps({"version": 1, "gsim": {"witness_capsules": ["small"]}}))

@@ -5,9 +5,9 @@ but never replaces individual numerical/physical obligations or grants a schedul
 """
 from __future__ import annotations
 
-from collections import Counter, defaultdict
 import hashlib
 import json
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from .capability_source import analyze
@@ -16,6 +16,9 @@ SCHEMA = 'merlin.public_capability_inventory.v1'
 FILENAME = 'PUBLIC_CAPABILITIES.json'
 SUMMARY = 'PUBLIC_CAPABILITIES.md'
 QUERY = 'capability_query.py'
+#: The cohort of the separately selected public scalability suite (``--suite scalability``).
+SCALABILITY_COHORT = 'scalability_performance'
+PROGRAM_COHORT = 'connected_programs'
 
 
 def _digest(value):
@@ -30,17 +33,17 @@ def _names(policy, section, key):
     return set(names)
 
 
-def build(public, *, scalability=(), policy):
+def build(public, *, scalability=(), programs=(), policy):
     """Project only explicit public requirements, preserving the complete roster.
 
     Inputs are ordinary native-discovered declarations from admitted public views.
     No defaults can transform hidden, absent or excluded sources into public cases.
     """
-    core, scale = list(public), list(scalability)
+    core, scale, programs = list(public), list(scalability), list(programs)
     original = _names(policy, 'correctness_curriculum', 'original_capsules')
     physical = _names(policy, 'gsim_correctness', 'capsules')
     witnesses = _names(policy, 'gsim', 'witness_capsules')
-    all_caps = core + scale
+    all_caps = core + scale + programs
     if not all_caps or len(all_caps) > 10000:
         raise ValueError('capability inventory needs a bounded nonempty public roster')
     names = [cap.get('name') for cap in all_caps]
@@ -50,6 +53,10 @@ def build(public, *, scalability=(), policy):
     if any(cap.get('label') not in {'public', 'dev'} for cap in all_caps):
         raise ValueError('capability inventory refuses non-public capsule declarations')
     core_names, scale_names = {c['name'] for c in core}, {c['name'] for c in scale}
+    program_names = {c['name'] for c in programs}
+    if any(c.get('kind') != 'model' or c.get('required_oracle_tiers') != ['L0', 'L1', 'L2']
+           for c in programs):
+        raise ValueError('selected programs require their complete Spike-only model obligations')
     if not original <= core_names or not physical <= core_names:
         raise ValueError('capability inventory omits a declared correctness/calibration member')
     if original and physical != original:
@@ -59,13 +66,16 @@ def build(public, *, scalability=(), policy):
         name = cap['name']
         semantic, operation = cap.get('semantic') or {}, cap.get('operation') or {}
         family = str(semantic.get('semantic_family') or operation.get('op') or cap.get('kind') or 'unknown')
-        cohort = ('scalability_performance' if name in scale_names else
+        cohort = (PROGRAM_COHORT if name in program_names else
+                  SCALABILITY_COHORT if name in scale_names else
                   'original_correctness' if name in original else
                   'calibration' if name in witnesses else 'public_development')
         details = analyze(cap)
         tiers = list(cap.get('required_oracle_tiers') or [])
         entry = {
             'cohort': cohort, 'family': family,
+            'selfcheck_suite': 'programs' if name in program_names else
+                               'scalability' if name in scale_names else 'core',
             'declared_operation': operation.get('op'),
             'source_sha256': _digest({k: v for k, v in cap.items() if k != '__dir__'}),
             'input_tensors': [{k: t[k] for k in ('name', 'shape', 'dtype', 'layout', 'strides', 'role') if k in t}
@@ -82,6 +92,8 @@ def build(public, *, scalability=(), policy):
             'performance_priority': 'primary' if name in scale_names else 'diagnostic',
             'source_analysis': details,
         }
+        from .workload_roles import classify
+        entry.update(classify(dict(entry, name=name), selection=policy.get('workload_roles')))
         members[name] = entry
         groups[family].append(name)
     capabilities = _capabilities(members)
@@ -100,7 +112,8 @@ def build(public, *, scalability=(), policy):
                 'construction_unit': 'semantic capability; capsule IDs are traceability only',
                 'testing': 'early end-to-end canary per capability, then rolling eligible cases',
                 'concurrency': 'correctness, calibration and scalability may advance concurrently',
-                'performance': 'prioritize scalability after numerical execution; originals are regressions',
+                'performance': ('optimize primary workload roles after numerical execution; '
+                                'small controls are diagnostic'),
                 'calibration': 'eligible exact gSIM evidence only; witness membership is not fit authority',
                 'final_obligations': 'unchanged; hidden and complete-model inventories are not exposed here'},
             'qualification_authority': False}
@@ -123,7 +136,8 @@ def _capabilities(members):
         def volume(name):
             import math
             shapes = [t.get('shape') for t in members[name]['input_tensors']]
-            if not shapes or any(not isinstance(s, list) or any(type(d) is not int or d <= 0 for d in s) for s in shapes):
+            if not shapes or any(not isinstance(s, list)
+                                 or any(type(d) is not int or d <= 0 for d in s) for s in shapes):
                 return float('inf')
             return sum(math.prod(shape) for shape in shapes)
         ordered = sorted(group['members'], key=lambda n: (volume(n), n))
@@ -141,10 +155,15 @@ def summary(inventory):
              '| Cohort | Cases | Purpose |', '| --- | ---: | --- |']
     descriptions = {'original_correctness': 'Correctness; retain required Spike and gSIM checks',
                     'calibration': 'Model evidence; selective, question-labelled gSIM',
-                    'scalability_performance': 'Spike correctness and primary performance targets',
+                    SCALABILITY_COHORT: ('Spike correctness; per-case role distinguishes '
+                                         'performance targets from controls'),
+                    PROGRAM_COHORT: 'Complete connected programs; Spike checks all outputs, no gSIM grant',
                     'public_development': 'Declared public requirements; no inferred physical permission'}
     lines.extend(f'| {name} | {count} | {descriptions[name]} |'
                  for name, count in inventory['cohorts'].items())
+    role_counts = Counter(v.get('workload_role', 'unclassified') for v in inventory['members'].values())
+    lines += ['', '| Search role | Cases |', '| --- | ---: |']
+    lines.extend(f'| {role} | {count} |' for role, count in sorted(role_counts.items()))
     lines += ['', '| Semantic family | Cases | Source-analysis unknowns |', '| --- | ---: | ---: |']
     for family, names in list(inventory['families'].items())[:24]:
         unknown = sum(inventory['members'][name]['source_analysis']['status'] != 'parsed' for name in names)
@@ -177,7 +196,10 @@ def stage(workspace, run_dir, inventory):
              'Test a tiny end-to-end case as each capability becomes executable; continue independent '
              'construction while immutable snapshots are evaluated. Calibration prerequisites and large '
              'shape cases can proceed before all original correctness cases pass. The scalability cohort '
-             'is the primary performance target; original small cases remain mandatory correctness regressions.\n')
+             'contains both performance targets and diagnostic controls: '
+             'inspect workload_role and performance_priority. '
+             'Do not spend repeated performance rounds on small controls once their mechanism is resolved. '
+             'Original small cases remain mandatory correctness regressions.\n')
     task = Path(workspace) / 'TASK.md'
     existing = task.read_text()
     for root in (Path(workspace), Path(run_dir)):
@@ -198,8 +220,10 @@ def stage(workspace, run_dir, inventory):
 def stage_selected(workspace, run_dir, *, context, public_roots, contract, excluded):
     """Use the same native public and frozen scalability selections as grading."""
     from merlin.targetgen.capsule_common import discover_capsules, load_capsule
-    from .joint_control import selected
+
+    from .feedback.public_programs import selected as selected_programs
     from .feedback.rolling_scalability import Selection
+    from .joint_control import selected
 
     state = selected()
     if state is None:
@@ -209,6 +233,15 @@ def stage_selected(workspace, run_dir, *, context, public_roots, contract, exclu
     native = [cap for cap in native if cap['name'] not in exclusions]
     additional = Selection(context)
     scale = [load_capsule(path, contract=contract) for _, path in sorted(additional.cases.items())]
-    inventory = build(native, scalability=scale, policy=state['policy'])
+    program_selection = selected_programs(context)
+    programs = ([load_capsule(path, contract=contract) for _, path in sorted(program_selection[2].items())]
+                if program_selection is not None else [])
+    inventory = build(native, scalability=scale, programs=programs, policy=state['policy'])
     additional.verify()
-    return stage(workspace, run_dir, inventory)
+    record = stage(workspace, run_dir, inventory)
+    # The same roster selects the per-operation principles (advice only; a failure is reported, not raised).
+    from .operation_optimizations import stage_selected as stage_operations
+
+    stage_operations(workspace, run_dir, declarations=native + scale + programs, policy=state['policy'],
+                     repo=getattr(context, 'repo', None))
+    return record

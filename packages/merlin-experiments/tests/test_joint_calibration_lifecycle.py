@@ -75,6 +75,43 @@ def test_single_owner_skips_duplicates_without_creating_pools(owner):
     assert len(f.calls)==2
 
 
+def test_future_requests_mode_is_explicit_and_does_not_request_epoch(owner):
+    f=owner;watcher=f.start(activation='future_requests')
+    argv=f.calls[0][0]
+    assert argv[argv.index('--activation')+1]=='future_requests'
+    assert '--evidence-only' not in argv
+    assert watcher.report['request_epoch'] is False
+    watcher.stop()
+
+
+@pytest.mark.parametrize('conflict',[False,True])
+def test_selected_initial_reviews_are_child_local_and_conflicts_cannot_spawn(owner,conflict):
+    from merlin_experiments.phase1 import joint_initial_calibration_review as I
+    from merlin_experiments.phase1 import joint_calibration_admission as A
+    f=owner;profile={};environment=dict(f.pools)
+    for key,variable in [('initial_calibration_review',I.ENV),
+                         ('native_calibration_admission_review',A.ENV)]:
+        path=f.root/(key+'.json');path.write_text('{}')
+        profile[key]=F.pin(path,max_bytes=4096)
+    f.profile.write_text(json.dumps(profile))
+    f.data['policy']['native_calibration']=F.pin(f.profile,max_bytes=4096)
+    f.state.write_text(json.dumps(f.data));before=dict(os.environ)
+    if conflict:
+        environment[I.ENV]=json.dumps({'path':'other','sha256':'other'})
+        with pytest.raises(ValueError,match='review environment differs'):
+            f.start(environment=environment,activation='future_requests')
+        assert not f.calls
+    else:
+        watcher=f.start(environment=environment,activation='future_requests')
+        child=f.calls[0][1]['env']
+        assert json.loads(child[I.ENV])==profile['initial_calibration_review']
+        assert json.loads(child[A.ENV])==profile['native_calibration_admission_review']
+        watcher.stop()
+    assert dict(os.environ)==before
+    assert I.ENV not in environment or conflict
+    assert A.ENV not in environment
+
+
 @pytest.mark.parametrize('damage',['profile','selection','clock','pools'])
 def test_changed_or_incomplete_admission_cannot_spawn(owner,damage):
     f=owner;overrides={}
@@ -119,6 +156,9 @@ def test_stop_boundary_is_local_and_does_not_stop_campaign(tmp_path):
 @pytest.mark.parametrize('status',['waiting_for_independent_variants','blocked_structural_model_admission'])
 def test_service_keeps_waiting_or_denied_until_its_host_requests_stop(tmp_path,monkeypatch,status):
     from merlin_experiments.phase1 import context
+    # main() selects the campaign state in os.environ; register the key so teardown removes it and later
+    # tests in the same worker see no campaign (delenv of an absent key records nothing to undo).
+    monkeypatch.setenv(S.joint_control.ENV,str(tmp_path/'state'))
     stop=tmp_path/'stop.json';output=tmp_path/'out';calls=[]
     monkeypatch.setattr(context,'load_context',lambda *a,**k:object())
     monkeypatch.setattr(S.joint_control,'stop_reason',lambda:None)

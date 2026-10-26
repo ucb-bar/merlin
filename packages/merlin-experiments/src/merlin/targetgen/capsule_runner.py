@@ -39,12 +39,18 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from merlin.common.jsonio import readable_json
+
 from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
 from .capsule_lane_evidence import lane_report as _lane_report
 from .capsule_lane_evidence import oracle_source_scope
 from .capsule_lane_evidence import whole_program_completion_lane_report as whole_program_completion_lane_report
 from .capsule_source_identity import _capture_compiler_source, _finish_compiler_source
 from .capsule_tier_result import TierResult as TierResult
+from .capsule_instruction_policy import apply_executed_stream_rule, enforce_executed_stream
+from .capsule_instruction_policy import apply_prohibited_instruction_rule as apply_prohibited_instruction_rule
+from .capsule_instruction_policy import graded_prohibited_roles as graded_prohibited_roles
+from .capsule_instruction_policy import prohibited_instruction_report as prohibited_instruction_report
 from .capsule_diagnostics import _candidate_exception_diagnostic as _candidate_exception_diagnostic
 from .capsule_diagnostics import _clip as _clip
 from .capsule_diagnostics import _range_check_bounds as _range_check_bounds
@@ -64,6 +70,7 @@ from merlin.targetgen.tier_integrity import CERT_NOT_MEASURED
 from ..runtime import commandbuffer as _CB
 from ..runtime.backends import base as _backends_mod
 from . import capsule_golden as CG
+from . import completion_order_gate as _CO_GATE
 from . import oracle_policy as _oracle_policy
 from . import partial_console as _partial_console
 from . import tier_policy as _tier_policy
@@ -139,11 +146,54 @@ def _grade_cpu_step(function, /, *args, **kwargs):
     Keep this scope around in-process work only. Compiler and oracle adapters
     launch supervised children that acquire their own slots, so the capsule
     runner must release the slot before invoking or waiting for either one.
+
+    The wait for the lease is the ``grade_cpu.lease`` stage and the calculation
+    its own ``grade_cpu.<name>`` stage. A calculation registered with
+    :mod:`.grade_offload` runs in a worker process on the leased CPU: grading
+    threads share one interpreter lock, so pure-Python engines on many capsules
+    otherwise serialize on one core however many CPUs are leased.
     """
+    from contextlib import ExitStack
+
     from merlin.common.cpu_pool import shared_compute_pool
 
-    with shared_compute_pool():
-        return function(*args, **kwargs)
+    from . import grade_offload
+
+    name = _grade_cpu_stages().get(id(function)) or getattr(function, "__name__", "step").lstrip("_")
+    with ExitStack() as lease:
+        with _host_timing.stage("grade_cpu.lease"):
+            lease.enter_context(shared_compute_pool())
+        with _host_timing.stage("grade_cpu." + name):
+            return grade_offload.call(function, *args, **kwargs)
+
+
+def _grade_cpu_stages() -> dict[int, str]:
+    """Stage names of the grader's pure calculations, each registered to run out of process.
+
+    Each takes and returns plain data and reads only its arguments and capsule files, which is what
+    :func:`.grade_offload.register` requires. Anything not listed stays on the grading thread. Looked
+    up per call, so a replaced function (a test's stub) is matched by its own identity, never an old one."""
+    from merlin.benchharness import hash_tree
+    from merlin.perf.work_volume import command_buffer_evidence
+
+    from ..runtime.reference import reference_outputs
+    from ..runtime.simulator import simulate
+    from . import grade_offload
+
+    named = {
+        "golden": CG.golden,
+        "l0_reference": reference_outputs,
+        "l1_simulate": simulate,
+        "numeric_compare": CG.compare,
+        "policy_match": _match_by_policy,
+        "tree_hash": hash_tree,
+        "work_volume": command_buffer_evidence,
+        # Filesystem-only: hash, copy and re-hash the compiler source into this capsule's evidence.
+        "capture_compiler_source": _capture_compiler_source,
+        "finish_compiler_source": _finish_compiler_source,
+    }
+    grade_offload.register(*named.values())
+    return {id(f): name for name, f in named.items()}
 
 
 CONTRACT_VERSION = "0.1"
@@ -478,7 +528,7 @@ def _cb_with_leaf_values(cb: dict) -> dict:
 #    eliminate and still may never certify.
 
 
-def _order_after_certificate(target, cfg, tiers, trace, generated, *, gold, policy, gsource):
+def _order_after_certificate(target, cfg, tiers, trace, generated, *, gold, policy, gsource, trigger=None):
     """The opt-in memory-order tier (:mod:`merlin.targetgen.load_order`), judged by this capsule's golden.
 
     A reordered run is held to exactly the standard the certificate was: the capsule's own comparison
@@ -501,6 +551,7 @@ def _order_after_certificate(target, cfg, tiers, trace, generated, *, gold, poli
 
     return _LO.after_certificate(
         target=target,
+        static=_CO_GATE.sweep_trigger(trigger),
         tiers=tiers,
         rtl_tiers=cfg.rtl_tiers,
         trace=trace,
@@ -580,108 +631,6 @@ def run_executables(generated) -> tuple:
     except OSError:
         return ()
     return tuple(found)
-
-
-def graded_prohibited_roles(capsule: dict) -> tuple[str, ...]:
-    """The prohibited instruction roles a graded capsule's program is held to.
-
-    The run's declared policy, from the environment the Phase 1 adapter hands every grader
-    (:data:`merlin.perf.whole_model_gate.ROLES_ENV`), together with the roles the sealed corpus stamped
-    into the capsule's own candidate arm (``performance.arms.candidate.instruction_policy``). Either
-    source alone is enough to make the scan required: a capsule graded outside the adapter keeps the
-    rule its corpus was sealed under."""
-    from merlin.perf.whole_model_gate import ROLES_ENV
-
-    roles = {r.strip() for r in (os.environ.get(ROLES_ENV) or "").split(",") if r.strip()}
-    arm = (((capsule.get("performance") or {}).get("arms") or {}).get("candidate") or {}).get("instruction_policy")
-    if isinstance(arm, dict):
-        roles |= {str(r) for r in arm.get("prohibited_instruction_roles") or () if str(r)}
-    return tuple(sorted(roles))
-
-
-def prohibited_instruction_report(capsule: dict, generated, *, target: str) -> dict | None:
-    """The whole-ELF prohibited-instruction scan of every executable this grade linked, or ``None`` when
-    the capsule's program is held to no role (:func:`graded_prohibited_roles`).
-
-    Every ELF :func:`run_executables` finds is walked in full (:func:`merlin.perf.isa_prohibition.scan_elf`
-    reads every executable section, so an instruction reached only through a function pointer, or never
-    executed, is found exactly like one on the hot path). ``clean`` is ``True`` only when every ELF was
-    measured and none carries a prohibited instruction, ``False`` when any carries one, and ``None``
-    (unmeasured) otherwise -- including a grade that linked no ELF at all, or a target whose facts give
-    the roles no instruction. Unmeasured is never clean."""
-    roles = graded_prohibited_roles(capsule)
-    if not roles:
-        return None
-    from merlin.perf.isa_prohibition import SCHEMA, scan_elf
-
-    elfs = []
-    for path in run_executables(generated):
-        try:
-            with path.open("rb") as handle:
-                if handle.read(4) == b"\x7fELF":
-                    elfs.append(path)
-        except OSError:
-            continue
-    base = {"schema": SCHEMA, "scope": "whole_elf", "roles": list(roles)}
-    if not elfs:
-        return {
-            **base,
-            "status": "unmeasured",
-            "clean": None,
-            "summary": {},
-            "scans": [],
-            "detail": "the grade linked no ELF to scan, so the prohibited-instruction rule was not checked",
-        }
-    scans = [scan_elf(path, target=target, roles=roles) for path in elfs]
-    summary: dict[str, int] = {}
-    for scan in scans:
-        for name, count in (scan.get("summary") or {}).items():
-            summary[name] = summary.get(name, 0) + int(count)
-    measured = all(scan.get("status") == "measured" for scan in scans)
-    return {
-        **base,
-        "status": "measured" if measured else "unmeasured",
-        "clean": False if summary else (True if measured else None),
-        "summary": dict(sorted(summary.items())),
-        "scans": scans,
-        **(
-            {"detail": "; ".join(str(s.get("detail")) for s in scans if s.get("status") != "measured")}
-            if not measured
-            else {}
-        ),
-    }
-
-
-def apply_prohibited_instruction_rule(status: str, failure: dict | None, report: dict | None):
-    """``(status, failure)`` after the instruction rule: a prohibited instruction anywhere in the linked
-    program FAILS the capsule (it is a fact about the submission's bytes), and a passing capsule whose
-    program could not be scanned is ``incomplete`` -- never a pass on an unchecked program."""
-    if report is None:
-        return status, failure
-    if report.get("clean") is False:
-        hits = ", ".join(f"{name} x{count}" for name, count in (report.get("summary") or {}).items())
-        prohibited = {k: v for scan in report.get("scans") or () for k, v in (scan.get("prohibited") or {}).items()}
-        return "fail", {
-            "plane": "instruction_policy",
-            "category": "PROHIBITED_INSTRUCTION",
-            "detail": (
-                f"the linked program carries instruction(s) the experiment prohibits (roles "
-                f"{report.get('roles')}): {hits}. The whole ELF is scanned, so an instruction in code that "
-                f"is never called still counts; emit the work without the prohibited instructions"
-            ),
-            "prohibited_instructions": prohibited,
-            **({"previous_failure": failure} if failure else {}),
-        }
-    if report.get("clean") is not True and status == "pass":
-        return "incomplete", failure or {
-            "plane": "instruction_policy",
-            "category": "PROHIBITION_NOT_MEASURED",
-            "detail": (
-                f"the capsule's program is held to prohibited roles {report.get('roles')}, and the "
-                f"whole-ELF scan could not settle it: {report.get('detail') or 'no measured verdict'}"
-            ),
-        }
-    return status, failure
 
 
 def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool,
@@ -4461,6 +4410,8 @@ def _finalize_capsule_result(
             }
         else:
             status, failure = apply_prohibited_instruction_rule(status, failure, _isa)
+    # The same rule on the executed command stream the trace gate decoded; UNKNOWN never passes.
+    status, failure = apply_executed_stream_rule(status, failure, trace_check_res)
 
     if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
         # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)
@@ -4620,7 +4571,7 @@ def _finalize_capsule_result(
         result.setdefault(_k, _v)
     if result_filename not in ("capsule_result.json", ".operator_child_result.json"):
         raise ValueError("capsule result publication requires its original fixed filename")
-    (paths.run_path / result_filename).write_text(json.dumps(result, indent=2), encoding="utf-8")
+    (paths.run_path / result_filename).write_text(readable_json(result), encoding="utf-8")
     _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite,
                         filename=".operator_child_manifest.yaml" if result_filename != "capsule_result.json"
                         else "run_manifest.yaml")
@@ -4762,7 +4713,7 @@ def run_capsule(
         result.setdefault("work_volume", _mw)
         result.setdefault("command_buffer_artifact", _ma)
         result.setdefault("toolchain_shas", toolchain_shas(eff_target))
-        (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        (paths.run_path / "capsule_result.json").write_text(readable_json(result), encoding="utf-8")
         # Persist the ARR coverage certificate as its own durable artifact (not only inside
         # capsule_result.json) so the report/grader can read it back per compilation.
         cert = result.get("coverage_certificate")
@@ -4795,6 +4746,7 @@ def run_capsule(
     cb: dict | None = None
     decoded_trace: dict | None = None  # kept for the advisory divergence localizer (D2)
     order_check: dict | None = None  # the opt-in memory-order record, present only when that tier ran
+    completion_order: dict | None = None  # L2 structural evidence: completion-order hazards (completion_order_gate)
     # WHICH TIERS COULD HAVE EXECUTED THIS PROGRAM, bound out here for the same reason `decoded_trace`
     # is: the finalize call below reads it to decide whether a required lane has execution evidence, and
     # a run that never reached the tier ladder must read as "nothing ran", not raise NameError.
@@ -5257,6 +5209,10 @@ def run_capsule(
                 target=eff_target,
                 lowered_module=_parsed_lowered_shared,
             )
+            # Prohibited instruction roles on the executed stream: a hit fails the case at L2 here.
+            _stream_policy = enforce_executed_stream(capsule, trace, target=eff_target, tiers=tiers)
+            if _stream_policy is not None:
+                trace_check_res["instruction_policy"] = _stream_policy
             # The MODE-FREE movement diagnostic, kept OUT of `violations` on purpose. It is a
             # whole-program performance observation, not a conformance one: `violations` feeds
             # `trace_all_pass`, which gates the run's formal verdict, and a program that moves one tile
@@ -5692,8 +5648,8 @@ def run_capsule(
                         ) from e
                     if _link_failed:
                         raise CertFailure(
-                            _sim,
-                            _cat("FUNCTIONAL_MISMATCH"),
+                            "link",
+                            _cat("INTERFACE_MISMATCH"),
                             "the emitted package did not LINK, so nothing could be run. "
                             "This is a defect in what your compiler emitted (a missing or "
                             "duplicate symbol, or an object built against the wrong ABI), "
@@ -5985,6 +5941,15 @@ def run_capsule(
                 run_id=run_id,
                 simulation_context=_simulation_context,
             )
+            # COMPLETION ORDER, L2 structural evidence: does this functional pass rely on two commands
+            # completing in an order the hardware does not keep? (merlin.targetgen.completion_order)
+            if okt and mand and tier not in cfg.rtl_tiers and completion_order is None:
+                completion_order, _co_fail = _CO_GATE.ladder_step(eff_target, tier, tiers, paths.generated)
+                if _co_fail is not None and not _complete_ladder:
+                    _CO_GATE.suppress_later(tiers, _tier_seq, tier, required, cfg.rtl_tiers, suppressed_tier_result)
+                    _stamp_cache_refusals()
+                    raise _co_fail
+                _first_cert_failure = _first_cert_failure or _co_fail
             # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
             # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation
             # gaps) records its fail in the tiers dict but must NOT abort: aborting here would pre-empt the
@@ -6020,11 +5985,15 @@ def run_capsule(
                     raise _cf
 
         _stamp_cache_refusals()
+        if _first_cert_failure is None and completion_order is None:  # a carried functional tier: check it here
+            completion_order, _first_cert_failure = _CO_GATE.ladder_step(eff_target, None, tiers, paths.generated, cfg)
         if _first_cert_failure is None:
             # MEMORY ORDER (opt-in): a certificate earned on an in-order memory model says nothing about a
-            # program whose answer depends on two loads completing in issue order.
+            # program whose answer depends on two loads completing in issue order. Its trigger is the
+            # completion-order verdict above when one was reached.
             _order = _order_after_certificate(eff_target, cfg, tiers, decoded_trace, paths.generated,
-                                              gold=gold, policy=policy, gsource=gsource)  # fmt: skip
+                                              gold=gold, policy=policy, gsource=gsource,
+                                              trigger=completion_order)  # fmt: skip
             if _order is not None:
                 order_check = _order.record
                 if _order.failed:
@@ -6157,6 +6126,7 @@ def run_capsule(
             **_lane_extra,
             **owned_source_compilation,
             **({"order_check": order_check} if order_check is not None else {}),
+            **({"completion_order": completion_order} if completion_order is not None else {}),
         },
     )
 
@@ -6596,7 +6566,7 @@ def _run_suite(
             result["model_gate_admission"] = gate
             path = Path(runs_root) / "runs" / (suite or suite_for(target)) / cap["name"] / "capsule_result.json"
             if path.is_file():
-                path.write_text(json.dumps(result, indent=2))
+                path.write_text(readable_json(result))
         return result
 
     def _run_all(caps: list[dict]) -> list[dict]:

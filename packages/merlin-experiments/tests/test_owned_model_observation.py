@@ -35,27 +35,6 @@ def test_whole_call_has_its_own_scope_and_actual_invocation_not_a_kernel_alias()
         O.scope_digest(dict(selection, owned_model_scope={}))
 
 
-def test_pending_physical_tier_allows_only_audited_numerical_scope():
-    record = dict(status="unverified", tiers={"L2": {"status": "pass"}}, missing_tiers=["L3"], failed_tiers=[])
-    check = dict(kind="owned_host_model_execution", violations=[],
-                 candidate_source_placement={"status": "clean"},
-                 candidate_source_coverage={"status": "verified"},
-                 candidate_completed_dispatch={"status": "verified"},
-                 candidate_required_tiers={"tiers": {"L2": {"status": "pass"}}})
-    result = {"model_execution_check": check}
-    before = copy.deepcopy((result, record))
-    assert O._completed_numerical_scope(result, record)
-    assert (result, record) == before  # No pending tier or certification is upgraded.
-    assert not O._completed_numerical_scope({}, record)
-    for changes in [dict(missing_tiers=["L2"]), dict(failed_tiers=["L3"]),
-                    dict(tiers={"L2": {"status": "unverified"}})]:
-        assert not O._completed_numerical_scope(result, dict(record, **changes))
-    for key in ["candidate_source_placement", "candidate_source_coverage", "candidate_completed_dispatch"]:
-        damaged = copy.deepcopy(result)
-        damaged["model_execution_check"][key]["status"] = "unverified"
-        assert not O._completed_numerical_scope(damaged, record)
-
-
 @pytest.mark.parametrize(
     "damage", ["extra_counter", "missing_counter", "indirect", "branch", "wrong_call", "extra_call"]
 )

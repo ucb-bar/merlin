@@ -586,6 +586,10 @@ _DECLARED_BLOCKS = (
     "max_oracle_tier",
     "max_timing_tier",
     "extends",
+    # A case's role in performance scoring and the derived demand it represents
+    # (merlin_experiments.phase0.case_redundancy / performance_demand).
+    "performance_scope",
+    "performance_demand",
 )
 
 

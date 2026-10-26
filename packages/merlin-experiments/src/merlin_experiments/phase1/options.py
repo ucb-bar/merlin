@@ -85,6 +85,10 @@ class RunOptions:
     hidden_capsule_mode: str = ""
     native_result_format_selection: str = ""
     author_max_subagents: int | None = None
+    author_helper_effort: str | None = None
+    author_compact_limit: str | None = None
+    author_task_skills: str | None = None
+    author_skills: str | None = None
     live_conformance_feedback: bool = False
     validation_scope: str = "full"
     fresh_backend: bool = False
@@ -94,6 +98,7 @@ class RunOptions:
     author_token_reserve: int | None = None
     author_token_admission: bool = False
     author_token_turn_allowance: int | None = None
+    author_token_unbounded: bool = False
     offline_actions: str = ""
     compiler_execution: str = "profile_strict_v1"
     compiler_access: str = "selected_library"
@@ -128,6 +133,8 @@ def build_parser(
                     help="opt in to managed author token admission/checkpointing using live all-thread usage; not a hard token cap")
     ap.add_argument("--author-token-turn-allowance", type=int, default=None,
                     help="planning allowance per outstanding author turn; requires token admission; default 1000000, not a provider bound")
+    ap.add_argument("--author-token-unbounded", action="store_true",
+                    help="select no aggregate author token target, even for a joint campaign; excludes the other token options")
     ap.add_argument(
         "--validation-scope", choices=("full", "capsules"), default="full",
         help="explicit completion scope; capsules exports a frozen compiler before external model validation",
@@ -172,6 +179,37 @@ def build_parser(
         metavar="N",
         help="recorded Codex helper-thread ceiling for the author session (no prompt change); default "
         "MERLIN_AUTHOR_MAX_SUBAGENTS, else min(16, compute-pool CPUs)",
+    )
+    ap.add_argument(
+        "--author-helper-effort",
+        default=None,
+        metavar="EFFORT",
+        help="recorded reasoning effort for Codex helpers spawned without a full-history fork "
+        "(agents.default_subagent_reasoning_effort); full-history forks keep the lead's; default: unset, "
+        "helpers keep --effort",
+    )
+    ap.add_argument(
+        "--author-compact-limit",
+        default=None,
+        metavar="TOKENS|off",
+        help="recorded Codex context ceiling (model_auto_compact_token_limit, with a workspace-aware "
+        "compact_prompt) in the frozen home; applies to the lead and helpers; default 175000 for an "
+        "isolated Codex run, off keeps the CLI's own compaction",
+    )
+    ap.add_argument(
+        "--author-task-skills",
+        default=None,
+        choices=("on", "off"),
+        help="stage TASK.md's longer sections and a feedback-file guide as workspace skills "
+        "(.agents/skills, native Codex discovery; TASK.md unchanged); default on for an isolated Codex run",
+    )
+    ap.add_argument(
+        "--author-skills",
+        default=None,
+        choices=("on", "off"),
+        help="stage the harness's procedural author skills (phase1/author_skills) byte-identically into "
+        ".agents/skills and .claude/skills for native Codex and Claude Code discovery; recorded with their "
+        "digest; default on for those drivers",
     )
     ap.add_argument(
         "--codex-binary", default="", help="explicit canonical Codex executable; requires complete client selection"
@@ -517,10 +555,14 @@ def parse_options(
 ) -> RunOptions:
     parser = build_parser(default_arm=default_arm, environ=environ)
     options = RunOptions(**vars(parser.parse_args(argv)))
+    from .providers.codex_context import selection as context_selection
+    from .skill_staging import selection as skill_selection
     from .telemetry.token_budget import selection
 
     try:
         selection(options)
+        context_selection(options)
+        skill_selection(options)
     except ValueError as exc:
         parser.error(str(exc))
     return options

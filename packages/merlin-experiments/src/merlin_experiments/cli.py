@@ -528,6 +528,32 @@ def main(argv: list[str] | None = None) -> int:
     attest_capture.add_argument("--selection", type=Path, required=True)
     attest_capture.add_argument("--expected-sha256", required=True)
     attest_capture.add_argument("--output", type=Path, required=True, help="fresh attestation JSON path")
+    demand = operations.add_parser(
+        "performance-demand",
+        help="derive performance cases and per-class holdouts from captured programs' layer inventories",
+    )
+    demand.add_argument(
+        "--program",
+        action="append",
+        required=True,
+        metavar="MODEL/PROGRAM=TRACE@SHA256",
+        help="pinned frontend trace of one captured program (value-free projection only)",
+    )
+    demand.add_argument("--policy", type=Path, required=True, help="merlin.phase0.performance_demand_policy.v1")
+    demand.add_argument("--rtl-facts", type=Path, required=True, help="exact extraction artifact (tile edge)")
+    demand.add_argument("--template", type=Path, required=True, help="reviewed raw int8-to-int32 contract")
+    demand.add_argument("--existing-suite", type=Path, help="staged scalability cases already public")
+    demand.add_argument("--output", type=Path, required=True, help="fresh directory; holdouts are owner-only")
+    epoch = operations.add_parser(
+        "performance-epoch",
+        help="apply case redundancy to a release with a demand plan; write the next suite selections",
+    )
+    epoch.add_argument("--previous", type=Path, required=True, help="previous prepared release root")
+    epoch.add_argument("--plan", type=Path, required=True, help="performance-demand plan.json")
+    epoch.add_argument("--sources", type=Path, required=True, help="performance-demand sources/ directory")
+    epoch.add_argument("--evidence", type=Path, required=True, help="exported Phase 0 evidence root")
+    epoch.add_argument("--target", required=True)
+    epoch.add_argument("--output", type=Path, required=True, help="fresh directory")
     heldout = operations.add_parser(
         "heldout-layers",
         help="OPERATOR: write the private held-out layer-shape file from per-program inventories",
@@ -622,6 +648,9 @@ def main(argv: list[str] | None = None) -> int:
     seal.add_argument("--expected-digest", required=True)
     seal.add_argument("--reviewed-by", required=True)
     seal.add_argument("--review-note", required=True)
+    from .corpus import evidence_custody
+
+    evidence_custody.add_parser(operations)
     args = parser.parse_args(raw)
     if args.verb == "inspect" and args.group is not None:
         # One group of a candidate (a measured job or a package), not an experiment definition.
@@ -630,6 +659,10 @@ def main(argv: list[str] | None = None) -> int:
         return group_inspect.run_from_args(args)
     try:
         if args.verb == "corpus":
+            if args.operation == "evidence":
+                result, code = evidence_custody.run(args)
+                print(json.dumps(result, indent=2, sort_keys=True))
+                return code
             if args.operation == "heldout-layers":
                 from merlin.common.paths import repo_root
 
@@ -640,6 +673,38 @@ def main(argv: list[str] | None = None) -> int:
                 document = HL.from_inventories(args.inventory)
                 path = HL.write_private(document, args.output)
                 print(json.dumps({"path": str(path), **HL.load(path).summary()}, indent=2))
+                return 0
+            if args.operation == "performance-demand":
+                from .phase0.performance_corpus import derive_demand
+
+                try:
+                    result = derive_demand(
+                        args.program,
+                        policy=args.policy,
+                        facts=args.rtl_facts,
+                        template=args.template,
+                        output=args.output,
+                        existing_suite=args.existing_suite,
+                    )
+                except ValueError as exc:
+                    raise SpecError(str(exc)) from exc
+                print(json.dumps(result, indent=2))
+                return 0
+            if args.operation == "performance-epoch":
+                from .phase0.performance_corpus import assemble_epoch
+
+                try:
+                    result = assemble_epoch(
+                        args.previous,
+                        plan=args.plan,
+                        sources=args.sources,
+                        output=args.output,
+                        evidence_root=args.evidence,
+                        target=args.target,
+                    )
+                except ValueError as exc:
+                    raise SpecError(str(exc)) from exc
+                print(json.dumps(result, indent=2))
                 return 0
             if args.operation == "stage-workloads":
                 from .phase0.workload_roster import stage

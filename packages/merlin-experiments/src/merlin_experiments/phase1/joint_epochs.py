@@ -3,14 +3,15 @@
 No library is edited in place. Only a frozen output of this joint campaign may
 continue, with its original empty origin, clock and shared physical ledger.
 """
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import time
+from pathlib import Path
 
 import yaml
 
@@ -97,9 +98,12 @@ def publish_stop_notice(run_dir):
     root = Path(run_dir)
     raw, digest = _read(root / "joint_epoch_stop.json")
     request = json.loads(raw)
-    if (request.get("schema") != "merlin.joint_epoch_stop.v1"
-            or not isinstance(request.get("reason"), str) or not request["reason"].strip()
-            or len(request["reason"]) > 4096):
+    if (
+        request.get("schema") != "merlin.joint_epoch_stop.v1"
+        or not isinstance(request.get("reason"), str)
+        or not request["reason"].strip()
+        or len(request["reason"]) > 4096
+    ):
         raise ValueError("invalid bounded operator epoch notice")
     environment = yaml.safe_load(_read(root / "environment.yaml")[0])
     workspace = environment.get("workspace_path")
@@ -108,14 +112,20 @@ def publish_stop_notice(run_dir):
     workspace = Path(workspace)
     if not workspace.is_absolute() or workspace != workspace.resolve() or not workspace.is_dir():
         raise ValueError("operator notice needs its original staged author workspace")
-    notice = {"schema": "merlin.operator_epoch_notice.v1", "action": "checkpoint_and_return",
-              "reason": request["reason"], "stop_request_sha256": digest,
-              "instruction": "Finish the current bounded action, save all compiler and generic pass edits, "
-                  "and return a checkpoint summary now. Preserve your work; do not restart the compiler. "
-                  "The native host will preserve this checkpoint and close the current run; "
-                  "the operator controls any subsequent launch.",
-              "changes_grading": False, "private_reference_information": False}
+    notice = {
+        "schema": "merlin.operator_epoch_notice.v1",
+        "action": "checkpoint_and_return",
+        "reason": request["reason"],
+        "stop_request_sha256": digest,
+        "instruction": "Finish the current bounded action, save all compiler and generic pass edits, "
+        "and return a checkpoint summary now. Preserve your work; do not restart the compiler. "
+        "The native host will preserve this checkpoint and close the current run; "
+        "the operator controls any subsequent launch.",
+        "changes_grading": False,
+        "private_reference_information": False,
+    }
     from .feedback.visible_model_gate import publish
+
     publish(workspace / "qa" / "verdict.json", {"operator_epoch_notice": notice})
     return notice
 
@@ -137,8 +147,10 @@ def prepare(previous_run, *, contract_sha256, review_id, output, performance_sel
         raise ValueError("epoch needs the reviewed new library contract SHA")
     if not isinstance(review_id, str) or not review_id.strip():
         raise ValueError("epoch needs an explicit operator review identity")
-    pins = {name: _read(root / name)[1] for name in
-            ("environment.yaml", "joint_campaign.json", "joint_campaign_summary.json")}
+    pins = {
+        name: _read(root / name)[1]
+        for name in ("environment.yaml", "joint_campaign.json", "joint_campaign_summary.json")
+    }
     environment = yaml.safe_load((root / "environment.yaml").read_text())
     summary = json.loads((root / "joint_campaign_summary.json").read_text())
     source = root / "joint_frozen_submission"
@@ -147,10 +159,17 @@ def prepare(previous_run, *, contract_sha256, review_id, output, performance_sel
     old_contract = (environment.get("additional_compiler_library") or {}).get("contract_sha256")
     if old_contract == contract_sha256 and performance_selection_sha256 is None:
         raise ValueError("library epoch requires a changed reviewed contract")
-    record = {"schema": SCHEMA, "previous_run": str(root), "pins": pins,
-              "compiler_sha256": summary["compiler_sha256"], "source": str(source),
-              "new_contract_sha256": contract_sha256, "review_id": review_id,
-              "lineage_id": environment.get("lineage_id"), "source_run_id": environment.get("run_id")}
+    record = {
+        "schema": SCHEMA,
+        "previous_run": str(root),
+        "pins": pins,
+        "compiler_sha256": summary["compiler_sha256"],
+        "source": str(source),
+        "new_contract_sha256": contract_sha256,
+        "review_id": review_id,
+        "lineage_id": environment.get("lineage_id"),
+        "source_run_id": environment.get("run_id"),
+    }
     ledger = _tier_ledger(environment)
     if ledger is not None:
         if summary.get("completion_reason") != "library_epoch":
@@ -162,7 +181,9 @@ def prepare(previous_run, *, contract_sha256, review_id, output, performance_sel
             raise ValueError("calibration history handoff requires completed native epoch drain")
         record["calibration_history"] = calibration
     if performance_selection_sha256 is not None:
-        if len(performance_selection_sha256) != 64 or any(c not in "0123456789abcdef" for c in performance_selection_sha256):
+        if len(performance_selection_sha256) != 64 or any(
+            c not in "0123456789abcdef" for c in performance_selection_sha256
+        ):
             raise ValueError("epoch timing selection needs its reviewed SHA")
         record["performance_selection_sha256"] = performance_selection_sha256
         state = json.loads((root / "joint_campaign.json").read_text())
@@ -182,6 +203,7 @@ def prepare(previous_run, *, contract_sha256, review_id, output, performance_sel
 def _verify(record):
     if record.get("schema") == "merlin.joint_interrupted_epoch.v1":
         from .joint_interrupted_epoch import verify
+
         return verify(record)
     if record.get("schema") != SCHEMA or not record.get("review_id"):
         raise ValueError("invalid joint library epoch review")
@@ -239,10 +261,18 @@ def inherited_state(options, policy, policy_sha256):
         raise ValueError("library epoch cannot change campaign policy or reset budgets")
     if time.time() >= state["started_at_epoch"] + policy["duration_s"] - policy["drain_s"]:
         raise ValueError("joint epoch has no authoring time remaining")
-    return {**state, "epoch": record, "performance_selection": performance_pin(),
-            "gsim_ledger": state.get("gsim_ledger", str(Path(record["previous_run"]) / "joint_gsim_budget.json")),
-            "gsim_correctness_ledger": state.get("gsim_correctness_ledger", str(
-                Path(record["previous_run"]) / "joint_gsim_correctness_budget.json"))}
+    return {
+        **state,
+        "epoch": record,
+        "performance_selection": performance_pin(),
+        "gsim_ledger": state.get("gsim_ledger", str(Path(record["previous_run"]) / "joint_gsim_budget.json")),
+        "gsim_correctness_ledger": state.get(
+            "gsim_correctness_ledger", str(Path(record["previous_run"]) / "joint_gsim_correctness_budget.json")
+        ),
+        "gsim_measurement_ledger": state.get(
+            "gsim_measurement_ledger", str(Path(record["previous_run"]) / "joint_gsim_measurement_budget.json")
+        ),
+    }
 
 
 def request_model_epoch(run_dir, *, selection_path, expected_sha256, review_id, output):
@@ -256,7 +286,8 @@ def request_model_epoch(run_dir, *, selection_path, expected_sha256, review_id, 
     selection = performance_pin({"path": str(selection_path), "sha256": expected_sha256})
     state = json.loads(_read(root / "joint_campaign.json")[0])
     if state.get("started_at_epoch") is None or time.time() >= (
-            state["started_at_epoch"] + state["policy"]["duration_s"] - state["policy"]["drain_s"]):
+        state["started_at_epoch"] + state["policy"]["duration_s"] - state["policy"]["drain_s"]
+    ):
         raise ValueError("model epoch has no authoring time remaining")
     if "performance_selection" not in state:
         raise ValueError("previous epoch did not capture its performance selection")
@@ -264,8 +295,12 @@ def request_model_epoch(run_dir, *, selection_path, expected_sha256, review_id, 
         raise ValueError("model epoch requires a changed performance selection")
     if not isinstance(review_id, str) or not review_id.strip():
         raise ValueError("model epoch needs a calibration review identity")
-    proposal = {"schema": "merlin.joint_model_epoch_request.v1", "selection": selection,
-                "review_id": review_id, "output": str(Path(output).absolute())}
+    proposal = {
+        "schema": "merlin.joint_model_epoch_request.v1",
+        "selection": selection,
+        "review_id": review_id,
+        "output": str(Path(output).absolute()),
+    }
     request = root / "joint_model_epoch_request.json"
     if request.exists():
         if json.loads(_read(request)[0]) != proposal:
@@ -282,23 +317,32 @@ def request_model_epoch(run_dir, *, selection_path, expected_sha256, review_id, 
     if destination.exists():
         record = json.loads(_read(destination)[0])
         _verify(record)
-        if (record.get("performance_selection_sha256") != expected_sha256 or
-                record.get("review_id") != review_id or record.get("previous_run") != str(root)):
+        if (
+            record.get("performance_selection_sha256") != expected_sha256
+            or record.get("review_id") != review_id
+            or record.get("previous_run") != str(root)
+        ):
             raise ValueError("model epoch output differs from pinned request")
     else:
         environment = yaml.safe_load(_read(root / "environment.yaml")[0])
-        prepare(root, contract_sha256=environment["additional_compiler_library"]["contract_sha256"],
-                review_id=review_id, output=destination, performance_selection_sha256=expected_sha256)
-    return {"status": "ready_for_native_epoch", "joint_epoch": str(destination),
-            "performance_selection": selection}
+        prepare(
+            root,
+            contract_sha256=environment["additional_compiler_library"]["contract_sha256"],
+            review_id=review_id,
+            output=destination,
+            performance_selection_sha256=expected_sha256,
+        )
+    return {"status": "ready_for_native_epoch", "joint_epoch": str(destination), "performance_selection": selection}
 
 
 def seed(options, workspace, run_dir):
     from . import run_inputs
+
     record = selected(options)
     result = run_inputs.seed_submission(workspace, record["source"], run_dir, require_stable_source=True)
     if record.get("schema") == "merlin.joint_interrupted_epoch.v1":
         from .joint_interrupted_epoch import seed_variants
+
         result["authored_variants_handoff"] = seed_variants(record, workspace)
         result["interrupted_predecessor"] = record["interruption"]
     if "tier_ledger" in record:
@@ -314,9 +358,13 @@ def seed(options, workspace, run_dir):
         with destination.open("xb") as stream:
             stream.write(raw)
         destination.chmod(0o600)
-        result["tier_evidence_handoff"] = {"source": pin, "destination": str(destination),
-            "exact_bytes_preserved": True, "producer_paths_relocated": False,
-            "current_compiler_credit_granted": False}
+        result["tier_evidence_handoff"] = {
+            "source": pin,
+            "destination": str(destination),
+            "exact_bytes_preserved": True,
+            "producer_paths_relocated": False,
+            "current_compiler_credit_granted": False,
+        }
     if "calibration_history" in record:
         for pin in record["calibration_history"]:
             raw, digest = _read(pin["path"])
@@ -329,12 +377,18 @@ def seed(options, workspace, run_dir):
             with destination.open("xb") as stream:
                 stream.write(raw)
             destination.chmod(0o600)
-        result["calibration_history_handoff"] = {"members": record["calibration_history"],
-            "exact_bytes_preserved": True, "producer_paths_relocated": False,
-            "dispatch_or_fit_authority_added": False}
+        result["calibration_history_handoff"] = {
+            "members": record["calibration_history"],
+            "exact_bytes_preserved": True,
+            "producer_paths_relocated": False,
+            "dispatch_or_fit_authority_added": False,
+        }
     result["joint_epoch"] = record
-    result["lineage"] = {"lineage_id": record["lineage_id"], "source_run_id": record["source_run_id"],
-                         "source_tree_sha256": record["compiler_sha256"]}
+    result["lineage"] = {
+        "lineage_id": record["lineage_id"],
+        "source_run_id": record["source_run_id"],
+        "source_tree_sha256": record["compiler_sha256"],
+    }
     (Path(run_dir) / "seed_submission.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 

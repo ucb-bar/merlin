@@ -2,6 +2,18 @@
 
 This selects source bytes only. It carries no previous results, physical budget,
 clock, model qualification or empty-backend assertion into the new run.
+
+Two optional, separately reviewed additions (each must appear identically in the
+operator review, and both default to off):
+
+* ``inherit_certificates_for_identical_executables: true`` lets a certificate earned
+  by byte-identical program bytes under byte-identical grading code carry into this
+  run through :mod:`merlin.targetgen.tier_cache` (its portable instrument mode,
+  ``MERLIN_TIER_CERT_PORTABLE=1``, which the launch must also set). A carried verdict
+  is labelled as carried with its source record; anything whose program or judge
+  differs is executed again. Verdict-level credit is still not inherited.
+* ``previous_session: {run_dir, workspace}`` stages ``PREVIOUS_SESSION.md``
+  (:mod:`.continuation_handoff`), built from the previous session's own outputs.
 """
 from __future__ import annotations
 
@@ -12,6 +24,8 @@ from pathlib import Path
 from . import run_inputs
 
 SCHEMA = 'merlin.joint_reviewed_seed.v1'
+CARRY = 'inherit_certificates_for_identical_executables'
+PREVIOUS = 'previous_session'
 
 
 def selected(options, policy=None):
@@ -51,8 +65,16 @@ def selected(options, policy=None):
     review = json.loads(payload)
     if (review.get('schema') != 'operator.joint_seed_review.v1'
             or review.get('approved') is not True
-            or any(review.get(key) != origin[key] for key in ('review_id', 'source', 'sha256', 'inherit_clock', 'inherit_results', 'variants'))):
+            or any(review.get(key) != origin[key] for key in ('review_id', 'source', 'sha256', 'inherit_clock', 'inherit_results', 'variants'))
+            or any(review.get(key) != origin.get(key) for key in (CARRY, PREVIOUS))):
         raise ValueError('joint seed review does not approve this exact source-only origin')
+    if origin.get(CARRY) not in (None, False, True):
+        raise ValueError('certificate carry-over approval must be a boolean')
+    previous = origin.get(PREVIOUS)
+    if previous is not None and (
+            not isinstance(previous, dict) or set(previous) != {'run_dir', 'workspace'}
+            or not all(isinstance(v, str) and Path(v).is_absolute() for v in previous.values())):
+        raise ValueError('previous session handoff requires absolute run_dir and workspace')
     variants = origin.get('variants')
     if not isinstance(variants, list) or len(variants) > 64:
         raise ValueError('joint seed authored alternatives must be bounded')
@@ -73,5 +95,20 @@ def stage(options, workspace, run_dir):
     result['reviewed_joint_seed'] = origin
     result['current_credit_granted'] = False
     result['inherited_clock'] = False
+    from merlin.targetgen import tier_cache
+    carry = origin.get(CARRY) is True
+    if carry != tier_cache.portable():
+        raise ValueError(f'certificate carry-over needs both the reviewed {CARRY} approval and '
+                         f'{tier_cache.PORTABLE_ENV}=1 at launch; one without the other is refused')
+    result['certificate_carry_over'] = {
+        'enabled': carry,
+        'mechanism': 'merlin.targetgen.tier_cache portable instrument identity',
+        'scope': ('a tier verdict carries only when the program execution identity and the grading '
+                  'instrument are byte-identical; carried verdicts are labelled carried with their source '
+                  'record, everything else is executed again') if carry else 'off: every tier is executed again',
+    }
+    if origin.get(PREVIOUS) is not None:
+        from .continuation_handoff import write as write_handoff
+        result['previous_session'] = write_handoff(workspace, origin[PREVIOUS], Path(workspace) / 'submission')
     (Path(run_dir) / 'seed_submission.json').write_text(json.dumps(result, indent=2) + '\n')
     return result

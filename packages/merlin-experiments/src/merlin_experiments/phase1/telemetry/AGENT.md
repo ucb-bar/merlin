@@ -19,6 +19,8 @@ promotions and simulator jobs to threads (forwarded thread id, else command wind
 `report.py` adds it to the timing record after, and never into, `telemetry_integrity`, then
 annotates the cost record; a defect is recorded there, never raised into either writer.
 `evidence.py` retains every lead and descendant helper rollout with the round snapshot.
+`resilient_output.py` wraps the runner's and brokers' stdout/stderr so a write that fails
+(a full log volume) is dropped and counted, never raised into a grader or broker loop.
 Use the authoritative owner directly, not legacy helper aliases or duplicated token parsers.
 
 Preserve measured versus unavailable/null distinctions, exact event order, deduplication and

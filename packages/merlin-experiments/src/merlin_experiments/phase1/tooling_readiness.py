@@ -32,6 +32,11 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
     allowed = {
         row["path"] for row in bundle.get("allowed", ()) if isinstance(row, dict) and isinstance(row.get("path"), str)
     }
+    # A registry path the selected bundle records as a denial (an author-withheld module, e.g. under
+    # substrate v15) is withheld on purpose: the tool runs without it, so it is not a missing grant.
+    denied = {
+        row["path"] for row in bundle.get("denied", ()) if isinstance(row, dict) and isinstance(row.get("path"), str)
+    }
     # A release may grant the source tree selected when it was frozen while the
     # controller now runs from an installed wheel. The common/ grant is the
     # required, target-independent anchor for every assisted tool set. Resolve
@@ -66,6 +71,13 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
             if name == "rtl_facts" and bundle.get("selected_rtl_facts_file"):
                 selected = Path(bundle["selected_rtl_facts_file"])
                 candidates.add(str(selected.parent) + "/")
+            if not allowed & candidates and denied & candidates:
+                checks.append(
+                    _check(
+                        f"grant:{name}:{logical}", True, f"withheld by recorded denial={sorted(denied & candidates)}"
+                    )
+                )
+                continue
             checks.append(
                 _check(
                     f"grant:{name}:{logical}", bool(allowed & candidates), f"selected={sorted(allowed & candidates)}"
@@ -169,6 +181,15 @@ def _selected_library_probe() -> str:
     return "\n".join(lines)
 
 
+def _cca_withheld(bundle: dict) -> bool:
+    """Whether the selected bundle records the CCA contract module as a denial (author-withheld)."""
+    for row in bundle.get("denied", ()):
+        parts = Path(row.get("path", "")).parts if isinstance(row, dict) else ()
+        if parts[-3:] == ("merlin", "kernels", "cca_contract.py"):
+            return True
+    return False
+
+
 def _sandbox_probe(
     target: str,
     tools: tuple[str, ...],
@@ -177,8 +198,10 @@ def _sandbox_probe(
     common_substrate: bool = False,
     common_profile_sha256: str | None = None,
     common_modules: tuple[str, ...] | None = None,
+    withheld_cca: bool = False,
 ) -> str:
     from .feedback import snapshot_execution
+
     external = snapshot_execution.selected()
     has = set(tools)
     lines = ["import json, subprocess, sys"]
@@ -245,7 +268,16 @@ def _sandbox_probe(
             "assert pool_params(pooled, op='readiness')['pool_in_dims'] == (4,4)",
             "assert pool_out_dims(4,4,[2,2],[2,2],[0,0,0,0]) == (2,2)",
         ]
-    if "cca_spine" in has:
+    if "cca_spine" in has and withheld_cca:
+        # The CCA modules are withheld from the author (recorded bundle denials): the spine grant is
+        # rtl_backend only, and bijection / escalation ladder go through the cca_tools broker probe.
+        lines += [
+            "from merlin.targetgen import rtl_backend as RB",
+            f"profile = RB.target_profile({target!r})",
+            "assert not profile.discovered_nothing",
+            "assert not profile.has_mesh or RB.derived_levers(profile)",
+        ]
+    elif "cca_spine" in has:
         lines += [
             "from merlin.targetgen import rtl_backend as RB",
             "from merlin.kernels import cca_contract, action_catalog",
@@ -326,6 +358,7 @@ def public_probe_session(
             with (channel / spec.log).open("w", encoding="utf-8") as log:
                 processes.append(subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT))
         from .feedback import snapshot_execution
+
         if bundle.get("compiler_tool_profile") is not None and not snapshot_execution.selected():
             from .context import context_argv
 
@@ -362,6 +395,7 @@ def public_probe_session(
             common_substrate=bundle.get("compiler_tool_profile") is not None,
             common_profile_sha256=(bundle.get("compiler_tool_profile") or {}).get("sha256"),
             common_modules=tuple((bundle.get("compiler_tool_profile") or {}).get("common_public_modules", ())) or None,
+            withheld_cca=_cca_withheld(bundle),
         )
     finally:
         for channel in channels:
@@ -443,6 +477,7 @@ def assess(
         )
         checks += _grant_checks(te, bundle, selected)
         from .feedback import snapshot_execution
+
         if profile is not None and not snapshot_execution.selected():
             from merlin.targetgen.tool_profile import verify_tool_profile
 

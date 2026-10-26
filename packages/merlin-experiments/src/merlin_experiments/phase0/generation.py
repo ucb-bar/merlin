@@ -1162,6 +1162,15 @@ def generate_target(
             f"  [prune] {len(superseded)} synthesized capsule(s) whose requirement cell no longer "
             f"exists were removed: {', '.join(superseded)}"
         )
+    from .case_redundancy import apply_to_generation
+
+    # Independent derivations reach the same program; one copy is kept and every shape scores once.
+    performance_record["case_redundancy"] = apply_to_generation(
+        written, out_root, tile=getattr(binding, "tile_dim", None),
+        size_policy=profile.get("correctness_size_classes"))
+    if performance_record["case_redundancy"]["collapsed"]:
+        print(f"  [redundancy] {performance_record['case_redundancy']['collapsed']} exact duplicate "
+              f"capsule(s) collapsed; record in case-redundancy.json")
     if generation_scope != "full":
         deferred_record = {
             "generation_scope": generation_scope,

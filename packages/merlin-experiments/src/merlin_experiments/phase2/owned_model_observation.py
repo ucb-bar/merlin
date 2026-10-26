@@ -97,11 +97,9 @@ def synchronous_window(rows, *, counter_asm):
 
 def _runtime_sources(recipe):
     """The driver and descriptor dispatcher must be the ordinary owned runtime."""
-    from merlin.common.paths import runtime_dir
     from merlin.runtime.backends.spike_model import _c_runtime_dir, _harness_dir
 
-    expected = {"model_main.o": _harness_dir() / "model_main.c", "merlin_model.o": _c_runtime_dir() / "merlin_model.c",
-                "mlir_rt.o": runtime_dir() / "abi/mlir_runtime.c"}
+    expected = {"model_main.o": _harness_dir() / "model_main.c", "merlin_model.o": _c_runtime_dir() / "merlin_model.c"}
     pins = []
     for obj, source in expected.items():
         commands = [r for r in recipe["commands"] if Path(r["output"]["path"]).name == obj]
@@ -137,7 +135,7 @@ def _runtime_sources(recipe):
     return pins
 
 
-def _completion_modules(dispatch, *, synchronous_host_symbols=()):
+def _completion_modules(dispatch):
     from xdsl.parser import Parser
 
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
@@ -160,7 +158,6 @@ def _completion_modules(dispatch, *, synchronous_host_symbols=()):
         | {"_mlir_ciface_" + name for name in roster}
         | defined
         | {"malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset"}
-        | set(synchronous_host_symbols)
     )
     for op in host.walk():
         if op.name in {"llvm.inline_asm", "llvm.invoke"}:
@@ -228,26 +225,6 @@ class OwnedModelScope:
         return result, REVIEW_SCHEMA
 
 
-def _completed_numerical_scope(result, record):
-    """Permit advisory timing before pending physical tiers, never tier credit."""
-    if not isinstance(record, dict) or (record.get("tiers", {}).get("L2") or {}).get("status") != "pass":
-        return False
-    if record.get("status") == "verified":
-        return True
-    check = result.get("model_execution_check") or {}
-    pending = record.get("missing_tiers")
-    return (
-        record.get("status") == "unverified"
-        and isinstance(pending, list) and bool(pending) and set(pending) <= {"L3", "L4"}
-        and record.get("failed_tiers") == []
-        and check.get("kind") == "owned_host_model_execution" and check.get("violations") == []
-        and (check.get("candidate_source_placement") or {}).get("status") == "clean"
-        and (check.get("candidate_source_coverage") or {}).get("status") == "verified"
-        and (check.get("candidate_completed_dispatch") or {}).get("status") == "verified"
-        and (((check.get("candidate_required_tiers") or {}).get("tiers") or {}).get("L2") or {}).get("status") == "pass"
-    )
-
-
 def prepare(result, *, target, evidence_root=None):
     """Reopen the native owner's evidence; a boolean completion claim is not enough."""
     from merlin.llvmlower.compilation_recipe import verify_completed_recipe
@@ -256,7 +233,11 @@ def prepare(result, *, target, evidence_root=None):
     if target != "gemmini":
         raise ValueError("owned completion currently supports only the selected Gemmini fence contract")
     record = result.get("owned_host_native_execution")
-    if not _completed_numerical_scope(result, record):
+    if (
+        not isinstance(record, dict)
+        or record.get("status") != "verified"
+        or (record.get("tiers", {}).get("L2") or {}).get("status") != "pass"
+    ):
         raise ValueError("owned timing requires completed native model evidence")
     built = record["build"]["output"]
     elf = F.canonical(Path(built["elf"]))
@@ -292,12 +273,7 @@ def prepare(result, *, target, evidence_root=None):
     dispatch = _dispatch_proof(current, target=target, facts=facts, evidence_root=evidence_root)
     if dispatch.get("status") != "verified" or dispatch["linked_elf"]["sha256"] != built["elf_sha256"]:
         raise ValueError("owned timing has no complete source-bound dispatch")
-    # These CPU-only ABI helpers come from the exact stock mlir_rt.o whose
-    # source was reopened above. An arbitrary external declaration, including
-    # one claiming no memory effects, still supplies no completion contract.
-    completion_pins = _completion_modules(dispatch, synchronous_host_symbols={
-        "rsqrtf", "rsqrt", "roundevenf", "roundeven", "memrefCopy", "__truncsfbf2", "__extendbfsf2",
-    })
+    completion_pins = _completion_modules(dispatch)
     numeric_console = record["tiers"]["L2"]["console"]
     console_path = F.canonical(Path(numeric_console["path"]))
     if F.digest(console_path) != numeric_console["sha256"]:

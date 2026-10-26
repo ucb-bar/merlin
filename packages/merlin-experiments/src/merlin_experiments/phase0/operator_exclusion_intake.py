@@ -161,6 +161,9 @@ def validation_sources_v2(section):
     operator custody, not a claim that the original seal recorded link spelling.
     A caller must hash complete source bytes and re-resolve this whole binding.
     """
+    if set(section) == {'prospective_legacy_source_review'}:
+        from . import operator_legacy_source_review as legacy
+        return legacy.resolve(section['prospective_legacy_source_review'])
     root, sources, aliases = _validation_sources(section, allow_catalog_aliases=True)
     return {
         str(root / member): dict(sha256=sha,

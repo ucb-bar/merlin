@@ -6,8 +6,10 @@ def prompt():
 
 ## Performance-driven compiler exploration
 
-Strong performance across the admitted shape families is the objective once
-correctness and legal execution are established. Pass counts, dialect coverage,
+Strong performance across the admitted shape families is part of the work from
+the start, not a phase after correctness: build on the scheduling representation
+early and measure what each change does to cycles. Correctness and legal execution
+still decide whether a variant is accepted. Pass counts, dialect coverage,
 buffer counts and instruction counts are not the score. Keep a working baseline
 and compare a few hypothesis-driven variants on relevant small checks and a
 representative large Spike case under one timing epoch. Integrate wins as reusable

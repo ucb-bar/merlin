@@ -43,6 +43,12 @@ def selection(options) -> dict | None:
         raise ValueError('managed token admission requires the continuous Codex driver')
     if allowance is not None and not admission:
         raise ValueError('author token turn allowance requires explicit token admission')
+    if getattr(options, "author_token_unbounded", False):
+        # An explicit operator selection of no target: nothing is recorded and no target guidance is
+        # written, so a joint campaign's default target does not apply either.
+        if target is not None or reserve is not None or admission:
+            raise ValueError("an unbounded author token selection excludes a target, reserve or admission")
+        return None
     if target is None and reserve is None and not admission and not getattr(options, "joint_campaign", ""):
         return None
     record = {
@@ -63,6 +69,10 @@ def verify_resume(options, run_config: dict) -> None:
     recorded = run_config.get("author_token_budget")
     if recorded is not None:
         validate(recorded)
+    if getattr(options, "author_token_unbounded", False):
+        if recorded is not None:
+            raise ValueError("author token budget changed on resume; select a new run")
+        return
     explicit = any(getattr(options, key, None) is not None
                    for key in ("author_token_target", "author_token_reserve"))
     explicit = explicit or getattr(options, 'author_token_admission', False) or getattr(options, 'author_token_turn_allowance', None) is not None

@@ -281,6 +281,23 @@ def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path, 
     assert parsed.live_conformance_feedback is live_conformance
 
 
+def test_helper_effort_renders_the_controller_option_only_when_declared(tmp_path):
+    from merlin_experiments.phase1 import options
+
+    plain = lc.build(lc.load(_checkout(tmp_path / "plain")), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    assert "--author-helper-effort" not in plain.argv
+    config = _checkout(tmp_path / "low", lambda doc: doc["author"].update(helper_effort="low"))
+    launch = lc.build(lc.load(config), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    assert launch.argv[launch.argv.index("--author-helper-effort") + 1] == "low"
+    flags = options.build_parser()._option_string_actions
+    assert flags["--author-helper-effort"].default is None
+    for edit, message in ((lambda d: d["author"].update(helper_effort="Low"), "reasoning-effort word"),
+                          (lambda d: (d["author"].pop("max_subagents", None),
+                                      d["author"].update(helper_effort="low", driver="claudecode")), "helper_effort")):
+        with pytest.raises(lc.ConfigError, match=message):
+            lc.load(_checkout(tmp_path / message.replace(" ", "-"), edit))
+
+
 @pytest.mark.parametrize(
     ("edit", "message"),
     [
