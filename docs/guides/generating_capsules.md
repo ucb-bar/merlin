@@ -3,7 +3,7 @@ title: Generating capsules for a target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-15
+last_verified: 2026-10-26
 related: [adding_a_target, phase0_phase1_setup, capsule_bench, integrations, phase0_specification]
 code_refs:
   - experiments/catalog.yaml
@@ -281,6 +281,13 @@ two targets can report the same ratio over different sets.
 For definition-based cross-target comparison, use
 `merlin experiment corpus compare DEFINITION DEFINITION`; the standalone generator's
 `--comparison-manifest` is for legacy profile collections only.
+
+A bound fusion validation is re-verified on every generation: each sealed case payload is
+rebuilt and each retained pass re-audited. `--fusion-verify-workers N` (or
+`MERLIN_FUSION_VERIFY_WORKERS=N`, for callers such as `merlin experiment run` that do not
+expose the flag) runs those re-checks on N processes. The default is 1; the count is never
+derived from the host. Parallelism changes no check or binding: failures are reported for
+the earliest case in canonical order, and a crashed worker fails the read.
 
 Legacy corpus trees remain migration inputs where explicitly selected. They are not the
 entry point for a new experiment, and stale files there cannot substitute for the newly

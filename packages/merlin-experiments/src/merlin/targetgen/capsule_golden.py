@@ -519,6 +519,15 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
         if {name: _exact_integers(value) for name, value in observed.items()} != recomputed:
             raise ValueError("exact PyTorch integer slice host-eager output differs from captured-input recomputation")
         return recomputed
+    attrs = capsule.get("operation", {}).get("attributes", {})
+    if (
+        capsule.get("operation", {}).get("op") == "composition_program"
+        and attrs.get("quantization_scheme", {}).get("scale_source") == "runtime_input"
+        and "runtime_scale_input" in attrs.get("case", {})
+    ):
+        from merlin.targetgen.composition_golden import evaluate
+
+        return evaluate(capsule)
     for leaf in capsule.get("inputs", []):
         dtype = leaf.get("dtype", "i8")
         if _int_dtype_bits(dtype) is None:

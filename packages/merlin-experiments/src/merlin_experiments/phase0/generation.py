@@ -288,6 +288,7 @@ def generate_target(
     packing_intake=None,
     source_preparation: str | None = None,
     operator_exclusion=None,
+    fusion_verify_workers: int | None = None,
 ) -> list[Path]:
     from merlin.common.paths import checkout_root
 
@@ -637,12 +638,19 @@ def generate_target(
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:
                 preallocation_denials[entry["name"]] = str(exc)
-    if synthesize_compositions and evidence is not None and evidence.software_spec.get("compositions"):
-        from .composition_generation import append_declared, selected_facts
+    from .composition_generation import append_selected
 
-        composition_context = selected_facts(evidence, selected_requirement, binding)
-        synthesis_budget = int(workload_spec.get("max_synthesized_capsules", 160))
-        entries = append_declared(entries, evidence.software_spec, composition_context, budget=synthesis_budget)
+    entries, fusion_record, fusion_selection = append_selected(
+        entries,
+        evidence,
+        dict(
+            workload_spec=workload_spec,
+            descriptor=descriptor,
+            requirement=selected_requirement,
+            binding=binding,
+            fusion_verify_workers=fusion_verify_workers,
+        ),
+    )
     if evidence is not None and evidence.software_spec:
         screened = []
         for entry in entries:
@@ -1206,8 +1214,15 @@ def generate_target(
     from .composition_generation import coverage as composition_coverage
 
     performance_record["composition_coverage"] = composition_coverage(
-        entries, excluded_spec=evidence.software_spec if evidence is not None and not synthesize_compositions else None
+        entries,
+        excluded_spec=evidence.software_spec if evidence is not None and not synthesize_compositions else None,
+        validation=fusion_record,
     )
+    if fusion_selection is not None:
+        from .composition_generation import verify_written
+
+        verify_written(entries, written, fusion_selection, te)
+        performance_record["fusion_corpus_selection"] = fusion_selection
     update_provenance_manifest(
         written,
         cap_root=out_root,

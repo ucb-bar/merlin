@@ -76,6 +76,13 @@ def main(argv=None) -> int:
         help="declared instruction role no candidate program may emit; resolved against the target's facts",
     )
     ap.add_argument(
+        "--fusion-verify-workers",
+        type=int,
+        default=None,
+        help="processes re-verifying a bound fusion validation's case payloads and retained passes "
+        "(default: $MERLIN_FUSION_VERIFY_WORKERS, else 1)",
+    )
+    ap.add_argument(
         "--comparison-manifest",
         action="store_true",
         help="also emit the cross-target op-comparison manifest under out/artifacts/compare/",
@@ -146,6 +153,8 @@ def main(argv=None) -> int:
             options["component_only"] = True
         if a.component_coverage is not None:
             options["component_coverage"] = a.component_coverage
+        if a.fusion_verify_workers is not None:
+            options["fusion_verify_workers"] = a.fusion_verify_workers
         if a.generation_scope != "full":
             options["generation_scope"] = a.generation_scope
         written = generate_target(t, **options)

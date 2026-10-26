@@ -918,7 +918,11 @@ def select_evidence(
                 prohibited_roles=prohibited_roles,
                 **({"data_only": True} if data_only else {}),
             )
-        software_doc, software_derivation = spec_fact_drift.resolve_spec(software_doc, fact_view)
+        software_doc, software_derivation = spec_fact_drift.resolve_spec(
+            software_doc,
+            fact_view,
+            composition_validation=(descriptor_doc.get("workload_spec") or {}).get("fusion_validation"),
+        )
         software_derivation["prohibited_instruction_roles"] = sorted(set(prohibited_roles))
         for row in software_derivation["unresolved"]:
             diagnostics.append(

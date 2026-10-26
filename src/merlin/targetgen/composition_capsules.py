@@ -75,9 +75,14 @@ class _Source:
             reduction=True,
         )
 
-    def readout(self, name, value, m, n, multipliers, width, *, relu=False):
-        gains = [multipliers[min(i // width, len(multipliers) - 1)] for i in range(n)]
-        gain = self.constant(name + "_gains", [n], "f32", gains)
+    def readout(self, name, value, m, n, multipliers, width, *, relu=False, runtime_scale=None):
+        if runtime_scale is None:
+            gains = [multipliers[min(i // width, len(multipliers) - 1)] for i in range(n)]
+            gain = self.constant(name + "_gains", [n], "f32", gains)
+        else:
+            gain = runtime_scale
+            if gain not in self.types:
+                self.input(gain, [1], "f32")
         source_dtype = self.types[value].rsplit("x", 1)[-1][:-1]
         body = [f"%f = arith.sitofp %x0 : {source_dtype} to f32"]
         if relu:
@@ -98,7 +103,11 @@ class _Source:
             [m, n],
             "i8",
             body,
-            maps=["affine_map<(d0,d1)->(d0,d1)>", "affine_map<(d0,d1)->(d1)>", "affine_map<(d0,d1)->(d0,d1)>"],
+            maps=[
+                "affine_map<(d0,d1)->(d0,d1)>",
+                "affine_map<(d0,d1)->(0)>" if runtime_scale else "affine_map<(d0,d1)->(d1)>",
+                "affine_map<(d0,d1)->(d0,d1)>",
+            ],
         )
 
     def pool(self, value, case, n):
@@ -213,14 +222,20 @@ def _extension(source, value, case, m, n):
     return source.generic("extension", [value, residual], [m, n], "i32", body + ["linalg.yield %v : i32"])
 
 
-def build_composition(entry, binding):
+def build_composition(entry, binding, *, excluded_shapes=None):
     from .composition_corpus import assert_generic_shape, held_out_shapes
 
-    assert_generic_shape(entry, held_out_shapes())
+    assert_generic_shape(entry, held_out_shapes() if excluded_shapes is None else excluded_shapes)
     if binding.cap_dtype(binding.operand_dtype) != "i8" or binding.cap_dtype(binding.accum_dtype) != "i32":
         raise ValueError("composition source requires selected signed i8/i32 formats")
+    if "validated_graph" in entry:
+        return _build_validated_graph(entry, binding)
     m, k, n = (entry[key] for key in ("M", "K", "N"))
     case = copy.deepcopy(entry["composition_instance"])
+    if case.get("reduction_kind") == "sum":
+        from merlin.compile.composition_fusion import require_exact_mean_window
+
+        require_exact_mean_window(k)
     scheme = entry["generalization"]["quantization_scheme"]
     case["operand_sum_rounding"] = scheme["operand_sum_rounding"]
     source = _Source()
@@ -280,6 +295,50 @@ def build_composition(entry, binding):
     return cap, program
 
 
+def _build_validated_graph(entry, binding):
+    import hashlib
+
+    from merlin.common import mlir_query as mq
+
+    graph = entry["validated_graph"]
+    for node in graph["nodes"]:
+        attrs = node["operation"]["attributes"]
+        if attrs["case"].get("window_mean"):
+            from merlin.compile.composition_fusion import require_exact_mean_window
+
+            require_exact_mean_window(attrs["K"])
+    if hashlib.sha256(graph["source"].encode()).hexdigest() != graph["source_sha256"]:
+        raise ValueError("validated composition source digest mismatch")
+    module = mq.parse(graph["source"])
+    function = next(op for op in module.body.block.ops if op.name == "func.func")
+    returned = list(function.body.block.ops)[-1].operands
+    shapes = [list(mq.type_shape_dtype(value.type)[0]) for value in returned]
+    if len(shapes) != len(graph["references"]) or any(
+        row.get("shape") != shape for row, shape in zip(graph["references"], shapes, strict=True)
+    ):
+        raise ValueError("validated composition output shapes differ from its source")
+    cap = copy.deepcopy(graph["nodes"][0])
+    cap.update({key: entry[key] for key in ("name", "kind", "label", "source_role", "source_reference")})
+    cap["inputs"] = copy.deepcopy(graph["inputs"])
+    cap["required_oracle_tiers"] = list(binding.tiers)
+    cap["operation"]["attributes"].update(
+        validated_graph=copy.deepcopy(graph["nodes"]),
+        validated_structure=entry["generalization"]["fusion_validation"]["graph"]["structure"],
+        validated_output_shapes=shapes,
+        outputs=[row["name"] for row in graph["references"]],
+    )
+    return cap, graph["source"]
+
+
 def _readout(source, name, value, case, scheme, m, n):
     width = scheme["columns_per_scale"] if scheme["weight_scale_granularity"] == "column_block" else n
-    return source.readout(name, value, m, n, case["multipliers"], width, relu="activation" in case["readout_stages"])
+    return source.readout(
+        name,
+        value,
+        m,
+        n,
+        case["multipliers"],
+        width,
+        relu="activation" in case["readout_stages"],
+        runtime_scale=case["runtime_scale_input"] if scheme.get("scale_source") == "runtime_input" else None,
+    )

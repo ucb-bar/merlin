@@ -1201,11 +1201,10 @@ def load_profile(
 
         experiment = load_target_experiment(descriptor)
         workload_spec = experiment.workload_spec or {}
-        if "synthesize_compositions" in workload_spec:
-            prof["workload_spec"] = {
-                **(prof.get("workload_spec") or {}),
-                "synthesize_compositions": workload_spec["synthesize_compositions"],
-            }
+        selectors = {
+            key: workload_spec[key] for key in ("synthesize_compositions", "fusion_validation") if key in workload_spec
+        }
+        prof["workload_spec"] = {**(prof.get("workload_spec") or {}), **selectors}
         assert_no_claim_capsules(list(prof.get("capsules") or ()), held_out_models(experiment))
     return prof
 

@@ -70,6 +70,12 @@ SYNTH_PREFIX = "SY"
 SOURCE_ROLE = "derived_sweep"
 
 
+def require_budget(count: int, budget: int) -> None:
+    """All synthesis axes share this exact cap; required members are never truncated."""
+    if count > budget:
+        raise SynthesisError(f"synthesis would emit {count} capsules against a budget of {budget}; never truncate")
+
+
 def declares_accelerator_placement(entry: dict) -> bool:
     """Whether an entry's DECLARED placement leaves any of its work to the accelerator.
 
@@ -2531,8 +2537,10 @@ def synthesize(
 
     selected_software = software_spec or spec_doc.get("software_spec") or spec_doc
     from .composition_corpus import coverage as composition_coverage
+    from .composition_corpus import validation_binding
 
-    if synthesize_compositions and selected_software.get("compositions"):
+    bound_validation = validation_binding(selected_software, ws)
+    if synthesize_compositions and selected_software.get("compositions") and bound_validation is None:
         from .composition_corpus import entries as composition_entries
 
         try:
@@ -2546,12 +2554,7 @@ def synthesize(
     entries, host_placed = withhold_host_placed(entries)
 
     cap = int(budget if budget is not None else (ws.get("max_synthesized_capsules") or 160))
-    if len(entries) > cap:
-        raise SynthesisError(
-            f"synthesis would emit {len(entries)} capsules against a budget of {cap}. Raise "
-            f"workload_spec.max_synthesized_capsules deliberately, or narrow the public axes -- never "
-            f"truncate, because a silently dropped point reads downstream as a covered one"
-        )
+    require_budget(len(entries), cap)
 
     return {
         "capsules": entries,

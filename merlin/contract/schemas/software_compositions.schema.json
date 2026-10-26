@@ -21,6 +21,30 @@
         "placement_and_instruction_audit"
       ]
     },
+    "target_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Desired composition sample size, after mandatory operator cover."
+    },
+    "validation": {
+      "type": "object",
+      "description": "Sealed fusion record selection; chains are display aliases when bound.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ]
+    },
     "chains": {
       "type": "array",
       "items": {
@@ -140,6 +164,73 @@
             ],
             "additionalProperties": false
           },
+          "quantization_schemes": {
+            "type": "object",
+            "description": "The declared quantization schemes this chain is generated under: the schemes it uses (primary) and cross-checks, each carrying the coverage-ledger justification for the pair. No other chain x scheme pair is generated.",
+            "properties": {
+              "primary": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "cross_checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "scheme": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "justification": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "axes": {
+                      "type": "object",
+                      "properties": {
+                        "scale_source": {
+                          "enum": [
+                            "constant",
+                            "runtime_input"
+                          ]
+                        }
+                      },
+                      "minProperties": 1,
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "scheme",
+                    "justification"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "primary"
+            ],
+            "additionalProperties": false
+          },
+          "regime_waivers": {
+            "type": "array",
+            "description": "Explicit exceptions to individual scheme/axis coverage obligations; each requires a reason.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scheme": {"type": "string", "minLength": 1},
+                "axes": {"type": "object"},
+                "reason": {"type": "string", "minLength": 1}
+              },
+              "required": ["scheme", "reason"],
+              "additionalProperties": false
+            }
+          },
           "constraints": {
             "type": "array",
             "items": {
@@ -242,15 +333,40 @@
         ],
         "additionalProperties": false
       },
-      "minItems": 1,
+      "minItems": 0,
       "uniqueItems": true
+    },
+    "campaign_per_stratum": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 2
     }
   },
   "required": [
     "schema",
     "status",
-    "grading",
-    "chains"
+    "grading"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "not": {
+          "required": [
+            "validation"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "chains"
+        ],
+        "properties": {
+          "chains": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
 }

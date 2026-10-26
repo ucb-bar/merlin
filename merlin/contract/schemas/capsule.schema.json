@@ -342,6 +342,11 @@
             "type": "object"
           }
         },
+        "stage_scoped_mode_parameters": {
+          "type": "object",
+          "description": "Independent mode parameters per bound source stage, including shared-input siblings.",
+          "additionalProperties": {"$ref": "#/properties/expected/properties/mode_parameters"}
+        },
         "composition": {
           "type": "object",
           "description": "Frozen chain members identified by original source operation indices, including the producer(s) and all epilogue operations. Grading requires frozen accelerator placement for every member, exactly one routed kernel AND region, an independently verified empty host-intermediate consumer audit, and an executed native instruction counter with zero outside-kernel instructions. Missing evidence is UNKNOWN, never count-matched. Native execution owners pin region_offload, host_chain_audit, composition_trace and retirement_trace files. The host audit has status verified, source_sha256 and intermediate_consumers. The decoded composition trace carries retirement_trace_sha256 and each custom instruction carries integer pc/word/funct, kernel/region_id and original rs1/rs2 operands. The grader checks the executed PC/word/kernel sequence, re-decodes operand fields using selected facts, reopens the routed manifest byte pin and original capsule placement, and independently re-derives host intermediate consumers from the original source SSA def-use graph. Absent instruments remain unverified.",
@@ -600,6 +605,26 @@
         },
         "composition_instance": {
           "type": "object"
+        },
+        "fusion_validation": {
+          "type": "object",
+          "description": "Sealed candidate and fixed-case provenance for a derived composition capsule.",
+          "required": ["candidate_id", "record_sha256", "case_ids", "role", "graph"],
+          "properties": {
+            "candidate_id": {"type": "string"},
+            "record_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "case_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            "role": {"enum": ["sampled_regime", "cross_check"]},
+            "graph": {"type": "object"},
+            "display_aliases": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        },
+        "validated_node_semantics": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {"$ref": "#/properties/semantic"}
         },
         "composition_truth": {
           "type": "object"
