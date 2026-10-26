@@ -377,7 +377,10 @@ def build(args):
         "stage_profiling": {
             "enabled": profile_stages,
             "scope": "Each synchronous stage model_run; routing/reset/checks excluded; print after validation",
-            "aggregate_includes_counter_overhead": profile_stages,
+            "operator_profile_counts": plan["operator_profile_counts"] if profile_stages else {},
+            "operator_scope": "Per-call counters from packages compiled with --profile-operators; snapshots and printing outside stage intervals",
+            "package_operator_counters_enabled": any(plan["operator_profile_counts"].values()),
+            "aggregate_includes_counter_overhead": profile_stages or any(plan["operator_profile_counts"].values()),
         },
         "deployed_hardware_verified": False,
     }
@@ -420,7 +423,7 @@ def main():
     parser.add_argument(
         "--profile-stages",
         action="store_true",
-        help="Retain per-call warm/measured cycles and print after validation; adds counter overhead",
+        help="Retain per-call warm/measured cycles plus available package operator counters; print after validation; adds counter overhead",
     )
     build(parser.parse_args())
 

@@ -222,3 +222,62 @@ int main(void) {
         "TVM_SESSION_STAGE_CYCLES phase=warm call=0 stage=one cycles=11",
         "TVM_SESSION_STAGE_CYCLES phase=measured call=0 stage=one cycles=11",
     ]
+
+
+def test_operator_profile_keeps_each_call_and_both_phases(bridge, tmp_path):
+    cc = shutil.which("cc")
+    if not cc:
+        pytest.skip("Requires a host C compiler")
+    profiled = stage([tensor("int32")], [tensor("int32")])
+    profiled["calls"] = [{"symbol": "add"}]
+    profiled["operator_profile"] = {
+        "count": 1,
+        "count_entrypoint": "model_profile_count",
+        "cycles_entrypoint": "model_profile_cycles",
+        "symbol_entrypoint": "model_profile_symbol",
+    }
+    plan = bridge.plan_session(
+        {"one": profiled},
+        {
+            "version": 1,
+            "calls": [
+                {"stage": "one", "inputs": [{"fixture": 0}]},
+                {"stage": "one", "inputs": [{"output": [0, 0]}]},
+            ],
+        },
+    )
+    source = bridge.render_session(plan, rtol=0, atol=0, profile_stages=True)
+    source += r"""
+const uint8_t session_input_0[8]={0},session_output_0[8]={0},session_output_1[8]={0};
+static uint64_t tick,calls;
+static uint64_t read_cycles(void) { return ++tick; }
+uint32_t stage_0_model_profile_count(void) { return 1; }
+uint64_t stage_0_model_profile_cycles(uint32_t i) { return 100+calls; }
+const char *stage_0_model_profile_symbol(uint32_t i) { return "add"; }
+int32_t stage_0_model_run(const void *const *in,void *const *out,uint8_t *w,uint64_t n) {
+  memcpy(out[0],in[0],8);++calls;return 0;
+}
+int main(void) {
+  for(int r=0;r<2;++r) {session_reset();if(session_run()||session_validate(0))return 1;}
+  puts("validated");session_report_stage_cycles();return 0;
+}
+"""
+    path = tmp_path / "operators.c"
+    path.write_text(source)
+    binary = tmp_path / "operators"
+    subprocess.run([cc, "-std=c11", "-O2", str(path), "-o", str(binary)], check=True, capture_output=True)
+    process = subprocess.run([str(binary)], capture_output=True, text=True, check=True)
+    lines = process.stdout.splitlines()
+    assert lines[0] == "validated"
+    operators = [line for line in lines if line.startswith("TVM_SESSION_OPERATOR_CYCLES")]
+    assert operators == [
+        "TVM_SESSION_OPERATOR_CYCLES phase=warm call=0 stage=one operator=0 symbol=add cycles=101",
+        "TVM_SESSION_OPERATOR_CYCLES phase=measured call=0 stage=one operator=0 symbol=add cycles=103",
+        "TVM_SESSION_OPERATOR_CYCLES phase=warm call=1 stage=one operator=0 symbol=add cycles=102",
+        "TVM_SESSION_OPERATOR_CYCLES phase=measured call=1 stage=one operator=0 symbol=add cycles=104",
+    ]
+    # A regular session never calls the optional profiling API.
+    assert "stage_0_model_profile_cycles" not in bridge.render_session(plan, rtol=0, atol=0)
+    profiled["operator_profile"]["count"] = 2
+    with pytest.raises(ValueError, match="profiling ABI"):
+        bridge.plan_session({"one": profiled}, {"version": 1, "calls": [{"stage": "one", "inputs": [{"fixture": 0}]}]})

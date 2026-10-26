@@ -46,7 +46,8 @@ def plan_session(stages, route):
         or any(not isinstance(name, str) or not name.isascii() or not name.isidentifier() for name in stages)
     ):
         raise ValueError("Require named static stages")
-    for stage in stages.values():
+    operator_profiles = {}
+    for name, stage in stages.items():
         if (
             stage.get("alignment_bytes") != 64
             or stage.get("heap_required_by_orchestration") is not False
@@ -61,6 +62,21 @@ def plan_session(stages, route):
         for field in ("workspace_bytes", "constants_bytes"):
             if type(stage.get(field)) is not int or not 0 <= stage[field] < 1 << 63:
                 raise ValueError("Invalid stage storage extent")
+        profile = stage.get("operator_profile")
+        operator_profiles[name] = 0
+        if profile is not None:
+            if (
+                not isinstance(profile, dict)
+                or type(profile.get("count")) is not int
+                or profile["count"] < 0
+                or profile["count"] != len(stage.get("calls", []))
+                or any(
+                    profile.get(field + "_entrypoint") != "model_profile_" + field
+                    for field in ("count", "cycles", "symbol")
+                )
+            ):
+                raise ValueError("Unsupported operator profiling ABI")
+            operator_profiles[name] = profile["count"]
     if (
         not isinstance(route, dict)
         or set(route) != {"version", "calls"}
@@ -122,6 +138,7 @@ def plan_session(stages, route):
             storage += 128 + aligned(tensor["bytes"])
     return {
         "stages": list(stages),
+        "operator_profile_counts": operator_profiles,
         "calls": calls,
         "inputs": inputs,
         "outputs": outputs,
@@ -185,6 +202,18 @@ def render_session(plan, *, rtol, atol, negative_output=0, memory_layout=None, p
     )
     for index, _ in enumerate(plan["stages"]):
         lines.append(f"extern int32_t stage_{index}_model_run(const void *const *,void *const *,uint8_t *,uint64_t);")
+    profile_counts = plan.get("operator_profile_counts", {}) if profile_stages else {}
+    operator_offsets, operator_total = [], 0
+    for call in plan["calls"]:
+        operator_offsets.append(operator_total)
+        operator_total += profile_counts.get(call["stage"], 0)
+    for index, name in enumerate(plan["stages"]):
+        if profile_counts.get(name, 0):
+            lines += [
+                f"extern uint32_t stage_{index}_model_profile_count(void);",
+                f"extern uint64_t stage_{index}_model_profile_cycles(uint32_t);",
+                f"extern const char *stage_{index}_model_profile_symbol(uint32_t);",
+            ]
     for kind in ("input", "output"):
         for index, _ in enumerate(plan[kind + "s"]):
             name = f"{kind}_{index}"
@@ -195,6 +224,8 @@ def render_session(plan, *, rtol, atol, negative_output=0, memory_layout=None, p
             )
     lines.append(_CHECK_HELPERS)
     if profile_stages:
+        if operator_total:
+            lines.append(f"static uint64_t session_operator_cycles[2][{operator_total}];")
         lines += [
             "static uint64_t read_cycles(void);",
             f"static uint64_t session_stage_cycles[2][{len(plan['calls'])}];",
@@ -206,6 +237,12 @@ def render_session(plan, *, rtol, atol, negative_output=0, memory_layout=None, p
             lines.append(
                 f'  for(unsigned r=0;r<2;++r) printf("TVM_SESSION_STAGE_CYCLES phase=%s call={ordinal} stage={call["stage"]} cycles=%llu\\n",r?"measured":"warm",(unsigned long long)session_stage_cycles[r][{ordinal}]);'
             )
+            count = profile_counts.get(call["stage"], 0)
+            if count:
+                stage = plan["stages"].index(call["stage"])
+                lines.append(
+                    f'  for(unsigned r=0;r<2;++r) for(unsigned op=0;op<{count};++op) printf("TVM_SESSION_OPERATOR_CYCLES phase=%s call={ordinal} stage={call["stage"]} operator=%u symbol=%s cycles=%llu\\n",r?"measured":"warm",op,stage_{stage}_model_profile_symbol(op),(unsigned long long)session_operator_cycles[r][{operator_offsets[ordinal]}+op]);'
+                )
         lines.append("}")
     lines += ["static void session_reset(void) {", f"  memset(session_storage,0xa5,{plan['storage_bytes']});"]
     for index, tensor in enumerate(plan["inputs"]):
@@ -228,7 +265,14 @@ def render_session(plan, *, rtol, atol, negative_output=0, memory_layout=None, p
         )
         if profile_stages:
             lines.append(f"    session_stage_cycles[session_invocation][{ordinal}]=read_cycles()-stage_start;")
-        lines.append(f'    if(rc) {{ printf("TVM_SESSION_STAGE_FAILURE call={ordinal} rc=%d\\n",rc);return 21; }} }}')
+        lines.append(f'    if(rc) {{ printf("TVM_SESSION_STAGE_FAILURE call={ordinal} rc=%d\\n",rc);return 21; }}')
+        count = profile_counts.get(call["stage"], 0)
+        if count:
+            lines.append(f"    if(stage_{stage}_model_profile_count()!={count})return 26;")
+            lines.append(
+                f"    for(unsigned op=0;op<{count};++op)session_operator_cycles[session_invocation][{operator_offsets[ordinal]}+op]=stage_{stage}_model_profile_cycles(op);"
+            )
+        lines.append("  }")
     if profile_stages:
         lines.append("  ++session_invocation;")
     lines += ["  return 0;", "}", "static int session_validate(int negative) {"]
