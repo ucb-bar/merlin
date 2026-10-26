@@ -95,6 +95,7 @@ def percentile_observer() -> Any:
 
 
 _GROUPED: list[Any] = []
+BLOCK_SCALE_REDUCTIONS = ("max_abs", "mean_abs")
 
 
 def grouped_channel_observer() -> Any:
@@ -102,8 +103,8 @@ def grouped_channel_observer() -> Any:
 
     A readout that applies one scale to a group of output columns can hold a per-channel scale only
     when it is uniform within each group. This observer takes each channel's symmetric range as the
-    largest range in its group (channels ``[g*n, (g+1)*n)``; the last group may be shorter), so every
-    channel of a group gets the same scale and none is clipped. ``.with_args(channels_per_scale=n)``.
+    largest range in its group by default (``max_abs``). The explicit ``mean_abs`` policy averages
+    channel ranges and can clip outlier channels. The last group may be shorter.
     """
     if _GROUPED:
         return _GROUPED[0]
@@ -111,13 +112,16 @@ def grouped_channel_observer() -> Any:
     from torchao.quantization.pt2e import PerChannelMinMaxObserver
 
     class GroupedChannelObserver(PerChannelMinMaxObserver):
-        def __init__(self, channels_per_scale: int = 1, **kwargs: Any) -> None:
+        def __init__(self, channels_per_scale: int = 1, block_scale_reduction: str = "max_abs", **kwargs: Any) -> None:
             if type(channels_per_scale) is not int or channels_per_scale < 1:
                 raise ValueError("channels_per_scale must be a positive integer")
+            if block_scale_reduction not in BLOCK_SCALE_REDUCTIONS:
+                raise ValueError(f"block_scale_reduction must be one of {BLOCK_SCALE_REDUCTIONS}")
             super().__init__(**kwargs)
             if self.qscheme not in (torch.per_channel_symmetric,):
                 raise ValueError("grouped channel scales are symmetric per-channel scales")
             self.channels_per_scale = channels_per_scale
+            self.block_scale_reduction = block_scale_reduction
 
         @torch.jit.export
         def calculate_qparams(self) -> Any:
@@ -126,11 +130,12 @@ def grouped_channel_observer() -> Any:
             n = self.channels_per_scale
             shared = magnitude.clone()
             for start in range(0, magnitude.numel(), n):
-                shared[start : start + n] = magnitude[start : start + n].max()
+                block = magnitude[start : start + n]
+                shared[start : start + n] = block.max() if self.block_scale_reduction == "max_abs" else block.mean()
             return self._calculate_qparams(-shared, shared)
 
         def extra_repr(self) -> str:
-            return f"channels_per_scale={self.channels_per_scale}"
+            return f"channels_per_scale={self.channels_per_scale}, block_scale_reduction={self.block_scale_reduction}"
 
     _GROUPED.append(GroupedChannelObserver)
     return GroupedChannelObserver

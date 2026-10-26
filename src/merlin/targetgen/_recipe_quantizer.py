@@ -223,6 +223,8 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float, channel_axi
     granularity, symmetric = tensor.get("granularity"), bool(tensor.get("symmetric"))
     if tensor.get("channels_per_scale") is not None and not (is_weight and granularity == "channel"):
         raise RecipeError("channels_per_scale applies only to per-channel weight observers")
+    if "block_scale_reduction" in tensor and tensor.get("channels_per_scale") is None:
+        raise RecipeError("block_scale_reduction requires channels_per_scale")
     dtype = _torch_dtype(tensor.get("dtype"))
     floating_format = str(tensor.get("dtype", "")).startswith("fp8_")
     arguments: dict[str, Any] = {"eps": eps}
@@ -255,6 +257,10 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float, channel_axi
 
             # Reuse the existing capture observer to tie the fact-derived column blocks.
             observer, arguments["channels_per_scale"] = RO.grouped_channel_observer(), group
+            reduction = tensor.get("block_scale_reduction", "max_abs")
+            if reduction not in RO.BLOCK_SCALE_REDUCTIONS:
+                raise RecipeError(f"unknown block_scale_reduction {reduction!r}")
+            arguments["block_scale_reduction"] = reduction
     else:
         raise RecipeError(
             f"a static {'weight' if is_weight else 'activation'} scale per "

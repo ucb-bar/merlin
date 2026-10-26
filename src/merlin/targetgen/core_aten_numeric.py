@@ -611,6 +611,15 @@ def _prepare_spec_int8(
                     code="exact_reference_unavailable",
                     details={"reference_selection": golden_selection},
                 )
+            from merlin.targetgen.core_aten_spec_int8 import case_readout
+
+            # The readout the case was quantized for governs its admission and its recorded spec.
+            try:
+                selection = case_readout(
+                    selection, (artifact.meta.get("quantization_stats") or {}).get("quantization_scheme")
+                )
+            except ValueError as error:
+                raise NumericCaptureRefused(str(error), code="case_quantization_scheme_unresolved") from error
         except NumericCaptureRefused as exc:
             # Only explicit frontend refusals grant original host fallback.
             for site in selected:

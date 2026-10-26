@@ -98,6 +98,55 @@ def select_spec(target: str, facts: dict, spec_path: Path, host_path: Path) -> d
     }
 
 
+#: The readout a scheme selects only for its own case; the authored top-level readout stays the default.
+F32_READOUT = "f32_product_rne"
+
+
+def _readout_definition(spec: dict, strategy: str) -> dict:
+    """The one authored definition of ``strategy`` among the spec's transfer readout definitions."""
+    definitions = []
+    for transfer in (spec.get("transfer_contracts") or {}).get("declarations") or ():
+        semantics = transfer.get("semantics") if isinstance(transfer, dict) else None
+        row = ((semantics or {}).get("readout_definitions") or {}).get(strategy)
+        if row is not None and row not in definitions:
+            definitions.append(row)
+    if len(definitions) != 1:
+        raise ValueError(f"the software spec authors {len(definitions)} distinct {strategy} readout definitions")
+    return definitions[0]
+
+
+def case_readout(selection: dict, scheme: dict | None) -> dict:
+    """``selection`` with the readout a case's resolved quantization scheme selects.
+
+    Only a scheme selecting ``f32_product_rne`` changes anything: its authored f32 definition,
+    validated, becomes ``spec.numerical_semantics.readout`` so the admitted program and every
+    later reader of the admission see the arithmetic the case was quantized for. A case with no
+    scheme, or one keeping the exact rational readout, returns ``selection`` itself, unchanged.
+    A scheme the spec does not declare, or one left unresolved, is refused rather than guessed.
+    """
+    import copy
+
+    from merlin.targetgen.software_spec import validate_readout
+
+    if scheme is None:
+        return selection
+    if not isinstance(scheme, dict) or scheme.get("status") != "resolved" or scheme.get("unknown"):
+        raise ValueError("a case quantization scheme must be a resolved scheme")
+    strategy = scheme.get("readout_strategy")
+    declared = {
+        row.get("id"): row.get("readout_strategy")
+        for row in ((selection["spec"].get("quantization") or {}).get("schemes") or {}).get("schemes") or ()
+    }
+    if scheme.get("id") not in declared or declared[scheme["id"]] != strategy:
+        raise ValueError(f"case quantization scheme {scheme.get('id')!r} is not declared with readout {strategy!r}")
+    if strategy != F32_READOUT:
+        return selection
+    readout = validate_readout(_readout_definition(selection["spec"], strategy))
+    spec = copy.deepcopy(selection["spec"])
+    spec["numerical_semantics"]["readout"] = readout
+    return {**selection, "spec": spec, "case_quantization_scheme": copy.deepcopy(scheme)}
+
+
 def declaration_location(selection, authority, key, fields=()):
     """Bind a decision to the exact authored YAML node, including rank restrictions."""
     import yaml

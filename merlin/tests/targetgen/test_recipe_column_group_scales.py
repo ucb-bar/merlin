@@ -59,12 +59,32 @@ for bad in (0, -1, 2.0):
     else:
         raise AssertionError(bad)
 
+# Explicit reduction policies differ on unequal ranges and preserve a short final block.
+for policy, expected in (("max_abs", [8., 8., 8., 12., 12.]),
+                         ("mean_abs", [4., 4., 4., 8., 8.])):
+    obs = Observer(channels_per_scale=3, block_scale_reduction=policy, dtype=torch.int8,
+                   qscheme=torch.per_channel_symmetric, quant_min=-127, quant_max=127, ch_axis=0)
+    obs(torch.tensor([[-1., 1.], [-3., 3.], [-8., 8.], [-4., 4.], [-12., 12.]]))
+    scales, zeros = obs.calculate_qparams()
+    torch.testing.assert_close(scales, torch.tensor(expected) / 127, rtol=0, atol=0)
+    assert torch.count_nonzero(zeros) == 0
+try:
+    Observer(block_scale_reduction="unknown")
+except ValueError:
+    pass
+else:
+    raise AssertionError("unknown reduction accepted")
+
 # 2. the spec builds it only for symmetric weight channels
 spec = RQ._spec({"granularity": "channel", "symmetric": True, "dtype": "int8", "quant_min": -127,
                  "quant_max": 127, "observer": "minmax", "channels_per_scale": 16}, is_weight=True, eps=1e-8)
 built = spec.observer_or_fake_quant_ctr(dtype=spec.dtype, qscheme=spec.qscheme, quant_min=spec.quant_min,
                                        quant_max=spec.quant_max, ch_axis=spec.ch_axis)
 assert type(built).__name__ == "GroupedChannelObserver" and built.channels_per_scale == 16, built
+spec = RQ._spec({"granularity": "channel", "symmetric": True, "dtype": "int8", "channels_per_scale": 3,
+                 "block_scale_reduction": "mean_abs"}, is_weight=True, eps=1e-8)
+built = spec.observer_or_fake_quant_ctr(dtype=spec.dtype, qscheme=spec.qscheme)
+assert built.block_scale_reduction == "mean_abs"
 for bad in ({"channels_per_scale": 0}, {"channels_per_scale": 16, "symmetric": False}):
     try:
         RQ._spec({"granularity": "channel", "symmetric": True, "dtype": "int8", "quant_min": -127,

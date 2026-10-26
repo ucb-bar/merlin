@@ -597,6 +597,28 @@ def test_selected_scheme_chooses_weight_granularity_from_output_path(columns):
     assert len({r["recipe_sha256"] for r in (tensor, blocked, column)}) == 3
 
 
+@pytest.mark.parametrize("reduction", ["max_abs", "mean_abs"])
+def test_selected_block_reduction_is_a_declared_calibration_policy(reduction):
+    domain = dict(
+        schema="merlin.declared_observer_domain.v1",
+        minimum=-1.0,
+        maximum=1.0,
+        evaluation_inputs="never_read",
+        scale_policy="declared_observer",
+    )
+    scheme = {**_scheme("column_block", "arbitrary_f32"), "block_scale_reduction": reduction}
+    recipe = QR.derive(_scheme_facet(3), scheme=scheme, calibration_domain=domain).to_dict()
+    assert recipe["weight"]["channels_per_scale"] == 3
+    assert recipe["weight"]["block_scale_reduction"] == reduction
+    assert recipe["calibration_domain"]["block_scale_reduction"] == reduction
+    assert "block_scale_reduction" not in domain
+
+
+def test_static_recipe_requires_a_capture_operand_for_runtime_scale():
+    with pytest.raises(ValueError, match="explicit scale operand"):
+        QR.derive(_scheme_facet(3), scheme={**_scheme(value="arbitrary_f32"), "scale_source": "runtime_input"})
+
+
 def test_scheme_calibration_policy_is_explicit_and_does_not_mutate_declaration():
     domain = dict(
         schema="merlin.declared_observer_domain.v1",

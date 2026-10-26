@@ -84,6 +84,17 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "scale_source": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "constant",
+              "runtime_input"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
         }
       },
       "required": [
@@ -138,6 +149,12 @@
                 "enum": [
                   "none",
                   "integer_constant"
+                ]
+              },
+              "scale_source": {
+                "enum": [
+                  "constant",
+                  "runtime_input"
                 ]
               }
             },
@@ -299,6 +316,18 @@
               "kind"
             ],
             "additionalProperties": false
+          },
+          "scale_source": {
+            "enum": [
+              "constant",
+              "runtime_input"
+            ]
+          },
+          "block_scale_reduction": {
+            "enum": [
+              "max_abs",
+              "mean_abs"
+            ]
           }
         },
         "required": [

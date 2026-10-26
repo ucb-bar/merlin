@@ -71,6 +71,7 @@ def test_site_quantization_modes_refuse_ambiguous_global_or_malformed_policy():
     row["weight_mode"] = "static"
     with pytest.raises(ValueError, match="cannot coexist"):
         validate_quantization_declarations(spec)
+
     row.pop("weight_mode", None)
     row.pop("activation_mode", None)
     row["site_modes"] = {"linear": {"lhs": "dynamic"}}
@@ -763,3 +764,32 @@ def test_full_accumulator_exit_constraints_and_digit_bounds_resolve_from_facts()
     selected = resolved["quantization_scheme_resolution"]["schemes"][0]
     assert selected["forbids_stages"] == ["convert", "scale", "requant"]
     assert selected["coefficient_digits"] == {"dtype": "i8", "max_k_extension": 11}
+
+
+def test_runtime_scale_is_an_explicit_axis_on_the_existing_tensor_scheme():
+    import yaml
+
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.quantization_spec import resolve_quantization_schemes, select_scheme_axes
+
+    spec = yaml.safe_load((repo_root() / "examples/gemmini/target/software-spec.yaml").read_text())
+    block = spec["quantization"]["schemes"]
+    context = dict(
+        output_path={"readout": [{"kind": "scale", "granularity": "per_command", "columns_per_scale": 3}]},
+        dtype="int8",
+        max_k_extension=256,
+        weight_panel_width=3,
+    )
+    resolved, _ = resolve_quantization_schemes(spec, context)
+    constant = next(row for row in resolved["schemes"] if row["id"] == "q_f32_tensor")
+    runtime = select_scheme_axes(constant, block["axes"], {"scale_source": "runtime_input"})
+    assert constant["scale_source"] == "constant"
+    assert runtime == {**constant, "scale_source": "runtime_input"}
+    assert len(resolved["schemes"]) == len(block["schemes"])
+    with pytest.raises(ValueError, match="outside the declared domain"):
+        select_scheme_axes(constant, block["axes"], {"scale_source": "unknown"})
+    with pytest.raises(ValueError, match="undeclared quantization axis"):
+        select_scheme_axes(constant, block["axes"], {"scale_operand": "runtime_input"})
+    v1 = next(row for row in resolved["schemes"] if row["id"] == "q_pow2_tensor")
+    with pytest.raises(ValueError, match="arbitrary_f32 tensor"):
+        select_scheme_axes(v1, block["axes"], {"scale_source": "runtime_input"})

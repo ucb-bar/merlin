@@ -15,6 +15,9 @@ def initialize_observers(prepared, declaration, observer_type):
         raise ValueError("declared calibration must exclude evaluation inputs")
     if declaration.get("scale_policy") not in ("enclosing_power_of_two", "declared_observer"):
         raise ValueError("declared calibration scale_policy must be enclosing_power_of_two or declared_observer")
+    reduction = declaration.get("block_scale_reduction")
+    if reduction is not None and reduction not in ("max_abs", "mean_abs"):
+        raise ValueError("declared block_scale_reduction must be max_abs or mean_abs")
     count = 0
     for node in prepared.graph.nodes:
         if node.op != "call_module":
@@ -22,6 +25,8 @@ def initialize_observers(prepared, declaration, observer_type):
         observer = prepared.get_submodule(node.target)
         if not isinstance(observer, observer_type):
             continue
+        if reduction is not None and hasattr(observer, "block_scale_reduction"):
+            observer.block_scale_reduction = reduction
         axis = getattr(observer, "ch_axis", None)
         shape = [2]
         varying_axis = 0

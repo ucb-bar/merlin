@@ -44,6 +44,8 @@ PROPERTIES = (
     "saturation",
     "transfer",
 )
+# Policies describe where scales come from, independently of arithmetic scheme rows.
+POLICIES = {"scale_source": ("constant", "runtime_input"), "block_scale_reduction": ("max_abs", "mean_abs")}
 _TIES = frozenset({"half_even", "half_away_from_zero", "toward_zero"})
 _INTEGER_RANGES = {"int8": (-128, 127), "uint8": (0, 255), "int32": (-(2**31), 2**31 - 1)}
 _STEPS = frozenset(
@@ -372,7 +374,7 @@ def validate(spec: Mapping) -> dict:
 
     if block.get("status") not in STATUSES:
         raise ValueError("quantization.numerics has an invalid review status")
-    unknown = set(block) - {"schema", "status", "schemes", "boundaries", "unmodeled"}
+    unknown = set(block) - {"schema", "status", "schemes", "boundaries", "unmodeled", "policies"}
     if unknown:
         raise ValueError(f"quantization.numerics has unknown fields {sorted(unknown)}")
     schemes = {row["id"]: row for row in (quantization.get("schemes") or {}).get("schemes") or []}
@@ -381,6 +383,7 @@ def validate(spec: Mapping) -> dict:
         raise ValueError("quantization.numerics.schemes must declare exactly the declared schemes")
     semantics = spec.get("numerical_semantics") or {}
     axes = (quantization.get("schemes") or {}).get("axes") or {}
+    _validate_policies(block.get("policies", {}), axes, schemes)
     for scheme_id, properties in declared.items():
         if not isinstance(properties, Mapping) or set(properties) != set(PROPERTIES):
             raise ValueError(f"quantization.numerics.schemes.{scheme_id} must declare exactly {list(PROPERTIES)}")
@@ -413,6 +416,24 @@ def validate(spec: Mapping) -> dict:
     ):
         raise ValueError("quantization.numerics.unmodeled must list {subject, reason} entries")
     return copy.deepcopy(dict(block))
+
+
+def _validate_policies(policies: Mapping, axes: Mapping, schemes: Mapping) -> None:
+    if not isinstance(policies, Mapping) or set(policies) - set(POLICIES):
+        raise ValueError("quantization.numerics.policies names unknown scale policies")
+    for name, values in POLICIES.items():
+        selected = name in axes or any(name in scheme for scheme in schemes.values())
+        if selected and name not in policies:
+            raise ValueError(f"quantization.numerics.policies requires {name} evidence")
+        if name not in policies:
+            continue
+        records = policies[name]
+        if not isinstance(records, Mapping) or set(records) != set(values):
+            raise ValueError(f"quantization.numerics.policies.{name} requires {values}")
+        for value, record in records.items():
+            _validate_property(record, f"quantization.numerics.policies.{name}.{value}")
+            if record["value"] != value:
+                raise ValueError(f"quantization.numerics.policies.{name}.{value} differs from its policy")
 
 
 def _check_boundary(boundary: object, declared: Mapping, seen: set) -> None:
@@ -476,10 +497,11 @@ def _claimed(record: Mapping):
 def audit(block: Mapping, facts: Mapping | None) -> dict:
     """Per scheme and property, the evidence status after checking rtl_derived claims against facts."""
     table = {}
-    for scheme_id, properties in block["schemes"].items():
+    records = dict(block["schemes"])
+    records.update({f"policy.{name}": values for name, values in block.get("policies", {}).items()})
+    for scheme_id, properties in records.items():
         row = {}
-        for name in PROPERTIES:
-            record = properties[name]
+        for name, record in properties.items():
             status = record["evidence"]
             if status == "rtl_derived":
                 observed = _fact(facts or {}, record["fact"])

@@ -90,6 +90,7 @@ class TensorSpec:
     block: int | None = None
     mode: str = "static"  # activations only: "static" | "dynamic"
     channels_per_scale: int | None = None
+    block_scale_reduction: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -101,6 +102,7 @@ class TensorSpec:
             "block": self.block,
             "mode": self.mode,
             **({"channels_per_scale": self.channels_per_scale} if self.channels_per_scale is not None else {}),
+            **({"block_scale_reduction": self.block_scale_reduction} if self.block_scale_reduction is not None else {}),
         }
 
 
@@ -273,6 +275,10 @@ def derive(
     policy = "exact" if integer_sum_policy is None else str(integer_sum_policy)
     if scheme is not None:
         _validate_scheme(scheme)
+        if scheme.get("scale_source") == "runtime_input":
+            raise ValueError(
+                "runtime_input requires an explicit scale operand in the capture; use a composition source"
+            )
         if scheme.get("operand_sum_rounding") == "per_operand":
             policy = "per_operand"
     if policy == "per_operand":
@@ -296,6 +302,8 @@ def derive(
             recipe.calibration_domain["scale_policy"] = (
                 "declared_observer" if scheme["scale_value"] == "arbitrary_f32" else "enclosing_power_of_two"
             )
+            if "block_scale_reduction" in scheme:
+                recipe.calibration_domain["block_scale_reduction"] = scheme["block_scale_reduction"]
 
     element = _format_of(facet.element_dtype)
     if element is None:
@@ -360,6 +368,7 @@ def derive(
         quant_max=w_max,
         block=block,
         channels_per_scale=facet.scale_columns if weight_held == "column_block" else None,
+        block_scale_reduction=scheme.get("block_scale_reduction") if scheme is not None else None,
     )
     recipe.why["weight.granularity"] = (
         f"selected weight scales are per {weight_held}"

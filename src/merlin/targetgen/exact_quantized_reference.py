@@ -93,6 +93,10 @@ def _reference_scheme(model, scheme):
         raise ValueError("reference scheme requires an explicit resolved readout_strategy")
     if scheme.get("scale_value") == "arbitrary_f32" and strategy != "f32_product_rne":
         raise ValueError("arbitrary_f32 requires f32_product_rne")
+    if scheme.get("scale_source") == "runtime_input" and (
+        scheme.get("scale_value") != "arbitrary_f32" or scheme.get("weight_scale_granularity") != "tensor"
+    ):
+        raise ValueError("runtime_input requires arbitrary_f32 tensor scales")
     if scheme.get("operand_sum_rounding") not in {"single_rounding", "per_operand"}:
         raise ValueError("reference scheme requires explicit operand_sum_rounding")
     if scheme["operand_sum_rounding"] == "per_operand" and strategy != "f32_product_rne":

@@ -9,6 +9,40 @@ RECIPE=dict(schema='quant_recipe_v1',status='derived',families=['contraction'],
     calibration_domain=dict(schema='merlin.declared_observer_domain.v1',minimum=-1.,maximum=1.,evaluation_inputs='never_read',scale_policy='enclosing_power_of_two'))
 
 
+@pytest.mark.parametrize("reduction", ["max_abs", "mean_abs"])
+def test_declared_domain_initializes_grouped_reduction_without_payloads(reduction):
+    from types import SimpleNamespace
+
+    torch = pytest.importorskip("torch")
+    from merlin.targetgen._recipe_observers import grouped_channel_observer
+    from merlin.targetgen.declared_calibration import initialize_observers
+
+    observer_type = grouped_channel_observer()
+    observer = observer_type(
+        channels_per_scale=3,
+        dtype=torch.int8,
+        qscheme=torch.per_channel_symmetric,
+        quant_min=-127,
+        quant_max=127,
+        ch_axis=0,
+    )
+    source = SimpleNamespace(meta={"val": torch.empty(5, 2)})
+    node = SimpleNamespace(op="call_module", target="weight_observer", args=[source])
+    prepared = SimpleNamespace(graph=SimpleNamespace(nodes=[node]), get_submodule=lambda _: observer)
+    declaration = {
+        **RECIPE["calibration_domain"],
+        "scale_policy": "declared_observer",
+        "block_scale_reduction": reduction,
+    }
+    assert initialize_observers(prepared, declaration, observer_type) == 1
+    assert observer.block_scale_reduction == reduction
+    scales, zeros = observer.calculate_qparams()
+    torch.testing.assert_close(scales, torch.full((5,), 1.0 / 127), rtol=0, atol=0)
+    assert not torch.count_nonzero(zeros)
+    with pytest.raises(ValueError, match="block_scale_reduction"):
+        initialize_observers(prepared, {**declaration, "block_scale_reduction": "unknown"}, observer_type)
+
+
 def qdq(graph,node,scale=STEP,quantize=True):
     """``node`` through an int8 quantize/dequantize pair at ``scale`` (only the dequantize if not ``quantize``)."""
     import torch

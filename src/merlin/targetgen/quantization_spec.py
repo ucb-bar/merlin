@@ -190,6 +190,23 @@ def _validate_axis_point(point: Mapping, axes: Mapping) -> None:
 def _validate_scheme_strategy(row: Mapping, strategy: str | None) -> None:
     if row["scale_value"] == "arbitrary_f32" and strategy is not None and strategy != "f32_product_rne":
         raise ValueError("arbitrary_f32 requires f32_product_rne")
+    if row.get("scale_source") == "runtime_input" and (
+        row["scale_value"] != "arbitrary_f32" or row["weight_scale_granularity"] != "tensor"
+    ):
+        raise ValueError("runtime_input requires arbitrary_f32 tensor scales")
+    if "block_scale_reduction" in row and row["weight_scale_granularity"] != "column_block":
+        raise ValueError("block_scale_reduction requires column_block scales")
+
+
+def select_scheme_axes(scheme: Mapping, axes: Mapping, selection: Mapping) -> dict:
+    """Select explicitly declared axis values on an already resolved scheme."""
+    if set(selection) - set(axes):
+        raise ValueError("composition selects an undeclared quantization axis")
+    _validate_axis_point(selection, axes)
+    row = copy.deepcopy(dict(scheme))
+    row.update(selection)
+    _validate_scheme_strategy(row, row.get("readout_strategy"))
+    return row
 
 
 def resolve_quantization_schemes(spec: Mapping, context: Mapping) -> tuple[dict, list[dict]]:
@@ -232,9 +249,10 @@ def _resolve_scheme(declaration: dict, spec: Mapping, block: dict, context: Mapp
 
     row = copy.deepcopy(declaration)
     unknown = []
-    # An omitted singleton axis is entailed by its declared domain, not a hardware default.
+    # Readout/scale-source crossings are selected by the composition. Legacy rows retain
+    # their constant sources and serialized identities when scale_source is absent.
     for axis, values in block["axes"].items():
-        if axis not in row and axis not in {"readout_exit", "residual_coefficient"}:
+        if axis not in row and axis not in {"readout_exit", "residual_coefficient", "scale_source"}:
             row[axis] = values[0] if len(values) == 1 else "UNKNOWN"
     strategy = row.get("readout_strategy", (spec.get("numerical_semantics", {}).get("readout") or {}).get("strategy"))
     row["readout_strategy"] = strategy or "UNKNOWN"

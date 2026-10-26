@@ -55,7 +55,7 @@ def test_numerics_add_no_scheme_and_leave_scheme_rows_unchanged(document):
 V1_DIGESTS = {
     "scheme_row": "ebbbbf5e186272b83e1322c1354a0d309e85f2f27970fa2c8ff57228f46960c4",
     "recipe_sha256": "7539a6f1f18136d5ce7dcd4ac4e9f7f0e45000af02e6a357251296e05bb47797",
-    "quantization_contract": "b4c2fcd8d6c70bb26db3fefa962f63cc9f2d0e960de21fcb50e1649fcb182fa2",
+    "authored_scheme": "952428fd458f26f59d5323661237b6dd4a1b9c11efd87882cae46673e5f14aa9",
 }
 
 # eae0cdbee intentionally changed corpus selection and assigned new shape classes to pow2.
@@ -88,11 +88,12 @@ def test_v1_scheme_artifacts_are_byte_identical():
     recipe = QR.derive(
         _scheme_facet(3), scheme=v1, calibration_domain=spec["numerical_semantics"]["calibration_domain"]
     ).to_dict()
-    quantization = {key: value for key, value in spec["quantization"].items() if key != "numerics"}
+    # Other schemes may gain declarations; v1 identity is its own authored entry and resolution.
+    authored = next(row for row in spec["quantization"]["schemes"]["schemes"] if row["id"] == "q_pow2_tensor")
     assert {
         "scheme_row": _digest(v1),
         "recipe_sha256": recipe["recipe_sha256"],
-        "quantization_contract": _digest(quantization),
+        "authored_scheme": _digest(authored),
     } == V1_DIGESTS
     facts = corpus_facts.__wrapped__()
     chain = next(row for row in spec["compositions"]["chains"] if row["id"] == "contraction_readout")
@@ -218,6 +219,28 @@ def test_rtl_claims_are_confirmed_only_by_matching_facts():
     narrowed["facts"]["datapaths"][1]["dtype"] = "i16"
     assert QN.audit(block, narrowed)["q_pow2_tensor"]["accumulator_type"] == QN.UNCONFIRMED
     assert all(status != "rtl_derived" for status in QN.audit(block, {})["q_f32_tensor"].values())
+
+
+def test_scale_policies_have_separate_evidence_and_calibrated_values_stay_unmodeled(document):
+    block = QN.validate(document)
+    assert QN.audit(block, {})["policy.scale_source"]["runtime_input"] == QN.UNCONFIRMED
+    record = block["policies"]["scale_source"]["runtime_input"]
+    facts = {
+        "facts": {
+            "interfaces": [
+                {
+                    "name": "register_bundle_layouts",
+                    "bundles": {"ConfigMvoutRs2": {"fields": {"acc_scale": {"slot_width": record["fact_value"]}}}},
+                }
+            ]
+        }
+    }
+    assert QN.audit(block, facts)["policy.scale_source"]["runtime_input"] == "rtl_derived"
+    assert set(block["policies"]["block_scale_reduction"]) == {"max_abs", "mean_abs"}
+    assert any(row["subject"] == "calibrated scale values" for row in block["unmodeled"])
+    del document["quantization"]["numerics"]["policies"]["scale_source"]
+    with pytest.raises(ValueError, match="scale_source evidence"):
+        QN.validate(document)
 
 
 @pytest.mark.skipif(
