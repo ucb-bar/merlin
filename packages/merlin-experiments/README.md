@@ -18,6 +18,35 @@ Numerical falsifiability audits and answer-bearing RTL replay construction also 
 here (`numeric_falsifiability` and `rtl.gen_rocc_replay` under the stable targetgen
 namespace). Their output can contain private expected values and remains host-only.
 
+The operator-side fixed fusion campaign runs through
+`python -m merlin_experiments.phase0.fusion_validation`. Generate with
+`--target NAME --candidates FILE --facts FILE --generate --workers N`; this freezes
+`fusion-cases.json` and content-addressed source/input/exact-reference members in
+the verification artifact directory. It reuses composition shapes and sources,
+screens every producer and physical extended-K view against the held-out inventory,
+and cross-checks the composition golden with independent exact integer/f32 boundaries.
+This validation suite does not consume the Phase 0/1 release's shared capsule budget.
+
+Execute with the same inputs plus `--cases FILE --spec FILE --package DIR
+--provider FILE --extension FILE --smoke --workers N`. An enumerator's original
+derived input document can be selected with `--snapshot FILE`; its facts, contract
+and resolved spec must reproduce the candidate bindings. The runtime contract stays
+separately pinned. Toolchain paths use the existing Core ATen harness environment.
+Each case has its own shard. Resume reopens its selection and evidence bytes;
+an interrupted shard is retained separately before a fresh attempt. Timings live
+outside the canonical verdict. Omit `--smoke` only to explicitly request the full
+campaign. Smoke covers every producer realization/scheme and seed, extension and
+shared-input mechanisms; its summary estimates full-suite time with 40 workers.
+
+`fusion-validation.json` retains the complete candidate/case denominator, including
+unexecuted cases. Admission requires every positive case's exact output, complete
+single-kernel placement, and source-bound retired instruction checks. Producer-only
+admission, host readout and split kernels earn no credit. The reader reopens evidence,
+replays passing numerical/trace checks and recomputes admission. Unavailable runtime
+operand/partition audit bindings remain `pending_audit`. The qualification recorded
+here is the fixed functional Spike suite; it does not establish elaborated RTL
+qualification or promote a release's supported composition catalog.
+
 Source-bound full-call Phase 1 evaluation can explicitly select `--candidate-policy`
 with an operator JSON file containing `root`, `policy`, `bwrap` (`path`, `sha256`),
 and `workspace_root`. The resource root and policy must reopen through the existing

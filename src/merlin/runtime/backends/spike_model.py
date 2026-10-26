@@ -1418,6 +1418,7 @@ def run(
     path_prepend: Sequence[str | Path] = (),
     spike_binary: str | Path | None = None,
     trace_path: str | Path | None = None,
+    log_commits: bool = False,
     command_prefix: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Run the ELF on spike; parse the HTIF output.
@@ -1461,6 +1462,8 @@ def run(
         options.append(f"--extension={extension}")
     if trace_path is not None:
         options.append("-l")
+        if log_commits:
+            options.append("--log-commits")
     cmd[1:1] = options
     cmd[:0] = list(command_prefix)
     env = None

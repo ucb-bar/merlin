@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -128,6 +129,12 @@ def _core(extents):
     return Counter(tensors or extents)
 
 
+@lru_cache(maxsize=512)
+def _excluded_extents(raw):
+    # Cache only parsed immutable bytes; every boundary call reopens each file.
+    return operand_extents(yaml.safe_load(raw))
+
+
 def _excluded_cores(experiment) -> list[Counter]:
     """Operand cores of every held-out capsule; exclusion binds to content, not mutable names."""
     source_root = getattr(experiment, "source_root", None)
@@ -140,7 +147,7 @@ def _excluded_cores(experiment) -> list[Counter]:
     cores = []
     for relative in experiment.held_out_inputs:
         for path in (Path(source_root) / relative).rglob("capsule.yaml"):
-            extents = operand_extents(yaml.safe_load(path.read_bytes()))
+            extents = _excluded_extents(path.read_bytes())
             if extents is None:
                 raise SpecError("excluded historical capsule declaration is malformed")
             cores.append(_core(extents))

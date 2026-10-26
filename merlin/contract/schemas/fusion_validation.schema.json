@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "Source-bound functional fusion validation ledger",
+  "properties": {
+    "schema": {
+      "const": "merlin.fusion_validation.v1"
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "configuration": {
+      "type": "object"
+    },
+    "scope": {
+      "type": "object"
+    },
+    "identity": {
+      "type": "object"
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "case_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "case_engine_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "enumeration_complete": {
+      "type": "boolean"
+    },
+    "execution_complete": {
+      "type": "boolean"
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "semantic": {
+            "type": "object"
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required_case_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "required_case_engine_pairs": {
+            "type": "array"
+          },
+          "cases": {
+            "type": "array"
+          },
+          "admitted": {
+            "type": "boolean"
+          },
+          "outcome": {
+            "enum": [
+              "admitted",
+              "not_admitted"
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "stratum_key": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "semantic",
+          "state",
+          "required_case_ids",
+          "required_case_engine_pairs",
+          "cases",
+          "admitted",
+          "outcome",
+          "reasons"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "admitted_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "evidence_members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "bytes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "seal": {
+      "type": "object",
+      "properties": {
+        "canonicalization": {
+          "const": "merlin.canonical_json.v1"
+        },
+        "payload_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_manifest_sha256": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "canonicalization",
+        "payload_sha256"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "target",
+    "configuration",
+    "scope",
+    "identity",
+    "candidate_count",
+    "case_count",
+    "case_engine_count",
+    "enumeration_complete",
+    "execution_complete",
+    "rows",
+    "admitted_ids",
+    "evidence_members",
+    "seal"
+  ]
+}

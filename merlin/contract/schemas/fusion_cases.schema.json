@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "Frozen fusion cases and independent exact references",
+  "properties": {
+    "schema": {
+      "const": "merlin.fusion_cases.v1"
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identity": {
+      "type": "object"
+    },
+    "profile": {
+      "type": "object"
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "candidate_case_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "case_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "shape_class": {
+            "type": "string",
+            "minLength": 1
+          },
+          "coefficient": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "member": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "required_engines": {
+            "const": [
+              "spike"
+            ]
+          },
+          "positive": {
+            "const": true
+          }
+        },
+        "required": [
+          "case_id",
+          "candidate_id",
+          "shape_class",
+          "coefficient",
+          "member",
+          "sha256",
+          "bytes",
+          "required_engines",
+          "positive"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "seal": {
+      "type": "object",
+      "properties": {
+        "canonicalization": {
+          "const": "merlin.canonical_json.v1"
+        },
+        "payload_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_manifest_sha256": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "canonicalization",
+        "payload_sha256"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "target",
+    "identity",
+    "profile",
+    "candidate_count",
+    "candidate_case_count",
+    "case_count",
+    "rows",
+    "seal"
+  ]
+}
