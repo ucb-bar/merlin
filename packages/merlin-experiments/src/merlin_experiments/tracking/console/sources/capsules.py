@@ -18,6 +18,7 @@ from typing import Any
 
 from ...terminal_capsules import cohort_rosters
 from ..io import clean, epoch, is_dir, is_file, num, obj, rows, scan_dir
+from .insight_common import share_rows
 
 TIERS = ("L0", "L1", "L2", "L3")
 #: Newest ``fruns_*`` snapshot directories scanned for results (each holds one graded snapshot).
@@ -97,6 +98,7 @@ def definition(path: Path, doc: dict, binding: dict | None) -> dict[str, Any]:
         if isinstance(requirements, list)
         else [],
         "required_tiers": [t for t in tiers if isinstance(t, str)] if isinstance(tiers, list) else [],
+        "performance_scope": "excluded" if doc.get("performance_scope") == "excluded" else "scored",
         "tiers": {},
         "status": None,
         "numeric": None,
@@ -175,6 +177,16 @@ def _apply_row(row: dict, result: dict, at: float | None, source: str) -> None:
             t: clean(v if isinstance(v, str) else obj(v).get("status"), 20) for t, v in tiers.items() if t in TIERS
         }
     row["status"] = clean(result.get("status"), 24) or None
+    tiers_seen = obj(result.get("tiers"))
+    l2 = tiers_seen.get("L2") if isinstance(tiers_seen.get("L2"), str) else obj(tiers_seen.get("L2")).get("status")
+    if (
+        row["status"] == "incomplete"
+        and l2 in ("pass", "passed")
+        and result.get("failure_tier") == "L3"
+        and result.get("failure_plane") == "oracle_unavailable"
+    ):
+        # Passed the loop tier; its L3 certificate is a separate job, not this grade's result.
+        row["status"] = "l2_pass"
     numeric = result.get("numeric_status") or obj(result.get("numeric")).get("status")
     row["numeric"] = clean(numeric, 20) or None
     cycles = obj(result.get("tier_cycles"))
@@ -189,30 +201,63 @@ def _apply_row(row: dict, result: dict, at: float | None, source: str) -> None:
     row["result_at"], row["result_source"] = at, source
 
 
-def _results(ctx, run: Path, workspace: Path | None) -> list[tuple[float, dict, str]]:
-    """Every recorded per-capsule row with the time its record was written."""
-    out = []
+def _results(ctx, run: Path, workspace: Path | None) -> list[tuple[float, float, dict, str, str | None]]:
+    """Every recorded per-capsule row as ``(rank, written_at, row, record path, graded source)``.
+
+    ``rank`` orders results by how new the graded compiler is, not by when a record was last written:
+    a grade of an old snapshot can still be running (and rewriting its record) after a newer snapshot
+    was admitted, and its rows must not replace the newer compiler's. A background grade ranks by its
+    token, the nanosecond stamp of the snapshot it grades; the published ``qa`` copies rank as the
+    newest grade of the same source, else by their own time."""
     documents = []
+    newest_of_source: dict[str, float] = {}
+    for snapshot in _snapshots(run):
+        path = snapshot / "snapshot_progress.json"
+        doc = ctx.reader.document(path)
+        if not doc:
+            continue
+        tail = snapshot.name.rpartition("_")[2]
+        taken = int(tail) / 1e9 if tail.isdigit() else None
+        at = epoch(doc.get("updated_at")) or taken or 0
+        rank = taken or at
+        source = doc.get("graded_source_sha256")
+        if isinstance(source, str):
+            newest_of_source[source] = max(newest_of_source.get(source, 0), rank)
+        documents.append((rank, at, doc, str(path)))
     if workspace is not None:
         for name in ("progress.json", "verdict.json"):
             path = workspace / "qa" / name
             doc = ctx.reader.document(path)
             if doc:
-                documents.append(
-                    (epoch(doc.get("updated_at") or doc.get("graded_at")) or os.stat(path).st_mtime, doc, str(path))
-                )
-    for snapshot in _snapshots(run):
-        path = snapshot / "snapshot_progress.json"
-        doc = ctx.reader.document(path)
-        if doc:
-            documents.append(
-                (epoch(doc.get("updated_at")) or epoch(int(snapshot.name.rpartition("_")[2] or 0)) or 0, doc, str(path))
-            )
-    for at, doc, source in documents:
+                at = epoch(doc.get("updated_at") or doc.get("graded_at")) or os.stat(path).st_mtime
+                rank = newest_of_source.get(doc.get("graded_source_sha256"), at)
+                documents.append((rank, at, doc, str(path)))
+    out = []
+    for rank, at, doc, source in documents:
+        graded = doc.get("graded_source_sha256") if isinstance(doc.get("graded_source_sha256"), str) else None
         for result in rows(doc.get("per_capsule")):
             if isinstance(result.get("capsule"), str):
-                out.append((at or 0, result, source))
+                out.append((rank, at or 0, result, source, graded))
     return out
+
+
+def _current_sources(ctx, run: Path) -> set[str]:
+    """Compilers whose results are current: each one a grade is still running on, and the newest."""
+    current, newest = set(), (None, None)
+    for snapshot in _snapshots(run):
+        doc = ctx.reader.document(snapshot / "snapshot_progress.json") or {}
+        graded = doc.get("graded_source_sha256")
+        if not isinstance(graded, str):
+            continue
+        if doc.get("state") == "running":
+            current.add(graded)
+        tail = snapshot.name.rpartition("_")[2]
+        taken = int(tail) if tail.isdigit() else 0
+        if newest[0] is None or taken > newest[0]:
+            newest = (taken, graded)
+    if newest[1]:
+        current.add(newest[1])
+    return current
 
 
 def _capsule_results(ctx, run: Path) -> dict[str, Path]:
@@ -280,16 +325,19 @@ def catalog(ctx) -> tuple[dict[str, dict[str, Any]], list[str]]:
             if row is None:
                 table[name] = row = {**definition(run / name / "capsule.yaml", {"name": name}, None), "path": None}
             row["cohort"] = row["cohort"] or cohort
-    newest: dict[str, tuple[float, dict, str]] = {}
-    for at, result, source in _results(ctx, run, workspace):
+    newest: dict[str, tuple[float, float, dict, str, str | None]] = {}
+    for rank, at, result, source, graded in _results(ctx, run, workspace):
         name = result["capsule"]
-        if name not in newest or at > newest[name][0]:
-            newest[name] = (at, result, source)
-    for name, (at, result, source) in newest.items():
+        if name not in newest or (rank, at) > newest[name][:2]:
+            newest[name] = (rank, at, result, source, graded)
+    current = _current_sources(ctx, run)
+    for name, (_, at, result, source, graded) in newest.items():
         row = table.get(name)
         if row is None:
             table[name] = row = {**definition(run / name / "capsule.yaml", {"name": name}, None), "path": None}
         _apply_row(row, result, at, source)
+        # A result of an older compiler than the newest graded one says nothing about this compiler.
+        row["stale"] = bool(current and graded and graded not in current)
     for name, path in _capsule_results(ctx, run).items():
         doc = ctx.reader.document(path, limit=4 << 20)
         if doc and name in table:
@@ -312,9 +360,13 @@ def catalog(ctx) -> tuple[dict[str, dict[str, Any]], list[str]]:
 
 def _counts(table: dict[str, dict[str, Any]]) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = {
-        k: {} for k in ("cohort", "kind", "op", "status", "family", "pass_requirements")
+        k: {} for k in ("cohort", "kind", "op", "status", "family", "pass_requirements", "cohort_status")
     }
     for row in table.values():
+        # ``cohort/status`` -> count: per-cohort results that stay countable in public mode.
+        status = "stale" if row.get("stale") else row.get("status") or "not recorded"
+        key = f"{row.get('cohort') or 'not recorded'}/{status}"
+        counts["cohort_status"][key] = counts["cohort_status"].get(key, 0) + 1
         for key in ("cohort", "kind", "op", "status", "family"):
             value = row.get(key) or "not recorded"
             counts[key][value] = counts[key].get(value, 0) + 1
@@ -326,6 +378,7 @@ def _counts(table: dict[str, dict[str, Any]]) -> dict[str, dict[str, int]]:
 def read(ctx) -> dict[str, Any]:
     table, notes = catalog(ctx)
     ordered = sorted(table.values(), key=lambda r: (str(r.get("cohort") or "~"), r["name"]))
+    share_rows(ctx, "capsules", ordered)
     section = {
         "capsules": ordered if ctx.operator_private else [],
         "counts": _counts(table),

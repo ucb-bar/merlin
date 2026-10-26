@@ -31,7 +31,9 @@ The experiment command console: discover, track, inspect and diagnose any experi
 - The section contract lives in `sources/__init__.py`; `console/internal/proto/proto.go` mirrors it.
   Change both together and extend `tests/test_console_*.py` and `internal/ui/ui_test.go`.
 - Read-only and bounded: every source uses `io.Reader` (stat-cached documents, a per-refresh byte
-  budget, offset tails) and bounded directory listings. Nothing writes into a run, a workspace, a
+  budget, offset tails) and bounded directory listings. `model.AUTHORITATIVE` records are prefetched
+  before bulk scans and `INSIGHTS` read from a reserved share; pass `stale_ok=True` only where a
+  last-read parse beats "not recorded" and the caller keeps no identity-keyed cache of its own. Nothing writes into a run, a workspace, a
   launch directory or a store; nothing launches jobs or touches hardware.
 - A missing value is `None` on the wire and `—` on screen, never 0. Modeled, measured and structural
   numbers keep their labels; CPU activity is telemetry; diagnostics grant no verdict.

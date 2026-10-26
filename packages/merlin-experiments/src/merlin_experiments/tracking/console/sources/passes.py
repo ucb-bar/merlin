@@ -25,6 +25,8 @@ from ..io import clean, is_file, num, obj, rows, scan_dir
 
 CHURN_BYTES = 4 << 20
 PROFILE_NAMES = ("pass_observation.json", "host_pass_profile.json", "pipeline_receipt.json")
+#: Recorded family statuses that mean the family runs in the compiler (anything else is declared only).
+APPLIED_STATES = frozenset({"applied", "active", "enabled", "implemented", "used", "promoted"})
 
 
 def _manifest(ctx, run: Path, workspace: Path | None) -> tuple[dict | None, str | None]:
@@ -228,8 +230,22 @@ def matrix(ctx) -> tuple[list[dict[str, Any]], dict[str, Any], list[str], dict[s
 
 def read(ctx) -> dict[str, Any]:
     out, counts, notes, detail = matrix(ctx)
+    by_command = {command: boundary for boundary, command in detail["boundaries"].items() if command}
+    # What the compiler actually runs: its manifest commands in pipeline order, plus the shared-pass
+    # families and controls recorded as applied or enabled. Declared-only rows stay in the matrix.
+    applied = []
+    for order, row in enumerate((r for r in out if r["kind"] == "command"), start=1):
+        applied.append({**row, "order": order, "boundary": by_command.get(row["name"])})
+    for row in out:
+        if row["kind"] == "family" and str(row.get("status") or "").lower() in APPLIED_STATES:
+            applied.append({**row, "order": None})
+        elif row["kind"] == "control" and row.get("used"):
+            applied.append({**row, "order": None})
+    counts["applied"] = len(applied)
+    counts["not_applied"] = sum(1 for r in out if r["declared"] and r not in applied and r["kind"] != "command")
     return {
         "passes": out,
+        "applied": applied,
         "counts": counts,
         "pipeline": [clean(n, 80) for n in detail["commands"]],
         "boundaries": detail["boundaries"],

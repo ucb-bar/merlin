@@ -8,7 +8,7 @@ import os
 import tempfile
 from pathlib import Path
 from .. import joint_control
-from .joint_curriculum import _passed
+from .joint_curriculum import _passed, _structural_prerequisites
 
 
 def roster():
@@ -57,6 +57,44 @@ def _split_l3_prerequisites(row, source_sha256):
     return _passed(dict(row, failure=None)) == 'spike_correctness'
 
 
+#: The grader's own failure for a whole-model row whose native tier has not run yet
+#: (``capsule_grade``'s owned-host model branch); any other failure keeps the row ineligible.
+_MODEL_NATIVE_TIER_GAP = {'plane': 'candidate_model_execution', 'category': 'NOT_RUN_IS_NOT_PASS',
+                          'detail': 'mandatory native tier has not completed'}
+
+
+def model_l3_prerequisites(row, source_sha256):
+    """A whole-model row whose only open obligation is its native L3 tier.
+
+    The Spike grade proves a model's L0-L2 on the exact snapshot it compiled, but never runs its L3,
+    so the row stays ``incomplete`` with the grader's own native-tier gap -- and was never admitted
+    here, which is why no whole-model case ever reached L3 in the grade. Admit exactly that gap: every
+    other mandatory tier passes (L2 on Spike), all outputs pass, the model check names no violation,
+    and the model child's compiler identity is the snapshot being promoted (``source_sha256``).
+    """
+    tiers = row.get('tiers') or {}
+    l2, l3 = tiers.get('L2') or {}, tiers.get('L3') or {}
+    numeric = row.get('numeric') or {}
+    outputs = numeric.get('per_output')
+    child = row.get('snapshot_external_model_child') or {}
+    compiler = child.get('compiler_sha256') or (row.get('compiler_source') or {}).get('candidate_sha256')
+    if not (row.get('kind') == 'model' and row.get('status') == 'incomplete' and source_sha256
+            and row.get('failure') == _MODEL_NATIVE_TIER_GAP
+            and l3.get('mandatory') is True and l3.get('status') == 'unverified'
+            and l2.get('status') == 'pass' and l2.get('engine') == 'spike'
+            and _structural_prerequisites(row)
+            and numeric.get('status') == 'pass' and numeric.get('mismatch_count') == 0
+            and numeric.get('missing_outputs') in (None, [])
+            and isinstance(outputs, dict) and outputs
+            and all(isinstance(v, dict) and v.get('status') == 'pass'
+                    and type(v.get('n_elements')) is int and v['n_elements'] > 0 for v in outputs.values())
+            and not (row.get('model_execution_check') or {}).get('violations')
+            and compiler == source_sha256):
+        return False
+    return not any(t != 'L3' and isinstance(record, dict) and record.get('mandatory') is True
+                   and record.get('status') != 'pass' for t, record in tiers.items())
+
+
 def eligible(rows, *, source_root=None):
     """Only closed native structural/numerical receipts authorize a physical job."""
     required = roster()
@@ -69,7 +107,8 @@ def eligible(rows, *, source_root=None):
         trace = row.get('trace_check') or {}
         if name not in required or trace.get('status') == 'fail' or trace.get('violations'):
             continue
-        if _passed(row) == 'spike_correctness' or _split_l3_prerequisites(row, source_sha256):
+        if (_passed(row) == 'spike_correctness' or _split_l3_prerequisites(row, source_sha256)
+                or model_l3_prerequisites(row, source_sha256)):
             ready.add(name)
     return ready
 

@@ -10,11 +10,12 @@ Section shapes (the contract the Bubble Tea frontend decodes):
 
 ``resources``  mode: "live"|"recorded"|"none"; cores: [{cpu, util_pct, kind, label}];
                busy_cpus; total_cpus; queue: {waiters, leases, gsim_active}; process:
-               {cpu_pct, rss_bytes, threads, processes, load1}; series: {t, cpu_pct, rss_bytes, load1}; notes.
+               {cpu_pct, rss_bytes, threads, processes, load1, io}; series: {t, cpu_pct, rss_bytes, load1};
+               notes. ``io`` is the run tree's read()/write() bytes per second (page cache included).
                ``kind`` is one of KINDS.
 ``agents``     agents: [{id, parent_id, name, path, role, depth, state, started_at, last_activity_at,
-               active_s, turns, commands, failed_commands, current, last_message, model, effort,
-               tokens: TOKENS, spans: [[start, end, kind]], stage}]; totals: {agents, working,
+               active_s, recorded_active_s, turns, commands, failed_commands, current, last_message, model, effort,
+               tokens: TOKENS, spans: [[start, end, kind]], stage, round}]; totals: {agents, working,
                subagents, helper_ceiling}; source; notes.
 ``tokens``     total: TOKENS; series: {t, fresh_input, cache_read, cache_write, output, reasoning}
                (cumulative); per_agent: [{id, name, total, output, share}]; rate_per_min:
@@ -30,9 +31,15 @@ Section shapes (the contract the Bubble Tea frontend decodes):
                pass_requirements, required_tiers, tiers: {L0..L3}, status, numeric, cycles:
                {L2, L3}, failure: {plane, category, tier}, timing: {build_s, sim_active_s,
                oracle_wait_s}, path}]; counts: {cohort: {..}, kind: {..}, op: {..}, status: {..}}; notes.
-``progress``   state, n_selected, n_completed, n_passed, n_execution_passed, snapshot_current,
+``progress``   grades: [{token, state, owner_state, reason, started_at, updated_at, n_selected,
+               n_completed, n_passed, n_failed, n_errors, source}] newest first (``state`` is
+               grading|unfinished|done|superseded|stopped); grades_total; published: {updated_at,
+               n_selected, n_completed, n_passed}|None (the copy shown to the agent); certificates:
+               {L2, L3: {pass, pending, fail}, physical: {required, passed, failed, pending}}|None;
+               series_scope; verdict: {stage, tiers_graded, tiers_not_run, all_pass}|None, state, n_selected,
+               n_completed, n_passed, n_execution_passed, snapshot_current,
                graded_source, cohorts: [{name, total, all, L2, L3, refusal}], numeric:
-               {completed, passed, failed}, series: {t, n_passed}, completion, plateau, alerts,
+               {completed, passed, failed}, series: {t, n_passed, n_completed}, completion, plateau, alerts,
                latest_request; notes.
 ``perf``       rows: [{capsule, cohort, spike_model_cycles, gsim_cycles, l2_cycles, floor_cycles,
                efficiency_pct, useful_macs, peak_macs_per_cycle, requested_bytes, intensity,
@@ -53,6 +60,20 @@ Section shapes (the contract the Bubble Tea frontend decodes):
                parallelism, concurrency, markers, verdict; see :mod:`.timeline`.
 ``machine``    cores [{cpu, util_pct, holders, mine, console}], allocations, experiment_cpus,
                console_cpus; see :mod:`.machine`.
+
+Insight panels (``performance``, ``cases``, ``tools``, ``grader``, ``integrity``, ``attempts``, ``library``,
+``certification``, ``focus``, ``cost``; :data:`..model.INSIGHTS`) share one generic shape, so one
+frontend renderer draws them all::
+
+    {title, summary: [{label, value, level, key}], table: {columns: [str], rows: [{cells: [str],
+     level, key}]}|None, series: [{label, t: [..], v: [..]}], notes, sorts?: [{label, order: [int]}],
+     ...source-specific fields}
+
+``value`` and ``cells`` are display text (``"—"`` when not recorded); ``level`` is
+ok|info|warn|bad|None; ``key`` is passed to that source's ``inspect``. The optional ``sorts`` are row
+orders of the table (indices into ``rows``) that the frontend's sort key cycles; without them the rows
+are shown as sent. The other source-specific fields are documented in each module (:mod:`.performance`
+and the rest) and are not decoded by the frontend.
 
 TOKENS is ``{input, fresh_input, cache_read, cache_write, output, reasoning, total}``.
 

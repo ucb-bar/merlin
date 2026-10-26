@@ -17,6 +17,7 @@ from typing import Any
 
 from ...terminal_metadata import capsule_metric
 from ..io import clean, epoch, is_sha256, num, obj, positive, rows, scan_dir
+from .insight_common import share_rows
 
 MAX_RESPONSES = 160
 MAX_SIM_RESPONSES = 320
@@ -256,6 +257,7 @@ def read(ctx) -> dict[str, Any]:
         if efficiencies
         else None,
     }
+    share_rows(ctx, "perf", out)
     section = {
         "rows": out if ctx.operator_private else [],
         "summary": summary,

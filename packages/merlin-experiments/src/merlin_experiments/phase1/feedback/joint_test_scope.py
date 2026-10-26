@@ -1,4 +1,5 @@
 """Bounded advisory smoke selection; omitted capsules remain unmeasured."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,29 @@ from pathlib import Path
 import yaml
 
 from .. import joint_control
+
+#: A case's declared role in performance scoring. ``excluded`` cases stay graded for correctness but
+#: do not rank in the performance headline, the CASES totals or the roofline summary.
+PERFORMANCE_SCOPES = ("scored", "excluded")
+
+
+def scope_selection(policy, declared_excluded, required):
+    """Excluded cases from the capsules' declared field and the policy's derived roster."""
+    roster = (policy.get("performance_scope") or {}).get("excluded", ())
+    if not isinstance(roster, (list, tuple)) or any(type(name) is not str for name in roster):
+        raise ValueError("policy performance_scope.excluded must be a list of case IDs")
+    excluded = (set(declared_excluded) | set(roster)) & set(required)
+    return {
+        "excluded": sorted(excluded),
+        "scored": len(set(required) - excluded),
+        "sources": ["capsule.performance_scope", "policy.performance_scope.excluded"],
+    }
+
+
+def excluded_cases(selection):
+    """The excluded names of a recorded ``joint_test_selection`` (empty for older grades)."""
+    scope = (selection or {}).get("performance_scope") or {}
+    return frozenset(name for name in scope.get("excluded") or () if isinstance(name, str))
 
 
 def focused():
@@ -26,40 +50,71 @@ def select(root, *, submission, curriculum=None, additional_cases=None):
         raise ValueError("additional development capsule path differs from its selected ID")
     paths = list(sorted(Path(root).rglob("capsule.yaml")))
     paths.extend(Path(p) / "capsule.yaml" for p in additional_cases.values())
-    seen = set()
+    seen, declared_excluded = set(), set()
+    search_roles = {}
     for path in paths:
         doc = yaml.safe_load(path.read_text())
         name = path.parent.name
         if name in seen:
             raise ValueError("joint development suites contain duplicate capsule IDs")
         seen.add(name)
-        if name in additional_cases and (doc.get("name") != name
-                or doc.get("label") not in {"public", "dev"} or name in held):
+        if name in additional_cases and (
+            doc.get("name") != name or doc.get("label") not in {"public", "dev"} or name in held
+        ):
             raise ValueError("additional development capsule is not its selected public case")
         if doc.get("label", "public") not in {"public", "dev"} or path.parent.name in held:
             continue
+        scope = doc.get("performance_scope", "scored")
+        if scope not in PERFORMANCE_SCOPES:
+            raise ValueError(f"{name}: performance_scope must be one of {PERFORMANCE_SCOPES}")
+        if scope == "excluded":
+            declared_excluded.add(name)
         family = str((doc.get("operation") or {}).get("op") or doc.get("kind") or "unknown")
         volume = sum(math.prod(x.get("shape", ())) for x in doc.get("inputs", ())
                      if all(type(d) is int and d > 0 for d in x.get("shape", ())))
+        from ..capability_inventory import _digest
+        from ..workload_roles import classify
+        original = set(state['policy'].get('correctness_curriculum', {}).get('original_capsules', ()))
+        witnesses = set(state['policy'].get('gsim', {}).get('witness_capsules', ()))
+        member = dict(name=name, source_sha256=_digest({k: v for k, v in doc.items() if k != '__dir__'}),
+                      cohort=('original_correctness' if name in original else 'scalability_performance'
+                              if name in additional_cases else 'calibration' if name in witnesses
+                              else 'public_development'),
+                      declared_operation=(doc.get('operation') or {}).get('op'),
+                      input_tensors=doc.get('inputs', ()))
+        search_roles[name] = classify(member, selection=state['policy'].get('workload_roles'))['workload_role']
         records.append((family, volume, path.parent.name, path.parent))
     if not records:
         raise ValueError("joint automatic development selection is empty")
     required = sorted(r[2] for r in records)
-    cohorts = {"core_and_calibration": len(required) - len(additional_cases),
-               "public_scalability": len(additional_cases)}
+    cohorts = {
+        "core_and_calibration": len(required) - len(additional_cases),
+        "public_scalability": len(additional_cases),
+    }
     # These memberships come from the native verified suite and operator policy,
     # never from a candidate's impact hints or result labels.
-    original = set(state['policy'].get('correctness_curriculum', {}).get('original_capsules', ()))
+    original = set(state["policy"].get("correctness_curriculum", {}).get("original_capsules", ()))
     performance_cohorts = {
-        'primary': sorted(additional_cases),
-        'correctness_regression': sorted(original & set(required)),
-        'calibration_diagnostics': sorted(
-            set(state['policy'].get('gsim', {}).get('witness_capsules', ())) - original),
+        "primary": sorted(additional_cases),
+        "correctness_regression": sorted(original & set(required)),
+        # A witness that is also a selected scalability case is ranked there. Listing it in both lanes
+        # made the whole roster "invalid_or_overlapping" and dropped it from every ranking.
+        "calibration_diagnostics": sorted(
+            set(state["policy"].get("gsim", {}).get("witness_capsules", ())) - original - set(additional_cases)
+        ),
     }
+    performance_scope = scope_selection(state["policy"], declared_excluded, required)
     if not focused():
-        return [r[3] for r in records], {"scope": "milestone", "required_development": len(records),
-                                        "selected": required, "pending": [], "cohorts": cohorts,
-                                        "performance_cohorts": performance_cohorts}
+        return [r[3] for r in records], {
+            "scope": "milestone",
+            "required_development": len(records),
+            "selected": required,
+            "pending": [],
+            "cohorts": cohorts,
+            "performance_cohorts": performance_cohorts,
+            "performance_scope": performance_scope,
+            "workload_roles": search_roles,
+        }
     families = {r[0] for r in records}
     reason = "unknown impact: representative semantic-family smoke"
     chosen = None
@@ -72,9 +127,14 @@ def select(root, *, submission, curriculum=None, additional_cases=None):
             raise ValueError("impact hint must be an object")
         if "capsules" in value:
             requested = value["capsules"]
-            if ("families" in value or not isinstance(requested, list) or not 1 <= len(requested) <= 16
-                    or any(type(name) is not str for name in requested)
-                    or len(set(requested)) != len(requested) or not set(requested) <= set(required)):
+            if (
+                "families" in value
+                or not isinstance(requested, list)
+                or not 1 <= len(requested) <= 16
+                or any(type(name) is not str for name in requested)
+                or len(set(requested)) != len(requested)
+                or not set(requested) <= set(required)
+            ):
                 raise ValueError("exact smoke requires unique permitted development capsule IDs, at most 16")
             selected = set(requested)
             chosen = [row for row in records if row[2] in selected]
@@ -96,23 +156,29 @@ def select(root, *, submission, curriculum=None, additional_cases=None):
                 chosen.append(members[-1])
     curriculum_report = None
     if curriculum is not None:
-        chosen, curriculum_report = curriculum.select(records, policy=state['policy'],
-                                                       hint=[r[2] for r in chosen])
-        reason = 'rolling unresolved correctness queue; admission time bounds snapshot residency'
+        chosen, curriculum_report = curriculum.select(records, policy=state["policy"], hint=[r[2] for r in chosen])
+        reason = "rolling unresolved correctness queue; admission time bounds snapshot residency"
     # Only the fallback smoke has a fixed count. Native curriculum supplies the
     # unresolved roster; the existing scheduler admits/refills within its deadline.
     if curriculum is None:
         chosen = chosen[:16]
     names = sorted(r[2] for r in chosen)
-    selection = {"scope": "rolling" if curriculum is not None else "smoke", "reason": reason, "selected": names,
-                                    "cohorts": cohorts, "performance_cohorts": performance_cohorts,
-                                    "required_development": len(required),
-                                    "pending": sorted(set(required) - set(names)),
-                                    "full_coverage_required": True}
+    selection = {
+        "scope": "rolling" if curriculum is not None else "smoke",
+        "reason": reason,
+        "selected": names,
+        "cohorts": cohorts,
+        "performance_cohorts": performance_cohorts,
+        "performance_scope": performance_scope,
+        "workload_roles": search_roles,
+        "required_development": len(required),
+        "pending": sorted(set(required) - set(names)),
+        "full_coverage_required": True,
+    }
     if curriculum_report is not None:
-        selection['curriculum'] = curriculum_report
+        selection["curriculum"] = curriculum_report
         # Passing evidence remains separately attributed, not a new measured row.
-        selection['pending'] = curriculum_report['pending']
+        selection["pending"] = curriculum_report["pending"]
     return [r[3] for r in chosen], selection
 
 
@@ -120,70 +186,143 @@ def annotate(verdict, selection):
     if selection is None:
         return verdict
     failure = verdict.get("package_failure")
-    deferred = {row.get("capsule") for row in verdict.get("per_capsule", ())
-                if row.get("status") == "gated"} & set(selection["selected"])
+    deferred = {row.get("capsule") for row in verdict.get("per_capsule", ()) if row.get("status") == "gated"} & set(
+        selection["selected"]
+    )
     if deferred:
-        selection = dict(selection, pending=sorted(set(selection["pending"]) | deferred),
-                         execution_status="selected_capsules_deferred")
+        selection = dict(
+            selection,
+            pending=sorted(set(selection["pending"]) | deferred),
+            execution_status="selected_capsules_deferred",
+        )
     if failure and not verdict.get("per_capsule"):
-        selection = dict(selection, pending=sorted(set(selection["pending"]) | set(selection["selected"])),
-                         execution_status="blocked_before_capsule_execution")
+        selection = dict(
+            selection,
+            pending=sorted(set(selection["pending"]) | set(selection["selected"])),
+            execution_status="blocked_before_capsule_execution",
+        )
         verdict.update(all_pass=False, gradeable=False)
     refusal = verdict.get("package_precheck_refusal") or {}
-    if (failure and not verdict.get("per_capsule")
-            and refusal.get("schema") == "merlin.package_precheck_refusal.v1"
-            and refusal.get("scope") == "selected_suite"
-            and refusal.get("stage") in {"load_package", "integrity_scan"}
-            and refusal.get("candidate_execution_started") is False):
+    if (
+        failure
+        and not verdict.get("per_capsule")
+        and refusal.get("schema") == "merlin.package_precheck_refusal.v1"
+        and refusal.get("scope") == "selected_suite"
+        and refusal.get("stage") in {"load_package", "integrity_scan"}
+        and refusal.get("candidate_execution_started") is False
+    ):
         # Only the native pre-candidate code path can issue this scope. No case
         # error/category or arbitrary build process failure expands to siblings.
         import hashlib
+
         diagnostic = {**refusal, "failure": failure}
         reference = hashlib.sha256(json.dumps(diagnostic, sort_keys=True, allow_nan=False).encode()).hexdigest()
-        verdict["shared_package_diagnostic"] = {**diagnostic, "sha256": reference,
-            "affected_selected": len(selection["selected"]), "reuse_authority": False}
-        verdict["per_capsule"] = [{"capsule": name, "status": "gated", "tiers": {},
-            "execution_status": "not_started", "correctness": "unknown",
-            "shared_package_diagnostic_sha256": reference}
-            for name in selection["selected"]]
-        verdict.update(n_capsules=len(selection["selected"]), n_executed_capsules=0,
-            n_passed=0, mandatory_tiers_complete=False,
-            count_scope="selected_pending_cohort_no_execution")
+        verdict["shared_package_diagnostic"] = {
+            **diagnostic,
+            "sha256": reference,
+            "affected_selected": len(selection["selected"]),
+            "reuse_authority": False,
+        }
+        verdict["per_capsule"] = [
+            {
+                "capsule": name,
+                "status": "gated",
+                "tiers": {},
+                "execution_status": "not_started",
+                "correctness": "unknown",
+                "shared_package_diagnostic_sha256": reference,
+            }
+            for name in selection["selected"]
+        ]
+        verdict.update(
+            n_capsules=len(selection["selected"]),
+            n_executed_capsules=0,
+            n_passed=0,
+            mandatory_tiers_complete=False,
+            count_scope="selected_pending_cohort_no_execution",
+        )
     verdict["joint_test_selection"] = selection
     verdict["n_required_development"] = selection["required_development"]
     verdict["n_selected_development"] = len(selection["selected"])
     verdict["n_pending_development"] = len(selection["pending"])
     verdict["certified_complete"] = False
-    first = next((row for row in verdict.get("per_capsule", ())
-                  if row.get("failure_detail") or row.get("status") in {"fail", "error"}), None)
-    package_failure = ({"scope": "compiler_package", "plane": failure.get("plane"),
-                        "detail": str(failure.get("detail", "package rejected before capsule execution"))[:600]}
-                       if failure else None)
+    first = next(
+        (
+            row
+            for row in verdict.get("per_capsule", ())
+            if row.get("failure_detail") or row.get("status") in {"fail", "error"}
+        ),
+        None,
+    )
+    package_failure = (
+        {
+            "scope": "compiler_package",
+            "plane": failure.get("plane"),
+            "detail": str(failure.get("detail", "package rejected before capsule execution"))[:600],
+        }
+        if failure
+        else None
+    )
     verdict["feedback_brief"] = {
-        "checks": selection["selected"], "passed": verdict.get("n_passed"),
-        "pending": len(selection["pending"]), "scope": selection["scope"],
-        "first_actionable_failure": package_failure or ({"capsule": first.get("capsule"),
-                                      "detail": str(first.get("failure_detail", first.get("status")))[:600]}
-                                     if first else None),
+        "checks": selection["selected"],
+        "passed": verdict.get("n_passed"),
+        "pending": len(selection["pending"]),
+        "scope": selection["scope"],
+        "first_actionable_failure": package_failure
+        or (
+            {"capsule": first.get("capsule"), "detail": str(first.get("failure_detail", first.get("status")))[:600]}
+            if first
+            else None
+        ),
         "performance_model_confidence": "consult selected versioned per-capsule feedback; unknown here",
         "execution_status": selection.get("execution_status", "see_per_capsule_results"),
         "artifact": "qa/verdict.json",
     }
-    if selection.get('curriculum'):
-        report = selection['curriculum']
-        witnesses = report['witness_prerequisites']
-        verdict['feedback_brief']['correctness_curriculum'] = {
-            key: report[key] for key in ('original_development_required', 'original_unresolved',
-                'next_batch', 'physical_rule', 'parallel_large_spike', 'correctness_scope')}
-        verdict['feedback_brief']['correctness_curriculum'].update(
-            reused_correctness=len(report['exact_correctness_reused']),
-            calibration_prerequisites={'selected_witnesses': len(witnesses),
-                'matched_spike_passes': sum(w['correctness'] == 'matched_spike_pass' for w in witnesses),
-                'qualified_physical_coverage': 'consult existing exact-scope calibration registry',
-                'next_questions': [w for w in witnesses if w['capsule'] in report['next_batch']][:3]})
+    if selection.get("curriculum"):
+        report = selection["curriculum"]
+        witnesses = report["witness_prerequisites"]
+        verdict["feedback_brief"]["correctness_curriculum"] = {
+            key: report[key]
+            for key in (
+                "original_development_required",
+                "original_unresolved",
+                "next_batch",
+                "physical_rule",
+                "parallel_large_spike",
+                "correctness_scope",
+            )
+        }
+        if report.get("sampling"):
+            # Stable cases this grade did not re-run; each keeps its earlier, attributed result.
+            sampling = report["sampling"]
+            verdict["feedback_brief"]["correctness_curriculum"]["regression_sampling"] = {
+                "carried_sampled": len(report.get("carried_sampled") or {}),
+                "label": sampling.get("status_label"),
+                "covering_sample": len(sampling.get("covering_sample") or ()),
+                "full_sweep": sampling.get("full_sweep"),
+                "full_sweep_reasons": sampling.get("full_sweep_reasons"),
+                "scope": sampling.get("scope"),
+            }
+        verdict["feedback_brief"]["correctness_curriculum"].update(
+            reused_correctness=len(report["exact_correctness_reused"]),
+            calibration_prerequisites={
+                "selected_witnesses": len(witnesses),
+                "matched_spike_passes": sum(w["correctness"] == "matched_spike_pass" for w in witnesses),
+                "qualified_physical_coverage": "consult existing exact-scope calibration registry",
+                "next_questions": [w for w in witnesses if w["capsule"] in report["next_batch"]][:3],
+            },
+        )
+        # The witness statuses above come from the pre-grade selection. Say what THIS grade observed
+        # and how a witness actually reaches gSIM; this grants no admission or qualification.
+        from .certification_gates import calibration_access
+
+        verdict["feedback_brief"]["correctness_curriculum"]["calibration_prerequisites"]["gsim_access"] = (
+            calibration_access(verdict.get("per_capsule", ()), witnesses)
+        )
     from .joint_performance_priority import summarize as performance_priority
+
     verdict["feedback_brief"]["performance_priority"] = performance_priority(
-        verdict.get("per_capsule", ()), cohorts=selection.get("performance_cohorts", {}))
+        verdict.get("per_capsule", ()), cohorts=selection.get("performance_cohorts", {}), roles=selection.get("workload_roles"))
     if selection["scope"] == "smoke":
         if verdict.get("all_pass") is True:
             verdict["all_pass"] = None

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/ucb-bar/merlin/packages/merlin-experiments/console/internal/proto"
 )
 
@@ -25,6 +26,8 @@ func (m *Model) panel(st *proto.State, id string, w, h int) string {
 		title, hint, body = m.pStages(st, inner, h, focused)
 	case "alerts":
 		title, hint, body = m.pAlerts(st, inner, h, focused)
+	case "agentview":
+		title, hint, body = m.pAgentView(st, inner, h, focused)
 	case "gantt":
 		title, hint, body = m.pGantt(st, inner, h, focused)
 	case "agents":
@@ -32,7 +35,7 @@ func (m *Model) panel(st *proto.State, id string, w, h int) string {
 	case "tokens":
 		title, hint, body = m.pTokens(st, inner, h, focused)
 	case "cpu":
-		title, hint, body = m.pCPU(st, inner, h, focused)
+		title, hint, body = m.pCores(st, inner, h, focused)
 	case "perf":
 		title, hint, body = m.pPerf(st, inner, h, focused)
 	case "capsules":
@@ -41,6 +44,10 @@ func (m *Model) panel(st *proto.State, id string, w, h int) string {
 		title, hint, body = m.pPasses(st, inner, h, focused)
 	case "events":
 		title, hint, body = m.pEvents(st, inner, h, focused)
+	default:
+		if isInsight(id) {
+			title, hint, body = m.pInsight(st, id, inner, h, focused)
+		}
 	}
 	if e := sectionError(st, id); e != "" {
 		body = append([]string{paint(cBad, "reader error: "+clean(e))}, body...)
@@ -49,7 +56,7 @@ func (m *Model) panel(st *proto.State, id string, w, h int) string {
 }
 
 func sectionError(st *proto.State, id string) string {
-	src := map[string]string{"gantt": "timeline", "cpu": "machine", "alerts": ""}[id]
+	src := map[string]string{"gantt": "timeline", "cpu": "activity", "alerts": "", "agentview": "agent_view"}[id]
 	if src == "" {
 		src = id
 	}
@@ -77,10 +84,14 @@ func sectionError(st *proto.State, id string) string {
 		return st.Passes.Error
 	case "stages":
 		return st.Stages.Error
+	case "agent_view":
+		return st.AgentView.Error
 	case "timeline":
 		return firstNonEmpty(st.Timeline.Error, st.Jobs.Error)
 	case "machine":
 		return firstNonEmpty(st.Machine.Error, st.Resources.Error)
+	case "activity":
+		return firstNonEmpty(st.Activity.Error, st.Resources.Error)
 	}
 	return ""
 }
@@ -134,57 +145,204 @@ func (m *Model) pExperiments(w, h int, focused bool) (string, string, []string) 
 func (m *Model) pProgress(st *proto.State, w, h int, focused bool) (string, string, []string) {
 	p := st.Progress
 	out := []string{}
-	cur := ""
-	if p.SnapshotCurrent != nil && !*p.SnapshotCurrent {
-		cur = paint(cWarn, " (retained snapshot)")
+	now := st.GeneratedAt
+	label := func(s string) string { return fit(dim(s), 14) }
+	// 1. Background grades: the ones grading now, else the last one that graded something.
+	inFlight := 0
+	for _, gr := range p.Grades {
+		if gr.State != "grading" && gr.State != "unfinished" {
+			continue
+		}
+		if inFlight < 2 {
+			name := ""
+			if inFlight == 0 {
+				name = map[string]string{"grading": "grading now", "unfinished": "unfinished"}[gr.State]
+			}
+			out = append(out, label(name)+gradeLine(gr, now, w-14, st.Experiment.State == "LIVE"))
+		}
+		inFlight++
 	}
-	out = append(out, bold(cHeading, "latest grade ")+paint(cText, intOr(p.NCompleted, "—")+"/"+intOr(p.NSelected, "—"))+
-		dim(" checked")+bold(cHeading, "  passed ")+paint(cGood, intOr(p.NPassed, "—"))+dim("  state ")+paint(cText, clean(p.State))+cur)
-	out = append(out, dim("numerical executions ")+paint(cText, intOr(p.Numeric.Completed, "—"))+
-		dim("  pass ")+paint(cGood, intOr(p.Numeric.Passed, "—"))+dim("  fail ")+paint(cBad, intOr(p.Numeric.Failed, "—")))
-	labelW := 12
-	barW := max(6, w-labelW-26)
-	for _, c := range p.Cohorts {
-		total, ok := f(c.Total)
+	if inFlight > 2 {
+		out = append(out, label("")+dim(fmt.Sprintf("+%d more grading", inFlight-2)))
+	}
+	if inFlight == 0 {
+		for _, gr := range p.Grades {
+			if n, ok := f(gr.NCompleted); ok && n > 0 {
+				out = append(out, label("last grade")+gradeLine(gr, now, w-14, false))
+				break
+			}
+		}
+	}
+	if len(p.Grades) == 0 && p.Published == nil {
+		out = append(out, label("grades")+dim("no grade recorded yet"))
+	}
+	// 2. What the agent was last shown: qa/progress.json, which can trail the grades above.
+	if pub := p.Published; pub != nil {
+		g := paint(cText, intOr(pub.NCompleted, "—")) + dim("/") + paint(cText, intOr(pub.NSelected, "—")) + dim(" graded · ") +
+			paint(cGood, intOr(pub.NPassed, "—")+" pass")
+		if v := p.Verdict; v != nil && len(v.TiersGraded) > 0 {
+			g += dim(" · " + strings.Join(v.TiersGraded, " "))
+			if len(v.TiersNotRun) > 0 {
+				g += dim(" only, ") + paint(cWarn, strings.Join(v.TiersNotRun, " ")+" not run")
+			}
+		}
+		if t, ok := f(pub.UpdatedAt); ok && now > 0 {
+			g += dim(" · " + dur(max(0, now-t)) + " old")
+			newest := 0.0
+			for _, gr := range p.Grades {
+				if u, ok := f(gr.UpdatedAt); ok && u > newest {
+					newest = u
+				}
+			}
+			if newest-t > 600 {
+				g += paint(cWarn, " · "+dur(newest-t)+" behind the grader")
+			}
+		}
+		out = append(out, label("agent sees")+g)
+	}
+	// 3. Certificates kept in the tier ledger, and the joint L3 obligation.
+	if c := p.Certificates; c != nil {
+		parts := []string{}
+		if c.L2 != nil {
+			parts = append(parts, dim("L2 ")+paint(cGood, fmt.Sprintf("%.0f", c.L2["pass"])))
+		}
+		if c.L3 != nil {
+			t := dim("L3 ") + paint(cGood, fmt.Sprintf("%.0f", c.L3["pass"]))
+			if c.L3["pending"] > 0 {
+				t += dim(fmt.Sprintf(" +%.0f pending", c.L3["pending"]))
+			}
+			parts = append(parts, t)
+		}
+		if ph := c.Physical; ph != nil {
+			t := dim("L3 obligation ") + paint(cText, intOr(ph.Passed, "—")+"/"+intOr(ph.Required, "—"))
+			if n, ok := f(ph.Failed); ok && n > 0 {
+				t += paint(cBad, fmt.Sprintf(" %.0f failed", n))
+			}
+			parts = append(parts, t)
+		}
+		if len(parts) > 0 {
+			out = append(out, label("certified")+strings.Join(parts, dim(" · ")))
+		}
+	}
+	// 3. Results by cohort from the capsule ledger: pass, fail, in progress, not run yet.
+	byStatus := map[string]map[string]float64{}
+	for key, n := range st.Capsules.Counts["cohort_status"] {
+		cohort, status, ok := strings.Cut(key, "/")
 		if !ok {
 			continue
 		}
-		all, _ := f(c.All)
-		l2, _ := f(c.L2)
-		l3, _ := f(c.L3)
-		rest := math.Max(0, l2-all)
-		segs := stackBar([]float64{all, rest}, []color.Color{cGood, cL2}, total, barW)
-		name := clean(c.Name)
-		if name == "total" {
-			name = "TOTAL"
+		if byStatus[cohort] == nil {
+			byStatus[cohort] = map[string]float64{}
 		}
-		out = append(out, fit(paint(cText, name), labelW)+segs+
-			fmt.Sprintf(" %s %s %s", paint(cGood, intOr(c.All, "—")), paint(cL2, "L2 "+intOr(c.L2, "—")), paint(cL3, "L3 "+intOr(c.L3, "—")))+
-			dim(fmt.Sprintf("/%.0f", total)))
-		_ = l3
+		byStatus[cohort][status] += n
 	}
-	if len(p.Cohorts) == 0 {
-		out = append(out, dim("cohort coverage not recorded"))
+	if len(p.Cohorts) > 0 {
+		barW := max(6, w-14-34)
+		for _, c := range p.Cohorts {
+			total, ok := f(c.Total)
+			if !ok || c.Name == "total" {
+				continue
+			}
+			counts := byStatus[c.Name]
+			pass, l2, fail, gated, busy := 0.0, 0.0, 0.0, 0.0, 0.0
+			for k, v := range counts {
+				switch k {
+				case "pass", "passed":
+					pass += v
+				case "l2_pass":
+					l2 += v
+				case "fail", "failed", "mismatch", "error":
+					fail += v
+				case "gated":
+					gated += v
+				case "running", "queued", "pending", "in_progress", "grading":
+					busy += v
+				} // incomplete, not run, not recorded: not yet
+			}
+			segs := stackBar([]float64{pass, l2, fail, gated, busy}, []color.Color{cGood, cInfo, cBad, cVerify, cWarn}, total, barW)
+			out = append(out, fit(paint(cText, clean(c.Name)), 14)+segs+paint(cGood, fmt.Sprintf(" %4.0f", pass))+paint(cInfo, fmt.Sprintf(" %4.0f", l2))+paint(cBad, fmt.Sprintf(" %4.0f", fail))+
+				paint(cVerify, fmt.Sprintf(" %5.0f", gated))+dim(fmt.Sprintf("  /%.0f", total)))
+		}
+	} else {
+		out = append(out, label("by cohort")+dim("not recorded"))
 	}
-	if s := p.Series["n_passed"]; len(s) > 1 {
-		last := human(s[len(s)-1])
-		out = append(out, dim("passing over time ")+sparkline(s, max(4, w-26), cGood)+" "+paint(cText, last))
+	if s := p.Series["n_passed"]; len(s) > 0 {
+		tail := " " + paint(cText, human(s[len(s)-1])+" pass") + dim(fmt.Sprintf(" · %d grades", len(s)))
+		if p.SeriesScope != "" && p.SeriesScope != "background grades" {
+			tail += dim(" (" + p.SeriesScope + ")")
+		}
+		stopped := 0
+		for _, gr := range p.Grades {
+			if gr.State == "stopped" {
+				stopped++
+			}
+		}
+		if stopped > 0 {
+			tail += dim(fmt.Sprintf(" · %d stopped before grading", stopped))
+		}
+		out = append(out, label("pass / grade")+sparkline(s, max(4, min(len(s)*2, w-14-lipgloss.Width(tail))), cGood)+tail)
 	}
+	out = append(out, label("numerics")+paint(cGood, intOr(p.Numeric.Passed, "—"))+dim(" runs correct · ")+
+		paint(cBad, intOr(p.Numeric.Failed, "—"))+dim(" wrong · across all grades"))
 	if c := p.Completion; c != nil {
-		out = append(out, bold(cL2, "completed ")+paint(cText, clean(c.Reason))+dim(" after ")+paint(cText, durP(c.ElapsedS)))
-	} else if p.Plateau != nil {
-		if r, ok := p.Plateau["reason"].(string); ok {
-			out = append(out, dim("plateau: "+clean(r)))
+		out = append(out, label("completed")+paint(cText, clean(c.Reason))+dim(" after ")+paint(cText, durP(c.ElapsedS)))
+	}
+	// 4. Compiler stages with a known state only (unknown ones are noise here).
+	chips, moved := []string{}, false
+	for _, s := range st.Stages.Stages {
+		if s.State == "unknown" || s.State == "" {
+			continue
+		}
+		moved = moved || s.State != "pending"
+		g, c := stageStyle(s.State)
+		chips = append(chips, paint(c, g+" "+clean(s.ID)))
+	}
+	if moved {
+		out = append(out, label("stages")+strings.Join(chips, dim(" · ")))
+	}
+	m.rows["progress"] = []Row{{Kind: "local", Local: localDetail("progress", p)}}
+	legend := paint(cGood, "■") + dim("pass ") + paint(cInfo, "■") + dim("L2 pass, L3 pending ") + paint(cBad, "■") + dim("fail ") + paint(cVerify, "■") + dim("gated ") +
+		paint(cWarn, "■") + dim("running ") + paint(cFaint, "·") + dim("not yet on this compiler")
+	return "PROGRESS", legend, out
+}
+
+// gradeLine is one background grade: a bar of passed, failed and errored capsules against the
+// selection, the counts, and how long ago it last reported (the sign that it is still moving).
+func gradeLine(gr proto.Grade, now float64, w int, live bool) string {
+	sel, _ := f(gr.NSelected)
+	pass, _ := f(gr.NPassed)
+	fail, _ := f(gr.NFailed)
+	errs, _ := f(gr.NErrors)
+	l2, _ := f(gr.NL2)
+	counts := paint(cText, intOr(gr.NCompleted, "—")) + dim("/"+intOr(gr.NSelected, "—")) + " " +
+		paint(cGood, fmt.Sprintf("%.0f✔", pass))
+	if l2 > 0 {
+		counts += " " + paint(cInfo, fmt.Sprintf("%.0f L2✔", l2)) + dim(" (L3 pending)")
+	}
+	counts += " " + paint(cBad, fmt.Sprintf("%.0f✖", fail))
+	if errs > 0 {
+		counts += " " + paint(cWarn, fmt.Sprintf("%.0f!", errs))
+	}
+	tail := ""
+	if t, ok := f(gr.UpdatedAt); ok && now > 0 {
+		switch gr.State {
+		case "grading":
+			c := cText
+			if live && now-t > 1200 {
+				c = cWarn
+			}
+			tail = dim(" · last result ") + paint(c, dur(max(0, now-t))+" ago")
+		case "unfinished":
+			tail = dim(" · last result " + clock(gr.UpdatedAt) + ", never finished")
+		default:
+			tail = dim(" · ended " + clock(gr.UpdatedAt) + " · " + gr.State)
 		}
 	}
-	if r := p.LatestRequest; r != nil {
-		out = append(out, dim("latest check ")+paint(cText, clean(r.Source))+dim(" queue ")+paint(cText, durP(r.QueueWaitS))+
-			dim(" wall ")+paint(cText, durP(r.WallS))+dim(" stage ")+paint(cText, clean(r.Stage)))
+	if s, ok := f(gr.StartedAt); ok && now > 0 && gr.State == "grading" {
+		tail = dim(" · for "+dur(now-s)) + tail
 	}
-	out = append(out, notes(p.Notes, w)...)
-	legend := paint(cGood, "■") + dim(" all tiers ") + paint(cL2, "■") + dim(" L2 only")
-	m.rows["progress"] = []Row{{Kind: "local", Local: localDetail("progress", p)}}
-	return "PROGRESS", legend, out
+	barW := max(4, min(20, w-lipgloss.Width(counts)-lipgloss.Width(tail)-2))
+	return stackBar([]float64{pass, l2, fail, errs}, []color.Color{cGood, cInfo, cBad, cWarn}, sel, barW) + " " + counts + tail
 }
 
 // --- stages -------------------------------------------------------------------------------------
@@ -260,7 +418,7 @@ func firstNonEmpty(xs ...string) string {
 func (m *Model) pAlerts(st *proto.State, w, h int, focused bool) (string, string, []string) {
 	rows, lines := []Row{}, []string{}
 	for _, d := range st.Diagnostics {
-		if !m.matches(d.Title + " " + d.Detail + " " + d.Code) {
+		if !m.matches(d.Title + " " + d.Detail + " " + d.Code + " " + d.Action) {
 			continue
 		}
 		g, c := sevStyle(d.Severity)
@@ -268,22 +426,31 @@ func (m *Model) pAlerts(st *proto.State, w, h int, focused bool) (string, string
 		if d.Occurrences > 1 {
 			times = dim(fmt.Sprintf(" ×%d", d.Occurrences))
 		}
-		lines = append(lines, paint(c, g)+" "+paint(cText, clean(d.Title))+times)
-		rows = append(rows, Row{Kind: "local", Key: d.Code, Local: localDetail(d.Code, d)})
+		lost := ""
+		if v, ok := f(d.ImpactS); ok && v >= 60 {
+			lost = dim(" · " + dur(v) + " at stake")
+		}
+		row := Row{Kind: "local", Key: d.Code, Local: append(localDetail(d.Code, d), d.Items...)}
+		lines = append(lines, paint(c, g)+" "+bold(cText, clean(d.Title))+times+lost)
+		rows = append(rows, row)
 		if d.Detail != "" {
 			lines = append(lines, "   "+dim(clean(d.Detail)))
-			rows = append(rows, Row{Kind: "local", Key: d.Code, Local: localDetail(d.Code, d)})
+			rows = append(rows, row)
+		}
+		if d.Action != "" {
+			lines = append(lines, "   "+paint(cInfo, "→ "+clean(d.Action)))
+			rows = append(rows, row)
 		}
 	}
 	if len(lines) == 0 {
-		lines = append(lines, paint(cGood, "no findings from recorded numbers"))
+		lines = append(lines, paint(cGood, "nothing stands out in the recorded numbers"))
 	}
 	header := []string{}
 	if v := st.Timeline.Verdict; v != nil {
-		header = append(header, bold(cWarn, "▶ "+strings.ToUpper(strings.ReplaceAll(v.Bound, "_", " "))+" BOUND ")+
-			paint(cText, fmt.Sprintf("%.0f%%", v.SharePct))+dim(" · "+clean(v.Explanation)))
+		header = append(header, dim("critical path: ")+bold(cWarn, strings.ReplaceAll(v.Bound, "_", " ")+fmt.Sprintf(" %.0f%%", v.SharePct))+
+			dim(" of the lead's time · "+clean(v.Explanation)))
 	}
-	hint := fmt.Sprintf("%d findings", len(st.Diagnostics))
+	hint := fmt.Sprintf("%d findings, worst first · ↵ detail", len(st.Diagnostics))
 	return "BOTTLENECKS", hint, m.list("alerts", header, rows, lines, h, focused)
 }
 
@@ -317,7 +484,7 @@ func (m *Model) window2(st *proto.State) (float64, float64) {
 			t1 = v
 		}
 	}
-	if win := windows[m.window].seconds; win > 0 {
+	if win := m.win().seconds; win > 0 {
 		return t1 - win, t1
 	}
 	t0 := t1
@@ -363,20 +530,134 @@ func agentStyle(state string) (string, color.Color) {
 
 func (m *Model) pAgents(st *proto.State, w, h int, focused bool) (string, string, []string) {
 	a := st.Agents
+	now := st.GeneratedAt
+	// Fixed right-hand columns: state, last record, time worked, tokens, failed commands.
+	// Narrow panels drop the token and failure columns before squeezing names.
+	wide := w >= 84
+	right := 28
+	if wide {
+		right = 48
+	}
+	nameW := max(12, w-right)
+	m.agentWide = wide
+	header := []string{}
+	if wide {
+		header = append(header, dim(fit("agent", nameW)+fmt.Sprintf("%-9s %9s %7s %7s %9s", "state", "last rec", "worked", "tokens", "failures")))
+	} else {
+		header = append(header, dim(fit("agent", nameW)+fmt.Sprintf("%-9s %9s %7s", "state", "last rec", "worked")))
+	}
+	// Agents by round, newest round first; a round with no agents still says what happened to it.
+	byRound := map[int][]proto.Agent{}
+	for _, ag := range a.Agents {
+		r := -1
+		if v, ok := f(ag.Round); ok {
+			r = int(v)
+		}
+		byRound[r] = append(byRound[r], ag)
+	}
+	turnsOf := map[int][]proto.Turn{}
+	for _, t := range st.Lifecycle.Turns {
+		if v, ok := f(t.Round); ok {
+			turnsOf[int(v)] = append(turnsOf[int(v)], t)
+		}
+	}
+	rounds := []int{}
+	seen := map[int]bool{}
+	for r := range byRound {
+		rounds, seen[r] = append(rounds, r), true
+	}
+	for r := range turnsOf {
+		if !seen[r] {
+			rounds = append(rounds, r)
+		}
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(rounds)))
+	rows, lines := []Row{}, []string{}
+	newestWithAgents := -2
+	for _, r := range rounds {
+		if len(byRound[r]) > 0 {
+			newestWithAgents = r
+			break
+		}
+	}
+	for _, r := range rounds {
+		agents := byRound[r]
+		label := "agents"
+		if r >= 0 {
+			label = fmt.Sprintf("round %d", r)
+		}
+		summary := roundSummary(turnsOf[r], agents, now)
+		lines = append(lines, bold(cHeading, label)+dim(" · ")+summary)
+		rows = append(rows, Row{Kind: "lifecycle", Key: "turns"})
+		if len(agents) == 0 {
+			continue
+		}
+		if r != newestWithAgents && !(m.zoom && m.focus == "agents") {
+			tok := 0.0
+			for _, ag := range agents {
+				if v, ok := f(ag.Tokens.Total); ok {
+					tok += v
+				}
+			}
+			lines = append(lines, dim(fmt.Sprintf("   %d agents · %s tokens · z to expand", len(agents), humanF(tok))))
+			rows = append(rows, Row{Kind: "lifecycle", Key: "turns"})
+			continue
+		}
+		m.agentTree(agents, now, nameW, h, &rows, &lines)
+	}
+	if len(a.Agents) == 0 && len(rounds) == 0 {
+		lines = append(lines, dim("no agent records"))
+	}
+	t := a.Totals
+	hint := fmt.Sprintf("%s working · helpers ≤%s · ↵ commands", intOr(t.Working, "—"), intOr(t.HelperCeiling, "?"))
+	return "AGENT TREE", hint, m.list("agents", header, rows, lines, h, focused)
+}
+
+// roundSummary is one line for a round: how its turns went and how it ended.
+func roundSummary(turns []proto.Turn, agents []proto.Agent, now float64) string {
+	if len(turns) == 0 {
+		return dim(fmt.Sprintf("%d agents", len(agents)))
+	}
+	worked := 0.0
+	for _, t := range turns {
+		if v, ok := f(t.AgentS); ok {
+			worked += v
+		}
+	}
+	last := turns[len(turns)-1]
+	parts := []string{fmt.Sprintf("%d turn(s), agent worked %s", len(turns), dur(worked))}
+	switch {
+	case last.OpenStage != nil:
+		return paint(actColor("startup"), "starting turn "+intOr(last.Turn, "?")+" · "+clean(last.OpenStage.Stage)) + dim(" · "+parts[0])
+	case last.AgentEnd == nil && last.AgentStart != nil:
+		return bold(cGood, "agent working") + dim(" · "+parts[0])
+	}
+	end := ""
+	if v, ok := f(last.AgentEnd); ok && now > 0 {
+		end = " " + dur(math.Max(0, now-v)) + " ago"
+	}
+	reason := clean(last.EndReason)
+	if worked == 0 {
+		return paint(cBad, "no agent ran") + dim(" · ended"+end+": "+reason)
+	}
+	return dim(parts[0] + " · ended" + end + ": " + reason)
+}
+
+// agentTree appends one round's agents as a tree (lead first, helpers under their parent).
+func (m *Model) agentTree(agents []proto.Agent, now float64, nameW, h int, rows *[]Row, lines *[]string) {
 	byParent := map[string][]proto.Agent{}
 	ids := map[string]bool{}
-	for _, ag := range a.Agents {
+	for _, ag := range agents {
 		ids[ag.ID] = true
 	}
 	roots := []proto.Agent{}
-	for _, ag := range a.Agents {
+	for _, ag := range agents {
 		if ag.ParentID != "" && ids[ag.ParentID] && ag.ParentID != ag.ID {
 			byParent[ag.ParentID] = append(byParent[ag.ParentID], ag)
 		} else {
 			roots = append(roots, ag)
 		}
 	}
-	rows, lines := []Row{}, []string{}
 	var walk func(ag proto.Agent, prefix string, last bool, depth int)
 	walk = func(ag proto.Agent, prefix string, last bool, depth int) {
 		if depth > 12 {
@@ -392,21 +673,29 @@ func (m *Model) pAgents(st *proto.State, w, h int, focused bool) (string, string
 		g, c := agentStyle(ag.State)
 		name := agentName(ag)
 		path := ""
-		if ag.Path != "" {
+		if ag.Path != "" && ag.Path != "/root" {
 			path = dim(" " + clean(ag.Path))
 		}
-		tok := human(ag.Tokens.Total)
-		head := dim(prefix+branch) + paint(c, g) + " " + bold(cAgent, clean(name)) + path
-		right := dim(fmt.Sprintf(" %6s tok %7s", tok, durP(ag.ActiveS)))
+		head := " " + dim(prefix+branch) + paint(c, g) + " " + bold(cAgent, clean(name)) + path
+		head = fit(head, nameW-1) + " "
+		seen := "—"
+		if v, ok := f(ag.LastActivityAt); ok && now > 0 {
+			seen = dur(math.Max(0, now-v)) + " ago"
+		}
+		fails := ""
 		if fc, ok := f(ag.FailedCommands); ok && fc > 0 {
-			right += paint(cBad, fmt.Sprintf(" ✖%.0f", fc))
+			fails = paint(cBad, fmt.Sprintf("%9s", fmt.Sprintf("%.0f cmds", fc)))
+		}
+		cols := fit(paint(c, stateWords[ag.State]), 9) + dim(fmt.Sprintf(" %9s ", seen)) + paint(cText, fmt.Sprintf("%7s", durP(ag.ActiveS)))
+		if m.agentWide {
+			cols += paint(cText, fmt.Sprintf(" %7s", human(ag.Tokens.Total))) + " " + fails
 		}
 		if m.matches(name + " " + ag.Path + " " + ag.State) {
-			lines = append(lines, fit(head, max(10, w-24))+right)
-			rows = append(rows, Row{Kind: "agents", Key: ag.ID})
-			if ag.Current != "" && h > 10 {
-				lines = append(lines, dim(prefix+"   ↳ ")+paint(cText, clean(ag.Current)))
-				rows = append(rows, Row{Kind: "agents", Key: ag.ID})
+			*lines = append(*lines, fit(head, nameW)+cols)
+			*rows = append(*rows, Row{Kind: "agents", Key: ag.ID})
+			if ag.Current != "" && h > 10 && ag.State == "working" {
+				*lines = append(*lines, dim(" "+prefix+"   ↳ ")+paint(cText, clean(ag.Current)))
+				*rows = append(*rows, Row{Kind: "agents", Key: ag.ID})
 			}
 		}
 		kids := byParent[ag.ID]
@@ -425,12 +714,12 @@ func (m *Model) pAgents(st *proto.State, w, h int, focused bool) (string, string
 	for _, r := range roots {
 		walk(r, "", true, 0)
 	}
-	if len(a.Agents) == 0 {
-		lines = append(lines, dim("no agent records"))
-	}
-	t := a.Totals
-	hint := fmt.Sprintf("%s agents · %s working · helpers ≤%s", intOr(t.Agents, "—"), intOr(t.Working, "—"), intOr(t.HelperCeiling, "?"))
-	return "AGENT TREE", hint, m.list("agents", nil, rows, lines, h, focused)
+}
+
+// State words for agents: what the record says, not a guess.
+var stateWords = map[string]string{
+	"working": "working", "completed": "finished", "finished": "finished", "aborted": "aborted",
+	"stopped": "stopped", "observed": "seen", "": "—",
 }
 
 // --- tokens ----------------------------------------------------------------------------------------
@@ -664,15 +953,20 @@ func (m *Model) pPerf(st *proto.State, w, h int, focused bool) (string, string, 
 		lines = append(lines, dim("no performance records bound to a source"))
 	}
 	if gs := st.Golden.Comparisons; len(gs) > 0 {
+		refused := []string{}
 		for _, g := range gs {
-			txt := "vs golden " + clean(g.Subject) + ": "
-			if g.Comparable {
-				txt += fmt.Sprintf("%s / %s = %s", human(g.CandidateCycles), human(g.ReferenceCycles), ratio(g.Ratio))
-			} else {
-				txt += "not comparable (" + clean(g.Reason) + ")"
+			if !g.Comparable {
+				refused = append(refused, clean(g.Subject)+": "+clean(g.Reason))
+				continue
 			}
-			lines = append(lines, paint(cCalib, "★ ")+dim(txt))
+			txt := fmt.Sprintf("vs golden %s: %s / %s = %s", clean(g.Subject), human(g.CandidateCycles), human(g.ReferenceCycles), ratio(g.Ratio))
+			lines = append(lines, paint(cCalib, "★ ")+paint(cText, txt))
 			sel = append(sel, Row{Kind: "local", Local: localDetail("golden", g)})
+		}
+		if len(refused) > 0 {
+			// Refusals are one line: they say why no comparison is made, not a result per reference.
+			lines = append(lines, paint(cCalib, "★ ")+dim(fmt.Sprintf("%d golden references not comparable yet · ↵ why", len(refused))))
+			sel = append(sel, Row{Kind: "local", Key: "golden", Local: refused})
 		}
 	}
 	lines = append(lines, notes(p.Notes, w)...)
@@ -751,10 +1045,13 @@ func (m *Model) pCapsules(st *proto.State, w, h int, focused bool) (string, stri
 		return a.Name < b.Name
 	})
 	// Fixed columns: status, cohort, op, tiers, cycles; the rest share what is left.
+	// Name and failure matter most; shapes next; origin only when there is room.
 	rest := max(20, w-36)
-	nameW, shapeW, originW, failW := rest*32/100, rest*21/100, rest*22/100, 0
-	if rest < 40 {
-		nameW, shapeW, originW = rest*60/100, 0, 0
+	nameW, shapeW, originW, failW := rest*36/100, rest*22/100, 0, 0
+	if rest >= 90 {
+		nameW, shapeW, originW = rest*30/100, rest*20/100, rest*20/100
+	} else if rest < 40 {
+		nameW, shapeW = rest*55/100, 0
 	}
 	failW = max(6, rest-nameW-shapeW-originW-3)
 	col := func(s string, w int) string {
@@ -784,9 +1081,14 @@ func (m *Model) pCapsules(st *proto.State, w, h int, focused bool) (string, stri
 		if len(coh) > 5 {
 			coh = coh[:5]
 		}
-		lines = append(lines, tierGlyph(c.Status)+" "+col(paint(cText, clean(c.Name)), nameW)+col(dim(clean(coh)), 5)+col(paint(cL2, clean(c.Op)), 9)+
+		glyph, failure := tierGlyph(c.Status), paint(cBad, clean(c.Failure["category"]))
+		if c.Stale {
+			// The newest result graded an older compiler: shown faint, never as this compiler's failure.
+			glyph, failure = paint(cFaint, "·"), dim("old compiler: "+clean(firstNonEmpty(c.Failure["category"], c.Status)))
+		}
+		lines = append(lines, glyph+" "+col(paint(cText, clean(c.Name)), nameW)+col(dim(clean(coh)), 5)+col(paint(cL2, clean(c.Op)), 9)+
 			col(paint(cText, clean(shapes)), shapeW)+col(dim(clean(origin)), originW)+tiers+"  "+fmt.Sprintf("%8s ", cy)+
-			fit(paint(cBad, clean(c.Failure["category"])), failW))
+			fit(failure, failW))
 		sel = append(sel, Row{Kind: "capsules", Key: c.Name})
 	}
 	if len(st.Capsules.Capsules) == 0 {
@@ -831,48 +1133,77 @@ func originText(o map[string]any) string {
 
 func (m *Model) pPasses(st *proto.State, w, h int, focused bool) (string, string, []string) {
 	p := st.Passes
-	c := p.Counts
-	head := []string{dim("library ") + paint(cText, intOr(c["library_modules"], "—")) + dim(" catalog ") + paint(cText, intOr(c["catalog_mechanisms"], "—")) +
-		dim(" declared ") + paint(cText, intOr(c["declared"], "—")) + dim(" used ") + paint(cText, intOr(c["used"], "—")) +
-		dim(" profiled ") + paint(cText, intOr(c["profiled"], "—"))}
-	if len(p.Pipeline) > 0 {
-		pipe := []string{}
-		for _, n := range p.Pipeline {
-			pipe = append(pipe, clean(n))
+	head := []string{}
+	profiled := false
+	for _, ps := range p.Applied {
+		if _, ok := f(ps.ProfileWallS); ok {
+			profiled = true
 		}
-		head = append(head, paint(cBuild, "▶ ")+dim(strings.Join(pipe, " → ")))
 	}
-	head = append(head, dim(fmt.Sprintf("  %-24s %-7s %2s %4s %4s %6s %7s", "pass", "kind", "DU", "req", "ex", "churn", "prof")))
-	passes := append([]proto.Pass{}, p.Passes...)
-	sort.SliceStable(passes, func(i, j int) bool {
-		ci, _ := f(passes[i].Churn)
-		cj, _ := f(passes[j].Churn)
-		if passes[i].Used != passes[j].Used {
-			return passes[i].Used
+	counted := false
+	for _, ps := range p.Applied {
+		if _, ok := f(ps.ExercisedBy); ok {
+			counted = true
 		}
-		return ci > cj
-	})
+		if _, ok := f(ps.Churn); ok {
+			counted = true
+		}
+	}
+	cols := 0
+	if counted {
+		cols += 14
+	}
+	if profiled {
+		cols += 8
+	}
+	nameW := max(12, w-6-cols)
+	timeH := ""
+	if profiled {
+		timeH = fmt.Sprintf(" %7s", "time")
+	}
+	countH := ""
+	if counted {
+		countH = fmt.Sprintf("%5s %6s", "caps", "churn")
+	}
+	head = append(head, dim(fit("  #  pass, in pipeline order", nameW+5)+countH+timeH))
 	sel, lines := []Row{}, []string{}
-	for _, ps := range passes {
-		if !m.matches(ps.Name + " " + ps.Kind + " " + ps.Boundary + " " + ps.Status) {
+	for _, ps := range p.Applied {
+		if !m.matches(ps.Name + " " + ps.Kind + " " + ps.Boundary) {
 			continue
 		}
-		du := yes(ps.Declared, "D") + yes(ps.Used, "U")
-		g := paint(cFaint, "·")
-		if ps.Used {
-			g = paint(cGood, "●")
-		} else if ps.Declared {
-			g = paint(cWarn, "○")
+		order := "  ·"
+		if v, ok := f(ps.Order); ok {
+			order = fmt.Sprintf("%3.0f", v)
 		}
-		lines = append(lines, g+" "+fit(paint(cText, clean(ps.Name)), 24)+" "+fit(dim(clean(ps.Kind)), 7)+" "+du+
-			fmt.Sprintf(" %4s %4s %6s %7s", intOr(ps.RequiredBy, "·"), intOr(ps.ExercisedBy, "·"), intOr(ps.Churn, "·"), durP(ps.ProfileWallS)))
+		kind := ""
+		if ps.Kind != "command" {
+			kind = dim(" (" + clean(ps.Kind) + ")")
+		}
+		if ps.Boundary != "" {
+			kind += dim(" ⟂" + clean(ps.Boundary))
+		}
+		timeC := ""
+		if profiled {
+			timeC = fmt.Sprintf(" %7s", durP(ps.ProfileWallS))
+		}
+		countC := ""
+		if counted {
+			countC = fmt.Sprintf("%5s %6s", intOr(ps.ExercisedBy, "·"), intOr(ps.Churn, "·"))
+		}
+		lines = append(lines, paint(cBuild, order)+"  "+fit(paint(cText, clean(ps.Name))+kind, nameW)+countC+timeC)
 		sel = append(sel, Row{Kind: "passes", Key: ps.Name})
 	}
-	if len(passes) == 0 {
-		lines = append(lines, dim("no pass records"))
+	if len(p.Applied) == 0 {
+		lines = append(lines, dim("the compiler's pass pipeline is not recorded yet"))
 	}
-	lines = append(lines, notes(p.Notes, w)...)
-	return "PASSES", "D declared U used · req/ex capsules", m.list("passes", head, sel, lines, h, focused)
+	foot := []string{dim("⟂ the shared-pass boundary the pass implements")}
+	if counted {
+		foot = append(foot, dim("caps: capsules whose result used it · churn: cached results it invalidated"))
+	} else {
+		foot = append(foot, dim("no per-pass usage or profile recorded yet"))
+	}
+	lines = append(lines, foot...)
+	return "PASSES", fmt.Sprintf("%d applied by the compiler · ↵ detail", len(p.Applied)), m.list("passes", head, sel, lines, h, focused)
 }
 
 func yes(b bool, s string) string {
@@ -890,22 +1221,43 @@ func (m *Model) pEvents(st *proto.State, w, h int, focused bool) (string, string
 		if !m.matches(e.Kind + " " + e.Text + " " + e.Agent) {
 			continue
 		}
-		g, c := sevStyle(e.Severity)
-		if e.Severity == "info" || e.Severity == "" {
-			g, c = "·", kindColor[e.Kind]
-			if c == nil {
-				c = cDim
-			}
+		tag, c := eventTag(e.Kind)
+		mark := " "
+		switch e.Severity {
+		case "warn", "warning":
+			mark = paint(cWarn, "▲")
+		case "error":
+			mark = paint(cBad, "✖")
 		}
 		who := ""
 		if e.Agent != "" {
 			who = paint(cAgent, clean(e.Agent)) + " "
 		}
-		lines = append(lines, dim(clock(e.T))+" "+paint(c, g)+" "+fit(dim(clean(e.Kind)), 9)+" "+who+paint(cText, clean(e.Text)))
+		lines = append(lines, dim(clock(e.T))+" "+bold(c, fit(tag, 7))+mark+" "+who+paint(cText, clean(e.Text)))
 		sel = append(sel, Row{Kind: "local", Key: e.Kind, Local: localDetail("event", e)})
 	}
 	if len(lines) == 0 {
 		lines = append(lines, dim("no events recorded"))
 	}
-	return "EVENTS", fmt.Sprintf("%d newest first", len(st.Events.Events)), m.list("events", nil, sel, lines, h, focused)
+	return "EVENTS", "newest first · author agent check sim grade", m.list("events", nil, sel, lines, h, focused)
+}
+
+func eventTag(kind string) (string, color.Color) {
+	switch kind {
+	case "author":
+		return "AUTHOR", actColor("startup")
+	case "agent":
+		return "AGENT", cAgent
+	case "check":
+		return "CHECK", cVerify
+	case "sim":
+		return "SIM", cL3
+	case "grade":
+		return "GRADE", cGood
+	case "action":
+		return "ACTION", cBuild
+	case "stop":
+		return "STOP", cBad
+	}
+	return strings.ToUpper(kind), cDim
 }

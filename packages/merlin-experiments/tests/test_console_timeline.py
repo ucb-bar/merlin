@@ -55,13 +55,14 @@ def test_lead_time_splits_into_disjoint_shares(tmp_path):
     assert lead["think_s"] == 800 - 200 - 100
     assert lead["idle_s"] == 100.0  # 1900..2000
     # Blocked on simulation = (tool ∪ wait) ∩ L3 = 1250..1400 and 1500..1600.
-    assert section["overlap"]["lead_blocked_on_sim_s"] == 250.0
+    assert section["overlap"]["lead_blocked_on_sim_s"] is None
+    assert section["overlap"]["command_lifetime_during_sim_s"] == 150.0
     assert section["overlap"]["queue_s"] == 50.0
     assert section["parallelism"]["helpers_used"] == 1
-    assert section["verdict"]["bound"] == "agent_reasoning"
+    assert section["verdict"]["bound"] == "unclassified_agent_time"
 
 
-def test_recorded_telemetry_decides_the_verdict_and_open_jobs_end_at_the_last_record(tmp_path):
+def test_recorded_telemetry_is_reported_and_open_jobs_end_at_the_last_record(tmp_path):
     run = tmp_path / "run"
     (run / "rounds").mkdir(parents=True)
     telemetry = {
@@ -78,12 +79,14 @@ def test_recorded_telemetry_decides_the_verdict_and_open_jobs_end_at_the_last_re
     open_job = {"spans": [{"lane": "L3", "start": 1800, "end": None}]}
     section = timeline.read(_ctx(run, {"agents": agents, "jobs": open_job}, now=99999))
     assert section["recorded"]["think_s"] == 900.0
-    assert section["verdict"] == {
-        "bound": "agent_reasoning",
-        "share_pct": 90.0,
-        "explanation": section["verdict"]["explanation"],
-        "basis": "recorded arrival-stamp telemetry",
-    }
+    # The derived split covers the whole window, so it decides while the lead has spans: 500 s of
+    # turn in a 1000 s window, after 0 s of setup, is half thinking and half idle.
+    assert section["verdict"]["basis"] == "rollout spans of the lead agent"
+    assert section["verdict"]["share_pct"] == 50.0
+    # Without lead spans, the recorded in-session split is all there is.
+    alone = timeline._verdict(None, section["recorded"], {}, 1000.0)
+    assert alone["bound"] == "unclassified_agent_time" and alone["share_pct"] == 90.0
+    assert alone["basis"] == "recorded arrival-stamp telemetry (inside sessions only)"
     # A job still "running" in a run that stopped ends at the run's last record, not now.
     assert section["window"]["end"] == 2000.0
     assert section["overlap"]["sim_busy_s"] == 200.0
@@ -166,15 +169,16 @@ def test_wall_time_findings(tmp_path):
             "timeline": {
                 "window": {"seconds": 20000},
                 "lead": {"think_s": 2000, "tool_s": 12000, "wait_s": 0, "idle_s": 6000, "setup_s": 0},
-                "verdict": {"bound": "tools", "share_pct": 60.0, "basis": "rollout spans"},
+                "verdict": {"bound": "outer_tools", "share_pct": 60.0, "basis": "matched call/return spans"},
                 "overlap": {"lead_blocked_on_sim_s": 8000},
-                "parallelism": {"agents_avg": 1.1, "helper_ceiling": 16, "helpers_used": 2},
+                "parallelism": {"agents_avg": 1.1, "helpers_avg": 0.1, "helper_ceiling": 16, "helpers_used": 2},
             },
             "jobs": {"running": [{"stage": "gsim simulation"}]},
         },
     }
     codes = {f["code"] for f in diagnose.diagnose(snap)}
-    assert {"TOOL_BOUND", "SIM_ON_CRITICAL_PATH", "HELPERS_UNDERUSED", "UNFINISHED_JOBS"} <= codes
+    assert {"TOOL_BOUND", "HELPERS_UNDERUSED", "UNFINISHED_JOBS"} <= codes
+    assert "SIM_ON_CRITICAL_PATH" not in codes  # Coincident intervals do not prove an awaited job.
 
 
 def test_findings_with_one_title_merge_their_details():
@@ -241,3 +245,56 @@ def test_inspecting_a_timeline_lane_profiles_its_jobs(tmp_path):
     assert result["title"] == "lane L3"
     sims = next(s for s in result["sections"] if s["title"] == "simulation jobs")
     assert sims["lines"][0].startswith("1 simulation request(s): fail 1")
+
+
+def test_background_command_is_not_outer_tool_blocking_and_peak_is_exact(tmp_path):
+    run = tmp_path / "run"
+    (run / "rounds").mkdir(parents=True)
+    agents = {"agents": [
+        {"id": "lead", "role": "lead", "outer_tool_calls_recorded": True,
+         "spans": [[1000, 2000, "turn"], [1100, 1900, "tool"], [1100, 1110, "tool_call"]]},
+        {"id": "h1", "role": "subagent", "spans": [[1500, 1500.01, "turn"]]},
+        {"id": "h2", "role": "subagent", "spans": [[1500, 1500.01, "turn"]]}]}
+    result = timeline.read(_ctx(run, {"agents": agents}))
+    assert result["lead"]["command_lifetime_s"] == 800
+    assert result["lead"]["outer_tool_call_s"] == 10
+    assert result["lead"]["unclassified_non_tool_s"] == 990
+    assert result["lead"]["pure_deliberation_s"] is None
+    assert "not separated" in result["verdict"]["explanation"]
+    assert result["parallelism"]["agents_peak"] == 3
+    assert result["parallelism"]["helpers_peak"] == 2
+    assert result["parallelism"]["agents_peak_sampled"] == 1
+    assert result["parallelism"]["helpers_avg"] == 0.0
+    assert result["overlap"]["lead_blocked_on_sim_s"] is None
+
+
+def test_half_open_helper_intervals_do_not_overlap():
+    assert timeline._peak([[(0, 1)], [(1, 2)]]) == 1
+
+
+def test_helper_background_command_does_not_extend_its_task_lifetime(tmp_path):
+    run = tmp_path / "run"
+    (run / "rounds").mkdir(parents=True)
+    agents = {"agents": [{"id": "lead", "role": "lead", "spans": [[1000, 2000, "turn"]]},
+                         {"id": "h", "role": "subagent", "spans": [[1100, 1200, "turn"],
+                                                                          [1150, 1900, "tool"]]}]}
+    result = timeline.read(_ctx(run, {"agents": agents}))
+    assert result["parallelism"]["helpers_avg"] == 0.1
+    assert result["parallelism"]["agents_avg"] == 1.1
+
+
+def test_relaunched_round_leads_all_count_as_lead_time(tmp_path):
+    run = tmp_path / "run"
+    (run / "rounds").mkdir(parents=True)
+    agents = {
+        "agents": [
+            {"id": "lead-r0", "role": "lead", "spans": [[1100, 1400, "turn"], [1200, 1300, "tool"]]},
+            {"id": "lead-r1", "role": "lead", "spans": [[1500, 1900, "turn"], [1600, 1700, "tool"]]},
+        ],
+        "totals": {"helper_ceiling": 16},
+    }
+    lead = timeline.read(_ctx(run, {"agents": agents, "jobs": {"spans": []}}))["lead"]
+    assert lead["sessions"] == 2
+    assert (lead["setup_s"], lead["tool_s"]) == (100.0, 200.0)
+    assert lead["think_s"] == 500.0
+    assert lead["idle_s"] == 200.0  # only the relaunch gap 1400..1500 and the tail 1900..2000

@@ -373,6 +373,9 @@ GradingInputs keeps invocation roots separate; only the native diagnostic edge m
 defer public-root materialization until after the submission gate. Certification
 policy similarly resolves public roots only after finding additional cert tiers.
 Keep archive-before-shape and publish-after-promotion ordering unchanged.
+The shape-generalization and codegen-scalability probes live in `loop_probes.py`;
+`loop_grading` re-exports them and `grade()` calls them through its own module
+globals, so replacing `loop_grading.<probe>` still replaces the probe a grade runs.
 Selected background snapshot completion may finish queued work after source edits;
 its exact source stays attached and a superseded snapshot can never converge the
 current compiler. `qa/progress.json` is a separate, noncertifying stream from
@@ -545,6 +548,16 @@ race without updating grade health, and retains the required first-grade retry.
 Real grader errors retain bounded printable type/reason in their owned records;
 all snapshot custody, concurrent draining and numerical checks remain unchanged.
 
+`source_quiet` debounces that launch: a due grade starts once its source identity
+has been unchanged for `MERLIN_GRADE_QUIET_S` (off by default: a replay of two runs
+made it a net loss for an author editing every 15-21 s), or at
+the latest `MERLIN_GRADE_QUIET_MAX_DELAY_S` (default 120 s) after it fell due.
+The identity is sampled at most every 5 s while waiting and never between
+grades; metadata only dates a new identity, so an idle source launches at once.
+While a grade waits, the readiness record says `waiting_for_quiet_source` with
+`waited_s` (rewritten per sample, not per poll) and one log line marks the start.
+Scheduling only: the grade still captures and verifies its own source.
+
 `promotion_verdicts` interprets the two existing verdict spellings and already
 executed certificate tiers without issuing work. `selfcheck_selection` also owns
 explicit reachable-tier selection. Original promotion/selfcheck helper names
@@ -593,3 +606,14 @@ identity. Its sealed model child restores this same input owner and an isolated
 compiler executor. Missing transport never falls through to unboxed candidate
 execution. Child receipts identify source/spec execution, not numerical success
 or original-profile Lean/pass qualification.
+
+
+`shape_panel` answers the ordinary `panel:FAMILY` capsule selector inside the
+self-check child: one representative per shape class (`shape_classes`, derived
+from declarations against the RTL tile edge, never names), graded as ordinary
+subsets. Compare cycles like with like only: gSIM measurements and a qualified
+model are cycle evidence; Spike counts and provisional estimates never form a
+ratio. Panel records use `merlin.transforms.shape_policy` field names and leave
+the author's session pins to the author. `capacity_use` relates addressed local
+rows and device reads to RTL-derived capacity; it is structural and advisory,
+never reads cycles, and reports unresolved run-time addresses as UNKNOWN.

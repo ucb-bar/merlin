@@ -87,7 +87,7 @@ def source_group_roster(groups, required, *, host_placement, module=None) -> dic
         {"group": row["source_group"], **row} for row in source["eligible_group_provenance"]
     ], source)
     if module is not None:
-        from merlin.kernels.shapes import observe_contractions
+        from merlin.compile.analysis.contraction_shapes import observe_contractions
 
         shapes = {id(op): shape for op, shape in observe_contractions(module)}
         admitted = set(source["eligible_groups"]) | set(source["optional_groups"])

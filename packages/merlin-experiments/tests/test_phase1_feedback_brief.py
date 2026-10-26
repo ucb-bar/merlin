@@ -109,7 +109,7 @@ print('brief-publication-qualified')
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "brief-publication-qualified"
-    assert {p.name for p in (workspace / "qa").iterdir()} == {"round_brief.md", ".notes_hash"}
+    assert {p.name for p in (workspace / "qa").iterdir()} == {"round_brief.md", ".notes_hash", ".round-brief.lock"}
 
 
 def test_brief_implementation_is_masked_not_staged_as_candidate_sdk(tmp_path, monkeypatch):

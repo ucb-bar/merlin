@@ -102,9 +102,14 @@ class SnapshotProgress:
     def _write(self, state, *, verdict=None):
         try:
             current = self.guard.current()
-            # A draining obsolete grade must not replace a newer grade's stream.
+            # A draining obsolete grade must not replace a newer grade's stream. The newest owned snapshot
+            # may: an author who keeps editing leaves no snapshot current, and requiring currency left the
+            # live stream on an old source for 20+ minutes while newer grades ran.
+            from .snapshot_publication import owns
+
             live_matches = (current or not self.path.is_file()
-                or json.loads(self.path.read_text()).get("graded_source_sha256") == self.source)
+                or json.loads(self.path.read_text()).get("graded_source_sha256") == self.source
+                or owns(self.path.parent.parent))
             rows = list(self.rows.values())
             qualification = summarize(rows)
             record = {

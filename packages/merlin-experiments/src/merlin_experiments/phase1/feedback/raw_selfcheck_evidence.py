@@ -44,6 +44,24 @@ def broker_environment(root: Path | None, workspace: Path, *, environ=None) -> d
     return environment
 
 
+def operator_log_dir(*, environ=None) -> Path | None:
+    """Operator-only directory for broker child logs, or ``None`` when no evidence root is selected.
+
+    A child's raw stdout/stderr can name host paths; spooled into the agent's channel they were
+    readable by the agent in full. With a selected evidence root they live beside the raw runs.
+    """
+    environment = os.environ if environ is None else environ
+    try:
+        root = _selected_root(environment)
+    except ValueError:
+        return None  # an unusable selection keeps the historical channel location rather than failing a check
+    if root is None:
+        return None
+    directory = root / "broker-logs"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return directory
+
+
 def create_runs_root(*, environ=None) -> Path:
     """Keep failed and successful raw runs; legacy unselected calls use TMPDIR."""
     environment = os.environ if environ is None else environ

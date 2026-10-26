@@ -43,6 +43,7 @@ func main() {
 	interval := flag.Float64("interval", 1.0, "Fast refresh seconds for running experiments")
 	renderOnce := flag.String("render-once", "", "Print one frame of WIDTHxHEIGHT after the first snapshot and exit")
 	replay := flag.String("replay", "", "Render recorded data-process JSON lines from FILE")
+	page := flag.String("page", "main", "Page to open: main or insights (v toggles)")
 	var tasks, runs multi
 	flag.Var(&tasks, "task", "Limit discovery to this task folder (repeatable)")
 	flag.Var(&runs, "run-dir", "Also show this run or record directory (repeatable)")
@@ -67,9 +68,9 @@ func main() {
 	args = append(args, flag.Args()...)
 
 	if *renderOnce != "" {
-		os.Exit(once(*python, args, *replay, *renderOnce))
+		os.Exit(once(*python, args, *replay, *renderOnce, *page))
 	}
-	os.Exit(interactive(*python, args, *replay))
+	os.Exit(interactive(*python, args, *replay, *page))
 }
 
 func envOr(key, fallback string) string {
@@ -168,7 +169,7 @@ func start(python string, args []string, replay string, deliver func(any), done 
 	return b, nil
 }
 
-func interactive(python string, args []string, replay string) int {
+func interactive(python string, args []string, replay, page string) int {
 	var prog *tea.Program
 	ready := make(chan struct{})
 	var b *bridge
@@ -177,6 +178,7 @@ func interactive(python string, args []string, replay string) int {
 			b.send(cmd)
 		}
 	})
+	model.OpenPage(page)
 	prog = tea.NewProgram(model)
 	var err error
 	b, err = start(python, args, replay, func(msg any) {
@@ -209,7 +211,7 @@ func interactive(python string, args []string, replay string) int {
 }
 
 // once prints a single frame after the first snapshot (plus the slow sections) arrives.
-func once(python string, args []string, replay, size string) int {
+func once(python string, args []string, replay, size, page string) int {
 	w, h := 200, 55
 	if a, c, ok := strings.Cut(size, "x"); ok {
 		if v, err := strconv.Atoi(a); err == nil {
@@ -221,6 +223,7 @@ func once(python string, args []string, replay, size string) int {
 	}
 	model := ui.New(nil)
 	model.W, model.H = w, h
+	model.OpenPage(page)
 	msgs := make(chan any, 64)
 	finished := make(chan error, 1)
 	b, err := start(python, args, replay, func(msg any) { msgs <- msg }, func(e error) { finished <- e })

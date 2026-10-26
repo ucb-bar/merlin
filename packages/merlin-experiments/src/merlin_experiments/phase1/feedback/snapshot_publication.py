@@ -49,6 +49,20 @@ def publish_live(workspace, action, *, default=None):
         return action()
 
 
+def owns(workspace) -> bool:
+    """Whether this context's snapshot is the newest one claimed for live feedback.
+
+    Only an explicit owner proves that; outside a publication scope nothing is proven."""
+    owner = _OWNER.get()
+    if owner is None:
+        return False
+    try:
+        with _lock(workspace) as path:
+            return json.loads(path.read_text()).get('token') == owner[1]
+    except (OSError, ValueError):
+        return False
+
+
 def current_token():
     owner = _OWNER.get()
     return owner[1] if owner is not None else None

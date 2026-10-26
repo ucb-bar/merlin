@@ -76,6 +76,49 @@ def experiments_text(items: list[dict], *, color: bool = False, width: int = 160
     return "\n".join(clip_ansi(line, width) for line in lines)
 
 
+#: Test-case rows of the CASES panel printed in text (its first sort: biggest headroom first).
+CASE_ROWS = 15
+
+
+def _cases_text(section: dict, color: bool) -> list[str]:
+    """The CASES insight panel: its summary lines and the first rows of its table, in columns."""
+    return _panel_text(section, color, " CASES", "per test case (the console's insight page shows every row; "
+                       "Enter: history)", "test cases")
+
+
+def _panel_text(section: dict, color: bool, title: str, subtitle: str, noun: str) -> list[str]:
+    """One insight panel: its summary lines and the first rows of its table, in columns."""
+    if section.get("error"):
+        return [paint(title, "1", color) + f"  reader error: {section['error']}"]
+    summary = section.get("summary") or []
+    if not summary:
+        return []
+    out = [paint(title, "1", color) + "  " + subtitle]
+    out += [f"   {item.get('label', ''):<28} {item.get('value')}" for item in summary]
+    tbl = section.get("table") or {}
+    columns, rows = tbl.get("columns") or [], (tbl.get("rows") or [])[:CASE_ROWS]
+    if rows:
+        cells = [columns] + [r.get("cells") or [] for r in rows]
+        widths = [
+            min(44 if i == 0 else 16, max(len(str(c[i])) for c in cells if i < len(c))) for i in range(len(columns))
+        ]
+
+        def fmt(values: list) -> str:
+            parts = []
+            for i, width_ in enumerate(widths):
+                text = str(values[i]) if i < len(values) else ""
+                text = text if len(text) <= width_ else text[: width_ - 1] + "…"
+                parts.append(text.ljust(width_) if i == 0 else text.rjust(width_))
+            return "   " + " ".join(parts)
+
+        out.append(fmt(columns))
+        out += [fmt(c) for c in cells[1:]]
+        total = len(tbl.get("rows") or [])
+        if total > len(rows):
+            out.append(f"   … {total - len(rows)} more {noun}")
+    return out
+
+
 def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -> str:
     e = snapshot.get("experiment") or {}
     state = e.get("state", "?")
@@ -84,14 +127,34 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
         + f"  task {e.get('task_name') or '-'}  {'OPERATOR' if snapshot.get('operator_private') else 'PUBLIC'}",
         f" basis: {e.get('state_basis', '')}",
         f" run: {e.get('run_dir')}",
-        "",
     ]
+    life = _section(snapshot, "lifecycle")
+    now = snapshot.get("generated_at") or 0
+    phase = life.get("phase") or "unknown"
+    since = life.get("phase_since")
+    when = f" {_dur(now - since)} ago" if isinstance(since, int | float) and now else ""
+    words = {"authoring": "authoring", "startup": "starting a turn", "ended": f"stopped{when}"}.get(phase, phase)
+    activity_now = _section(snapshot, "activity")
+    ids = {c.get("code"): c.get("id") for c in activity_now.get("categories") or []}
+    busy: dict[str, int] = {}
+    for core in activity_now.get("now") or []:
+        cid = ids.get(core.get("code"))
+        if cid and cid != "idle":
+            busy[cid] = busy.get(cid, 0) + 1
+    sampled = any(core.get("code") not in (None, " ") for core in activity_now.get("now") or [])
+    cores_now = "  ".join(f"{k} {v}" for k, v in busy.items()) or (
+        "idle" if sampled else "not sampled in a one-shot view"
+    )
+    detail = f" · {life['phase_detail']}" if life.get("phase_detail") else ""
+    out += [paint(" NOW", "1", color) + f"  author {words}{detail}  │  cores {cores_now}", ""]
 
     p = _section(snapshot, "progress")
+    numeric = p.get("numeric") or {}
     out.append(
-        paint(" PROGRESS", "1", color) + f"  latest grade {_n(p.get('n_completed'))}/{_n(p.get('n_selected'))} checked"
-        f"  passed {_n(p.get('n_passed'))}  state {p.get('state') or '—'}"
-        + ("  (retained snapshot)" if p.get("snapshot_current") is False else "")
+        paint(" PROGRESS", "1", color) + f"  latest grade: {_n(p.get('n_completed'))} of {_n(p.get('n_selected'))}"
+        f" graded, {_n(p.get('n_passed'))} pass  ({p.get('state') or '—'})"
+        + ("  [a retained earlier snapshot]" if p.get("snapshot_current") is False else "")
+        + f"  numerics {_n(numeric.get('completed'))} executed, {_n(numeric.get('passed'))} correct"
     )
     for c in p.get("cohorts") or []:
         out.append(
@@ -108,7 +171,11 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
     out.append(paint(" BOTTLENECKS", "1", color))
     for d in (snapshot.get("diagnostics") or [])[:8]:
         times = f" ×{d['occurrences']}" if d.get("occurrences", 1) > 1 else ""
-        out.append(f"   [{d.get('severity')}] {d.get('title')}{times} — {d.get('detail')}")
+        out.append(f"   [{d.get('severity')}] {d.get('title')}{times}")
+        if d.get("detail"):
+            out.append(f"       {d['detail']}")
+        if d.get("action"):
+            out.append(f"       → {d['action']}")
     if not snapshot.get("diagnostics"):
         out.append("   no findings from recorded numbers")
 
@@ -116,19 +183,22 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
     lead, verdict, window = tl.get("lead") or {}, tl.get("verdict") or {}, (tl.get("window") or {}).get("seconds")
     if lead and isinstance(window, int | float) and window > 0:
         shares = "  ".join(
-            f"{k} {100 * (lead.get(f'{k}_s') or 0) / window:.0f}%" for k in ("setup", "think", "tool", "wait", "idle")
+            f"{label} {100 * (lead.get(f'{key}_s') or 0) / window:.0f}%"
+            for key, label in (("setup", "setup"), ("think", "outside commands"),
+                               ("tool", "command lifetime"), ("wait", "recorded wait"), ("idle", "idle"))
         )
         para = tl.get("parallelism") or {}
         out.append(
             paint(" TIMELINE", "1", color) + f"  lead {shares}  over {_dur(window)}"
-            f"  agents {_n(para.get('agents_avg'), 1)} avg / {_n(para.get('agents_peak'))} peak"
+            f"  agents incl lead {_n(para.get('agents_avg'), 1)} avg / {_n(para.get('agents_peak'))} peak"
+            f"; helpers {_n(para.get('helpers_avg'), 1)} avg"
         )
     recorded = tl.get("recorded") or {}
     if recorded:
         total = (recorded.get("think_s") or 0) + (recorded.get("tool_wait_s") or 0)
         if total:
             out.append(
-                f"   recorded split: think {100 * recorded['think_s'] / total:.0f}%  tool+wait"
+                f"   recorded split: unclassified {100 * recorded['think_s'] / total:.0f}%  tool+wait"
                 f" {100 * recorded['tool_wait_s'] / total:.0f}%"
             )
     if verdict:
@@ -136,6 +206,20 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
             f"   bound: {str(verdict.get('bound')).replace('_', ' ')} {_n(verdict.get('share_pct'))}%"
             f" — {verdict.get('explanation')}"
         )
+
+    turns = life.get("turns") or []
+    if turns:
+        out.append(paint(" AUTHOR TURNS", "1", color))
+        for turn in turns[-6:]:
+            agent = turn.get("agent_s")
+            ran = f"agent {_dur(agent)}" if agent is not None else "agent did not run"
+            if turn.get("open_stage"):
+                ran = f"starting ({turn['open_stage'].get('stage')})"
+            ended = f"  ended: {turn['end_reason']}" if turn.get("end_reason") else ""
+            out.append(
+                f"   round {turn.get('round')} turn {turn.get('turn')}  {turn.get('phase') or '-':<12}"
+                f" startup {_dur(turn.get('startup_s'))}  {ran}{ended}"
+            )
 
     agents = _section(snapshot, "agents").get("agents") or []
     out.append(paint(" AGENTS", "1", color) + f"  {len(agents)} recorded")
@@ -163,6 +247,8 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
         + f"  experiment {_ranges(m.get('experiment_cpus'))}  console {_ranges(m.get('console_cpus'))}"
         + f"  run telemetry {r.get('mode') or '—'}"
     )
+    if busy:
+        out.append("   now: " + "  ".join(f"{k} on {v} core{'s' if v > 1 else ''}" for k, v in busy.items()))
     for alloc in m.get("allocations") or []:
         if isinstance(alloc, dict):
             procs = f"  {alloc['processes']} processes" if isinstance(alloc.get("processes"), int) else ""
@@ -181,14 +267,19 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
             f"  floor {_n(row.get('floor_cycles')):>8}  eff {_n(row.get('efficiency_pct'), 2)}%"
         )
 
+    out += _cases_text(_section(snapshot, "cases"), color)
+    out += _panel_text(_section(snapshot, "library"), color, " LIBRARY",
+                       "library passes: imported by submission/, author tool calls, A/B effect (least touched first)",
+                       "passes")
+
     caps = _section(snapshot, "capsules")
     counts = (caps.get("counts") or {}).get("status") or {}
     out.append(paint(" CAPSULES", "1", color) + "  " + "  ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     passes = _section(snapshot, "passes")
-    pc = passes.get("counts") or {}
-    out.append(paint(" PASSES", "1", color) + "  " + "  ".join(f"{k} {_n(v)}" for k, v in sorted(pc.items())))
-    if passes.get("pipeline"):
-        out.append("   pipeline: " + " → ".join(passes["pipeline"]))
+    applied = passes.get("applied") or []
+    out.append(paint(" PASSES", "1", color) + f"  {len(applied)} applied by the compiler")
+    if applied:
+        out.append("   " + " → ".join(str(x.get("name")) for x in applied))
 
     events = _section(snapshot, "events").get("events") or []
     out.append(paint(" EVENTS", "1", color))

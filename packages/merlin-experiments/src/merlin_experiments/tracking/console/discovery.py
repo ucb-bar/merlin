@@ -136,6 +136,33 @@ def workspace_of(run_dir: Path, reader: Reader) -> str | None:
     return next(iter(found)) if len(found) == 1 else None
 
 
+#: Files a run writes once, near its start (``environment.yaml`` is rewritten every round).
+START_RECORDS = (
+    "input_bundle_manifest.yaml",
+    "authored_input_bundle_manifest.yaml",
+    "joint_campaign.json",
+    "rounds/round_00.prompt.txt",
+    "environment.yaml",
+)
+
+
+def _started(run_dir: Path, runner: int | None, proc_root: Path = Path("/proc")) -> float | None:
+    """When a run started: its live runner's process start, else the earliest of its start records."""
+    times = [t for t in (mtime(run_dir / name) for name in START_RECORDS) if t is not None]
+    if type(runner) is int:
+        from .. import terminal_probe as probe
+
+        stat = probe.task_stat(runner, proc_root=proc_root)
+        boot = None
+        for line in (probe.read(proc_root / "stat") or b"").splitlines():
+            fields = line.split()
+            if len(fields) == 2 and fields[0] == b"btime" and fields[1].isdigit():
+                boot = int(fields[1])
+        if stat and boot is not None:
+            times.append(boot + stat["start_ticks"] / os.sysconf("SC_CLK_TCK"))
+    return min(times) if times else None
+
+
 class Discovery:
     """Bounded machine-wide experiment discovery with per-directory change caching."""
 
@@ -246,7 +273,8 @@ class Discovery:
         if owner_path is not None:
             probes.append(owner_path.parent / "native.log")
         times = [t for t in map(mtime, probes) if t is not None]
-        return max(times) if times else None
+        # A run still preparing has none of those yet; its directory changes as inputs are staged.
+        return max(times) if times else mtime(run_dir)
 
     def _interruption(self, run_dir: Path) -> str | None:
         stop = self.reader.document(run_dir / "joint_epoch_stop.json", limit=1 << 20)
@@ -319,7 +347,7 @@ class Discovery:
         state, basis = self.classify(run_dir, owner, alive, last, now, None if alive else runner)
         parts = run_dir.parts
         target, suite = (parts[-3], parts[-2]) if len(parts) >= 3 else (None, None)
-        started = epoch(obj(owner).get("started_at_unix")) or mtime(run_dir / "environment.yaml")
+        started = epoch(obj(owner).get("started_at_unix")) or _started(run_dir, runner, self.proc_root)
         launch = owner_path.parent.parent if owner_path else None
         return {
             "id": str(run_dir),

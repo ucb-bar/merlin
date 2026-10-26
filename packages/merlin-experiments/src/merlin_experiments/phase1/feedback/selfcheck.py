@@ -83,6 +83,7 @@ from merlin_experiments.phase1.feedback.selfcheck_selectors import (
 )
 from merlin_experiments.phase1.feedback.selfcheck_selectors import select_capsules
 from merlin_experiments.phase1.timing import barrier_measurements
+from merlin_experiments.phase1.feedback import package_rejection, performance_brief, scratch_retention, selfcheck_notes
 
 from ..compiler_library import selected_child
 
@@ -622,10 +623,11 @@ from ..joint_control import selfcheck_policy
 
 @selected_child
 @selfcheck_policy
+@scratch_retention.releases_selfcheck_scratch
 def main(argv=None, *, context=None, capsules_root: Path | None = None, contract: Path | None = None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     add_context_arguments(ap)
-    ap.add_argument("--suite", choices=("core", "scalability"), default="core")
+    ap.add_argument("--suite", choices=("core", "scalability", "programs"), default="core")
     ap.add_argument("--capsules-root", type=Path, help="explicit public corpus, never rediscovered when supplied")
     ap.add_argument("--contract", type=Path, help="explicit grading contract root")
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
@@ -723,6 +725,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         "--dynamic-census", action="store_true", help="append bounded own-ELF activity after functional screen"
     )
     a = ap.parse_args(argv)
+    request_deadline = time.monotonic() + a.timeout  # the broker stops this check 240 s after its timeout
     if a.artifact_root:
         try:
             a.artifact_root = _request_artifact_root(a.artifact_root, progress=a.progress_out, output=a.out)
@@ -735,6 +738,13 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
 
         select(Path.cwd(), a.rtl_facts)
     context = resolve_context(a, ap, context)
+    if a.capsules.startswith("panel:") and a.suite == "core":  # one request per shape class (shape_panel)
+        from .shape_panel import cli as panel
+        return panel(argv, a, context=context, run=main, root=a.capsules_root or capsules_root, contract=contract)
+    if a.suite == "programs":
+        from .public_programs import cli
+
+        return cli(a, context=context)
     if a.suite == "scalability":
         from .public_scalability import cli
 
@@ -819,6 +829,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     import tempfile as _tf2
 
     _isodir = Path(_tf2.mkdtemp(prefix="selfcheck_iso_"))
+    scratch_retention.temporary(_isodir)
     shutil.copytree(sub, _isodir / "submission", ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
     sub = _isodir / "submission"
     _strip_build_state(sub)  # every grade builds from scratch in its OWN path — see helper
@@ -869,6 +880,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     from .raw_selfcheck_evidence import create_runs_root
 
     runs_root = create_runs_root()
+    scratch_retention.raw_runs(runs_root)
 
     # Subset filtering that ACTUALLY limits the grade: CG.grade runs EVERY capsule under capsules_root, so
     # the `want` output-filter below alone would still grade all 20 (a "1-capsule verilator" check = ~1hr).
@@ -876,6 +888,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     caps_root = capsules_root
     if want:
         caps_root = Path(tempfile.mkdtemp(prefix="selfcheck_caps_"))
+        scratch_retention.temporary(caps_root)
         missing = [n for n in sorted(want) if not (capsules_root / n / "capsule.yaml").exists()]
         if missing:
             print(json.dumps({"error": f"unknown capsule(s): {missing}"}))
@@ -986,13 +999,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "build_failed": True,
             "failure_plane": f.get("plane"),
             "failure_category": f.get("category"),
-            "detail": f.get("detail"),
-            "note": "Your package did NOT build/scan, so ZERO capsules ran — this is NOT a stubbed "
-            "grader. Fix the build first (see 'detail' for the cmake/compiler stderr). NOTE: "
-            "the grade builds an ISOLATED COPY of your package WITHOUT the build/ tree, so your "
-            "manifest 'build' must support a CLEAN configure (provide a 'configure' step, e.g. "
-            "cmake -S <src> -B <build>, not only 'cmake --build'); build commands run from the "
-            "package root, so relative paths and $MLIR_DIR/$LLVM_DIR/$CM env vars are honored.",
+            "detail": f.get("detail"), **package_rejection.namespace_hint(f),
+            "note": selfcheck_notes.package_failure_note(f),
         }
         txt = json.dumps(out, indent=2)
         print(txt)
@@ -1051,9 +1059,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             _declared_ran = True
             break
     census_deadline = time.monotonic() + min(30, a.timeout)
-    from . import joint_performance
-
-    performance_deadline = joint_performance.deadline(a.timeout)
+    observations = []  # one timing observation per passing row, each on its own budget (below)
     for cr in _results:
         try:
             d = json.loads(cr.read_text())
@@ -1064,16 +1070,6 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             continue
         if _qc._candidate_native_feedback(d) is not None:
             row, certified = _candidate_selfcheck_row(d, closed_rows.get(name), name=name, barrier_tier=barrier_tier)
-            # The owned model's completed ELF has its own checked call scope.
-            # Publish advisory timing after its numerical screen even while a
-            # mandatory physical tier remains pending. Legacy runner traces
-            # are distinct programs and must never supply this observation.
-            original = original_capsules.get(name)
-            if d.get("owned_host_native_execution") is not None and original is not None:
-                joint_performance.attach(
-                    row, cr.parent / "generated", result=d, context=context, compiler=sub, capsule=original,
-                    remaining_s=max(0, performance_deadline - time.monotonic()),
-                )
             if a.dynamic_census:
                 row["dynamic_census"] = {"status": "UNKNOWN", "reason": "distinct own model ELF owner required"}
             rows.append(row)
@@ -1276,11 +1272,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 compiler=sub,
                 remaining_s=max(0, census_deadline - time.monotonic()),
             )
-        joint_performance.attach(
-            row, gen, result=d, context=context, compiler=sub, capsule=_original,
-            remaining_s=max(0, performance_deadline - time.monotonic()),
-        )
+        observations.append(dict(row=row, root=gen, result=d, compiler=sub, capsule=_original))
         rows.append(row)
+    from .joint_performance_batch import attach_all
+    attach_all(observations, context=context, request_deadline=request_deadline)
     n_result = len(rows)
     try:
         if selected is None:
@@ -1490,7 +1485,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 "status": "unavailable",
                 "reason": f"graded-artifact census failed: {type(exc).__name__}: {str(exc)[:200]}",
             }
-    out = selection.report(out)
+    out = performance_brief.attach(selection.report(out), rows, artifact_root=a.artifact_root or None)
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:

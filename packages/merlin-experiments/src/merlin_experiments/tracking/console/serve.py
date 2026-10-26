@@ -42,6 +42,7 @@ from typing import Any
 
 from . import EXPERIMENTS_SCHEMA, SNAPSHOT_SCHEMA, placement
 from .discovery import Discovery, default_selection
+from .io import Reader
 from .model import Collector
 
 LIVE_STATES = ("LIVE", "STALLED", "ACTIVE")
@@ -77,6 +78,16 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def _incarnation(item: dict[str, Any]) -> tuple[int, int] | None:
+    """The identity of the run directory itself; a relaunch that reuses the path gets a new one."""
+    run_dir = item.get("run_dir")
+    try:
+        info = os.stat(run_dir) if run_dir else None
+    except OSError:
+        return None
+    return None if info is None else (info.st_dev, info.st_ino)
+
+
 class Server:
     def __init__(self, args: argparse.Namespace, out=sys.stdout) -> None:
         self.args = args
@@ -85,6 +96,7 @@ class Server:
         self.discovery = Discovery(args.tasks_root, tasks=args.task, extra_runs=args.run_dir)
         self.experiments: list[dict[str, Any]] = []
         self.collector: Collector | None = None
+        self.incarnation: tuple[int, int] | None = None
         self.sent: dict[str, str] = {}
         self.sent_objects: dict[str, Any] = {}
         self.commands: queue.Queue = queue.Queue()
@@ -135,6 +147,12 @@ class Server:
     def scan(self) -> None:
         self.experiments = self.discovery.scan()
         if self.collector is not None:
+            # A relaunch under the same run id replaces the run directory at the same path; follow the
+            # new run instead of the caches, tails and grade history of the one that was moved away.
+            current = next((item for item in self.experiments if item["id"] == self.collector.experiment["id"]), None)
+            if current is not None and _incarnation(current) != self.incarnation:
+                self.select(current["id"])
+        if self.collector is not None:
             for item in self.experiments:
                 self.collector.update_experiment(item)
         self.emit(
@@ -160,9 +178,15 @@ class Server:
         if item is None:
             self.collector = None
             return
-        if self.collector is None or self.collector.experiment["id"] != item["id"]:
+        incarnation = _incarnation(item)
+        if (
+            self.collector is None
+            or self.collector.experiment["id"] != item["id"]
+            or self.incarnation != incarnation
+        ):
             self.collector = Collector(item, operator_private=self.args.operator_private)
             self.sent, self.sent_objects = {}, {}
+            self.incarnation = incarnation
 
     def snapshot(self, tier: str) -> None:
         if self.collector is None:
@@ -267,10 +291,13 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(server.discovery.scan(), indent=1, default=str))
         return 0
     if args.dump:
+        # One refresh, once: read every record rather than leave panels waiting for a next refresh.
+        server.discovery.reader = Reader(budget=None)
         server.experiments = server.discovery.scan()
         server.select(args.experiment)
         if server.collector is None:
             raise SystemExit("no experiment found")
+        server.collector = Collector(server.collector.experiment, operator_private=args.operator_private, budget=None)
         print(json.dumps(server.collector.refresh("all"), indent=1, default=str))
         return 0
     try:

@@ -5,6 +5,15 @@ def performance_signals(performance, runtime=None):
     """Project existing scoped counts and structural floors, never price or add them."""
     roofline = performance.get('structural_roofline') or {}
     signals = {
+        'performance_objective': {
+            'primary': 'complete_same_roi_elapsed_cycles',
+            'supporting': ['roofline_gap', 'useful_compute_peak_attainment', 'padding_efficiency',
+                           'scoped_resource_activity', 'resource_overlap', 'traffic_by_boundary',
+                           'queue_pressure', 'host_cycle_attribution', 'storage_lifetimes'],
+            'diagnostic_only': ['instructions', 'commands', 'fences'],
+            'missing_timing': 'UNRANKED; no instruction-count fallback',
+            'utilization_policy': 'Explain latency and headroom; do not maximize busy work or padded work.',
+        },
         'timing_status': performance.get('status', 'UNKNOWN'),
         'timing_mode': performance.get('timing_mode'),
         'timing_qualified': performance.get('timing_qualified', False),
@@ -91,7 +100,9 @@ def project(result, performance):
         action = 'Inspect the exact timing observation reason and unresolved model events before collecting labels.'
     elif numeric == 'pass' and performance.get('estimated_whole_soc_cycles') is not None:
         priority, owner = 'performance_search', 'compiler'
-        action = 'Compare legal numerically passing variants under this same model and scope; keep estimates provisional.'
+        action = ('Compare complete same-ROI cycles of legal numerically passing variants under this same model; '
+                  'report roofline gap and sourced utilization alongside latency. Counts are diagnostic only; '
+                  'keep estimates provisional.')
     else:
         priority, owner = 'numerical_evidence_missing', 'compiler_or_operator'
         action = 'Obtain the affected named case numerical result before drawing a performance conclusion.'

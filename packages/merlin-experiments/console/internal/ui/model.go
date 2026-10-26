@@ -35,13 +35,28 @@ type rect struct{ x, y, w, h int }
 func (r rect) contains(x, y int) bool { return x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h }
 
 // Panel order for focus cycling.
-var panelOrder = []string{"experiments", "progress", "stages", "alerts", "gantt", "agents", "tokens", "cpu",
+var panelOrder = []string{"experiments", "progress", "agentview", "alerts", "gantt", "agents", "cpu", "tokens",
 	"perf", "capsules", "passes", "events"}
 
 var windows = []struct {
 	label   string
 	seconds float64
-}{{"15m", 900}, {"1h", 3600}, {"6h", 21600}, {"all", 0}}
+}{{"10m", 600}, {"30m", 1800}, {"2h", 7200}, {"all", 0}}
+
+// win is the time window in use: the one picked with t, else the last 30 minutes of a live run (so
+// the timeline moves) and the whole of a stored one.
+func (m *Model) win() struct {
+	label   string
+	seconds float64
+} {
+	if m.window >= 0 {
+		return windows[m.window]
+	}
+	if m.live() {
+		return windows[1]
+	}
+	return windows[3]
+}
 
 // Row is a selectable line in a panel: Enter inspects it.
 type Row struct {
@@ -93,6 +108,9 @@ type Model struct {
 	browseQuery  string
 	browseState  int
 	browseCursor int
+	agentWide    bool
+	page         int    // 0 the main page, 1 the insight page (v)
+	otherFocus   string // the focus the other page had when it was left
 	now          func() time.Time
 }
 
@@ -110,7 +128,7 @@ func New(send Sender) *Model {
 	}
 	return &Model{W: 200, H: 50, State: proto.NewState(), send: send, focus: "progress", sidebar: -1,
 		cursor: map[string]int{}, scroll: map[string]int{}, rows: map[string][]Row{}, sortMode: map[string]int{},
-		rects: map[string]rect{}, coreHist: map[int][]coreSample{}, window: 3, now: time.Now,
+		rects: map[string]rect{}, coreHist: map[int][]coreSample{}, window: -1, now: time.Now,
 		machHist: map[int][]coreSample{}, groupHist: map[string][]*float64{}, tcursor: -1}
 }
 
@@ -221,7 +239,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) panels() []string {
 	out := []string{}
-	for _, id := range panelOrder {
+	order := panelOrder
+	if m.page == 1 {
+		order = append([]string{"experiments"}, proto.InsightNames...)
+	}
+	for _, id := range order {
 		if id == "experiments" && !m.sidebarShown() {
 			continue
 		}
@@ -232,7 +254,7 @@ func (m *Model) panels() []string {
 
 func (m *Model) sidebarShown() bool {
 	if m.sidebar == -1 {
-		return m.W >= 170
+		return m.W >= 260 // The browser (b) is the way to switch runs; the list only shows when there is room.
 	}
 	return m.sidebar == 1
 }
@@ -336,6 +358,8 @@ func (m *Model) key(k tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cursor[m.focus] = max(0, len(m.rows[m.focus])-1)
 	case "z":
 		m.zoom = !m.zoom
+	case "v":
+		m.togglePage()
 	case "e":
 		if m.sidebarShown() {
 			m.sidebar = 0
@@ -361,6 +385,9 @@ func (m *Model) key(k tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "s":
 		m.sortMode[m.focus]++
 	case "t":
+		if m.window < 0 {
+			m.window = map[bool]int{true: 1, false: 3}[m.live()]
+		}
 		m.window = (m.window + 1) % len(windows)
 		m.flash("time window " + windows[m.window].label)
 	case "p", "space":
@@ -388,6 +415,22 @@ func (m *Model) key(k tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// togglePage switches between the main page and the insight page, keeping each page's focus.
+func (m *Model) togglePage() {
+	m.page = 1 - m.page
+	focus := m.otherFocus
+	m.otherFocus = m.focus
+	valid := false
+	for _, id := range m.panels() {
+		valid = valid || id == focus
+	}
+	if !valid {
+		focus = map[int]string{0: "progress", 1: "performance"}[m.page]
+	}
+	m.focus, m.zoom = focus, false
+	m.flash(map[int]string{0: "main page", 1: "insight page (v: back)"}[m.page])
 }
 
 func (m *Model) selected(id string) (Row, bool) {
@@ -524,9 +567,13 @@ func (m *Model) grid(st *proto.State, w, h, top int) []string {
 		place(m.focus, x0, 0, mw, h)
 		return canvas
 	}
-	r1 := max(7, h*20/100)
-	r2 := max(9, h*29/100)
-	r3 := max(7, h*23/100)
+	if m.page == 1 {
+		m.insightGrid(place, x0, w, h)
+		return canvas
+	}
+	r1 := max(8, h*22/100)
+	r2 := max(9, h*27/100)
+	r3 := max(8, h*31/100)
 	r4 := max(6, h-r1-r2-r3)
 	if r1+r2+r3+r4 > h {
 		r4 = max(0, h-r1-r2-r3)
@@ -542,10 +589,10 @@ func (m *Model) grid(st *proto.State, w, h, top int) []string {
 			x += cw
 		}
 	}
-	cols(0, r1, []string{"progress", "stages", "alerts"}, []int{36, 38, 26})
-	cols(r1, r2, []string{"gantt", "agents"}, []int{62, 38})
-	cols(r1+r2, r3, []string{"tokens", "cpu", "perf"}, []int{33, 27, 40})
-	cols(r1+r2+r3, r4, []string{"capsules", "passes", "events"}, []int{50, 22, 28})
+	cols(0, r1, []string{"progress", "agentview", "alerts"}, []int{36, 28, 36})
+	cols(r1, r2, []string{"gantt", "agents"}, []int{55, 45})
+	cols(r1+r2, r3, []string{"cpu", "tokens", "perf"}, []int{48, 26, 26})
+	cols(r1+r2+r3, r4, []string{"capsules", "passes", "events"}, []int{40, 24, 36})
 	return canvas
 }
 
@@ -599,17 +646,22 @@ func (m *Model) header(st *proto.State, w int) []string {
 	} else if len(live) > 1 {
 		side += bold(cGood, fmt.Sprintf("◉ %d running", len(live))) + bold(cWarn, " [L] next") + "  "
 	}
+	side += volumeBadge(st.Machine.Volume)
 	if c := st.Console; c.CPUPct != nil || c.Policy != "" {
 		side += dim("console ") + paint(cText, pct(c.CPUPct, 1)) + dim(" cpu on ") + paint(cText, ranges(c.CPUs)) + " "
 	}
 	if side != "" {
 		basis = fit(basis, w-ansi.StringWidth(side)) + side
 	}
-	return []string{top, basis}
+	return []string{top, basis, m.nowLine(st, w)}
 }
 
 func (m *Model) footer(w int) string {
-	keys := " ⇥ focus  ↵ inspect  z zoom  b browse runs  L running  / filter  s sort  t window  , . time cursor  p pause  y copy  ? help  q quit"
+	page := "  v insights"
+	if m.page == 1 {
+		page = "  v main page"
+	}
+	keys := " ⇥ focus  ↵ inspect  z zoom" + page + "  b browse runs  L running  e run list  / filter  s sort  t window  , . time cursor  p pause  ? help  q quit"
 	status := ""
 	if m.filtering {
 		status = bold(cWarn, " filter: "+m.filter+"▏")
@@ -629,7 +681,7 @@ func (m *Model) footer(w int) string {
 	if m.paused {
 		status += bold(cWarn, "  PAUSED")
 	}
-	win := dim("  window ") + paint(cText, windows[m.window].label)
+	win := dim("  window ") + paint(cText, m.win().label)
 	return fit(dim(keys)+win+status, w)
 }
 
@@ -685,6 +737,9 @@ func (m *Model) overlayHelp(lines []string, w, h int) []string {
 		"  j/k ↑/↓  PgUp/PgDn  g/G      move in a panel    wheel         scroll",
 		"  Enter / i                    inspect the selected row (capsule, agent, pass, job, stage, event)",
 		"  z                            zoom the focused panel (Esc to return)",
+		"  v                            insight page: performance, cases (per test case; s sorts), agent tools,",
+		"                               grader, integrity, attempts, certification, agent focus, cost, library",
+		"                               passes (v: back)",
 		"  e                            show/hide the experiments list; Enter there opens an experiment",
 		"  b / o                        browse every experiment (type to search, Tab: all/live/finished/...)",
 		"  L                            jump to the running experiment (again: the next running one)",

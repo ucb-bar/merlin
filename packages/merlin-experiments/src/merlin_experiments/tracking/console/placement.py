@@ -61,6 +61,18 @@ def _procs(cgroup: Path, limit: int = 4096) -> int:
     return count
 
 
+def group_pids(name: str, cgroup_root: Path = Path("/sys/fs/cgroup"), limit: int = 1024) -> list[int]:
+    """Process ids in a cgroup subtree (``name`` relative to the root; bounded walk)."""
+    out, stack, seen = [], [cgroup_root / name.lstrip("/")], 0
+    while stack and seen < 256 and len(out) < limit:
+        node = stack.pop()
+        seen += 1
+        raw = probe.read(node / "cgroup.procs", 1 << 20) or b""
+        out.extend(int(x) for x in raw.split() if x.isdigit())
+        stack.extend(Path(e.path) for e in scan_dir(node, 1024) if e.is_dir(follow_symlinks=False))
+    return out[:limit]
+
+
 def own_cgroup(proc_root: Path = Path("/proc")) -> str | None:
     """This process's unified-hierarchy cgroup path (``/a/b``), or None without cgroup v2."""
     raw = probe.read(proc_root / "self" / "cgroup", 65536) or b""
@@ -212,4 +224,13 @@ class SelfCost:
         return {"cpu_pct": pct, "rss_bytes": rss or None}
 
 
-__all__ = ["SelfCost", "affinity", "allocations", "held_cpus", "online_cpus", "own_cgroup", "place_console"]
+__all__ = [
+    "SelfCost",
+    "affinity",
+    "allocations",
+    "group_pids",
+    "held_cpus",
+    "online_cpus",
+    "own_cgroup",
+    "place_console",
+]

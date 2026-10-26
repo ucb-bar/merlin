@@ -2,6 +2,7 @@
 
 import io
 import json
+import shutil
 import os
 import time
 from pathlib import Path
@@ -173,6 +174,14 @@ def test_diagnostics_fire_only_on_recorded_numbers():
         "A",
     } <= codes
     assert next(d for d in found if d["code"] == "TOKEN_BUDGET")["severity"] == "error"
+    # A soft target is advice, never an error: it is reported as info with what it is.
+    for budget in ({"total": 40_000_000, "used_pct": 112.0, "mode": "soft", "enforced": False},
+                   {"total": 40_000_000, "used_pct": 112.0, "mode": "soft"}):
+        soft = next(d for d in diagnose.diagnose(_snap(tokens={"budget": budget})) if d["code"] == "TOKEN_BUDGET")
+        assert soft["severity"] == "info" and "soft target exceeded (not enforced)" in soft["title"]
+    enforced = {"total": 40_000_000, "used_pct": 95.0, "mode": "soft", "enforced": True}
+    found_enforced = diagnose.diagnose(_snap(tokens={"budget": enforced}))
+    assert next(d for d in found_enforced if d["code"] == "TOKEN_BUDGET")["severity"] == "warn"
     assert next(d for d in found if d["code"] == "A")["occurrences"] == 3
     severities = [diagnose.SEVERITY_ORDER[d["severity"]] for d in found]
     assert severities == sorted(severities)
@@ -243,3 +252,20 @@ def test_console_cli_once_json_prints_a_snapshot(machine, capsys, monkeypatch):
     assert snapshot["experiment"]["run_id"] == "exp-done"
     assert cli.main(["console", "--tasks-root", str(tasks), "--list", "--json"]) == 0
     assert {e["run_id"] for e in json.loads(capsys.readouterr().out)} >= {"exp-done", "exp-dead"}
+
+
+def test_serve_follows_a_relaunch_that_reuses_the_run_directory(machine, monkeypatch):
+    tasks, proc = machine
+    monkeypatch.setattr(discovery, "runner_processes", lambda proc_root=None, limit=0: {})
+    args = serve.parser().parse_args(["--tasks-root", str(tasks), "--experiment", "exp-done"])
+    server = serve.Server(args, out=io.StringIO())
+    server.experiments = server.discovery.scan()
+    server.select("exp-done")
+    first = server.collector
+    server.scan()
+    assert server.collector is first  # same run: caches and history are kept
+    run_dir = Path(first.experiment["run_dir"])
+    run_dir.rename(run_dir.with_name(run_dir.name + ".archived"))
+    shutil.copytree(run_dir.with_name(run_dir.name + ".archived"), run_dir)
+    server.scan()
+    assert server.collector is not first and server.sent == {}  # a new run at the same path starts fresh

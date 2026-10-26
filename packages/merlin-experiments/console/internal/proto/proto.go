@@ -93,6 +93,10 @@ type Resources struct {
 		Threads   *float64 `json:"threads"`
 		Processes *float64 `json:"processes"`
 		Load1     *float64 `json:"load1"`
+		IO        *struct {
+			ReadBps  *float64 `json:"read_bps"`
+			WriteBps *float64 `json:"write_bps"`
+		} `json:"io"`
 	} `json:"process"`
 	Series map[string][]*float64 `json:"series"`
 	Notes  []string              `json:"notes"`
@@ -120,6 +124,7 @@ type Agent struct {
 	Tokens         Tokens   `json:"tokens"`
 	Spans          [][]any  `json:"spans"`
 	Stage          string   `json:"stage"`
+	Round          *float64 `json:"round"`
 }
 
 type Agents struct {
@@ -130,9 +135,15 @@ type Agents struct {
 		Subagents     *float64 `json:"subagents"`
 		HelperCeiling *float64 `json:"helper_ceiling"`
 	} `json:"totals"`
-	Source string   `json:"source"`
-	Notes  []string `json:"notes"`
-	Error  string   `json:"error"`
+	Source  string `json:"source"`
+	Session *struct {
+		Running *bool    `json:"running"`
+		Phase   string   `json:"phase"`
+		Since   *float64 `json:"since"`
+		Detail  string   `json:"detail"`
+	} `json:"session"`
+	Notes []string `json:"notes"`
+	Error string   `json:"error"`
 }
 
 type TokenSection struct {
@@ -225,6 +236,7 @@ type Events struct {
 
 type Capsule struct {
 	Name             string              `json:"name"`
+	Stale            bool                `json:"stale"` // its newest result graded an older compiler
 	Cohort           string              `json:"cohort"`
 	Kind             string              `json:"kind"`
 	Op               string              `json:"op"`
@@ -263,7 +275,49 @@ type Cohort struct {
 	L3Obligation string   `json:"L3_obligation"`
 }
 
+// Grade is one background grade of an immutable snapshot of the agent's compiler.
+type Grade struct {
+	Token      string   `json:"token"`
+	State      string   `json:"state"` // grading | unfinished | done | superseded | stopped
+	OwnerState string   `json:"owner_state"`
+	Reason     string   `json:"reason"`
+	StartedAt  *float64 `json:"started_at"`
+	UpdatedAt  *float64 `json:"updated_at"`
+	NSelected  *float64 `json:"n_selected"`
+	NCompleted *float64 `json:"n_completed"`
+	NPassed    *float64 `json:"n_passed"`
+	NFailed    *float64 `json:"n_failed"`
+	NErrors    *float64 `json:"n_errors"`
+	NL2        *float64 `json:"n_l2_awaiting_l3"` // passed Spike L2, waiting for an L3 certificate
+	Source     string   `json:"source"`
+}
+
 type Progress struct {
+	Grades      []Grade  `json:"grades"`
+	GradesTotal *float64 `json:"grades_total"`
+	Published   *struct {
+		UpdatedAt  *float64 `json:"updated_at"`
+		NSelected  *float64 `json:"n_selected"`
+		NCompleted *float64 `json:"n_completed"`
+		NPassed    *float64 `json:"n_passed"`
+	} `json:"published"`
+	Certificates *struct {
+		L2       map[string]float64 `json:"L2"`
+		L3       map[string]float64 `json:"L3"`
+		Physical *struct {
+			Required *float64 `json:"required"`
+			Passed   *float64 `json:"passed"`
+			Failed   *float64 `json:"failed"`
+			Pending  *float64 `json:"pending"`
+		} `json:"physical"`
+	} `json:"certificates"`
+	SeriesScope string `json:"series_scope"`
+	Verdict     *struct {
+		Stage       string   `json:"stage"`
+		TiersGraded []string `json:"tiers_graded"`
+		TiersNotRun []string `json:"tiers_not_run"`
+		AllPass     *bool    `json:"all_pass"`
+	} `json:"verdict"`
 	State            string   `json:"state"`
 	NSelected        *float64 `json:"n_selected"`
 	NCompleted       *float64 `json:"n_completed"`
@@ -374,8 +428,15 @@ type Pass struct {
 	Source       string   `json:"source"`
 }
 
+// AppliedPass is a pass the compiler runs (pipeline order for manifest commands).
+type AppliedPass struct {
+	Pass
+	Order *float64 `json:"order"`
+}
+
 type Passes struct {
 	Passes   []Pass              `json:"passes"`
+	Applied  []AppliedPass       `json:"applied"`
 	Counts   map[string]*float64 `json:"counts"`
 	Pipeline []string            `json:"pipeline"`
 	Notes    []string            `json:"notes"`
@@ -419,6 +480,87 @@ type Finding struct {
 	Evidence    *string  `json:"evidence"`
 	Occurrences int      `json:"occurrences"`
 	Items       []string `json:"items"`
+	Action      string   `json:"action"`
+	ImpactS     *float64 `json:"impact_s"`
+}
+
+// TurnStage is one author-startup stage of a turn.
+type TurnStage struct {
+	Stage string   `json:"stage"`
+	Start *float64 `json:"start"`
+	End   *float64 `json:"end"`
+	WallS *float64 `json:"wall_s"`
+	Depth int      `json:"depth"`
+}
+
+// Turn is one author turn: admission, startup, agent work and how it ended (sources/lifecycle.py).
+type Turn struct {
+	Round        *float64    `json:"round"`
+	Turn         *float64    `json:"turn"`
+	Phase        string      `json:"phase"`
+	AdmittedAt   *float64    `json:"admitted_at"`
+	Allowance    *float64    `json:"allowance"`
+	StartupStart *float64    `json:"startup_start"`
+	StartupEnd   *float64    `json:"startup_end"`
+	StartupS     *float64    `json:"startup_s"`
+	Stages       []TurnStage `json:"stages"`
+	OpenStage    *struct {
+		Stage string  `json:"stage"`
+		Since float64 `json:"since"`
+	} `json:"open_stage"`
+	AgentStart *float64 `json:"agent_start"`
+	AgentEnd   *float64 `json:"agent_end"`
+	AgentS     *float64 `json:"agent_s"`
+	EndReason  string   `json:"end_reason"`
+}
+
+// Lifecycle is the author session's state (sources/lifecycle.py).
+type Lifecycle struct {
+	Phase         string   `json:"phase"`
+	PhaseSince    *float64 `json:"phase_since"`
+	PhaseDetail   string   `json:"phase_detail"`
+	AuthorRunning *bool    `json:"author_running"`
+	Turns         []Turn   `json:"turns"`
+	Notes         []string `json:"notes"`
+	Error         string   `json:"error"`
+}
+
+// ActivityCategory is one per-core activity with its one-character code.
+type ActivityCategory struct {
+	ID    string `json:"id"`
+	Code  string `json:"code"`
+	Title string `json:"title"`
+}
+
+// Activity is what each of the experiment's cores works on over time (sources/activity.py).
+type Activity struct {
+	Mode       string             `json:"mode"`
+	Categories []ActivityCategory `json:"categories"`
+	CPUs       []int              `json:"cpus"`
+	History    *struct {
+		T0    float64 `json:"t0"`
+		DT    float64 `json:"dt"`
+		N     int     `json:"n"`
+		Since float64 `json:"since"`
+		Cores []struct {
+			CPU   int    `json:"cpu"`
+			Codes string `json:"codes"`
+			Util  string `json:"util"`
+		} `json:"cores"`
+	} `json:"history"`
+	Now []struct {
+		CPU     int      `json:"cpu"`
+		UtilPct *float64 `json:"util_pct"`
+		Code    string   `json:"code"`
+		Top     []struct {
+			Activity string  `json:"activity"`
+			Label    string  `json:"label"`
+			Pct      float64 `json:"pct"`
+		} `json:"top"`
+	} `json:"now"`
+	Totals map[string]float64 `json:"totals"`
+	Notes  []string           `json:"notes"`
+	Error  string             `json:"error"`
 }
 
 // Timeline is the wall-time attribution of the experiment (sources/timeline.py).
@@ -507,8 +649,68 @@ type Machine struct {
 	TotalCPUs      *float64 `json:"total_cpus"`
 	ExperimentCPUs []int    `json:"experiment_cpus"`
 	ConsoleCPUs    []int    `json:"console_cpus"`
+	Volume         *Volume  `json:"volume"`
 	Notes          []string `json:"notes"`
 	Error          string   `json:"error"`
+}
+
+// AgentFile is one agent-visible feedback file (sources/agent_view.py).
+type AgentFile struct {
+	Present         bool     `json:"present"`
+	At              *float64 `json:"at"`
+	Rows            *float64 `json:"rows"`
+	SnapshotCurrent *bool    `json:"snapshot_current"`
+	GradedSource    string   `json:"graded_source"`
+	GradedAt        *float64 `json:"graded_at"`
+	Notices         []string `json:"notices"`
+	ModelGateOnly   bool     `json:"model_gate_only"`
+	Headroom        *struct {
+		Ranked    *float64 `json:"ranked"`
+		PassingL2 *float64 `json:"passing_l2"`
+		MedianPct *float64 `json:"median_utilization_pct"`
+	} `json:"headroom"`
+}
+
+// AgentView is what the author agent can see of its own feedback (sources/agent_view.py).
+type AgentView struct {
+	Workspace       string    `json:"workspace"`
+	Live            bool      `json:"live"`
+	Verdict         AgentFile `json:"verdict"`
+	LatestCompleted AgentFile `json:"latest_completed"`
+	Progress        AgentFile `json:"progress"`
+	Suggestions     struct {
+		Present     bool     `json:"present"`
+		Suggestions *float64 `json:"suggestions"`
+		Pending     *float64 `json:"pending_workload_check"`
+		Discovery   *float64 `json:"discovery"`
+	} `json:"suggestions"`
+	Selfchecks struct {
+		Requests        *float64 `json:"requests"`
+		Answered        *float64 `json:"answered"`
+		Pending         *float64 `json:"pending"`
+		OldestPendingAt *float64 `json:"oldest_pending_at"`
+		LastResponseAt  *float64 `json:"last_response_at"`
+		RecentErrors    *float64 `json:"recent_errors"`
+		LastError       string   `json:"last_error"`
+	} `json:"selfchecks"`
+	NewestGrade *struct {
+		Token        string   `json:"token"`
+		At           *float64 `json:"at"`
+		Rows         *float64 `json:"rows"`
+		GradedSource string   `json:"graded_source"`
+		Delivered    []string `json:"delivered"`
+	} `json:"newest_grade"`
+	Notes []string `json:"notes"`
+	Error string   `json:"error"`
+}
+
+// Volume is the free space of the filesystem holding the run directory (sources/machine.py).
+type Volume struct {
+	Path       string   `json:"path"`
+	FreeBytes  *float64 `json:"free_bytes"`
+	TotalBytes *float64 `json:"total_bytes"`
+	FreePct    *float64 `json:"free_pct"`
+	Level      string   `json:"level"`
 }
 
 // Console is the console's own cost and placement.
@@ -560,6 +762,58 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// InsightNames are the insight panels (merlin_experiments.tracking.console.model.INSIGHTS), in display
+// order. Every one shares the generic Insight shape below.
+var InsightNames = []string{"performance", "cases", "tools", "grader", "integrity", "attempts", "certification", "focus", "cost", "library"}
+
+// InsightLine is one summary line of an insight panel: display text, an optional level
+// (ok|info|warn|bad) and the inspect key of the row it summarises.
+type InsightLine struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+	Level string `json:"level"`
+	Key   string `json:"key"`
+}
+
+// InsightRow is one table row of an insight panel; cells are display text ("—" when not recorded).
+type InsightRow struct {
+	Cells []string `json:"cells"`
+	Level string   `json:"level"`
+	Key   string   `json:"key"`
+}
+
+// InsightTable is the optional table of an insight panel.
+type InsightTable struct {
+	Columns []string     `json:"columns"`
+	Rows    []InsightRow `json:"rows"`
+}
+
+// InsightSeries is one downsampled time series of an insight panel.
+type InsightSeries struct {
+	Label string    `json:"label"`
+	T     []float64 `json:"t"`
+	V     []float64 `json:"v"`
+}
+
+// InsightSort is one row order a panel offers for its table: Order lists table row indices, first
+// shown first. The frontend's sort key (s) cycles a panel's sorts.
+type InsightSort struct {
+	Label string `json:"label"`
+	Order []int  `json:"order"`
+}
+
+// Insight is the generic panel shape of the insight sources (sources/insight_common.py). Their
+// source-specific fields are not decoded here, except the optional table orders (Sorts).
+type Insight struct {
+	Title   string          `json:"title"`
+	Summary []InsightLine   `json:"summary"`
+	Table   *InsightTable   `json:"table"`
+	Series  []InsightSeries `json:"series"`
+	Notes   []string        `json:"notes"`
+	Sorts   []InsightSort   `json:"sorts"`
+	Error   string          `json:"error"`
+}
+
 // State is everything the frontend knows about the selected experiment, decoded per section.
 type State struct {
 	Experiment  Experiment
@@ -581,6 +835,10 @@ type State struct {
 	Stages      Stages
 	Timeline    Timeline
 	Machine     Machine
+	Lifecycle   Lifecycle
+	Activity    Activity
+	AgentView   AgentView
+	Insights    map[string]Insight
 	Console     Console
 	Have        map[string]bool
 	DecodeErr   map[string]string
@@ -588,7 +846,8 @@ type State struct {
 
 // NewState is an empty state for one experiment.
 func NewState() *State {
-	return &State{Have: map[string]bool{}, DecodeErr: map[string]string{}, Timings: map[string]float64{}}
+	return &State{Have: map[string]bool{}, DecodeErr: map[string]string{}, Timings: map[string]float64{},
+		Insights: map[string]Insight{}}
 }
 
 // Merge applies a snapshot message: replace changed sections, keep the others.
@@ -609,7 +868,11 @@ func (s *State) Merge(snap *Snapshot) {
 		"resources": &s.Resources, "agents": &s.Agents, "tokens": &s.Tokens, "jobs": &s.Jobs,
 		"events": &s.Events, "capsules": &s.Capsules, "progress": &s.Progress, "perf": &s.Perf,
 		"golden": &s.Golden, "passes": &s.Passes, "stages": &s.Stages, "timeline": &s.Timeline,
-		"machine": &s.Machine,
+		"machine": &s.Machine, "lifecycle": &s.Lifecycle, "activity": &s.Activity,
+		"agent_view": &s.AgentView,
+	}
+	for _, name := range InsightNames {
+		targets[name] = &Insight{}
 	}
 	for name, raw := range snap.Sections {
 		target, ok := targets[name]
@@ -622,6 +885,9 @@ func (s *State) Merge(snap *Snapshot) {
 		}
 		delete(s.DecodeErr, name)
 		s.Have[name] = true
+		if insight, ok := target.(*Insight); ok {
+			s.Insights[name] = *insight
+		}
 	}
 }
 
@@ -654,6 +920,14 @@ func decodeInto(raw json.RawMessage, target any) error {
 		*t = Timeline{}
 	case *Machine:
 		*t = Machine{}
+	case *Lifecycle:
+		*t = Lifecycle{}
+	case *Activity:
+		*t = Activity{}
+	case *AgentView:
+		*t = AgentView{}
+	case *Insight:
+		*t = Insight{}
 	default:
 		return fmt.Errorf("unknown section target %T", target)
 	}

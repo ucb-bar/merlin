@@ -104,7 +104,7 @@ def _summarize(rows):
                 promotion_authority=False, additional_gsim_requested=False)
 
 
-def summarize(rows, *, cohorts=None):
+def summarize(rows, *, cohorts=None, roles=None):
     """Keep the selected large-workload ranking primary in joint campaigns.
 
     ``cohorts`` is produced by native scope selection from the verified public
@@ -114,6 +114,10 @@ def summarize(rows, *, cohorts=None):
     if cohorts is None:
         return _summarize(rows)
     rows = list(rows)
+    controls = []
+    if roles is not None:
+        from ..workload_roles import filter_primary
+        cohorts, controls = filter_primary(cohorts, roles)
     lanes = ('primary', 'correctness_regression', 'calibration_diagnostics')
     membership = {}
     valid = isinstance(cohorts, dict) and set(cohorts) == set(lanes)
@@ -134,6 +138,8 @@ def summarize(rows, *, cohorts=None):
     unclassified = []
     for row in rows:
         name = row.get('capsule', row.get('name'))
+        if name in controls:
+            continue
         matches = [lane for lane in lanes if name in membership[lane]] if valid else []
         if len(matches) == 1 and name not in overlap:
             selected[matches[0]].append(row)
@@ -145,7 +151,9 @@ def summarize(rows, *, cohorts=None):
     # Correctness failures across ALL cohorts remain visible before optimization.
     result['correctness_first'] = _summarize(rows)['correctness_first']
     result.update(
-        primary_cohort='selected_public_scalability',
+        primary_cohort='selected_representative_workloads' if roles is not None else 'selected_public_scalability',
+        diagnostic_controls=_summarize([row for row in rows
+            if row.get('capsule', row.get('name')) in controls]),
         cohort_selection_status='valid' if valid and not overlap else 'invalid_or_overlapping',
         correctness_regression=_summarize(selected['correctness_regression']),
         calibration_diagnostics=_summarize(selected['calibration_diagnostics']),
@@ -153,6 +161,7 @@ def summarize(rows, *, cohorts=None):
         observed_members={lane: sorted({row.get('capsule', row.get('name')) for row in selected[lane]})
                           for lane in lanes},
         policy='Primary performance ranking contains only the selected public scalability cohort. '
+               'Source-bound workload roles exclude small diagnostic controls when supplied. '
                'Original capsules retain correctness/regression feedback; calibration cases supply diagnostics. '
                'Useful small-case improvements remain permitted. All original correctness gates are unchanged.',
     )

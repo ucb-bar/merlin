@@ -11,7 +11,12 @@ Section::
 
     {"cores": [{cpu, util_pct, holders: [name], mine, console}], "allocations": [{name, kind, cpus,
      partition, processes, pid}], "busy_cpus", "total_cpus", "experiment_cpus": [..],
-     "console_cpus": [..], "notes"}
+     "console_cpus": [..], "volume": {path, free_bytes, total_bytes, free_pct, level}|None, "notes"}
+
+``volume`` is the filesystem holding the selected experiment's run directory (``statvfs``, one call
+per refresh). ``level`` is ``ok``, ``warn`` (below :data:`VOLUME_WARN_PCT` percent or
+:data:`VOLUME_WARN_BYTES` free) or ``critical`` (below the ``CRITICAL`` thresholds), whoever fills it:
+other runs on the same volume can stop this one.
 """
 
 from __future__ import annotations
@@ -25,6 +30,28 @@ from .. import placement
 
 ALLOC_TTL_S = 10.0
 FIRST_SAMPLE_S = 0.1
+VOLUME_WARN_PCT, VOLUME_WARN_BYTES = 10.0, 50 << 30
+VOLUME_CRITICAL_PCT, VOLUME_CRITICAL_BYTES = 3.0, 15 << 30
+
+
+def volume(path) -> dict | None:
+    """Free space of the filesystem holding ``path``; ``None`` when it cannot be measured."""
+    if not path:
+        return None
+    try:
+        info = os.statvfs(path)
+    except OSError:
+        return None
+    total, free = info.f_blocks * info.f_frsize, info.f_bavail * info.f_frsize
+    if total <= 0:
+        return None
+    pct = round(100 * free / total, 1)
+    level = "ok"
+    if pct < VOLUME_CRITICAL_PCT or free < VOLUME_CRITICAL_BYTES:
+        level = "critical"
+    elif pct < VOLUME_WARN_PCT or free < VOLUME_WARN_BYTES:
+        level = "warn"
+    return {"path": str(path), "free_bytes": free, "total_bytes": total, "free_pct": pct, "level": level}
 
 
 def read(ctx) -> dict[str, Any]:
@@ -83,6 +110,7 @@ def read(ctx) -> dict[str, Any]:
         "total_cpus": len(cores),
         "experiment_cpus": sorted(mine),
         "console_cpus": sorted(console),
+        "volume": volume(exp.get("run_dir")),
         "notes": notes,
     }
 
@@ -102,4 +130,4 @@ def probe_ranges(cpus: list[int]) -> str:
     return ",".join(out)
 
 
-__all__ = ["probe_ranges", "read"]
+__all__ = ["probe_ranges", "read", "volume"]

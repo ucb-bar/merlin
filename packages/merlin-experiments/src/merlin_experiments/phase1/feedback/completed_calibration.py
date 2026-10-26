@@ -11,6 +11,8 @@ from pathlib import Path
 from merlin.benchharness import hash_tree
 from merlin.runtime import _native_files as F
 
+from .rolling_scalability import RESULT_MAX_BYTES
+
 
 def register(result, *, result_path, compiler, capsules_root, contract):
     from .. import joint_control
@@ -34,7 +36,10 @@ def register(result, *, result_path, compiler, capsules_root, contract):
     path = F.canonical(Path(result_path))
     if path.name != 'capsule_result.json' or path.parent.name != name:
         raise ValueError('completed calibration result has another native owner')
-    before = F.pin(path, max_bytes=2 << 20)
+    from .declared_bounds import result_bytes
+
+    bound = result_bytes(load_capsule(Path(capsules_root) / name, contract=contract), RESULT_MAX_BYTES)
+    before = F.pin(path, max_bytes=bound)
     durable = json.loads(path.read_bytes())
     if durable != json.loads(json.dumps(result, allow_nan=False)):
         raise ValueError('completed calibration row differs from its durable result')
@@ -53,7 +58,7 @@ def register(result, *, result_path, compiler, capsules_root, contract):
     if choice is None:
         return None
     capsule = performance.selected_capsule(choice[1], capsule)
-    if F.pin(path, max_bytes=2 << 20) != before:
+    if F.pin(path, max_bytes=bound) != before:
         raise ValueError('completed calibration result changed before intake')
     from .. import joint_calibration_service
 

@@ -103,6 +103,9 @@ def read(ctx) -> dict[str, Any]:
             "used_pct": 100 * used / target if used is not None else None,
             "mode": declared.get("mode"),
             "accounting": declared.get("accounting"),
+            # Only a managed admission selection (``author_token_budget.v2`` ``admission``) acts on the
+            # budget; a v1 target is advice to the agent and never stops it.
+            "enforced": bool(obj(declared.get("admission"))),
         }
     notes = []
     if not points:

@@ -13,10 +13,52 @@ mismatch COUNT, never values) and the agent's OWN notes. No target name, no ``re
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
+import os
+import threading
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+
+#: The brief's own lock in ``qa/``: every writer of ``round_brief.md`` holds it (round end, pre-launch,
+#: the background refresh after each published grade, the RESUME banner) and replaces the file
+#: atomically, so a reader never sees a half-written brief and no writer drops another's banner.
+LOCK = ".round-brief.lock"
+FILENAME = "round_brief.md"
+
+
+@contextmanager
+def locked(ws: Path):
+    qa = Path(ws) / "qa"
+    qa.mkdir(parents=True, exist_ok=True)
+    with (qa / LOCK).open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield qa / FILENAME
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def replace_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` through a sibling temporary file and an atomic rename."""
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _headline_section(ws: Path) -> list[str]:
+    """The newest grade's performance headline, first in the brief (:mod:`.performance_headline`)."""
+    from .performance_headline import load, render
+
+    try:
+        return render(load(ws))
+    except Exception:  # noqa: BLE001 -- the rest of the brief stands without it
+        return []
 
 
 def _load_verdicts(run_dir: Path) -> list[tuple[int, dict]]:
@@ -56,7 +98,7 @@ def _focus_section(v: dict) -> list[str]:
     failing = [e for e in per if _st(e) and _st(e) != "pass"]
     if not failing:
         return []  # nothing failing → no focus needed
-    L = ["## Focus THIS round — spend your turns on the FAILING capsules", ""]
+    L = ["## Correctness repair — shared failing boundaries", ""]
     for e in failing:
         pl = e.get("failure_plane") or e.get("plane") or (e.get("first_failure_plane")) or "?"
         mc = e.get("mismatch_count")
@@ -66,12 +108,12 @@ def _focus_section(v: dict) -> list[str]:
         )
     L += [
         "",
-        f"{len(passing)} capsule(s) already PASS. Do NOT re-work them — but do NOT delete or break the "
-        "code that makes them pass (a regression shows up as the lowest mismatch getting worse above). "
-        "Put this round's effort into the failing set listed here.",
+        f"{len(passing)} capsule(s) already PASS on the recorded source. Preserve their numerical behavior "
+        "while improving reusable passes and performance alongside correctness repair. Retain a working "
+        "checkpoint and check affected boundaries before integrating changes.",
     ]
     if passing:
-        L += ["", "Passing (locked): " + ", ".join(f"`{c}`" for c in passing) + "."]
+        L += ["", "Recorded passing cases: " + ", ".join(f"`{c}`" for c in passing) + "."]
     return L + [""]
 
 
@@ -243,11 +285,13 @@ def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> st
     """Markdown brief for the round ABOUT TO START (``rnd`` = the round just graded)."""
     from .capability_brief import build_if_selected
 
+    headline = _headline_section(ws)
     joint = build_if_selected(run_dir, ws, errata=_errata_section(run_dir), notes_stale=notes_stale)
     if joint is not None:
-        return joint
+        return "\n".join(headline) + ("\n" if headline else "") + joint
     verdicts = _load_verdicts(run_dir)
     L = [
+        *headline,
         "# Round brief — your progress so far (READ THIS FIRST)",
         "",
         "You are a FRESH session. Your ONLY memory of prior rounds is this brief, your `submission/` "
@@ -288,7 +332,11 @@ def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> st
         L += _regression_section(verdicts)
 
     if verdicts:
+        from .failure_clusters import build as clusters
+        from .failure_clusters import render as render_clusters
+
         L += _focus_section(verdicts[-1][1])
+        L += render_clusters(clusters(verdicts[-1][1].get("per_capsule"), workspace=ws))
     L += _public_build_section(run_dir)
 
     notes = ws / "submission" / "docs" / "iteration_notes.md"
@@ -324,15 +372,13 @@ def _notes_hash(ws: Path) -> str:
 def write(run_dir: Path, ws: Path, rnd: int) -> Path:
     """Build + persist ``ws/qa/round_brief.md`` for the next round. Detects whether the agent updated its
     notes during the round just graded (content hash vs the stamp left last round) and flags staleness."""
-    qa = ws / "qa"
-    qa.mkdir(parents=True, exist_ok=True)
-    stamp = qa / ".notes_hash"
-    cur = _notes_hash(ws)
-    prev = stamp.read_text().strip() if stamp.is_file() else ""
-    stale = bool(prev) and bool(cur) and prev == cur  # unchanged since last round → not journaling
-    p = qa / "round_brief.md"
-    p.write_text(build(run_dir, ws, rnd, notes_stale=stale), encoding="utf-8")
-    stamp.write_text(cur)
+    with locked(ws) as p:
+        stamp = p.parent / ".notes_hash"
+        cur = _notes_hash(ws)
+        prev = stamp.read_text().strip() if stamp.is_file() else ""
+        stale = bool(prev) and bool(cur) and prev == cur  # unchanged since last round → not journaling
+        replace_text(p, build(run_dir, ws, rnd, notes_stale=stale))
+        stamp.write_text(cur)
     return p
 
 
@@ -355,9 +401,10 @@ def _leading_resume_note(existing: str) -> str:
     # Compatibility for briefs written before the marker pair existed. A generated brief starts at the
     # first top-level Round brief heading, so this cannot absorb iteration notes or arbitrary markdown.
     if existing.startswith("> ## RESUME"):
-        end = existing.find("\n# Round brief")
-        if end >= 0:
-            return existing[:end].rstrip() + "\n\n"
+        # A refreshed brief opens with the performance headline; it belongs to the rebuilt part.
+        ends = [at for at in (existing.find("\n# Round brief"), existing.find("\n## Performance headline")) if at >= 0]
+        if ends:
+            return existing[: min(ends)].rstrip() + "\n\n"
     return ""
 
 
@@ -367,14 +414,13 @@ def refresh_before_launch(run_dir: Path, ws: Path, rnd: int) -> Path:
     TASK.md and treatment inputs stay sealed across ``--resume``. The round brief is deliberately an
     operator/harness feedback channel, so a late ``ERRATA.md`` must be visible even if no new grade ran.
     Preserve only a recognized leading RESUME banner and rebuild everything else. Unlike :func:`write`,
-    this does not advance the notes-staleness stamp merely because the driver relaunched.
+    this does not advance the notes-staleness stamp merely because the driver relaunched. The
+    background grader calls it after each published grade too (:mod:`.brief_refresh`).
     """
-    qa = ws / "qa"
-    qa.mkdir(parents=True, exist_ok=True)
-    p = qa / "round_brief.md"
-    existing = p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
-    prefix = _leading_resume_note(existing)
-    p.write_text(prefix + build(run_dir, ws, rnd), encoding="utf-8")
+    with locked(ws) as p:
+        existing = p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
+        prefix = _leading_resume_note(existing)
+        replace_text(p, prefix + build(run_dir, ws, rnd))
     return p
 
 

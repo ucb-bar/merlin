@@ -137,19 +137,35 @@ def scan_dir(root: Path, limit: int) -> Iterator[os.DirEntry]:
 
 
 class Reader:
-    """One experiment's document cache with a per-refresh byte budget."""
+    """One experiment's document cache with a per-refresh byte budget.
 
-    def __init__(self, *, budget: int = 128 << 20) -> None:
-        self.budget = budget
-        self.remaining = budget
+    ``budget=None`` is unbounded (a one-shot dump reads everything once). ``reserve`` bytes of each
+    refresh are held back from ordinary reads and spent only while :attr:`priority` is set, so the
+    panels read last are not starved by the bulk scans read before them. Unchanged documents (same
+    stat identity) come from the cache and cost nothing.
+    """
+
+    #: What :meth:`extract` returns for a record this refresh could not read (budget, racing write).
+    WAIT = object()
+
+    def __init__(self, *, budget: int | None = 128 << 20, reserve: int = 0) -> None:
+        self.budget = math.inf if budget is None else budget
+        self.reserve = min(reserve, self.budget)
+        self.remaining = self.budget
+        self.priority = False
         self.notices: set[str] = set()
         self._documents: dict[str, tuple[tuple, Any]] = {}
+        self._extracts: dict[tuple[str, str], tuple[tuple, Any]] = {}
         self._tails: dict[str, JsonlTail] = {}
 
     def begin(self) -> None:
         """Start a refresh: restore the byte budget and clear its notices."""
         self.remaining = self.budget
         self.notices = set()
+
+    def available(self) -> float:
+        """Bytes this read may still spend: all that remains for a priority read, less the reserve otherwise."""
+        return self.remaining if self.priority else max(0, self.remaining - self.reserve)
 
     @staticmethod
     def identity(path: Path) -> tuple | None:
@@ -159,7 +175,7 @@ class Reader:
             return None
         return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
 
-    def _load(self, path: Path, limit: int, parse) -> Any:
+    def _load(self, path: Path, limit: int, parse, stale_ok: bool = False) -> Any:
         path = Path(path)
         key = str(path)
         ident = self.identity(path)
@@ -173,9 +189,9 @@ class Reader:
         if size > limit:
             self.notices.add(f"{path.name} exceeds the {limit >> 20} MiB per-file read bound")
             return None
-        if size > self.remaining:
+        if size > self.available():
             self.notices.add("refresh byte budget reached; some records wait for the next refresh")
-            return None
+            return self._previous(cached) if stale_ok else None
         try:
             with open(path, "rb") as stream:
                 data = stream.read(limit + 1)
@@ -188,17 +204,86 @@ class Reader:
             self.notices.add(f"{path.name} is unreadable")
             document = None
         if self.identity(path) != ident:
-            return None  # Changed while read: the next refresh reads it whole.
+            # Changed while read: the next refresh reads it whole.
+            return self._previous(cached) if stale_ok else None
         self._documents[key] = (ident, document)
         return document
 
-    def json(self, path: Path, *, limit: int = 8 << 20) -> Any:
-        return self._load(path, limit, json.loads)
+    def _previous(self, cached: tuple[tuple, Any] | None) -> Any:
+        """The last whole read of a record this refresh could not re-read, rather than nothing.
 
-    def document(self, path: Path, *, limit: int = 8 << 20) -> dict | None:
-        """A JSON object, or None for anything else."""
-        value = self.json(path, limit=limit)
+        Only for callers passing ``stale_ok``: a record rewritten often (the tier ledger, the agent's
+        verdict) would otherwise read as absent whenever the budget ran out or a write raced the
+        read, and its panel would claim nothing was recorded. Callers that key their own caches by
+        stat identity must not take it, or they would file an old parse under the new identity.
+        """
+        if cached is None or cached[1] is None:
+            return None
+        self.notices.add("some records are shown as last read; the next refresh re-reads them")
+        return cached[1]
+
+    def extract(self, path: Path, digest, *, key: str, limit: int = 8 << 20) -> Any:
+        """``digest(document)`` of one JSON record, cached by the file's stat identity.
+
+        For scans over many large records of which a panel keeps only a few fields (every response of
+        a run, every archived verdict): the parsed document is dropped once digested, so the cache
+        holds the digest alone. A document the reader already holds for the same identity is digested
+        without reading it again. ``key`` names the digest (one record may serve several). Returns
+        ``digest(None)`` for an unreadable or oversized record, and :attr:`WAIT` when this refresh
+        cannot read it (over the budget, or rewritten while read): the caller retries next refresh.
+        """
+        path = Path(path)
+        slot = (key, str(path))
+        ident = self.identity(path)
+        if ident is None:
+            self._extracts.pop(slot, None)
+            return digest(None)
+        cached = self._extracts.get(slot)
+        if cached and cached[0] == ident:
+            return cached[1]
+        held = self._documents.get(str(path))
+        if held and held[0] == ident:
+            value = digest(held[1])
+            self._extracts[slot] = (ident, value)
+            return value
+        size = ident[2]
+        if size > limit:
+            self.notices.add(f"{path.name} exceeds the {limit >> 20} MiB per-file read bound")
+            value = digest(None)
+            self._extracts[slot] = (ident, value)
+            return value
+        if size > self.available():
+            self.notices.add("refresh byte budget reached; some records wait for the next refresh")
+            return self.WAIT
+        try:
+            with open(path, "rb") as stream:
+                data = stream.read(limit + 1)
+        except OSError:
+            return self.WAIT
+        self.remaining -= len(data)
+        try:
+            document = json.loads(data)
+        except (ValueError, UnicodeError):
+            self.notices.add(f"{path.name} is unreadable")
+            document = None
+        if self.identity(path) != ident:
+            return self.WAIT
+        value = digest(document)
+        self._extracts[slot] = (ident, value)
+        return value
+
+    def json(self, path: Path, *, limit: int = 8 << 20, stale_ok: bool = False) -> Any:
+        return self._load(path, limit, json.loads, stale_ok)
+
+    def document(self, path: Path, *, limit: int = 8 << 20, stale_ok: bool = False) -> dict | None:
+        """A JSON object, or None for anything else (``stale_ok``: see :meth:`_previous`)."""
+        value = self.json(path, limit=limit, stale_ok=stale_ok)
         return value if isinstance(value, dict) else None
+
+    def parsed(self, path: Path, parse, *, limit: int = 8 << 20) -> Any:
+        """``parse(bytes)`` of one file, cached by stat identity like :meth:`json` (one ``parse`` per path:
+        a second caller with another ``parse`` gets the first one's cached value)."""
+        return self._load(path, limit, parse)
 
     def yaml(self, path: Path, *, limit: int = 8 << 20) -> Any:
         def parse(data: bytes) -> Any:
@@ -219,7 +304,7 @@ class Reader:
                 size = stream.tell()
                 start = max(0, size - nbytes)
                 stream.seek(start)
-                data = stream.read(min(nbytes, self.remaining))
+                data = stream.read(int(min(nbytes, self.available())))
         except OSError:
             return []
         self.remaining -= len(data)

@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import os
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
@@ -20,6 +22,23 @@ from ...phase2.contracts import document_sha256
 
 ENV = "MERLIN_JOINT_PERFORMANCE_SELECTION"
 SCHEMA = "merlin.phase1.joint_performance_selection.v1"
+_ENVIRONMENT = ContextVar("joint_performance_request_environment", default=None)
+
+
+def environment():
+    """A copy of this request's context, or its immutable process environment."""
+    selected_environment = _ENVIRONMENT.get()
+    return dict(os.environ if selected_environment is None else selected_environment)
+
+
+@contextmanager
+def environment_scope(value):
+    """Bind a worker-thread callback without mutating process-global environment."""
+    token = _ENVIRONMENT.set(dict(value))
+    try:
+        yield
+    finally:
+        _ENVIRONMENT.reset(token)
 
 
 def capsule_identity(capsule):
@@ -93,22 +112,39 @@ def _read(pin):
 
 def selected():
     """Read only the explicitly pinned operator selection; no fallback discovery."""
-    raw = os.environ.get(ENV)
+    raw = environment().get(ENV)
     if not raw:
         return None
     pin = json.loads(raw)
     value = _read(pin)
     if value.get("schema") != SCHEMA:
         raise ValueError("unsupported joint performance selection")
-    budget = value.get("per_request_seconds", 30)
-    if type(budget) not in (int, float) or not 0 < budget <= 900:
-        raise ValueError("joint performance observation budget must be in (0, 900]")
+    for key in ("per_request_seconds", "per_observation_seconds"):
+        budget = value.get(key, 30)
+        if type(budget) not in (int, float) or not 0 < budget <= 900:
+            raise ValueError("joint performance observation budget must be in (0, 900]")
     return pin, value
 
 
 def deadline(timeout):
     selection = selected()
     return time.monotonic() + min(timeout, selection[1].get("per_request_seconds", 30)) if selection else 0
+
+
+def observation_budget(request_deadline):
+    """Seconds ONE test case's observation may use: its own budget, never past the request's deadline.
+
+    A single shared budget let the first few large test cases of a check spend it, after which every
+    later case reported "budget exhausted" with no cycles: measured, 444 of 962 estimates returned to
+    one agent were empty. ``per_observation_seconds`` (default ``per_request_seconds``) now bounds each
+    case separately; the request's own deadline still bounds the whole check.
+    """
+    choice = selected()
+    if choice is None:
+        return 0
+    value = choice[1]
+    per_case = value.get("per_observation_seconds", value.get("per_request_seconds", 30))
+    return max(0.0, min(per_case, request_deadline - time.monotonic()))
 
 
 def _runtime(pin, *, facts_pin=None):
@@ -161,12 +197,18 @@ def structural_feedback(selection, capsule, *, target):
     )
 
 
-def attach(row, root, *, result, context, compiler, capsule, remaining_s):
+def attach(row, root, *, result, context, compiler, capsule, remaining_s, request_deadline=None):
     """Attach a public projection after the original complete numerical screen.
 
     No gSIM is launched. Exact native ELF producer custody, one-ELF namespace,
     plain/annotated console equivalence and bounded shutdown are inherited from
     the Phase 2 observer. Cleanup uncertainty propagates to the owning job.
+
+    ``remaining_s`` is this case's floor budget. With ``request_deadline`` (the
+    request's own monotonic deadline) a case whose predicted need exceeds the floor
+    may use up to that need within the request (:mod:`.observation_need`); a case
+    whose need does not fit is not started and says what it needs, and one beyond
+    the selected count runtime's own bound says that instead.
     """
     from .joint_performance_report import project
     from .joint_timing_selection import choose, within_coverage
@@ -181,9 +223,12 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     structural = None
     model_review = None
     source_capsule = None
+    request_model = None
     unavailable_stage = None
     stage = "source_binding"
     reason = "timing runtime not selected"
+    unavailable_detail = None
+    need = deferred = None
     try:
         source_capsule = selected_capsule(selection, capsule)
         epoch = choose(selection, capsule_identity(source_capsule))
@@ -197,24 +242,42 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
         numeric = result.get("numeric") or {}
         tier = (result.get("tiers") or {}).get("L2") or {}
         passed = numeric.get("status") == "pass" and tier.get("status") == "pass"
+        from . import observation_need as ON
+
+        need = ON.need_seconds(structural)
+        budget = min(remaining_s, selection.get("per_request_seconds", 30))
+        if need is not None and need > budget and request_deadline is not None:
+            budget = max(budget, min(need, request_deadline - time.monotonic()))
         if not passed:
             reason = "original complete numerical screen did not pass"
         elif tier.get("engine") != "spike":
             reason = "timing observation only follows original Spike execution"
-        elif remaining_s < 1:
-            reason = "joint observation request budget exhausted"
+        elif budget < 1:
+            # Nothing of this request's observation budget was left when the case's turn came.
+            reason, deferred = "observation not started: shared budget exhausted", need
+        elif need is not None and need > budget:
+            reason, deferred = ON.deferred_reason(need, budget), need
         elif epoch.get("runtime"):
             if epoch["mode"] == "tuned":
                 _read(epoch["calibration_evidence"])
             stage = "runtime_freeze"
             runtime = _runtime(epoch["runtime"], facts_pin=selection["facts"])
             model_review = runtime.review_id
-            stage = "same_elf_observation"
-            report, observation = _observe(
-                root, context=context, compiler=compiler, runtime=runtime, result=result,
-                remaining_s=min(remaining_s, selection.get("per_request_seconds", 30)),
-            )
-            reason = observation.get("reason", "native timing is provisional pending independent qualification")
+            ceiling = ON.protocol_ceiling(runtime)
+            if need is not None and ceiling is not None and need > ceiling:
+                reason = (f"observation needs ~{need} s, beyond the selected count runtime's own bound "
+                          f"({ceiling} s for its two commands)")
+            else:
+                stage = "same_elf_observation"
+                report, observation = _observe(
+                    root, context=context, compiler=compiler, runtime=runtime, result=result, capsule=capsule,
+                    remaining_s=budget,
+                )
+                ON.record(structural, observation)
+                reason = observation.get("reason", "native timing is provisional pending independent qualification")
+                if observation.get("provider_reason"):
+                    # The provider's own stated refusal (host paths already scrubbed by the observer).
+                    unavailable_detail = str(observation["provider_reason"])[:240]
             stage = "coverage_check"
             if report is not None and not within_coverage(epoch, report):
                 report = None
@@ -222,22 +285,49 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
         stage = "selection_recheck"
         if selected() != choice:
             raise ValueError("joint selection changed during observation")
+        stage = "request_model_binding"
+        from ..joint_model_activation import request_binding
+        request_model = request_binding(environment())
     except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
         report = None
         # Details and paths are operator-only. Do not expose reference filenames.
         reason = "joint performance unavailable: " + type(error).__name__
         unavailable_stage = stage
+        if stage == "same_elf_observation" and isinstance(error, ValueError):
+            # These refusals describe the author's own executable or host code (e.g. an owned host
+            # completion the analysis cannot follow); without the message the author cannot act on it.
+            from merlin.common.path_scrub import scrub_host_paths
+
+            unavailable_detail = scrub_host_paths(str(error))[:240]
     row["performance"] = project(
         report, observation, structural, selection_sha256=pin["sha256"], reason=reason,
     )
     row["performance"]["capsule_sha256"] = capsule_identity(source_capsule if source_capsule is not None else capsule)
     row["performance"]["staged_capsule_sha256"] = capsule_identity(capsule)
     row["performance"]["unavailability_stage"] = unavailable_stage
+    if unavailable_detail:
+        row["performance"]["unavailability_detail"] = unavailable_detail
+    from .observation_need import coverage_limit
+
+    row["performance"]["observation_need_s"] = need
+    row["performance"]["observation_deferred"] = deferred is not None
+    limit = coverage_limit(row["performance"])
+    if limit:
+        # The timing model's own bound, not the compiler's or the budget's: name it so it is visible.
+        row["performance"]["model_coverage_limit"] = limit
+        row["performance"]["reason"] = "model coverage limit: " + "; ".join(limit)
     row["performance"]["timing_mode"] = epoch["mode"]
     row["performance"]["timing_epoch"] = epoch["epoch"]
     row["performance"]["model_review"] = model_review
     row["performance"]["untuned_fallback_permitted"] = False
     row["performance"]["facts_sha256"] = selection["facts"]["sha256"]
+    row["performance"]["request_model_binding"] = (dict(
+        channel=request_model["channel"], request_id=request_model["request_id"],
+        request_sha256=request_model["request_sha256"],
+        selection_sha256=(request_model["selection"] or {}).get("sha256"),
+        accepted_record_sha256=(request_model["accepted_record"] or {}).get("sha256"),
+        activation_warning=request_model["activation_warning"],
+    ) if request_model else None)
     row["performance"]["structural_comparison_binding"] = {
         key: row["performance"].get(key) for key in (
             "capsule_sha256", "facts_sha256", "selection_sha256", "model_sha256",
@@ -268,7 +358,7 @@ def original_executable(root):
         raise ValueError("original native producer executable is unavailable")
     return elf
 
-def _observe(root, *, context, compiler, runtime, remaining_s, result=None):
+def _observe(root, *, context, compiler, runtime, remaining_s, result=None, capsule=None):
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from ...phase2 import archive_count_observation as OBS
@@ -287,7 +377,11 @@ def _observe(root, *, context, compiler, runtime, remaining_s, result=None):
         elf = original_executable(root)
     compiler = Path(compiler)
     candidate = hash_tree(compiler)["sha256"]
-    elf_before = F.pin(elf, max_bytes=64 << 20)
+    from .declared_bounds import binary_bytes
+
+    # Self-contained ELFs embed their declared stimulus: the fixed bound is the floor.
+    elf_bound = binary_bytes(capsule, 64 << 20)
+    elf_before = F.pin(elf, max_bytes=elf_bound)
     target = load_target_experiment(context.descriptor)
     if target.target != context.target:
         raise ValueError("joint observation target mismatch")
@@ -301,7 +395,7 @@ def _observe(root, *, context, compiler, runtime, remaining_s, result=None):
     )
     observation["input_identity_basis"] = "self-contained numerically checked ELF, including embedded stimulus"
     report = _read(observation["report"]) if observation.get("status") == "observed" else None
-    if (F.pin(elf, max_bytes=64 << 20) != elf_before
+    if (F.pin(elf, max_bytes=elf_bound) != elf_before
             or hash_tree(compiler)["sha256"] != candidate):
         raise ValueError("candidate changed during joint observation")
     runtime.verify()

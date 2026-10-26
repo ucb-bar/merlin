@@ -27,6 +27,10 @@ from . import downsample
 
 TELEMETRY_NOTE = "Host telemetry only: not simulation, numerical or performance evidence."
 _HISTORY = 4096
+COMPANIONS_TTL_S = 15.0
+#: ``experiment id -> {"at", "cores": [{cpu, measured_utilization_pct, threads}], "runner"}``: the latest
+#: live sample, so :mod:`.activity` attributes core time without scanning ``/proc`` a second time.
+SAMPLES: dict[str, dict[str, Any]] = {}
 
 
 class TreeSampler:
@@ -40,8 +44,12 @@ class TreeSampler:
         self.previous_cpus: dict[int, tuple[int, int]] = {}
         self.previous_threads: dict[tuple, int] = {}
         self.previous_time: float | None = None
+        #: Other processes of the same experiment outside the runner's tree (its reservation's services).
+        self.companions: list[int] = []
+        self.previous_io: list[int] | None = None
 
     def descendants(self) -> list[int]:
+        """The runner and its descendants, then the companion roots (:attr:`companions`) and theirs."""
         parents: dict[int, list[int]] = {}
         for entry in scan_dir(self.proc_root, 65536):
             if not entry.name.isdigit():
@@ -49,9 +57,12 @@ class TreeSampler:
             row = probe.task_stat(int(entry.name), proc_root=self.proc_root)
             if row:
                 parents.setdefault(row["ppid"], []).append(int(entry.name))
-        out, queue = [], [self.pid]
+        out, seen, queue = [], set(), [self.pid, *reversed(self.companions)]
         while queue and len(out) < self.max_processes:
             pid = queue.pop()
+            if pid in seen:
+                continue
+            seen.add(pid)
             out.append(pid)
             queue.extend(parents.get(pid, []))
         return out
@@ -68,7 +79,13 @@ class TreeSampler:
         hz = os.sysconf("SC_CLK_TCK")
         elapsed = started - self.previous_time if self.previous_time is not None else None
         threads, next_threads, processes = [], {}, 0
+        io = [0, 0]
         for pid in self.descendants():
+            raw = probe.read(self.proc_root / str(pid) / "io", 4096) or b""
+            for line in raw.split(b"\n"):
+                key, _, value = line.partition(b":")
+                if key in (b"rchar", b"wchar") and value.strip().isdigit():
+                    io[key == b"wchar"] += int(value)
             raw = probe.read(self.proc_root / str(pid) / "cmdline", 65536)
             argv = [x.decode(errors="replace") for x in (raw or b"").split(b"\0") if x]
             action, _ = probe.classify(argv, {})
@@ -99,8 +116,32 @@ class TreeSampler:
             cores.append(
                 {"cpu": cpu, "measured_utilization_pct": util, "threads": [t for t in threads if t["last_cpu"] == cpu]}
             )
+        rates = None
+        if self.previous_io is not None and elapsed:
+            # Bytes through read()/write() (page cache included) of the processes alive in both samples.
+            rates = {
+                k: max(0.0, (io[i] - self.previous_io[i]) / elapsed) for i, k in enumerate(("read_bps", "write_bps"))
+            }
+        self.previous_io = io
         self.previous_time, self.previous_cpus, self.previous_threads = started, counters, next_threads
-        return {"cores": cores, "jobs": [], "processes": processes, "threads": len(threads)}
+        return {"cores": cores, "jobs": [], "processes": processes, "threads": len(threads), "io": rates}
+
+
+def _companions(cpus: list[int]) -> list[int]:
+    """Processes of reservations (cgroups confining CPUs) that hold exactly the runner's CPUs or fewer of them.
+
+    A run's own services (a calibration owner, say) are often launched beside the runner rather than
+    under it, inside the reservation that confines the run; they are this experiment's work."""
+    from .. import placement
+
+    mine = set(cpus)
+    if not mine:
+        return []
+    out: list[int] = []
+    for alloc in placement.allocations():
+        if alloc["kind"] == "reservation" and alloc["processes"] and set(alloc["cpus"]) <= mine:
+            out.extend(placement.group_pids(alloc["name"], limit=256))
+    return sorted(set(out))[:512]
 
 
 def _core_rows(cores: list[dict], private: bool) -> list[dict[str, Any]]:
@@ -122,27 +163,64 @@ def _core_rows(cores: list[dict], private: bool) -> list[dict[str, Any]]:
     return out
 
 
+#: Seconds between scans of ``/proc/locks`` for held gSIM slots (it can hold 10^5 lines).
+SLOT_SCAN_S = 5.0
+
+
+def _slot_dir(ctx) -> Path | None:
+    """The gSIM slot directory: the launch's ``gsim-slots``, else the runner's ``MERLIN_GSIM_SLOT_ROOT``."""
+    launch = ctx.experiment.get("launch_dir")
+    if launch and is_dir(Path(launch) / "gsim-slots"):
+        return Path(launch) / "gsim-slots"
+    pid = ctx.experiment.get("runner_pid")
+    if type(pid) is not int:
+        return None
+    cached = ctx.state.get("slot_dir")
+    if cached and cached[0] == pid:
+        return cached[1]
+    raw = probe.read(Path("/proc") / str(pid) / "environ", 1 << 20) or b""
+    found = None
+    for item in raw.split(b"\0"):
+        key, sep, value = item.decode(errors="replace").partition("=")
+        if sep and key == "MERLIN_GSIM_SLOT_ROOT" and is_dir(value):
+            found = Path(value)
+    ctx.state["slot_dir"] = (pid, found)
+    return found
+
+
+def _held_locks(paths: list[Path]) -> int:
+    """How many of ``paths`` some process holds a lock on."""
+    keys = {}
+    for path in paths:
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        keys[(st.st_dev, st.st_ino)] = path
+    return len(probe.locks(wanted=set(keys)))
+
+
 def _gsim_active(ctx, live: bool) -> int | None:
+    """gSIM simulations holding a slot now (live), else the budget's recorded active admissions.
+
+    The budget's ``active`` rows are admissions of the runner, whose pid outlives each simulation, so
+    a live count never comes from them: only a held slot lock is a simulation running."""
     experiment = ctx.experiment
-    launch = experiment.get("launch_dir")
-    if live and launch and is_dir(Path(launch) / "gsim-slots"):
-        inventory = probe.locks()
-        held = 0
-        for entry in scan_dir(Path(launch) / "gsim-slots", 512):
-            if (
-                entry.name.startswith("slot_")
-                and entry.name.endswith(".lock")
-                and probe.lock_rows(Path(entry.path), inventory)
-            ):
-                held += 1
+    slots = _slot_dir(ctx) if live else None
+    if slots is not None:
+        cached = ctx.state.get("gsim_held")
+        if cached and time.monotonic() - cached[0] < SLOT_SCAN_S:
+            return cached[1]
+        paths = [Path(e.path) for e in scan_dir(slots, 512) if e.name.startswith("slot_") and e.name.endswith(".lock")]
+        held = _held_locks(paths)
+        ctx.state["gsim_held"] = (time.monotonic(), held)
         return held
+    if live:
+        return None
     budget = ctx.reader.document(Path(experiment["run_dir"]) / "joint_gsim_correctness_budget.json", limit=16 << 20)
     if budget is None:
         return None
-    active = rows(budget.get("active"))
-    if live:
-        return sum(1 for row in active if type(row.get("pid")) is int and probe.task_stat(row["pid"]))
-    return len(active)
+    return len(rows(budget.get("active")))
 
 
 def _series(ctx) -> tuple[dict[str, list], dict[str, Any]]:
@@ -225,8 +303,20 @@ def read(ctx) -> dict[str, Any]:
         if sampler is None or sampler.pid != runner:
             sampler = TreeSampler(runner)
             ctx.state["tree"] = sampler
+        if ctx.now - ctx.state.get("companions_at", 0) >= COMPANIONS_TTL_S:
+            sampler.companions = _companions(sampler.affinity())
+            ctx.state["companions_at"] = ctx.now
         sample = sampler.sample()
         notes.append(f"No managed owner: cores are the runner pid {runner} affinity; no lease or waiter records.")
+    key = str(experiment.get("id") or experiment.get("run_dir"))
+    if sample is not None:
+        SAMPLES[key] = {
+            "at": ctx.now,
+            "cores": sample.get("cores") or [],
+            "runner": runner if type(runner) is int else owner.get("pid"),
+        }
+    else:
+        SAMPLES.pop(key, None)
     if sample is not None:
         cores = _core_rows(sample.get("cores") or [], ctx.operator_private)
         known = [c["util_pct"] for c in cores if c["util_pct"] is not None]
@@ -239,6 +329,7 @@ def read(ctx) -> dict[str, Any]:
         if not known:
             notes.append("First live sample: utilization appears after the next refresh.")
         process = {
+            "io": sample.get("io"),
             "cpu_pct": latest.get("cpu_pct"),
             "rss_bytes": latest.get("rss_bytes"),
             "threads": latest.get("threads") if latest else sample.get("threads"),
@@ -274,4 +365,4 @@ def read(ctx) -> dict[str, Any]:
     }
 
 
-__all__ = ["TreeSampler", "read"]
+__all__ = ["SAMPLES", "TreeSampler", "read"]

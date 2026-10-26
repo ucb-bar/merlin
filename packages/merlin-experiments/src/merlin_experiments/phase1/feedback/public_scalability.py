@@ -116,6 +116,9 @@ def _observed_result(row):
     return observed
 
 
+from ..joint_model_activation import grade_model_scope, admit_grade
+
+
 def _grade(
     submission,
     *,
@@ -143,6 +146,8 @@ def _grade(
     names = all_names if names is None else set(names)
     if not names or not names <= all_names:
         raise ValueError("public scalability request names unknown or empty cases")
+    grade_environment = admit_grade(candidate=submission, source_sha256=candidate, output=output,
+        kind="public_scalability", identity={"suite":before,"names":sorted(names)})
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     cases = root / "cases"
@@ -157,13 +162,14 @@ def _grade(
         or getattr(adapters["L2"], "_merlin_simulator_engine", None) != "spike"
     ):
         raise ValueError("selected target has no exact Spike-only functional adapter")
-    from .joint_performance import deadline as performance_deadline
+    from .joint_performance import observation_budget
 
     observed = {}
-    performance_budget = max(0.0, performance_deadline(timeout) - time.monotonic())
+    # Each test case's observation gets its own budget, bounded by this request's deadline; a shared
+    # budget left every case after the first few large ones without cycles.
+    request_deadline = time.monotonic() + timeout
 
     def completed(row):
-        nonlocal performance_budget
         name = row.get("capsule")
         if name in observed:
             raise ValueError("duplicate public scalability execution observation")
@@ -174,16 +180,20 @@ def _grade(
 
         generated = output / "runs" / "runs" / CR.suite_for(context.target) / name / "generated"
         performance_started = time.monotonic()
-        attach_performance(
-            row,
-            generated,
-            result=row,
-            context=context,
-            compiler=Path(submission),
-            capsule=load_capsule(root / "cases" / name),
-            remaining_s=performance_budget,
-        )
-        performance_budget = max(0.0, performance_budget - (time.monotonic() - performance_started))
+        from .joint_performance import environment_scope
+        with environment_scope(grade_environment):
+            attach_performance(
+                row,
+                generated,
+                result=row,
+                context=context,
+                compiler=Path(submission),
+                capsule=load_capsule(root / "cases" / name),
+                remaining_s=observation_budget(request_deadline),
+                request_deadline=request_deadline,
+            )
+        if isinstance(row.get("performance"), dict):
+            row["performance"]["observation_seconds"] = round(time.monotonic() - performance_started, 1)
         observed[name] = _observed_result(row)
 
     from contextlib import redirect_stderr, redirect_stdout
@@ -228,6 +238,7 @@ def _grade(
     return result
 
 
+@grade_model_scope
 def grade(submission, **kwargs):
     from merlin.common import invocation_record as I
     from merlin.common.digest import sha256_file
@@ -358,6 +369,11 @@ def attach(verdict, submission, *, context, output, timeout, contract=None, **kw
 
 
 def cli(args, *, context):
+    if args.sim == "gsim":
+        # Only an operator-authorized idle measurement passes here; it re-checks its own authorization.
+        from .scalability_gsim import cli as measure
+
+        return measure(args, context=context)
     selection = selected(context)
     if selection is None:
         raise ValueError("no public scalability suite is selected")
@@ -375,8 +391,12 @@ def cli(args, *, context):
         raise ValueError("public scalability requires a result output path")
     root, record = selection
     names = None if args.capsules == "all" else {v.strip() for v in args.capsules.split(",")}
+    from . import scratch_retention
     from .compiler_profile_runtime import selfcheck_execution
 
+    # Both keep their issued qualification, results and timing records; the build trees go.
+    scratch_retention.raw_runs(Path(args.out).with_suffix(".profile"))
+    scratch_retention.raw_runs(Path(args.out).with_suffix(".scalability"))
     with selfcheck_execution(
         args.compiler_bundle_manifest,
         context=context,
@@ -396,6 +416,12 @@ def cli(args, *, context):
         )
     public = public_result(result)
     public["all_pass"] = result["passed"]
+    from .case_declarations import register
+    from .performance_brief import attach as attach_brief
+
+    register(root / "cases", target=context.target)  # the brief classifies cases by declaration
+    # isa_tools debug runs public roster cases only, so scalability briefs carry no debugger command.
+    attach_brief(public, public.get("cases"), debuggable=False)
     text = json.dumps(public, indent=2)
     Path(args.out).write_text(text)
     print(text)
@@ -431,6 +457,13 @@ def public_result(result):
     return public
 
 
+def _measurement_guidance():
+    from ..joint_gsim_measurement import guidance
+
+    text = guidance()
+    return " " + text if text else ""
+
+
 def prompt_block(te):
     selection = S.selected(te)
     if selection is None:
@@ -450,5 +483,7 @@ def prompt_block(te):
         "Full-model execution follows the separately selected campaign window. "
         "In a joint campaign, start these cases immediately: their failures and performance "
         "feedback guide compiler architecture while core correctness is still evolving. "
-        "Timing estimates, when explicitly selected, carry their own qualification status.\n"
+        "Timing estimates, when explicitly selected, carry their own qualification status."
+        + _measurement_guidance()
+        + "\n"
     )

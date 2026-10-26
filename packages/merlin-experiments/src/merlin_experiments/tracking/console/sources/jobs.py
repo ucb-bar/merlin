@@ -29,6 +29,10 @@ from . import LANES
 
 #: ``(token, lane)``: first token found in the lower-cased stage name decides the lane.
 LANE_RULES = (
+    # The grader's own calculations (golden, L0 reference, L1 simulate, compare, hashing) and the wait
+    # for the CPU lease each one takes (``grade_cpu.*`` from the capsule runner).
+    ("grade_cpu.lease", "queue"),
+    ("grade_cpu.", "verify"),
     ("calibr", "calibration"),
     (".l3", "L3"),
     ("gsim", "L3"),
@@ -50,6 +54,9 @@ MAX_RECORDS = 5000
 MAX_SPANS = 1500
 PARSES_PER_REFRESH = 600
 MIN_SPAN_S = 0.25
+#: ``experiment id -> {(pid, native tid): {stage, lane, capsule, start}}``: the innermost running stage of
+#: every grader thread with a running record, for :mod:`.activity` to name what a busy thread does.
+THREAD_STAGES: dict[str, dict[tuple[int, int], dict[str, Any]]] = {}
 
 
 def _ns(value: Any) -> float | None:
@@ -96,6 +103,7 @@ def _summarize(doc: dict, path: Path, private: bool) -> dict[str, Any] | None:
         return None
     stages = [s for s in doc["stages"][:256] if isinstance(s, dict)]
     parents = {s.get("parent_stage_id") for s in stages if s.get("parent_stage_id") is not None}
+    pid = doc.get("pid") if type(doc.get("pid")) is int else None
     out = []
     for stage in stages:
         start = _ns(stage.get("started_ns"))
@@ -111,6 +119,7 @@ def _summarize(doc: dict, path: Path, private: bool) -> dict[str, Any] | None:
                 "elapsed": elapsed if elapsed is not None else (end - start if end else None),
                 "status": clean(stage.get("status"), 20) or "unknown",
                 "leaf": stage.get("stage_id") not in parents,
+                "tid": next((t for t in (stage.get("native_tid"), doc.get("native_tid")) if type(t) is int), None),
             }
         )
     if not out:
@@ -120,6 +129,7 @@ def _summarize(doc: dict, path: Path, private: bool) -> dict[str, Any] | None:
         "tier": doc.get("tier"),
         "operation": clean(doc.get("operation"), 48),
         "path": str(path),
+        "pid": pid,
         "stages": out,
         "first": min(s["start"] for s in out),
     }
@@ -267,10 +277,20 @@ def read(ctx) -> dict[str, Any]:
     if memo and memo[0] == key and not (ctx.live and memo[1]["running"]):
         return memo[1]
     spans, durations, running = [], {}, []
+    threads: dict[tuple[int, int], dict[str, Any]] = {}
     for summary in records.values():
         for stage in summary["stages"]:
             durations.setdefault(stage["stage"], []).append(stage)
             is_running = stage["end"] is None and stage["status"] == "running"
+            if is_running and summary["pid"] is not None and stage["tid"] is not None:
+                key = (summary["pid"], stage["tid"])
+                if key not in threads or stage["start"] >= threads[key]["start"]:
+                    threads[key] = {
+                        "stage": stage["stage"],
+                        "lane": lane_of(stage["stage"], summary["tier"]),
+                        "capsule": summary["capsule"],
+                        "start": stage["start"],
+                    }
             if is_running:
                 running.append(
                     {
@@ -305,6 +325,8 @@ def read(ctx) -> dict[str, Any]:
                 "max_s": max(values) if values else None,
                 "total_s": sum(values) if values else None,
                 "running": sum(1 for r in rows if r["end"] is None and r["status"] == "running"),
+                # An envelope stage (it has child stages) contains the time of the others.
+                "leaf": all(r["leaf"] for r in rows),
             }
         )
     stages.sort(key=lambda r: -(r["total_s"] or 0))
@@ -390,6 +412,7 @@ def read(ctx) -> dict[str, Any]:
         "notes": notes,
     }
     ctx.state["memo"] = (key, section)
+    THREAD_STAGES[str(ctx.experiment.get("id") or run_dir)] = threads if ctx.live else {}
     return section
 
 
@@ -499,4 +522,4 @@ def inspect(ctx, key: str) -> dict[str, Any]:
     }
 
 
-__all__ = ["LANE_RULES", "inspect", "lane_of", "percentile", "read"]
+__all__ = ["LANE_RULES", "THREAD_STAGES", "inspect", "lane_of", "percentile", "read"]

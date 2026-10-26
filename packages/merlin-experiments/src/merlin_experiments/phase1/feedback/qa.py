@@ -36,6 +36,7 @@ from merlin.targetgen import capsule_runner as CR  # noqa: E402
 from merlin.targetgen import tier_integrity as _TI  # noqa: E402
 from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, readback_kwargs, resolve_context
 
+from . import certification_gates
 from .qualification_summary import summarize as qualification_summary
 
 # Allowed (answer-free) numeric fields. Everything else in the numeric block is dropped.
@@ -280,6 +281,10 @@ def _scrub_numbers(text: str) -> str:
     return "".join(out)
 
 
+#: Length of a redacted failure detail; readers that compare details know where one was cut.
+DETAIL_LIMIT = 800
+
+
 def _redact_detail(detail: str | None) -> str | None:
     if not detail:
         return None
@@ -289,7 +294,7 @@ def _redact_detail(detail: str | None) -> str | None:
     # disassembler / instruction_trace.json and check each op's operands" — runs past ~240 chars. Cutting it
     # left the agent told WHERE (the encoding) but not the self-inspection METHOD. 800 fits the full hint
     # while still bounding a pathological dump.
-    return _scrub_numbers(detail)[:800]
+    return _scrub_numbers(detail)[:DETAIL_LIMIT]
 
 
 def _per_capsule_from_results(runs_root: Path, *, only_capsule: str | None = None) -> dict[str, dict]:
@@ -983,6 +988,9 @@ def run(
                 "execution_digest": rich.get("execution_digest"),
             }
         )
+        if not rich.get("failure_plane"):
+            # A deferred test case writes no result file, so its reason lives only in the grade row.
+            per_capsule[-1].update(certification_gates.gated_row_fields(pc, _redact_detail))
         if rich.get("placement_coverage"):
             per_capsule[-1]["placement_coverage"] = rich["placement_coverage"]
         if rich.get("candidate_native_verification") is not None:

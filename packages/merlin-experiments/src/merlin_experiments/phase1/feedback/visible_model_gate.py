@@ -44,6 +44,10 @@ def _combine(doc: dict) -> dict:
     return doc
 
 
+def _failed_without_results(update: dict) -> bool:
+    return isinstance(update.get("grade_error"), dict) and not update.get("per_capsule") and "model_gate" not in update
+
+
 def publish(path: Path, update: dict) -> dict:
     """Atomically merge capsule and model results without either writer erasing the other."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,14 +56,25 @@ def publish(path: Path, update: dict) -> dict:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
             previous = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-            advisory_only = set(update) == {"operator_epoch_notice"}
-            if advisory_only or "model_gate" in update:
+            advisory_only = bool(update) and set(update) <= {"operator_epoch_notice", "package_failure_notice"}
+            if _failed_without_results(update) and previous.get("per_capsule"):
+                # A grade that aborted before any test case finished carries no results. Keep the last
+                # real ones, say they are not from the newest snapshot, and show why it failed.
+                result = {**previous, "grade_error_notice": {
+                    **update["grade_error"], "graded_at": update.get("graded_at"),
+                    "note": "the newest grade failed before producing results; the results shown are "
+                            "from the previous grade",
+                }, "snapshot_current": False}
+                advisory_only = True
+            elif advisory_only or "model_gate" in update:
                 result = {**previous, **update}
             else:
                 result = dict(update)
                 if "model_gate" in previous:
                     result["model_gate"] = previous["model_gate"]
                 result["capsule_all_pass"] = update.get("all_pass")
+            if "grade_error_notice" in result and update.get("per_capsule"):
+                result.pop("grade_error_notice")  # a grade with results supersedes the failure notice
             if "operator_epoch_notice" in previous and "operator_epoch_notice" not in update:
                 result["operator_epoch_notice"] = previous["operator_epoch_notice"]
             if "operator_epoch_notice" in result:

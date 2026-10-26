@@ -11,7 +11,7 @@ from argparse import Namespace
 
 from . import launch, placement, plain
 from .discovery import Discovery, default_selection
-from .model import Collector
+from .model import REFRESH_BUDGET, Collector
 
 SLOW_INTERVAL_S = 8.0
 
@@ -58,8 +58,10 @@ def run(args: Namespace) -> int:
     if item is None:
         print(plain.experiments_text(items, color=color, width=width))
         return 1
-    collector = Collector(item, operator_private=args.operator_private)
-    if args.once or not interactive:
+    once = args.once or not interactive
+    # A one-shot snapshot reads every record now; the interactive loop keeps its per-refresh budget.
+    collector = Collector(item, operator_private=args.operator_private, budget=None if once else REFRESH_BUDGET)
+    if once:
         snapshot = collector.refresh("all")
         if args.json:
             print(json.dumps(snapshot, indent=1, default=str))

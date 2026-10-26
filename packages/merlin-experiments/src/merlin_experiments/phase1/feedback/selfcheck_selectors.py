@@ -75,6 +75,9 @@ def _previously_failing() -> tuple:
 
 def select_capsules(a, sub, context, capsules_root, contract, adapters, combined, target, barrier_tier) -> Selection:
     """The capsules ``a.capsules`` names (see the module docstring)."""
+    from .case_declarations import register
+
+    register(capsules_root, target=target)  # the performance brief classifies cases by declaration
     if a.capsules.strip().lower() == "changed":
         from .selfcheck_changed import select_changed
 

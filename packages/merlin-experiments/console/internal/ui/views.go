@@ -24,13 +24,102 @@ import (
 
 func (m *Model) pGantt(st *proto.State, w, h int, focused bool) (string, string, []string) {
 	t0, t1 := m.window2(st)
-	if win := st.Timeline.Window; win != nil && windows[m.window].seconds == 0 {
+	if win := st.Timeline.Window; win != nil && m.win().seconds == 0 {
 		t0, t1 = win.Start, win.End
 	}
+	now := st.GeneratedAt
+	if !m.live() {
+		now = t1 // A stored run is read as of its last record.
+	}
 	lw := min(18, w/5)
-	cw := max(10, w-lw-2) // list() prefixes one cell
-	rows := []GanttRow{}
-	sel := []Row{}
+	sw := 0 // the "now" column: what each row is doing at this moment (at the end, for a stored run)
+	if w >= 70 {
+		sw = min(22, w/6)
+	}
+	cw := max(10, w-lw-2-sw) // list() prefixes one cell
+	cursor := -1
+	if focused && m.tcursor >= 0 {
+		cursor = min(cw-1, m.tcursor)
+	}
+	lines, sel := []string{}, []Row{}
+	add := func(row GanttRow, kind Row, status string) {
+		line := gantt([]GanttRow{row}, t0, t1, lw, cw, cursor)[0]
+		if sw > 0 {
+			line += dim("│") + fit(status, sw-1)
+		}
+		lines = append(lines, line)
+		sel = append(sel, kind)
+	}
+	// 1. The author: each turn's startup, the agent working, and how the turn ended.
+	if len(st.Lifecycle.Turns) > 0 {
+		add(authorRow(st.Lifecycle, t1), Row{Kind: "lifecycle", Key: "turns"}, authorNow(st.Lifecycle, now))
+	}
+	// 2. How many agents work at once (lead plus helpers).
+	if c := st.Timeline.Concurrency; c != nil && len(c.Agents) > 0 {
+		line := fit(paint(cAgent, "agents working"), lw) + " " + density(c.Agents, c.T0, c.DT, t0, t1, cw, cAgent, cursor)
+		if sw > 0 {
+			working := 0
+			for _, a := range st.Agents.Agents {
+				if a.State == "working" {
+					working++
+				}
+			}
+			status := dim("none")
+			if working > 0 {
+				status = bold(cGood, fmt.Sprintf("▶ %d now", working))
+			}
+			line += dim("│") + fit(status, sw-1)
+		}
+		lines = append(lines, line)
+		sel = append(sel, Row{Kind: "local", Key: "timeline", Local: localDetail("timeline", st.Timeline)})
+	}
+	// 3. The grader and simulators: one lane per kind of job.
+	lanes := map[string][]GanttSeg{}
+	open := map[string][]float64{} // lane -> start times of jobs still running
+	lastEnd := map[string]float64{}
+	for _, sp := range st.Jobs.Spans {
+		s, ok := f(sp.Start)
+		if !ok {
+			continue
+		}
+		e, ok := f(sp.End)
+		if !ok {
+			e = t1
+			open[sp.Lane] = append(open[sp.Lane], s)
+		} else if e > lastEnd[sp.Lane] {
+			lastEnd[sp.Lane] = e
+		}
+		c := kindColor[sp.Lane]
+		if c == nil {
+			c = cDim
+		}
+		g := '█'
+		if sp.Lane == "queue" {
+			g = '░'
+		}
+		if sp.Status == "failed" || sp.Status == "fail" || sp.Status == "raised" {
+			c, g = cBad, '▓'
+		}
+		lanes[sp.Lane] = append(lanes[sp.Lane], GanttSeg{Start: s, End: e, Color: c, Glyph: g})
+	}
+	for _, lane := range []string{"build", "verify", "L2", "L3", "queue", "calibration", "setup"} {
+		segs, ok := lanes[lane]
+		if !ok {
+			continue
+		}
+		status := dim("—")
+		if starts := open[lane]; len(starts) > 0 && m.live() {
+			oldest := starts[0]
+			for _, s := range starts {
+				oldest = math.Min(oldest, s)
+			}
+			status = bold(kindColor[lane], fmt.Sprintf("▶ %d", len(starts))) + dim(" oldest ") + paint(cText, dur(now-oldest))
+		} else if e := lastEnd[lane]; e > 0 {
+			status = dim("idle " + dur(math.Max(0, now-e)))
+		}
+		add(GanttRow{Label: laneWords[lane], Color: kindColor[lane], Segs: segs}, Row{Kind: "jobs", Key: lane}, status)
+	}
+	// 4. Each agent's own turns and tool calls, below (scroll or zoom to see them all).
 	agents := append([]proto.Agent{}, st.Agents.Agents...)
 	sort.SliceStable(agents, func(i, j int) bool { return agents[i].Role == "lead" && agents[j].Role != "lead" })
 	for _, a := range agents {
@@ -43,72 +132,80 @@ func (m *Model) pGantt(st *proto.State, w, h int, focused bool) (string, string,
 			if math.IsNaN(e) {
 				e = t1
 			}
-			c := kindColor[k]
-			if c == nil {
-				c = cAgent
-			}
-			g := '▆'
+			g, c := '▆', cAgent
 			if k == "tool" {
-				g = '█'
+				g, c = '█', cBuild
 			} else if k == "wait" {
-				g = '░'
+				g, c = '░', cQueue
 			}
 			segs = append(segs, GanttSeg{Start: s, End: e, Color: c, Glyph: g})
 		}
-		rows = append(rows, GanttRow{Label: agentName(a), Color: cAgent, Segs: segs})
-		sel = append(sel, Row{Kind: "agents", Key: a.ID})
-	}
-	lanes := map[string][]GanttSeg{}
-	for _, sp := range st.Jobs.Spans {
-		s, ok := f(sp.Start)
-		if !ok {
-			continue
+		status := paint(agentColor(a.State), stateWords[a.State])
+		if v, ok := f(a.LastActivityAt); ok && now > 0 {
+			status += dim(" " + dur(math.Max(0, now-v)) + " ago")
 		}
-		e, ok := f(sp.End)
-		if !ok {
-			e = t1
-		}
-		c := kindColor[sp.Lane]
-		if c == nil {
-			c = cDim
-		}
-		g := '█'
-		if sp.Status == "failed" || sp.Status == "fail" {
-			c, g = cBad, '▓'
-		}
-		lanes[sp.Lane] = append(lanes[sp.Lane], GanttSeg{Start: s, End: e, Color: c, Glyph: g})
+		add(GanttRow{Label: "· " + agentName(a), Color: cAgent, Segs: segs}, Row{Kind: "agents", Key: a.ID}, status)
 	}
-	for _, lane := range []string{"setup", "build", "verify", "calibration", "L2", "L3", "queue"} {
-		if segs, ok := lanes[lane]; ok {
-			rows = append(rows, GanttRow{Label: "jobs " + lane, Color: kindColor[lane], Segs: segs})
-			sel = append(sel, Row{Kind: "jobs", Key: lane})
-		}
-	}
-	cursor := -1
-	if focused && m.tcursor >= 0 {
-		cursor = min(cw-1, m.tcursor)
-	}
-	lines := gantt(rows, t0, t1, lw, cw, cursor)
-	if c := st.Timeline.Concurrency; c != nil && len(c.Agents) > 0 {
-		lines = append(lines, fit(paint(cAgent, "∥ busy agents"), lw)+" "+density(c.Agents, c.T0, c.DT, t0, t1, cw, cAgent, cursor))
-		sel = append(sel, Row{Kind: "local", Key: "timeline", Local: localDetail("timeline", st.Timeline)})
-		lines = append(lines, fit(paint(cL3, "∥ simulations"), lw)+" "+density(c.Sim, c.T0, c.DT, t0, t1, cw, cL3, cursor))
-		sel = append(sel, Row{Kind: "local", Key: "timeline", Local: localDetail("timeline", st.Timeline)})
-	}
-	header := []string{m.attribution(st, w), markerAxis(st.Timeline, t0, t1, lw, cw)}
-	if len(rows) == 0 {
-		lines = []string{dim("no agent or job spans recorded in this window")}
+	header := []string{m.attribution(st, w), markerAxis(st.Timeline, t0, t1, lw, cw) + nowHeader(sw, m.live())}
+	if len(lines) == 0 {
+		lines = []string{dim("no author, agent or job spans recorded in this window")}
 	}
 	body := m.list("gantt", header, sel, lines, h-1, focused)
 	if focused {
 		body = append(body, m.cursorReport(st, t0, t1, cw))
 	} else {
-		body = append(body, dim(" , . move the time cursor when focused · Enter inspects a lane"))
+		body = append(body, dim(" rows: author turns · agents working · grader jobs by kind · each agent (▆ thinking █ tool ░ waiting) · right: now"))
 	}
-	legend := paint(cAgent, "▆") + dim("turn ") + paint(cBuild, "█") + dim("tool/build ") + paint(cQueue, "░") +
-		dim("await ") + paint(cL2, "█") + dim("L2 ") + paint(cL3, "█") + dim("L3 ") + paint(cBad, "▓") + dim("failed ") +
-		dim("· window "+windows[m.window].label)
+	legend := paint(actColor("startup"), "▒") + dim("startup ") + paint(cAgent, "█") + dim("agent ") + paint(cBad, "✕") + dim("stopped │ ") +
+		paint(cBuild, "█") + dim("build ") + paint(cVerify, "█") + dim("verify ") + paint(cL2, "█") + dim("L2 ") + paint(cL3, "█") + dim("L3 ") +
+		paint(cQueue, "░") + dim("queue ") + paint(cBad, "▓") + dim("failed · last ") + paint(cText, m.win().label)
 	return "TIMELINE", legend, body
+}
+
+func nowHeader(sw int, live bool) string {
+	if sw == 0 {
+		return ""
+	}
+	label := " now"
+	if !live {
+		label = " at the end"
+	}
+	return dim("│") + bold(cHeading, fit(label, sw-1))
+}
+
+func agentColor(state string) color.Color {
+	_, c := agentStyle(state)
+	return c
+}
+
+// authorNow is what the author is doing at this moment, with how long it has been doing it.
+func authorNow(l proto.Lifecycle, now float64) string {
+	since := ""
+	if v, ok := f(l.PhaseSince); ok && now > 0 {
+		since = " " + dur(math.Max(0, now-v))
+	}
+	switch l.Phase {
+	case "startup":
+		stage := "startup"
+		if n := len(l.Turns); n > 0 && l.Turns[n-1].OpenStage != nil {
+			stage = l.Turns[n-1].OpenStage.Stage
+		}
+		return bold(actColor("startup"), "▶ starting") + dim(since) + dim(" "+clean(stage))
+	case "authoring":
+		return bold(cGood, "▶ agent working") + dim(since)
+	case "ended":
+		if strings.HasPrefix(l.PhaseDetail, "refused") {
+			return bold(cBad, "refused") + dim(since+" ago")
+		}
+		return bold(cWarn, "stopped") + dim(since+" ago")
+	}
+	return dim("—")
+}
+
+// Lane names in plain words.
+var laneWords = map[string]string{
+	"setup": "grader setup", "build": "build", "verify": "test/verify", "calibration": "calibration",
+	"L2": "L2 sim (Spike)", "L3": "L3 sim (gSIM)", "queue": "sim queue wait",
 }
 
 // attribution is the one-line answer to "where did the lead's wall time go".
@@ -124,17 +221,14 @@ func (m *Model) attribution(st *proto.State, w int) string {
 	parts := []float64{l.SetupS, l.ThinkS, l.ToolS, l.WaitS, l.IdleS}
 	colors := []color.Color{cCalib, cAgent, cBuild, cQueue, cFaint}
 	bw := min(28, max(8, w/6))
-	s := dim("lead ") + stackBar(parts, colors, total, bw) + " "
+	s := dim("lead agent's time ") + stackBar(parts, colors, total, bw) + " "
 	if l.SetupS > 0 {
-		s += paint(cCalib, fmt.Sprintf("setup %.0f%% ", pctOf(l.SetupS, total)))
+		s += paint(cCalib, fmt.Sprintf("waiting for setup %.0f%% ", pctOf(l.SetupS, total)))
 	}
 	s += paint(cAgent, fmt.Sprintf("think %.0f%%", pctOf(l.ThinkS, total))) + " " +
 		paint(cBuild, fmt.Sprintf("tool %.0f%%", pctOf(l.ToolS, total))) + " " +
 		paint(cQueue, fmt.Sprintf("await %.0f%%", pctOf(l.WaitS, total))) + " " +
 		dim(fmt.Sprintf("idle %.0f%%", pctOf(l.IdleS, total)))
-	if r := tl.Recorded; r != nil {
-		s += dim(" · recorded ") + paint(cAgent, fmt.Sprintf("think %.0f%%", pctOf(r.ThinkS, r.ThinkS+r.ToolWaitS)))
-	}
 	p := tl.Parallelism
 	if v, ok := f(p.AgentsAvg); ok {
 		s += dim(" · agents ∥ ") + paint(cText, fmt.Sprintf("%.1f", v)) + dim(" avg/") + paint(cText, intOr(p.AgentsPeak, "—")) + dim(" peak")

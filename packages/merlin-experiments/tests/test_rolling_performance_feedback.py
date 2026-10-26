@@ -40,7 +40,7 @@ def scene(tmp_path, monkeypatch):
                            calls=calls, clock=clock, runs=runs)
 
 
-def test_shared_observation_budget_excludes_grade_wait_and_preserves_native_receipts(scene):
+def test_each_case_has_its_own_budget_excluding_grade_wait_and_preserves_native_receipts(scene):
     s = scene
     before = {name: path.read_bytes() for name, path in s.receipts.items()}
     s.clock[0] += 500  # Compilation and native grading are not observation time.
@@ -49,7 +49,8 @@ def test_shared_observation_budget_excludes_grade_wait_and_preserves_native_rece
     s.feedback.completed(callback)
     s.feedback.completed({'capsule': 'large'})
     s.feedback.completed({'capsule': 'tail'})
-    assert [call[1]['remaining_s'] for call in s.calls] == [10, 7, 4]
+    # Each case's budget is its own: earlier cases' observations (3 s each) never consume it.
+    assert [call[1]['remaining_s'] for call in s.calls] == [10, 10, 10]
     assert all(call[1]['result']['numeric']['status'] == 'pass' for call in s.calls)
     assert s.calls[0][0] == s.receipts['small'].parent/'generated'
     assert callback == original
@@ -102,3 +103,95 @@ def test_numerical_result_replacement_during_observation_refuses(scene, monkeypa
     with pytest.raises(ValueError, match='changed during observation'):
         s.feedback.completed({'capsule': 'small'})
     assert not s.feedback.records
+
+
+def _vetoed(path, **extra):
+    from merlin.targetgen import offload_census as O
+    O._record_veto(path, {'status': 'fail', 'host_compute': {'verdict': 'host_compute'},
+                          'failure': {'plane': 'host_compute', 'category': O.VETO_CATEGORY, 'detail': 'x'}})
+    if extra:
+        stored = json.loads(path.read_text())
+        stored.update(extra)
+        path.write_text(json.dumps(stored))
+
+
+def test_recorded_host_compute_veto_drops_only_that_cases_feedback(scene):
+    # The score vetoes a numerically passing case for host compute after its rolling observation and
+    # rewrites its result; a fresh backend does this early. The grade must stand.
+    s = scene
+    for name in ('small', 'large'):
+        s.feedback.completed({'capsule': name})
+    _vetoed(s.receipts['small'])
+    verdict = {'per_capsule': [{'capsule': 'small', 'status': 'fail'}, {'capsule': 'large', 'status': 'pass'}]}
+    s.feedback.project(verdict)
+    assert 'performance' not in verdict['per_capsule'][0]
+    assert verdict['per_capsule'][1]['performance']['status'] == 'PROVISIONAL'
+
+
+def test_a_veto_that_also_changes_execution_evidence_still_refuses(scene):
+    s = scene
+    s.feedback.completed({'capsule': 'small'})
+    _vetoed(s.receipts['small'], numeric={'status': 'fail'})
+    verdict = {'per_capsule': [{'capsule': 'small', 'status': 'fail'}]}
+    original = deepcopy(verdict)
+    with pytest.raises(ValueError, match='changed before feedback publication'):
+        s.feedback.project(verdict)
+    assert verdict == original
+
+
+def test_a_multi_mebibyte_result_is_observed_like_a_small_one(scene):
+    # The largest scalability cases write 3-8 MiB results; a 2 MiB pin bound refused them and the
+    # refusal failed every grade that ran them.
+    s = scene
+    path = s.receipts['large']
+    stored = json.loads(path.read_text())
+    stored['padding'] = 'x' * (3 << 20)
+    path.write_text(json.dumps(stored))
+    s.feedback.completed({'capsule': 'large'})
+    verdict = {'per_capsule': [{'capsule': 'large', 'status': 'pass'}]}
+    s.feedback.project(verdict)
+    assert verdict['per_capsule'][0]['performance']['status'] == 'PROVISIONAL'
+
+
+def test_observations_run_concurrently_and_projection_waits_for_them(scene, monkeypatch):
+    import threading
+
+    from merlin.common import cpu_pool
+
+    s = scene
+    monkeypatch.setattr(cpu_pool, 'compute_capacity', lambda *a, **k: 4)
+    monkeypatch.setattr(cpu_pool, 'current_thread_owns_cpu_lease', lambda: False)
+    barrier = threading.Barrier(3, timeout=10)  # passes only when all three observe at once
+
+    def attach(row, root, **kw):
+        barrier.wait()
+        row['performance'] = {'status': 'PROVISIONAL', 'estimated_whole_soc_cycles': 1}
+
+    monkeypatch.setattr(P, 'attach', attach)
+    for name in ('small', 'large', 'tail'):
+        s.feedback.completed({'capsule': name})  # returns at once: the grade's callback is not held
+    verdict = {'per_capsule': [{'capsule': name, 'status': 'pass'} for name in ('small', 'large', 'tail')]}
+    s.feedback.project(verdict)
+    assert all(row['performance']['status'] == 'PROVISIONAL' for row in verdict['per_capsule'])
+
+
+def test_a_failed_concurrent_observation_loses_only_its_own_projection(scene, monkeypatch, capsys):
+    from merlin.common import cpu_pool
+
+    s = scene
+    monkeypatch.setattr(cpu_pool, 'compute_capacity', lambda *a, **k: 4)
+    monkeypatch.setattr(cpu_pool, 'current_thread_owns_cpu_lease', lambda: False)
+
+    def attach(row, root, **kw):
+        if root.parent.name == 'large':
+            raise ValueError('provider refused')
+        row['performance'] = {'status': 'PROVISIONAL'}
+
+    monkeypatch.setattr(P, 'attach', attach)
+    s.feedback.completed({'capsule': 'small'})
+    s.feedback.completed({'capsule': 'large'})
+    verdict = {'per_capsule': [{'capsule': 'small', 'status': 'pass'}, {'capsule': 'large', 'status': 'pass'}]}
+    s.feedback.project(verdict)
+    assert verdict['per_capsule'][0]['performance']['status'] == 'PROVISIONAL'
+    assert 'performance' not in verdict['per_capsule'][1]
+    assert 'observation unavailable for large: ValueError: provider refused' in capsys.readouterr().out

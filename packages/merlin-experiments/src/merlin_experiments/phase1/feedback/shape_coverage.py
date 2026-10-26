@@ -35,6 +35,7 @@ _SHAPE_HARNESS_MODULES = (
     "merlin_experiments.phase1.brokers.compiler_call_channel",
     "merlin_experiments.phase2.campaign",
     "merlin_experiments.phase1.feedback.loop_grading",
+    "merlin_experiments.phase1.feedback.public_object_build",
     __name__,
 )
 

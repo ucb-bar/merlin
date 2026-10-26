@@ -194,6 +194,7 @@ class BackgroundGuard:
         self._dependency_identity = None
         self._dependency_roster = None
         self._pending_deferred = None
+        self._changed = frozenset()
         selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
         if selected not in {'0', '1'}:
             raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
@@ -216,6 +217,38 @@ class BackgroundGuard:
         except (OSError, ValueError, TypeError):
             self._dependency_identity = None
         self._dependency_roster = None
+        self._changed = frozenset()
+
+    def case_reach(self, capsule):
+        """Components of the bound snapshot that ``capsule``'s commands reach; ``None`` is unknown.
+
+        Every case runs every declared command (``capsule_common.run_entrypoints``), so each case
+        reaches every component of the decomposition, ``UNATTRIBUTED`` included. A snapshot without
+        a decomposition has no attributable reach.
+        """
+        if self._dependency_identity is None or not self._dependency_identity[1]:
+            return None
+        return frozenset(self._dependency_identity[1])
+
+    def shared_reach(self):
+        """Components every waiting case reaches: a change to one supersedes the whole queue."""
+        return self.case_reach(None)
+
+    def member_reason(self, capsule):
+        """Why one unstarted member is superseded by an edit outside the shared reach, else ``None``.
+
+        Uses the change observed by the latest :meth:`pending_reason`; unknown reach fails closed.
+        A superseded member is withheld, never re-attributed: started work keeps its own snapshot.
+        """
+        if self._pending_deferred is not None:
+            return self._pending_deferred
+        if not self._changed:
+            return None
+        reach = self.case_reach(capsule)
+        known = set(self._dependency_identity[1]) if self._dependency_identity is not None else set()
+        if reach is None or self._changed & reach or self._changed - known:
+            return "background source superseded"
+        return None
 
     def _pending_source_reason(self):
         if self._pending_deferred is not None:
@@ -232,11 +265,19 @@ class BackgroundGuard:
                 self._pending_deferred = "background source changed during dependency check"
             else:
                 old_whole, old_components = self._dependency_identity
-                relevant = (components != old_components if components and old_components
-                            else whole != old_whole)
-                if relevant:
+                if components and old_components:
+                    changed = frozenset(name for name in set(components) | set(old_components)
+                                        if components.get(name) != old_components.get(name))
+                else:
+                    changed = None if whole != old_whole else frozenset()  # None: unattributable
+                shared = self.shared_reach()
+                outside = set(old_components or ()) - set(shared or old_components or ())
+                if changed is None or not changed <= outside:
+                    # A change to a component every waiting case reaches (or to one this snapshot
+                    # cannot attribute) closes the whole queue, exactly as before.
                     self._pending_deferred = "background source superseded"
                 else:
+                    self._changed = changed  # members reaching it are withheld by member_reason
                     self._dependency_roster = roster
         except (OSError, ValueError, TypeError):
             self._pending_deferred = "background source dependencies unavailable"

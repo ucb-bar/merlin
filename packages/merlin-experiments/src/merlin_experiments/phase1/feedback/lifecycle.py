@@ -27,6 +27,11 @@ FIRST_BACKGROUND_TICK = 900
 FIRST_GRADE_POLL_S = 30
 BROKER_GRACE_SECONDS = 15
 BROKER_REAP_SECONDS = 5
+BROKER_SUPERVISE_S = 15
+GRADER_RESUME_S = 60
+BROKER_RESTART_BACKOFF_S = 30
+BROKER_RESTART_MAX_BACKOFF_S = 300
+BROKER_RESTART_LIMIT = 20
 
 
 @dataclass(frozen=True)
@@ -122,7 +127,7 @@ def start_brokers(ws: Path, config: BrokerConfig):
         for shim_src, staged_as in bs.shims:
             stage_client(ws, module_source_path(shim_src), staged_as)
         broker_specs.append((bs.module, bs.log, bs.channel))
-    brokers = []
+    brokers = SupervisedBrokers(ws)
     owned_channels = []
     try:
         for name, log, channel in broker_specs:
@@ -175,8 +180,11 @@ def start_brokers(ws: Path, config: BrokerConfig):
                 argv += ["--max-jobs", str(config.sim_max_jobs)]
             if config.sim_per_capsule_timeout and name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--per-capsule-timeout", str(config.sim_per_capsule_timeout)]
-            if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob",
-                        "merlin_experiments.phase1.brokers.model_check"}:
+            if name in {
+                "merlin_experiments.phase1.brokers.selfcheck",
+                "merlin_experiments.phase1.brokers.simjob",
+                "merlin_experiments.phase1.brokers.model_check",
+            }:
                 from ..compiler_library import child_arguments
 
                 argv += child_arguments()
@@ -201,6 +209,7 @@ def start_brokers(ws: Path, config: BrokerConfig):
                         inherited_python_command(argv), stdout=output, stderr=subprocess.STDOUT, **launch_kwargs
                     )
                 )
+                brokers.specs.append(_BrokerSpec(name, channel, channel_dir / log, tuple(argv), launch_kwargs))
                 owned_channels.append(channel)
             except BaseException as error:
                 launch_error = error
@@ -215,6 +224,7 @@ def start_brokers(ws: Path, config: BrokerConfig):
     except BaseException as error:
         _stop_brokers(ws, brokers, primary_error=error, channels=tuple(dict.fromkeys(owned_channels)))
         raise
+    brokers.supervise()
     return brokers
 
 
@@ -226,6 +236,98 @@ class BrokerCleanupError(RuntimeError):
         self.unreaped_pids = tuple(unreaped_pids)
         detail = "; ".join(failures)
         super().__init__(f"broker cleanup failed: {detail}; reap unconfirmed for PIDs {unreaped_pids}")
+
+
+@dataclass
+class _BrokerSpec:
+    name: str
+    channel: str
+    log: Path
+    argv: tuple[str, ...]
+    launch_kwargs: dict
+    restarts: int = 0
+    restart_at: float | None = None
+    abandoned: bool = False
+
+
+class SupervisedBrokers(list):
+    """The started broker processes, each replaced in place when it exits while its channel is live.
+
+    A broker that dies mid-run ends that service for the rest of the run, and the agent is left
+    waiting on requests nobody will answer: a self-check broker killed by a full disk left 37
+    requests unanswered for three hours while the agent kept editing. Requests and their completion
+    markers are files, so a restarted broker resumes the queue. A broker is restarted only while its
+    channel has no ``STOP`` and :func:`stop_brokers` has not begun; stopping first ends supervision,
+    under the same lock as a restart, so no child starts after the brokers are signalled. Restarts
+    back off from :data:`BROKER_RESTART_BACKOFF_S` to :data:`BROKER_RESTART_MAX_BACKOFF_S` and end
+    after :data:`BROKER_RESTART_LIMIT`, which is said in the log.
+    """
+
+    def __init__(self, ws: Path):
+        import threading
+
+        super().__init__()
+        self.ws = ws
+        self.specs: list[_BrokerSpec] = []
+        self._stopping = threading.Event()
+        self._lock = threading.Lock()
+        self._thread = None
+
+    def supervise(self) -> None:
+        import threading
+
+        if self._thread is None and self:
+            self._thread = threading.Thread(target=self._watch, name="broker-supervisor", daemon=True)
+            self._thread.start()
+
+    def stop_supervising(self) -> None:
+        with self._lock:
+            self._stopping.set()
+
+    def _watch(self) -> None:
+        while not self._stopping.wait(BROKER_SUPERVISE_S):
+            try:
+                self.check()
+            except Exception as error:  # noqa: BLE001 -- supervision must outlive one bad pass
+                print(f"[broker] supervision pass failed: {type(error).__name__}: {error}", flush=True)
+
+    def check(self, now: float | None = None) -> None:
+        """Reap and, once its backoff has passed, restart every broker that exited unexpectedly."""
+        for index, spec in enumerate(self.specs):
+            with self._lock:
+                if self._stopping.is_set():
+                    return
+                child = self[index]
+                code = child.poll()
+                if code is None or spec.abandoned or (self.ws / spec.channel / "STOP").exists():
+                    continue
+                if spec.restarts >= BROKER_RESTART_LIMIT:
+                    spec.abandoned = True
+                    print(
+                        f"[broker] {spec.name} exited with {code} after {spec.restarts} restarts; "
+                        "it will not be restarted again",
+                        flush=True,
+                    )
+                    continue
+                current = time.monotonic() if now is None else now
+                if spec.restart_at is None:
+                    delay = min(BROKER_RESTART_MAX_BACKOFF_S, BROKER_RESTART_BACKOFF_S * 2**spec.restarts)
+                    spec.restart_at = current + delay
+                    print(f"[broker] {spec.name} exited with {code}; restart in {delay:.0f}s", flush=True)
+                if current < spec.restart_at:
+                    continue
+                from merlin_experiments.frozen_python import inherited_python_command
+
+                with open(spec.log, "a") as output:
+                    self[index] = subprocess.Popen(
+                        inherited_python_command(list(spec.argv)),
+                        stdout=output,
+                        stderr=subprocess.STDOUT,
+                        **spec.launch_kwargs,
+                    )
+                spec.restarts += 1
+                spec.restart_at = None
+                print(f"[broker] {spec.name} restarted ({spec.restarts}/{BROKER_RESTART_LIMIT})", flush=True)
 
 
 def stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None = None) -> None:
@@ -247,6 +349,8 @@ def stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None = Non
 def _stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None, channels: tuple[str, ...]) -> None:
     # Startup rollback may signal only channels with a successfully created child.
     # Normal shutdown retains the historical workspace-wide STOP-channel policy.
+    if isinstance(brokers, SupervisedBrokers):
+        brokers.stop_supervising()  # Before STOP: an exit from here on is the requested one.
     if not brokers:
         return
     failures: list[str] = []
@@ -532,9 +636,12 @@ def unfinished_admission(verdict):
     No actual admissions means shared preflight may be blocked. Keep the existing
     cadence in that case, rather than retrying an unchanged broken package in a loop.
     """
-    curriculum = (verdict.get('joint_test_selection') or {}).get('curriculum') or {}
-    return bool(curriculum.get('admitted_this_snapshot') and curriculum.get('unadmitted_pending')
-                and not verdict.get('package_failure'))
+    curriculum = (verdict.get("joint_test_selection") or {}).get("curriculum") or {}
+    return bool(
+        curriculum.get("admitted_this_snapshot")
+        and curriculum.get("unadmitted_pending")
+        and not verdict.get("package_failure")
+    )
 
 
 def start_background(
@@ -579,6 +686,13 @@ def start_background(
             return source_digest(ws)
 
     failures = GradeFailureAlert(run_dir, threshold=grade_failure_alert_threshold())
+    # One continuous session never reaches a round boundary, so the brief follows each published grade.
+    from .brief_refresh import refreshing
+
+    grade_callback = refreshing(grade_callback, ws, run_dir)
+    fast_grade_callback = refreshing(fast_grade_callback, ws, run_dir)
+    # Interval ticks name scratch directories, so a resumed body continues the count.
+    ticks = {"interval": 0, "previous_key": None}
 
     def _grade_body() -> None:
         from .joint_test_scope import focused
@@ -606,13 +720,26 @@ def start_background(
                 first_required = (existing.get("package_readiness") or {}).get("status") == "not_ready"
             except (OSError, ValueError, AttributeError):
                 first_required = True
-            return dual_snapshots.run(ws, run_dir, stop, first_required=first_required,
+            return dual_snapshots.run(
+                ws,
+                run_dir,
+                stop,
+                first_required=first_required,
                 interval_s=max(30, int(cadence.grade_interval)),
                 source_identity=source_identity or (lambda: source_digest(ws)),
                 first_grade=lambda tick: fast_grade_callback(ws, run_dir, tick, min(cadence.qa_timeout, 900)),
-                grade=lambda tick: grade_callback(ws, run_dir, tick, cadence.no_oracle, cadence.qa_timeout,
-                    label="inturn", scratch_key=f"r{round_index}_owner{tick}", previous_scratch_key=None),
-                on_finished=finished)
+                grade=lambda tick: grade_callback(
+                    ws,
+                    run_dir,
+                    tick,
+                    cadence.no_oracle,
+                    cadence.qa_timeout,
+                    label="inturn",
+                    scratch_key=f"r{round_index}_owner{tick}",
+                    previous_scratch_key=None,
+                ),
+                on_finished=finished,
+            )
         first_snapshot_obsolete = False
         unfinished_queue = False
         verdict_path = ws / "qa" / "verdict.json"
@@ -672,8 +799,8 @@ def start_background(
                 return
         if not interval_grades or int(cadence.grade_interval) <= 0:
             return
-        t = 0
-        previous_key = None
+        t = ticks["interval"]
+        previous_key = ticks["previous_key"]
         interval = max(30, int(cadence.grade_interval))
         # A buildable first snapshot still finishes under its original custody.
         # Bounded joint smoke completes concurrently with edits; only legacy
@@ -694,6 +821,7 @@ def start_background(
                 delay = min(30, interval)
                 continue
             t += 1
+            ticks["interval"] = t
             scratch_key = grade_key(round_index, t)
             started = time.monotonic()
             try:
@@ -718,14 +846,18 @@ def start_background(
             if source_identity is not None:
                 after = source_identity()
                 curriculum = (v.get("joint_test_selection") or {}).get("curriculum") or {}
-                if (before == after and v.get("snapshot_current") is True
-                        and not v.get("package_failure") and not curriculum.get("pending")):
+                if (
+                    before == after
+                    and v.get("snapshot_current") is True
+                    and not v.get("package_failure")
+                    and not curriculum.get("pending")
+                ):
                     completed_source = before
                 elif after is not None and after != before:
                     delay, debounce = 0, not concurrent_snapshots
             if concurrent_snapshots and unfinished_admission(v):
                 delay = 0
-            previous_key = scratch_key
+            previous_key = ticks["previous_key"] = scratch_key
             print(
                 f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} all_pass={v.get('all_pass')}",
                 flush=True,
@@ -744,7 +876,27 @@ def start_background(
         # A new thread also starts without a lease class: grade at GRADE, below
         # author-requested work and above preparation and probes.
         with selected_pool(preparation_cpus()), cpu_priority(GRADE):
-            _grade_body()
+            # An exception outside a grade's own handling -- a full disk failing a progress
+            # file, a source digest, a log line -- used to end grading for the rest of the run
+            # while the agent kept working. The body is driven by on-disk state (the verdict
+            # decides whether a first grade is still owed; the source identity whether a new
+            # grade is due), so it resumes where it left off after a pause.
+            while True:
+                try:
+                    _grade_body()
+                    return
+                except Exception as error:  # noqa: BLE001 -- grading must outlive one failure
+                    try:
+                        failures.failed(error)
+                    except Exception:  # noqa: BLE001 -- the alert file may be on the same full disk
+                        pass
+                    print(
+                        f"[in-turn grader] resuming in {GRADER_RESUME_S}s after "
+                        f"{type(error).__name__}: {str(error)[:200]}",
+                        flush=True,
+                    )
+                if stop.wait(GRADER_RESUME_S):
+                    return
 
     th = library_thread(_body, name="in-turn-grader", daemon=True)
     th.start()

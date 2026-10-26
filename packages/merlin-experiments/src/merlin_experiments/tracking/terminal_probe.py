@@ -80,20 +80,62 @@ def cpu_counters(proc_root=Path("/proc")):
     return result
 
 
-def locks(proc_root=Path("/proc")):
+#: How long one reading of ``/proc/locks`` answers every caller. A run's read leases put ~10^5
+#: entries there (11k per grading worker), and the kernel walks the list from its start on every
+#: read() of the file, so one reading costs seconds; a console refreshing every second re-read it
+#: twice per refresh (63 s each with 8 KiB reads at 267k entries) and stopped advancing.
+LOCKS_MAX_AGE_S = 20.0
+#: Bytes per read() of ``/proc/locks``: few large reads, since each one restarts the kernel's walk.
+LOCKS_READ_BYTES = 4 << 20
+_LOCKS_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+def _read_locks(proc_root):
     result = {}
-    for line in (read(proc_root / "locks", 4 << 20) or b"").decode().splitlines():
-        f = line.split()
-        if len(f) < 8 or "->" in f:
-            continue
-        try:
-            major, minor, inode = f[5].split(":")
-            result.setdefault((os.makedev(int(major, 16), int(minor, 16)), int(inode)), []).append(
-                {"pid": int(f[4]), "lock_kind": f[1], "mode": f[3]}
-            )
-        except (ValueError, IndexError):
-            pass
+    tail = b""
+    try:
+        with (proc_root / "locks").open("rb", buffering=0) as stream:
+            while True:
+                chunk = stream.read(LOCKS_READ_BYTES)
+                if not chunk:
+                    break
+                lines = (tail + chunk).split(b"\n")
+                tail = lines.pop()
+                for line in lines:
+                    _lock_line(line, result)
+        _lock_line(tail, result)
+    except OSError:
+        pass
     return result
+
+
+def _lock_line(line, result):
+    f = line.split()
+    if len(f) < 8 or b"->" in f:
+        return
+    try:
+        major, minor, inode = f[5].split(b":")
+        key = (os.makedev(int(major, 16), int(minor, 16)), int(inode))
+        result.setdefault(key, []).append({"pid": int(f[4]), "lock_kind": f[1].decode(), "mode": f[3].decode()})
+    except (ValueError, IndexError):
+        pass
+
+
+def locks(proc_root=Path("/proc"), wanted=None, *, max_age_s=LOCKS_MAX_AGE_S):
+    """``{(dev, inode): [{pid, lock_kind, mode}]}`` from ``/proc/locks``.
+
+    The file has no useful size bound (10^5 lines on a busy host); a bounded whole-file read returned
+    nothing at all once it grew past the bound. ``wanted`` (a set of ``(dev, inode)``) keeps only those.
+    One reading serves every caller for ``max_age_s`` (see :data:`LOCKS_MAX_AGE_S`); 0 reads afresh."""
+    key = str(proc_root)
+    cached = _LOCKS_CACHE.get(key)
+    if cached is None or max_age_s <= 0 or time.monotonic() - cached[0] > max_age_s:
+        cached = (time.monotonic(), _read_locks(Path(proc_root)))
+        _LOCKS_CACHE[key] = cached
+    inventory = cached[1]
+    if wanted is None:
+        return {k: list(v) for k, v in inventory.items()}
+    return {k: list(v) for k, v in inventory.items() if k in wanted}
 
 
 def lock_rows(path, inventory):

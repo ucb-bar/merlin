@@ -24,6 +24,8 @@ MAX_SPANS = 400
 MAX_INTERVALS = 50_000
 MAX_FILES = 64
 REDISCOVER_S = 30.0
+#: Rows a resumed session writes before its next turn; they are not the agent working.
+BOOKKEEPING = frozenset({"turn_context", "thread_settings_applied", "task_started"})
 _INDEXES: dict[str, RolloutIndex] = {}
 
 
@@ -39,7 +41,8 @@ def tokens_of(usage: Any) -> dict | None:
         "input": total_in,
         "cache_read": num(usage.get("cached_input_tokens")),
         "cache_write": num(usage.get("cache_write_input_tokens")),
-        "fresh_input": max(0, total_in - cached - written) if total_in is not None else None,
+        "fresh_input": (max(0, total_in - cached - written)
+                        if total_in is not None and usage.get("cached_input_tokens") is not None else None),
         "output": num(usage.get("output_tokens")),
         "reasoning": num(usage.get("reasoning_output_tokens")),
         "total": num(usage.get("total_tokens")),
@@ -71,7 +74,10 @@ def _thread(thread_id: str) -> dict[str, Any]:
         "token_source": None,
         "samples": [],
         "spans": deque(maxlen=MAX_SPANS),
-        "intervals": {"turn": [], "tool": [], "wait": []},
+        "intervals": {"turn": [], "tool": [], "wait": [], "tool_call": []},
+        "transport_calls": {},
+        "transport_records": 0,
+        "intervals_complete": True,
         "recent_commands": deque(maxlen=40),
         "messages": deque(maxlen=8),
         "file": None,
@@ -93,6 +99,8 @@ class RolloutIndex:
         self.pending_child: dict[str, dict] = {}
         self.fallback = False
         self.helper_ceiling: int | None = None
+        self.rounds_seen: tuple | None = None
+        self.run_name = ""
 
     # -- discovery -----------------------------------------------------------------------------
     def discover(self, ctx) -> None:
@@ -100,6 +108,7 @@ class RolloutIndex:
         if not is_dir(run):
             return
         rounds = run / "rounds"
+        self.run_name = run.name
         roots: list[Path] = [p for p in bounded_glob(rounds, "round_*.codex_rollout_snapshot", 16)]
         for summary in sorted(bounded_glob(rounds, "round_*.codex_summary.json", 16)):
             doc = obj(ctx.reader.document(summary, limit=4 << 20))
@@ -158,6 +167,7 @@ class RolloutIndex:
                 start_ordinal=payload.get("subagent_history_start_ordinal"),
             )
             thread.update({k: v for k, v in self.pending_child.pop(thread_id, {}).items() if v})
+            thread["round"] = round_of(path, self.run_name)
             self.file_thread[path] = thread_id
             return
         thread_id = self.file_thread.get(path)
@@ -169,14 +179,19 @@ class RolloutIndex:
             return  # Forked parent history is not this helper's own work.
         if payload.get("thread_id", thread_id) != thread_id:
             return
+        previous = thread.get("work_at")
         if when:
             thread["last_activity_at"] = max(thread["last_activity_at"] or 0, when)
+            if kind not in BOOKKEEPING and payload.get("type") not in BOOKKEEPING:
+                thread["work_at"] = max(thread.get("work_at") or 0, when)
         if kind == "token_usage_record":
             tokens = tokens_of(payload.get("thread_token_usage") or payload.get("usage"))
             if tokens and payload.get("thread_token_usage"):
                 thread["token_source"] = "token_usage_record"
                 self._sample(thread, when, tokens)
             return
+        if kind == "response_item" and when is not None:
+            self._transport(thread, payload, when)
         if kind != "event_msg":
             return
         event = payload.get("type")
@@ -196,9 +211,14 @@ class RolloutIndex:
                 thread["token_source"] = "token_count"
                 self._sample(thread, when, tokens)
         elif event == "task_started":
+            begin = epoch(payload.get("started_at")) or when
+            if thread["open_turn"] and previous and previous >= thread["open_turn"]:
+                # The previous turn never closed (its process was stopped): it ended at its last record.
+                thread["closed_turn_s"] += previous - thread["open_turn"]
+                self._span(thread, thread["open_turn"], previous, "turn")
             thread["turns"] += 1
             thread["state"] = "working"
-            thread["open_turn"] = epoch(payload.get("started_at")) or when
+            thread["open_turn"] = begin
         elif event in ("task_complete", "task_aborted"):
             begin = epoch(payload.get("started_at")) or thread["open_turn"]
             end = epoch(payload.get("completed_at")) or when
@@ -212,6 +232,19 @@ class RolloutIndex:
                 thread["last_message"] = clean(message, 400)
         elif event == "item_completed":
             self._item(thread, obj(payload.get("item")), payload, when)
+
+    def _transport(self, thread: dict, payload: dict, when: float) -> None:
+        """Match outer call/return metadata; background command lifetimes are separate."""
+        kind, key = payload.get("type"), payload.get("call_id")
+        if not isinstance(key, str):
+            return
+        if kind in ("function_call", "custom_tool_call"):
+            thread["transport_records"] += 1
+            thread["transport_calls"].setdefault(key, when)
+        elif kind in ("function_call_output", "custom_tool_call_output"):
+            begin = thread["transport_calls"].pop(key, None)
+            if begin is not None and when >= begin:
+                self._span(thread, begin, when, "tool_call")
 
     def _item(self, thread: dict, item: dict, payload: dict, when: float | None) -> None:
         kind = item.get("type")
@@ -280,6 +313,7 @@ class RolloutIndex:
         else:
             exact.append([begin, end])
             if len(exact) > MAX_INTERVALS:
+                thread["intervals_complete"] = False
                 exact[:] = [[a[0], max(a[1], b[1])] for a, b in zip(exact[::2], exact[1::2])] + exact[
                     len(exact) // 2 * 2 :
                 ]
@@ -366,7 +400,10 @@ class RolloutIndex:
 
     # -- refresh -------------------------------------------------------------------------------
     def refresh(self, ctx) -> None:
-        if not self.files or time.monotonic() - self.discovered_at > REDISCOVER_S:
+        # A new round or turn writes into rounds/ and may bring a new agent home: look again at once.
+        rounds = ctx.reader.identity(Path(ctx.experiment.get("run_dir") or "") / "rounds")
+        if not self.files or time.monotonic() - self.discovered_at > REDISCOVER_S or rounds != self.rounds_seen:
+            self.rounds_seen = rounds
             self.discover(ctx)
         for path in self.files:
             key = str(path)
@@ -422,6 +459,16 @@ class RolloutIndex:
                     thread[key] = value
 
 
+def round_of(path: str, run_name: str) -> int | None:
+    """The round an agent stream belongs to: its codex home ``<run>_rNN`` or snapshot ``round_NN``."""
+    for part in Path(path).parts:
+        for prefix in (f"{run_name}_r", "round_"):
+            digits = part[len(prefix) :].split(".", 1)[0] if part.startswith(prefix) else ""
+            if digits.isdigit():
+                return int(digits)
+    return None
+
+
 def index_for(ctx) -> RolloutIndex:
     """The experiment's shared index (created on first use)."""
     key = str(ctx.experiment.get("id") or ctx.experiment.get("run_dir"))
@@ -437,11 +484,12 @@ def view(thread: dict, now: float, private: bool, live: bool = True) -> dict[str
     In a run that is no longer live, a turn that never closed ends at the agent's last recorded
     activity and its state reads ``stopped`` (the stream ended mid-turn), never ``working``."""
     auth = thread.get("authoritative") or {}
-    end = now if live else (thread["last_activity_at"] or thread["open_turn"] or 0)
+    closed = thread.get("closed_at")
+    end = closed if closed is not None else now if live else (thread["last_activity_at"] or thread["open_turn"] or 0)
     active = thread["closed_turn_s"] + (max(0.0, end - thread["open_turn"]) if thread["open_turn"] else 0.0)
     has_activity = thread["turns"] or thread["commands"] or thread["spans"]
     state = thread["state"] if has_activity or not auth.get("state") else clean(auth["state"], 20)
-    if not live and state == "working":
+    if state == "working" and (not live or closed is not None):
         state = "stopped"
     return {
         "id": thread["id"],
@@ -453,7 +501,12 @@ def view(thread: dict, now: float, private: bool, live: bool = True) -> dict[str
         "state": state,
         "started_at": thread["started_at"],
         "last_activity_at": thread["last_activity_at"],
-        "active_s": auth.get("active_s") if auth.get("active_s") is not None else (active if has_activity else None),
+        # Time worked comes from the agent's own stream when it has one; the run's author_agents record
+        # can count a turn's host startup as agent time, so it is kept beside it, not instead of it.
+        "active_s": active if has_activity else auth.get("active_s"),
+        "recorded_active_s": auth.get("active_s"),
+        "outer_tool_calls_recorded": thread["transport_records"] > 0,
+        "intervals_complete": thread["intervals_complete"],
         "turns": auth.get("turns") if type(auth.get("turns")) is int else thread["turns"],
         "commands": auth.get("commands") if type(auth.get("commands")) is int else thread["commands"],
         "failed_commands": auth.get("failed") if type(auth.get("failed")) is int else thread["failed_commands"],
@@ -464,6 +517,7 @@ def view(thread: dict, now: float, private: bool, live: bool = True) -> dict[str
         "tokens": auth.get("tokens") or thread["tokens"] or empty_tokens(),
         "spans": [list(s) for s in thread["spans"]] + open_span(thread, now, live),
         "stage": None,
+        "round": thread.get("round"),
     }
 
 
@@ -472,7 +526,9 @@ def open_span(thread: dict, now: float, live: bool) -> list[list]:
     begin = thread["open_turn"]
     if not begin:
         return []
-    end = now if live else (thread["last_activity_at"] or begin)
+    end = thread.get("closed_at")
+    if end is None:
+        end = now if live else (thread["last_activity_at"] or begin)
     return [[begin, end, "turn"]] if end >= begin else []
 
 
@@ -480,12 +536,57 @@ def intervals(thread: dict, now: float, live: bool) -> dict[str, list[tuple[floa
     """The thread's exact activity per kind (``turn``/``tool``/``wait``), including an open turn."""
     out = {kind: [tuple(iv) for iv in ivs] for kind, ivs in thread["intervals"].items()}
     out["turn"] += [(a, b) for a, b, _ in open_span(thread, now, live)]
+    end = thread.get("closed_at") or (now if live else thread.get("last_activity_at"))
+    if end is not None:
+        out["tool_call"] += [(begin, end) for begin in thread["transport_calls"].values() if end >= begin]
     return out
+
+
+def close_orphans(index: RolloutIndex, lifecycle: dict[str, Any] | None, live: bool) -> dict[str, Any] | None:
+    """End turns whose author process is no longer running (the stream stopped without a close record).
+
+    The lifecycle section says whether the author runs: when the host interrupted it or the session
+    ended, every open turn ends at its thread's last record; while a later turn runs, a thread with no
+    record since that turn began belongs to the earlier one. Returns the session note for the section."""
+    life = lifecycle or {}
+    turns = [t for t in life.get("turns") or [] if isinstance(t, dict)]
+    current = turns[-1] if turns else {}
+    running = life.get("author_running")
+    for thread in index.threads.values():
+        thread["closed_at"] = None
+        if not thread["open_turn"]:
+            continue
+        last = thread.get("work_at") or thread["last_activity_at"] or thread["open_turn"]
+        if not live:
+            # A stopped run: an open turn ended at the thread's last work (not its last bookkeeping row).
+            thread["closed_at"] = max(thread["open_turn"], last)
+            continue
+        began = current.get("startup_start") or current.get("agent_start")
+        if running is False or (running and began and last < began):
+            thread["closed_at"] = max(thread["open_turn"], last)
+    if (running is None and not turns) or not live:
+        return (
+            None
+            if not turns
+            else {
+                "running": False,
+                "phase": "ended",
+                "since": life.get("phase_since"),
+                "detail": life.get("phase_detail"),
+            }
+        )
+    return {
+        "running": running,
+        "phase": life.get("phase"),
+        "since": life.get("phase_since"),
+        "detail": life.get("phase_detail"),
+    }
 
 
 def read(ctx) -> dict[str, Any]:
     index = index_for(ctx)
     index.refresh(ctx)
+    session = close_orphans(index, ctx.shared.get("lifecycle"), ctx.live)
     agents = [
         view(t, ctx.now, ctx.operator_private, ctx.live)
         for t in index.threads.values()
@@ -509,10 +610,21 @@ def read(ctx) -> dict[str, Any]:
         "totals": {
             "agents": len(agents),
             "working": sum(a["state"] == "working" for a in agents),
+            "helpers_working": sum(a["role"] != "lead" and a["state"] == "working" for a in agents),
             "subagents": sum(a["role"] == "subagent" for a in agents),
             "helper_ceiling": index.helper_ceiling,
         },
+        "usage_completeness": {
+            "observed_threads": len(agents),
+            "threads_with_usage": sum(a["tokens"].get("total") is not None for a in agents),
+            "all_observed_threads_have_usage": bool(agents) and all(
+                a["tokens"].get("total") is not None for a in agents),
+            "all_run_threads_verified": False,
+            "totals_are_lower_bounds": True,
+            "scope": "discovered thread streams; live, missing or undiscovered usage is not zero",
+        },
         "source": source,
+        "session": session,
         "notes": notes,
     }
 
@@ -540,7 +652,15 @@ def inspect(ctx, key: str) -> dict[str, Any]:
                 f"parent {row['parent_id'] or '(lead)'}",
                 f"path {row['path'] or 'not recorded'}  name {row['name'] or '-'}",
                 f"model {row['model'] or 'not recorded'}  effort {row['effort'] or '-'}",
-                f"state {row['state']}  turns {row['turns']}  active {fmt(row['active_s'])} s",
+                f"state {row['state']}  turns {row['turns']}  worked {fmt(row['active_s'])} s (from its stream)",
+                f"the run's author_agents record says {fmt(row['recorded_active_s'])} s"
+                + (
+                    " (it counts host turn startup as agent time)"
+                    if isinstance(row["recorded_active_s"], int | float)
+                    and isinstance(row["active_s"], int | float)
+                    and row["recorded_active_s"] > row["active_s"] + 60
+                    else ""
+                ),
             ],
         },
         {"title": "Tokens", "lines": [f"{k:<12}{fmt(tok.get(k))}" for k in TOKEN_FIELDS]},
@@ -565,7 +685,8 @@ def inspect(ctx, key: str) -> dict[str, Any]:
             }
         )
     paths = [thread["file"]] if ctx.operator_private and thread.get("file") not in (None, "run-stream") else []
-    return {"title": f"agent {row['name'] or row['path'] or row['id'][:8]}", "sections": sections, "paths": paths}
+    name = row["name"] or ("lead" if row["role"] == "lead" else row["path"] or row["id"][:8])
+    return {"title": f"agent {name}", "sections": sections, "paths": paths}
 
 
 __all__ = ["RolloutIndex", "index_for", "inspect", "read", "tokens_of", "view"]

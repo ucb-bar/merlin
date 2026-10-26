@@ -35,6 +35,15 @@ def _rows(doc):
     return [v for v in rows if isinstance(v, dict)] if isinstance(rows, list) else []
 
 
+def policy_refusal(doc) -> bool:
+    """A self-check the joint policy refused before any simulator ran (e.g. budget exhausted).
+
+    Its ``error`` names the refusal; the obligation stays pending and is requested again, so it is
+    not an exception raised by the grader.
+    """
+    return isinstance(doc, dict) and doc.get('joint_policy_refused') is True
+
+
 def _numeric(row):
     value = row.get('numeric')
     status = value.get('status') if isinstance(value, dict) else row.get('numeric_status')
@@ -177,6 +186,7 @@ class ProgressHealth:
         out['records_observed'] = len(records)
         # Deduplicate the same snapshot/capsule represented by progress and a response.
         executed, failures, failure_details, exceptions, timeouts = {}, {}, {}, [], []
+        refusals = []
         completed_pairs = set()
         by_source = {}
         newest_response = None
@@ -217,7 +227,9 @@ class ProgressHealth:
                     key = (source, *signature)
                     failures.setdefault(key, set()).add(capsule)
                     failure_details.setdefault(key, set()).add(detail_pin)
-            if doc.get('error'):
+            if doc.get('error') and policy_refusal(doc):
+                refusals.append(path)
+            elif doc.get('error'):
                 exceptions.append(path)
                 # Exact native broker outcome, not a heuristic over arbitrary stderr.
                 if (doc.get('timed_out') is True
@@ -241,6 +253,7 @@ class ProgressHealth:
                     # Returned is not synonymous with any numerical execution.
                     'status': ('timed_out' if doc.get('timed_out') is True or
                                doc.get('error') == 'broker: self-check aborted (timed out)' else
+                               'refused' if doc.get('error') and policy_refusal(doc) else
                                'error' if doc.get('error') else 'returned'),
                     'status_basis': 'final native response; incremental progress is not a verdict',
                     'stage': doc.get('timeout_stage'),
@@ -250,6 +263,7 @@ class ProgressHealth:
                 if isinstance(ns, int) and (newest_response is None or ns > newest_response[0]):
                     newest_response = ns, source
         out['completed_case_records'] = len(completed_pairs) if records else None
+        out['policy_refusals'] = len(refusals)
         out['snapshot_observations'] = [
             {'source_sha256': source if self.operator_private else None,
              'completed_case_records': len(group['completed']),

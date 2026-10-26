@@ -186,7 +186,11 @@ def test_tree_tokens_and_events_from_rollouts(tmp_path):
     }
     # An agent that recorded no usage has no tokens, not zero tokens.
     assert by_id[OTHER]["tokens"]["total"] is None
-    assert agents["totals"] == {"agents": 3, "working": 1, "subagents": 2, "helper_ceiling": 16}
+    assert agents["totals"] == {"agents": 3, "working": 1, "helpers_working": 0,
+                                "subagents": 2, "helper_ceiling": 16}
+    assert agents["usage_completeness"]["threads_with_usage"] == 2
+    assert not agents["usage_completeness"]["all_observed_threads_have_usage"]
+    assert agents["usage_completeness"]["totals_are_lower_bounds"]
 
     tokens = snapshot["sections"]["tokens"]
     assert tokens["total"]["input"] == 3500 and tokens["total"]["output"] == 170
@@ -195,12 +199,15 @@ def test_tree_tokens_and_events_from_rollouts(tmp_path):
     assert series["cache_read"][-1] == 2900
     assert tokens["budget"]["total"] == 40000 and tokens["budget"]["working"] == 32000
     assert abs(tokens["budget"]["used_pct"] - 100 * 3670 / 40000) < 1e-9
+    assert tokens["budget"]["enforced"] is False  # a v1 target has no managed admission
     assert tokens["rate_limit"]["used_percent"] == 21.0 and tokens["context_window"] == 475000
     assert abs(tokens["cache_hit_ratio"] - 2900 / 3500) < 1e-9
 
     events = snapshot["sections"]["events"]["events"]
     kinds = [e["kind"] for e in events]
-    assert {"selfcheck", "command_failed", "message", "round"} <= set(kinds)
+    assert {"check", "agent", "stop"} <= set(kinds)
+    # Messages appear in operator-private mode; failed commands are grouped per agent and minute.
+    assert any(e["kind"] == "agent" and "failed" in e["text"] for e in events)
     timed = [e["t"] for e in events if e["t"] is not None]
     assert timed == sorted(timed, reverse=True)
     assert any(e["text"] == "self-check fail 3/5" for e in events)
@@ -217,7 +224,12 @@ def test_truncated_line_waits_and_public_mode_hides_text(tmp_path):
     lead = next(a for a in first["agents"]["agents"] if a["id"] == LEAD)
     assert lead["current"] is None and lead["last_message"] is None
     assert lead["tokens"]["total"] == 3150
-    assert all(e["text"] in ("agent message",) or e["kind"] != "message" for e in first["events"]["events"])
+    # Public mode drops agent messages and command text: agent rows are only lifecycle and failure counts.
+    agent_rows = [e for e in first["events"]["events"] if e["kind"] == "agent"]
+    assert all(
+        e["text"].startswith(("helper", "command failed (exit", "commands failed")) or " commands failed (" in e["text"]
+        for e in agent_rows
+    )
     # Completing the partial line makes it visible on the next refresh, not before.
     with open(sessions / "rollout-a-lead.jsonl", "a") as stream:
         stream.write(
@@ -250,3 +262,19 @@ def test_stopped_run_does_not_report_a_working_agent(tmp_path):
     assert lead["state"] == "stopped"
     # The open turn ends at the last recorded activity, not at the viewer's clock.
     assert lead["active_s"] < 60
+
+
+def test_outer_tool_spans_match_call_ids_without_using_background_duration():
+    from merlin_experiments.tracking.console.sources import agents
+    index = agents.RolloutIndex()
+    index._row("a", _meta(LEAD))
+    for stamp, kind, call in [("18:00:01", "custom_tool_call", "a"),
+                              ("18:00:02", "function_call", "b"),
+                              ("18:00:04", "custom_tool_call_output", "a"),
+                              ("18:00:05", "function_call_output", "b")]:
+        index._row("a", {"timestamp": f"2026-10-22T{stamp}Z", "type": "response_item",
+                         "payload": {"type": kind, "call_id": call}})
+    spans = agents.intervals(index.threads[LEAD], 0, False)
+    assert sum(b-a for a, b in spans["tool_call"]) == 4
+    assert spans["tool"] == []
+    assert agents.tokens_of({"input_tokens": 100})["fresh_input"] is None

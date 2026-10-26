@@ -21,26 +21,58 @@ from __future__ import annotations
 import importlib
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from . import SNAPSHOT_SCHEMA
-from .io import Reader, clean
+from .io import Reader, clean, scan_dir
+
+#: Bytes one interactive refresh may read, and the share of it held back for the insight panels.
+REFRESH_BUDGET = 128 << 20
+INSIGHT_RESERVE = REFRESH_BUDGET // 4
+#: The small authoritative records several panels judge by, read before any bulk scan of a refresh
+#: that includes slow sources: ``(experiment field, relative path, per-file bound)``.
+AUTHORITATIVE = (
+    ("workspace", "qa/tier_state.json", 64 << 20),
+    ("workspace", "qa/verdict.json", 64 << 20),
+    ("workspace", "qa/progress.json", 64 << 20),
+    ("workspace", "qa/latest_completed_grade.json", 64 << 20),
+    ("workspace", "qa/joint_physical_correctness.json", 16 << 20),
+)
 
 #: ``(name, tier)`` in dependency order. ``fast`` refreshes every interval; ``slow`` on the slow interval.
 SOURCES: tuple[tuple[str, str], ...] = (
     ("resources", "fast"),
     ("machine", "fast"),
+    ("lifecycle", "fast"),
     ("agents", "fast"),
     ("tokens", "fast"),
     ("jobs", "fast"),
+    ("activity", "fast"),
     ("events", "fast"),
     ("timeline", "fast"),
     ("capsules", "slow"),
     ("progress", "slow"),
+    ("agent_view", "slow"),
     ("perf", "slow"),
     ("golden", "slow"),
     ("passes", "slow"),
     ("stages", "slow"),
+    ("performance", "slow"),
+    ("tools", "slow"),
+    ("library", "slow"),
+    ("grader", "slow"),
+    ("integrity", "slow"),
+    ("attempts", "slow"),
+    # CASES first: the CERTIFICATION headline repeats its cases-passing totals (ctx.shared).
+    ("cases", "slow"),
+    ("certification", "slow"),
+    ("focus", "slow"),
+    ("cost", "slow"),
+)
+#: The insight panels: every one returns the generic panel shape of :mod:`.sources.insight_common`.
+INSIGHTS = (
+    "performance", "cases", "tools", "grader", "integrity", "attempts", "certification", "focus", "cost", "library"
 )
 #: Sources whose content exists only for an operator (never shown in public mode).
 OPERATOR_ONLY = frozenset({"golden"})
@@ -73,12 +105,15 @@ class Collector:
         operator_private: bool = False,
         clock=time.time,
         sources: tuple[tuple[str, str], ...] = SOURCES,
+        budget: int | None = REFRESH_BUDGET,
     ) -> None:
+        """``budget=None`` reads without a byte budget: for a one-shot dump, never an interactive loop."""
         self.experiment = experiment
         self.operator_private = operator_private
         self.clock = clock
         self.sources = tuple((n, t) for n, t in sources if operator_private or n not in OPERATOR_ONLY)
-        self.reader = Reader()
+        reserve = 0 if budget is None else min(INSIGHT_RESERVE, budget // 4)
+        self.reader = Reader(budget=budget, reserve=reserve)
         self.state: dict[str, dict[str, Any]] = {name: {} for name, _ in self.sources}
         self.sections: dict[str, Any] = {}
         self.timings: dict[str, float] = {}
@@ -103,15 +138,22 @@ class Collector:
         """Re-read the sources of ``tier`` (``fast``, ``slow`` or ``all``); return the whole snapshot."""
         now = self.clock()
         self.reader.begin()
+        if tier != "fast":
+            self.prefetch()
         changed = []
         for name, source_tier in self.sources:
             if tier != "all" and source_tier != tier and name in self.sections:
                 continue
             started = time.monotonic()
+            # Insight panels come last in the order; the reserve keeps the bulk scans before them
+            # from spending their share of the budget.
+            self.reader.priority = name in INSIGHTS
             try:
                 section = _module(name).read(self.context(name, now))
             except Exception as exc:  # noqa: BLE001 -- one broken reader never stops the console
                 section = {"error": f"{type(exc).__name__}: {clean(exc, 160)}"}
+            finally:
+                self.reader.priority = False
             self.timings[name] = round(time.monotonic() - started, 4)
             self.sections[name] = section
             changed.append(name)
@@ -130,6 +172,37 @@ class Collector:
         snapshot["diagnostics"] = diagnose(snapshot)
         return snapshot
 
+    def prefetch(self) -> None:
+        """Read the authoritative records into the cache first, from the whole budget.
+
+        Unchanged ones are cache hits and cost nothing; a changed one is read before any bulk scan
+        could exhaust the refresh, so the panels judging by it never show "not recorded" for lack of
+        bytes. The newest fast verdict is one of them.
+        """
+        paths = []
+        for field_name, relative, limit in AUTHORITATIVE:
+            root = self.experiment.get(field_name)
+            if root:
+                paths.append((Path(root) / relative, limit))
+        run_dir = self.experiment.get("run_dir")
+        if run_dir:
+            history = Path(run_dir) / "qa_history"
+            newest = None
+            for entry in scan_dir(history, 8192):
+                name = entry.name
+                token = name[len("verdict_fast_") : -len(".json")]
+                if name.startswith("verdict_fast_") and name.endswith(".json") and token.isdigit():
+                    if newest is None or int(token) > newest[0]:
+                        newest = (int(token), name)
+            if newest is not None:
+                paths.append((history / newest[1], 32 << 20))
+        self.reader.priority = True
+        try:
+            for path, limit in paths:
+                self.reader.json(path, limit=limit)
+        finally:
+            self.reader.priority = False
+
     def inspect(self, kind: str, key: str) -> dict[str, Any]:
         """The drill-down record for one row: ``kind`` names the source, ``key`` the row."""
         names = {name for name, _ in self.sources}
@@ -139,6 +212,7 @@ class Collector:
         if not hasattr(module, "inspect"):
             return {"title": f"{kind} {key}", "sections": [], "paths": [], "notice": "this panel has no deeper record"}
         self.reader.begin()
+        self.reader.priority = True  # one drawer, asked for now: the whole budget is its own
         try:
             return module.inspect(self.context(kind, self.clock()), key)
         except Exception as exc:  # noqa: BLE001
@@ -148,6 +222,8 @@ class Collector:
                 "paths": [],
                 "error": f"{type(exc).__name__}: {clean(exc, 160)}",
             }
+        finally:
+            self.reader.priority = False
 
 
-__all__ = ["Collector", "Context", "OPERATOR_ONLY", "SOURCES"]
+__all__ = ["Collector", "Context", "INSIGHTS", "OPERATOR_ONLY", "SOURCES"]

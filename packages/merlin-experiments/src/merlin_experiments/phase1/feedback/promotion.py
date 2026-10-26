@@ -381,15 +381,18 @@ def derived_components(ws):
             shared.update(_files_at(p, s))
 
     comps, kind_sufs, memo = {}, set(_src_suffixes()), {}
+    resolved = {}  # Components share most literals; resolve each once per derivation.
     for name, rs in roots.items():
         got = _closure(sub, rs, memo)
         if got is None:
             return None  # a file in the surface we cannot read: refuse, do not guess
         files, lits, dyn_sufs = got
         for s in lits:  # a data file opened at a fixed, resolvable path
-            p = _under(sub, s)
-            if p is not None:
-                files.update(_files_at(p, s))
+            if s not in resolved:
+                p = _under(sub, s)
+                resolved[s] = None if p is None else _files_at(p, s)
+            if resolved[s] is not None:
+                files.update(resolved[s])
         files |= shared
         comps[name] = frozenset(f.relative_to(sub).as_posix() for f in files)
         kind_sufs |= {f.suffix for f in files} | dyn_sufs
@@ -477,11 +480,18 @@ def decomposition(ws) -> dict:
 
 
 def _submission_file_bytes(sub):
-    """The original ledger's canonical source stream, independent of tree location."""
+    """The original ledger's canonical source stream, independent of tree location.
+
+    A file's bytes are reused while it keeps its stat identity (:mod:`merlin.common.stat_memo`): the
+    agent edits a few files between completions, and every completion re-read all of them."""
+    from merlin.common import stat_memo
+
     sub = Path(sub)
     for path in sorted(sub.rglob("*")):
         if path.is_file() and "__pycache__" not in path.parts:
-            yield path, ("submission/" + path.relative_to(sub).as_posix()).encode(), path.read_bytes()
+            body = stat_memo.cached("file_bytes", str(path.absolute()),
+                                    lambda path=path: stat_memo.file_signature(path), path.read_bytes)
+            yield path, ("submission/" + path.relative_to(sub).as_posix()).encode(), body
 
 
 def submission_tree_digest(sub) -> str:
@@ -496,6 +506,14 @@ def submission_tree_digest(sub) -> str:
 
 
 def submission_digests(ws) -> tuple:
+    """``(whole_digest, {component: digest}, rejected_names)``, computed once per unchanged submission
+    tree (see :mod:`.tree_value_cache`)."""
+    from merlin_experiments.phase1.feedback import tree_value_cache
+
+    return tree_value_cache.cached(Path(ws, "submission"), lambda: _submission_digests(ws))
+
+
+def _submission_digests(ws) -> tuple:
     """``(whole_digest, {component: digest}, rejected_names)`` for the submission on disk.
 
     The whole digest is byte-for-byte what it always was -- one pass, sorted paths, path bytes then file

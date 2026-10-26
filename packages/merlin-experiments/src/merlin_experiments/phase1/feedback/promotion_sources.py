@@ -97,24 +97,38 @@ def _py_module_file(sub: Path, dotted: str):
     return None
 
 
-def _py_imports(tree, rel_parts) -> set:
-    """Dotted module names a parsed file imports, with relative imports resolved against its package."""
-    pkg = list(rel_parts[:-1])
-    out = set()
+def _import_records(tree) -> tuple:
+    """``(module, level, names)`` for every import statement of a parsed file (``level`` -1 for ``import``)."""
+    records = []
     for n in _ast().walk(tree):
         if isinstance(n, _ast().Import):
-            for a in n.names:
-                out.add(a.name)
+            records.append((None, -1, tuple(a.name for a in n.names)))
         elif isinstance(n, _ast().ImportFrom):
-            base = n.module or ""
-            if n.level:
-                up = pkg[: len(pkg) - (n.level - 1)] if n.level > 1 else pkg
-                base = ".".join(up + ([base] if base else []))
-            if base:
-                out.add(base)
-            for a in n.names:
-                out.add(f"{base}.{a.name}" if base else a.name)
+            records.append((n.module or "", n.level, tuple(a.name for a in n.names)))
+    return tuple(records)
+
+
+def _resolved_imports(records, rel_parts) -> set:
+    pkg = list(rel_parts[:-1])
+    out = set()
+    for module, level, names in records:
+        if level < 0:
+            out.update(names)
+            continue
+        base = module
+        if level:
+            up = pkg[: len(pkg) - (level - 1)] if level > 1 else pkg
+            base = ".".join(up + ([base] if base else []))
+        if base:
+            out.add(base)
+        for name in names:
+            out.add(f"{base}.{name}" if base else name)
     return out
+
+
+def _py_imports(tree, rel_parts) -> set:
+    """Dotted module names a parsed file imports, with relative imports resolved against its package."""
+    return _resolved_imports(_import_records(tree), rel_parts)
 
 
 def _ast():
@@ -124,16 +138,29 @@ def _ast():
 
 
 def _scan(f: Path, memo=None):
-    """``(tree, string_literals, has_dynamic_import)`` for one Python source file, or None if it will not
-    parse. Unparseable means unknown content, and unknown content is the refusal case."""
+    """``(import_records, string_literals, has_dynamic_import)`` for one Python source file, or None if
+    it will not parse. Unparseable means unknown content, and unknown content is the refusal case.
+
+    The result is reused across calls while the file keeps its stat identity
+    (:mod:`merlin.common.stat_memo`); every completion re-derived the same import graph."""
     if memo is not None and f in memo:
         return memo[f]
+    from merlin.common import stat_memo
+
+    out = stat_memo.cached("python_scan", str(Path(f).absolute()), lambda: stat_memo.file_signature(f),
+                           lambda: _scan_file(f))
+    if out is not None:
+        out = (out[0], set(out[1]), out[2])
+    if memo is not None:
+        memo[f] = out
+    return out
+
+
+def _scan_file(f: Path):
     ast = _ast()
     try:
         tree = ast.parse(f.read_text(encoding="utf-8", errors="replace"))
     except Exception:  # noqa: BLE001 -- not Python, or broken Python: we cannot say what it reads
-        if memo is not None:
-            memo[f] = None
         return None
     lits, dyn = set(), False
     for n in ast.walk(tree):
@@ -144,10 +171,7 @@ def _scan(f: Path, memo=None):
             nm = fn.id if isinstance(fn, ast.Name) else (fn.attr if isinstance(fn, ast.Attribute) else None)
             if nm in _DYNAMIC_IMPORT:
                 dyn = True
-    out = (tree, lits, dyn)
-    if memo is not None:
-        memo[f] = out
-    return out
+    return (_import_records(tree), frozenset(lits), dyn)
 
 
 def _closure(sub: Path, roots, memo=None):
@@ -166,14 +190,14 @@ def _closure(sub: Path, roots, memo=None):
         got = _scan(f, memo)
         if got is None:
             return None
-        tree, flits, dyn = got
+        records, flits, dyn = got
         lits |= flits
         if dyn:
             # Bounded by what the loader ITSELF names: a suffix-shaped literal in the file that does the
             # dynamic import. Widening on every literal in the closure drags in noise ('.text', '.word')
             # from unrelated code and would make the whole tree "the same kind of thing".
             dyn_sufs |= {s for s in flits if s.startswith(".") and 2 <= len(s) <= 6 and s[1:].isalnum()}
-        for mod in _py_imports(tree, f.relative_to(sub).parts):
+        for mod in _resolved_imports(records, f.relative_to(sub).parts):
             parts = mod.split(".")
             for i in range(1, len(parts) + 1):
                 g = _py_module_file(sub, ".".join(parts[:i]))
