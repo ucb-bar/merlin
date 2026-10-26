@@ -19,8 +19,9 @@ The actual graph producer/reference is separately pinned at
 `4499eebb959c0f92cefd92cc6d80646ba66474ed`. Do not merge that experimental branch
 wholesale into the verification branch. The three implementation agents own:
 
-- `GraphLoopsMemorySCF*` / `lean_graph_loops_memory_scf*`: initializer memory and
-  actual buffer-reuse→segmentation composition.
+- `GraphLoopsShape*` / `lean_graph_loops_shape*`: whole-boundary shape/view
+  normalization and composition with sealed memory/SCF roots. The preceding
+  GraphLoopsMemorySCF batch is sealed and now ready for independent review.
 - `GraphRegionsDeclared*` / `lean_graph_regions_declared*`: declaration/call
   correspondence and local fusion agreement.
 - `GraphStatePipeline*` / `lean_graph_state_pipeline*`: scalar CSE/DCE→LICM→
@@ -194,3 +195,18 @@ work even when a tool or implementation bridge is blocked.
 Complete when the six deliverables are reviewable and every proposed paper claim
 has an evidence link and explicit remaining assumptions. Do not mark the complete
 shared pipeline, numerics or full model verified merely to close the paper FIXMEs.
+
+## New qualified row ready for review
+
+The memory-SCF batch is now sealed under
+`out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/README.md`, with
+its own `paper-evidence/{README,WORKED_EXAMPLE}.md` and retained checker output.
+It closes the exact TWO-initializer reuse→segment join for its admitted domain:
+71 tests plus one71-test replay,61/63 standard-three roots,3 provider tests.
+The coordinator separately matched1061 evidence files and all72 owned/prior
+source identities, then independently accepted the actual positive triple and
+refused a compiler-valid tail mutation. This is engineering evidence, not your
+independent review. Prioritize this new row in packages2–3 after the scalar
+worked example. Its possible COMPLETE public-outcome relation excludes tagged
+failure/divergence equivalence and retains trusted parser/projection and total
+private/unobservable allocation premises. Compiler gating remains unintegrated.

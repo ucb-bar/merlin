@@ -39,6 +39,20 @@ Generic graph proofs under precise contracts are useful; contracts, independent
 specification review, actual IR binding, qualification and model coverage remain
 separate obligations.
 
+## Latest completed batch and next worker task
+
+The loop/memory worker sealed memory-scf-mode-v1: the exact retained two-initializer
+reuse→segment chain has a common operational complete-outcome relation,71 tests
+and one71-test replay,61/63 audited standard-three roots, and three provider tests.
+Independent review, parser/primitive/allocator truth and ordinary compiler gating
+remain open. The coordinator checks/publishes the exact owned source; this does
+not complete the full graph roster or categorized failure/divergence semantics.
+
+W's CURRENT next task is [whole-boundary shape normalization](../assignments/graph-shape-normalization/README.md),
+extending the registered identity-cast/static-dimension pass and composing with
+existing memory roots. The older W row below is completed history. Frontend and
+scalar-pipeline tasks remain unchanged; no numerical work is resumed.
+
 ## Three substantial, disjoint implementation batches
 
 All workers continue the existing primary checkout `/home/jeremy/Projects/merlin`,

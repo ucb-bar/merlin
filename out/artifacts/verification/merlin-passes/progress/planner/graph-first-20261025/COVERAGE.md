@@ -12,9 +12,9 @@ is inferred. Evidence counts are recorded earlier qualifications, not new runs.
 | exact_integer_simplification | Local fixed-width add/sub/mul constant-ring/neutral identities, unflagged signless scalars; old validation checks actual change. | Identify complete source-context theorem and mapping for this registered route. Existing MerlinVerify integer components use a separately identified semantics; no implicit equivalence. |
 | scalar_redundancy_elimination | Qualified Scalar.check_sound/normalize_sound: complete typed SSA, total pure nodes and retained partial opaque steps, full returned/world/error observation. | Review primitive/projection/control contracts, supported variants and actual host admission; retain model/native limits. |
 | scalar_loop_invariant_motion | Same qualified scalar framework; positive constant stride, nested/empty finite iteration sequences, scoped captures/carries/yields and total speculation. | Concrete control interpretation is a premise. Active pipeline worker derives index/range/scope correspondence and composed loop transformations. |
-| ordered_loop_segmentation | Qualified complete ordered body/carry/state relation for the checked static signed-control domain;88 tests and one88-test replay. | Raw-IR/Python/body interpretation and review remain explicit. Active memory worker extends actual nested/multiple initializer boundaries; arbitrary SCF is not covered. |
+| ordered_loop_segmentation | Qualified complete ordered body/carry/state relation for the checked static signed-control domain;88 tests and one88-test replay. | Raw-IR/Python/body interpretation and review remain explicit. The sealed memory-SCF packet covers its admitted actual nested/multiple initializer boundaries; arbitrary SCF is not covered. |
 | ordered_loop_unrolling | Qualified inline/empty and grouped bulk/tail modes,151 tests and one151-test replay; actual same-SCF unroll→segment composition. | Connect to scalar operational errors/world and scoped SSA via the active pipeline bridge. Native rendering and unsupported regions remain outside. |
-| buffer_reuse | Qualified live initialized epoch→slot/public complete outcomes in both directions,214 tests and one214-test replay, total/private/unobservable allocation premise. | Active memory/SCF task derives operational initialization and actual two-initializer reuse→segment composition. Actual8→16-byte resource counterexample limits allocator claims. |
+| buffer_reuse | Qualified live initialized epoch→slot/public complete outcomes in both directions,214 tests and one214-test replay, total/private/unobservable allocation premise. | Qualified memory-SCF packet derives operational initialization and the actual two-initializer reuse→segment composition (71 tests plus one71-test replay;61/63 std3 roots). Actual8→16-byte resource counterexample limits allocator claims; independent review/gating remain open. |
 | sequential_dependency_schedule | Old broker accepts a narrow single scalar-function route; new qualified StateEffects graph projections prove actual supported effect exchanges/configuration chains under declared complete frames. | Enumerate supported original-IR scheduling routes; generic SSA/topological legality or Python validation alone is insufficient. No general opaque-memory/asynchronous action semantics. |
 
 ## Broader shared graph/scheduling inventory remains in scope accounting
@@ -42,7 +42,9 @@ denominator and every proposed claim row. The coordinator must reconcile the
 result with the intended paper scope and recorded actual artifact coverage.
 
 The worked CSE/DCE→LICM example is supported conditional graph evidence now;
-the stronger four-pass scalar chain, memory chain and declaration/call bridge
-remain active development until their own binding/audit/qualification completes.
+the memory chain now has its own qualified scoped packet and paper example. The
+four-pass scalar chain and declaration/call bridge remain active development
+until their binding/audit/qualification completes. Shape normalization is the
+loop worker's next whole-boundary graph task.
 All-graph, numerical, native, full-pass/pipeline/model and policy approval flags
 remain false. Publication is source delivery, not semantic approval.

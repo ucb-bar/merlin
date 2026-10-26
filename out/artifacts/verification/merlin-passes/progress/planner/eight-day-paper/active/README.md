@@ -1,3 +1,9 @@
+**LATEST GRAPH MILESTONE:** memory-scf-mode-v1 is sealed (71+one71 replay,
+61/63 std3 roots). W now owns the NEW graph-shape-normalization assignment;
+all72 old W sources/seals are read-only. F declared-call and Q scalar-pipeline
+batches continue. Read planner/graph-first-20261025/README.md after compaction.
+Coordinator publication is user-authorized; no numerical work is resumed.
+
 **CURRENT: USER RESUMED ALL THREE GRAPH WORKERS — 2026-10-25.**
 The new user instruction supersedes the historical stop below. Graph
 transformations remain the priority before numerics. Read the current resume
