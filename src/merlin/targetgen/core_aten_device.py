@@ -122,24 +122,32 @@ def _location_parts(location, *, loaded):
     return forms
 
 
-class _CandidateRoots:
-    """Candidate-writable roots and their component trie.
+_UNLOCATED = frozenset({None, "built-in", "frozen"})
 
-    Neither changes after construction: extending the roots builds a new index
-    that the guard publishes with one reference assignment, so a hook that reads
-    ``guard.index`` once checks against a consistent snapshot without a lock.
-    ``_clean`` only memoizes executed-module locations found outside the roots.
+
+class _CandidateRoots:
+    """Candidate-writable roots and their component trie, immutable after construction.
+
+    Extending the roots builds a new index that the guard publishes with one
+    reference assignment, so a hook that reads the guard's index once checks
+    against a consistent snapshot without a lock. Memos of locations already
+    found outside the roots belong to the guard, keyed by the index they used.
     """
 
+    __slots__ = ("roots", "_trie")
+
     def __init__(self, roots):
-        self.roots = frozenset(roots)
-        self._trie = {}
-        for root in self.roots:
-            node = self._trie
+        trie = {}
+        for root in roots:
+            node = trie
             for component in root.parts:
                 node = node.setdefault(component, {})
             node[None] = True
-        self._clean = set()
+        object.__setattr__(self, "roots", frozenset(roots))
+        object.__setattr__(self, "_trie", trie)
+
+    def __setattr__(self, name, value):
+        raise AttributeError("candidate root index is immutable")
 
     def union(self, roots):
         return self if roots <= self.roots else _CandidateRoots(self.roots | roots)
@@ -156,50 +164,8 @@ class _CandidateRoots:
             visited += 1
         return None in node, visited
 
-    def check_locations(self, locations, *, loaded=False):
-        # Locations about to load are resolved afresh: the filesystem may change before exec.
-        for location in locations:
-            if location in {None, "built-in", "frozen"} or (loaded and location in self._clean):
-                continue
-            if any(self._match(parts)[0] for parts in _location_parts(location, loaded=loaded)):
-                raise ValueError("pinned execution provider dependency lies under a candidate-writable root")
-            if loaded:
-                self._clean.add(location)
-
-    def check_spec(self, spec):
-        # The loader executes ``cached`` bytecode instead of ``origin`` when it validates.
-        self.check_locations([spec.origin, spec.cached])
-        self.check_locations(spec.submodule_search_locations or ())
-
-    def check_module(self, module):
-        if not isinstance(module, ModuleType):
-            return
-        attributes = vars(module)
-        spec = attributes.get("__spec__")
-        locations = [attributes.get("__file__"), attributes.get("__cached__")]
-        locations += [getattr(spec, "origin", None), getattr(spec, "cached", None)]
-        self.check_locations(locations, loaded=True)
-        self.check_locations(attributes.get("__path__", ()), loaded=True)
-        self.check_locations(getattr(spec, "submodule_search_locations", None) or (), loaded=True)
-
-    def check_cached(self, name):
-        parts = name.split(".")
-        for end in range(1, len(parts) + 1):
-            self.check_module(sys.modules.get(".".join(parts[:end])))
-
-    def check_fromlist(self, name, fromlist):
-        self.check_cached(name)
-        parent = sys.modules.get(name)
-        if not isinstance(parent, ModuleType):
-            return
-        for child in fromlist or ():
-            if child == "*":
-                children = vars(parent).get("__all__", vars(parent))
-                for member in children:
-                    self.check_module(vars(parent).get(member))
-            else:
-                self.check_cached(f"{name}.{child}")
-                self.check_module(vars(parent).get(child))
+    def covers(self, location, *, loaded):
+        return any(self._match(parts)[0] for parts in _location_parts(location, loaded=loaded))
 
 
 _RECHECKED = "_provider_import_guard_rechecks"
@@ -209,45 +175,182 @@ def _module_spec(module):
     return getattr(module, "__spec__", None)
 
 
+class _CheckedFinder:
+    """A meta-path finder whose specs pass the guard's checks, whichever import pass asks for them.
+
+    The import system queries the finders after the guard itself, so the guard
+    wraps them rather than querying them on its own: a second, unguarded pass
+    would admit a file that appeared between the two. Equality follows the
+    wrapped finder, so its owner can still find or remove it in ``sys.meta_path``.
+    """
+
+    __slots__ = ("finder", "_guard")
+
+    def __init__(self, finder, guard):
+        self.finder, self._guard = finder, guard
+
+    def find_spec(self, fullname, path=None, target=None):
+        find = getattr(self.finder, "find_spec", None)
+        if find is None:
+            return None
+        spec = find(fullname, path, target)
+        if spec is not None:
+            self._guard.admit(spec)
+        return spec
+
+    def __getattr__(self, name):
+        return getattr(self.finder, name)
+
+    def __eq__(self, other):
+        return self.finder == (other.finder if isinstance(other, _CheckedFinder) else other)
+
+    def __hash__(self):
+        return hash(self.finder)
+
+    def __repr__(self):
+        return f"<checked {self.finder!r}>"
+
+
+# Specs whose loader is between its create_module check and the end of
+# exec_module, keyed by identity. Guarded by ``_provider_state_lock``, which is
+# held only briefly, never across a loader call or provider exec.
+_imports_in_flight = {}
+
+
 class _ProviderImportGuard:
     """Check resolution and cache hits before dependencies can execute.
 
-    Hooks take no lock, so they never wait on a thread blocked in the import system.
+    Hooks hold the state lock only to order a loader's final check against root
+    publication, never across code they run, so they never wait on a thread
+    blocked in the import system.
     """
 
     def __init__(self, index):
-        self.index = index
+        self._index = index
+        self._clean = {}  # executed-module location -> the index it was found outside
+        self._resolved = {}  # module name -> (index, module) found not to resolve under it
         self.importer = builtins.__import__
         self.import_module = importlib.import_module
 
     @property
-    def writable_roots(self):
-        return self.index.roots
+    def index(self):
+        return self._index
 
-    def check_cached(self, name):
-        self.index.check_cached(name)
+    @property
+    def writable_roots(self):
+        return self._index.roots
+
+    def _publish(self, index):
+        """Replace the index; only root publication calls this, holding the state lock."""
+        self._index = index
+
+    def check_locations(self, locations, *, loaded=False, index=None):
+        # Locations about to load are resolved afresh: the filesystem may change before exec.
+        index = self._index if index is None else index
+        for location in locations:
+            if location in _UNLOCATED or (loaded and self._clean.get(location) is index):
+                continue
+            if index.covers(location, loaded=loaded):
+                raise ValueError("pinned execution provider dependency lies under a candidate-writable root")
+            if loaded:
+                self._clean[location] = index
+
+    def check_spec(self, spec, index=None):
+        # The loader executes ``cached`` bytecode instead of ``origin`` when it validates.
+        self.check_locations([spec.origin, spec.cached], index=index)
+        self.check_locations(spec.submodule_search_locations or (), index=index)
+
+    def check_module(self, module, index=None):
+        if not isinstance(module, ModuleType):
+            return
+        index = self._index if index is None else index
+        attributes = vars(module)
+        spec = attributes.get("__spec__")
+        locations = [attributes.get("__file__"), attributes.get("__cached__")]
+        locations += [getattr(spec, "origin", None), getattr(spec, "cached", None)]
+        search = [*attributes.get("__path__", ()), *(getattr(spec, "submodule_search_locations", None) or ())]
+        self.check_locations(locations, loaded=True, index=index)
+        self.check_locations(search, loaded=True, index=index)
+        if not search and all(location in _UNLOCATED for location in locations):
+            if getattr(spec, "origin", None) not in {"built-in", "frozen"}:
+                self._check_unlocated(module, attributes.get("__name__"), index)
+
+    def _check_unlocated(self, module, name, index):
+        """A cached module that names no location is checked where its name would resolve.
+
+        Such an entry could stand in for a module under a candidate root. Resolution
+        inspects finders without importing; a name that cannot resolve has no file.
+        """
+        if not isinstance(name, str) or not name:
+            return
+        memo = self._resolved.get(name)
+        if memo is not None and memo[0] is index and memo[1] is module:
+            return
+        parent, _, child = name.rpartition(".")
+        search = getattr(sys.modules.get(parent), "__path__", None) if parent else sys.path
+        spec = None
+        if search is not None:
+            try:
+                spec = importlib.machinery.PathFinder.find_spec(child, list(search))
+            except (ImportError, OSError, ValueError):
+                spec = None
+        if spec is not None:
+            self.check_spec(spec, index)
+        self._resolved[name] = (index, module)
+
+    def check_cached(self, name, index=None):
+        parts = name.split(".")
+        for end in range(1, len(parts) + 1):
+            self.check_module(sys.modules.get(".".join(parts[:end])), index)
+
+    def check_fromlist(self, name, fromlist):
+        index = self._index
+        self.check_cached(name, index)
+        parent = sys.modules.get(name)
+        if not isinstance(parent, ModuleType):
+            return
+        for child in fromlist or ():
+            if child == "*":
+                children = vars(parent).get("__all__", vars(parent))
+                for member in children:
+                    self.check_module(vars(parent).get(member), index)
+            else:
+                self.check_cached(f"{name}.{child}", index)
+                self.check_module(vars(parent).get(child), index)
+
+    def assert_first(self):
+        """Keep the guard ahead of every finder and every other finder checked."""
+        meta_path = sys.meta_path
+        if not meta_path or meta_path[0] is not self:
+            meta_path[:] = [self, *(finder for finder in meta_path if finder is not self)]
+        self._wrap_finders()
+
+    def _wrap_finders(self):
+        # In place, without reordering: an import may be iterating this list.
+        meta_path = sys.meta_path
+        for position, finder in enumerate(meta_path):
+            if finder is not self and not isinstance(finder, _CheckedFinder):
+                meta_path[position] = _CheckedFinder(finder, self)
 
     def find_spec(self, fullname, path=None, target=None):
-        index = self.index
-        index.check_cached(fullname)
-        index.check_locations(path or ())
-        for finder in tuple(sys.meta_path):
-            if finder is self:
-                continue
-            spec = finder.find_spec(fullname, path, target)
-            if spec is not None:
-                index.check_spec(spec)
-                self._recheck_before_running(spec.loader)
-                return spec
+        self.check_cached(fullname)
+        self.check_locations(path or ())
+        # The wrapped finders after this one resolve the name, checked, on every pass.
+        self._wrap_finders()
         return None
 
-    def _recheck_before_running(self, loader):
+    def admit(self, spec):
+        self.check_spec(spec)
+        self._recheck_before_running(spec.loader, spec)
+
+    def _recheck_before_running(self, loader, admitted):
         """Recheck the spec against the index current when the loader runs code.
 
-        Roots published after resolution still refuse execution. Extension
-        modules run code in ``create_module``, source and bytecode in
-        ``exec_module``; the module's ``__spec__`` is set before the latter.
-        Shadowing the methods on the instance keeps the loader's type and identity.
+        Extension modules run code in ``create_module``, source and bytecode in
+        ``exec_module``; the module's ``__spec__`` is set before the latter. The
+        spec stays in flight from its ``create_module`` check until ``exec_module``
+        returns, so roots published meanwhile that cover it refuse the provider
+        load. Shadowing the methods on the instance keeps the loader's type and identity.
         """
         if loader is None or isinstance(loader, type):
             return
@@ -259,49 +362,84 @@ class _ProviderImportGuard:
             raise ValueError("pinned execution provider dependency loader cannot be rechecked before it runs")
         if vars(loader).get(_RECHECKED):
             return
-        for name, spec_of in (("create_module", lambda spec: spec), ("exec_module", _module_spec)):
-            method = getattr(loader, name, None)
-            if method is not None:
-                setattr(loader, name, self._rechecked(method, spec_of))
+        create, execute = getattr(loader, "create_module", None), loader.exec_module
+        if create is not None:
+            loader.create_module = self._checked_create(create)
+        loader.exec_module = self._checked_exec(execute, admitted)
         vars(loader)[_RECHECKED] = True
 
-    def _rechecked(self, method, spec_of):
-        def run(argument):
-            spec = spec_of(argument)
-            if spec is not None:
-                self.index.check_spec(spec)
-            return method(argument)
+    def _enter(self, spec):
+        with _provider_state_lock:
+            self.check_spec(spec)
+            _imports_in_flight[id(spec)] = spec
 
-        return run
+    @staticmethod
+    def _leave(spec):
+        with _provider_state_lock:
+            _imports_in_flight.pop(id(spec), None)
+
+    def _checked_create(self, method):
+        def create_module(spec):
+            self._enter(spec)
+            try:
+                return method(spec)
+            except BaseException:
+                self._leave(spec)
+                raise
+
+        return create_module
+
+    def _checked_exec(self, method, admitted):
+        # A module without a spec is still checked: against the spec admitted at resolution.
+        def exec_module(module):
+            current = _module_spec(module)
+            specs = [admitted] if current is None or current is admitted else [current, admitted]
+            try:
+                for spec in specs:
+                    self._enter(spec)
+                return method(module)
+            finally:
+                # Also ends the in-flight entry its create_module check made.
+                for spec in specs:
+                    self._leave(spec)
+
+        return exec_module
 
     def guarded_import(self, name, globals=None, locals=None, fromlist=(), level=0):
+        self.assert_first()
         package = (globals or {}).get("__package__")
         absolute = importlib.util.resolve_name("." * level + name, package) if level else name
-        self.index.check_fromlist(absolute, fromlist)
+        self.check_fromlist(absolute, fromlist)
         result = self.importer(name, globals, locals, fromlist, level)
-        index = self.index
-        index.check_fromlist(absolute, fromlist)
-        index.check_module(result)
+        self.check_fromlist(absolute, fromlist)
+        self.check_module(result)
         return result
 
     def guarded_import_module(self, name, package=None):
-        self.index.check_cached(importlib.util.resolve_name(name, package))
+        self.assert_first()
+        self.check_cached(importlib.util.resolve_name(name, package))
         result = self.import_module(name, package)
-        self.index.check_module(result)
+        self.check_module(result)
         return result
 
 
-# Guards the published root index against the count of verified provider loads
-# still executing. Held only briefly; never across provider exec or import hooks.
-_provider_state_lock = threading.Lock()
+# Guards the published root index, the count of verified provider loads still
+# executing and the in-flight import specs. Held only briefly; never across
+# provider exec or a loader's own code.
+_provider_state_lock = threading.RLock()
 _provider_loads_in_flight = 0
 _provider_import_guard = None
+# Set once root publication refuses because candidate code may already be live
+# in this process; every later bound provider load then refuses with it.
+_provider_refusal = None
 
 
 def _reset_provider_state():
-    global _provider_state_lock, _provider_loads_in_flight
-    _provider_state_lock = threading.Lock()
-    _provider_loads_in_flight = 0
+    # A child forked inside a provider exec or an import still runs that inherited
+    # code, so it keeps the inherited counts (failing closed on root extension)
+    # and only replaces a lock that another, absent thread may hold.
+    global _provider_state_lock
+    _provider_state_lock = threading.RLock()
 
 
 if hasattr(os, "register_at_fork"):
@@ -310,48 +448,81 @@ if hasattr(os, "register_at_fork"):
 
 def _publish_provider_roots(writable_roots):
     """Validate and publish the union of candidate roots; the caller holds the state lock."""
-    global _provider_import_guard
+    global _provider_import_guard, _provider_refusal
+    if _provider_refusal is not None:
+        raise ValueError(f"bound provider loads are refused for the rest of this process: {_provider_refusal}")
     roots = frozenset(Path(form) for root in writable_roots for form in (os.path.abspath(root), os.path.realpath(root)))
     guard = _provider_import_guard
-    index = _CandidateRoots(roots) if guard is None else guard.index.union(roots)
+    installed = guard is not None
+    if not installed:
+        guard = _ProviderImportGuard(_CandidateRoots(()))
+    index = guard.index.union(roots)
     if _provider_loads_in_flight and index is not guard.index:
         raise ValueError("cannot extend candidate-writable roots while a provider load is in flight")
-    # The guard is permanent; validate before publishing hooks or replacing its index.
-    for module in tuple(sys.modules.values()):
-        index.check_module(module)
-    if guard is None:
-        guard = _ProviderImportGuard(index)
+    try:
+        _check_import_path(index)
+        # The guard is permanent; validate before publishing hooks or replacing its index.
+        for module in tuple(sys.modules.values()):
+            guard.check_module(module, index)
+    except ValueError as exc:
+        _provider_refusal = str(exc)
+        raise
+    if not installed:
         _provider_import_guard = guard
         builtins.__import__ = guard.guarded_import
         importlib.import_module = guard.guarded_import_module
-    guard.index = index
-    if not sys.meta_path or sys.meta_path[0] is not guard:
-        sys.meta_path[:] = [guard, *(finder for finder in sys.meta_path if finder is not guard)]
+    guard._publish(index)
+    guard.assert_first()
+    # Publish first so a source module still in flight is refused at its exec
+    # check; an extension under the roots may already be initializing, so no
+    # provider load may proceed beside it, now or later in this process.
+    for spec in tuple(_imports_in_flight.values()):
+        try:
+            guard.check_spec(spec, index)
+        except ValueError as exc:
+            _provider_refusal = (
+                "candidate-writable root covers a dependency import still in flight; provider load refused"
+            )
+            raise ValueError(_provider_refusal) from exc
     return guard
+
+
+def _check_import_path(index):
+    """No candidate directory may be importable when its roots are published.
+
+    A module imported from it before publication, or between the import system's
+    exec and registration, would otherwise escape both the resolution checks and
+    the sweep of loaded modules.
+    """
+    for entry in sys.path:
+        if not isinstance(entry, str):
+            continue
+        location = os.getcwd() if entry in {"", "."} else os.path.abspath(entry)
+        if index.covers(location, loaded=False):
+            raise ValueError(f"import path entry {entry!r} lies under a candidate-writable root")
 
 
 @contextmanager
 def _provider_load(writable_roots):
     """Publish the roots and count this load as in flight until its exec finishes."""
     global _provider_loads_in_flight
-    lock = _provider_state_lock
-    with lock:
+    with _provider_state_lock:
         guard = _publish_provider_roots(writable_roots)
         _provider_loads_in_flight += 1
     try:
         yield guard
     finally:
-        # A forked child starts from a fresh lock and count; its inherited lock may be held.
-        if lock is _provider_state_lock:
-            with lock:
-                _provider_loads_in_flight -= 1
+        # A forked child starts from a fresh lock with the inherited count, which includes this load.
+        with _provider_state_lock:
+            _provider_loads_in_flight -= 1
+        guard.assert_first()
 
 
 def _load_bound_execution_provider(backend, selected: Path, candidate_writable_roots):
     writable_roots = backend.execution_provider_writable_roots(candidate_writable_roots)
     path, source = backend.core_aten_execution_provider_source(selected, writable_roots)
     with _provider_load(writable_roots) as guard:
-        guard.index.check_locations([path])
+        guard.check_locations([path])
         digest = hashlib.sha256(source).hexdigest()
         module = ModuleType(f"core_aten_execution_{digest}_{uuid4().hex}")
         module.__file__, module.__package__ = str(path), ""

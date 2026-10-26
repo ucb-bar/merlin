@@ -27,6 +27,14 @@ from merlin.targetgen.contract.readback_policy import (
 pytest_plugins = ("test_rtl_build_receipt",)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_provider_refusal(monkeypatch):
+    # A refused root publication poisons bound provider loads for the process; keep it per test.
+    from merlin.targetgen import core_aten_device
+
+    monkeypatch.setattr(core_aten_device, "_provider_refusal", None)
+
+
 def _pin(path):
     return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
@@ -2610,7 +2618,13 @@ assert device._provider_import_guard is guard
 assert (guard.writable_roots if guard else None) == roots
 sys.modules.pop(cached.__name__)
 assert importlib.import_module("merlin.targetgen.core_aten_samples")
-assert device.load_execution_provider("synthetic", provider, candidate_writable_roots=()).TARGET == "synthetic"
+# The refusal is sticky: candidate code may be live, so no later bound load proceeds.
+try:
+    device.load_execution_provider("synthetic", provider, candidate_writable_roots=())
+except ValueError as exc:
+    assert "rest of this process" in str(exc) and "candidate-writable root" in str(exc), str(exc)
+else:
+    raise AssertionError("bound provider loaded after a refused publication")
 """
     result = subprocess.run(
         [sys.executable, "-B", "-c", script, str(provider), str(candidate), str(already_installed), metadata],
@@ -2677,7 +2691,13 @@ assert (builtins.__import__, importlib.import_module, tuple(sys.meta_path)) == h
 assert device._provider_import_guard is guard
 assert (guard.writable_roots if guard else None) == roots
 assert importlib.import_module("merlin.targetgen.core_aten_samples")
-assert device.load_execution_provider("synthetic", provider, candidate_writable_roots=()).TARGET == "synthetic"
+# The refusal is sticky: candidate code may be live, so no later bound load proceeds.
+try:
+    device.load_execution_provider("synthetic", provider, candidate_writable_roots=())
+except ValueError as exc:
+    assert "rest of this process" in str(exc) and "candidate-writable root" in str(exc), str(exc)
+else:
+    raise AssertionError("bound provider loaded after a refused publication")
 """,
         already_installed,
     )
@@ -2708,12 +2728,21 @@ guard = device._provider_import_guard
 roots = guard.writable_roots
 entered, extended = threading.Event(), threading.Event()
 
+refusals = []
+
 def extend():
-    device.load_execution_provider("synthetic", provider, candidate_writable_roots=(candidate,))
+    # The roots are published, but no provider load proceeds beside an import they now cover.
+    try:
+        device.load_execution_provider("synthetic", provider, candidate_writable_roots=(candidate,))
+    except ValueError as exc:
+        refusals.append(str(exc))
+        raise
+    raise AssertionError("provider loaded beside an in-flight candidate import")
 
 class PausedLoader:
     def create_module(self, spec):
         # Resolution has returned, but registration and candidate exec have not begun.
+        assert not marker.exists()
         if sys.argv[4] == "importing_thread":
             extend()
         else:
@@ -2737,19 +2766,23 @@ def load():
             importlib.import_module("review_paused")
     except ValueError as exc:
         errors.append(str(exc))
-# Only in-flight provider loads pin the roots, but the import resolved before
-# the extension is still rechecked against it before the candidate code runs.
+# The first import resolves before the roots exist and is refused at its exec
+# check; the second resolves after publication and is refused at resolution.
 for attempt in range(2):
     thread = threading.Thread(target=load)
     thread.start()
     if sys.argv[4] == "other_thread" and not attempt:
         assert entered.wait(10)
-        extend()
+        try:
+            extend()
+        except ValueError:
+            pass
         extended.set()
     thread.join(10)
     assert not thread.is_alive()
     assert len(errors) == attempt + 1 and "candidate-writable root" in errors[-1], errors
-assert not marker.exists()
+    assert not marker.exists()
+assert len(refusals) == 1 and "in flight" in refusals[0], refusals
 assert "review_paused" not in sys.modules
 assert guard.writable_roots > roots
 """,
@@ -2846,9 +2879,17 @@ assert entered.wait(10)
 child = os.fork()
 if child == 0:
     signal.alarm(5)
+    # The child neither waits on the absent thread's lock nor forgets the inherited
+    # load: it keeps the count, so it may load but not extend candidate roots.
     module = device.load_execution_provider("synthetic", provider, candidate_writable_roots=())
-    assert device._provider_loads_in_flight == 0
-    os._exit(0 if module.TARGET == "synthetic" else 1)
+    assert device._provider_loads_in_flight == 1
+    try:
+        device.load_execution_provider("synthetic", provider, candidate_writable_roots=(provider.parent / "child",))
+    except ValueError as exc:
+        extended = "in flight" not in str(exc)
+    else:
+        extended = True
+    os._exit(0 if module.TARGET == "synthetic" and not extended else 1)
 release.set()
 thread.join(10)
 _, status = os.waitpid(child, 0)
@@ -2858,17 +2899,18 @@ assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0, status
 
 
 def test_bound_provider_import_guard_origin_checks_scale_with_path_depth(tmp_path):
-    from merlin.targetgen.core_aten_device import _CandidateRoots
+    from merlin.targetgen.core_aten_device import _CandidateRoots, _ProviderImportGuard
 
     trusted = (tmp_path / "trusted" / "dependency.py").parts
     visits = []
     for count in (1, 1000):
         index = _CandidateRoots((tmp_path / f"candidate_{index}").resolve() for index in range(count))
         visits.append(index._match(trusted)[1])
+        guard = _ProviderImportGuard(index)
         for location in (tmp_path / "candidate_0", tmp_path / "candidate_0" / "nested" / "module.py"):
             with pytest.raises(ValueError, match="candidate-writable root"):
-                index.check_locations([str(location)])
-        index.check_locations([str(tmp_path / "candidate_0_suffix" / "module.py")])
+                guard.check_locations([str(location)])
+        guard.check_locations([str(tmp_path / "candidate_0_suffix" / "module.py")])
     # A lookup walks one trie node per path component, whatever the root count.
     assert visits[0] == visits[1] <= len(trusted) + 1, visits
 
@@ -3025,12 +3067,12 @@ def test_bound_provider_import_guard_refuses_trusted_link_through_candidate_link
 
 
 def test_bound_provider_import_guard_refuses_symlink_loop(tmp_path):
-    from merlin.targetgen.core_aten_device import _CandidateRoots
+    from merlin.targetgen.core_aten_device import _CandidateRoots, _ProviderImportGuard
 
     (tmp_path / "first").symlink_to(tmp_path / "second")
     (tmp_path / "second").symlink_to(tmp_path / "first")
     with pytest.raises(ValueError, match="symlink loop"):
-        _CandidateRoots(()).check_locations([str(tmp_path / "first" / "module.py")])
+        _ProviderImportGuard(_CandidateRoots(())).check_locations([str(tmp_path / "first" / "module.py")])
 
 
 @pytest.mark.parametrize("placement", ["candidate", "trusted"])
@@ -3068,3 +3110,279 @@ def test_bound_provider_import_guard_refuses_legacy_loaders(isolated_provider, t
     finally:
         assert not marker.exists()
         sys.modules.pop("review_legacy", None)
+
+
+def test_bound_provider_import_guard_refuses_load_beside_extension_init(isolated_provider, tmp_path):
+    _run_import_guard_probe(
+        isolated_provider[0],
+        """
+import shutil
+import sys
+import sysconfig
+import threading
+from importlib.machinery import EXTENSION_SUFFIXES, ExtensionFileLoader
+from importlib.util import spec_from_file_location
+from pathlib import Path
+from merlin.targetgen import core_aten_device as device
+
+provider, candidate = map(Path, sys.argv[1:3])
+candidate.mkdir()
+device.load_execution_provider("synthetic", provider, candidate_writable_roots=())
+library = Path(sysconfig.get_config_var("DESTSHARED"))
+extension = next(path for suffix in EXTENSION_SUFFIXES for path in library.glob("_heapq" + suffix))
+shutil.copy2(extension, candidate / extension.name)
+sys.modules.pop("_heapq", None)
+
+class CandidateFinder:
+    # The candidate copy is importable by a finder, not from an import path entry.
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "_heapq":
+            return spec_from_file_location(fullname, candidate / extension.name)
+
+sys.meta_path.insert(0, CandidateFinder())
+resolved, release = threading.Event(), threading.Event()
+published_at_init = []
+create = ExtensionFileLoader.create_module
+
+def paused(self, spec):
+    # After the guard's create_module check, before the extension initializes.
+    if spec.name == "_heapq":
+        resolved.set()
+        assert release.wait(10)
+        published_at_init.append(candidate.resolve() in device._provider_import_guard.writable_roots)
+    return create(self, spec)
+
+ExtensionFileLoader.create_module = paused
+errors = []
+def load():
+    try:
+        __import__("_heapq")
+    except ValueError as exc:
+        errors.append(str(exc))
+thread = threading.Thread(target=load)
+thread.start()
+assert resolved.wait(10)
+try:
+    device.load_execution_provider("synthetic", provider, candidate_writable_roots=(candidate,))
+except ValueError as exc:
+    assert "in flight" in str(exc), str(exc)
+else:
+    raise AssertionError("provider loaded while a candidate extension was initializing")
+release.set()
+thread.join(10)
+assert not thread.is_alive()
+assert published_at_init == [True], published_at_init
+assert len(errors) == 1 and "candidate-writable root" in errors[0], errors
+assert "_heapq" not in sys.modules
+assert not device._imports_in_flight
+# Candidate initialization may have left code live: every later load in this process refuses.
+for roots in ((), (candidate,)):
+    try:
+        device.load_execution_provider("synthetic", provider, candidate_writable_roots=roots)
+    except ValueError as exc:
+        assert "rest of this process" in str(exc) and "in flight" in str(exc), str(exc)
+    else:
+        raise AssertionError("provider loaded after an in-flight refusal")
+""",
+        tmp_path / "candidate",
+    )
+
+
+def test_bound_provider_import_guard_checks_every_finder_pass(isolated_provider, tmp_path):
+    _run_import_guard_probe(
+        isolated_provider[0],
+        """
+import importlib
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from merlin.targetgen import core_aten_device as device
+
+provider, candidate = map(Path, sys.argv[1:3])
+candidate.mkdir()
+marker = candidate / "MARKER"
+device.load_execution_provider("synthetic", provider, candidate_writable_roots=(candidate,))
+
+class CandidateFinder:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "optional_dep" and (candidate / "optional_dep.py").exists():
+            return importlib.util.spec_from_file_location(fullname, candidate / "optional_dep.py")
+
+class Appearing:
+    # The candidate creates the file once the earlier finders have looked.
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "optional_dep" and not (candidate / "optional_dep.py").exists():
+            (candidate / "optional_dep.py").write_text("open(" + repr(str(marker)) + ", 'w').close()")
+        return None
+
+sys.meta_path.append(CandidateFinder())
+sys.meta_path.append(Appearing())
+source = provider.read_text() + (
+    "import importlib\\n"
+    "try:\\n"
+    "    importlib.import_module('optional_dep')\\n"
+    "except ImportError:\\n"
+    "    pass\\n"
+)
+module = device._load_bound_execution_provider(
+    type("Backend", (), {
+        "execution_provider_writable_roots": lambda self, roots: tuple(roots),
+        "core_aten_execution_provider_source": lambda self, selected, roots: (provider, source.encode()),
+    })(),
+    provider,
+    (candidate,),
+)
+assert module.TARGET == "synthetic"
+assert not marker.exists()
+assert all(type(finder).__name__ in {"_ProviderImportGuard", "_CheckedFinder"} for finder in sys.meta_path)
+try:
+    importlib.import_module("optional_dep")
+except ValueError as exc:
+    assert "candidate-writable root" in str(exc), str(exc)
+else:
+    raise AssertionError("candidate module imported")
+assert not marker.exists()
+""",
+        tmp_path / "candidate",
+    )
+
+
+def test_bound_provider_import_guard_refuses_unlocated_cached_candidate(tmp_path, monkeypatch):
+    from types import ModuleType
+
+    from merlin.targetgen.core_aten_device import _CandidateRoots, _ProviderImportGuard
+
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "seeded_dep.py").write_text("VALUE = 'FILE'\n")
+    monkeypatch.syspath_prepend(str(candidate))
+    guard = _ProviderImportGuard(_CandidateRoots({candidate.resolve()}))
+    # A cache entry with no file or spec stands in for the candidate's module.
+    seeded = ModuleType("seeded_dep")
+    with pytest.raises(ValueError, match="candidate-writable root"):
+        guard.check_module(seeded)
+    # A name that resolves nowhere under the roots stays admissible.
+    guard.check_module(ModuleType("unresolved_seed_dep"))
+
+
+def test_bound_provider_import_guard_checks_admitted_spec_without_module_spec(tmp_path):
+    from importlib.util import spec_from_file_location
+    from types import ModuleType
+
+    from merlin.targetgen.core_aten_device import _CandidateRoots, _ProviderImportGuard
+
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    marker = candidate / "executed"
+    source = candidate / "specless.py"
+    source.write_text(f"open({str(marker)!r}, 'w').close()\n")
+    spec = spec_from_file_location("specless", source)
+    guard = _ProviderImportGuard(_CandidateRoots(()))
+    guard.admit(spec)
+    guard._publish(_CandidateRoots({candidate.resolve()}))
+    module = ModuleType("specless")
+    module.__spec__ = None
+    with pytest.raises(ValueError, match="candidate-writable root"):
+        spec.loader.exec_module(module)
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("entry", ["directory", "nested", "empty", "dot"])
+def test_bound_provider_import_guard_refuses_importable_candidate_directory(isolated_provider, tmp_path, entry):
+    _run_import_guard_probe(
+        isolated_provider[0],
+        """
+import os
+import sys
+from pathlib import Path
+from merlin.targetgen import core_aten_device as device
+
+provider, candidate, entry = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+(candidate / "nested").mkdir(parents=True)
+device.load_execution_provider("synthetic", provider, candidate_writable_roots=())
+if entry in ("empty", "dot"):
+    os.chdir(candidate / "nested")
+    sys.path.insert(0, "" if entry == "empty" else ".")
+else:
+    sys.path.insert(0, str(candidate if entry == "directory" else candidate / "nested"))
+try:
+    device.load_execution_provider("synthetic", provider, candidate_writable_roots=(candidate,))
+except ValueError as exc:
+    assert "import path entry" in str(exc), str(exc)
+else:
+    raise AssertionError("candidate directory was importable at publication")
+assert candidate.resolve() not in device._provider_import_guard.writable_roots
+sys.path.pop(0)
+try:
+    device.load_execution_provider("synthetic", provider, candidate_writable_roots=())
+except ValueError as exc:
+    assert "rest of this process" in str(exc), str(exc)
+else:
+    raise AssertionError("provider loaded after a refused publication")
+""",
+        tmp_path / "candidate",
+        entry,
+    )
+
+
+def test_bound_provider_import_guard_refuses_candidate_imported_before_publication(isolated_provider, tmp_path):
+    # A module mid-way between exec and registration when the roots are published
+    # was importable from an import path entry; that entry refuses the publication.
+    _run_import_guard_probe(
+        isolated_provider[0],
+        """
+import json
+import sys
+import threading
+from pathlib import Path
+from merlin.targetgen import core_aten_device as device
+
+provider, candidate = Path(sys.argv[1]), Path(sys.argv[2])
+candidate.mkdir()
+marker = candidate / "EXECUTED"
+device.load_execution_provider("synthetic", provider, candidate_writable_roots=())
+(candidate / "lazy_dep.py").write_text(
+    "open(" + repr(str(marker)) + ", 'w').write('ran')\\nimport json\\njson.PWNED = True\\n"
+)
+sys.path.insert(0, str(candidate))
+paused, go = threading.Event(), threading.Event()
+
+def tracer(frame, event, arg):
+    if frame.f_code.co_name == "_load_unlocked":
+        def local(f, ev, a):
+            if ev == "line" and not paused.is_set() and marker.exists() and "lazy_dep" not in sys.modules:
+                paused.set()
+                go.wait(10)
+            return local
+        return local
+    return None
+
+def importing():
+    sys.settrace(tracer)
+    try:
+        __import__("lazy_dep")
+    finally:
+        sys.settrace(None)
+
+thread = threading.Thread(target=importing)
+thread.start()
+assert paused.wait(10)
+try:
+    value = device.load_execution_provider("synthetic", provider, candidate_writable_roots=(candidate,))
+except ValueError as exc:
+    assert "candidate-writable root" in str(exc), str(exc)
+else:
+    raise AssertionError("provider loaded beside a candidate module")
+finally:
+    go.set()
+    thread.join(10)
+try:
+    device.load_execution_provider("synthetic", provider, candidate_writable_roots=())
+except ValueError as exc:
+    assert "rest of this process" in str(exc), str(exc)
+else:
+    raise AssertionError("provider loaded after a refused publication")
+""",
+        tmp_path / "candidate",
+    )
