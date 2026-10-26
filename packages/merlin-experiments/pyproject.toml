@@ -35,6 +35,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 merlin_experiments = ["resources/*.json"]
 "merlin_experiments.execution" = ["container_guardian.c"]
+"merlin_experiments.capture_execution" = ["guest_cpuinfo.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

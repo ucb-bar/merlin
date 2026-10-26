@@ -301,7 +301,7 @@ def _minimal_root(root: Path, mount: Path) -> None:
     (root / "bin").mkdir(exist_ok=True)
     if not (root / "bin/sh").exists():
         shutil.copy2(shell.resolve(), root / "bin/sh")
-    for name in ("source", "tmp", "dev", *mount.relative_to("/").parts[:1]):
+    for name in ("source", "tmp", "dev", "proc", *mount.relative_to("/").parts[:1]):
         (root / name).mkdir(exist_ok=True)
     (root / mount.relative_to("/")).mkdir(parents=True, exist_ok=True)
 
