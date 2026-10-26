@@ -406,6 +406,14 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/check_chunks.py
 !/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/make_session_inputs.py
 !/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/latest
+
+# User-requested remote TinyLlama continuation: this reviewed compact seed only.
+!/out/artifacts/handoff/gemmini-tinyllama-remote-seed/v1/latest
+!/out/artifacts/handoff/gemmini-tinyllama-remote-seed/v1/handoff_gemmini-tinyllama-remote-seed_v1_20261026T204421Z_1900c7f/README.md
+!/out/artifacts/handoff/gemmini-tinyllama-remote-seed/v1/handoff_gemmini-tinyllama-remote-seed_v1_20261026T204421Z_1900c7f/SHA256SUMS
+!/out/artifacts/handoff/gemmini-tinyllama-remote-seed/v1/handoff_gemmini-tinyllama-remote-seed_v1_20261026T204421Z_1900c7f/manifest.yaml
+!/out/artifacts/handoff/gemmini-tinyllama-remote-seed/v1/handoff_gemmini-tinyllama-remote-seed_v1_20261026T204421Z_1900c7f/transfer-manifest.json
+!/out/artifacts/handoff/gemmini-tinyllama-remote-seed/v1/handoff_gemmini-tinyllama-remote-seed_v1_20261026T204421Z_1900c7f/tinyllama-seed.tar.gz
 !/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/manifest.yaml
 !/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/README.md
 !/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/report.json

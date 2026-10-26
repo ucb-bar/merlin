@@ -1,0 +1,22 @@
+{
+  "schema": "merlin.tvm.tiny_preparation_transfer.v1",
+  "archive": "tinyllama-seed.tar.gz",
+  "sha256": "2d1cfa49e8657fb02227de1186b88e7859876d527953631968547a5e0246cf7e",
+  "bytes": 2653449,
+  "inner_seed_sha256": "f27f185543114daea51b0b03a44e47e9565bb79f2f30f208fb7a1f586f7ea2db",
+  "status": "PREPARATION_INPUTS_READY_EXPORTS_REFERENCES_PENDING",
+  "smolvla": "PAUSED_BY_USER_EXCLUDED",
+  "profiles": {
+    "iteration": {
+      "prefill_tokens": 16,
+      "decode_steps": 1,
+      "cache_capacity": 64
+    },
+    "e2e": {
+      "prefill_tokens": 32,
+      "decode_steps": 32,
+      "cache_capacity": 64,
+      "output_arrays": 99
+    }
+  }
+}

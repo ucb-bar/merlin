@@ -1,0 +1,14 @@
+artifacts:
+- README.md
+- SHA256SUMS
+- tinyllama-seed.tar.gz
+- transfer-manifest.json
+git_sha: 1900c7f
+notes: Compact portable TinyLlama preparation seed; source and data member checksums retained. ResNet in parallel, SmolVLA paused.
+run_id: handoff_gemmini-tinyllama-remote-seed_v1_20261026T204421Z_1900c7f
+sources:
+- /home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-tinyllama-remote-seed/v1/handoff_gemmini-tinyllama-remote-seed_v1_20261026T204219Z_1900c7f/manifest.yaml
+target: gemmini-tinyllama-remote-seed
+timestamp: 20261026T204421Z
+topic: handoff
+version: 1
