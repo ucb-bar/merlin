@@ -1,5 +1,11 @@
 # EL4 shared inputs and numerical release
 
+For every new release apply [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md)
+before the historical recipe descriptions below. Freeze grouped-16 weight and
+per-tensor activation scales and report the new model-quality gates separately
+from compiler/reference agreement. Historical diagnostic probes are not an
+admitted new release.
+
 This guide uses the workload contract at
 [`0cc289de52a10bed256f32c90cfbb54a21b3c81f`](https://github.com/ucb-bar/merlin/tree/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol).
 The current scope is ResNet50, TinyLlama **32+32**, and SmolVLA's complete

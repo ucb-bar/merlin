@@ -1,0 +1,57 @@
+{
+  "schema": "merlin_gemmini_numerical_run_policy_v2",
+  "effective_date": "2026-10-26",
+  "scope": "All future ResNet50, TinyLlama and SmolVLA runs, including tuning chunks",
+  "historical_artifacts": "Preserve; do not retroactively relabel qualification",
+  "operands": {
+    "dtype": "int8",
+    "zero_point": 0,
+    "symmetric": true,
+    "accumulator_dtype": "int32",
+    "weights": {
+      "range": [-127, 127],
+      "scale_mode": "static",
+      "scale_granularity": "group_of_output_channels",
+      "channels_per_scale": 16
+    },
+    "activations": {
+      "range": [-128, 127],
+      "scale_mode": "static",
+      "scale_granularity": "per_tensor"
+    },
+    "freeze_scales_after_calibration": true,
+    "rounding": "nearest_ties_to_even",
+    "narrowing": "saturate",
+    "bias_domain": "int32_accumulator",
+    "allowed_layer_output_formats": ["int8_requantized", "int32_raw"],
+    "record_layer_output_format": true
+  },
+  "placement": {
+    "eligible_convolution_linear_attention_matmuls": "Gemmini",
+    "fp32_non_matmul_host_work_allowed": true,
+    "examples": ["RMSNorm", "RoPE", "softmax", "SiLU"],
+    "higher_precision_decomposition": "Record actual extra matmuls, MACs, host work, transfers and cost"
+  },
+  "quality": {
+    "tinyllama": {
+      "dataset": "WikiText-2",
+      "split": "test",
+      "metric": "perplexity",
+      "maximum_ratio_to_matched_fp32": 1.1,
+      "require_fp32_baseline_and_identical_evaluation_settings": true
+    },
+    "resnet50": {
+      "metric": "top1_accuracy",
+      "maximum_loss_percentage_points_vs_fp32": 1.0,
+      "require_identical_fixed_evaluation_set": true
+    },
+    "smolvla": {
+      "metric": "cosine_similarity",
+      "minimum": 0.99,
+      "reference": "existing results with matching evaluation settings",
+      "robot_task_success_claim": false
+    }
+  },
+  "compiler_reference_checks": "Separate from quality; retain independent all-output/state checks and exact integers",
+  "missing_quality_evidence_status": "NOT_RUN"
+}

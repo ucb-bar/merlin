@@ -73,7 +73,6 @@ def checkpoint_boundaries(checkpoint, tokens):
 
 def semantic_projection_chunk(values, weights):
     """Build mathematical Relax quantize -> GEMM -> scale; independent NumPy oracle."""
-    import tvm
     from tinyllama_integer import independent_quantize_rows
     from tvm import relax
 
@@ -125,6 +124,8 @@ def semantic_projection_chunk(values, weights):
 
 
 def checkpoint_probes(args):
+    if not args.legacy_diagnostic:
+        raise ValueError("Dynamic-row checkpoint probes require explicit --legacy-diagnostic")
     import tinyllama_integer
     import tvm
 
@@ -173,9 +174,11 @@ def checkpoint_probes(args):
             fixture_sha256=identity(folder / "fixture.npz")["sha256"],
             program=identity(folder / "program.json"),
             reference_sources=sources,
-            reference_contract="Diagnostic W8A8: independent floor/parity RNE, INT64 NumPy dot, FP32 scale products; every output",
+            reference_contract="Legacy W8A8: floor/parity RNE, NumPy INT64 dot, FP32 scaling; all outputs",
             comparison=dict(rtol=1e-5, atol=2e-6),
             numerical_release="fresh checkpoint probe; not calibrated EL4",
+            current_run_policy_conformance=False,
+            scope="Explicit legacy diagnostic; not the 2026-10-26 frozen-scale policy",
         )
         write_json(folder / "fixture-provenance.json", proof)
         m, k = values.shape
@@ -264,6 +267,11 @@ def main():
     probe = commands.add_parser("checkpoint-probes")
     probe.add_argument("--checkpoint", required=True, type=Path)
     probe.add_argument("--tokens", required=True, type=Path)
+    probe.add_argument(
+        "--legacy-diagnostic",
+        action="store_true",
+        help="Explicitly reproduce dynamic-row probes; these do not satisfy CURRENT_RUN_POLICY.md",
+    )
     for name in ("inventory", "slice"):
         command = commands.add_parser(name)
         command.add_argument("--program", required=True, type=Path)
@@ -275,6 +283,8 @@ def main():
     for command in (probe, *[commands.choices[name] for name in ("inventory", "slice")]):
         command.add_argument("--output-dir", required=True, type=Path)
     args = parser.parse_args()
+    if args.command == "checkpoint-probes" and not args.legacy_diagnostic:
+        parser.error("checkpoint-probes requires --legacy-diagnostic; new runs use frozen calibrated scales")
     args.output_dir.mkdir(parents=True, exist_ok=False)
     if args.command == "checkpoint-probes":
         checkpoint_probes(args)

@@ -1,5 +1,11 @@
 # Numerics: inputs, models and guides for full-model correctness checks
 
+**New runs:** [CURRENT_RUN_POLICY.md](CURRENT_RUN_POLICY.md) and
+[its JSON settings](CURRENT_RUN_POLICY.json) contain the user's 2026-10-26
+update. They supersede earlier quality/recipe descriptions for future runs.
+The existing models configuration and frozen protocol remain historical
+definitions; their report-only checks do not establish the new quality gates.
+
 For independent implementations, use the [baseline workflow](../protocol/baselines.md)
 and its offline NPZ checker. It consumes this numerical policy and the shared
 protocol; separate handwritten threshold configurations are unnecessary.

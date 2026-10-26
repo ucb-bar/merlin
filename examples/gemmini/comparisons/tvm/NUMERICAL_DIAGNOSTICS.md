@@ -1,5 +1,15 @@
 # TinyLlama numerical diagnosis
 
+New runs use [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md).
+The new test-set PPL gate is separate from the prepared-IR correctness checks.
+The October 26 F2 chunks execute projections with precomputed FP32 boundaries;
+they do not execute full-model RoPE on the target. Their successful checks
+neither reproduce nor resolve a layer-19 mismatch. A claim that newlib trig/FMA
+drift necessarily needs a TVM change requires first-mismatch IR, operand bits,
+host-math/FP-contraction settings and target assembly evidence. Diagnose the
+export/reference, compiler and libm boundaries before choosing a correction;
+do not patch TVM core or relax tolerances based only on that report.
+
 Keep the selected tolerance (`rtol=1e-5`, `atol=2e-6`), prepared model and
 reference identity fixed while diagnosing a mismatch. Matching top-1 predictions
 or high cosine similarity does not establish elementwise agreement. A different
