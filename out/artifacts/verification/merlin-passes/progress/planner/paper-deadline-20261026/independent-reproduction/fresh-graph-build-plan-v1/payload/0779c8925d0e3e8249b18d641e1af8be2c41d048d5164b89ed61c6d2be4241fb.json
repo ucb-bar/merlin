@@ -1,0 +1,311 @@
+{
+  "runtime_files_opened": false,
+  "checks": [
+    {
+      "cut": "chain-endpoint-v1",
+      "retained_files_exact": 141
+    },
+    {
+      "cut": "service-route-review-v1",
+      "retained_files_exact": 77
+    },
+    {
+      "cut": "source-checkpoint-v10",
+      "live_owned_exact": 12
+    },
+    {
+      "cut": "graph-state-pipeline/sealed-v1",
+      "rows": [
+        {
+          "path": "merlin/tests/ir/test_lean_graph_state_pipeline.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "a0346474609ebafb0c217fa0084c89122fba0c92e33daf7bd399124971a3d0de",
+          "historical_sha256": "a0346474609ebafb0c217fa0084c89122fba0c92e33daf7bd399124971a3d0de"
+        },
+        {
+          "path": "merlin/tests/ir/test_lean_graph_state_pipeline_mutations.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "0d8cf84d00089973b2f3383dacbe42c4cd92226c0ddabbba7cb3f0984f44059b",
+          "historical_sha256": "0d8cf84d00089973b2f3383dacbe42c4cd92226c0ddabbba7cb3f0984f44059b"
+        },
+        {
+          "path": "merlin/tests/ir/test_lean_graph_state_pipeline_receipts.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "252d301de5de298a78bc8bcd0598bdc374efa850c852efb23f2b1f5cc976b30d",
+          "historical_sha256": "252d301de5de298a78bc8bcd0598bdc374efa850c852efb23f2b1f5cc976b30d"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+          "historical_sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+          "historical_sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+          "historical_sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+          "historical_sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+          "historical_sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+          "historical_sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+          "historical_sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+          "historical_sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+          "historical_sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_pipeline.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+          "historical_sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_pipeline_capture.py",
+          "retained_source_exact": true,
+          "current_equals_historical": false,
+          "current_sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+          "historical_sha256": "3960c5ffdb65e70f104a16fb4328eeffde22906afe199719403f0053850ff9be"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+          "historical_sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_pipeline_kernel.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "8e8da1f38ad73889693edd8f94e5cce54c751bea16811cc4b0916c2990efedd1",
+          "historical_sha256": "8e8da1f38ad73889693edd8f94e5cce54c751bea16811cc4b0916c2990efedd1"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_pipeline_models.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "3e94cec2cb4b16ac50b5fb1b69e54b22152d945d36574428cc0ab72294a891e5",
+          "historical_sha256": "3e94cec2cb4b16ac50b5fb1b69e54b22152d945d36574428cc0ab72294a891e5"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_pipeline_mutate.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "63709019921e1b1c89e1c0b4f47adf95cf00c5cb8efb7407b6dda7090d1956f4",
+          "historical_sha256": "63709019921e1b1c89e1c0b4f47adf95cf00c5cb8efb7407b6dda7090d1956f4"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_pipeline_proof.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "9cfc8f312b8ec1eec09ab98a7cd1753e4342c29e99e707bdbef1f6922cbf01ac",
+          "historical_sha256": "9cfc8f312b8ec1eec09ab98a7cd1753e4342c29e99e707bdbef1f6922cbf01ac"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_pipeline_receipt.py",
+          "retained_source_exact": true,
+          "current_equals_historical": false,
+          "current_sha256": "6b0e83ef29805b95701b6b0e12ef707861d6477b17342ab2561a956be72f9132",
+          "historical_sha256": "c5056b7cc9f042f03818f49b0e9897f6b6b49d1b0f8b5d940d834685f6d8febf"
+        }
+      ],
+      "current_host_differences_are_not_qualification": true
+    },
+    {
+      "cut": "graph-state-integer/sealed-v2",
+      "rows": [
+        {
+          "path": "merlin/tests/ir/test_lean_graph_state_integer.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "881c51e6b1bd26be1196a8574d0d89fe20f71fd916b77bb8db8cdf6c43035f6e",
+          "historical_sha256": "881c51e6b1bd26be1196a8574d0d89fe20f71fd916b77bb8db8cdf6c43035f6e"
+        },
+        {
+          "path": "merlin/tests/ir/test_lean_graph_state_integer_host.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "95f6e5290f3bd081eb737a73cc89a704b7b3d7177c9aa55f66b77fb01ca38923",
+          "historical_sha256": "95f6e5290f3bd081eb737a73cc89a704b7b3d7177c9aa55f66b77fb01ca38923"
+        },
+        {
+          "path": "merlin/tests/ir/test_lean_graph_state_integer_mutations.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "4917908943ec208fea2ee4a70188d6aacfe7688a322ebb1bd746df7336ada7d1",
+          "historical_sha256": "4917908943ec208fea2ee4a70188d6aacfe7688a322ebb1bd746df7336ada7d1"
+        },
+        {
+          "path": "merlin/tests/ir/test_lean_graph_state_integer_receipts.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "a33eb47fce9f27d78576ca01798e04dc566653740d1d9c753153604ca238a2c7",
+          "historical_sha256": "a33eb47fce9f27d78576ca01798e04dc566653740d1d9c753153604ca238a2c7"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+          "historical_sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "83249dfd93f8e4e472ba9b4d450a55aa60d6f4a5a730e83349e912e37f494dd2",
+          "historical_sha256": "83249dfd93f8e4e472ba9b4d450a55aa60d6f4a5a730e83349e912e37f494dd2"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+          "historical_sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "8232ab65cb3e8b4c903b9aba8d2f161070917e7831ea42881841c9a379b8440c",
+          "historical_sha256": "8232ab65cb3e8b4c903b9aba8d2f161070917e7831ea42881841c9a379b8440c"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+          "historical_sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+          "historical_sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+          "historical_sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de"
+        },
+        {
+          "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+          "historical_sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_integer.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "2272475e998de3ce0a47c4d69e6f45e597fdac61565b9a9e31211d1f7db57d1f",
+          "historical_sha256": "2272475e998de3ce0a47c4d69e6f45e597fdac61565b9a9e31211d1f7db57d1f"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_integer_capture.py",
+          "retained_source_exact": true,
+          "current_equals_historical": false,
+          "current_sha256": "eb2a43185067b669666c53ae38a2360ef9749b40b8ddee2f9cd0811dcb3e13cf",
+          "historical_sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_integer_emit.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "0d41bf9e18ff5204d4c0052308e4e6a27c8b3de2707680c0c593aed96eaaba80",
+          "historical_sha256": "0d41bf9e18ff5204d4c0052308e4e6a27c8b3de2707680c0c593aed96eaaba80"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_integer_kernel.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "eaa2515ab01030b656b716590289ada431df961857bfac005e54db6044fa0dfa",
+          "historical_sha256": "eaa2515ab01030b656b716590289ada431df961857bfac005e54db6044fa0dfa"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_integer_models.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "91de1d4ba3c249b4adc53c312c864ce60d76ff4e33d25bbced7173fbaf3f3d78",
+          "historical_sha256": "91de1d4ba3c249b4adc53c312c864ce60d76ff4e33d25bbced7173fbaf3f3d78"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_integer_mutate.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "fd9b8516d5ccf80feebf8e0ff1753d384904f7d48db6e37b939c9f1d59ed691e",
+          "historical_sha256": "fd9b8516d5ccf80feebf8e0ff1753d384904f7d48db6e37b939c9f1d59ed691e"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_integer_proof.py",
+          "retained_source_exact": true,
+          "current_equals_historical": false,
+          "current_sha256": "524f5bc7af1096375ba8a1af2e4c48c3b92cc5ab27801e50c92b5ba91ad74149",
+          "historical_sha256": "adf3091b68dd916413d614ed177f2ad9e96979ad3bdbc13e933fb1edbcac4263"
+        },
+        {
+          "path": "src/merlin/verify/lean_graph_state_integer_receipt.py",
+          "retained_source_exact": true,
+          "current_equals_historical": true,
+          "current_sha256": "420f93195419fcd9198ecd85f01a3a217ffa6c31063a8a52fc253d47f39dda8f",
+          "historical_sha256": "420f93195419fcd9198ecd85f01a3a217ffa6c31063a8a52fc253d47f39dda8f"
+        }
+      ],
+      "current_host_differences_are_not_qualification": true
+    }
+  ],
+  "selected_index_operation_AST_matches_sealed_source": true,
+  "freeze_assertion_failure": "initial packaging assumed every current old host source equals historical; four prior host corrections identified; sealed snapshots and all Lean/emitter sources exact"
+}

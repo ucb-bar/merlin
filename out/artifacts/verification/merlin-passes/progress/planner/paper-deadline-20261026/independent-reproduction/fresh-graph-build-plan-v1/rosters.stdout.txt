@@ -1,0 +1,1 @@
+{"separate_profile_plans": 6, "semantic_candidate_cases": 26, "positive_candidates": 6, "expected_binding_refusals": 20, "accepted_qualified": 0, "Lean_shared_conflicts": 0, "Python_host_variants": 0}

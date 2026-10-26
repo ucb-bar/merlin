@@ -1,0 +1,132 @@
+{
+  "profiles": [
+    {
+      "id": "Q-service-CSE",
+      "successor_of": null,
+      "plan": {
+        "file": "plans/Q-service-CSE.json",
+        "sha256": "ad589e493842f5f1bdbc46cc19cdc16fdeb5ffb6df8f042a556fa0425af468d6",
+        "bytes": 16826
+      },
+      "project_sources": 7,
+      "cases": 1,
+      "roots_per_case": [
+        17
+      ],
+      "library_output_request": "fresh-build/Q-service-CSE/4745ac240bf987eeb4886f20aab86b1772591e6de13568cd38ce5398f3e4b9a1/library",
+      "library_build": "UNEXECUTED",
+      "source_plan_identity": "5e390d938b7c4eb97eea52d9d0a105fd52da2d9c92cbee0961229911fc6e6912"
+    },
+    {
+      "id": "Q-chain-endpoint",
+      "successor_of": null,
+      "plan": {
+        "file": "plans/Q-chain-endpoint.json",
+        "sha256": "483cff98a78f934c3b6841c6411f9eecae369d377db231b04601a38737343d25",
+        "bytes": 18525
+      },
+      "project_sources": 7,
+      "cases": 1,
+      "roots_per_case": [
+        48
+      ],
+      "library_output_request": "fresh-build/Q-chain-endpoint/224c52ff77962e133ebee99342224c6c0513629495d645e499392f14c15bbdb3/library",
+      "library_build": "UNEXECUTED",
+      "source_plan_identity": "e6fb5bba4e7bdc4ad1f0121a5989f05f25bdd46c85c07dde62c4e35e14053c27"
+    },
+    {
+      "id": "Q-four-transform",
+      "successor_of": null,
+      "plan": {
+        "file": "plans/Q-four-transform.json",
+        "sha256": "ad957d6655f564704e05cc71dc9df3efb3196a32e62ec20a3cb4623dca9976f4",
+        "bytes": 41765
+      },
+      "project_sources": 24,
+      "cases": 1,
+      "roots_per_case": [
+        57
+      ],
+      "library_output_request": "fresh-build/Q-four-transform/37609c496ad46dd9f4967850ec73e60938be64398c4715d96b7db15a7fd25a7a/library",
+      "library_build": "UNEXECUTED",
+      "source_plan_identity": "e97473876b5323be2ded68c73348ac1d0c5a3ebc12ff92e0b5654ee5a458cb0e"
+    },
+    {
+      "id": "Q-integer-five-transform",
+      "successor_of": null,
+      "plan": {
+        "file": "plans/Q-integer-five-transform.json",
+        "sha256": "9030b0d45e863a10d90a46d5978011849344ce5538805c0a69426e9979f1d855",
+        "bytes": 52986
+      },
+      "project_sources": 30,
+      "cases": 1,
+      "roots_per_case": [
+        82
+      ],
+      "library_output_request": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/library",
+      "library_build": "UNEXECUTED",
+      "source_plan_identity": "003dfabc9f937472ee2635e65d04323f8e58d63eef3b371279983389434a246a"
+    },
+    {
+      "id": "W-whole-v1",
+      "successor_of": null,
+      "plan": {
+        "file": "plans/W-whole-v1.json",
+        "sha256": "f58fd9b894da67eb8b0958a9eb7789da0626241652a0b20f708554d08bb7f9c7",
+        "bytes": 627037
+      },
+      "project_sources": 106,
+      "cases": 10,
+      "roots_per_case": [
+        215,
+        215,
+        215,
+        215,
+        215,
+        215,
+        215,
+        215,
+        215,
+        215
+      ],
+      "library_output_request": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/library",
+      "library_build": "UNEXECUTED",
+      "source_plan_identity": "41615e8e76003cf7504d58794e9a493504cdf5f714a364968743fc909944fa84"
+    },
+    {
+      "id": "W-entries-successor-v1",
+      "successor_of": "W-whole-v1",
+      "plan": {
+        "file": "plans/W-entries-successor-v1.json",
+        "sha256": "a6ea2995381e00e2bbc8593db376bd31677e60251ee8ad64ceae14e92caf44d8",
+        "bytes": 980130
+      },
+      "project_sources": 111,
+      "cases": 12,
+      "roots_per_case": [
+        249,
+        249,
+        256,
+        249,
+        249,
+        249,
+        249,
+        249,
+        249,
+        249,
+        249,
+        249
+      ],
+      "library_output_request": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/library",
+      "library_build": "UNEXECUTED",
+      "source_plan_identity": "f04da98447560a46a02bf98f918ba153e8e10a48f204f2867794f66b5fff60c6"
+    }
+  ],
+  "combined_source_build_implies_combined_theorem": false,
+  "not_selected_schedule_successor": {
+    "fixed_packet": null,
+    "state": "UNKNOWN_NOT_NAMED_BY_THIS_ASSIGNMENT; add separately after root selection"
+  },
+  "all_new_builds_and_audits": "UNEXECUTED"
+}

@@ -1,0 +1,1453 @@
+{
+  "id": "Q-integer-five-transform",
+  "successor_of": null,
+  "source_plan_identity": "003dfabc9f937472ee2635e65d04323f8e58d63eef3b371279983389434a246a",
+  "status": "SOURCE_DAG_PREPARED_NOT_COMPILED",
+  "sources": {
+    "Merlin.GraphLoopsSegment": {
+      "source": {
+        "file": "payload/4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68.lean",
+        "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+        "bytes": 9653
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+            "bytes": 9653
+          }
+        }
+      ]
+    },
+    "Merlin.GraphLoopsSegmentBounds": {
+      "source": {
+        "file": "payload/19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22.lean",
+        "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+        "bytes": 3962
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+            "bytes": 3962
+          }
+        }
+      ]
+    },
+    "Merlin.GraphLoopsSegmentModel": {
+      "source": {
+        "file": "payload/465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a.lean",
+        "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+        "bytes": 7091
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+            "bytes": 7091
+          }
+        }
+      ]
+    },
+    "Merlin.GraphLoopsSegmentState": {
+      "source": {
+        "file": "payload/2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2.lean",
+        "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+        "bytes": 2118
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+            "bytes": 2118
+          }
+        }
+      ]
+    },
+    "Merlin.GraphLoopsUnroll": {
+      "source": {
+        "file": "payload/69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab.lean",
+        "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+        "bytes": 5730
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+            "bytes": 5730
+          }
+        }
+      ]
+    },
+    "Merlin.GraphLoopsUnrollBounds": {
+      "source": {
+        "file": "payload/14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa.lean",
+        "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+        "bytes": 5106
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+            "bytes": 5106
+          }
+        }
+      ]
+    },
+    "Merlin.GraphLoopsUnrollGrouping": {
+      "source": {
+        "file": "payload/e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac.lean",
+        "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+        "bytes": 9854
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+            "bytes": 9854
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateIntegerCode": {
+      "source": {
+        "file": "payload/9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697.lean",
+        "sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+        "bytes": 9070
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+            "bytes": 9070
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateIntegerExpressions": {
+      "source": {
+        "file": "payload/a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26.lean",
+        "sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+        "bytes": 8106
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+            "bytes": 8106
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateIntegerOperations": {
+      "source": {
+        "file": "payload/ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8.lean",
+        "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+        "bytes": 4850
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+            "bytes": 4850
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateIntegerProgram": {
+      "source": {
+        "file": "payload/43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b.lean",
+        "sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+        "bytes": 4275
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+            "bytes": 4275
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateIntegerRepresentation": {
+      "source": {
+        "file": "payload/c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de.lean",
+        "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+        "bytes": 7321
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+            "bytes": 7321
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateIntegerTrace": {
+      "source": {
+        "file": "payload/927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25.lean",
+        "sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+        "bytes": 7097
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+            "bytes": 7097
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineControl": {
+      "source": {
+        "file": "payload/81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035.lean",
+        "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+        "bytes": 5747
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+            "bytes": 5747
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineFailure": {
+      "source": {
+        "file": "payload/c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215.lean",
+        "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+        "bytes": 4641
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+            "bytes": 4641
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineFold": {
+      "source": {
+        "file": "payload/e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b.lean",
+        "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+        "bytes": 7412
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+            "bytes": 7412
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineIndex": {
+      "source": {
+        "file": "payload/f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604.lean",
+        "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+        "bytes": 7569
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+            "bytes": 7569
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineLiterals": {
+      "source": {
+        "file": "payload/f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751.lean",
+        "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+        "bytes": 1400
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+            "bytes": 1400
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineLoops": {
+      "source": {
+        "file": "payload/6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb.lean",
+        "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+        "bytes": 8734
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+            "bytes": 8734
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineProgram": {
+      "source": {
+        "file": "payload/2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453.lean",
+        "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+        "bytes": 3197
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+            "bytes": 3197
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineScope": {
+      "source": {
+        "file": "payload/6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9.lean",
+        "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+        "bytes": 2509
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+            "bytes": 2509
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStatePipelineSegments": {
+      "source": {
+        "file": "payload/39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124.lean",
+        "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+        "bytes": 4541
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+            "bytes": 4541
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalar": {
+      "source": {
+        "file": "payload/d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02.lean",
+        "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+        "bytes": 4654
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+            "bytes": 4654
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarContract": {
+      "source": {
+        "file": "payload/c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9.lean",
+        "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+        "bytes": 8229
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+            "bytes": 8229
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarInitialized": {
+      "source": {
+        "file": "payload/265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a.lean",
+        "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+        "bytes": 11782
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+            "bytes": 11782
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarNormalize": {
+      "source": {
+        "file": "payload/a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114.lean",
+        "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+        "bytes": 6170
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+            "bytes": 6170
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarSound": {
+      "source": {
+        "file": "payload/14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d.lean",
+        "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+        "bytes": 9963
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+            "bytes": 9963
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarTyping": {
+      "source": {
+        "file": "payload/d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d.lean",
+        "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+        "bytes": 6614
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+            "bytes": 6614
+          }
+        }
+      ]
+    },
+    "Merlin.ResourceGeometry": {
+      "source": {
+        "file": "payload/7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf.lean",
+        "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+        "bytes": 3246
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+            "bytes": 3246
+          }
+        }
+      ]
+    },
+    "Merlin.StateEffects": {
+      "source": {
+        "file": "payload/f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176.lean",
+        "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+        "bytes": 4537
+      },
+      "provenance": [
+        {
+          "packet": "larger-profiles-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/StateEffects.lean",
+          "original": null,
+          "original_pin": {
+            "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+            "bytes": 4537
+          }
+        }
+      ]
+    }
+  },
+  "headers": {
+    "Merlin.GraphLoopsSegment": {
+      "imports": [
+        "Merlin.StateEffects",
+        "Merlin.ResourceGeometry"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 541,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphLoopsSegmentBounds": {
+      "imports": [
+        "Merlin.GraphLoopsSegment"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 187,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphLoopsSegmentModel": {
+      "imports": [
+        "Merlin.GraphLoopsSegmentBounds"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 430,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphLoopsSegmentState": {
+      "imports": [
+        "Merlin.GraphLoopsSegmentModel"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 286,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphLoopsUnroll": {
+      "imports": [
+        "Merlin.GraphLoopsSegmentState"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 278,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphLoopsUnrollBounds": {
+      "imports": [
+        "Merlin.GraphLoopsUnrollGrouping"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 182,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphLoopsUnrollGrouping": {
+      "imports": [
+        "Merlin.GraphLoopsUnroll"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 174,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateIntegerCode": {
+      "imports": [
+        "Merlin.GraphStateIntegerExpressions"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 356,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateIntegerExpressions": {
+      "imports": [
+        "Merlin.GraphStateIntegerOperations"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 285,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateIntegerOperations": {
+      "imports": [
+        "Merlin.GraphStateIntegerRepresentation"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 260,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateIntegerProgram": {
+      "imports": [
+        "Merlin.GraphStateIntegerCode",
+        "Merlin.GraphStatePipelineProgram"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 314,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateIntegerRepresentation": {
+      "imports": [
+        "Merlin.GraphStateScalar"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 332,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateIntegerTrace": {
+      "imports": [
+        "Merlin.GraphStateIntegerRepresentation"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 293,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineControl": {
+      "imports": [
+        "Merlin.GraphStatePipelineFailure",
+        "Merlin.GraphLoopsUnrollGrouping"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 308,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineFailure": {
+      "imports": [
+        "Merlin.GraphStateScalarContract"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 429,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineFold": {
+      "imports": [
+        "Merlin.GraphStatePipelineControl"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 246,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineIndex": {
+      "imports": [
+        "Merlin.GraphStatePipelineControl",
+        "Merlin.GraphLoopsUnrollBounds"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 376,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineLiterals": {
+      "imports": [
+        "Merlin.GraphStatePipelineIndex"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 266,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineLoops": {
+      "imports": [
+        "Merlin.GraphStatePipelineSegments",
+        "Merlin.GraphStateScalarSound"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 303,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineProgram": {
+      "imports": [
+        "Merlin.GraphStatePipelineIndex",
+        "Merlin.GraphStateScalarTyping"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 385,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineScope": {
+      "imports": [
+        "Merlin.GraphStateScalarSound"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 261,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStatePipelineSegments": {
+      "imports": [
+        "Merlin.GraphStatePipelineFold"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 260,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalar": {
+      "imports": [
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping",
+        "Merlin.GraphStateScalarInitialized"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 332,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarContract": {
+      "imports": [
+        "Init"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 323,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarInitialized": {
+      "imports": [
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 310,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarNormalize": {
+      "imports": [
+        "Merlin.GraphStateScalarContract"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 280,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarSound": {
+      "imports": [
+        "Merlin.GraphStateScalarNormalize"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 195,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarTyping": {
+      "imports": [
+        "Merlin.GraphStateScalarNormalize"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 281,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.ResourceGeometry": {
+      "imports": [
+        "Lean.Elab.Tactic.Omega"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 272,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.StateEffects": {
+      "imports": [
+        "Init.Data.List.Lemmas"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 356,
+      "decoder": "closed-literal-source-header-v1"
+    }
+  },
+  "project_DAG": {
+    "Merlin.GraphLoopsSegment": [
+      "Merlin.ResourceGeometry",
+      "Merlin.StateEffects"
+    ],
+    "Merlin.GraphLoopsSegmentBounds": [
+      "Merlin.GraphLoopsSegment"
+    ],
+    "Merlin.GraphLoopsSegmentModel": [
+      "Merlin.GraphLoopsSegmentBounds"
+    ],
+    "Merlin.GraphLoopsSegmentState": [
+      "Merlin.GraphLoopsSegmentModel"
+    ],
+    "Merlin.GraphLoopsUnroll": [
+      "Merlin.GraphLoopsSegmentState"
+    ],
+    "Merlin.GraphLoopsUnrollBounds": [
+      "Merlin.GraphLoopsUnrollGrouping"
+    ],
+    "Merlin.GraphLoopsUnrollGrouping": [
+      "Merlin.GraphLoopsUnroll"
+    ],
+    "Merlin.GraphStateIntegerCode": [
+      "Merlin.GraphStateIntegerExpressions"
+    ],
+    "Merlin.GraphStateIntegerExpressions": [
+      "Merlin.GraphStateIntegerOperations"
+    ],
+    "Merlin.GraphStateIntegerOperations": [
+      "Merlin.GraphStateIntegerRepresentation"
+    ],
+    "Merlin.GraphStateIntegerProgram": [
+      "Merlin.GraphStateIntegerCode",
+      "Merlin.GraphStatePipelineProgram"
+    ],
+    "Merlin.GraphStateIntegerRepresentation": [
+      "Merlin.GraphStateScalar"
+    ],
+    "Merlin.GraphStateIntegerTrace": [
+      "Merlin.GraphStateIntegerRepresentation"
+    ],
+    "Merlin.GraphStatePipelineControl": [
+      "Merlin.GraphLoopsUnrollGrouping",
+      "Merlin.GraphStatePipelineFailure"
+    ],
+    "Merlin.GraphStatePipelineFailure": [
+      "Merlin.GraphStateScalarContract"
+    ],
+    "Merlin.GraphStatePipelineFold": [
+      "Merlin.GraphStatePipelineControl"
+    ],
+    "Merlin.GraphStatePipelineIndex": [
+      "Merlin.GraphLoopsUnrollBounds",
+      "Merlin.GraphStatePipelineControl"
+    ],
+    "Merlin.GraphStatePipelineLiterals": [
+      "Merlin.GraphStatePipelineIndex"
+    ],
+    "Merlin.GraphStatePipelineLoops": [
+      "Merlin.GraphStatePipelineSegments",
+      "Merlin.GraphStateScalarSound"
+    ],
+    "Merlin.GraphStatePipelineProgram": [
+      "Merlin.GraphStatePipelineIndex",
+      "Merlin.GraphStateScalarTyping"
+    ],
+    "Merlin.GraphStatePipelineScope": [
+      "Merlin.GraphStateScalarSound"
+    ],
+    "Merlin.GraphStatePipelineSegments": [
+      "Merlin.GraphStatePipelineFold"
+    ],
+    "Merlin.GraphStateScalar": [
+      "Merlin.GraphStateScalarInitialized",
+      "Merlin.GraphStateScalarSound",
+      "Merlin.GraphStateScalarTyping"
+    ],
+    "Merlin.GraphStateScalarContract": [],
+    "Merlin.GraphStateScalarInitialized": [
+      "Merlin.GraphStateScalarSound",
+      "Merlin.GraphStateScalarTyping"
+    ],
+    "Merlin.GraphStateScalarNormalize": [
+      "Merlin.GraphStateScalarContract"
+    ],
+    "Merlin.GraphStateScalarSound": [
+      "Merlin.GraphStateScalarNormalize"
+    ],
+    "Merlin.GraphStateScalarTyping": [
+      "Merlin.GraphStateScalarNormalize"
+    ],
+    "Merlin.ResourceGeometry": [],
+    "Merlin.StateEffects": []
+  },
+  "external_module_names_only": {
+    "Merlin.GraphLoopsSegment": [
+      "Init"
+    ],
+    "Merlin.GraphLoopsSegmentBounds": [
+      "Init"
+    ],
+    "Merlin.GraphLoopsSegmentModel": [
+      "Init"
+    ],
+    "Merlin.GraphLoopsSegmentState": [
+      "Init"
+    ],
+    "Merlin.GraphLoopsUnroll": [
+      "Init"
+    ],
+    "Merlin.GraphLoopsUnrollBounds": [
+      "Init"
+    ],
+    "Merlin.GraphLoopsUnrollGrouping": [
+      "Init"
+    ],
+    "Merlin.GraphStateIntegerCode": [
+      "Init"
+    ],
+    "Merlin.GraphStateIntegerExpressions": [
+      "Init"
+    ],
+    "Merlin.GraphStateIntegerOperations": [
+      "Init"
+    ],
+    "Merlin.GraphStateIntegerProgram": [
+      "Init"
+    ],
+    "Merlin.GraphStateIntegerRepresentation": [
+      "Init"
+    ],
+    "Merlin.GraphStateIntegerTrace": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineControl": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineFailure": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineFold": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineIndex": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineLiterals": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineLoops": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineProgram": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineScope": [
+      "Init"
+    ],
+    "Merlin.GraphStatePipelineSegments": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalar": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarContract": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarInitialized": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarNormalize": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarSound": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarTyping": [
+      "Init"
+    ],
+    "Merlin.ResourceGeometry": [
+      "Init",
+      "Lean.Elab.Tactic.Omega"
+    ],
+    "Merlin.StateEffects": [
+      "Init",
+      "Init.Data.List.Lemmas"
+    ]
+  },
+  "support_library_build_order": [
+    "Merlin.GraphStateScalarContract",
+    "Merlin.GraphStatePipelineFailure",
+    "Merlin.GraphStateScalarNormalize",
+    "Merlin.GraphStateScalarSound",
+    "Merlin.GraphStatePipelineScope",
+    "Merlin.GraphStateScalarTyping",
+    "Merlin.GraphStateScalarInitialized",
+    "Merlin.GraphStateScalar",
+    "Merlin.GraphStateIntegerRepresentation",
+    "Merlin.GraphStateIntegerOperations",
+    "Merlin.GraphStateIntegerExpressions",
+    "Merlin.GraphStateIntegerCode",
+    "Merlin.GraphStateIntegerTrace",
+    "Merlin.ResourceGeometry",
+    "Merlin.StateEffects",
+    "Merlin.GraphLoopsSegment",
+    "Merlin.GraphLoopsSegmentBounds",
+    "Merlin.GraphLoopsSegmentModel",
+    "Merlin.GraphLoopsSegmentState",
+    "Merlin.GraphLoopsUnroll",
+    "Merlin.GraphLoopsUnrollGrouping",
+    "Merlin.GraphLoopsUnrollBounds",
+    "Merlin.GraphStatePipelineControl",
+    "Merlin.GraphStatePipelineFold",
+    "Merlin.GraphStatePipelineIndex",
+    "Merlin.GraphStatePipelineLiterals",
+    "Merlin.GraphStatePipelineProgram",
+    "Merlin.GraphStateIntegerProgram",
+    "Merlin.GraphStatePipelineSegments",
+    "Merlin.GraphStatePipelineLoops"
+  ],
+  "support_library_output_request": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/library",
+  "cases": [
+    {
+      "id": "Q-integer-five-transform",
+      "module": "GraphLargerProfile_665a9fa288938b8ccb3271e2492a95ecb24c4734e9a83e1d753ba6997276bef3",
+      "query": {
+        "file": "payload/8ce64d562770b087f356d8eadeffd7981e6c417c8751bb2d45dc899e140e83ae.lean",
+        "sha256": "8ce64d562770b087f356d8eadeffd7981e6c417c8751bb2d45dc899e140e83ae",
+        "bytes": 52280
+      },
+      "request_metadata": {
+        "file": "payload/bda92ebc370eb24726a6bada6d5c1c87b70d2b76d88e149314dee80cfeb1b4cc.json",
+        "sha256": "bda92ebc370eb24726a6bada6d5c1c87b70d2b76d88e149314dee80cfeb1b4cc",
+        "bytes": 70918
+      },
+      "prepared_metadata": {
+        "file": "payload/50828c6eead9e448a24c628cb99ddb9917abe344baffd366a4fd28628417244d.json",
+        "sha256": "50828c6eead9e448a24c628cb99ddb9917abe344baffd366a4fd28628417244d",
+        "bytes": 178767
+      },
+      "bindings": {
+        "final_root": {
+          "path": [
+            "final_root"
+          ]
+        },
+        "support_roots": {
+          "path": [
+            "support_roots"
+          ]
+        },
+        "query": {
+          "path": [
+            "query"
+          ]
+        }
+      },
+      "query_status": "UNCOMPILED",
+      "expected_protocol": "POSITIVE_CANDIDATE_NOT_ACCEPTED",
+      "final_root": "merlin_profile_transform",
+      "support_roots": [
+        "Merlin.GraphStateIntegerInstance.Suffix.complete",
+        "Merlin.GraphStateIntegerInstance.Suffix.controlAccepted",
+        "Merlin.GraphStateIntegerInstance.Suffix.literalsAccepted",
+        "Merlin.GraphStateIntegerInstance.Suffix.literalsFit",
+        "Merlin.GraphStateIntegerInstance.Suffix.originalEntriesChecked",
+        "Merlin.GraphStateIntegerInstance.Suffix.finalEntriesChecked",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.actual",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.firstAccepted",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.secondAccepted",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.firstTwo",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.typed0",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.typed1",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.typed2",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.typed3",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.typed4",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.body_group",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.innerAccepted",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.inner_same",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.outer_same",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.suffixAccepted23",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.suffixAccepted34",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.suffix_same23",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.suffix_same34",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.unrollBoundsChecked",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.segmentBoundsChecked",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.form2",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.form3",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.form4",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.unroll_actual",
+        "Merlin.GraphStateIntegerInstance.Suffix.F3.segment_actual",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.actual",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.firstAccepted",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.secondAccepted",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.firstTwo",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.typed0",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.typed1",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.typed2",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.typed3",
+        "Merlin.GraphStateIntegerInstance.Suffix.F4.typed4",
+        "Merlin.GraphGateProfileAdjacent.step2F3",
+        "Merlin.GraphGateProfileAdjacent.step3F3",
+        "Merlin.GraphGateProfileAdjacent.step2F4",
+        "Merlin.GraphGateProfileAdjacent.step3F4",
+        "Merlin.GraphGateProfileAdjacent.complete0",
+        "Merlin.GraphGateProfileAdjacent.complete1",
+        "Merlin.GraphGateProfileAdjacent.complete2",
+        "Merlin.GraphGateProfileAdjacent.complete3",
+        "Merlin.GraphGateProfileAdjacent.original_join",
+        "Merlin.GraphGateProfileAdjacent.final_join",
+        "Merlin.GraphStateIntegerInstance.originalRegistry",
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphStateIntegerInstance.exactMiddle",
+        "Merlin.GraphStateIntegerInstance.complete",
+        "Merlin.GraphStateIntegerInstance.F3.actual",
+        "Merlin.GraphStateIntegerInstance.F3.reached",
+        "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F3.beforeTyped",
+        "Merlin.GraphStateIntegerInstance.F3.afterTyped",
+        "Merlin.GraphStateIntegerInstance.F3.firstNormalized",
+        "Merlin.GraphStateIntegerInstance.F3.secondNormalized",
+        "Merlin.GraphStateIntegerInstance.F4.actual",
+        "Merlin.GraphStateIntegerInstance.F4.reached",
+        "Merlin.GraphStateIntegerInstance.F4.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F4.beforeTyped",
+        "Merlin.GraphStateIntegerInstance.F4.afterTyped",
+        "Merlin.GraphStateIntegerInstance.F4.firstNormalized",
+        "Merlin.GraphStateIntegerInstance.F4.secondNormalized",
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Pipeline.entries_cons",
+        "Merlin.GraphState.Pipeline.unroll_loop",
+        "Merlin.GraphState.Pipeline.segment_loop",
+        "Merlin.GraphState.Pipeline.Scope.check_sound",
+        "Merlin.GraphState.Pipeline.checkControl_sound",
+        "Merlin.GraphState.Pipeline.checkLiterals_sound",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.compose_suffix",
+        "Merlin.GraphState.Integer.index_model_typing",
+        "Merlin.GraphState.Integer.canonical_iff"
+      ],
+      "buffers": [
+        {
+          "label": "stage0.mlir",
+          "ref": {
+            "file": "payload/501cbb7a5d907aec06747aaa8f302389865b9dfa14aa9116a9a4e85799c3a928.mlir",
+            "sha256": "501cbb7a5d907aec06747aaa8f302389865b9dfa14aa9116a9a4e85799c3a928",
+            "bytes": 2454
+          }
+        },
+        {
+          "label": "stage1.mlir",
+          "ref": {
+            "file": "payload/5eb8639a8618f741d153ca3d1c67bf9b367b3d731326e87943e51f21bf91ad72.mlir",
+            "sha256": "5eb8639a8618f741d153ca3d1c67bf9b367b3d731326e87943e51f21bf91ad72",
+            "bytes": 2102
+          }
+        },
+        {
+          "label": "stage2.mlir",
+          "ref": {
+            "file": "payload/dcb9864923cfd44b1b47230a378eb3fd1ed5d45533d4ad67cd7c19bbeeb45673.mlir",
+            "sha256": "dcb9864923cfd44b1b47230a378eb3fd1ed5d45533d4ad67cd7c19bbeeb45673",
+            "bytes": 1581
+          }
+        },
+        {
+          "label": "stage3.mlir",
+          "ref": {
+            "file": "payload/3f286f5129ea9bb42cfff7d6f7db3c1ed6c3bb4900bc3f3caf808b4a2a15e25c.mlir",
+            "sha256": "3f286f5129ea9bb42cfff7d6f7db3c1ed6c3bb4900bc3f3caf808b4a2a15e25c",
+            "bytes": 1579
+          }
+        },
+        {
+          "label": "stage4.mlir",
+          "ref": {
+            "file": "payload/4a8480afdc58541b5d75dbe88f5db5dbc23ffe61710faa02f2b5e2f77543b321.mlir",
+            "sha256": "4a8480afdc58541b5d75dbe88f5db5dbc23ffe61710faa02f2b5e2f77543b321",
+            "bytes": 2797
+          }
+        },
+        {
+          "label": "stage5.mlir",
+          "ref": {
+            "file": "payload/89d26974abe9a9410781de48c16c1ab565ebed0e6d923a94677c4738d5de358d.mlir",
+            "sha256": "89d26974abe9a9410781de48c16c1ab565ebed0e6d923a94677c4738d5de358d",
+            "bytes": 3226
+          }
+        }
+      ],
+      "domain": "canonical_word_entry_scalar_scf_static_no_tail_v1",
+      "relation": "equal_canonical_entry_returns_errors_terminal_world",
+      "assumptions": [
+        "trusted complete xDSL parsing, actual source projection and host source binding",
+        "same Scalar.Program/evalProgram, concrete mathematical Int index control and complete terminal world",
+        "external calls explicitly declared; same possibly failing descriptor interpretation with local successful arity",
+        "no internal call bridge, native ABI/alias/allocator/completion fidelity or hidden private-SSA observers",
+        "one static nonnegative changed top-level loop per changed function, positive stride, no-tail bulk count>factor",
+        "factor2..4, tile2..16, signed32|64 control bounds, one..four word carries, two-input changed functions",
+        "region-free original loop body, at most16 lane external calls, bounded syntax, no broader control modes",
+        "existing wrapping BitVec word primitive; canonical signless word entry values",
+        "local external successful-result canonicality on canonical operands; reached typing derived",
+        "wrong arity and absent entry remain observable; no assumed source success or intermediate typing"
+      ],
+      "model_metadata": {
+        "profile": "canonical_integer_scalar_scf_source_v1",
+        "query_contract": null,
+        "compiler_pass_chain": "not_established"
+      },
+      "original_buffer_associations": "raw actual bytes retained; semantic joins require fresh audit",
+      "project_sources_binding": {
+        "path": [
+          "project_sources"
+        ]
+      },
+      "exact_final_declaration": "theorem merlin_profile_transform {World Error : Type}\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.registry)\n    (typed : \u2200 identity arguments world values final,\n      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical\n        (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).inputs arguments \u2192\n      external.run identity arguments world = .ok (values,final) \u2192\n      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical\n        (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).outputs values) :\n    Merlin.GraphState.Integer.PreservesEntriesCanonical\n      (Merlin.GraphStateIntegerInstance.Suffix.M Merlin.GraphState.Integer.primitive external)\n      Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries",
+      "declaration_status": "SOURCE_TEXT_ONLY_NOT_KERNEL_TYPE",
+      "request_exact_final_statement": "theorem merlin_profile_transform {World Error : Type}\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.registry)\n    (typed : \u2200 identity arguments world values final,\n      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical\n        (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).inputs arguments \u2192\n      external.run identity arguments world = .ok (values,final) \u2192\n      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical\n        (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).outputs values) :\n    Merlin.GraphState.Integer.PreservesEntriesCanonical\n      (Merlin.GraphStateIntegerInstance.Suffix.M Merlin.GraphState.Integer.primitive external)\n      Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries :=\n  Merlin.GraphStateIntegerInstance.complete external typed\n",
+      "status": "SOURCE_QUERY_DAG_PREPARED_NOT_CHECKED",
+      "query_header": {
+        "imports": [
+          "Merlin.GraphStateIntegerProgram",
+          "Merlin.GraphStateIntegerTrace",
+          "Merlin.GraphStatePipelineIndex",
+          "Merlin.GraphStatePipelineLiterals",
+          "Merlin.GraphStatePipelineScope",
+          "Merlin.GraphStatePipelineLoops",
+          "Merlin.GraphStatePipelineProgram",
+          "Merlin.GraphStateScalar"
+        ],
+        "prelude": false,
+        "implicit_Init": true,
+        "body_start": 302,
+        "decoder": "closed-literal-source-header-v1"
+      },
+      "query_project_imports": [
+        "Merlin.GraphStateIntegerProgram",
+        "Merlin.GraphStateIntegerTrace",
+        "Merlin.GraphStatePipelineIndex",
+        "Merlin.GraphStatePipelineLiterals",
+        "Merlin.GraphStatePipelineScope",
+        "Merlin.GraphStatePipelineLoops",
+        "Merlin.GraphStatePipelineProgram",
+        "Merlin.GraphStateScalar"
+      ],
+      "query_external_names_only": [
+        "Init"
+      ],
+      "main_project_compile_order": [
+        "Merlin.GraphStateScalarContract",
+        "Merlin.GraphStatePipelineFailure",
+        "Merlin.GraphStateScalarNormalize",
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStatePipelineScope",
+        "Merlin.GraphStateScalarTyping",
+        "Merlin.GraphStateScalarInitialized",
+        "Merlin.GraphStateScalar",
+        "Merlin.GraphStateIntegerRepresentation",
+        "Merlin.GraphStateIntegerOperations",
+        "Merlin.GraphStateIntegerExpressions",
+        "Merlin.GraphStateIntegerCode",
+        "Merlin.GraphStateIntegerTrace",
+        "Merlin.ResourceGeometry",
+        "Merlin.StateEffects",
+        "Merlin.GraphLoopsSegment",
+        "Merlin.GraphLoopsSegmentBounds",
+        "Merlin.GraphLoopsSegmentModel",
+        "Merlin.GraphLoopsSegmentState",
+        "Merlin.GraphLoopsUnroll",
+        "Merlin.GraphLoopsUnrollGrouping",
+        "Merlin.GraphLoopsUnrollBounds",
+        "Merlin.GraphStatePipelineControl",
+        "Merlin.GraphStatePipelineFold",
+        "Merlin.GraphStatePipelineIndex",
+        "Merlin.GraphStatePipelineLiterals",
+        "Merlin.GraphStatePipelineProgram",
+        "Merlin.GraphStateIntegerProgram",
+        "Merlin.GraphStatePipelineSegments",
+        "Merlin.GraphStatePipelineLoops"
+      ],
+      "source_build_roles_in_dependency_order": [
+        {
+          "module": "Merlin.GraphStateScalarContract",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineFailure",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarNormalize",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarSound",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineScope",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStateScalarTyping",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarInitialized",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalar",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStateIntegerRepresentation",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateIntegerOperations",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateIntegerExpressions",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateIntegerCode",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateIntegerTrace",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.ResourceGeometry",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.StateEffects",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphLoopsSegment",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphLoopsSegmentBounds",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphLoopsSegmentModel",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphLoopsSegmentState",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphLoopsUnroll",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphLoopsUnrollGrouping",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphLoopsUnrollBounds",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineControl",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineFold",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineIndex",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineLiterals",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineProgram",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStateIntegerProgram",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineSegments",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStatePipelineLoops",
+          "role": "direct_query_import"
+        }
+      ],
+      "output_directory_request": {
+        "source": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/Q-integer-five-transform/source",
+        "objects": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/Q-integer-five-transform/objects",
+        "query": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/Q-integer-five-transform/query",
+        "audits": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/Q-integer-five-transform/audits"
+      },
+      "future_steps": {
+        "source_build": "UNEXECUTED",
+        "query_kernel_compilation": "UNEXECUTED",
+        "exact_root_axiom_type_audit": "UNEXECUTED",
+        "qualification": "UNEXECUTED",
+        "fresh_replay": "UNEXECUTED"
+      },
+      "root_resolution": "exact metadata/query pin association only; kernel name/type/axiom audit UNEXECUTED"
+    }
+  ],
+  "runtime_context": "MISSING_NEW_INDEPENDENT_F_OFFICIAL_SDK_INTAKE",
+  "compiling_source_union_proves_combined_semantics": false
+}

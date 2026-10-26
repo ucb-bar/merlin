@@ -1,0 +1,1262 @@
+[
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.load_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+    "line": 47,
+    "name": "Merlin.GraphLoopsMemorySCF.After.store_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 15,
+    "name": "Merlin.GraphLoopsMemorySCF.After.retained_clear",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 24,
+    "name": "Merlin.GraphLoopsMemorySCF.After.skipped_clear",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 33,
+    "name": "Merlin.GraphLoopsMemorySCF.After.allocate_retained",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 52,
+    "name": "Merlin.GraphLoopsMemorySCF.After.release_retained",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 69,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_address",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 77,
+    "name": "Merlin.GraphLoopsMemorySCF.After.load_slot_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 90,
+    "name": "Merlin.GraphLoopsMemorySCF.After.store_slot_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "line": 12,
+    "name": "Merlin.GraphLoopsMemorySCF.After.allocate_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "line": 43,
+    "name": "Merlin.GraphLoopsMemorySCF.After.release_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "line": 70,
+    "name": "Merlin.GraphLoopsMemorySCF.After.alias_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "line": 107,
+    "name": "Merlin.GraphLoopsMemorySCF.After.drop_release_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_allocate_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 25,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_release_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 36,
+    "name": "Merlin.GraphLoopsMemorySCF.After.alias_allocation_fragment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 56,
+    "name": "Merlin.GraphLoopsMemorySCF.After.skipped_release_fragment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 68,
+    "name": "Merlin.GraphLoopsMemorySCF.After.retained_allocation_fragment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 101,
+    "name": "Merlin.GraphLoopsMemorySCF.After.retained_release_fragment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.EntrySlotFacts",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 26,
+    "name": "Merlin.GraphLoopsMemorySCF.After.entry_related",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 49,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_returned_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 60,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_block",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 108,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_observation",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+    "line": 16,
+    "name": "Merlin.GraphLoopsMemorySCF.After.final_observations",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+    "line": 48,
+    "name": "Merlin.GraphLoopsMemorySCF.After.checked_actual_chain",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "line": 16,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Expansion.local_checked",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "line": 95,
+    "name": "Merlin.GraphLoopsMemorySCF.After.checked_local_list",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "line": 119,
+    "name": "Merlin.GraphLoopsMemorySCF.After.bound_local_simulations",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Chunk",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "line": 17,
+    "name": "Merlin.GraphLoopsMemorySCF.After.outer_to_segmented",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "line": 28,
+    "name": "Merlin.GraphLoopsMemorySCF.After.segmented_to_outer",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "line": 40,
+    "name": "Merlin.GraphLoopsMemorySCF.After.outer_source_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expandedMeaning",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 22,
+    "name": "Merlin.GraphLoopsMemorySCF.After.ObserverBinding",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 32,
+    "name": "Merlin.GraphLoopsMemorySCF.After.BoundaryFacts",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 45,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_primitive",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 56,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_generated",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 67,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_call",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 77,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_memory",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 18,
+    "name": "Merlin.GraphLoopsMemorySCF.After.physicalFinalClock",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 22,
+    "name": "Merlin.GraphLoopsMemorySCF.After.LocalSimulation",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 47,
+    "name": "Merlin.GraphLoopsMemorySCF.After.LocalSimulations",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 55,
+    "name": "Merlin.GraphLoopsMemorySCF.After.fragments_append",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 76,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expansions_forward",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 112,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expansions_backward",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Fragment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 20,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Fragment.code",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 25,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Fragment.step",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 36,
+    "name": "Merlin.GraphLoopsMemorySCF.After.alias_actual_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 51,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Fragment.eval_suffix",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 72,
+    "name": "Merlin.GraphLoopsMemorySCF.After.fragmentsCode",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 75,
+    "name": "Merlin.GraphLoopsMemorySCF.After.FragmentsRun",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 87,
+    "name": "Merlin.GraphLoopsMemorySCF.After.fragments_complete",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 113,
+    "name": "Merlin.GraphLoopsMemorySCF.After.alias_slot",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_depth_equivalent",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 45,
+    "name": "Merlin.GraphLoopsMemorySCF.After.fragments_refused",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 58,
+    "name": "Merlin.GraphLoopsMemorySCF.After.observer_fragment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 64,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_depth_one_refused",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 92,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_complete_equivalent",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 124,
+    "name": "Merlin.GraphLoopsMemorySCF.After.actual_final_equivalent",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 23,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.inner",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 27,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.body",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 31,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.code",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 37,
+    "name": "Merlin.GraphLoopsMemorySCF.After.eval_index_action",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 64,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.control_prefix",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.segmented_world_partition",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "line": 30,
+    "name": "Merlin.GraphLoopsMemorySCF.After.target_initializer_link",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "line": 80,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_initialized_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scoped_initializer_inputs",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+    "line": 38,
+    "name": "Merlin.GraphLoopsMemorySCF.After.initializer_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 15,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_retained_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 36,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_initializer_public",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 48,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_assignment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 110,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_pins",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 128,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_preserves",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.IndexOpcode",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 19,
+    "name": "Merlin.GraphLoopsMemorySCF.After.IndexOpcode.apply",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 27,
+    "name": "Merlin.GraphLoopsMemorySCF.After.IndexAction",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 36,
+    "name": "Merlin.GraphLoopsMemorySCF.After.IndexOpcodes",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 38,
+    "name": "Merlin.GraphLoopsMemorySCF.After.indexOpcodeAt",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 42,
+    "name": "Merlin.GraphLoopsMemorySCF.After.withIndex",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 51,
+    "name": "Merlin.GraphLoopsMemorySCF.After.finalMeaning",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 56,
+    "name": "Merlin.GraphLoopsMemorySCF.After.generated_action",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 63,
+    "name": "Merlin.GraphLoopsMemorySCF.After.unchanged_action",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 72,
+    "name": "Merlin.GraphLoopsMemorySCF.After.unchanged_regions",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 79,
+    "name": "Merlin.GraphLoopsMemorySCF.After.generated_controls",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_load_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "line": 51,
+    "name": "Merlin.GraphLoopsMemorySCF.After.candidate_store_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "line": 84,
+    "name": "Merlin.GraphLoopsMemorySCF.After.actual_load_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "line": 118,
+    "name": "Merlin.GraphLoopsMemorySCF.After.actual_store_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.NoViewKind",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 17,
+    "name": "Merlin.GraphLoopsMemorySCF.After.NoViewBindings",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 26,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scalar_slot_fixed",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 36,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scalar_values_fixed",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 49,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scalar_returns_fixed",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 58,
+    "name": "Merlin.GraphLoopsMemorySCF.After.caller_argument_fixed",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 70,
+    "name": "Merlin.GraphLoopsMemorySCF.After.retained_action_fragment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 93,
+    "name": "Merlin.GraphLoopsMemorySCF.After.constant_fragment",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 15,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Expansion",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 22,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Expansion.source",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 28,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Expansion.fragments",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 37,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Expansion.nextClock",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 42,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Expansion.generated",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 46,
+    "name": "Merlin.GraphLoopsMemorySCF.After.Expansion.Facts",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 80,
+    "name": "Merlin.GraphLoopsMemorySCF.After.ExpansionsValid",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 87,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expansionsDecidable",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 104,
+    "name": "Merlin.GraphLoopsMemorySCF.After.NoOpcodeOverrides",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 112,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expandedModule",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 118,
+    "name": "Merlin.GraphLoopsMemorySCF.After.ExpansionBinding",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 130,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expansion_source_exact",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 135,
+    "name": "Merlin.GraphLoopsMemorySCF.After.expanded_calls",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 142,
+    "name": "Merlin.GraphLoopsMemorySCF.After.checked_materialization",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.fragments_single",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 23,
+    "name": "Merlin.GraphLoopsMemorySCF.After.retained_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 67,
+    "name": "Merlin.GraphLoopsMemorySCF.After.constant_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 89,
+    "name": "Merlin.GraphLoopsMemorySCF.After.binary_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 120,
+    "name": "Merlin.GraphLoopsMemorySCF.After.observer_local",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.CellWrite",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 20,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RowWrite",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 27,
+    "name": "Merlin.GraphLoopsMemorySCF.After.nested_row_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 45,
+    "name": "Merlin.GraphLoopsMemorySCF.After.rows_heap_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 64,
+    "name": "Merlin.GraphLoopsMemorySCF.After.row_corresponds",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 95,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.inner_heap_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "line": 16,
+    "name": "Merlin.GraphLoopsMemorySCF.After.execution_simulate_live",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "line": 33,
+    "name": "Merlin.GraphLoopsMemorySCF.After.execution_live_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "line": 52,
+    "name": "Merlin.GraphLoopsMemorySCF.After.LiveHeapBodyCorresponds",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "line": 63,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scf_live_heap_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 18,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.typed",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 25,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.scratch",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 33,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.define",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 45,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.assign",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 60,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.define_existing",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 70,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.private_view",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 77,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.caller_view",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 84,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.scalar",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 90,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.returns",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 104,
+    "name": "Merlin.GraphLoopsMemorySCF.After.initializer_inputs_from_related",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.RegistersRelated.indices",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+    "line": 28,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scoped_load_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+    "line": 82,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scoped_store_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scoped_alias_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "line": 45,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scoped_allocate_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "line": 76,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scoped_release_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "line": 105,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scoped_drop_release_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+    "line": 14,
+    "name": "Merlin.GraphLoopsMemorySCF.After.tiled_fragments_eval",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+    "line": 38,
+    "name": "Merlin.GraphLoopsMemorySCF.After.scoped_initializer_iff",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 15,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slotAllocation",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 18,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slotRuntime",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 24,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slotEnv",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 27,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_kind",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 30,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_holds",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 37,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_typed",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 41,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_put",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 47,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_assign",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 60,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_arguments",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 66,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_private_view",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 72,
+    "name": "Merlin.GraphLoopsMemorySCF.After.slot_caller_view",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 79,
+    "name": "Merlin.GraphLoopsMemorySCF.After.erase_slot",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 82,
+    "name": "Merlin.GraphLoopsMemorySCF.After.erase_slot_env",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 90,
+    "name": "Merlin.GraphLoopsMemorySCF.After.alias_same_slot",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.actionKeys",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 19,
+    "name": "Merlin.GraphLoopsMemorySCF.After.SourceIndexAbsent",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 26,
+    "name": "Merlin.GraphLoopsMemorySCF.After.eval_action_agreement",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 70,
+    "name": "Merlin.GraphLoopsMemorySCF.After.invoke_action_agreement",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 99,
+    "name": "Merlin.GraphLoopsMemorySCF.After.source_complete_extension",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.captures",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 17,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.Inputs",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 27,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.Inputs.put",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 48,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.ControlFacts",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 61,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.live_body",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 113,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.eval_rows",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 150,
+    "name": "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.eval_epoch",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 13,
+    "name": "Merlin.GraphLoopsMemorySCF.After.action_scoped_forward",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 30,
+    "name": "Merlin.GraphLoopsMemorySCF.After.action_scoped_backward",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 51,
+    "name": "Merlin.GraphLoopsMemorySCF.After.retained_modes",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 66,
+    "name": "Merlin.GraphLoopsMemorySCF.After.retained_scoped_backward",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 92,
+    "name": "Merlin.GraphLoopsMemorySCF.After.retained_scoped_forward",
+    "status": "UNCOMPILED",
+    "discovery": "source-text inventory, not kernel root audit"
+  }
+]

@@ -1,0 +1,363 @@
+{
+  "checkpoint_v10_live_sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_emit.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_models.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_native.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_gate.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_provider.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_service.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_checker.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline.py",
+      "exact_v10_source": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/common_transforms.py",
+      "exact_v10_source": true
+    }
+  ],
+  "service_route_review_v1_retained_files": [
+    {
+      "path": "source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_emit.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_models.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_native.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/primary/merlin/tests/ir/test_lean_graph_pipeline_gate.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_provider.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/primary/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_service.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/corrective-producer/src/merlin/verify/lean_checker.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/corrective-producer/src/merlin/transforms/pipeline.py",
+      "exact": true
+    },
+    {
+      "path": "source-snapshot/corrective-producer/src/merlin/targetgen/common_transforms.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context_data.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context_io.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/__init__.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/bundle_snapshot.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/dense_float_ir.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/path_relations.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/paths.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/read_lease_digest.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/perf/__init__.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/perf/pass_observation.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/__init__.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/common_transforms.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/tool_profile.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/tool_registry.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/__init__.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analyses.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_liveness.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_memory.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_types.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/certificates.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/loops.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/normalization.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline_state.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/planning.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pure_scalar.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/scalar_witness.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/validation.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_checker.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_contract.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_export.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_graph_input_admission.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_sat_runtime.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean_graph_pipeline_gate.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean_graph_pipeline_gate_emit.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean_graph_pipeline_gate_native.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean_graph_pipeline_gate_provider.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean_graph_pipeline_gate_service.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "exact": true
+    },
+    {
+      "path": "project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "exact": true
+    },
+    {
+      "path": "primary.patch",
+      "exact": true
+    },
+    {
+      "path": "corrective-producer.patch",
+      "exact": true
+    },
+    {
+      "path": "INVENTORY.json",
+      "exact": true
+    },
+    {
+      "path": "example/README.md",
+      "exact": true
+    },
+    {
+      "path": "example/RESULT.json",
+      "exact": true
+    },
+    {
+      "path": "example/MOCKED-SERVICE-REQUEST.json",
+      "exact": true
+    },
+    {
+      "path": "example/MOCKED-SERVICE-OUTPUT.json",
+      "exact": true
+    },
+    {
+      "path": "example/GRAPH-PROFILE.json",
+      "exact": true
+    },
+    {
+      "path": "example/PREPARED.json",
+      "exact": true
+    },
+    {
+      "path": "example/CHANGE.json",
+      "exact": true
+    },
+    {
+      "path": "example/source.mlir",
+      "exact": true
+    },
+    {
+      "path": "example/before.mlir",
+      "exact": true
+    },
+    {
+      "path": "example/after.mlir",
+      "exact": true
+    },
+    {
+      "path": "example/Query.lean",
+      "exact": true
+    },
+    {
+      "path": "example/RELEASE-REQUIREMENTS.json",
+      "exact": true
+    },
+    {
+      "path": "tests/complete-route-tests-v28.txt",
+      "exact": true
+    },
+    {
+      "path": "tests/service-route-tests-v2.txt",
+      "exact": true
+    }
+  ],
+  "runtime_files_inspected": false
+}

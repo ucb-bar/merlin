@@ -1,0 +1,16 @@
+# Source conflicts and concrete remaining interfaces
+
+SHARED_SOURCE_CONFLICTS.json observes0 differing Lean module variants and0 logical core Python variants among these fixed packets. This is an exact byte comparison within the selected snapshots, not approval to merge them into current mutable worker source or one common semantic model. Each profile remains separately source-bound and has its own compile/output/root roster.
+
+| Owner | Required decision/interface | Current status |
+|---|---|---|
+| F/root runtime | New official SDK/context source+runtime/object/source/loader intake and exact workspace authorization | MISSING_SEPARATE_DEPENDENCY. No source/provider/controller/native execution here; runtime causeUNKNOWN and old profilesHELD. |
+| Q/F provider | A NEW host adapter/context cut must accept exact project module source pins, literal headers, library-root policy and exact query/module/final/support roots, and return/revalidate SAME live typed completion/audit/context identity | UNSELECTED. Old Q provider embeds Fv5 private-image source/class/location and historical review refs; those must not become authority for a new official SDK or be silently pin-refreshed. Preserve old cuts. |
+| Q larger/chain | Fresh elaboration of additive root glue under exact model/registry/buffer joins; validate static/no-tail/canonical assumptions and distinct endpoint/composition roots | All new queriesUNCOMPILED. Larger import closures still contain existing derived-instance/geometry/model source with historical failure notes; no source-only repair inferred. |
+| W whole/entries | Exact EntryDomain/partial scalar-literal/callgraph and nonvacuity review, complete actual source/final attribution, per-case root/model policy and valid-negative classification | UNCOMPILED. Whole kernel-entry and entries-domain successor are different claims; no blanket error/resource/divergence/native/numeric equivalence. |
+| Root source release | Choose exact coherent host/producer prerequisite and original compiler-import policy for an eventual release | No tool_registry/invocation/admission policy replacement, original profile/hash refresh or primary integration here. Existing9d7 canonical+primary admission is not reapplied. |
+| Root real consumer | Supply preconstructed live binding, selected service, exact context workspace and real consume-IR callback/import custody scope; identify other compiler routes | OPEN. The host-consumer-bridge-v1 prototype gates ONLY its chosen in-process callback. JSON tool output, ordinary source-import scopes and unrelated compile/child routes do not guarantee ALL ordinary compilation is gated. |
+| Human/reviewer | Exact statements, parser/projection/primitive/external/canonical/allocator/callgraph/native correspondence, policy and paper claim approval | NOT_RECORDED. Source text and byte integrity grant no semantic/human approval. |
+| Future successor owner | Supply a named immutable schedule or other additional cut, source/query/root manifest and domain | UNKNOWN_OPTIONAL; append a new separately named successor, preserve this packet and old W whole plan. |
+
+No new context/toolchain/runtime API is assumed available because Python source exists. Source/header association, fresh source builds, actual kernel root audits, live program authority and global consumer enforcement are separate obligations.

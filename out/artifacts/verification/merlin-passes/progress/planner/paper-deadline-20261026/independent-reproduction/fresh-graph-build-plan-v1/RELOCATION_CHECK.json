@@ -1,0 +1,20 @@
+{
+  "status": "PASSED_SAME_FILE_UNRELATED_CWD",
+  "same_file_associations": 491,
+  "result": {
+    "schema": "merlin.fresh-graph-plan-integrity.v1",
+    "status": "SOURCE_PLAN_INTEGRITY_MATCHED",
+    "profiles": 6,
+    "source_data_files_checked": 487,
+    "unavailable_profiles": [],
+    "unavailable_cases": [],
+    "integrity_only": true,
+    "kernel_root_resolution": "UNEXECUTED",
+    "native_execution_verified": false,
+    "graph_or_model_approval": false,
+    "human_review_approved": false,
+    "all_future_steps": "UNEXECUTED"
+  },
+  "copied_provider_or_Lean_contents_executed": false,
+  "native_launches": 0
+}

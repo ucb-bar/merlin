@@ -1,0 +1,113 @@
+{
+  "tools": [
+    {
+      "path": "build_plan.py",
+      "sha256": "98ddc01714c539289503ef7befc3eea14b219727ab10ec5525301e4c44d23685",
+      "bytes": 20024,
+      "imports": [
+        "from __future__ import annotations",
+        "import argparse",
+        "import hashlib",
+        "import heapq",
+        "import json",
+        "import stat",
+        "from pathlib import Path, PurePosixPath"
+      ],
+      "role": "qualified pure stdlib builder/verifier"
+    },
+    {
+      "path": "verify_plan.py",
+      "sha256": "3e51276b28fcd6ac419a928bc6732aab23f5198cb7a05d52c2ce61eff6d2b265",
+      "bytes": 2587,
+      "imports": [
+        "import argparse",
+        "import json",
+        "import sys",
+        "from pathlib import Path",
+        "from build_plan import PlanError, Reader, build, decode, relative"
+      ],
+      "role": "qualified pure stdlib builder/verifier"
+    },
+    {
+      "path": "validate_data_batch.py",
+      "sha256": "fa36083ab7646b2387fb6fac6ac8488e46b057dbfc2ee2bdccbd9bd2cacd5200",
+      "bytes": 8402,
+      "imports": [
+        "import contextlib",
+        "import copy",
+        "import io",
+        "import json",
+        "import os",
+        "from pathlib import Path",
+        "import runpy",
+        "import sys",
+        "from build_plan import PlanError, Reader, build, canonical, decode, header, pin",
+        "from verify_plan import verify"
+      ],
+      "role": "reviewed source/data assembly/report/control helper; no native authority"
+    },
+    {
+      "path": "assemble_inputs.py",
+      "sha256": "bee27776d928a359c7b399011eb8a17f7e6f2d4b4681867c80d570b25607ed76",
+      "bytes": 10067,
+      "imports": [
+        "import hashlib, json",
+        "from pathlib import Path"
+      ],
+      "role": "reviewed source/data assembly/report/control helper; no native authority"
+    },
+    {
+      "path": "normalize_input_bindings.py",
+      "sha256": "c23327a2fcd423a2f62ea429e89a091bf78ad79e906da021045e95c28d1dd4eb",
+      "bytes": 1343,
+      "imports": [
+        "import json",
+        "import sys",
+        "from pathlib import Path",
+        "from build_plan import Reader, decode, project_records"
+      ],
+      "role": "reviewed source/data assembly/report/control helper; no native authority"
+    },
+    {
+      "path": "bind_claim_text.py",
+      "sha256": "8e99a22bb868cdb131fd4ffa3f259d08379113cb4de736984e22c49021263661",
+      "bytes": 2584,
+      "imports": [
+        "import json",
+        "from pathlib import Path"
+      ],
+      "role": "reviewed source/data assembly/report/control helper; no native authority"
+    },
+    {
+      "path": "make_rosters.py",
+      "sha256": "62abef239a97b7422313a9f7b9dd0ef4ff7e6633e53ea1422593bd32ec60ccc7",
+      "bytes": 6817,
+      "imports": [
+        "import hashlib, json",
+        "from pathlib import Path"
+      ],
+      "role": "reviewed source/data assembly/report/control helper; no native authority"
+    },
+    {
+      "path": "write_reports.py",
+      "sha256": "3e8611575e83f336f43867dd6c158098669610109018eca065aa0b097d92b73a",
+      "bytes": 18546,
+      "imports": [
+        "import hashlib, json",
+        "from pathlib import Path"
+      ],
+      "role": "reviewed source/data assembly/report/control helper; no native authority"
+    }
+  ],
+  "input": {
+    "sha256": "caca427ef0d4281605386c6386212952580b917d39c3e1392c46b007d2d4ebc9",
+    "bytes": 1336428
+  },
+  "plan": {
+    "sha256": "cc49401b6f102e2db2b15f8dcd8997ffe552b7b884cad0a6501d5565541dadda",
+    "bytes": 1908996
+  },
+  "call_path": "own stdlib code only; no subprocess/archive/SDK/provider/controller imports or execution by builder/verifier",
+  "only_new_local_data_writes": true,
+  "original_current_source_query_associations": "SOURCE_DATA_INVENTORY.json and ACTUAL_PLAN_VALIDATION.json"
+}

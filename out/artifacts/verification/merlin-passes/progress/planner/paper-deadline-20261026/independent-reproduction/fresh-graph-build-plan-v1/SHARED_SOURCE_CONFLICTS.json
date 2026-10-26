@@ -1,0 +1,6 @@
+{
+  "Lean": [],
+  "Python_host_variants": [],
+  "new_runtime_provider_interfaces": "MISSING_REVIEWED_F_OFFICIAL_SDK_CONTEXT_CUT; old absolute/private-image policy has no authority",
+  "host_consumer_global_bypass_decisions": "OPEN; chosen callback gating is not ALL ordinary compilation enforcement"
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "merlin.common_transform_request.v1",
+  "source_ir": "builtin.module {\n  func.func private @observe(i8) -> i8\n  func.func @main(%a: i8, %b: i8) -> i8 {\n    %x = arith.addi %a, %b : i8\n    %y = arith.addi %a, %b : i8\n    %z = arith.muli %x, %y : i8\n    %r = func.call @observe(%z) : (i8) -> i8\n    func.return %r : i8\n  }\n  func.func @other(%a: i8) -> i8 {\n    func.return %a : i8\n  }\n}",
+  "options": {
+    "normalize_shapes": false,
+    "simplify_integers": false,
+    "reuse_buffers": false,
+    "eliminate_redundancy": true
+  }
+}

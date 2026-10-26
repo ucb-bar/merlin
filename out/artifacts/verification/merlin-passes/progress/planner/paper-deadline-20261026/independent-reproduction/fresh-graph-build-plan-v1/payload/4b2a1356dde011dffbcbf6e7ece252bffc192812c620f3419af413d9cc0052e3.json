@@ -1,0 +1,37 @@
+{
+  "returncode": 0,
+  "elapsed_seconds": 0.6818655079987366,
+  "command": [
+    "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "-q",
+    "-x",
+    "-p",
+    "no:cacheprovider",
+    "-o",
+    "tmp_path_retention_policy=all",
+    "--basetemp=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-boundary-v1/pytest",
+    "--junitxml=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-boundary-v1/junit.xml"
+  ],
+  "blocked_actions": [
+    {
+      "event": "ctypes.dlopen",
+      "target": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/lib/libz3.so.5.1"
+    },
+    {
+      "event": "ctypes.dlopen",
+      "target": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/lib/libz3.so"
+    },
+    {
+      "event": "ctypes.dlopen",
+      "target": "libz3.so.5.1"
+    },
+    {
+      "event": "ctypes.dlopen",
+      "target": "libz3.so"
+    }
+  ],
+  "native_invoked": false,
+  "qualified": false,
+  "new_lean_candidates": "UNCOMPILED",
+  "source_bindings_unchanged": true
+}

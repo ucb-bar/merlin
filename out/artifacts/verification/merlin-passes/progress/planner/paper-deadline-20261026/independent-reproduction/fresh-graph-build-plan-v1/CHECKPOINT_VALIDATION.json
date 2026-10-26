@@ -1,0 +1,39 @@
+{
+  "status": "COMPLETE_FRESH_GRAPH_SOURCE_BUILD_QUEUE",
+  "profiles": 6,
+  "module_counts": [
+    7,
+    7,
+    24,
+    30,
+    106,
+    111
+  ],
+  "distinct_query_bytes": 26,
+  "positive_candidates": 6,
+  "expected_binding_refusals": 20,
+  "accepted_or_qualified": 0,
+  "actual_source_data_files_validated": 487,
+  "tiny_controls": 10,
+  "same_file_relocation_associations": 491,
+  "mandatory_transfer_files": 491,
+  "mandatory_transfer_bytes": 27918550,
+  "payload_physical_files": 487,
+  "separate_W_whole_and_entries_plans": true,
+  "unspecified_schedule": "UNKNOWN_OPTIONAL_NOT_SELECTED",
+  "file_index": {
+    "sha256": "815a8f248fb09c8a1f61293ba3b735567ea8e8e41e94b914e4e47eeb4a119cc5",
+    "bytes": 269875
+  },
+  "source_tool_inventory": {
+    "sha256": "a39a5d804e268b4fc73c83aa882545db055480e80e0e10b6754d5ccbaecb1dc9",
+    "bytes": 3777
+  },
+  "SDK_runtime_reads_or_native_launches": 0,
+  "provider_controller_Lean_execution": false,
+  "future_build_audit_qualification_replay": "UNEXECUTED",
+  "source_union_semantic_claim": false,
+  "all_ordinary_compilation_claim": false,
+  "old_primary_additions_reapplied": false,
+  "prior_packets_unchanged": true
+}

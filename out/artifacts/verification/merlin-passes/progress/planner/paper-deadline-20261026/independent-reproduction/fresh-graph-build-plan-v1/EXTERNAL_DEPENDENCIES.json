@@ -1,0 +1,45 @@
+{
+  "requirements": [
+    {
+      "item": "new official SDK F context and library audit/root/object policy",
+      "status": "MISSING_SEPARATE_INDEPENDENT_INTAKE; no old absolute authority"
+    },
+    {
+      "item": "implicit/external names Init, Init.Data.List.Lemmas, Lean.Elab.Tactic.Omega",
+      "status": "NAMES_ONLY; SDK/source/object/runtime fidelity unobserved"
+    },
+    {
+      "item": "root chosen Q/W live provider/typed Context API and same completion revalidation",
+      "status": "NEW_SOURCE_INTERFACE_REQUIRED; original fixed provider snapshots are DATA not new authorization"
+    },
+    {
+      "item": "Q valid-negative qualification roster and per-module library audits",
+      "status": "REQUIRED_NOT_SUPPLIED_BY_TINY_DATA_CONTROLS"
+    },
+    {
+      "item": "W EntryDomain/scalar-literal/allocator/caller/nonvacuity and valid-negative classification",
+      "status": "SOURCE/HUMAN/KERNEL_REVIEW_REQUIRED"
+    },
+    {
+      "item": "real host/compiler import custody/callback and remaining ordinary compile bypasses",
+      "status": "OPEN; previous host-consumer prototype enforces chosen callback only"
+    },
+    {
+      "item": "unspecified new schedule successor",
+      "status": "UNKNOWN_OPTIONAL; no fixed named input selected; preserve plan and add separate successor later"
+    },
+    {
+      "item": "human source/model/policy/claim approval",
+      "status": "REQUIRED_NOT_RECORDED"
+    }
+  ],
+  "host_consumer_handoff_provenance": {
+    "path": "../host-consumer-bridge-v1/HANDOFF.md",
+    "sha256": "7a29256826067f9f8efb87010a92245984e049b8af706fcdfe3a691b9cfa65bc",
+    "bytes": 3122,
+    "open_global_bypass_decisions": true
+  },
+  "external_API_comparison": null,
+  "official_SDK_runtime_comparison": null,
+  "native_authority": false
+}

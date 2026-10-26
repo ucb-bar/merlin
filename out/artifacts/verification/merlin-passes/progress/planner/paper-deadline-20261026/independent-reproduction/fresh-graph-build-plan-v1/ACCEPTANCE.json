@@ -1,0 +1,62 @@
+{
+  "deliverables": [
+    {
+      "item": 1,
+      "status": "COMPLETE_SOURCE_QUERY_METADATA_PINS",
+      "evidence": [
+        "INPUTS.json",
+        "SOURCE_DATA_INVENTORY.json",
+        "payload/"
+      ]
+    },
+    {
+      "item": 2,
+      "status": "COMPLETE_SEPARATE_CLOSED_HEADER_DAGS",
+      "evidence": [
+        "PLAN.json",
+        "plans/",
+        "SHARED_SOURCE_CONFLICTS.json"
+      ]
+    },
+    {
+      "item": 3,
+      "status": "COMPLETE_STDLIB_BUILDER_VERIFIER",
+      "evidence": [
+        "build_plan.py",
+        "verify_plan.py",
+        "SOURCE_TOOL_INVENTORY.json"
+      ]
+    },
+    {
+      "item": 4,
+      "status": "COMPLETE_ONE_BOUNDED_DATA_BATCH",
+      "evidence": [
+        "ACTUAL_PLAN_VALIDATION.json",
+        "BOUNDED_CONTROLS.json",
+        "VALIDATION_BATCH.json"
+      ]
+    },
+    {
+      "item": 5,
+      "status": "COMPLETE_FRESH_WORK_ROSTERS_RELOCATION_RUNBOOK",
+      "evidence": [
+        "FRESH_QUALIFICATION_ROSTER.json",
+        "BUILD_AND_AUDIT_ROSTER.md",
+        "RELOCATION_CHECK.json",
+        "RUNBOOK.md"
+      ]
+    },
+    {
+      "item": 6,
+      "status": "COMPLETE_W_ENTRIES_SEPARATE_SUCCESSOR; UNSPECIFIED_SCHEDULE_UNKNOWN",
+      "evidence": [
+        "BASELINE_PLAN_V1.json",
+        "W_ENTRY_SUCCESSOR_PLAN_V1.json",
+        "OWNER_INTERFACE_TASKS.md"
+      ]
+    }
+  ],
+  "all_future_native_steps": "UNEXECUTED",
+  "accepted_qualified_cases": 0,
+  "primary_protected_source_edits": false
+}
