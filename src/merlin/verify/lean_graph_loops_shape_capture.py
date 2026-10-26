@@ -14,6 +14,11 @@ import sys
 from pathlib import Path
 
 if __package__:
+    from . import lean_graph_input_admission as admission
+else:
+    import lean_graph_input_admission as admission
+
+if __package__:
     from .lean_graph_loops_capture import _producer_sources
     from .lean_graph_loops_segment_capture import loaded_xdsl_sources, operation_tree
 else:
@@ -59,7 +64,7 @@ def type_record(kind):
 
 
 def export(module):
-    tree = operation_tree(module)
+    tree = operation_tree(module, calls="shape-direct")
     values, functions, calls = {}, [], []
 
     def visit(op, record):
@@ -98,7 +103,11 @@ def export(module):
 def run(*, source, revision, before, output, after=None):
     sys.dont_write_bytecode = True
     from merlin.transforms import normalization
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.transforms.certificates import ir_text
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir, calls="shape-direct")
 
     observed = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     if observed != revision:
@@ -135,6 +144,7 @@ def run(*, source, revision, before, output, after=None):
         producer_source=provider,
         xdsl_loaded_source=xdsl,
         changed_sites=changed,
+        input_admission_source=admission.source_reference(),
         python_projection_trusted=True,
         runtime_descriptor_conformance_proved=False,
         native_or_hardware_proved=False,

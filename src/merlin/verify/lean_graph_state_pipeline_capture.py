@@ -17,6 +17,11 @@ from functools import cache
 from pathlib import Path
 
 if __package__:
+    from . import lean_graph_input_admission as admission
+else:
+    import lean_graph_input_admission as admission
+
+if __package__:
     from .lean_graph_state_scalar_capture import REVISION, canonical, file_ref, metadata, project
 else:
     from lean_graph_state_scalar_capture import REVISION, canonical, file_ref, metadata, project
@@ -48,6 +53,7 @@ def project_modules(modules):
     from xdsl.dialects import func
 
     for module in modules:
+        admission.admit_module(module)
         module.verify()
         declarations = {
             op.sym_name.data: op for op in module.body.block.ops if type(op) is func.FuncOp and not op.body.blocks
@@ -130,7 +136,10 @@ def loaded_sources(reference):
 
 
 def write_projection(reference, buffers, destination, *, factor, tile, bits, mode, diagnostics=(), input_path=None):
-    from merlin.transforms.certificates import parse_ir
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
 
     revision = selected_source(reference)
     modules = [parse_ir(data.decode()) for data in buffers]
@@ -151,6 +160,7 @@ def write_projection(reference, buffers, destination, *, factor, tile, bits, mod
         "producer_sources": producer,
         "python_runtime": runtime,
         "owned_projection": file_ref(__file__),
+        "input_admission_source": admission.source_reference(),
         "selected_scalar_projection": file_ref(Path(__file__).with_name("lean_graph_state_scalar_capture.py")),
         "mode": mode,
         "projection_trusted": True,
@@ -170,7 +180,12 @@ def write_projection(reference, buffers, destination, *, factor, tile, bits, mod
 
 def capture(reference, source, destination, *, factor=2, tile=3, bits=32):
     sys.dont_write_bytecode = True
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.transforms.certificates import ir_text
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
+
     from merlin.transforms.loops import segment_loops
     from merlin.transforms.pure_scalar import eliminate_scalar_redundancy, hoist_scalar_invariants
     from merlin.transforms.unrolling import unroll_ordered_loops

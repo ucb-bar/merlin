@@ -53,6 +53,7 @@ def own_objects():
 def sources():
     root = repo_root()
     paths = [*root.glob("src/merlin/verify/lean_graph_state_integer*.py")]
+    paths.append(root / "src/merlin/verify/lean_graph_input_admission.py")
     paths += list(root.glob("src/merlin/verify/lean/Merlin/GraphStateInteger*.lean"))
     paths += list(root.glob("merlin/tests/ir/test_lean_graph_state_integer*.py"))
     return [stable.file_ref(path) for path in sorted(paths)]

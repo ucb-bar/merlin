@@ -322,7 +322,11 @@ def _verify(before_path, after_path, *, selection, output, index_bits, max_nodes
             lean_graph_loops_reuse_capture,
             lean_graph_loops_reuse_projection,
         )
-    ] + [Path(__file__).resolve(), Path(sys.executable).resolve()]
+    ] + [
+        Path(__file__).resolve(),
+        Path(__file__).with_name("lean_graph_input_admission.py").resolve(),
+        Path(sys.executable).resolve(),
+    ]
     owners = [_reference(path) for path in owner_paths]
     before, after = output / "before.mlir", output / "after.mlir"
     before.write_bytes(first)

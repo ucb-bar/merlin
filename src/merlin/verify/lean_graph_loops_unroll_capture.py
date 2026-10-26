@@ -10,6 +10,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 if __package__:
+    from . import lean_graph_input_admission as admission
+else:
+    import lean_graph_input_admission as admission
+
+if __package__:
     from .lean_graph_loops_capture import _producer_sources, _reference
     from .lean_graph_loops_segment_capture import loaded_xdsl_sources, operation_tree
 else:
@@ -29,7 +34,12 @@ def capture(
     disabled: bool = False,
 ):
     sys.dont_write_bytecode = True
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.transforms.certificates import ir_text
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
+
     from merlin.transforms.unrolling import unroll_ordered_loops
 
     source = source.resolve(strict=True)
@@ -73,6 +83,7 @@ def capture(
         "producer_source": closure,
         "xdsl_loaded_source": parser_sources,
         "capture_implementation": _reference(output / "capture-implementation.py"),
+        "input_admission_source": admission.source_reference(),
         "actual_before": _reference(before),
         "products": {name: _reference(output / name) for name in products},
         "factor": factor,
@@ -95,7 +106,10 @@ def capture(
 def project(*, source: Path, revision: str, before: Path, after: Path, output: Path):
     sys.dont_write_bytecode = True
     from merlin.transforms import unrolling as producer_module
-    from merlin.transforms.certificates import parse_ir
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
 
     source = source.resolve(strict=True)
     observed = subprocess.run(

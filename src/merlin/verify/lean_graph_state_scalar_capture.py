@@ -17,6 +17,11 @@ from dataclasses import asdict
 from enum import Enum
 from pathlib import Path
 
+if __package__:
+    from . import lean_graph_input_admission as admission
+else:
+    import lean_graph_input_admission as admission
+
 REVISION = "4499eebb959c0f92cefd92cc6d80646ba66474ed"
 
 
@@ -117,6 +122,9 @@ def selected_primitive(operation):
 
 
 def project(before, after, *, context=()):
+    for module in (before, after, *context):
+        admission.admit_module(module)
+
     from xdsl.dialects import arith, builtin, func, scf
 
     if type(before) is not builtin.ModuleOp or type(after) is not builtin.ModuleOp:
@@ -307,7 +315,12 @@ def capture(reference, source, target, destination, mode, middle_path=None):
         check=True,
         capture_output=True,
     )
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.transforms.certificates import ir_text
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
+
     from merlin.transforms.pure_scalar import eliminate_scalar_redundancy, hoist_scalar_invariants
 
     before = parse_ir(Path(source).read_text())
@@ -355,6 +368,7 @@ def capture(reference, source, target, destination, mode, middle_path=None):
                 "mode": mode if target is None else "supplied-actual-result",
                 "diagnostic_witnesses": witnesses,
                 "owned_generator": file_ref(__file__),
+                "input_admission_source": admission.source_reference(),
                 "complete_raw_outputs_retained_before_projection": True,
                 "public_acceptance_issued": False,
             },
@@ -401,6 +415,7 @@ def capture(reference, source, target, destination, mode, middle_path=None):
             "sources": sorted(external.values(), key=lambda row: row["path"]),
         },
         "owned_projection": file_ref(__file__),
+        "input_admission_source": admission.source_reference(),
         **projection,
         "trust": [
             "pinned xDSL parser/verification and actual scalar producer execution",

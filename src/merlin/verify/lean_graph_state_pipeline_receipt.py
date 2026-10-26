@@ -104,6 +104,7 @@ def sources():
     selected += [
         root / "src/merlin/verify" / name
         for name in (
+            "lean_graph_input_admission.py",
             "lean_graph_state.py",
             "lean_graph_state_scalar.py",
             "lean_graph_state_scalar_capture.py",

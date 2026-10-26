@@ -14,6 +14,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 if __package__:
+    from . import lean_graph_input_admission as admission
+else:
+    import lean_graph_input_admission as admission
+
+if __package__:
     from .lean_graph_loops_capture import _producer_sources, _reference
     from .lean_graph_loops_segment_capture import loaded_xdsl_sources, operation_tree
 else:
@@ -21,11 +26,11 @@ else:
     from lean_graph_loops_segment_capture import loaded_xdsl_sources, operation_tree
 
 
-def export(module):
+def export(module, *, calls="external-only"):
     from xdsl.dialects import builtin, memref
     from xdsl.traits import get_effects
 
-    tree = operation_tree(module)
+    tree = operation_tree(module, calls=calls)
     allocations, pure_paths = {}, []
 
     def visit(op, record, path):
@@ -54,10 +59,14 @@ def export(module):
     return dict(tree=tree, allocations=allocations, pure_paths=pure_paths)
 
 
-def run(*, source: Path, revision: str, before: Path, output: Path, after: Path | None = None):
+def run(*, source: Path, revision: str, before: Path, output: Path, after: Path | None = None, calls="external-only"):
     sys.dont_write_bytecode = True
     from merlin.transforms import planning as producer
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.transforms.certificates import ir_text
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir, calls=calls)
 
     source = source.resolve(strict=True)
     observed = subprocess.run(
@@ -67,13 +76,13 @@ def run(*, source: Path, revision: str, before: Path, output: Path, after: Path 
         raise ValueError("actual storage producer/parser revision changed")
     original = before.read_bytes()
     module = parse_ir(original.decode())
-    first = export(module)
+    first = export(module, calls=calls)
     if after is None:
         generic = ir_text(module)
         plan = producer.plan_storage(module)
         witnesses = producer.reuse_storage(module, plan)
         module.verify()
-        second = export(module)
+        second = export(module, calls=calls)
         candidate = ir_text(module).encode()
         output.mkdir(parents=True, exist_ok=False)
         products = {
@@ -99,6 +108,8 @@ def run(*, source: Path, revision: str, before: Path, output: Path, after: Path 
             changed=bool(witnesses),
             changed_groups=len(witnesses),
             witness_or_plan_is_authority=False,
+            input_admission_source=admission.source_reference(),
+            input_admission_calls=calls,
             python_projection_trusted=True,
             lean_checked=False,
             allocator_contract_proved=False,
@@ -110,7 +121,7 @@ def run(*, source: Path, revision: str, before: Path, output: Path, after: Path 
         destination = output / "CAPTURE.json"
     else:
         candidate = after.read_bytes()
-        second = export(parse_ir(candidate.decode()))
+        second = export(parse_ir(candidate.decode()), calls=calls)
         result = dict(
             schema="merlin.graph.actual_buffer_reuse_export.v1",
             before=_reference(before),
@@ -120,6 +131,8 @@ def run(*, source: Path, revision: str, before: Path, output: Path, after: Path 
             producer_revision=revision,
             producer_source=_producer_sources(source, revision, (Path(producer.__file__).resolve(),)),
             xdsl_loaded_source=loaded_xdsl_sources(),
+            input_admission_source=admission.source_reference(),
+            input_admission_calls=calls,
             python_projection_trusted=True,
             pipeline_receipt_issued=False,
         )
@@ -141,6 +154,7 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--after", type=Path)
+    parser.add_argument("--calls", choices=("external-only", "shape-direct"), default="external-only")
     result = run(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("schema", "producer_revision")}))
 

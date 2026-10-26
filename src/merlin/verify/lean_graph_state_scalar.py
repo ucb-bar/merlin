@@ -211,6 +211,7 @@ def sources():
     paths = [
         *(root / "src/merlin/verify").glob("lean_graph_state_scalar*.py"),
         *(root / "src/merlin/verify/lean/Merlin").glob("GraphStateScalar*.lean"),
+        root / "src/merlin/verify/lean_graph_input_admission.py",
         root / "src/merlin/verify/lean_graph_state.py",
         root / "src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
     ]

@@ -237,6 +237,7 @@ def _verify(before_path, after_path, *, selection, output, factor, index_bits, m
     )
 
     owner_paths = [
+        Path(__file__).with_name("lean_graph_input_admission.py").resolve(),
         Path(__file__).resolve(),
         Path(lean_graph_loops.__file__).resolve(),
         Path(lean_graph_loops_capture.__file__).resolve(),

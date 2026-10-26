@@ -13,6 +13,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 if __package__:
+    from . import lean_graph_input_admission as admission
+else:
+    import lean_graph_input_admission as admission
+
+if __package__:
     from .lean_graph_state_pipeline_capture import loaded_sources, project_modules, selected_source
     from .lean_graph_state_scalar_capture import file_ref, project
 else:
@@ -24,6 +29,7 @@ def validate_calls(modules):
     from xdsl.dialects import func
 
     for module in modules:
+        admission.admit_module(module)
         module.verify()
         declarations = {
             op.sym_name.data: op for op in module.body.block.ops if type(op) is func.FuncOp and not op.body.blocks
@@ -41,7 +47,10 @@ def validate_calls(modules):
 
 
 def projection(reference, buffers, destination, *, factor, tile, bits, mode, diagnostics=()):
-    from merlin.transforms.certificates import parse_ir
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
 
     revision = selected_source(reference)
     if len(buffers) not in (2, 6):
@@ -74,6 +83,7 @@ def projection(reference, buffers, destination, *, factor, tile, bits, mode, dia
         "producer_sources": producer,
         "python_runtime": runtime,
         "owned_projection": file_ref(__file__),
+        "input_admission_source": admission.source_reference(),
         "projection_trusted": True,
         "lean_checked": False,
         "qualified": False,
@@ -90,7 +100,12 @@ def projection(reference, buffers, destination, *, factor, tile, bits, mode, dia
 
 
 def capture(reference, source, destination, *, chain=False, factor=2, tile=3, bits=32):
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.transforms.certificates import ir_text
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
+
     from merlin.transforms.normalization import simplify_integers
 
     reference, source, destination = reference.resolve(), source.resolve(), destination.resolve()
@@ -176,7 +191,7 @@ def main():
             json.dumps(
                 {
                     "schema": "merlin.graph-state-integer.host-domain-refusal.v1",
-                    "status": "unsupported",
+                    "status": "malformed" if isinstance(error, (ParseError, VerifyException)) else "unsupported",
                     "reason": str(error),
                     "kind": type(error).__name__,
                     "qualified": False,

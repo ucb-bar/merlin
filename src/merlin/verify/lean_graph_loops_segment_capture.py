@@ -15,15 +15,20 @@ from dataclasses import asdict
 from pathlib import Path
 
 if __package__:
+    from . import lean_graph_input_admission as admission
+else:
+    import lean_graph_input_admission as admission
+
+if __package__:
     from .lean_graph_loops_capture import _producer_sources, _reference
 else:
     from lean_graph_loops_capture import _producer_sources, _reference
 
 
-def operation_tree(module):
-    from xdsl.dialects import arith, builtin
+def operation_tree(module, *, calls="external-only"):
+    admission.admit_module(module, calls=calls)
 
-    from merlin.transforms.normalization import constant_integer
+    from xdsl.dialects import arith, builtin
 
     identities = {}
 
@@ -51,7 +56,9 @@ def operation_tree(module):
             regions.append(blocks)
         constant = None
         if isinstance(op, arith.ConstantOp) and isinstance(op.result.type, builtin.IndexType):
-            constant = constant_integer(op.result)
+            if not isinstance(op.value, builtin.IntegerAttr):
+                raise ValueError("index constant requires an actual integer attribute")
+            constant = op.value.value.data
         return {
             "name": op.name,
             "operands": operands,
@@ -78,7 +85,12 @@ def loaded_xdsl_sources():
 
 def capture(*, source: Path, revision: str, before: Path, output: Path, tile: int, index_bits: int):
     sys.dont_write_bytecode = True
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.transforms.certificates import ir_text
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
+
     from merlin.transforms.loops import segment_loops
 
     source = source.resolve(strict=True)
@@ -124,6 +136,7 @@ def capture(*, source: Path, revision: str, before: Path, output: Path, tile: in
         "producer_source": closure,
         "xdsl_loaded_source": xdsl_sources,
         "capture_implementation": _reference(output / "capture-implementation.py"),
+        "input_admission_source": admission.source_reference(),
         "actual_before": _reference(before),
         "products": {name: _reference(output / name) for name in products},
         "tile": tile,

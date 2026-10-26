@@ -9,16 +9,21 @@ import sys
 from pathlib import Path
 
 if __package__:
+    from . import lean_graph_input_admission as admission
     from .lean_graph_loops_capture import _producer_sources, _reference
     from .lean_graph_loops_segment_capture import loaded_xdsl_sources, operation_tree
 else:
+    import lean_graph_input_admission as admission
     from lean_graph_loops_capture import _producer_sources, _reference
     from lean_graph_loops_segment_capture import loaded_xdsl_sources, operation_tree
 
 
 def project(*, source: Path, revision: str, before: Path, after: Path, output: Path):
     sys.dont_write_bytecode = True
-    from merlin.transforms.certificates import parse_ir
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir)
 
     source = source.resolve(strict=True)
     observed = subprocess.run(
@@ -40,6 +45,7 @@ def project(*, source: Path, revision: str, before: Path, after: Path, output: P
         "after_tree": after_tree,
         "producer_source": closure,
         "xdsl_loaded_source": parser_sources,
+        "input_admission_source": admission.source_reference(),
         "python_projection_trusted": True,
         "pipeline_receipt_issued": False,
     }

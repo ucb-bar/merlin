@@ -14,6 +14,11 @@ import sys
 from pathlib import Path
 
 if __package__:
+    from . import lean_graph_input_admission as admission
+else:
+    import lean_graph_input_admission as admission
+
+if __package__:
     from .lean_graph_loops_capture import _producer_sources
     from .lean_graph_loops_reuse_capture import export
     from .lean_graph_loops_segment_capture import loaded_xdsl_sources
@@ -27,10 +32,14 @@ def buffer_reference(path, data):
     return dict(path=str(path.resolve()), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
 
 
-def run(*, source, revision, before, output, middle=None, after=None, tile=2, index_bits=64):
+def run(*, source, revision, before, output, middle=None, after=None, tile=2, index_bits=64, calls="external-only"):
     sys.dont_write_bytecode = True
     from merlin.transforms import loops, planning
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.transforms.certificates import ir_text
+    from merlin.transforms.certificates import parse_ir as producer_parse_ir
+
+    def parse_ir(raw):
+        return admission.parse_admitted(raw, producer_parse_ir, calls=calls)
 
     observed = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     if observed != revision or (middle is None) != (after is None):
@@ -40,7 +49,7 @@ def run(*, source, revision, before, output, middle=None, after=None, tile=2, in
     original = before.read_bytes()
     first = parse_ir(original.decode())
     first.verify()
-    before_export = export(first)
+    before_export = export(first, calls=calls)
     if middle is None:
         output.mkdir(parents=True, exist_ok=False)
         plan = planning.plan_storage(first)
@@ -49,13 +58,13 @@ def run(*, source, revision, before, output, middle=None, after=None, tile=2, in
         middle_bytes = ir_text(first).encode()
         middle = output / "middle.mlir"
         middle.write_bytes(middle_bytes)
-        middle_export = export(first)
+        middle_export = export(first, calls=calls)
         segmented = loops.segment_loops(first, [tile], index_bits=index_bits)
         first.verify()
         after_bytes = ir_text(first).encode()
         after = output / "after.mlir"
         after.write_bytes(after_bytes)
-        after_export = export(first)
+        after_export = export(first, calls=calls)
         destination = output / "CAPTURE.json"
         changed = dict(reuse=len(reuse), segmentation=len(segmented))
     else:
@@ -63,7 +72,7 @@ def run(*, source, revision, before, output, middle=None, after=None, tile=2, in
         center, final = parse_ir(middle_bytes.decode()), parse_ir(after_bytes.decode())
         center.verify()
         final.verify()
-        middle_export, after_export = export(center), export(final)
+        middle_export, after_export = export(center, calls=calls), export(final, calls=calls)
         destination, changed = output, None
     identities = _producer_sources(
         source, revision, (Path(loops.__file__).resolve(), Path(planning.__file__).resolve())
@@ -82,6 +91,8 @@ def run(*, source, revision, before, output, middle=None, after=None, tile=2, in
         after_export=after_export,
         changed=changed,
         index_bits=index_bits,
+        input_admission_source=admission.source_reference(),
+        input_admission_calls=calls,
         python_projection_trusted=True,
         untrusted_plan_used_as_authority=False,
         raw_parser_formally_verified=False,
@@ -102,6 +113,7 @@ def main():
     for name in ("middle", "after"):
         parser.add_argument("--" + name, type=Path)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--calls", choices=("external-only", "shape-direct"), default="external-only")
     parser.add_argument("--tile", type=int, default=2)
     parser.add_argument("--index-bits", type=int, required=True)
     result = run(**vars(parser.parse_args()))
