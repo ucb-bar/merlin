@@ -1,0 +1,544 @@
+{
+  "schema": "merlin.graph-state-pipeline.paper-evidence.v1",
+  "qualified_existing_example": {
+    "name": "actual CSE/DCE then LICM scalar chain",
+    "status": "conditional_graph_checked",
+    "relation": "same ordered returned values and complete successful persistent world OR same error/terminal world; private SSA slots excluded",
+    "routes": [
+      "first-full-boundary",
+      "second-full-boundary",
+      "checked-middle-composition",
+      "direct-original-final"
+    ],
+    "roots": [
+      "Merlin.GraphState.Scalar.check_sound",
+      "Merlin.GraphState.Scalar.check_typed",
+      "Merlin.GraphState.Scalar.normalize_sound",
+      "Merlin.GraphStateScalarInstance.F0.accepted",
+      "Merlin.GraphStateScalarInstance.F0.actual",
+      "Merlin.GraphStateScalarInstance.F0.typed",
+      "Merlin.GraphStateScalarInstance.F0.initialized",
+      "Merlin.GraphStateScalarInstance.F0.operands_initialized",
+      "Merlin.GraphStateScalarInstance.F0.source_join",
+      "Merlin.GraphStateScalarInstance.F0.middle_join",
+      "Merlin.GraphStateScalarInstance.F0.final_join",
+      "Merlin.GraphStateScalarInstance.F0.first_accepted",
+      "Merlin.GraphStateScalarInstance.F0.second_accepted",
+      "Merlin.GraphStateScalarInstance.F0.first_actual",
+      "Merlin.GraphStateScalarInstance.F0.second_actual",
+      "Merlin.GraphStateScalarInstance.F0.middle_typed",
+      "Merlin.GraphStateScalarInstance.F0.independently_composed"
+    ],
+    "retained_files": [
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/source.mlir",
+        "sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f",
+        "bytes": 582
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/actual/middle.mlir",
+        "sha256": "e9e448db30daf78e97ebecc3c660ffd27589a7d404f2d4069f3c7779cbb0a12e",
+        "bytes": 910
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/actual/after.mlir",
+        "sha256": "acc07b3151ca0a6a7df07015edd8fc73dbc5ce02e10775e0239d4db3aa906137",
+        "bytes": 906
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/checked/report.json",
+        "sha256": "e7463a9d450df234d09230deeead3b7fa993df5ee855e19b704eaf40eb82a9fb",
+        "bytes": 382199
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/checked/kernel/report.json",
+        "sha256": "ef288e04fd537c4b715192a063e26e6edaddb37b7f3fe34fd07b467776a077b5",
+        "bytes": 298184
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/checked/kernel/kernel.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/checked/kernel/kernel.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/receipt.json",
+        "sha256": "9b28960c31534232dd39e1ae516c5a84c0b5d7c769719696b7451094536792b6",
+        "bytes": 220088
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-scalar/qualification-v1/replays/chain/report.json",
+        "sha256": "c59aa1700fd9f6df0edf8b296fa2ca6483f7cb8e3aed6c12fdb3c11c0f36d140",
+        "bytes": 1055
+      },
+      {
+        "path": "out/build/graph-verification/state-scalar/qualification-v1/tests/test_actual_compiler_valid_mut9/mutation.json",
+        "sha256": "4e782019de61938605f053ca91034631a30ac5bb7acaba645c417a472f02fb38",
+        "bytes": 898
+      },
+      {
+        "path": "out/build/graph-verification/state-scalar/qualification-v1/tests/test_actual_compiler_valid_mut9/mutated.mlir",
+        "sha256": "3a7bb0c4f3f82842e47afefea6118126934ca973906732dc44f310057c2a9d01",
+        "bytes": 482
+      },
+      {
+        "path": "out/build/graph-verification/state-scalar/qualification-v1/tests/test_actual_compiler_valid_mut9/checked/kernel/report.json",
+        "sha256": "8607e1bfcb37d6cc47e4c22074bd2ce88c5f9b7ba42e545c20200f785fa02cd0",
+        "bytes": 982
+      },
+      {
+        "path": "out/build/graph-verification/state-scalar/qualification-v1/tests/test_actual_compiler_valid_mut9/checked/kernel/kernel.stdout",
+        "sha256": "a04ddc154f18623bb1a8e7da6459fcaea0f0d575b29ac2f3ff7b0951cc9e6036",
+        "bytes": 290
+      },
+      {
+        "path": "out/build/graph-verification/state-scalar/qualification-v1/tests/test_actual_compiler_valid_mut9/checked/kernel/kernel.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "kernel_status": "conditional_graph_checked",
+    "kernel_returncode": 0,
+    "fresh_replay_status": "conditional_graph_checked",
+    "retained_object_reproduced": true,
+    "negative_kind": "compiler-valid observer deletion",
+    "negative_kernel_returncode": 1
+  },
+  "new_pipeline": {
+    "status": "complete fixed conditional graph qualification; review pending",
+    "source_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+    "config": {
+      "factor": 2,
+      "tile": 3,
+      "index_bits": 32,
+      "mode": "graph"
+    },
+    "buffers": [
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage0.mlir",
+        "sha256": "328d85463dffccf6a45028f20f135eef925c9aeb99893a62f89b26cf33145fcd",
+        "bytes": 1720
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage1.mlir",
+        "sha256": "7cf34f3aee94df21289e10ff69d4255cafb98745ffd6ccc3f5677e732a15f74d",
+        "bytes": 1517
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage2.mlir",
+        "sha256": "b1194992659257e7eb381ef6f754ace4a7a24fa1c23f7ac8cb5fa91fef21e738",
+        "bytes": 1515
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage3.mlir",
+        "sha256": "7cd49e2b0d87fdef6b64c0b098d9395d8e3bcc538a5ca48fef3901bc7e653d41",
+        "bytes": 2113
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage4.mlir",
+        "sha256": "973b4c4c4e30d6318033f39dde9e5eb1786dbf946c77c5b6bdc4c3c7e751b690",
+        "bytes": 2523
+      }
+    ],
+    "query": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/GraphStatePipelineInstance.lean",
+      "sha256": "b2d558f42dd3526a04dbb90e9d0c9eb017249311212bc51063cbf1cfd9f2b6a1",
+      "bytes": 22471
+    },
+    "kernel_report": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/report.json",
+      "sha256": "4f435545837866a167e5cf1abe209f1c10a936b24c55737170f281404df30c7e",
+      "bytes": 492720
+    },
+    "boundary_report": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/report.json",
+      "sha256": "e437acf40dfb9fef61c009c52c2534c86a01aea4344344131b55cb1057a1b1a6",
+      "bytes": 11023
+    },
+    "receipt": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/receipt.json",
+      "sha256": "be6ea9b9052864732a6b592aa2a02a0392f9110851b38f41a249dfdd46c48005",
+      "bytes": 845042
+    },
+    "raw_checker_stdout": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/kernel.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "raw_checker_stderr": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/kernel.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "audit_buffers": [
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/audit.stdout",
+        "sha256": "681ab79d50299f9dac739d4e0ab13c21bbda6250156ec9a99556161ab20e44a4",
+        "bytes": 163141
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/audit.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/statements.stdout",
+        "sha256": "6e69bb606b3e736cf92313488447ea1694b13f1db0cf92cc51cff681987b61ad",
+        "bytes": 9792
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/statements.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "exact_roots": [
+      "Merlin.GraphStatePipelineInstance.complete",
+      "Merlin.GraphStatePipelineInstance.controlAccepted",
+      "Merlin.GraphStatePipelineInstance.literalsAccepted",
+      "Merlin.GraphStatePipelineInstance.literalsFit",
+      "Merlin.GraphStatePipelineInstance.originalEntriesChecked",
+      "Merlin.GraphStatePipelineInstance.finalEntriesChecked",
+      "Merlin.GraphStatePipelineInstance.F3.actual",
+      "Merlin.GraphStatePipelineInstance.F3.body_group",
+      "Merlin.GraphStatePipelineInstance.F3.innerAccepted",
+      "Merlin.GraphStatePipelineInstance.F3.outer_same",
+      "Merlin.GraphStatePipelineInstance.F3.unroll_actual",
+      "Merlin.GraphStatePipelineInstance.F3.segment_actual",
+      "Merlin.GraphStatePipelineInstance.F3.unrollBoundsChecked",
+      "Merlin.GraphStatePipelineInstance.F3.segmentBoundsChecked",
+      "Merlin.GraphStatePipelineInstance.F4.actual"
+    ],
+    "statements": {
+      "Merlin.GraphStatePipelineInstance.F3.actual": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) (arguments : List.{0} Int) (world : World), (Eq.{1} Nat (List.length.{0} Int arguments) (List.length.{0} Merlin.GraphState.Scalar.Ty Merlin.GraphStatePipelineInstance.F3.inputs)) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.S0 arguments world) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.S4 arguments world))",
+      "Merlin.GraphStatePipelineInstance.F3.body_group": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) (x0 : Int) (x1 : Int) (base : Int) (carry : List.{0} Int) (world : World), (Eq.{1} Nat (List.length.{0} Int carry) (OfNat.ofNat.{0} Nat 1 (instOfNatNat 1))) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.B3 (HAppend.hAppend.{0, 0, 0} (List.{0} Int) (List.{0} Int) (List.{0} Int) (instHAppendOfAppend.{0} (List.{0} Int) (List.instAppend.{0} Int)) (List.cons.{0} Int base carry) (Merlin.GraphStatePipelineInstance.F3.E3 primitive x0 x1)) world) (Merlin.GraphState.Scalar.loopEval Int World Error (OfNat.ofNat.{0} Nat 1 (instOfNatNat 1)) (fun (i : Int) (c : List.{0} Int) (w : World) => Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.B2 (HAppend.hAppend.{0, 0, 0} (List.{0} Int) (List.{0} Int) (List.{0} Int) (instHAppendOfAppend.{0} (List.{0} Int) (List.instAppend.{0} Int)) (List.cons.{0} Int i c) (Merlin.GraphStatePipelineInstance.F3.E2 primitive x0 x1)) w) (List.cons.{0} Int base (List.cons.{0} Int (HAdd.hAdd.{0, 0, 0} Int Int Int (instHAdd.{0} Int Int.instAdd) base (OfNat.ofNat.{0} Int 1 (instOfNat 1))) (List.nil.{0} Int))) carry world))",
+      "Merlin.GraphStatePipelineInstance.F3.innerAccepted": "Eq.{1} Bool (Merlin.GraphState.Pipeline.Scope.check Merlin.GraphStatePipelineInstance.registry Merlin.GraphStatePipelineInstance.F3.LS Merlin.GraphStatePipelineInstance.F3.RS Merlin.GraphStatePipelineInstance.F3.B3 Merlin.GraphStatePipelineInstance.F3.I4) Bool.true",
+      "Merlin.GraphStatePipelineInstance.F3.outer_same": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) (x0 : Int) (x1 : Int) (base : Nat) (carry : List.{0} Int) (world : World), (Eq.{1} Nat (List.length.{0} Int carry) (OfNat.ofNat.{0} Nat 1 (instOfNatNat 1))) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.B4 (HAppend.hAppend.{0, 0, 0} (List.{0} Int) (List.{0} Int) (List.{0} Int) (instHAppendOfAppend.{0} (List.{0} Int) (List.instAppend.{0} Int)) (List.cons.{0} Int (Int.ofNat base) carry) (Merlin.GraphStatePipelineInstance.F3.E4 primitive x0 x1)) world) (Merlin.GraphState.Scalar.loopEval Int World Error (OfNat.ofNat.{0} Nat 1 (instOfNatNat 1)) (fun (i : Int) (cs : List.{0} Int) (w : World) => Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.B3 (HAppend.hAppend.{0, 0, 0} (List.{0} Int) (List.{0} Int) (List.{0} Int) (instHAppendOfAppend.{0} (List.{0} Int) (List.instAppend.{0} Int)) (List.cons.{0} Int i cs) (Merlin.GraphStatePipelineInstance.F3.E3 primitive x0 x1)) w) (List.map.{0, 0} Nat Int Int.ofNat (Merlin.GraphState.Pipeline.scfRange base (Min.min.{0} Nat instMinNat (HAdd.hAdd.{0, 0, 0} Nat Nat Nat (instHAdd.{0} Nat instAddNat) base (HMul.hMul.{0, 0, 0} Nat Nat Nat (instHMul.{0} Nat instMulNat) (OfNat.ofNat.{0} Nat 2 (instOfNatNat 2)) (OfNat.ofNat.{0} Nat 3 (instOfNatNat 3)))) (OfNat.ofNat.{0} Nat 24 (instOfNatNat 24))) (OfNat.ofNat.{0} Nat 2 (instOfNatNat 2)))) carry world))",
+      "Merlin.GraphStatePipelineInstance.F3.segmentBoundsChecked": "Merlin.GraphLoopsSegment.Bounds.Valid Merlin.GraphStatePipelineInstance.F3.segmentBounds",
+      "Merlin.GraphStatePipelineInstance.F3.segment_actual": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) (x0 : Int) (x1 : Int) (world : World), Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.S3 (List.cons.{0} Int x0 (List.cons.{0} Int x1 (List.nil.{0} Int))) world) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.S4 (List.cons.{0} Int x0 (List.cons.{0} Int x1 (List.nil.{0} Int))) world)",
+      "Merlin.GraphStatePipelineInstance.F3.unrollBoundsChecked": "Merlin.GraphLoopsUnroll.Bounds.Valid Merlin.GraphStatePipelineInstance.F3.unrollBounds",
+      "Merlin.GraphStatePipelineInstance.F3.unroll_actual": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) (x0 : Int) (x1 : Int) (world : World), Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.S2 (List.cons.{0} Int x0 (List.cons.{0} Int x1 (List.nil.{0} Int))) world) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F3.S3 (List.cons.{0} Int x0 (List.cons.{0} Int x1 (List.nil.{0} Int))) world)",
+      "Merlin.GraphStatePipelineInstance.F4.actual": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) (arguments : List.{0} Int) (world : World), (Eq.{1} Nat (List.length.{0} Int arguments) (List.length.{0} Merlin.GraphState.Scalar.Ty Merlin.GraphStatePipelineInstance.F4.inputs)) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F4.S0 arguments world) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.F4.S4 arguments world))",
+      "Merlin.GraphStatePipelineInstance.complete": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry), Merlin.GraphState.Pipeline.PreservesEntries Int World Error Merlin.GraphStatePipelineInstance.registry (Merlin.GraphStatePipelineInstance.M World Error primitive external) Merlin.GraphStatePipelineInstance.originalEntries Merlin.GraphStatePipelineInstance.finalEntries",
+      "Merlin.GraphStatePipelineInstance.controlAccepted": "Eq.{1} Bool (Merlin.GraphState.Pipeline.checkControl Merlin.GraphStatePipelineInstance.registry Merlin.GraphStatePipelineInstance.controls) Bool.true",
+      "Merlin.GraphStatePipelineInstance.finalEntriesChecked": "Eq.{1} Bool (Merlin.GraphState.Pipeline.checkEntries Merlin.GraphStatePipelineInstance.registry Merlin.GraphStatePipelineInstance.finalEntries) Bool.true",
+      "Merlin.GraphStatePipelineInstance.literalsAccepted": "Eq.{1} Bool (Merlin.GraphState.Pipeline.checkLiterals Merlin.GraphStatePipelineInstance.profileBits Merlin.GraphStatePipelineInstance.controls) Bool.true",
+      "Merlin.GraphStatePipelineInstance.literalsFit": "forall (identity : Nat) (value : Int), (Eq.{1} (Option.{0} Merlin.GraphState.Pipeline.IndexOp) (Merlin.GraphState.Pipeline.controlAt Merlin.GraphStatePipelineInstance.controls identity) (Option.some.{0} Merlin.GraphState.Pipeline.IndexOp (Merlin.GraphState.Pipeline.IndexOp.constant value))) -> (Merlin.GraphState.Pipeline.signedRepresentative Merlin.GraphStatePipelineInstance.profileBits value)",
+      "Merlin.GraphStatePipelineInstance.originalEntriesChecked": "Eq.{1} Bool (Merlin.GraphState.Pipeline.checkEntries Merlin.GraphStatePipelineInstance.registry Merlin.GraphStatePipelineInstance.originalEntries) Bool.true"
+    },
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "theorems_audited": 891,
+    "fresh_replay_report": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/i32/report.json",
+      "sha256": "baa81f7e9cd5f1ac0ea44215e8dc976ea4b531276067a566bb783697d689568e",
+      "bytes": 1450
+    },
+    "batch": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/BATCH.json",
+      "sha256": "357f634788ed5ab85bee794b661406bb8b5627485c2010ed326913443d900f36",
+      "bytes": 10945
+    },
+    "plan": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/PLAN.json",
+      "sha256": "509850f747d877b78b8a226986e6f27a73063ba4c38a37d8cdccd0c647e3fe11",
+      "bytes": 1012890
+    },
+    "suite_xml": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite.xml",
+      "sha256": "309f0d7df2bda5a540f2649de9279cc9ac1304650d3681b120681f4b2f7a5c41",
+      "bytes": 10111
+    },
+    "each_actual_stage_changed": [
+      true,
+      true,
+      true,
+      true
+    ],
+    "frozen_tests": 64,
+    "originals": 8,
+    "fresh_replay_batch_count": 1,
+    "fresh_replays": 8,
+    "review_approved": false,
+    "native_fidelity_proved": false,
+    "retained_model_coverage": false
+  },
+  "no_old_example_rerun_performed": true,
+  "symbolic_operational_domain_witness": {
+    "receipt": {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/receipt.json",
+      "sha256": "34457918dae96a4d865fb1dcb515b3ddaed50ef6d60e6af7a8b99253af47766e",
+      "bytes": 845078
+    },
+    "witness": {
+      "mode": "symbolic-provider-counter-v1",
+      "input": [
+        3,
+        5
+      ],
+      "initial_world": 7,
+      "success": {
+        "values": [
+          17
+        ],
+        "world": 14
+      },
+      "failure": {
+        "error": 17,
+        "world": 16,
+        "failure_IV": 4
+      },
+      "source_success_assumed": false,
+      "primitive": "ordinary total wrapping word functions; no fidelity theorem",
+      "external_contract": "explicit arity-correct constant17 provider with an optional IV4 fault and observable call counter",
+      "native_fidelity_proved": false,
+      "poison_freedom_proved": false,
+      "limited_literal_trace_promoted": false
+    }
+  },
+  "new_valid_mutation_refusals": [
+    {
+      "kind": "step",
+      "status": "unsupported",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m0/REFUSAL.json",
+        "sha256": "b4f550e5a5f15abfeaa9d1db67a8144207eeaea806655e8726954304db87e9b5",
+        "bytes": 201
+      }
+    },
+    {
+      "kind": "bound",
+      "status": "unsupported",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m1/REFUSAL.json",
+        "sha256": "52f9d1d8cf0da4c7a265ac5a4456b0e1cda58b72e856677b1ec223151d21f3f3",
+        "bytes": 202
+      }
+    },
+    {
+      "kind": "drop-observer",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m10/REFUSAL.json",
+        "sha256": "857a01953ba78f1215af360a8f5053dc6348849c475efac931624045d47a23fd",
+        "bytes": 206
+      }
+    },
+    {
+      "kind": "drop-inner-observer",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m11/REFUSAL.json",
+        "sha256": "d31cb99a7778e11a6dbddddd8a1fd0b2c28aec1e56217c6b6a4076c2b04c0594",
+        "bytes": 212
+      }
+    },
+    {
+      "kind": "observer-arguments",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m12/REFUSAL.json",
+        "sha256": "dfa86e9fd61a4d6043d4e9c054bd97034a2705207a85905faf66c0f1a5e87fb9",
+        "bytes": 211
+      }
+    },
+    {
+      "kind": "return-order",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m13/REFUSAL.json",
+        "sha256": "2f3f75a12a5852931569d1640d65e3a8caec65573f1a3e5a407d1171dd96a12e",
+        "bytes": 205
+      }
+    },
+    {
+      "kind": "min-to-max",
+      "status": "unsupported",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m14/REFUSAL.json",
+        "sha256": "328f5c3a1e4606e8ae22fea599a133f5dc0842f644d12678fec2eeb82da122da",
+        "bytes": 207
+      }
+    },
+    {
+      "kind": "min-operands",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m15/REFUSAL.json",
+        "sha256": "6ba107ad94f9bda2ebaa550e0f654683ce01e4eceed8a7ab212248d7ab05d056",
+        "bytes": 205
+      }
+    },
+    {
+      "kind": "inner-control",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m16/REFUSAL.json",
+        "sha256": "8b8ea0a6ae59f324040ff3d86f587d677419fa77ea8742be471acc199ad9018c",
+        "bytes": 206
+      }
+    },
+    {
+      "kind": "function-context",
+      "status": "unsupported",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m17/REFUSAL.json",
+        "sha256": "f44e185f06c4597abe7901b562823de3ef8b4b35df16736c63dda3075bd6f961",
+        "bytes": 213
+      }
+    },
+    {
+      "kind": "function-header",
+      "status": "unsupported",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m18/REFUSAL.json",
+        "sha256": "ef3412da1b91449bbc982145d42bf27a79f622f1e6691193d932290d5994de9e",
+        "bytes": 212
+      }
+    },
+    {
+      "kind": "module-header",
+      "status": "unsupported",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m19/REFUSAL.json",
+        "sha256": "5d16385c995897c4aab00eed96ffa490ff9979c3705f991c20c4c302fcba420e",
+        "bytes": 210
+      }
+    },
+    {
+      "kind": "offset",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m2/REFUSAL.json",
+        "sha256": "dcd9f6e3eb2446776a7e4405f27e4b550433212093ddcd3696fd393732962582",
+        "bytes": 199
+      }
+    },
+    {
+      "kind": "operand",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m3/REFUSAL.json",
+        "sha256": "f364040242b7dd0c3d6e5dd42fe4c81fc6ce532d00ee50c44b2534971b062ef2",
+        "bytes": 200
+      }
+    },
+    {
+      "kind": "operand-order",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m4/REFUSAL.json",
+        "sha256": "b8e27687f7894b9d2dd7c37432a3ad8a306e0431528a4a252d7bec5d4ed8e5d4",
+        "bytes": 206
+      }
+    },
+    {
+      "kind": "opcode",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m5/REFUSAL.json",
+        "sha256": "edb9c37bf16ebf237c0131d444226b18bc06b97375df748dcd85b6665d518aaa",
+        "bytes": 199
+      }
+    },
+    {
+      "kind": "flags",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m6/REFUSAL.json",
+        "sha256": "5f43a3e96dd8f79a34609783e0627edfb285611450019fdb0023d8b593d52d67",
+        "bytes": 198
+      }
+    },
+    {
+      "kind": "carry-init",
+      "status": "unsupported",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m7/REFUSAL.json",
+        "sha256": "4463daeb7b920bc6265f8cfdb670ba1361e113a47053cf6b895d614f8b92111c",
+        "bytes": 207
+      }
+    },
+    {
+      "kind": "yield-order",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m8/REFUSAL.json",
+        "sha256": "93138f9c2f7b672b68b02b0a1c786950d3770e35a56b1087f11524295c677f59",
+        "bytes": 204
+      }
+    },
+    {
+      "kind": "callee",
+      "status": "refused",
+      "record": {
+        "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_compiler_valid_boundary_m9/REFUSAL.json",
+        "sha256": "613347ad432b89dfe8f67da859b039900b4d1db7139d939c03347c18ce54710e",
+        "bytes": 199
+      }
+    }
+  ],
+  "new_forgery_refusals": [
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge0/FORGERY_REFUSED.json",
+      "sha256": "1bc4c75ce72d10c420b2d203fd3594a96c2745c026d662043ce6540a7c16288b",
+      "bytes": 134
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge1/FORGERY_REFUSED.json",
+      "sha256": "09c0b43df165c7bad70767941507d3153e648ea949ba9deae47d0b95d60d6017",
+      "bytes": 135
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge2/FORGERY_REFUSED.json",
+      "sha256": "362ac694bcdd7afa82e6e7390394dc74d2c4538ddda2cfc9b5cf6579e2f1d92b",
+      "bytes": 135
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge3/FORGERY_REFUSED.json",
+      "sha256": "ea74968487a1f35ceb8eeabfae1e252b6b8bd6e41b77e8470b9a2aec3502bb6a",
+      "bytes": 139
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge4/FORGERY_REFUSED.json",
+      "sha256": "dc08ee21e0fbfb2061dd79c3791165a3cec79357ce7c681a6ab296a194952b03",
+      "bytes": 134
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge5/FORGERY_REFUSED.json",
+      "sha256": "6fbf4b4ae2553b82c8cf955d235789c5edff4e10cd8de8f52217a8a30f2052ce",
+      "bytes": 135
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge6/FORGERY_REFUSED.json",
+      "sha256": "d25498a6af4b6f53f1410c3b377572ca160daac2b4a3e148cbaeb0373abb8df8",
+      "bytes": 139
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge7/FORGERY_REFUSED.json",
+      "sha256": "e74626045cbe853c231f5bcac69e6ce678f087e8049bdd8bc27374f79d28789a",
+      "bytes": 136
+    },
+    {
+      "path": "out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_coherently_rehashed_forge8/FORGERY_REFUSED.json",
+      "sha256": "56ef9cfbefda831c719976781cd51232bcbc5a2e0d1fcd2d9c8cdf66cd3503b7",
+      "bytes": 137
+    }
+  ],
+  "review_state": "Graham independent projection/assumptions review pending; no contact or duplicate review",
+  "limited_literal_route": {
+    "record": {
+      "path": "out/build/graph-verification/state-pipeline/LIMIT_BLOCKER.json",
+      "sha256": "e72996a4d3661ee650b7335501bbbc012194b979f44217c0192dc5cb149a0f65",
+      "bytes": 1164
+    },
+    "status": "UNQUALIFIED_LIMIT; retained and not retried; symbolic provider is a separate model/proof route"
+  }
+}

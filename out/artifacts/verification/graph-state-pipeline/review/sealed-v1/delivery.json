@@ -1,0 +1,973 @@
+{
+  "status": "conditionally_qualified_graph_correspondence",
+  "checkout": "/home/jeremy/Projects/merlin",
+  "branch": "feat/pass-verification",
+  "observed_HEAD": "53ca756243419ff8d9d07d3766f5ce79485bf2bf",
+  "initial_additive_base": "229f42c627854c49476a101cb393d0b15044fab8",
+  "incremental_patch_base": "53ca756243419ff8d9d07d3766f5ce79485bf2bf",
+  "owned_sources": [
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_pipeline.py",
+        "sha256": "a0346474609ebafb0c217fa0084c89122fba0c92e33daf7bd399124971a3d0de",
+        "bytes": 9042
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/merlin/tests/ir/test_lean_graph_state_pipeline.py",
+        "sha256": "a0346474609ebafb0c217fa0084c89122fba0c92e33daf7bd399124971a3d0de",
+        "bytes": 9042
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_pipeline_mutations.py",
+        "sha256": "0d8cf84d00089973b2f3383dacbe42c4cd92226c0ddabbba7cb3f0984f44059b",
+        "bytes": 7000
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/merlin/tests/ir/test_lean_graph_state_pipeline_mutations.py",
+        "sha256": "0d8cf84d00089973b2f3383dacbe42c4cd92226c0ddabbba7cb3f0984f44059b",
+        "bytes": 7000
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_pipeline_receipts.py",
+        "sha256": "252d301de5de298a78bc8bcd0598bdc374efa850c852efb23f2b1f5cc976b30d",
+        "bytes": 8886
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/merlin/tests/ir/test_lean_graph_state_pipeline_receipts.py",
+        "sha256": "252d301de5de298a78bc8bcd0598bdc374efa850c852efb23f2b1f5cc976b30d",
+        "bytes": 8886
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+        "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+        "bytes": 5747
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+        "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+        "bytes": 5747
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+        "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+        "bytes": 4641
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+        "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+        "bytes": 4641
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+        "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+        "bytes": 7412
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+        "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+        "bytes": 7412
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+        "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+        "bytes": 7569
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+        "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+        "bytes": 7569
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+        "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+        "bytes": 1400
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+        "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+        "bytes": 1400
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+        "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+        "bytes": 8734
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+        "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+        "bytes": 8734
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+        "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+        "bytes": 3197
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+        "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+        "bytes": 3197
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+        "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+        "bytes": 2509
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+        "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+        "bytes": 2509
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+        "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+        "bytes": 4541
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+        "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+        "bytes": 4541
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline.py",
+        "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+        "bytes": 3144
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_pipeline.py",
+        "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+        "bytes": 3144
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_capture.py",
+        "sha256": "3960c5ffdb65e70f104a16fb4328eeffde22906afe199719403f0053850ff9be",
+        "bytes": 11606
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_pipeline_capture.py",
+        "sha256": "3960c5ffdb65e70f104a16fb4328eeffde22906afe199719403f0053850ff9be",
+        "bytes": 11606
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_emit.py",
+        "sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+        "bytes": 26257
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_pipeline_emit.py",
+        "sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+        "bytes": 26257
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_kernel.py",
+        "sha256": "8e8da1f38ad73889693edd8f94e5cce54c751bea16811cc4b0916c2990efedd1",
+        "bytes": 7618
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_pipeline_kernel.py",
+        "sha256": "8e8da1f38ad73889693edd8f94e5cce54c751bea16811cc4b0916c2990efedd1",
+        "bytes": 7618
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_models.py",
+        "sha256": "3e94cec2cb4b16ac50b5fb1b69e54b22152d945d36574428cc0ab72294a891e5",
+        "bytes": 15648
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_pipeline_models.py",
+        "sha256": "3e94cec2cb4b16ac50b5fb1b69e54b22152d945d36574428cc0ab72294a891e5",
+        "bytes": 15648
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_mutate.py",
+        "sha256": "63709019921e1b1c89e1c0b4f47adf95cf00c5cb8efb7407b6dda7090d1956f4",
+        "bytes": 4904
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_pipeline_mutate.py",
+        "sha256": "63709019921e1b1c89e1c0b4f47adf95cf00c5cb8efb7407b6dda7090d1956f4",
+        "bytes": 4904
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_proof.py",
+        "sha256": "9cfc8f312b8ec1eec09ab98a7cd1753e4342c29e99e707bdbef1f6922cbf01ac",
+        "bytes": 12970
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_pipeline_proof.py",
+        "sha256": "9cfc8f312b8ec1eec09ab98a7cd1753e4342c29e99e707bdbef1f6922cbf01ac",
+        "bytes": 12970
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_receipt.py",
+        "sha256": "c5056b7cc9f042f03818f49b0e9897f6b6b49d1b0f8b5d940d834685f6d8febf",
+        "bytes": 19133
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_pipeline_receipt.py",
+        "sha256": "c5056b7cc9f042f03818f49b0e9897f6b6b49d1b0f8b5d940d834685f6d8febf",
+        "bytes": 19133
+      }
+    }
+  ],
+  "full_owned_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/owned.patch",
+    "sha256": "d9176e85b78627cdd381d61feeafa8ce8971b75b0723a5abab133400f334874c",
+    "bytes": 180499
+  },
+  "incremental_owned_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/incremental-owned.patch",
+    "sha256": "52c7df5f905f5d8b65ee8309d326026f008e481c23371f62265293b3873f143a",
+    "bytes": 147727
+  },
+  "source_only_dependency_snapshots": 85,
+  "tests": {
+    "tests": 64,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "originals": [
+    {
+      "name": "i32",
+      "config": {
+        "factor": 2,
+        "tile": 3,
+        "index_bits": 32,
+        "mode": "graph"
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage0.mlir",
+          "sha256": "328d85463dffccf6a45028f20f135eef925c9aeb99893a62f89b26cf33145fcd",
+          "bytes": 1720
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage1.mlir",
+          "sha256": "7cf34f3aee94df21289e10ff69d4255cafb98745ffd6ccc3f5677e732a15f74d",
+          "bytes": 1517
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage2.mlir",
+          "sha256": "b1194992659257e7eb381ef6f754ace4a7a24fa1c23f7ac8cb5fa91fef21e738",
+          "bytes": 1515
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage3.mlir",
+          "sha256": "7cd49e2b0d87fdef6b64c0b098d9395d8e3bcc538a5ca48fef3901bc7e653d41",
+          "bytes": 2113
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/actual/stage4.mlir",
+          "sha256": "973b4c4c4e30d6318033f39dde9e5eb1786dbf946c77c5b6bdc4c3c7e751b690",
+          "bytes": 2523
+        }
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/receipt.json",
+        "sha256": "be6ea9b9052864732a6b592aa2a02a0392f9110851b38f41a249dfdd46c48005",
+        "bytes": 845042
+      },
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/GraphStatePipelineInstance.lean",
+        "sha256": "b2d558f42dd3526a04dbb90e9d0c9eb017249311212bc51063cbf1cfd9f2b6a1",
+        "bytes": 22471
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/GraphStatePipelineInstance.olean",
+        "sha256": "54eea1a75d9d9094d6f8ca30056e480d8eb7d103a292fc1efd69f56b0fb8556c",
+        "bytes": 947960
+      },
+      "status": "conditional_graph_checked",
+      "witness": null
+    },
+    {
+      "name": "i64-multicarry",
+      "config": {
+        "factor": 3,
+        "tile": 3,
+        "index_bits": 64,
+        "mode": "graph"
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_1/actual/stage0.mlir",
+          "sha256": "b948f4c906bbe10956a86021d76fdafdcf31dc985fb5f1ffe6ad0fd396d6fd20",
+          "bytes": 2152
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_1/actual/stage1.mlir",
+          "sha256": "a68c997e8ab7c614e64e8073821bfe6086221edbb23a4b2b3503a832e5024861",
+          "bytes": 1949
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_1/actual/stage2.mlir",
+          "sha256": "2c4a510f47a832d6c4b061d68fb704c639910af8d68c970bb19d47cc7119842d",
+          "bytes": 1947
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_1/actual/stage3.mlir",
+          "sha256": "00d10f1455efc9326ec6dcb8173b2039c8a3c140a4c897724dcef54518d325bf",
+          "bytes": 3391
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_1/actual/stage4.mlir",
+          "sha256": "94732db8aeb16173b37a6219d4a4d2ec3a1457903972ec93786b36d4e3ce0ac4",
+          "bytes": 3872
+        }
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_1/receipt.json",
+        "sha256": "0d0fe4c04276297c216a9161c809692e2bcff1403de6ee5f228f482bd5259c68",
+        "bytes": 845044
+      },
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_1/checked/kernel/GraphStatePipelineInstance.lean",
+        "sha256": "2c7bf30b7c5c80bbfc5faf678a875a3cd2f68cf8f0feed57511306babf023e85",
+        "bytes": 32606
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_1/checked/kernel/GraphStatePipelineInstance.olean",
+        "sha256": "44aa76ee2a7a3bf13f1a24ef8e7311731ab78134589d036969ad63e4597c6c5f",
+        "bytes": 2287488
+      },
+      "status": "conditional_graph_checked",
+      "witness": null
+    },
+    {
+      "name": "huge",
+      "config": {
+        "factor": 2,
+        "tile": 3,
+        "index_bits": 64,
+        "mode": "graph"
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_2/actual/stage0.mlir",
+          "sha256": "699aef5baf9f410ed92af2a312a511e064bd6a171769107d52c596a5efe6fa98",
+          "bytes": 1731
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_2/actual/stage1.mlir",
+          "sha256": "9610fdf489e529d76aba37cfe7b8a7af262e8c130022bce0f4ffa746f644f211",
+          "bytes": 1528
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_2/actual/stage2.mlir",
+          "sha256": "92858d828a5c127313a68b5d516950149efb6d6f7dc3500a59e1dab5eea065a5",
+          "bytes": 1526
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_2/actual/stage3.mlir",
+          "sha256": "f7685166d33b7bf82797b39a02c2876aa0382a1c9de2804afe7749c00638b566",
+          "bytes": 2135
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_2/actual/stage4.mlir",
+          "sha256": "84f53dbad7979eb954e467a9c7f3d053957b7f267ef60b944836dc7cc24aabec",
+          "bytes": 2545
+        }
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_2/receipt.json",
+        "sha256": "59d31b876a652651bbd7e2e20bab88ff6b1cfb95564d003ca8cbc9aabb5f368f",
+        "bytes": 845042
+      },
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_2/checked/kernel/GraphStatePipelineInstance.lean",
+        "sha256": "b29556c93713c515a764989021db7957e1bcfefcde17bd80fe32e87ad4609010",
+        "bytes": 23019
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_2/checked/kernel/GraphStatePipelineInstance.olean",
+        "sha256": "e1f885703eb0c5546aa44b939bc8f327f0b65bab7d649fb2e3d753036db29a40",
+        "bytes": 948544
+      },
+      "status": "conditional_graph_checked",
+      "witness": null
+    },
+    {
+      "name": "nonaligned",
+      "config": {
+        "factor": 2,
+        "tile": 2,
+        "index_bits": 32,
+        "mode": "graph"
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_3/actual/stage0.mlir",
+          "sha256": "5ef4d745704f21402d73c3a93325c7767cf40dab152ab7563fd2e9460e30675c",
+          "bytes": 1720
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_3/actual/stage1.mlir",
+          "sha256": "f40df9373ac6467c6c35284c282cc802c41d35638206f942d2335a529f344c0e",
+          "bytes": 1517
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_3/actual/stage2.mlir",
+          "sha256": "d5cb34f685f43bf806e7934183263810d2996891317a560a7d2dee66359de35e",
+          "bytes": 1515
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_3/actual/stage3.mlir",
+          "sha256": "45adf492e3893ae02c02cde3be3dff534d1ff15bdc4c7b9da5434f8d84ee85d3",
+          "bytes": 2113
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_3/actual/stage4.mlir",
+          "sha256": "6edf08c12b3f9635abcac08cab36e6b369fdc1b00c4e2f9036fc1e7612f00cec",
+          "bytes": 2523
+        }
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_3/receipt.json",
+        "sha256": "f2cfdd7d51725b36631fc2552ad31fa98829d60031d45ef6b58f9a350a834bb4",
+        "bytes": 845042
+      },
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_3/checked/kernel/GraphStatePipelineInstance.lean",
+        "sha256": "926d103ca01b186eb0202290f0d5c9ddc464b6d447c1c4ac5798d9330f5a1439",
+        "bytes": 22529
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_3/checked/kernel/GraphStatePipelineInstance.olean",
+        "sha256": "1812eda5d30f0b2935b757e8d23b2b4ad19cdbed09ef9f638282a99921b1d414",
+        "bytes": 934992
+      },
+      "status": "conditional_graph_checked",
+      "witness": null
+    },
+    {
+      "name": "partial-body",
+      "config": {
+        "factor": 3,
+        "tile": 2,
+        "index_bits": 32,
+        "mode": "graph"
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_4/actual/stage0.mlir",
+          "sha256": "c7967de21e13f0c9fc75776bdddeb3a92c15955dab3e0937492ad483e0241f9c",
+          "bytes": 1780
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_4/actual/stage1.mlir",
+          "sha256": "89830552b3618bba803e3f585db31f33ebb618019390d6d12fb219e0328b4d7b",
+          "bytes": 1577
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_4/actual/stage2.mlir",
+          "sha256": "142537e85e797d9ea0da9723d6b6136d237383cc625196e76c1836eb38ad9843",
+          "bytes": 1575
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_4/actual/stage3.mlir",
+          "sha256": "c8c58e9c64706f719dd93e32e9fe023953b27508d3a4ae2b1fc4bef29a07f0b5",
+          "bytes": 2760
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_4/actual/stage4.mlir",
+          "sha256": "fcaab4c796d34fca60a912b969cd9e4f6019a2301c774a8c4e7ac25cd6611320",
+          "bytes": 3188
+        }
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_4/receipt.json",
+        "sha256": "d4df2ea163363a1d40fa6b14f7107233c4ed2610e5fa232f255c0cc0c383f03c",
+        "bytes": 845044
+      },
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_4/checked/kernel/GraphStatePipelineInstance.lean",
+        "sha256": "c86bc9101a467310d2e560ee9f67f632f5b3ec5444c982194ff3b499bdb3f182",
+        "bytes": 29149
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_4/checked/kernel/GraphStatePipelineInstance.olean",
+        "sha256": "f61499ac225b344554861e21a2b63f72e937a0dc00cbbab9bb31117781a4b9be",
+        "bytes": 1751848
+      },
+      "status": "conditional_graph_checked",
+      "witness": null
+    },
+    {
+      "name": "triple-carry",
+      "config": {
+        "factor": 3,
+        "tile": 3,
+        "index_bits": 64,
+        "mode": "graph"
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_5/actual/stage0.mlir",
+          "sha256": "ce2ba2393a29f39a3660e88c93e8e2539afd23118679a21ada6a3c690b140e96",
+          "bytes": 2382
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_5/actual/stage1.mlir",
+          "sha256": "8f02644841a621ce398d1e6306d3005e988d46a5dd1433694258693bf871e770",
+          "bytes": 2179
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_5/actual/stage2.mlir",
+          "sha256": "a1df5e99866a165897d351e75a2fea475c239b36dfa625a79dbcf4af94e42b3d",
+          "bytes": 2177
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_5/actual/stage3.mlir",
+          "sha256": "51644ebac7f2803a93823ff92eb8beaf6b346bb5e10a960ea6f4c58883bff02e",
+          "bytes": 3869
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_5/actual/stage4.mlir",
+          "sha256": "dd7032401f4a5f61ddcd5d1275ce4fcb00ce0d8d019816cf3aefbe2fc240261a",
+          "bytes": 4400
+        }
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_5/receipt.json",
+        "sha256": "5995e64e37a40d87833ea913758f378d7418c94553a41e42e8a9ef6d0d5a119b",
+        "bytes": 845044
+      },
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_5/checked/kernel/GraphStatePipelineInstance.lean",
+        "sha256": "69c39a94edbc2a3fb19c01d5dea55fe6c4bb68cda79483ad0dbb4745bda1ba2e",
+        "bytes": 35580
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_5/checked/kernel/GraphStatePipelineInstance.olean",
+        "sha256": "8003199294852d9001d98cf2dec599e66e93c7e783f0601ef4d6c34fcfe77110",
+        "bytes": 2997824
+      },
+      "status": "conditional_graph_checked",
+      "witness": null
+    },
+    {
+      "name": "factor-four",
+      "config": {
+        "factor": 4,
+        "tile": 4,
+        "index_bits": 32,
+        "mode": "graph"
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_6/actual/stage0.mlir",
+          "sha256": "a38929d0b036b6a08213a89940c5e54add3bbbcf5fd44980e4cbff545e2586e6",
+          "bytes": 1683
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_6/actual/stage1.mlir",
+          "sha256": "6477da82783fda148cd9aea030b36c2f17095ba8ab4aa02f44846a295ede8da4",
+          "bytes": 1486
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_6/actual/stage2.mlir",
+          "sha256": "45544f5cb4b7d5457ecbf46e1043bcabe257b14596745ef42a100ff99d85a1d2",
+          "bytes": 1484
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_6/actual/stage3.mlir",
+          "sha256": "d3e35e99a760919384d1f510e5c2af447c2f4cc07607846697250a4c30abea1c",
+          "bytes": 2976
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_6/actual/stage4.mlir",
+          "sha256": "f820487f30235a309714cf0d2f42b6f6a3ceef6fa07fe4cc130220575fb8e042",
+          "bytes": 3409
+        }
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_6/receipt.json",
+        "sha256": "f7a653515e018aaa5df86ca9d4501c54ab81c23c073e208218a32e68597a5ec3",
+        "bytes": 845045
+      },
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_6/checked/kernel/GraphStatePipelineInstance.lean",
+        "sha256": "4aca4b33809ca098a68fde5838748e30db11003bd5c59cf8b5c7ed540890b6d3",
+        "bytes": 26698
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_6/checked/kernel/GraphStatePipelineInstance.olean",
+        "sha256": "5163616a801a218bc1928f6d0903d9cc6e17efe3b507a83bbdfc35b7df890869",
+        "bytes": 1545944
+      },
+      "status": "conditional_graph_checked",
+      "witness": null
+    },
+    {
+      "name": "symbolic-provider",
+      "config": {
+        "factor": 2,
+        "tile": 3,
+        "index_bits": 32,
+        "mode": "symbolic-provider-counter-v1"
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/actual/stage0.mlir",
+          "sha256": "0020eb8d580ab14cb99a9e7de8940b4969e24e831b8cabc6dae0311320e8fce5",
+          "bytes": 1719
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/actual/stage1.mlir",
+          "sha256": "cf46496acef89d14edb3d43a140e9496f9f618d625d82be4759fa61522c7e335",
+          "bytes": 1516
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/actual/stage2.mlir",
+          "sha256": "edfeaf79e29e5e9aa0b99f279a04dea40ef8aa84e1885095131de39a31a99b49",
+          "bytes": 1514
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/actual/stage3.mlir",
+          "sha256": "bebe36c2102627c590b615b783fe5ae61978210cdbd2890d503c228e8bf6b847",
+          "bytes": 2111
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/actual/stage4.mlir",
+          "sha256": "504302438216cc33633ec58405b32592749d70d5870d7c77f28fdb5a4c6204b3",
+          "bytes": 2521
+        }
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/receipt.json",
+        "sha256": "34457918dae96a4d865fb1dcb515b3ddaed50ef6d60e6af7a8b99253af47766e",
+        "bytes": 845078
+      },
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/checked/kernel/GraphStatePipelineInstance.lean",
+        "sha256": "18c4ac46c75076acea2e9514a4eee233d59f605683ab1f131c21d44a6feb4646",
+        "bytes": 27939
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_7/checked/kernel/GraphStatePipelineInstance.olean",
+        "sha256": "3ae2b5f21e70baee108ef539652b494544439ac1950d12fa5555e824bd513fa5",
+        "bytes": 1258664
+      },
+      "status": "conditional_graph_checked",
+      "witness": {
+        "mode": "symbolic-provider-counter-v1",
+        "input": [
+          3,
+          5
+        ],
+        "initial_world": 7,
+        "success": {
+          "values": [
+            17
+          ],
+          "world": 14
+        },
+        "failure": {
+          "error": 17,
+          "world": 16,
+          "failure_IV": 4
+        },
+        "source_success_assumed": false,
+        "primitive": "ordinary total wrapping word functions; no fidelity theorem",
+        "external_contract": "explicit arity-correct constant17 provider with an optional IV4 fault and observable call counter",
+        "native_fidelity_proved": false,
+        "poison_freedom_proved": false,
+        "limited_literal_trace_promoted": false
+      }
+    }
+  ],
+  "fresh_replays": [
+    {
+      "name": "i32",
+      "returncode": 0,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/i32.replay.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/i32.replay.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/i32/report.json",
+        "sha256": "baa81f7e9cd5f1ac0ea44215e8dc976ea4b531276067a566bb783697d689568e",
+        "bytes": 1450
+      }
+    },
+    {
+      "name": "i64-multicarry",
+      "returncode": 0,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/i64-multicarry.replay.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/i64-multicarry.replay.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/i64-multicarry/report.json",
+        "sha256": "e4f5a6a3b065c9e82234551eaee067e5428a7d761ed92fc2b89ea4be4bb1a87d",
+        "bytes": 1461
+      }
+    },
+    {
+      "name": "huge",
+      "returncode": 0,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/huge.replay.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/huge.replay.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/huge/report.json",
+        "sha256": "537311efc45e35ba19c5b364635d45369cd5715d5e26fe024e55682da8fd9fe7",
+        "bytes": 1451
+      }
+    },
+    {
+      "name": "nonaligned",
+      "returncode": 0,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/nonaligned.replay.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/nonaligned.replay.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/nonaligned/report.json",
+        "sha256": "b74d334016756b20276df1013d049e3c8bd7d24030a0a3ca9e03da05f8610d6a",
+        "bytes": 1457
+      }
+    },
+    {
+      "name": "partial-body",
+      "returncode": 0,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/partial-body.replay.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/partial-body.replay.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/partial-body/report.json",
+        "sha256": "5882b64b5e94bd0cc75b9d9b35e8478ea626e9619b28a35cd53186e1b45d17b6",
+        "bytes": 1459
+      }
+    },
+    {
+      "name": "triple-carry",
+      "returncode": 0,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/triple-carry.replay.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/triple-carry.replay.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/triple-carry/report.json",
+        "sha256": "6677611ecf197748098d4b920724793105932a13272004c4647bd2a6b85bcfdf",
+        "bytes": 1459
+      }
+    },
+    {
+      "name": "factor-four",
+      "returncode": 0,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/factor-four.replay.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/factor-four.replay.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/factor-four/report.json",
+        "sha256": "648a4be34954e0ea0cfa6ce967f5a42eca616cd43ffe94ae238919faf46996b8",
+        "bytes": 1458
+      }
+    },
+    {
+      "name": "symbolic-provider",
+      "returncode": 0,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/symbolic-provider.replay.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/symbolic-provider.replay.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/symbolic-provider/report.json",
+        "sha256": "99bbf6f30283ecaee1f37edd86a88bed3f4f4c4ffe7458ee786d6423badd8306",
+        "bytes": 1464
+      }
+    }
+  ],
+  "positive_replay_batches": 1,
+  "all_eight_positive_cases_change_all_four_stages": true,
+  "qualified_profile": {
+    "path": "/home/jeremy/Projects/merlin/out/build/graph-verification/state-pipeline/proof-profiles/f3c72632bee4db234e58a658b3e2be5929128e0c34202aa4a41fda3037ba7b51/ready.json",
+    "sha256": "fd0221a88ab58b510eeba816ca98d2bf0f0d8e1cd4b890c7ddedb2297ad4316f",
+    "bytes": 27363
+  },
+  "one_carrier": "Int values with explicit mathematical index controls/common total word and partial external meanings",
+  "relation": "same ordered returns/full persistent outcome including error/terminal world; private SSA excluded",
+  "claims": {
+    "relation": "same ordered returns/full persistent outcome including error/terminal world; private SSA excluded",
+    "supported_defined_entry_roster_preserved": true,
+    "public_acceptance_issued": false,
+    "review_approved": false,
+    "source_success_for_all_models": false,
+    "poison_freedom_proved": false,
+    "native_fidelity_proved": false,
+    "primitive_fidelity_proved": false,
+    "numerical_gates_discharged": false,
+    "all_graph_passes_verified": false,
+    "full_model_claim": false,
+    "broker_integration": false,
+    "python_projection_proved": false,
+    "limited_literal_trace_promoted": false
+  },
+  "review_approved": false,
+  "old55_sources_and_capsules_preserved": [
+    {
+      "family": "graph-state",
+      "packet": "out/artifacts/verification/graph-state/review/sealed-v2",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state/review/sealed-v2/MANIFEST.json",
+        "sha256": "0fb830998b4dd508db2d68af090e97b3b43ee1ef6d8bd3dfd4f897a65997493a",
+        "bytes": 272124
+      },
+      "files": 1126,
+      "sources": 12,
+      "mismatches": 0,
+      "preserved_owned_patch": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state/review/sealed-v2/owned.patch",
+        "sha256": "1efea4bc574046ec85750b4208790263461803d0f5118963d27d19fa33b516ce",
+        "bytes": 96242
+      }
+    },
+    {
+      "family": "graph-state-chain",
+      "packet": "out/artifacts/verification/graph-state-chain/review/sealed-packed-v1",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-chain/review/sealed-packed-v1/MANIFEST.json",
+        "sha256": "7fab2dc80e035a0db9953dcdc988164faa29f101ad94bcdbbaf6bba20351d0f3",
+        "bytes": 3545559
+      },
+      "files": 12149,
+      "sources": 15,
+      "mismatches": 0,
+      "preserved_owned_patch": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-chain/review/sealed-packed-v1/owned.patch",
+        "sha256": "ee672d15a8b34e1523ef4f20d22eaafc7687d600f5ee9c68be56b6cba13c5ca5",
+        "bytes": 127194
+      }
+    },
+    {
+      "family": "graph-state-elision",
+      "packet": "out/artifacts/verification/graph-state-elision/review/sealed-diagnostic-v1",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-elision/review/sealed-diagnostic-v1/MANIFEST.json",
+        "sha256": "460db8d27e03239effd9d1fe9e0942dd0b93a6f1963244f237c7d462320cdb58",
+        "bytes": 2124361
+      },
+      "files": 8145,
+      "sources": 10,
+      "mismatches": 0,
+      "preserved_owned_patch": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-elision/review/sealed-diagnostic-v1/owned.patch",
+        "sha256": "26d89466a8a3114301fad1b6c90a0cc22f06ece06fcd79cf338ded0179e6678b",
+        "bytes": 99507
+      }
+    },
+    {
+      "family": "graph-state-scalar",
+      "packet": "out/artifacts/verification/graph-state-scalar/review/sealed-v1",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/MANIFEST.json",
+        "sha256": "6d30bf2d41962d1110edac2a63e8f2eea27dc4e5dcea1f759bb0ea4a09c8ad65",
+        "bytes": 2909918
+      },
+      "files": 11086,
+      "sources": 18,
+      "mismatches": 0,
+      "preserved_owned_patch": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/owned.patch",
+        "sha256": "cb76ac89365529b3a06061703444603e504fee86973bc64868fac9b9f43ad812",
+        "bytes": 176122
+      }
+    }
+  ],
+  "configuration_elision_qualified_originals": 0,
+  "configuration_elision_qualified_replays": 0,
+  "literal_trace_timeout_retained_unqualified": true,
+  "Std_Time_binding_incident": "UNKNOWN; fixed selected import/object/sidecar/host context unchanged; target absent",
+  "retained_models": "not qualified; actual synthetic production API boundaries only",
+  "broker_selected": false
+}

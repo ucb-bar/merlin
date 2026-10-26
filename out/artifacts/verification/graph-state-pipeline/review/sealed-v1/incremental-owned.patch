@@ -1,0 +1,3110 @@
+diff --git a/merlin/tests/ir/test_lean_graph_state_pipeline.py b/merlin/tests/ir/test_lean_graph_state_pipeline.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_state_pipeline.py
+@@ -0,0 +1,224 @@
++"""Actual scalar→SCF chain proofs, finite model witnesses and explicit domains."""
++
++import json
++import os
++import sys
++from pathlib import Path
++
++import pytest
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import repo_root
++from merlin.verify import lean_graph_state as stable
++from merlin.verify.lean_graph_state_pipeline_emit import emit
++from merlin.verify.lean_graph_state_pipeline_models import countermodels
++from merlin.verify.lean_graph_state_pipeline_proof import check_query, guard
++from merlin.verify.lean_graph_state_pipeline_receipt import check_boundary, issue
++
++REFERENCE = repo_root().parent / "merlin-graph-proof-intake"
++
++
++def source(width=32, *, lower=0, upper=24, step=1, multi=False, partial=False):
++    t = "i" + str(width)
++    if multi:
++        declarations = f"""func.func private @partial({t}, {t}, index) -> ({t}, {t})
++  func.func private @other({t}, {t}, index) -> ({t}, {t})
++  func.func private @watch({t}, index)
++  func.func private @final_observe({t}, {t})"""
++        loop = f"""%out:2 = scf.for %iv = %lb to %ub step %st iter_args(%acc = %x, %other = %bias) -> ({t}, {t}) {{
++      %invariant = arith.muli %bias, %bias : {t}
++      %duplicate = arith.muli %bias, %bias : {t}
++      %a = arith.addi %duplicate, %acc : {t}
++      %a2 = arith.addi %a, %invariant : {t}
++      func.call @watch(%a2, %iv) : ({t}, index) -> ()
++      %v:2 = func.call @partial(%a2, %other, %iv) : ({t}, {t}, index) -> ({t}, {t})
++      %next = arith.subi %v#1, %acc : {t}
++      scf.yield %v#0, %next : {t}, {t}
++    }}
++    func.call @final_observe(%out#0, %out#1) : ({t}, {t}) -> ()
++    func.return %out#1, %out#0 : {t}, {t}"""
++        result = f"({t}, {t})"
++    else:
++        declarations = f"""func.func private @partial({t}, index) -> {t}
++  func.func private @other({t}, index) -> {t}
++  func.func private @final_observe({t})"""
++        maybe = (
++            f"%div = arith.divsi %a2, %bias : {t}\n      %v = func.call @partial(%div, %iv) : ({t}, index) -> {t}"
++            if partial
++            else f"%v = func.call @partial(%a2, %iv) : ({t}, index) -> {t}"
++        )
++        loop = f"""%out = scf.for %iv = %lb to %ub step %st iter_args(%acc = %x) -> ({t}) {{
++      %invariant = arith.addi %bias, %bias : {t}
++      %duplicate = arith.addi %bias, %bias : {t}
++      %a = arith.addi %acc, %duplicate : {t}
++      %a2 = arith.addi %a, %invariant : {t}
++      {maybe}
++      scf.yield %v : {t}
++    }}
++    func.call @final_observe(%out) : ({t}) -> ()
++    func.return %out : {t}"""
++        result = t
++    return f"""builtin.module {{
++  {declarations}
++  func.func @main(%x: {t}, %bias: {t}) -> {result} {{
++    %lb = arith.constant {lower} : index
++    %ub = arith.constant {upper} : index
++    %st = arith.constant {step} : index
++    %dead = arith.addi %x, %x : {t}
++    {loop}
++  }}
++  func.func @untouched(%x: {t}) -> {t} {{ func.return %x : {t} }}
++}}"""
++
++
++def triple_source():
++    return """builtin.module {
++  func.func private @partial(i64, i64, i64, index) -> (i64, i64, i64)
++  func.func private @other(i64, i64, i64, index) -> (i64, i64, i64)
++  func.func private @watch(i64, index)
++  func.func private @final_observe(i64, i64, i64)
++  func.func @main(%x: i64, %bias: i64) -> (i64, i64, i64) {
++    %lb = arith.constant 3 : index
++    %ub = arith.constant 27 : index
++    %st = arith.constant 2 : index
++    %dead = arith.addi %x, %x : i64
++    %out:3 = scf.for %iv = %lb to %ub step %st iter_args(%acc = %x, %other = %bias, %third = %x) -> (i64, i64, i64) {
++      %invariant = arith.muli %bias, %bias : i64
++      %duplicate = arith.muli %bias, %bias : i64
++      %a = arith.addi %duplicate, %acc : i64
++      %a2 = arith.addi %a, %invariant : i64
++      func.call @watch(%a2, %iv) : (i64, index) -> ()
++      %v:3 = func.call @partial(%a2, %other, %third, %iv) : (i64, i64, i64, index) -> (i64, i64, i64)
++      %next = arith.subi %v#1, %acc : i64
++      %last = arith.addi %v#2, %other : i64
++      scf.yield %v#0, %next, %last : i64, i64, i64
++    }
++    func.call @final_observe(%out#0, %out#1, %out#2) : (i64, i64, i64) -> ()
++    func.return %out#2, %out#0, %out#1 : i64, i64, i64
++  }
++  func.func @untouched(%x:i64) -> i64 { func.return %x : i64 }
++}"""
++
++
++CASES = {
++    "i32": {"text": source(), "factor": 2, "tile": 3, "bits": 32},
++    "i64-multicarry": {"text": source(64, lower=3, upper=27, step=2, multi=True), "factor": 3, "tile": 3, "bits": 64},
++    "huge": {"text": source(32, upper=10**12), "factor": 2, "tile": 3, "bits": 64},
++    "nonaligned": {"text": source(16, upper=27, step=2), "factor": 2, "tile": 2, "bits": 32},
++    "partial-body": {"text": source(16, upper=12, partial=True), "factor": 3, "tile": 2, "bits": 32},
++    "triple-carry": {"text": triple_source(), "factor": 3, "tile": 3, "bits": 64},
++    "factor-four": {"text": source(8, lower=2, upper=34, step=2), "factor": 4, "tile": 4, "bits": 32},
++    "symbolic-provider": {
++        "text": source(32, upper=6),
++        "factor": 2,
++        "tile": 3,
++        "bits": 32,
++        "mode": "symbolic-provider-counter-v1",
++    },
++}
++
++
++def capture(root, case):
++    root.mkdir(parents=True, exist_ok=True)
++    input_path = root / "input.mlir"
++    input_path.write_text(case["text"])
++    script = repo_root() / "src/merlin/verify/lean_graph_state_pipeline_capture.py"
++    command = [
++        sys.executable,
++        str(script),
++        "--reference",
++        str(REFERENCE),
++        "--source",
++        str(input_path),
++        "--destination",
++        str(root / "actual"),
++        "--factor",
++        str(case["factor"]),
++        "--tile",
++        str(case["tile"]),
++        "--bits",
++        str(case["bits"]),
++    ]
++    with (root / "producer.stdout").open("x") as out, (root / "producer.stderr").open("x") as err:
++        result = run_owned(
++            command,
++            cwd=REFERENCE,
++            env={**os.environ, "PYTHONPATH": str(REFERENCE / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++            stdout=out,
++            stderr=err,
++            timeout=60,
++            check=False,
++        )
++    assert result.returncode == 0, (root / "producer.stderr").read_text()
++    data = json.loads((root / "actual/CAPTURE.json").read_text())
++    return [root / "actual" / f"stage{i}.mlir" for i in range(5)], data
++
++
++def checked(root, buffers, case):
++    return check_boundary(
++        buffers,
++        root / "checked",
++        reference=REFERENCE,
++        factor=case["factor"],
++        tile=case["tile"],
++        bits=case["bits"],
++        mode=case.get("mode", "graph"),
++    )
++
++
++@pytest.mark.parametrize("name", list(CASES))
++def test_actual_complete_pipeline(name, tmp_path):
++    case = CASES[name]
++    buffers, data = capture(tmp_path, case)
++    assert data["each_stage_changed"] == [True] * 4
++    assert any(row.get("rule") == "cse" for row in data["diagnostics"][0]["diagnostic_only"])
++    result = checked(tmp_path, buffers, case)
++    assert result["status"] == "conditional_graph_checked", result
++    kernel = json.loads(Path(result["kernel"]["path"]).read_text())
++    assert kernel["audit"]["raw"]["violations"] == []
++    assert set(kernel["audit"]["raw"]["axioms_used"]) <= {"propext", "Classical.choice", "Quot.sound"}
++    assert result["claims"]["all_graph_passes_verified"] is False
++    if name == "huge":
++        assert Path(kernel["source"]["path"]).stat().st_size < 50000
++    if name == "symbolic-provider":
++        assert result["witness"]["success"] == {"values": [17], "world": 14}
++        assert result["witness"]["failure"]["world"] == 16
++        assert result["witness"]["source_success_assumed"] is False
++    receipt = issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
++    stable._write(
++        tmp_path / "result-summary.json",
++        {
++            "name": name,
++            "status": result["status"],
++            "receipt": stable.file_ref(tmp_path / "receipt.json"),
++            "roots": receipt["roots"],
++            "stage_changed": data["each_stage_changed"],
++        },
++    )
++
++
++@pytest.mark.parametrize("upper", [0, 1, 2, 7])
++def test_inline_empty_and_tail_are_explicit_refusals(upper, tmp_path):
++    case = {"text": source(upper=upper), "factor": 2, "tile": 3, "bits": 32}
++    buffers, _ = capture(tmp_path, case)
++    result = checked(tmp_path, buffers, case)
++    assert result["status"] == "unsupported", result
++    assert result["claims"]["public_acceptance_issued"] is False
++
++
++def test_contract_countermodels(tmp_path):
++    query, roots = countermodels()
++    result = check_query(query, tmp_path / "countermodels", roots, module="GraphStatePipelineCountermodels")
++    assert result["status"] == "conditional_graph_checked", result
++
++
++def test_limited_literal_model_route_stays_unqualified():
++    with pytest.raises(RuntimeError, match="retry refused"):
++        guard("namespace Witness\nnamespace Execution\n")
++
++
++def test_checked_literal_and_complete_roster_roots_are_in_emitted_query(tmp_path):
++    _, data = capture(tmp_path, CASES["i32"])
++    text = emit(data)
++    assert "checkLiterals profileBits controls = true" in text
++    assert "PreservesEntries (M primitive external) originalEntries finalEntries" in text
+diff --git a/merlin/tests/ir/test_lean_graph_state_pipeline_mutations.py b/merlin/tests/ir/test_lean_graph_state_pipeline_mutations.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_state_pipeline_mutations.py
+@@ -0,0 +1,173 @@
++"""Compiler-valid changes to every relevant pipeline boundary and context."""
++
++import json
++import os
++import sys
++from pathlib import Path
++
++import pytest
++from test_lean_graph_state_pipeline import CASES, REFERENCE, capture, checked
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import repo_root
++from merlin.verify.lean_graph_state_pipeline_receipt import config
++
++MUTATIONS = {
++    "step": ("i32", 3),
++    "bound": ("i32", 3),
++    "offset": ("i32", 3),
++    "operand": ("i32", 3),
++    "operand-order": ("i32", 3),
++    "opcode": ("i32", 3),
++    "flags": ("i32", 3),
++    "carry-init": ("i64-multicarry", 3),
++    "yield-order": ("i64-multicarry", 3),
++    "callee": ("i32", 3),
++    "drop-observer": ("i32", 4),
++    "drop-inner-observer": ("i64-multicarry", 3),
++    "observer-arguments": ("i64-multicarry", 4),
++    "return-order": ("i64-multicarry", 4),
++    "min-to-max": ("i32", 4),
++    "min-operands": ("i32", 4),
++    "inner-control": ("i32", 4),
++    "function-context": ("i32", 4),
++    "function-header": ("i32", 4),
++    "module-header": ("i32", 4),
++}
++
++
++@pytest.mark.parametrize("kind", list(MUTATIONS))
++def test_compiler_valid_boundary_mutations_are_refused(kind, tmp_path):
++    name, stage = MUTATIONS[kind]
++    case = CASES[name]
++    buffers, _ = capture(tmp_path, case)
++    script = repo_root() / "src/merlin/verify/lean_graph_state_pipeline_mutate.py"
++    target = tmp_path / "mutated.mlir"
++    with (tmp_path / "mutation.stdout").open("x") as out, (tmp_path / "mutation.stderr").open("x") as err:
++        result = run_owned(
++            [sys.executable, str(script), str(buffers[stage]), str(target), kind],
++            cwd=REFERENCE,
++            env={**os.environ, "PYTHONPATH": str(REFERENCE / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++            stdout=out,
++            stderr=err,
++            timeout=60,
++            check=False,
++        )
++    assert result.returncode == 0, (tmp_path / "mutation.stderr").read_text()
++    measured = json.loads((tmp_path / "mutation.stdout").read_text())
++    assert measured["compiler_valid"] and measured["changed"]
++    changed = [*buffers]
++    changed[stage] = target
++    rejected = checked(tmp_path, changed, case)
++    assert rejected["status"] in ("unsupported", "refused"), rejected
++    if rejected["status"] == "refused":
++        kernel = json.loads(Path(rejected["kernel"]["path"]).read_text())
++        assert kernel["returncode"] > 0
++        assert "error" in Path(kernel["stdout"]["path"]).read_text()
++    (tmp_path / "REFUSAL.json").write_text(
++        json.dumps(
++            {
++                "mutation": measured,
++                "classification": rejected["status"],
++                "complete_boundary": True,
++                "native_signal_counted_as_refusal": False,
++            },
++            indent=2,
++        )
++        + "\n"
++    )
++
++
++@pytest.mark.parametrize("field,value", [("factor", True), ("tile", 2.5), ("bits", "32"), ("mode", "approved")])
++def test_malformed_configuration_is_not_a_profile(field, value):
++    args = {"factor": 2, "tile": 3, "bits": 32, "mode": "graph"}
++    args[field] = value
++    with pytest.raises(ValueError):
++        config(**args)
++
++
++@pytest.mark.parametrize("bits", [16, 31, 128])
++def test_unadmitted_index_width_is_not_claimed(bits, tmp_path):
++    case = {**CASES["i32"], "bits": bits}
++    buffers, _ = capture(tmp_path, case)
++    rejected = checked(tmp_path, buffers, case)
++    assert rejected["status"] == "unsupported", rejected
++
++
++def test_invalid_external_call_signature_is_refused(tmp_path):
++    case = CASES["i32"]
++    buffers, _ = capture(tmp_path, case)
++    script = tmp_path / "malformed-call.py"
++    target = tmp_path / "malformed.mlir"
++    script.write_text("""import sys
++from merlin.transforms.certificates import parse_ir,ir_text
++from xdsl.dialects import func
++module=parse_ir(open(sys.argv[1]).read());module.verify()
++call=next(op for op in module.walk()if type(op)is func.CallOp and op.callee.root_reference.data=='partial')
++call.operands=(call.operands[0],)
++open(sys.argv[2],'w').write(ir_text(module))
++""")
++    result = run_owned(
++        [sys.executable, str(script), str(buffers[4]), str(target)],
++        cwd=REFERENCE,
++        env={**os.environ, "PYTHONPATH": str(REFERENCE / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++        capture_output=True,
++        text=True,
++        timeout=60,
++        check=False,
++    )
++    assert result.returncode == 0, result.stderr
++    changed = [*buffers]
++    changed[4] = target
++    rejected = checked(tmp_path, changed, case)
++    assert rejected["status"] == "unsupported", rejected
++    diagnostic = (tmp_path / "checked/projection.stderr").read_text() + (
++        tmp_path / "checked/projection.stdout"
++    ).read_text()
++    assert "signature" in diagnostic or "operand" in diagnostic
++
++
++@pytest.mark.parametrize("kind", ["operand-type", "result-type", "region-argument"])
++def test_malformed_operand_result_and_region_types_are_refused(kind, tmp_path):
++    case = CASES["i32"]
++    buffers, _ = capture(tmp_path, case)
++    script = tmp_path / "malformed-types.py"
++    target = tmp_path / "malformed.mlir"
++    script.write_text("""import sys
++from merlin.transforms.certificates import parse_ir,ir_text
++from xdsl.dialects import builtin,func,scf
++module=parse_ir(open(sys.argv[1]).read());module.verify()
++main=next(f for f in module.body.block.ops if type(f)is func.FuncOp and f.sym_name.data=='main')
++call=next(op for op in main.walk()if type(op)is func.CallOp and op.callee.root_reference.data=='partial')
++if sys.argv[3]=='operand-type':call.operands=(call.operands[0],main.body.block.args[1])
++elif sys.argv[3]=='result-type':call.results[0]._type=builtin.i64
++else:next(op for op in main.walk()if type(op)is scf.ForOp).body.block.args[0]._type=builtin.i32
++open(sys.argv[2],'w').write(ir_text(module))
++""")
++    result = run_owned(
++        [sys.executable, str(script), str(buffers[4]), str(target), kind],
++        cwd=REFERENCE,
++        env={**os.environ, "PYTHONPATH": str(REFERENCE / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++        capture_output=True,
++        text=True,
++        timeout=60,
++        check=False,
++    )
++    assert result.returncode == 0, result.stderr
++    changed = [*buffers]
++    changed[4] = target
++    rejected = checked(tmp_path, changed, case)
++    assert rejected["status"] == "unsupported", rejected
++    assert (tmp_path / "checked/projection.stderr").read_text() or (tmp_path / "checked/projection.stdout").read_text()
++
++
++def test_actual_middle_substitution_is_refused(tmp_path):
++    case = CASES["i32"]
++    buffers, _ = capture(tmp_path / "original", case)
++    altered = {**case, "text": case["text"].replace("arith.addi %bias, %bias", "arith.addi %x, %bias")}
++    alternate, _ = capture(tmp_path / "different-source", altered)
++    changed = [*buffers]
++    changed[2] = alternate[2]
++    result = checked(tmp_path, changed, case)
++    assert result["status"] in ("unsupported", "refused"), result
++    assert result["originals"][2]["sha256"] != __import__("hashlib").sha256(buffers[2].read_bytes()).hexdigest()
+diff --git a/merlin/tests/ir/test_lean_graph_state_pipeline_receipts.py b/merlin/tests/ir/test_lean_graph_state_pipeline_receipts.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_state_pipeline_receipts.py
+@@ -0,0 +1,228 @@
++"""Exact receipt bindings and coherent fresh-rehash attacks on owned artifacts.
++
++No protected source/toolchain is mutated. Each attack owns a fresh unqualified
++candidate and preserves an exact before snapshot. Rehashing is attacker input,
++never an adopted proof/tool identity.
++"""
++
++import copy
++import json
++import shutil
++from pathlib import Path
++
++import pytest
++from test_lean_graph_state_pipeline import CASES, REFERENCE, capture, checked
++
++from merlin.verify import lean_graph_state as stable
++from merlin.verify.lean_graph_state_pipeline_receipt import (
++    CLAIMS,
++    issue,
++    reference_row,
++    replay,
++    valid_claims,
++    validate,
++)
++
++
++def load(path):
++    return json.loads(Path(path).read_text())
++
++
++def save(path, value):
++    Path(path).write_text(json.dumps(value, indent=2) + "\n")
++
++
++def fresh_candidate(root):
++    buffers, _ = capture(root, CASES["i32"])
++    result = checked(root, buffers, CASES["i32"])
++    assert result["status"] == "conditional_graph_checked", result
++    issue(root / "checked/report.json", root / "receipt.json")
++    receipt = load(root / "receipt.json")
++    validate(receipt)
++    return receipt
++
++
++def preserve(root, receipt):
++    archive = root / "before-attack"
++    shutil.copytree(root / "checked", archive)
++    shutil.copyfile(root / "receipt.json", root / "receipt-before.json")
++    rows = []
++    for original in sorted((root / "checked").rglob("*")):
++        if not original.is_file():
++            continue
++        copied = archive / original.relative_to(root / "checked")
++        assert stable.file_ref(original)["sha256"] == stable.file_ref(copied)["sha256"]
++        rows.append({"original": stable.file_ref(original), "snapshot": stable.file_ref(copied)})
++    save(
++        root / "BEFORE_ATTACK.json",
++        {
++            "status": "unqualified test candidate, before deliberate attack",
++            "files": rows,
++            "receipt": stable.file_ref(root / "receipt-before.json"),
++            "old_capsules_edited": False,
++        },
++    )
++
++
++def refresh_refs(value):
++    if type(value) is dict:
++        if set(value) == {"path", "sha256", "bytes"}:
++            return stable.file_ref(Path(value["path"]))
++        return {key: refresh_refs(child) for key, child in value.items()}
++    if type(value) is list:
++        return [refresh_refs(child) for child in value]
++    return value
++
++
++def coherent_rehash(root, receipt):
++    # The DAG is buffers/query/object/raw audit → kernel/projection → report → receipt.
++    for rel in ("projection/CAPTURE.json", "kernel/report.json", "report.json"):
++        path = root / "checked" / rel
++        save(path, refresh_refs(load(path)))
++    receipt = refresh_refs(receipt)
++    receipt["files"] = [stable.file_ref(p) for p in sorted((root / "checked").rglob("*")) if p.is_file()]
++    save(root / "forged-receipt.json", receipt)
++    return receipt
++
++
++def test_live_receipt_and_one_development_fresh_replay(tmp_path):
++    receipt = fresh_candidate(tmp_path)
++    result = replay(tmp_path / "receipt.json", tmp_path / "replay", reference=REFERENCE)
++    assert result["status"] == "conditional_graph_checked"
++    assert result["retained_object_reproduced"] and result["exact_original_query_path_reproduced"]
++    assert result["qualified"] is False
++    assert receipt["claims"]["review_approved"] is False
++
++
++ATTACKS = ("query", "object", "header", "projection", "audit", "import", "statements", "profile", "original")
++
++
++@pytest.mark.parametrize("kind", ATTACKS)
++def test_coherently_rehashed_forgeries_are_refused(kind, tmp_path):
++    receipt = fresh_candidate(tmp_path)
++    preserve(tmp_path, receipt)
++    report_path = tmp_path / "checked/report.json"
++    report = load(report_path)
++    kernel_path = Path(report["kernel"]["path"])
++    kernel = load(kernel_path)
++    capture_path = Path(report["projection"]["path"])
++    projection = load(capture_path)
++    if kind == "query":
++        path = Path(receipt["query"]["path"])
++        path.write_text(path.read_text() + "\n-- unauthorized query bytes\n")
++    elif kind == "object":
++        path = Path(receipt["object"]["path"])
++        data = bytearray(path.read_bytes())
++        data[-1] ^= 1
++        path.write_bytes(data)
++    elif kind == "header":
++        for stage in projection["stages"]:
++            next(f for f in stage["functions"] if f["name"] == "main")["header"]["attributes"] = [
++                "dictionary",
++                [["forged", ["bool", True]]],
++            ]
++        save(capture_path, projection)
++    elif kind == "projection":
++        projection["stages"][0]["registry"][0]["outputs"] = [{"bits": 64}]
++        save(capture_path, projection)
++    elif kind in ("audit", "import", "statements"):
++        if kind == "audit":
++            kernel["audit"]["raw"]["theorems_audited"] += 1
++        elif kind == "import":
++            kernel["audit"]["raw"]["imports"][0]["module"] += ".__forged"
++        else:
++            kernel["audit"]["statements"][receipt["roots"][0]] += " → False"
++        buffers = {Path(r["path"]).name: Path(r["path"]) for r in kernel["audit"]["buffers"]}
++        save(buffers["audit.stdout"], kernel["audit"]["raw"])
++        save(buffers["statements.stdout"], {"statements": kernel["audit"]["statements"]})
++        save(kernel_path, kernel)
++    elif kind == "profile":
++        fake = tmp_path / "forged-profile.json"
++        profile = load(receipt["profile"]["path"])
++        profile["selection"]["arguments"] = ["-j2"]
++        save(fake, profile)
++        fake_ref = stable.file_ref(fake)
++        previous = receipt["profile"]
++        receipt["profile"] = fake_ref
++        report["profile"] = fake_ref
++        kernel["profile"] = fake_ref
++        receipt["dependencies"] = [fake_ref if r == previous else r for r in receipt["dependencies"]]
++        save(report_path, report)
++        save(kernel_path, kernel)
++    elif kind == "original":
++        # Change an actual original AND its submitted snapshot, preserving all
++        # hashes coherently while leaving the old semantic/query proof behind.
++        import os
++        import sys
++
++        from merlin.common.owned_process import run_owned
++        from merlin.common.paths import repo_root
++
++        script = repo_root() / "src/merlin/verify/lean_graph_state_pipeline_mutate.py"
++        original = Path(receipt["originals"][4]["path"])
++        altered = tmp_path / "changed-original.mlir"
++        result = run_owned(
++            [sys.executable, str(script), str(original), str(altered), "drop-observer"],
++            cwd=REFERENCE,
++            env={**os.environ, "PYTHONPATH": str(REFERENCE / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++            capture_output=True,
++            text=True,
++            timeout=60,
++            check=False,
++        )
++        assert result.returncode == 0, result.stderr
++        original.write_bytes(altered.read_bytes())
++        Path(receipt["snapshots"][4]["path"]).write_bytes(altered.read_bytes())
++    forged = coherent_rehash(tmp_path, receipt)
++    # Some attacks correctly pass all hashes/retained authoring and are refused
++    # only by re-projection, exact object reproduction or a fresh transitive audit.
++    with pytest.raises((ValueError, RuntimeError)):
++        replay(tmp_path / "forged-receipt.json", tmp_path / "forgery-replay", reference=REFERENCE)
++    save(
++        tmp_path / "FORGERY_REFUSED.json",
++        {
++            "kind": kind,
++            "fresh_rehash_consistent": True,
++            "protected_source_or_toolchain_edited": False,
++            "public_approval": False,
++        },
++    )
++    assert forged["claims"]["review_approved"] is False
++
++
++@pytest.fixture(scope="module")
++def schema_receipt(tmp_path_factory):
++    return fresh_candidate(tmp_path_factory.mktemp("schema-candidate"))
++
++
++@pytest.mark.parametrize(
++    "kind", ["legacy", "extra", "missing-original", "wrong-mode", "approval", "bool-version", "bool-byte-count"]
++)
++def test_closed_versioned_receipt_refusals(kind, schema_receipt):
++    candidate = copy.deepcopy(schema_receipt)
++    if kind == "legacy":
++        candidate["version"] = 0
++    elif kind == "extra":
++        candidate["foreign"] = True
++    elif kind == "missing-original":
++        candidate["originals"] = candidate["originals"][:-1]
++    elif kind == "wrong-mode":
++        candidate["config"]["mode"] = "unapproved"
++    elif kind == "approval":
++        candidate["claims"]["review_approved"] = True
++    elif kind == "bool-version":
++        candidate["version"] = True
++    elif kind == "bool-byte-count":
++        candidate["originals"][0]["bytes"] = True
++    with pytest.raises(ValueError):
++        validate(candidate)
++
++
++def test_claims_are_immutable_and_types_are_exact():
++    with pytest.raises(ValueError):
++        reference_row({"path": "/tmp/x", "sha256": "0" * 64, "bytes": False})
++    altered = copy.deepcopy(dict(CLAIMS))
++    altered["review_approved"] = 0
++    assert not valid_claims(altered)
++    with pytest.raises(TypeError):
++        CLAIMS["review_approved"] = True
+diff --git a/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean b/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean
+@@ -0,0 +1,32 @@
++/- Complete fixed-profile index literal domain, independently checked.
++This checks all control-classified constants, including captured/ghost values;
++W's separate bounds discharge generated add/min/IV increment obligations. -/
++import Merlin.GraphStatePipelineIndex
++
++namespace Merlin.GraphState.Pipeline
++set_option autoImplicit false
++
++instance (bits : Nat) (value : Int) : Decidable (signedRepresentative bits value) := by
++  unfold signedRepresentative
++  infer_instance
++
++def checkLiterals (bits : Nat) (controls : Controls) : Bool :=
++  controls.all (fun entry => match entry with
++    | some (.constant value) => decide (signedRepresentative bits value)
++    | _ => true)
++
++theorem checkLiterals_sound {bits : Nat} {controls : Controls}
++    (accepted : checkLiterals bits controls = true) {identity : Nat} {value : Int}
++    (found : controlAt controls identity = some (.constant value)) : signedRepresentative bits value := by
++  have member : some (IndexOp.constant value) ∈ controls := by
++    unfold controlAt at found
++    cases item : controls[identity]? with
++    | none => simp only [item,Option.getD_none] at found; cases found
++    | some entry =>
++      simp only [item,Option.getD_some] at found
++      subst entry
++      exact List.mem_of_getElem? item
++  have checked := List.all_eq_true.mp accepted (some (.constant value)) member
++  exact of_decide_eq_true checked
++
++end Merlin.GraphState.Pipeline
+diff --git a/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean b/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean
+@@ -0,0 +1,144 @@
++/- Failure-sensitive operational loop composition. The local body equations
++below are proof obligations discharged against actual checked SSA syntax, not
++external operation assumptions or assumed whole-program equalities. -/
++import Merlin.GraphStatePipelineSegments
++import Merlin.GraphStateScalarSound
++
++namespace Merlin.GraphState.Pipeline
++set_option autoImplicit false
++open Scalar GraphLoopsSegment GraphLoopsUnroll
++
++abbrev Packed (Value World Error : Type) (arity : Nat) :=
++  {state : Outcome Value World Error // finish arity state = state}
++
++def packedInitial {Value World Error : Type} (arity : Nat) (values : List Value) (world : World) :
++    Packed Value World Error arity := ⟨finish arity (.ok (values,world)),finish_idempotent _ _⟩
++
++def packedStep {Value World Error : Type} (arity : Nat)
++    (body : Int → List Value → World → Outcome Value World Error)
++    (index : Nat) (before : Packed Value World Error arity) : Packed Value World Error arity :=
++  ⟨closedAdvance arity body before.1 (Int.ofNat index),finish_idempotent _ _⟩
++
++/-- Every successful packed carry has the checked length. An error remains
++an error, with no assumption of successful source/body execution. -/
++theorem packed_arity {Value World Error : Type} {arity : Nat}
++    (state : Packed Value World Error arity) {values : List Value} {world : World}
++    (success : state.1 = .ok (values,world)) : values.length = arity := by
++  have fixed := state.2
++  rw [success] at fixed
++  by_cases size : values.length = arity
++  · exact size
++  · simp only [finish,size,↓reduceIte] at fixed
++    cases fixed
++
++/-- Projection of the subtype fold is the exact absorbing fold. -/
++theorem packed_fold {Value World Error : Type} (arity : Nat)
++    (body : Int → List Value → World → Outcome Value World Error) (indices : List Nat)
++    (state : Packed Value World Error arity) :
++    (indices.foldl (fun s i => packedStep arity body i s) state).1 =
++      (indices.map Int.ofNat).foldl (closedAdvance arity body) state.1 := by
++  induction indices generalizing state with
++  | nil => rfl
++  | cons index later ih => exact ih (packedStep arity body index state)
++
++/-- The packed fold is proved equivalent to the unchanged early-failure loop. -/
++theorem packed_run {Value World Error : Type} (arity : Nat)
++    (body : Int → List Value → World → Outcome Value World Error) (indices : List Nat)
++    (state : Packed Value World Error arity) :
++    (indices.foldl (fun s i => packedStep arity body i s) state).1 =
++      state.1.bind (fun result => Scalar.loopEval arity body (indices.map Int.ofNat) result.1 result.2) := by
++  rw [packed_fold]
++  have fixed := congrArg (fun value => (indices.map Int.ofNat).foldl (closedAdvance arity body) value) state.2
++  exact fixed.symm.trans ((fold_closed arity body _ state.1).trans (fold_early_failure arity body _ state.1))
++
++/-- A proved actual SSA block representing an original-body interval induces
++exactly the corresponding packed transition, including first failure/world. -/
++theorem packed_block {Value World Error : Type} (arity : Nat)
++    (original block : Int → List Value → World → Outcome Value World Error)
++    (indices : Nat → List Nat)
++    (bodyChecked : ∀ index values world, values.length = arity →
++      block (Int.ofNat index) values world =
++        Scalar.loopEval arity original ((indices index).map Int.ofNat) values world)
++    (index : Nat) (state : Packed Value World Error arity) :
++    packedStep arity block index state =
++      (indices index).foldl (fun s i => packedStep arity original i s) state := by
++  apply Subtype.ext
++  rw [packed_run]
++  cases value : state.1 with
++  | error failure => simp only [packedStep,closedAdvance,advance,value,finish,Except.bind]
++  | ok result =>
++    rcases result with ⟨values,world⟩
++    have size := packed_arity state value
++    simp only [packedStep,closedAdvance,advance,value,size,↓reduceIte,Except.bind]
++    rw [bodyChecked index values world size]
++    cases executed : Scalar.loopEval arity original ((indices index).map Int.ofNat) values world with
++    | error failure => rfl
++    | ok result =>
++      have resultSize := loopEval_arity arity original _ _ _ executed
++      simp only [finish,resultSize,↓reduceIte]
++
++theorem fold_pointwise {State : Type} (first second : Nat → State → State)
++    (same : ∀ index state, first index state = second index state) (indices : List Nat) (initial : State) :
++    indices.foldl (fun state index => first index state) initial =
++      indices.foldl (fun state index => second index state) initial := by
++  induction indices generalizing initial with
++  | nil => rfl
++  | cons index later ih => simp only [List.foldl_cons,same,ih]
++
++/-- Operational unroll preservation from the exact local cloned-body proof
++and existing W grouping root. Bound arithmetic is checked separately by W. -/
++theorem unroll_loop {Value World Error : Type} (arity : Nat)
++    (original bulk : Int → List Value → World → Outcome Value World Error)
++    (lower upper step factor groups : Nat) (positive : 0 < step) (positiveFactor : 0 < factor)
++    (counted : CountCorrect lower upper step (groups*factor))
++    (bodyChecked : ∀ index values world, values.length = arity →
++      bulk (Int.ofNat index) values world =
++        Scalar.loopEval arity original ((progression index step factor).map Int.ofNat) values world)
++    (values : List Value) (world : World) :
++    Scalar.loopEval arity original (indexIterations lower upper step) values world =
++      Scalar.loopEval arity bulk
++        (indexIterations (lower : Int) ((lower+(step*factor)*groups : Nat) : Int) ((step*factor : Nat) : Int)) values world := by
++  have originalRange := indexIterations_count positive counted
++  have bulkRange := indexIterations_count (Nat.mul_pos positive positiveFactor)
++    (CountCorrect.aligned lower (step*factor) groups (Nat.mul_pos positive positiveFactor))
++  let initial : Packed Value World Error arity := packedInitial arity values world
++  have originalProjection : Scalar.loopEval arity original (indexIterations lower upper step) values world =
++      ((progression lower step (groups*factor)).foldl (fun s i => packedStep arity original i s) initial).1 := by
++    rw [originalRange,packed_fold]
++    exact loop_closed arity original _ values world
++  have bulkProjection : Scalar.loopEval arity bulk
++      (indexIterations (lower : Int) ((lower+(step*factor)*groups : Nat) : Int) ((step*factor : Nat) : Int)) values world =
++      ((progression lower (step*factor) groups).foldl (fun s i => packedStep arity bulk i s) initial).1 := by
++    rw [bulkRange,packed_fold]
++    exact loop_closed arity bulk _ values world
++  rw [originalProjection,bulkProjection]
++  have replace := fold_pointwise (packedStep arity bulk)
++    (fun index state => (progression index step factor).foldl (fun s i => packedStep arity original i s) state)
++    (packed_block arity original bulk (fun index => progression index step factor) bodyChecked)
++    (progression lower (step*factor) groups) initial
++  rw [replace, groups_plain]
++
++/-- Operational segmentation preservation, with explicit actual outer-body
++correspondence to the inner finite SCF interval. Failure/world is part of state. -/
++theorem segment_loop {Value World Error : Type} (arity : Nat)
++    (original outer : Int → List Value → World → Outcome Value World Error)
++    (lower upper step tile : Nat) (positive : 0 < step) (positiveTile : 0 < tile)
++    (bodyChecked : ∀ index values world, values.length = arity →
++      outer (Int.ofNat index) values world = Scalar.loopEval arity original
++        ((scfRange index (min (index+step*tile) upper) step).map Int.ofNat) values world)
++    (values : List Value) (world : World) :
++    Scalar.loopEval arity original ((scfRange lower upper step).map Int.ofNat) values world =
++      Scalar.loopEval arity outer ((scfRange lower upper (step*tile)).map Int.ofNat) values world := by
++  let initial : Packed Value World Error arity := packedInitial arity values world
++  rw [loop_closed,loop_closed]
++  change ((scfRange lower upper step).map Int.ofNat).foldl (closedAdvance arity original) initial.1 =
++    ((scfRange lower upper (step*tile)).map Int.ofNat).foldl (closedAdvance arity outer) initial.1
++  rw [← packed_fold arity original _ initial,← packed_fold arity outer _ initial]
++  have replace := fold_pointwise (packedStep arity outer)
++    (fun index state => (scfRange index (min (index+step*tile) upper) step).foldl
++      (fun s i => packedStep arity original i s) state)
++    (packed_block arity original outer (fun index => scfRange index (min (index+step*tile) upper) step) bodyChecked)
++    (scfRange lower upper (step*tile)) initial
++  rw [replace,segments_plain _ upper step tile lower positive positiveTile]
++
++end Merlin.GraphState.Pipeline
+diff --git a/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean b/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean
+@@ -0,0 +1,66 @@
++/- Whole defined-entry roster correspondence, including absent entries and
++invalid input arity. Declarations/names/metadata are bound by the complete host
++projection. Supported calls are retained external descriptors; this is not an
++assumed semantics bridge for internal calls or backend/runtime delivery. -/
++import Merlin.GraphStatePipelineIndex
++import Merlin.GraphStateScalarTyping
++
++namespace Merlin.GraphState.Pipeline
++set_option autoImplicit false
++open Scalar
++
++structure Entry where
++  inputs : List Ty
++  outputs : List Ty
++  body : Program
++  deriving DecidableEq, BEq, ReflBEq, LawfulBEq, Repr
++
++def evalEntry {Value World Error : Type} {registry : List Signature}
++    (model : Model Value World Error registry) (entries : List Entry)
++    (identity : Nat) (arguments : List Value) (world : World) : Option (Outcome Value World Error) :=
++  match entries[identity]? with
++  | none => none
++  | some entry => some (if arguments.length = entry.inputs.length then
++      evalProgram model entry.body arguments world else .error (.arity,world))
++
++def PreservesEntries {Value World Error : Type} {registry : List Signature}
++    (model : Model Value World Error registry) (before after : List Entry) : Prop :=
++  ∀ identity arguments world, evalEntry model before identity arguments world =
++    evalEntry model after identity arguments world
++
++theorem entries_nil {Value World Error : Type} {registry : List Signature}
++    (model : Model Value World Error registry) : PreservesEntries model [] [] := by
++  intro identity arguments world
++  rfl
++
++/-- Every defined entry uses its own checked signature/arity; arbitrary external
++observers are in the complete outcome. No private environment equality is used. -/
++theorem entries_cons {Value World Error : Type} {registry : List Signature}
++    (model : Model Value World Error registry) {first second : Entry} {before after : List Entry}
++    (inputs : first.inputs = second.inputs) (outputs : first.outputs = second.outputs)
++    (body : ∀ arguments world, arguments.length = first.inputs.length →
++      evalProgram model first.body arguments world = evalProgram model second.body arguments world)
++    (rest : PreservesEntries model before after) :
++    PreservesEntries model (first::before) (second::after) := by
++  intro identity arguments world
++  cases identity with
++  | zero =>
++    simp only [evalEntry,List.getElem?_cons_zero]
++    rw [← inputs]
++    by_cases arity : arguments.length = first.inputs.length
++    · simp only [arity,↓reduceIte,body arguments world arity]
++    · simp only [arity,↓reduceIte]
++  | succ identity =>
++    simpa only [evalEntry,List.getElem?_cons_succ] using rest identity arguments world
++
++def checkEntries (registry : List Signature) (entries : List Entry) : Bool :=
++  entries.all (fun entry => checkTypes registry entry.inputs entry.outputs entry.body)
++
++theorem checkEntries_sound {registry : List Signature} {entries : List Entry}
++    (accepted : checkEntries registry entries = true) :
++    ∀ entry ∈ entries, Typed registry entry.inputs entry.outputs entry.body := by
++  intro entry member
++  have checked := List.all_eq_true.mp accepted entry member
++  exact checkTypes_sound _ _ _ checked
++
++end Merlin.GraphState.Pipeline
+diff --git a/src/merlin/verify/lean_graph_state_pipeline.py b/src/merlin/verify/lean_graph_state_pipeline.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_pipeline.py
+@@ -0,0 +1,73 @@
++"""Proof-producing scalar/SCF pipeline leaf (development, not qualified).
++
++Raw Programs, complete common registry, typed scopes and operational claims are
++emitted into kernel-checked Lean. Python projection is explicitly trusted.
++No compiler trace, diagnostic inventory or previous receipt grants acceptance.
++"""
++
++from __future__ import annotations
++
++from .lean_graph_state_scalar import integer, primitive
++
++
++def lean_list(values):
++    return "[" + ",".join(values) + "]"
++
++
++def controls_literal(capture):
++    result = ["none"] * len(capture["stages"][0]["registry"])
++    for row in capture["index_operations"]:
++        identity = row["identity"]
++        integer(identity, natural=True)
++        if not 0 <= identity < len(result) or result[identity] != "none":
++            raise ValueError("invalid/duplicate control identity")
++        kind = row["kind"]
++        if kind == "index-constant" and set(row) == {"identity", "kind", "value"}:
++            op = "(.constant " + integer(row["value"]) + ")"
++        elif kind in ("index-add", "index-minui") and set(row) == {"identity", "kind"}:
++            op = ".add" if kind == "index-add" else ".minui"
++        else:
++            raise ValueError("closed actual supported control descriptor required")
++        result[identity] = "(some " + op + ")"
++    return lean_list(result)
++
++
++def prefix_environment(records, inputs, capture):
++    """Symbolic values of actual pre-loop total operations; no effect erasure."""
++    env = list(inputs)
++    controls = {row["identity"]: row for row in capture["index_operations"]}
++    for record in records:
++        if "loop" in record:
++            return env
++        args = [env[index] for index in record["arguments"]]
++        if "pure" in record:
++            value = "(primitive " + primitive(record["pure"]) + " " + lean_list(args) + ")"
++        elif "effect" in record and record["effect"] in controls:
++            control = controls[record["effect"]]
++            if control["kind"] == "index-constant" and not args:
++                value = "(" + str(control["value"]) + " : Int)"
++            elif control["kind"] == "index-add" and len(args) == 2:
++                value = "(" + args[0] + " + " + args[1] + ")"
++            elif control["kind"] == "index-minui" and len(args) == 2:
++                value = "(min " + args[0] + " " + args[1] + ")"
++            else:
++                raise ValueError("malformed prefix control operands")
++        else:
++            raise ValueError("partial/effectful prefix unsupported by this development submode")
++        env.insert(0, value)
++    raise ValueError("missing actual loop")
++
++
++SIMPS = (
++    "M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,"
++    "List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,"
++    "List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,"
++    "List.length_cons,List.length_nil,↓reduceIte"
++)
++
++
++def emit_development(capture):
++    """Compatibility entry for the current proof-producing development checker."""
++    from .lean_graph_state_pipeline_emit import emit
++
++    return emit(capture)
+diff --git a/src/merlin/verify/lean_graph_state_pipeline_capture.py b/src/merlin/verify/lean_graph_state_pipeline_capture.py
+--- a/src/merlin/verify/lean_graph_state_pipeline_capture.py
++++ b/src/merlin/verify/lean_graph_state_pipeline_capture.py
+@@ -1,16 +1,19 @@
+-"""Five actual pinned producer buffers and one common complete scalar registry.
+-
+-Run as an isolated script with only the pinned reference source on PYTHONPATH.
+-New generator/projection code lives in primary; producer files remain read-only.
++"""Actual pinned five-stage producer and independent complete-buffer projection.
++
++Run in an isolated process with the pinned source as the sole Merlin owner.
++Every submitted stage is re-parsed/verified; metadata and all SSA uses are kept.
++Python projection/host delivery remain explicit trust boundaries.
+ """
+ 
+ from __future__ import annotations
+ 
+ import argparse
++import hashlib
+ import json
+ import subprocess
+ import sys
+ from dataclasses import asdict
++from functools import cache
+ from pathlib import Path
+ 
+ if __package__:
+@@ -19,61 +22,89 @@
+     from lean_graph_state_scalar_capture import REVISION, canonical, file_ref, metadata, project
+ 
+ 
+-def capture(reference, source, destination, *, factor=2, tile=3, bits=32):
+-    sys.dont_write_bytecode = True
+-    from merlin.transforms.certificates import ir_text, parse_ir
+-    from merlin.transforms.loops import segment_loops
+-    from merlin.transforms.pure_scalar import eliminate_scalar_redundancy, hoist_scalar_invariants
+-    from merlin.transforms.unrolling import unroll_ordered_loops
++def index_operation(op):
++    """Closed, independent control whitelist; flags/extra metadata are refused."""
+     from xdsl.dialects import arith, builtin
+-
+-    reference, source, destination = reference.resolve(), source.resolve(), destination.resolve()
+-    revision = subprocess.run(["git", "-C", str(reference), "rev-parse", "HEAD"],
+-                              text=True, capture_output=True, check=True).stdout.strip()
+-    if revision != REVISION:
+-        raise ValueError("actual producer revision differs from pinned intake")
+-    destination.mkdir(parents=True, exist_ok=False)
+-    raw_input = source.read_bytes()
+-    module = parse_ir(raw_input.decode())
+-    module.verify()
+-    buffers, witnesses = [ir_text(module)], []
+-    for name, run in (
+-        ("cse-dce", lambda: eliminate_scalar_redundancy(module)),
+-        ("licm", lambda: hoist_scalar_invariants(module)),
+-        ("unroll", lambda: unroll_ordered_loops(module, (factor,), index_bits=bits)),
+-        ("segment", lambda: segment_loops(module, (tile,), index_bits=bits)),
+-    ):
+-        result = run()
++    from xdsl.traits import get_effects
++
++    if op.regions or op.successors or op.attributes or len(op.results) != 1 or get_effects(op) != set():
++        return None
++    if any(type(v.type) is not builtin.IndexType for v in (*op.operands, *op.results)):
++        return None
++    if type(op) is arith.ConstantOp and not op.operands and set(op.properties) == {"value"}:
++        if type(op.value) is builtin.IntegerAttr:
++            return {"kind": "index-constant", "value": op.value.value.data}
++    if type(op) is arith.AddiOp and len(op.operands) == 2:
++        if set(op.properties) <= {"overflowFlags"} and op.overflow_flags == arith.IntegerOverflowAttr("none"):
++            return {"kind": "index-add"}
++    if type(op) is arith.MinUIOp and len(op.operands) == 2 and not op.properties:
++        return {"kind": "index-minui"}
++    return None
++
++
++def project_modules(modules):
++    if len(modules) != 5:
++        raise ValueError("five complete actual programs required")
++    from xdsl.dialects import func
++
++    for module in modules:
+         module.verify()
+-        witnesses.append({"stage": name, "diagnostic_only": [asdict(w) for w in result]})
+-        buffers.append(ir_text(module))
+-    (destination / "input.mlir").write_bytes(raw_input)
+-    for stage, text in enumerate(buffers):
+-        (destination / f"stage{stage}.mlir").write_text(text)
+-    # Reopen every exact retained middle; no independently numbered registry is equated.
+-    modules = [parse_ir(text) for text in buffers]
+-    stages = [project(modules[i], modules[i+1], context=tuple(modules)) for i in range(4)]
+-    for p in stages[1:]:
+-        if p["registry"] != stages[0]["registry"] or p["types"] != stages[0]["types"]:
+-            raise ValueError("one complete common registry/type table across all five stages required")
++        declarations = {
++            op.sym_name.data: op for op in module.body.block.ops if type(op) is func.FuncOp and not op.body.blocks
++        }
++        for call in module.walk():
++            if type(call) is not func.CallOp:
++                continue
++            if len(call.callee.nested_references):
++                raise ValueError("nested external symbol references require a separate call bridge")
++            declaration = declarations.get(call.callee.root_reference.data)
++            if declaration is None:
++                raise ValueError("only explicitly declared external calls are admitted")
++            if tuple(value.type for value in call.operands) != tuple(declaration.function_type.inputs) or tuple(
++                value.type for value in call.results
++            ) != tuple(declaration.function_type.outputs):
++                raise ValueError("actual call operand/result signature differs from its explicit declaration")
++    stages = [project(modules[i], modules[i + 1], context=tuple(modules)) for i in range(4)]
++    for stage in stages[1:]:
++        if stage["registry"] != stages[0]["registry"] or stage["types"] != stages[0]["types"]:
++            raise ValueError("one common complete descriptor/type registry required")
+     index_ops = {}
+-    for m in modules:
+-        for op in m.walk():
+-            if type(op) is arith.ConstantOp and type(op.result.type) is builtin.IndexType:
+-                kind = {"kind": "index-constant", "value": op.value.value.data}
+-            elif type(op) in (arith.AddiOp, arith.MinUIOp) and all(
+-                type(v.type) is builtin.IndexType for v in (*op.operands, *op.results)
+-            ):
+-                kind = {"kind": "index-add" if type(op) is arith.AddiOp else "index-minui"}
+-            else:
++    for module in modules:
++        for op in module.walk():
++            kind = index_operation(op)
++            if kind is None:
+                 continue
+-            key = canonical(metadata(op))
+-            if key in index_ops and index_ops[key] != kind:
++            token = canonical(metadata(op))
++            if token in index_ops and index_ops[token] != kind:
+                 raise ValueError("inconsistent concrete control descriptor")
+-            index_ops[key] = kind
+-    registry = stages[0]["registry"]
+-    concrete = [{"identity": i, **index_ops[canonical(row["descriptor"])]}
+-                for i, row in enumerate(registry) if canonical(row["descriptor"]) in index_ops]
++            index_ops[token] = kind
++    concrete = [
++        {"identity": i, **index_ops[canonical(row["descriptor"])]}
++        for i, row in enumerate(stages[0]["registry"])
++        if canonical(row["descriptor"]) in index_ops
++    ]
++    return stages, concrete
++
++
++def selected_source(reference):
++    observed = subprocess.run(
++        ["git", "-C", str(reference), "rev-parse", "HEAD"], text=True, capture_output=True, check=True
++    ).stdout.strip()
++    if observed != REVISION:
++        raise ValueError("pinned actual producer/parser revision differs")
++    return observed
++
++
++@cache
++def expected_producer(reference, path):
++    relative = path.relative_to(reference)
++    data = subprocess.run(
++        ["git", "-C", str(reference), "show", REVISION + ":" + str(relative)], capture_output=True, check=True
++    ).stdout
++    return hashlib.sha256(data).hexdigest()
++
++
++def loaded_sources(reference):
+     producer, runtime = {}, {}
+     for name, loaded in tuple(sys.modules.items()):
+         path = getattr(loaded, "__file__", None)
+@@ -82,37 +113,159 @@
+         path = Path(path).resolve()
+         if name == "merlin" or name.startswith("merlin."):
+             if not path.is_relative_to(reference / "src"):
+-                raise ValueError("actual producer import escaped pinned reference: " + str(path))
++                raise ValueError("actual producer import escaped pinned reference")
+             producer[str(path)] = file_ref(path)
+         else:
+             runtime[str(path)] = file_ref(path)
++    for name in ("pure_scalar", "unrolling", "loops", "certificates"):
++        path = reference / "src/merlin/transforms" / (name + ".py")
++        producer[str(path)] = file_ref(path)
++    for row in producer.values():
++        if row["sha256"] != expected_producer(reference, Path(row["path"])):
++            raise ValueError("loaded pinned producer/parser source differs from selected commit")
++    return sorted(producer.values(), key=lambda r: r["path"]), {
++        "executable": file_ref(sys.executable),
++        "loaded": sorted(runtime.values(), key=lambda r: r["path"]),
++    }
++
++
++def write_projection(reference, buffers, destination, *, factor, tile, bits, mode, diagnostics=(), input_path=None):
++    from merlin.transforms.certificates import parse_ir
++
++    revision = selected_source(reference)
++    modules = [parse_ir(data.decode()) for data in buffers]
++    stages, concrete = project_modules(modules)
++    producer, runtime = loaded_sources(reference)
+     result = {
+-        "schema": "merlin.graph-state-pipeline.actual-five-buffer.v1",
+-        "revision": revision, "factor": factor, "tile": tile, "index_bits": bits,
+-        "stages": stages, "index_operations": concrete,
++        "schema": "merlin.graph-state-pipeline.actual-five-buffer.v2",
++        "revision": revision,
++        "factor": factor,
++        "tile": tile,
++        "index_bits": bits,
++        "stages": stages,
++        "index_operations": concrete,
+         "buffers": [file_ref(destination / f"stage{i}.mlir") for i in range(5)],
+-        "each_stage_changed": [buffers[i] != buffers[i+1] for i in range(4)],
+-        "diagnostics": witnesses, "input": file_ref(source),
+-        "producer_sources": sorted(producer.values(), key=lambda r: r["path"]),
+-        "python_runtime": {"executable": file_ref(sys.executable), "loaded": sorted(runtime.values(), key=lambda r: r["path"])},
++        "each_stage_changed": [buffers[i] != buffers[i + 1] for i in range(4)],
++        "diagnostics": list(diagnostics),
++        "input": file_ref(input_path) if input_path else None,
++        "producer_sources": producer,
++        "python_runtime": runtime,
+         "owned_projection": file_ref(__file__),
+-        "projection_trusted": True, "lean_checked": False, "qualified": False,
+-        "full_pipeline_claim": False, "native_fidelity_proved": False, "review_approved": False,
++        "selected_scalar_projection": file_ref(Path(__file__).with_name("lean_graph_state_scalar_capture.py")),
++        "mode": mode,
++        "projection_trusted": True,
++        "lean_checked": False,
++        "qualified": False,
++        "full_pipeline_claim": False,
++        "native_fidelity_proved": False,
++        "review_approved": False,
+     }
+-    if source.read_bytes() != raw_input:
+-        raise ValueError("source changed during capture")
++    if any((destination / f"stage{i}.mlir").read_bytes() != data for i, data in enumerate(buffers)):
++        raise ValueError("stage buffers changed during projection")
++    if loaded_sources(reference) != (producer, runtime):
++        raise ValueError("selected source/runtime identity changed during projection")
+     (destination / "CAPTURE.json").write_text(json.dumps(result, indent=2) + "\n")
+     return result
+ 
+ 
++def capture(reference, source, destination, *, factor=2, tile=3, bits=32):
++    sys.dont_write_bytecode = True
++    from merlin.transforms.certificates import ir_text, parse_ir
++    from merlin.transforms.loops import segment_loops
++    from merlin.transforms.pure_scalar import eliminate_scalar_redundancy, hoist_scalar_invariants
++    from merlin.transforms.unrolling import unroll_ordered_loops
++
++    reference, source, destination = reference.resolve(), source.resolve(), destination.resolve()
++    selected_source(reference)
++    destination.mkdir(parents=True, exist_ok=False)
++    original = source.read_bytes()
++    (destination / "input.mlir").write_bytes(original)
++    module = parse_ir(original.decode())
++    module.verify()
++    buffers = [ir_text(module).encode()]
++    witnesses = []
++    (destination / "stage0.mlir").write_bytes(buffers[0])
++    for index, (name, run) in enumerate(
++        (
++            ("cse-dce", lambda: eliminate_scalar_redundancy(module)),
++            ("licm", lambda: hoist_scalar_invariants(module)),
++            ("unroll", lambda: unroll_ordered_loops(module, (factor,), index_bits=bits)),
++            ("segment", lambda: segment_loops(module, (tile,), index_bits=bits)),
++        ),
++        1,
++    ):
++        diagnostics = run()
++        module.verify()
++        witnesses.append({"stage": name, "diagnostic_only": [asdict(w) for w in diagnostics]})
++        buffers.append(ir_text(module).encode())
++        (destination / f"stage{index}.mlir").write_bytes(buffers[-1])
++    result = write_projection(
++        reference,
++        buffers,
++        destination,
++        factor=factor,
++        tile=tile,
++        bits=bits,
++        mode="actual-producer",
++        diagnostics=witnesses,
++        input_path=source,
++    )
++    if source.read_bytes() != original:
++        raise ValueError("input changed during actual production")
++    return result
++
++
++def reopen(reference, paths, destination, *, factor=2, tile=3, bits=32):
++    sys.dont_write_bytecode = True
++    destination = destination.resolve()
++    destination.mkdir(parents=True, exist_ok=False)
++    if len(paths) != 5:
++        raise ValueError("five exact submitted buffers required")
++    buffers = [p.read_bytes() for p in paths]
++    for i, data in enumerate(buffers):
++        (destination / f"stage{i}.mlir").write_bytes(data)
++    result = write_projection(
++        reference.resolve(), buffers, destination, factor=factor, tile=tile, bits=bits, mode="independent-reprojection"
++    )
++    if any(path.read_bytes() != data for path, data in zip(paths, buffers, strict=True)):
++        raise ValueError("submitted originals changed during independent projection")
++    return result
++
++
+ def main():
+     parser = argparse.ArgumentParser(description=__doc__)
+-    for key in ("reference", "source", "destination"):
+-        parser.add_argument("--" + key, required=True, type=Path)
++    parser.add_argument("--reference", required=True, type=Path)
++    parser.add_argument("--destination", required=True, type=Path)
++    parser.add_argument("--source", type=Path)
++    parser.add_argument("--buffers", nargs=5, type=Path)
+     parser.add_argument("--factor", type=int, default=2)
+     parser.add_argument("--tile", type=int, default=3)
+     parser.add_argument("--bits", type=int, default=32)
+-    result = capture(**vars(parser.parse_args()))
++    args = vars(parser.parse_args())
++    source = args.pop("source")
++    paths = args.pop("buffers")
++    if (source is None) == (paths is None):
++        parser.error("select source production OR five complete buffers")
++    try:
++        result = capture(source=source, **args) if source is not None else reopen(paths=paths, **args)
++    except (ValueError, TypeError, KeyError, IndexError) as error:
++        dest = args["destination"]
++        dest.mkdir(parents=True, exist_ok=True)
++        (dest / "REJECTION.json").write_text(
++            json.dumps(
++                {
++                    "status": "unsupported",
++                    "reason": str(error),
++                    "kind": type(error).__name__,
++                    "qualified": False,
++                    "projection_trusted": True,
++                },
++                indent=2,
++            )
++            + "\n"
++        )
++        print(json.dumps({"status": "unsupported", "reason": str(error)}))
++        raise SystemExit(1) from error
+     print(json.dumps({"each_stage_changed": result["each_stage_changed"], "lean_checked": False}))
+ 
+ 
+diff --git a/src/merlin/verify/lean_graph_state_pipeline_emit.py b/src/merlin/verify/lean_graph_state_pipeline_emit.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_pipeline_emit.py
+@@ -0,0 +1,447 @@
++# ruff: noqa: E501
++# Literal Lean equations are kept intact for readable, byte-bound proof evidence.
++"""Kernel proof generation from the complete five-program scalar/SCF boundary.
++
++Finite syntax/lane expansion only. Trip counts enter generic W/fold theorems;
++no dynamic iteration trace is generated to certify a huge loop.
++"""
++
++from __future__ import annotations
++
++from .lean_graph_state_pipeline import SIMPS, controls_literal, lean_list, prefix_environment
++from .lean_graph_state_scalar import budget, integer, primitive, program, types
++
++
++def unpack(name, size, count, prefix, pad="  ", offset=0):
++    if count == 0:
++        return f"{pad}have {prefix}empty : {name} = [] := List.length_eq_zero_iff.mp {size}\n{pad}subst {name}\n"
++    if count == 1:
++        return f"{pad}obtain ⟨{prefix}{offset},rfl⟩ := List.length_eq_one_iff.mp {size}\n"
++    tail = f"{prefix}tail{offset}"
++    later_size = f"{prefix}size{offset}"
++    result = f"{pad}obtain ⟨{prefix}{offset},{tail},rfl⟩ := List.exists_cons_of_length_eq_add_one {size}\n"
++    result += f"{pad}have {later_size} : {tail}.length = {count - 1} := by\n{pad}  simp only [List.length_cons] at {size}\n{pad}  omega\n"
++    return result + unpack(tail, later_size, count - 1, prefix, pad, offset + 1)
++
++
++def static_controls(records, capture):
++    env = [None] * 2
++    controls = {r["identity"]: r for r in capture["index_operations"]}
++    for record in records:
++        if "loop" in record:
++            values = [env[i] for i in record["loop"]["bounds"]]
++            if any(type(value) is not int or value < 0 for value in values):
++                raise ValueError("actual static nonnegative controls required")
++            return values
++        if "pure" in record:
++            value = None
++        else:
++            op = controls.get(record["effect"])
++            if op is None:
++                raise ValueError("unsupported partial prefix")
++            args = [env[i] for i in record["arguments"]]
++            if op["kind"] == "index-constant":
++                value = op["value"]
++            elif all(type(v) is int for v in args) and len(args) == 2:
++                value = sum(args) if op["kind"] == "index-add" else min(args)
++            else:
++                value = None
++        env.insert(0, value)
++    raise ValueError("missing loop")
++
++
++def symbolic_body(records, environment, control_map, result_prefix, world):
++    env = list(environment)
++    calls = []
++    for row in records:
++        if "ret" in row:
++            return [env[i] for i in row["ret"]], calls
++        if "loop" in row:
++            raise ValueError("region-free original body required in this submode")
++        args = [env[i] for i in row["arguments"]]
++        if "pure" in row:
++            env.insert(0, "(primitive " + primitive(row["pure"]) + " " + lean_list(args) + ")")
++        else:
++            control = control_map.get(row["effect"])
++            if control:
++                if control["kind"] == "index-constant":
++                    value = f"({control['value']} : Int)"
++                elif control["kind"] == "index-add" and len(args) == 2:
++                    value = f"({args[0]} + {args[1]})"
++                elif control["kind"] == "index-minui" and len(args) == 2:
++                    value = f"(min {args[0]} {args[1]})"
++                else:
++                    raise ValueError("malformed original body control")
++                env.insert(0, value)
++            else:
++                index = result_prefix + len(calls)
++                results = [f"v{index}_{r}" for r in range(len(row["outputs"]))]
++                calls.append(
++                    {
++                        "index": index,
++                        "identity": row["effect"],
++                        "arguments": args,
++                        "world": world,
++                        "outputs": len(results),
++                    }
++                )
++                world = "w" + str(index)
++                env = results + env
++    raise ValueError("missing complete body return")
++
++
++def header(capture):
++    registry = capture["stages"][0]["registry"]
++    value = (
++        "["
++        + ",".join("{inputs := " + types(r["inputs"]) + ",outputs := " + types(r["outputs"]) + "}" for r in registry)
++        + "]"
++    )
++    return f"""import Merlin.GraphStatePipelineIndex
++import Merlin.GraphStatePipelineLiterals
++import Merlin.GraphStatePipelineScope
++import Merlin.GraphStatePipelineLoops
++import Merlin.GraphStatePipelineProgram
++import Merlin.GraphStateScalar
++set_option maxRecDepth 4096
++set_option maxHeartbeats 2000000
++set_option linter.unusedSimpArgs false
++namespace Merlin.GraphStatePipelineInstance
++open Merlin.GraphState.Scalar Merlin.GraphState.Pipeline
++def registry : List Signature := {value}
++def controls : Controls := {controls_literal(capture)}
++theorem controlAccepted : checkControl registry controls = true := by decide
++def profileBits : Nat := {capture["index_bits"]}
++theorem literalsAccepted : checkLiterals profileBits controls = true := by decide
++theorem literalsFit (identity : Nat) (value : Int) (found : Merlin.GraphState.Pipeline.controlAt controls identity = some (.constant value)) :
++    signedRepresentative profileBits value := checkLiterals_sound literalsAccepted found
++def M {{World Error : Type}} (primitive : Prim → List Int → Int)
++    (external : External World Error registry) : Model Int World Error registry :=
++  indexModel (checkControl_sound controlAccepted) primitive external
++theorem naturalRange (lower upper step : Nat) (positive : 0 < step) :
++  indexIterations (Int.ofNat lower) (Int.ofNat upper) (Int.ofNat step) =
++    (scfRange lower upper step).map Int.ofNat := by
++  change indexIterations (lower : Int) (upper : Int) (step : Int) = _
++  have pos : (0 : Int) < (step : Int) := by omega
++  simp only [indexIterations,Int.natCast_nonneg,pos,and_self,↓reduceIte,Int.toNat_natCast]
++"""
++
++
++def body_group_text(capture, loops, envs, count, factor, step):
++    result = f"""theorem body_group (base : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :
++  evalProgram (M primitive external) B3 (base::carry++E3 primitive x0 x1) world =
++  loopEval {count} (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)
++    {lean_list(["base" if lane == 0 else f"(base+{step * lane})" for lane in range(factor)])} carry world := by
++"""
++    result += unpack("carry", "arity", count, "c")
++    result += f"  simp only [B2,B3,E2,E3,{SIMPS},loopEval]\n"
++    values = [f"c{i}" for i in range(count)]
++    control_map = {r["identity"]: r for r in capture["index_operations"]}
++    calls = []
++    for lane in range(factor):
++        iv = "base" if lane == 0 else f"(base+{step * lane})"
++        values, more = symbolic_body(
++            loops[2]["body"],
++            [iv, *values, *envs[2]],
++            control_map,
++            len(calls),
++            "world" if not calls else f"w{len(calls) - 1}",
++        )
++        calls += more
++    if len(calls) > 16:
++        raise ValueError("bounded lane proof supports at most sixteen retained calls")
++    for depth, call in enumerate(calls):
++        pad = "  " + "  " * depth
++        index, identity = call["index"], call["identity"]
++        args, world = lean_list(call["arguments"]), call["world"]
++        result += f"{pad}cases step{index} : external.run {identity} {args} {world} with\n"
++        result += f"{pad}| error failure =>\n{pad}  rcases failure with ⟨error,terminal⟩\n"
++        result += f"{pad}  simp only [step{index},{SIMPS},loopEval]\n"
++        result += f"{pad}| ok result =>\n{pad}  rcases result with ⟨values,w{index}⟩\n"
++        result += f"{pad}  have size : values.length = {call['outputs']} := by\n"
++        result += f"{pad}    have localArity := external.arity {identity} {args} {world} values w{index} step{index}\n"
++        result += f"{pad}    simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n"
++        result += unpack("values", "size", call["outputs"], f"v{index}_", pad + "  ")
++        result += f"{pad}  simp only [step{index},{SIMPS},loopEval]\n"
++    return result
++
++
++def scope_text(capture, loops, envs, count):
++    carry = [f"c{i}" for i in range(count)]
++    outer_carry = [f"outerCarry{i}" for i in range(count)]
++    outer_env = prefix_environment(loops[4]["body"], ["outer", *outer_carry, *envs[4]], capture)
++    inner_loop = next(row["loop"] for row in loops[4]["body"] if "loop" in row)
++    logical = ["iv", *carry, *outer_env]
++    source = ["iv", *carry, *envs[3]]
++    selectors = [logical.index(value) for value in source]
++
++    def symbols(values):
++        return lean_list([f"(.var {i})" for i in values])
++
++    result = "def I4 : Program := " + program(inner_loop["body"]) + "\n"
++    result += "def LS : List Expr := " + symbols(selectors) + "\n"
++    result += "def RS : List Expr := " + symbols(range(len(logical))) + "\n"
++    result += "theorem innerAccepted : Scope.check registry LS RS B3 I4 = true := by decide\n"
++    result += f"theorem inner_same (iv outer {' '.join(outer_carry)} : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :\n"
++    result += "  evalProgram (M primitive external) I4 (iv::carry++" + lean_list(outer_env) + ") world =\n"
++    result += "  evalProgram (M primitive external) B3 (iv::carry++E3 primitive x0 x1) world := by\n"
++    result += unpack("carry", "arity", count, "c")
++    result += (
++        "  have checked := Scope.check_sound innerAccepted (M primitive external) " + lean_list(logical) + " world\n"
++    )
++    result += "  simpa only [LS,RS,E3,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked.symm\n"
++    for left, right in ((2, 3), (3, 4)):
++        logical = [*carry, *envs[right]]
++        selected = [logical.index(value) for value in [*carry, *envs[left]]]
++        result += f"def CL{left}{right} : List Expr := " + symbols(selected) + "\n"
++        result += f"def CR{left}{right} : List Expr := " + symbols(range(len(logical))) + "\n"
++        result += f"theorem suffixAccepted{left}{right} : Scope.check registry CL{left}{right} CR{left}{right} N{left} N{right} = true := by decide\n"
++        result += (
++            f"theorem suffix_same{left}{right} (carry : List Int) (world : World) (arity : carry.length = {count}) :\n"
++        )
++        result += f"  evalProgram (M primitive external) N{left} (carry++E{left} primitive x0 x1) world =\n"
++        result += f"  evalProgram (M primitive external) N{right} (carry++E{right} primitive x0 x1) world := by\n"
++        result += unpack("carry", "arity", count, "c")
++        result += (
++            f"  have checked := Scope.check_sound suffixAccepted{left}{right} (M primitive external) "
++            + lean_list(logical)
++            + " world\n"
++        )
++        result += f"  simpa only [CL{left}{right},CR{left}{right},E{left},E{right},evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked\n"
++    return result
++
++
++def outer_text(count, upper, stride, tile):
++    block = stride * tile
++    names = [f"c{i}" for i in range(count)]
++    values = lean_list(names)
++    frame = "[min (base+" + str(block) + ") " + str(upper) + ",base+" + str(block) + ",base," + ",".join(names) + "]"
++    natframe = frame.replace("base", "Int.ofNat base")
++    rets = lean_list([str(i) for i in range(count)])
++    result = f"""theorem outer_form (base {" ".join(names)} : Int) (world : World) :
++  evalProgram (M primitive external) B4 (base::{values}++E4 primitive x0 x1) world =
++  (loopEval {count} (fun i cs w => evalProgram (M primitive external) I4
++    (i::cs++{frame}++E4 primitive x0 x1) w)
++      (indexIterations base (min (base+{block}) {upper}) {stride}) {values} world).bind
++        (fun result => evalProgram (M primitive external) (.ret {rets})
++          (result.1++{frame}++E4 primitive x0 x1) result.2) := by
++  simp only [List.append_assoc]
++  rfl
++theorem outer_same (base : Nat) (carry : List Int) (world : World) (arity : carry.length = {count}) :
++  evalProgram (M primitive external) B4 (Int.ofNat base::carry++E4 primitive x0 x1) world =
++  loopEval {count} (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w)
++    ((scfRange base (min (base+{stride}*{tile}) {upper}) {stride}).map Int.ofNat) carry world := by
++"""
++    result += unpack("carry", "arity", count, "c")
++    result += f"""  rw [outer_form]
++  have bodies : ∀ i cs w, cs.length = {count} →
++      evalProgram (M primitive external) I4 (i::cs++{natframe}++E4 primitive x0 x1) w =
++      evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w := by
++    intro i cs w size
++    simpa only [E4,List.append_assoc,List.cons_append,List.nil_append] using
++      inner_same primitive external x0 x1 i (Int.ofNat base) {" ".join(names)} cs w size
++  rw [loopEval_congr {count} _ _ bodies]
++  have minimum : min (Int.ofNat base+{block}) {upper} = Int.ofNat (min (base+{block}) {upper}) := minui_natural (base+{block}) {upper}
++  have ranges : indexIterations (Int.ofNat base) (Int.ofNat (min (base+{block}) {upper})) {stride} =
++      (scfRange base (min (base+{block}) {upper}) {stride}).map Int.ofNat := naturalRange base (min (base+{block}) {upper}) {stride} (by decide)
++  rw [minimum,ranges]
++  cases run : loopEval {count} (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w)
++      ((scfRange base (min (base+{block}) {upper}) {stride}).map Int.ofNat) {values} world with
++  | error failure => rfl
++  | ok result =>
++    have size := loopEval_arity {count} _ _ _ _ run
++    rcases result with ⟨values,final⟩
++"""
++    result += unpack("values", "size", count, "returned", "    ")
++    return result + "    rfl\n"
++
++
++def compose_text(count, bounds, bulk_bounds, factor, groups, tile, bits, initial):
++    lower, upper, step = bounds
++    bulk_lower, bulk_upper, stride = bulk_bounds
++    outer_stride = stride * tile
++    return f"""def unrollBounds : Merlin.GraphLoopsUnroll.Bounds :=
++  {{ bits := {bits}, lower := {lower}, upper := {upper}, step := {step}, factor := {factor}, count := {groups * factor}, groups := {groups}, remainder := 0 }}
++def segmentBounds : Merlin.GraphLoopsSegment.Bounds :=
++  {{ bits := {bits}, lower := {bulk_lower}, upper := {bulk_upper}, step := {stride}, tile := {tile} }}
++theorem unrollBoundsChecked : unrollBounds.Valid := by decide
++theorem segmentBoundsChecked : segmentBounds.Valid := by decide
++theorem unroll_actual (world : World) :
++    evalProgram (M primitive external) S2 [x0,x1] world = evalProgram (M primitive external) S3 [x0,x1] world := by
++  have bodies : ∀ index values w, values.length = {count} →
++      evalProgram (M primitive external) B3 (Int.ofNat index::values++E3 primitive x0 x1) w =
++      loopEval {count} (fun i c current => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) current)
++        ((progression index {step} {factor}).map Int.ofNat) values w := by
++    intro index values w size
++    simpa [progression,Int.ofNat_eq_natCast,Int.add_assoc] using body_group primitive external x0 x1 (Int.ofNat index) values w size
++  have loops : loopEval {count} (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)
++      (indexIterations {lower} {upper} {step}) {initial} world =
++    loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)
++      (indexIterations {bulk_lower} {bulk_upper} {stride}) {initial} world :=
++    unroll_loop {count} _ _ {lower} {upper} {step} {factor} {groups} (by decide) (by decide) (by decide) bodies {initial} world
++  rw [form2,form3,loops]
++  cases run : loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)
++      (indexIterations {bulk_lower} {bulk_upper} {stride}) {initial} world with
++  | error failure => rfl
++  | ok result => exact suffix_same23 primitive external x0 x1 result.1 result.2 (loopEval_arity {count} _ _ _ _ run)
++theorem segment_actual (world : World) :
++    evalProgram (M primitive external) S3 [x0,x1] world = evalProgram (M primitive external) S4 [x0,x1] world := by
++  have r2 : indexIterations {bulk_lower} {bulk_upper} {stride} = (scfRange {bulk_lower} {bulk_upper} {stride}).map Int.ofNat := naturalRange {bulk_lower} {bulk_upper} {stride} (by decide)
++  have r6 : indexIterations {bulk_lower} {bulk_upper} {outer_stride} = (scfRange {bulk_lower} {bulk_upper} {outer_stride}).map Int.ofNat := naturalRange {bulk_lower} {bulk_upper} {outer_stride} (by decide)
++  have loops : loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)
++      (indexIterations {bulk_lower} {bulk_upper} {stride}) {initial} world =
++    loopEval {count} (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive x0 x1) w)
++      (indexIterations {bulk_lower} {bulk_upper} {outer_stride}) {initial} world := by
++    rw [r2,r6]
++    exact segment_loop {count} _ _ {bulk_lower} {bulk_upper} {stride} {tile} (by decide) (by decide) (outer_same primitive external x0 x1) {initial} world
++  rw [form3,form4,loops]
++  cases run : loopEval {count} (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive x0 x1) w)
++      (indexIterations {bulk_lower} {bulk_upper} {outer_stride}) {initial} world with
++  | error failure => rfl
++  | ok result => exact suffix_same34 primitive external x0 x1 result.1 result.2 (loopEval_arity {count} _ _ _ _ run)
++theorem actual_inputs (world : World) :
++    evalProgram (M primitive external) S0 [x0,x1] world = evalProgram (M primitive external) S4 [x0,x1] world :=
++  (firstTwo Int World Error (M primitive external) [x0,x1] world rfl).trans
++    ((unroll_actual primitive external x0 x1 world).trans (segment_actual primitive external x0 x1 world))
++theorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :
++    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S4 arguments world := by
++  cases arguments with
++  | nil => simp only [inputs,List.length_nil,List.length_cons] at arity; contradiction
++  | cons first rest =>
++    cases rest with
++    | nil => simp only [inputs,List.length_nil,List.length_cons] at arity; contradiction
++    | cons second later =>
++      have empty : later = [] := List.length_eq_zero_iff.mp (by
++        simp only [inputs,List.length_nil,List.length_cons] at arity
++        omega)
++      subst later
++      exact actual_inputs primitive external first second world
++"""
++
++
++def emit(capture):
++    stages = capture["stages"]
++    if len(stages) != 4 or any(
++        s["registry"] != stages[0]["registry"] or s["types"] != stages[0]["types"] for s in stages
++    ):
++        raise ValueError("one exact common five-stage registry/type table required")
++    text = header(capture)
++    factor, tile, bits = capture["factor"], capture["tile"], capture["index_bits"]
++    for value in (factor, tile, bits):
++        integer(value, natural=True)
++    if not 2 <= factor <= 4 or not 2 <= tile <= 16 or bits not in (32, 64):
++        raise ValueError("supported factor2..4/tile2..16/signed32-or64 profile required")
++    for index, function in enumerate(stages[0]["functions"]):
++        if function["declaration"]:
++            continue
++        records = [function["before"], *[s["functions"][index]["after"] for s in stages]]
++        controls = {r["identity"]: r for r in capture["index_operations"]}
++
++        def original_domain(rows):
++            for row in rows:
++                if "loop" in row:
++                    original_domain(row["loop"]["body"])
++                elif (
++                    "effect" in row
++                    and row["effect"] in controls
++                    and controls[row["effect"]]["kind"] != "index-constant"
++                ):
++                    raise ValueError("source index arithmetic outside generated control bridges is unsupported")
++
++        for raw in records:
++            budget(raw, len(function["inputs"]), [0])
++        original_domain(records[0])
++        if records[2] == records[4] and any("loop" in row for row in records[2]):
++            raise ValueError("unchanged SCF entries require their own explicit control bridge")
++        text += (
++            f"namespace F{index}\ndef inputs : List Ty := "
++            + types(function["inputs"])
++            + "\ndef outputs : List Ty := "
++            + types(function["outputs"])
++            + "\n"
++        )
++        for stage, raw in enumerate(records):
++            text += (
++                f"def S{stage} : Program := "
++                + program(raw)
++                + f"\ntheorem typed{stage} : checkTypes registry inputs outputs S{stage} = true := by decide\n"
++            )
++        text += "theorem firstAccepted : check registry inputs outputs S0 S1 = true := by decide\ntheorem secondAccepted : check registry inputs outputs S1 S2 = true := by decide\ntheorem firstTwo : Preserves registry inputs.length S0 S2 := check_composes firstAccepted secondAccepted\n"
++        if records[2] == records[4]:
++            text += "theorem actual {World Error : Type} (primitive : Prim → List Int → Int) (external : External World Error registry)\n    (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S4 arguments world :=\n  firstTwo Int World Error (M primitive external) arguments world arity\n"
++            text += f"end F{index}\n"
++            continue
++        if len(function["inputs"]) != 2:
++            raise ValueError("two-input changed function submode required")
++        loops, envs = {}, {}
++        for stage in (2, 3, 4):
++            raw = records[stage]
++            positions = [i for i, r in enumerate(raw) if "loop" in r]
++            if len(positions) != 1:
++                raise ValueError("exactly one top-level changed loop required")
++            pos = positions[0]
++            loops[stage] = raw[pos]["loop"]
++            envs[stage] = prefix_environment(raw, ["x0", "x1"], capture)
++            text += (
++                f"def E{stage} (primitive : Prim → List Int → Int) (x0 x1 : Int) : List Int := "
++                + lean_list(envs[stage])
++                + f"\ndef B{stage} : Program := "
++                + program(loops[stage]["body"])
++                + f"\ndef N{stage} : Program := "
++                + program(raw[pos + 1 :])
++                + "\n"
++            )
++        bounds, bulk_bounds = static_controls(records[2], capture), static_controls(records[3], capture)
++        lower, upper, step = bounds
++        if step <= 0 or upper < lower:
++            raise ValueError("positive static source stride and ordered bounds required")
++        trips = (upper - lower + step - 1) // step
++        groups, remainder = divmod(trips, factor)
++        if trips <= factor or remainder:
++            raise ValueError("inline/empty/tail explicitly outside supported no-tail bulk mode")
++        expected_bulk = [lower, lower + step * trips, step * factor]
++        if bulk_bounds != expected_bulk or static_controls(records[4], capture) != [
++            lower,
++            expected_bulk[1],
++            expected_bulk[2] * tile,
++        ]:
++            raise ValueError("actual source/bulk/segmented control joins differ")
++        initial_vectors = [[envs[stage][i] for i in loops[stage]["initial"]] for stage in (2, 3, 4)]
++        if initial_vectors[1:] != [initial_vectors[0], initial_vectors[0]]:
++            raise ValueError("ordered initial carry bindings differ across complete stages")
++        if any(loops[stage]["carries"] != loops[2]["carries"] for stage in (3, 4)):
++            raise ValueError("declared carried result type/order differs across complete stages")
++        count = len(loops[2]["carries"])
++        if not 1 <= count <= 4:
++            raise ValueError("one to four carries supported")
++        text += "variable {World Error : Type} (primitive : Prim → List Int → Int)\n    (external : External World Error registry) (x0 x1 : Int)\n"
++        for stage in (2, 3, 4):
++            loop, env = loops[stage], envs[stage]
++            args = " ".join(env[i] for i in loop["bounds"])
++            initial = lean_list([env[i] for i in loop["initial"]])
++            text += f"theorem form{stage} (world : World) : evalProgram (M primitive external) S{stage} [x0,x1] world =\n  (loopEval {len(loop['carries'])} (fun i carry w => evalProgram (M primitive external) B{stage} (i::carry++E{stage} primitive x0 x1) w)\n    (indexIterations {args}) {initial} world).bind\n      (fun result => evalProgram (M primitive external) N{stage} (result.1++E{stage} primitive x0 x1) result.2) := by rfl\n"
++        text += body_group_text(capture, loops, envs, count, factor, step)
++        text += scope_text(capture, loops, envs, count)
++        text += outer_text(count, bulk_bounds[1], bulk_bounds[2], tile)
++        initial = lean_list([envs[2][i] for i in loops[2]["initial"]])
++        text += compose_text(count, bounds, bulk_bounds, factor, groups, tile, bits, initial)
++        text += f"end F{index}\n"
++    defined = [i for i, f in enumerate(stages[0]["functions"]) if not f["declaration"]]
++
++    def entry(i, stage):
++        return f"{{inputs := F{i}.inputs, outputs := F{i}.outputs, body := F{i}.S{stage}}}"
++
++    text += "def originalEntries : List Entry := " + lean_list([entry(i, 0) for i in defined]) + "\n"
++    text += "def finalEntries : List Entry := " + lean_list([entry(i, 4) for i in defined]) + "\n"
++    text += "theorem originalEntriesChecked : checkEntries registry originalEntries = true := by decide\n"
++    text += "theorem finalEntriesChecked : checkEntries registry finalEntries = true := by decide\n"
++    proof = "entries_nil (M primitive external)"
++    for i in reversed(defined):
++        proof = f"entries_cons (M primitive external) rfl rfl (F{i}.actual primitive external) ({proof})"
++    text += "theorem complete {World Error : Type} (primitive : Prim → List Int → Int)\n"
++    text += (
++        "    (external : External World Error registry) : PreservesEntries (M primitive external) originalEntries finalEntries :=\n  "
++        + proof
++        + "\n"
++    )
++    return text + "end Merlin.GraphStatePipelineInstance\n"
+diff --git a/src/merlin/verify/lean_graph_state_pipeline_kernel.py b/src/merlin/verify/lean_graph_state_pipeline_kernel.py
+--- a/src/merlin/verify/lean_graph_state_pipeline_kernel.py
++++ b/src/merlin/verify/lean_graph_state_pipeline_kernel.py
+@@ -57,11 +57,23 @@
+     freeze = json.loads(freeze_path.read_text())
+     incident_path = artifacts_dir() / "verification/graph-state-scalar/review/sealed-v1/shared-binding-check-once.json"
+     incident = json.loads(incident_path.read_text())
+-    if incident["target_in_actual_proof_import_object_closure"] or not incident["all_recorded_object_tool_bindings_exact"]:
++    if (
++        incident["target_in_actual_proof_import_object_closure"]
++        or not incident["all_recorded_object_tool_bindings_exact"]
++    ):
+         raise ValueError("existing scalar fixed context affected/unconfirmed")
+-    scalar_sources = [stable.file_ref(repo_root() / ("src/merlin/verify/lean/Merlin/" + name + ".lean")) for name in (
+-        "GraphStateScalarContract", "GraphStateScalarNormalize", "GraphStateScalarSound", "GraphStateScalarTyping",
+-        "GraphStateScalarInitialized", "GraphStateScalar", "GraphStateScalarSteps")]
++    scalar_sources = [
++        stable.file_ref(repo_root() / ("src/merlin/verify/lean/Merlin/" + name + ".lean"))
++        for name in (
++            "GraphStateScalarContract",
++            "GraphStateScalarNormalize",
++            "GraphStateScalarSound",
++            "GraphStateScalarTyping",
++            "GraphStateScalarInitialized",
++            "GraphStateScalar",
++            "GraphStateScalarSteps",
++        )
++    ]
+     ready = []
+     for path in sorted((build_dir() / "graph-verification/state-scalar/kernel").glob("*/ready.json")):
+         data = json.loads(path.read_text())
+@@ -72,9 +84,17 @@
+     ready_path, scalar = ready[0]
+     w = json.loads(Path(freeze["selection"]["path"]).read_text())
+     closure = json.loads(Path(w["proof"]["build_record"]).read_text())
+-    rows = [freeze_ref, freeze["selection"], *freeze["proof_dependencies"], *freeze["lean_loaded_files"],
+-            stable.file_ref(ready_path), *scalar["files"], *scalar_sources,
+-            *incident["fixed_standard_object_bindings"], *incident["fixed_tool_bindings"]]
++    rows = [
++        freeze_ref,
++        freeze["selection"],
++        *freeze["proof_dependencies"],
++        *freeze["lean_loaded_files"],
++        stable.file_ref(ready_path),
++        *scalar["files"],
++        *scalar_sources,
++        *incident["fixed_standard_object_bindings"],
++        *incident["fixed_tool_bindings"],
++    ]
+     indexed, mismatches = {}, []
+     for row in rows:
+         if row["path"] in indexed and indexed[row["path"]] != row:
+@@ -91,13 +111,19 @@
+             mismatches.append({"path": row["path"], "reason": str(error)})
+     data = {
+         "schema": "merlin.graph-state-pipeline.dependency-check.v1",
+-        "exact": not mismatches, "mismatches": mismatches, "target_in_selected_closure": target_present,
+-        "bindings": list(indexed.values()), "scalar_ready": str(ready_path),
+-        "scalar_library": str(ready_path.parent / "lib/lean"), "w_library": w["proof"]["library"],
++        "exact": not mismatches,
++        "mismatches": mismatches,
++        "target_in_selected_closure": target_present,
++        "bindings": list(indexed.values()),
++        "scalar_ready": str(ready_path),
++        "scalar_library": str(ready_path.parent / "lib/lean"),
++        "w_library": w["proof"]["library"],
+         "foreign_objects": [attempt["object"] for attempt in closure["attempts"]],
+         "sidecars_and_host_from_sealed_W_freeze": True,
+-        "reads_per_unique_selected_binding": 1, "toolchain_written_or_rebuilt": False,
+-        "identity_refreshed_to_promote": False, "qualification_issued": False,
++        "reads_per_unique_selected_binding": 1,
++        "toolchain_written_or_rebuilt": False,
++        "identity_refreshed_to_promote": False,
++        "qualification_issued": False,
+     }
+     write(active, data)
+     if mismatches:
+@@ -134,12 +160,24 @@
+     copy.write_bytes(content)
+     target = build_dir() / BUILD / "development/lib/Merlin" / (source.stem + ".olean")
+     with (directory / "stdout").open("x") as out, (directory / "stderr").open("x") as err:
+-        result = run_owned([str(stable.LEAN), "-j1", str(copy), "-o", str(target)],
+-                           cwd=directory, env=env, stdout=out, stderr=err, timeout=60, check=False)
+-    record = {"returncode": result.returncode, "source": stable.file_ref(copy),
+-              "stdout": stable.file_ref(directory / "stdout"), "stderr": stable.file_ref(directory / "stderr"),
+-              "object": stable.file_ref(target) if result.returncode == 0 else None,
+-              "phase": "development-only; not qualification", "qualified": False}
++        result = run_owned(
++            [str(stable.LEAN), "-j1", str(copy), "-o", str(target)],
++            cwd=directory,
++            env=env,
++            stdout=out,
++            stderr=err,
++            timeout=60,
++            check=False,
++        )
++    record = {
++        "returncode": result.returncode,
++        "source": stable.file_ref(copy),
++        "stdout": stable.file_ref(directory / "stdout"),
++        "stderr": stable.file_ref(directory / "stderr"),
++        "object": stable.file_ref(target) if result.returncode == 0 else None,
++        "phase": "development-only; not qualification",
++        "qualified": False,
++    }
+     write(directory / "result.json", record)
+     if result.returncode < 0:
+         write(build_dir() / BUILD / "NATIVE_BLOCKER.json", {**record, "cause": "UNKNOWN", "retry_permitted": False})
+diff --git a/src/merlin/verify/lean_graph_state_pipeline_models.py b/src/merlin/verify/lean_graph_state_pipeline_models.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_pipeline_models.py
+@@ -0,0 +1,299 @@
++# ruff: noqa: E501
++# Literal Lean equations are kept intact for readable, byte-bound proof evidence.
++"""Bounded, actual-export operational witnesses under an explicit common model.
++
++Trace authoring is untrusted data: every operation/fold equation is kernel
++checked. Whole-pipeline preservation derives target execution from the proved
++source witness, not from a source-success assumption or a native claim.
++"""
++
++from __future__ import annotations
++
++from .lean_graph_state_pipeline_emit import emit
++from .lean_graph_state_scalar_execution import Author, outcome
++from .lean_graph_state_scalar_models import ints, model_definitions
++
++
++def witness(capture, arguments, *, failure=None):
++    stages = capture["stages"]
++    registry = stages[0]["registry"]
++    changed = [
++        i
++        for i, f in enumerate(stages[0]["functions"])
++        if not f["declaration"] and f["before"] != stages[-1]["functions"][i]["after"]
++    ]
++    if len(changed) != 1:
++        raise ValueError("one changed actual entry required for this finite witness mode")
++    index = changed[0]
++    function = stages[0]["functions"][index]
++    if len(arguments) != len(function["inputs"]) or any(type(v) is not int for v in arguments):
++        raise ValueError("exact initialized witness input vector required")
++    if not all(
++        set(t) == {"bits"} and 0 <= v < 1 << t["bits"] for v, t in zip(arguments, function["inputs"], strict=True)
++    ):
++        raise ValueError("witness arguments must inhabit the declared unsigned integer input types")
++    controls = {r["identity"]: r for r in capture["index_operations"]}
++    if failure is not None and (type(failure) is not int or failure in controls or not 0 <= failure < len(registry)):
++        raise ValueError("failure must designate a retained noncontrol operation")
++
++    def original_controls(records):
++        for row in records:
++            if "loop" in row:
++                original_controls(row["loop"]["body"])
++            elif "effect" in row and row["effect"] in controls and controls[row["effect"]]["kind"] != "index-constant":
++                raise ValueError(
++                    "this trace author supports source constant controls only; not a graph-proof restriction"
++                )
++
++    original_controls(function["before"])
++    author = Author(registry, failure)
++    proof, expected = author.execute(function["before"], arguments, [23])
++    body_name = author.code(function["before"])
++    model = model_definitions(registry, failure).split("def concrete :")[0]
++    begin = model.index("def iterations")
++    end = model.index("def selectedValue")
++    model = model[:begin] + model[end:]
++    text = emit(capture).removesuffix("end Merlin.GraphStatePipelineInstance\n")
++    text = text.replace(
++        "import Merlin.GraphStateScalar\n", "import Merlin.GraphStateScalar\nimport Merlin.GraphStateScalarSteps\n", 1
++    )
++    text += "namespace Witness\n" + model
++    text += """def external : External (List Int) Int registry := {
++  run := effect
++  arity := by
++    intro identity arguments world values final success
++    simp only [effect] at success
++    split at success
++    · cases success
++    · cases success; simp
++}
++def concrete : Model Int (List Int) Int registry := M primitive external
++"""
++    text += "def arguments : List Int := " + ints(arguments) + "\n"
++    text += f"theorem input_arity : arguments.length = F{index}.inputs.length := by decide\n"
++    text += "theorem nonzero_inputs : arguments.all (fun value => decide (value ≠ 0)) = true := by decide\n"
++    text += "namespace Execution\n" + "".join(author.definitions) + "".join(author.proofs) + "end Execution\n"
++    expected_lean = outcome(expected)
++    text += f"""theorem actual_original_execution : evalProgram concrete F{index}.S0 arguments [23] = {expected_lean} := by
++  have join : F{index}.S0 = Execution.{body_name} := rfl
++  rw [join]
++  exact Execution.{proof}
++theorem actual_final_execution : evalProgram concrete F{index}.S4 arguments [23] = {expected_lean} := by
++  rw [← F{index}.actual primitive external arguments [23] input_arity]
++  exact actual_original_execution
++theorem source_initialized : Initialized concrete F{index}.S0 arguments [23] :=
++  typed_operands_initialized (checkTypes_sound _ _ _ F{index}.typed0) concrete arguments [23] input_arity
++theorem final_initialized : Initialized concrete F{index}.S4 arguments [23] :=
++  typed_operands_initialized (checkTypes_sound _ _ _ F{index}.typed4) concrete arguments [23] input_arity
++end Witness
++end Merlin.GraphStatePipelineInstance
++"""
++    roots = ["Merlin.GraphStatePipelineInstance.complete"]
++    roots += [
++        "Merlin.GraphStatePipelineInstance.Witness." + name
++        for name in (
++            "input_arity",
++            "nonzero_inputs",
++            "actual_original_execution",
++            "actual_final_execution",
++            "source_initialized",
++            "final_initialized",
++        )
++    ]
++    return (
++        text,
++        roots,
++        {
++            "status": expected[0],
++            "values": expected[1],
++            "world": expected[2],
++            "arguments": arguments,
++            "failure_identity": failure,
++            "model_only": True,
++            "primitive_fidelity_proved": False,
++            "native_fidelity_proved": False,
++            "typing_implies_source_success": False,
++            "poison_freedom_proved": False,
++        },
++    )
++
++
++def symbolic_witness(capture):
++    """Independent factored provider/counter model, not the limited RFL trace.
++
++    Ordinary wrapping primitives are instantiated WITHOUT evaluating arithmetic
++    traces. Source success/failure is derived from actual body syntax and the
++    explicit arity-correct provider. World is a complete abstract call counter.
++    """
++    from .lean_graph_state_pipeline_emit import static_controls
++    from .lean_graph_state_scalar_models import MODEL
++
++    functions = capture["stages"][0]["functions"]
++    changed = [
++        i
++        for i, f in enumerate(functions)
++        if not f["declaration"] and f["before"] != capture["stages"][-1]["functions"][i]["after"]
++    ]
++    if len(changed) != 1:
++        raise ValueError("one changed actual entry required")
++    index = changed[0]
++    source2 = capture["stages"][1]["functions"][index]["after"]
++    loop = next(r["loop"] for r in source2 if "loop" in r)
++    if static_controls(source2, capture) != [0, 6, 1] or len(loop["carries"]) != 1:
++        raise ValueError("symbolic finite provider witness submode is exactly 0..6/stride1/one carry")
++    calls = [r for r in loop["body"] if "effect" in r]
++    if len(calls) != 1 or len(calls[0]["outputs"]) != 1:
++        raise ValueError("one single-result original-body provider required")
++    declared = [*functions[index]["inputs"], *functions[index]["outputs"], *loop["carries"]]
++    if any(set(ty) != {"bits"} or ty["bits"] < 5 for ty in declared):
++        raise ValueError("symbolic provider input/output/carry domain must contain unsigned 3,5,17")
++    provider = calls[0]["effect"]
++    text = emit(capture).removesuffix("end Merlin.GraphStatePipelineInstance\n")
++    text += "namespace SymbolicWitness\n" + MODEL.split("def iterations")[0]
++    text += f"""def run (fail : Bool) (identity : Nat) (arguments : List Int) (world : Nat) :
++    Except (Nat × Nat) (List Int × Nat) :=
++  if fail && decide (identity = {provider}) && decide (arguments[1]?.getD 0 = 4) then .error (17,world+5)
++  else .ok ((signature registry identity).outputs.map (fun _ => 17),world+1)
++def provider (fail : Bool) : External Nat Nat registry := {{
++  run := run fail
++  arity := by
++    intro identity arguments world values final success
++    simp only [run] at success
++    split at success
++    · cases success
++    · cases success; simp
++}}
++def chosen (p : Prim → List Int → Int) (fail : Bool) : Model Int Nat Nat registry := M p (provider fail)
++theorem provider_step (p : Prim → List Int → Int) (fail : Bool) (x0 x1 iv value : Int) (world : Nat) :
++    evalProgram (chosen p fail) F{index}.B2 (iv::value::F{index}.E2 p x0 x1) world =
++      if fail && decide (iv = 4) then .error (.external 17,world+5) else .ok ([17],world+1) := by
++  by_cases condition : fail = true ∧ iv = 4
++  all_goals simp [F{index}.B2,F{index}.E2,chosen,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,
++    IndexOp.eval,opaqueStep,evalProgram,reads,provider,run,signature,registry,Except.bind,condition]
++def body (p : Prim → List Int → Int) (fail : Bool) (x0 x1 : Int) (iv : Int) (carry : List Int) (world : Nat) : Outcome Int Nat Nat :=
++  evalProgram (chosen p fail) F{index}.B2 (iv::carry++F{index}.E2 p x0 x1) world
++theorem staticIndices : indexIterations 0 6 1 = [0,1,2,3,4,5] :=
++  indexIterations_count (lower := 0) (upper := 6) (step := 1) (count := 6) (by decide) (by decide)
++theorem loop_success (p : Prim → List Int → Int) (x0 x1 value : Int) (world : Nat) :
++    loopEval 1 (body p false x0 x1) (indexIterations 0 6 1) [value] world = .ok ([17],world+6) := by
++  rw [staticIndices]
++  simp [loopEval,body,provider_step,Nat.add_assoc,Except.bind]
++theorem loop_failure (p : Prim → List Int → Int) (x0 x1 value : Int) (world : Nat) :
++    loopEval 1 (body p true x0 x1) (indexIterations 0 6 1) [value] world = .error (.external 17,world+9) := by
++  rw [staticIndices]
++  simp [loopEval,body,provider_step,Nat.add_assoc,Except.bind]
++theorem observer (p : Prim → List Int → Int) (fail : Bool) (x0 x1 value : Int) (world : Nat) :
++    evalProgram (chosen p fail) F{index}.N2 (value::F{index}.E2 p x0 x1) world = .ok ([value],world+1) := by
++  simp [F{index}.N2,F{index}.E2,chosen,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,
++    IndexOp.eval,opaqueStep,evalProgram,reads,provider,run,signature,registry,Except.bind]
++theorem source_success (p : Prim → List Int → Int) (x0 x1 : Int) (world : Nat) :
++    evalProgram (chosen p false) F{index}.S0 [x0,x1] world = .ok ([17],world+7) := by
++  rw [F{index}.firstTwo Int Nat Nat (chosen p false) [x0,x1] world rfl]
++  change evalProgram (M p (provider false)) F{index}.S2 [x0,x1] world = _
++  rw [F{index}.form2]
++  change (loopEval 1 (body p false x0 x1) (indexIterations 0 6 1) [x0] world).bind _ = _
++  rw [loop_success]
++  simpa [chosen,Except.bind,Nat.add_assoc] using observer p false x0 x1 17 (world+6)
++theorem source_failure (p : Prim → List Int → Int) (x0 x1 : Int) (world : Nat) :
++    evalProgram (chosen p true) F{index}.S0 [x0,x1] world = .error (.external 17,world+9) := by
++  rw [F{index}.firstTwo Int Nat Nat (chosen p true) [x0,x1] world rfl]
++  change evalProgram (M p (provider true)) F{index}.S2 [x0,x1] world = _
++  rw [F{index}.form2]
++  change (loopEval 1 (body p true x0 x1) (indexIterations 0 6 1) [x0] world).bind _ = _
++  rw [loop_failure]
++  rfl
++def arguments : List Int := [3,5]
++theorem input_arity : arguments.length = F{index}.inputs.length := by decide
++theorem input_nonzero : arguments.all (fun value => decide (value ≠ 0)) = true := by decide
++theorem actual_source_success : evalProgram (chosen primitive false) F{index}.S0 arguments 7 = .ok ([17],14) :=
++  source_success primitive 3 5 7
++theorem actual_final_success : evalProgram (chosen primitive false) F{index}.S4 arguments 7 = .ok ([17],14) := by
++  change evalProgram (M primitive (provider false)) F{index}.S4 arguments 7 = _
++  rw [← F{index}.actual primitive (provider false) arguments 7 input_arity]
++  exact actual_source_success
++theorem actual_source_failure : evalProgram (chosen primitive true) F{index}.S0 arguments 7 = .error (.external 17,16) :=
++  source_failure primitive 3 5 7
++theorem actual_final_failure : evalProgram (chosen primitive true) F{index}.S4 arguments 7 = .error (.external 17,16) := by
++  change evalProgram (M primitive (provider true)) F{index}.S4 arguments 7 = _
++  rw [← F{index}.actual primitive (provider true) arguments 7 input_arity]
++  exact actual_source_failure
++theorem source_initialized : Initialized (chosen primitive false) F{index}.S0 arguments 7 :=
++  typed_operands_initialized (checkTypes_sound _ _ _ F{index}.typed0) (chosen primitive false) arguments 7 input_arity
++theorem final_initialized : Initialized (chosen primitive false) F{index}.S4 arguments 7 :=
++  typed_operands_initialized (checkTypes_sound _ _ _ F{index}.typed4) (chosen primitive false) arguments 7 input_arity
++end SymbolicWitness
++end Merlin.GraphStatePipelineInstance
++"""
++    roots = ["Merlin.GraphStatePipelineInstance.complete"]
++    roots += [
++        "Merlin.GraphStatePipelineInstance.SymbolicWitness." + n
++        for n in (
++            "provider_step",
++            "source_success",
++            "source_failure",
++            "input_arity",
++            "input_nonzero",
++            "actual_source_success",
++            "actual_final_success",
++            "actual_source_failure",
++            "actual_final_failure",
++            "source_initialized",
++            "final_initialized",
++        )
++    ]
++    return (
++        text,
++        roots,
++        {
++            "mode": "symbolic-provider-counter-v1",
++            "input": [3, 5],
++            "initial_world": 7,
++            "success": {"values": [17], "world": 14},
++            "failure": {"error": 17, "world": 16, "failure_IV": 4},
++            "source_success_assumed": False,
++            "primitive": "ordinary total wrapping word functions; no fidelity theorem",
++            "external_contract": "explicit arity-correct constant17 provider with an optional IV4 fault and observable call counter",
++            "native_fidelity_proved": False,
++            "poison_freedom_proved": False,
++            "limited_literal_trace_promoted": False,
++        },
++    )
++
++
++def countermodels():
++    """Necessity of control/totality/failure contracts, distinct from pass cases."""
++    text = """import Merlin.GraphStatePipelineIndex
++namespace Merlin.GraphStatePipelineCountermodels
++open Merlin.GraphState.Scalar Merlin.GraphState.Pipeline
++def first (_ : Int) (_ : List Int) (world : Nat) : Outcome Int Nat Nat := .error (.external 17,world+1)
++def second (_ : Int) (_ : List Int) (world : Nat) : Outcome Int Nat Nat := .error (.external 18,world+2)
++def successRelation (body : Int → List Int → Nat → Outcome Int Nat Nat)
++    (index : Int) (before after : List Int × Nat) : Prop := body index before.1 before.2 = .ok after
++theorem success_relations_equal : ∀ index before after, successRelation first index before after ↔ successRelation second index before after := by
++  intro index before after
++  simp [successRelation,first,second]
++theorem failures_are_different : loopEval 1 first [0] [3] 7 ≠ loopEval 1 second [0] [3] 7 := by
++  simp [loopEval,first,second,Except.bind]
++theorem emptySpeculation : loopEval 1 first [] [3] 7 ≠ first 0 [3] 7 := by
++  simp [loopEval,first,Except.bind]
++def observed (index : Int) (_ : List Int) (world : List Int) : Outcome Int (List Int) Nat := .ok ([index],world++[index])
++theorem control_world_counterexample : loopEval 1 observed (indexIterations 0 3 1) [0] [] ≠
++    loopEval 1 observed (indexIterations 0 3 2) [0] [] := by
++  have source : indexIterations 0 3 1 = [0,1,2] :=
++    indexIterations_count (lower := 0) (upper := 3) (step := 1) (count := 3) (by decide) (by decide)
++  have target : indexIterations 0 3 2 = [0,2] :=
++    indexIterations_count (lower := 0) (upper := 3) (step := 2) (count := 2) (by decide) (by decide)
++  rw [source,target]
++  simp [loopEval,observed,Except.bind]
++end Merlin.GraphStatePipelineCountermodels
++"""
++    roots = [
++        "Merlin.GraphStatePipelineCountermodels." + n
++        for n in (
++            "success_relations_equal",
++            "failures_are_different",
++            "emptySpeculation",
++            "control_world_counterexample",
++        )
++    ]
++    return text, roots
+diff --git a/src/merlin/verify/lean_graph_state_pipeline_mutate.py b/src/merlin/verify/lean_graph_state_pipeline_mutate.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_pipeline_mutate.py
+@@ -0,0 +1,113 @@
++"""Compiler-valid adverse boundary mutations (test evidence, never proof authority)."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++
++
++def mutate(source, destination, kind):
++    from xdsl.dialects import arith, builtin, func, scf
++    from xdsl.rewriter import Rewriter
++
++    from merlin.transforms.certificates import ir_text, parse_ir
++
++    module = parse_ir(source.read_text())
++    module.verify()
++    main = next(f for f in module.body.block.ops if type(f) is func.FuncOp and f.sym_name.data == "main")
++    operations = list(main.walk())
++    loops = [op for op in operations if type(op) is scf.ForOp]
++    if kind in ("step", "bound"):
++        loop = loops[0]
++        op = (loop.step if kind == "step" else loop.ub).owner
++        Rewriter.replace_op(op, arith.ConstantOp.from_int_and_width(op.value.value.data + 1, op.result.type))
++    elif kind == "offset":
++        op = next(
++            op
++            for op in loops[0].body.walk()
++            if type(op) is arith.ConstantOp and type(op.result.type) is builtin.IndexType
++        )
++        Rewriter.replace_op(op, arith.ConstantOp.from_int_and_width(op.value.value.data + 1, op.result.type))
++    elif kind in ("operand", "operand-order", "opcode", "flags"):
++        op = next(
++            op
++            for op in operations
++            if type(op) is arith.AddiOp
++            and type(op.result.type) is builtin.IntegerType
++            and op.parent_block() is not main.body.block
++        )
++        if kind == "operand":
++            op.operands = (main.body.block.args[1], op.operands[1])
++        elif kind == "operand-order":
++            op.operands = tuple(reversed(op.operands))
++        elif kind == "opcode":
++            Rewriter.replace_op(op, arith.SubiOp(*op.operands))
++        else:
++            op.properties["overflowFlags"] = arith.IntegerOverflowAttr((arith.IntegerOverflowFlag.NSW,))
++    elif kind == "carry-init":
++        loop = loops[0]
++        loop.operands = (*loop.operands[:3], *tuple(reversed(loop.iter_args)))
++    elif kind == "yield-order":
++        op = next(op for op in operations if type(op) is scf.YieldOp and len(op.operands) > 1)
++        op.operands = tuple(reversed(op.operands))
++    elif kind == "callee":
++        op = next(op for op in operations if type(op) is func.CallOp and op.callee.root_reference.data == "partial")
++        op.properties["callee"] = builtin.SymbolRefAttr("other")
++    elif kind == "drop-observer":
++        op = next(
++            op for op in operations if type(op) is func.CallOp and op.callee.root_reference.data == "final_observe"
++        )
++        op.parent_block().erase_op(op)
++    elif kind == "drop-inner-observer":
++        op = next(op for op in operations if type(op) is func.CallOp and op.callee.root_reference.data == "watch")
++        op.parent_block().erase_op(op)
++    elif kind == "observer-arguments":
++        op = next(
++            op for op in operations if type(op) is func.CallOp and op.callee.root_reference.data == "final_observe"
++        )
++        op.operands = tuple(reversed(op.operands))
++    elif kind == "return-order":
++        op = next(op for op in operations if type(op) is func.ReturnOp)
++        op.operands = tuple(reversed(op.operands))
++    elif kind == "min-to-max":
++        op = next(op for op in operations if type(op) is arith.MinUIOp)
++        Rewriter.replace_op(op, arith.MaxUIOp(*op.operands))
++    elif kind == "min-operands":
++        op = next(op for op in operations if type(op) is arith.MinUIOp)
++        op.operands = (op.operands[0], loops[0].step)
++    elif kind == "inner-control":
++        inner = loops[1]
++        inner.operands = (loops[0].lb, *inner.operands[1:])
++    elif kind == "function-context":
++        target = next(f for f in module.body.block.ops if type(f) is func.FuncOp and f.sym_name.data == "untouched")
++        ret = target.body.block.last_op
++        constant = arith.ConstantOp.from_int_and_width(1, target.body.block.args[0].type)
++        target.body.block.insert_op_before(constant, ret)
++        ret.operands = (constant.result,)
++    elif kind == "function-header":
++        main.attributes["unmodeled"] = builtin.UnitAttr()
++    elif kind == "module-header":
++        module.attributes["unmodeled"] = builtin.UnitAttr()
++    else:
++        raise ValueError("unknown test mutation: " + kind)
++    module.verify()
++    text = ir_text(module)
++    original = ir_text(parse_ir(source.read_text()))
++    if text == original:
++        raise ValueError("mutation did not change actual IR")
++    destination.write_text(text)
++    return {"compiler_valid": True, "changed": True, "kind": kind}
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("source", type=Path)
++    parser.add_argument("destination", type=Path)
++    parser.add_argument("kind")
++    args = vars(parser.parse_args())
++    print(json.dumps(mutate(**args)))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/merlin/verify/lean_graph_state_pipeline_proof.py b/src/merlin/verify/lean_graph_state_pipeline_proof.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_pipeline_proof.py
+@@ -0,0 +1,323 @@
++"""Fixed unaffected standalone pipeline proof-object profile and exact-root audit.
++
++Foreign sources/objects and toolchain files are read-only. Own compiled objects
++are copied with exact source/object identities; no failed profile is retried or
++rehash-selected. Kernel/audit execution and Python report transport remain trust.
++"""
++
++from __future__ import annotations
++
++import ast
++import hashlib
++import json
++import os
++import shutil
++import subprocess
++from pathlib import Path
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import artifacts_dir, build_dir, repo_root
++
++from . import lean_graph_state as stable
++from .lean_graph_state_pipeline_kernel import ARTIFACT, BUILD, dependencies, exact, write
++
++MODULES = (
++    "GraphStatePipelineFailure",
++    "GraphStatePipelineControl",
++    "GraphStatePipelineIndex",
++    "GraphStatePipelineScope",
++    "GraphStatePipelineFold",
++    "GraphStatePipelineSegments",
++    "GraphStatePipelineLoops",
++    "GraphStatePipelineProgram",
++    "GraphStatePipelineLiterals",
++)
++
++
++def guard(query=None):
++    base = build_dir() / BUILD
++    for name in ("NATIVE_BLOCKER.json", "UNCONFIRMED_CONTEXT.json"):
++        if (base / name).exists():
++            raise RuntimeError("pipeline native context blocked; no retries or promotion: " + str(base / name))
++    for limited in sorted(base.glob("LIMIT*.json")):
++        record = json.loads(limited.read_text())
++        notes = ast.literal_eval(record["cleanup"])
++        cleanup = ast.literal_eval(notes[0].partition(": ")[2])
++        if (
++            record["cause"] != "60-second selected command limit"
++            or not cleanup["direct_child_reaped"]
++            or cleanup["errors"]
++        ):
++            raise RuntimeError("unconfirmed limit cleanup; independent native context unavailable")
++        # Preserve the first exact failure, permanently refusing its bytes. A
++        # known, reaped per-query budget limit does not retry or qualify that
++        # route when an independent structural query is checked in a fresh process.
++        failed = stable.file_ref(Path(record["arguments"][0]))
++        if query is not None and (
++            hashlib.sha256(query.encode()).hexdigest() == failed["sha256"]
++            or ("namespace Witness\n" in query and "namespace Execution\n" in query)
++        ):
++            raise RuntimeError("limited literal trace route is immutable/unqualified; retry refused")
++
++
++def fixed_context():
++    guard()
++    data = dependencies()
++    try:
++        for row in data["bindings"]:
++            exact(row)
++    except (ValueError, OSError) as error:
++        write(
++            build_dir() / BUILD / "UNCONFIRMED_CONTEXT.json",
++            {"status": "UNQUALIFIED", "reason": str(error), "refreshed": False, "retry_permitted": False},
++        )
++        raise
++    return data
++
++
++def own_objects():
++    result = []
++    for name in MODULES:
++        source = stable.file_ref(repo_root() / f"src/merlin/verify/lean/Merlin/{name}.lean")
++        candidates = []
++        for path in (build_dir() / BUILD / "development/attempts" / name).glob("*/result.json"):
++            row = json.loads(path.read_text())
++            if row["returncode"] == 0 and row["source"]["sha256"] == source["sha256"]:
++                candidates.append((path, row))
++        distinct = {row["object"]["sha256"] for _, row in candidates}
++        if len(distinct) != 1:
++            raise ValueError("one exact successful own source/object selection required: " + name)
++        path, row = candidates[-1]
++        exact(row["object"])
++        result.append(
++            {
++                "module": "Merlin." + name,
++                "source": source,
++                "object": row["object"],
++                "development_record": stable.file_ref(path),
++            }
++        )
++    return result
++
++
++def auditor_ref():
++    # Expected auditor identity is taken from the immutable scalar delivery's
++    # already-qualified source list, not from an unexplained current file hash.
++    packet = artifacts_dir() / "verification/graph-state/review/sealed-v2/delivery.json"
++    rows = json.loads(packet.read_text())["owned_sources"]
++    selected = [r["original"] for r in rows if r["original"]["path"].endswith("/Merlin/GraphStateAudit.lean")]
++    if len(selected) != 1:
++        raise ValueError("exact sealed standard-three auditor source required")
++    exact(selected[0])
++    return selected[0]
++
++
++def prepare():
++    context = fixed_context()
++    own = own_objects()
++    auditor = auditor_ref()
++    selection = {
++        "own": own,
++        "fixed_context": stable.file_ref(artifacts_dir() / ARTIFACT / "active/dependency-check-once.json"),
++        "auditor": auditor,
++        "arguments": ["-j1"],
++    }
++    key = hashlib.sha256(json.dumps(selection, sort_keys=True).encode()).hexdigest()
++    directory = build_dir() / BUILD / "proof-profiles" / key
++    lib = directory / "lib"
++    ready = directory / "ready.json"
++    originals = [*context["foreign_objects"]]
++    originals += [r for r in context["bindings"] if r["path"].startswith(context["scalar_library"] + "/")]
++    originals += [r["object"] for r in own]
++    expected = [{"original": r, "copy": {**r, "path": str(lib / "Merlin" / Path(r["path"]).name)}} for r in originals]
++    if not ready.exists():
++        (lib / "Merlin").mkdir(parents=True, exist_ok=True)
++        copies = []
++        for row in originals:
++            exact(row)
++            target = lib / "Merlin" / Path(row["path"]).name
++            if not target.exists():
++                shutil.copyfile(row["path"], target)
++            observed = stable.file_ref(target)
++            if any(observed[k] != row[k] for k in ("sha256", "bytes")):
++                raise ValueError("byte-identical profile dependency copy differs")
++            copies.append({"original": row, "copy": observed})
++        write(
++            ready,
++            {
++                "schema": "merlin.graph-state-pipeline.fixed-proof-profile.v1",
++                "selection": selection,
++                "library": str(lib),
++                "copies": copies,
++                "foreign_rebuild_performed": False,
++                "qualified": False,
++            },
++        )
++    data = json.loads(ready.read_text())
++    if (
++        set(data) != {"schema", "selection", "library", "copies", "foreign_rebuild_performed", "qualified"}
++        or data["selection"] != selection
++        or data["copies"] != expected
++        or data["library"] != str(lib)
++        or data["foreign_rebuild_performed"] is not False
++        or data["qualified"] is not False
++    ):
++        raise ValueError("fixed proof profile identity/copy closure differs")
++    for row in data["copies"]:
++        exact(row["copy"])
++        exact(row["original"])
++    return {**data, "manifest": stable.file_ref(ready), "directory": directory, "lib": lib, "fixed": context}
++
++
++def execute(arguments, directory, environment, stdout, stderr):
++    guard(
++        Path(arguments[0]).read_text()
++        if Path(arguments[0]).is_file() and Path(arguments[0]).suffix == ".lean"
++        else None
++    )
++    try:
++        with stdout.open("x") as out, stderr.open("x") as err:
++            result = run_owned(
++                [str(stable.LEAN), "-j1", *map(str, arguments)],
++                cwd=directory,
++                env=environment,
++                stdout=out,
++                stderr=err,
++                timeout=60,
++                check=False,
++            )
++    except subprocess.TimeoutExpired as error:
++        limit_path = build_dir() / BUILD / "LIMIT_BLOCKER.json"
++        if limit_path.exists():
++            limit_path = limit_path.with_name("LIMIT_" + stable.file_ref(Path(arguments[0]))["sha256"] + ".json")
++        if limit_path.exists():
++            raise RuntimeError("limited query route may not be retried") from error
++        write(
++            limit_path,
++            {
++                "status": "UNQUALIFIED_LIMIT",
++                "cause": "60-second selected command limit",
++                "arguments": list(map(str, arguments)),
++                "stdout": stable.file_ref(stdout),
++                "stderr": stable.file_ref(stderr),
++                "cleanup": str(error.__notes__),
++                "retry_permitted": False,
++            },
++        )
++        raise
++    if result.returncode < 0:
++        write(
++            build_dir() / BUILD / "NATIVE_BLOCKER.json",
++            {
++                "status": "UNQUALIFIED_NATIVE_SIGNAL",
++                "cause": "UNKNOWN",
++                "arguments": list(map(str, arguments)),
++                "returncode": result.returncode,
++                "stdout": stable.file_ref(stdout),
++                "stderr": stable.file_ref(stderr),
++                "retry_permitted": False,
++            },
++        )
++    return result
++
++
++def imported_bindings(raw, profile, query_object):
++    allowed = {r["path"]: r for r in profile["fixed"]["bindings"]}
++    allowed.update({r["copy"]["path"]: r["copy"] for r in profile["copies"]})
++    allowed[query_object["path"]] = query_object
++    actual = []
++    for imported in raw["imports"]:
++        path = Path(imported["olean"]).resolve()
++        key = str(path)
++        if key not in allowed:
++            write(
++                build_dir() / BUILD / "UNCONFIRMED_CONTEXT.json",
++                {
++                    "status": "UNQUALIFIED",
++                    "reason": "import outside fixed bindings",
++                    "path": key,
++                    "identity_adopted": False,
++                    "retry_permitted": False,
++                },
++            )
++            raise ValueError("unconfirmed import object context; no rehash-to-promote")
++        exact(allowed[key])
++        actual.append(allowed[key])
++    return actual
++
++
++def check_query(text, destination, roots, *, module="GraphStatePipelineInstance"):
++    guard(text)
++    profile = prepare()
++    destination = Path(destination).resolve()
++    destination.mkdir(parents=True, exist_ok=False)
++    source = destination / (module + ".lean")
++    source.write_text(text)
++    target = source.with_suffix(".olean")
++    environment = {
++        **os.environ,
++        "LEAN_PATH": os.pathsep.join((str(destination), str(profile["lib"]))),
++        "LEAN_SYSROOT": str(stable.LEAN.parent.parent),
++        "LEAN_NUM_THREADS": "1",
++        "PATH": str(stable.LEAN.parent) + os.pathsep + os.environ.get("PATH", ""),
++    }
++    checked = execute(
++        [source, "-o", target], destination, environment, destination / "kernel.stdout", destination / "kernel.stderr"
++    )
++    record = {
++        "schema": "merlin.graph-state-pipeline.kernel.v1",
++        "status": "refused" if checked.returncode > 0 else "unavailable",
++        "returncode": checked.returncode,
++        "source": stable.file_ref(source),
++        "stdout": stable.file_ref(destination / "kernel.stdout"),
++        "stderr": stable.file_ref(destination / "kernel.stderr"),
++        "profile": profile["manifest"],
++        "roots": roots,
++        "qualified": False,
++        "audit": {"status": "not_run"},
++    }
++    if checked.returncode == 0:
++        record["object"] = stable.file_ref(target)
++        measured = {}
++        for name, arguments in (("audit", [module]), ("statements", ["--statements", ",".join(roots), module])):
++            run = execute(
++                ["--run", profile["selection"]["auditor"]["path"], *arguments],
++                destination,
++                environment,
++                destination / (name + ".stdout"),
++                destination / (name + ".stderr"),
++            )
++            if run.returncode:
++                record["status"] = "unavailable"
++                record["phase"] = name
++                record["phase_returncode"] = run.returncode
++                write(destination / "report.json", record)
++                return record
++            measured[name] = json.loads((destination / (name + ".stdout")).read_text())
++        raw = measured["audit"]
++        if raw["violations"] or set(raw["axioms_used"]) - {"propext", "Classical.choice", "Quot.sound"}:
++            raise ValueError("actual transitive proof violates standard-three policy")
++        if set(measured["statements"]["statements"]) != set(roots):
++            raise ValueError("exact root statement inventory differs")
++        imports = imported_bindings(raw, profile, record["object"])
++        record["audit"] = {
++            "status": "checked",
++            "raw": raw,
++            "statements": measured["statements"]["statements"],
++            "imported_objects": imports,
++            "auditor": profile["selection"]["auditor"],
++            "buffers": [
++                stable.file_ref(destination / (name + "." + suffix))
++                for name in ("audit", "statements")
++                for suffix in ("stdout", "stderr")
++            ],
++        }
++        record["status"] = "conditional_graph_checked"
++    fixed_context()
++    for row in profile["copies"]:
++        exact(row["copy"])
++    exact(record["source"])
++    if record.get("object"):
++        exact(record["object"])
++    write(destination / "report.json", record)
++    return record
+diff --git a/src/merlin/verify/lean_graph_state_pipeline_receipt.py b/src/merlin/verify/lean_graph_state_pipeline_receipt.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_pipeline_receipt.py
+@@ -0,0 +1,478 @@
++"""Strict live binding for the standalone proof-producing graph pipeline leaf.
++
++Fresh parser projection and deterministic query reconstruction precede kernel
++checking. A receipt is not policy/spec review, archive authenticity, broker
++integration, native fidelity or an all-graph/model claim.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import sys
++from pathlib import Path
++from types import MappingProxyType
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import repo_root
++
++from . import lean_graph_state as stable
++from .lean_graph_state_pipeline_emit import emit
++from .lean_graph_state_pipeline_kernel import exact, write
++from .lean_graph_state_pipeline_models import symbolic_witness
++from .lean_graph_state_pipeline_proof import check_query, execute, fixed_context, prepare
++
++SCHEMA = "merlin.graph-state-pipeline.live-receipt.v1"
++CLAIMS = MappingProxyType(
++    {
++        "relation": (
++            "same ordered returns/full persistent outcome including error/terminal world; private SSA excluded"
++        ),
++        "supported_defined_entry_roster_preserved": True,
++        "public_acceptance_issued": False,
++        "review_approved": False,
++        "source_success_for_all_models": False,
++        "poison_freedom_proved": False,
++        "native_fidelity_proved": False,
++        "primitive_fidelity_proved": False,
++        "numerical_gates_discharged": False,
++        "all_graph_passes_verified": False,
++        "full_model_claim": False,
++        "broker_integration": False,
++        "python_projection_proved": False,
++        "limited_literal_trace_promoted": False,
++    }
++)
++
++KEYS = {
++    "schema",
++    "version",
++    "config",
++    "root",
++    "originals",
++    "snapshots",
++    "report",
++    "profile",
++    "query",
++    "object",
++    "sources",
++    "files",
++    "dependencies",
++    "claims",
++    "roots",
++}
++
++
++def closed(value, keys):
++    if type(value) is not dict or set(value) != set(keys):
++        raise ValueError("closed versioned pipeline record required")
++
++
++def valid_claims(value):
++    return (
++        type(value) is dict
++        and set(value) == set(CLAIMS)
++        and all(type(value[key]) is type(expected) and value[key] == expected for key, expected in CLAIMS.items())
++    )
++
++
++def reference_row(value):
++    closed(value, {"path", "sha256", "bytes"})
++    if type(value["path"]) is not str or not Path(value["path"]).is_absolute():
++        raise ValueError("exact absolute live receipt path required; archived Linux records are historical")
++    if type(value["sha256"]) is not str or len(value["sha256"]) != 64 or set(value["sha256"]) - set("0123456789abcdef"):
++        raise ValueError("exact lowercase SHA256 identity required")
++    if type(value["bytes"]) is not int or value["bytes"] < 0:
++        raise ValueError("exact nonnegative byte length required; bool refused")
++
++
++def config(factor, tile, bits, mode):
++    for value in (factor, tile, bits):
++        if type(value) is not int:
++            raise ValueError("exact integer pipeline configuration required")
++    if mode not in ("graph", "symbolic-provider-counter-v1"):
++        raise ValueError("unknown pipeline proof mode")
++    return {"factor": factor, "tile": tile, "index_bits": bits, "mode": mode}
++
++
++def sources():
++    root = repo_root()
++    selected = [
++        *root.glob("src/merlin/verify/lean_graph_state_pipeline*.py"),
++        *root.glob("src/merlin/verify/lean/Merlin/GraphStatePipeline*.lean"),
++    ]
++    selected += [
++        root / "src/merlin/verify" / name
++        for name in (
++            "lean_graph_state.py",
++            "lean_graph_state_scalar.py",
++            "lean_graph_state_scalar_capture.py",
++            "lean_graph_state_scalar_execution.py",
++            "lean_graph_state_scalar_models.py",
++        )
++    ]
++    selected += [
++        root / "src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
++        root / "src/merlin/common/owned_process.py",
++    ]
++    return [stable.file_ref(path) for path in sorted(set(selected))]
++
++
++def projection(buffers, destination, reference, settings):
++    script = repo_root() / "src/merlin/verify/lean_graph_state_pipeline_capture.py"
++    destination = Path(destination).resolve()
++    destination.mkdir(parents=True, exist_ok=False)
++    command = [
++        sys.executable,
++        str(script),
++        "--reference",
++        str(reference),
++        "--destination",
++        str(destination / "projection"),
++        "--factor",
++        str(settings["factor"]),
++        "--tile",
++        str(settings["tile"]),
++        "--bits",
++        str(settings["index_bits"]),
++        "--buffers",
++        *map(str, buffers),
++    ]
++    with (destination / "projection.stdout").open("x") as out, (destination / "projection.stderr").open("x") as err:
++        result = run_owned(
++            command,
++            cwd=reference,
++            env={**os.environ, "PYTHONPATH": str(reference / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++            stdout=out,
++            stderr=err,
++            timeout=60,
++            check=False,
++        )
++    if result.returncode:
++        raise ValueError("complete independent pinned projection refused; retained buffers: " + str(destination))
++    return json.loads((destination / "projection/CAPTURE.json").read_text())
++
++
++def author(capture, mode):
++    if mode == "symbolic-provider-counter-v1":
++        return symbolic_witness(capture)
++    if mode != "graph":
++        raise ValueError("unknown selected proof mode")
++    base = "Merlin.GraphStatePipelineInstance."
++    roots = [
++        base + n
++        for n in (
++            "complete",
++            "controlAccepted",
++            "literalsAccepted",
++            "literalsFit",
++            "originalEntriesChecked",
++            "finalEntriesChecked",
++        )
++    ]
++    for index, function in enumerate(capture["stages"][0]["functions"]):
++        if function["declaration"]:
++            continue
++        roots.append(base + f"F{index}.actual")
++        if function["before"] != capture["stages"][-1]["functions"][index]["after"]:
++            roots += [
++                base + f"F{index}." + n
++                for n in (
++                    "body_group",
++                    "innerAccepted",
++                    "outer_same",
++                    "unroll_actual",
++                    "segment_actual",
++                    "unrollBoundsChecked",
++                    "segmentBoundsChecked",
++                )
++            ]
++    return emit(capture), roots, None
++
++
++def check_boundary(buffers, destination, *, reference, factor=2, tile=3, bits=32, mode="graph"):
++    settings = config(factor, tile, bits, mode)
++    destination = Path(destination).resolve()
++    if len(buffers) != 5:
++        raise ValueError("exact source/three-middle/final boundary required")
++    buffers = [Path(path).resolve() for path in buffers]
++    originals = [stable.file_ref(path) for path in buffers]
++    original_sources = sources()
++    profile = prepare()
++    report = {
++        "schema": "merlin.graph-state-pipeline.boundary.v1",
++        "status": "unsupported",
++        "config": settings,
++        "originals": originals,
++        "sources": original_sources,
++        "claims": dict(CLAIMS),
++        "qualified": False,
++        "profile": profile["manifest"],
++        "full_LeanMLIR_route": "unavailable: no matching selected manifest",
++    }
++    try:
++        capture = projection(buffers, destination, Path(reference).resolve(), settings)
++        report["projection"] = stable.file_ref(destination / "projection/CAPTURE.json")
++        report["snapshots"] = capture["buffers"]
++        report["each_actual_stage_changed"] = capture["each_stage_changed"]
++        query, roots, witness = author(capture, mode)
++    except (ValueError, TypeError, KeyError, IndexError) as error:
++        report["reason"] = {"kind": type(error).__name__, "detail": str(error)}
++        destination.mkdir(parents=True, exist_ok=True)
++        write(destination / "report.json", report)
++        return report
++    checked = check_query(query, destination / "kernel", roots)
++    report.update(
++        {
++            "status": checked["status"],
++            "kernel": stable.file_ref(destination / "kernel/report.json"),
++            "exact_roots": roots,
++            "witness": witness,
++            "projection_trusted": True,
++        }
++    )
++    for row in [*originals, *original_sources, *capture["buffers"]]:
++        exact(row)
++    if sources() != original_sources:
++        raise ValueError("selected leaf/helper source closure changed during check")
++    write(destination / "report.json", report)
++    return report
++
++
++def collect_refs(value):
++    if isinstance(value, dict):
++        if set(value) >= {"path", "sha256", "bytes"}:
++            yield {k: value[k] for k in ("path", "sha256", "bytes")}
++        for child in value.values():
++            yield from collect_refs(child)
++    elif isinstance(value, list):
++        for child in value:
++            yield from collect_refs(child)
++
++
++def issue(report_path, destination):
++    report_path = Path(report_path).resolve()
++    report = json.loads(report_path.read_text())
++    if report["status"] != "conditional_graph_checked" or not valid_claims(report["claims"]):
++        raise ValueError("only an actual checked complete boundary can receive a conditional receipt")
++    root = report_path.parent
++    kernel = json.loads(Path(report["kernel"]["path"]).read_text())
++    profile = prepare()
++    capture = json.loads(Path(report["projection"]["path"]).read_text())
++    query, roots, _ = author(capture, report["config"]["mode"])
++    if (
++        Path(kernel["source"]["path"]).read_text() != query
++        or roots != kernel["roots"]
++        or roots != report["exact_roots"]
++    ):
++        raise ValueError("exact generated query/root binding differs")
++    if kernel["status"] != "conditional_graph_checked" or kernel["audit"]["status"] != "checked":
++        raise ValueError("actual standard-three kernel/audit result required")
++    if report["sources"] != sources() or report["profile"] != profile["manifest"]:
++        raise ValueError("live checker/profile identity differs")
++    files = [stable.file_ref(path) for path in sorted(root.rglob("*")) if path.is_file()]
++    dependencies = [*profile["fixed"]["bindings"], profile["manifest"]]
++    dependencies += [r["copy"] for r in profile["copies"]]
++    dependencies += [
++        *capture["producer_sources"],
++        capture["python_runtime"]["executable"],
++        *capture["python_runtime"]["loaded"],
++    ]
++    for row in [*files, *dependencies, *report["originals"], *report["sources"]]:
++        exact(row)
++    receipt = {
++        "schema": SCHEMA,
++        "version": 1,
++        "config": report["config"],
++        "root": str(root),
++        "originals": report["originals"],
++        "snapshots": report["snapshots"],
++        "report": stable.file_ref(report_path),
++        "profile": profile["manifest"],
++        "query": kernel["source"],
++        "object": kernel["object"],
++        "sources": report["sources"],
++        "files": files,
++        "dependencies": dependencies,
++        "claims": dict(CLAIMS),
++        "roots": roots,
++    }
++    write(Path(destination), receipt)
++    return receipt
++
++
++def validate(receipt):
++    closed(receipt, KEYS)
++    if receipt["schema"] != SCHEMA or type(receipt["version"]) is not int or receipt["version"] != 1:
++        raise ValueError("unknown/legacy pipeline receipt version")
++    closed(receipt["config"], {"factor", "tile", "index_bits", "mode"})
++    settings = receipt["config"]
++    config(settings["factor"], settings["tile"], settings["index_bits"], settings["mode"])
++    for row in [
++        *receipt["originals"],
++        *receipt["snapshots"],
++        receipt["report"],
++        receipt["profile"],
++        receipt["query"],
++        receipt["object"],
++        *receipt["sources"],
++        *receipt["files"],
++        *receipt["dependencies"],
++    ]:
++        reference_row(row)
++    if not valid_claims(receipt["claims"]) or len(receipt["originals"]) != 5 or len(receipt["snapshots"]) != 5:
++        raise ValueError("complete originals/snapshots and exact conditional claims required")
++    if receipt["sources"] != sources():
++        raise ValueError("current checker/helper source identity differs")
++    profile = prepare()
++    if receipt["profile"] != profile["manifest"]:
++        raise ValueError("selected fixed profile identity differs")
++    for row in collect_refs(receipt):
++        exact(row)
++    root = Path(receipt["root"]).resolve()
++    files = [stable.file_ref(path) for path in sorted(root.rglob("*")) if path.is_file()]
++    if files != receipt["files"]:
++        raise ValueError("closed retained artifact roster differs")
++    report = json.loads(Path(receipt["report"]["path"]).read_text())
++    if (
++        report["schema"] != "merlin.graph-state-pipeline.boundary.v1"
++        or report["status"] != "conditional_graph_checked"
++        or report["qualified"] is not False
++        or report["sources"] != receipt["sources"]
++        or report["profile"] != receipt["profile"]
++        or report["exact_roots"] != receipt["roots"]
++        or report["originals"] != receipt["originals"]
++        or report["snapshots"] != receipt["snapshots"]
++        or report["config"] != settings
++        or not valid_claims(report["claims"])
++    ):
++        raise ValueError("original/report/config binding differs")
++    kernel = json.loads(Path(report["kernel"]["path"]).read_text())
++    if (
++        kernel["source"] != receipt["query"]
++        or kernel["object"] != receipt["object"]
++        or kernel["roots"] != receipt["roots"]
++    ):
++        raise ValueError("exact proof query/object/root binding differs")
++    capture = json.loads(Path(report["projection"]["path"]).read_text())
++    query, roots, _ = author(capture, settings["mode"])
++    if query != Path(receipt["query"]["path"]).read_text() or roots != receipt["roots"]:
++        raise ValueError("retained query differs from deterministic complete projection author")
++    if kernel["status"] != "conditional_graph_checked" or kernel["audit"]["status"] != "checked":
++        raise ValueError("retained report does not claim an actual audited kernel result")
++    if kernel["returncode"] != 0 or kernel["qualified"] is not False or kernel["profile"] != receipt["profile"]:
++        raise ValueError("kernel result/profile/qualification binding differs")
++    buffers = {Path(row["path"]).name: row for row in kernel["audit"]["buffers"]}
++    if (
++        kernel["audit"]["raw"] != json.loads(Path(buffers["audit.stdout"]["path"]).read_text())
++        or kernel["audit"]["statements"]
++        != json.loads(Path(buffers["statements.stdout"]["path"]).read_text())["statements"]
++    ):
++        raise ValueError("audit report differs from exact retained output")
++    expected_dependencies = [
++        *profile["fixed"]["bindings"],
++        profile["manifest"],
++        *[r["copy"] for r in profile["copies"]],
++        *capture["producer_sources"],
++        capture["python_runtime"]["executable"],
++        *capture["python_runtime"]["loaded"],
++    ]
++    if receipt["dependencies"] != expected_dependencies:
++        raise ValueError("complete dependency roster differs")
++    if kernel["audit"]["raw"]["violations"] or set(kernel["audit"]["raw"]["axioms_used"]) - {
++        "propext",
++        "Classical.choice",
++        "Quot.sound",
++    }:
++        raise ValueError("retained audit violates standard-three policy")
++    return report, capture, kernel, profile
++
++
++def replay(receipt_path, destination, *, reference):
++    receipt_path = Path(receipt_path).resolve()
++    receipt = json.loads(receipt_path.read_text())
++    report, old_capture, old_kernel, profile = validate(receipt)
++    destination = Path(destination).resolve()
++    destination.mkdir(parents=True, exist_ok=False)
++    settings = receipt["config"]
++    paths = [Path(row["path"]) for row in receipt["originals"]]
++    fresh = projection(paths, destination / "reproject", Path(reference).resolve(), settings)
++    expected, roots, _ = author(fresh, settings["mode"])
++    semantic_keys = (
++        "schema",
++        "revision",
++        "factor",
++        "tile",
++        "index_bits",
++        "stages",
++        "index_operations",
++        "each_stage_changed",
++    )
++    if {k: fresh[k] for k in semantic_keys} != {k: old_capture[k] for k in semantic_keys}:
++        raise ValueError("complete semantic projection/headers differ from fresh original buffers")
++    if (
++        fresh["producer_sources"] != old_capture["producer_sources"]
++        or fresh["python_runtime"] != old_capture["python_runtime"]
++    ):
++        raise ValueError("complete actual producer/parser/Python identity roster differs")
++    if expected != Path(receipt["query"]["path"]).read_text() or roots != receipt["roots"]:
++        raise ValueError("actual original buffers do not regenerate the retained complete query")
++    # Reproduce the retained object at its exact original source path. Output
++    # is private to replay; no original/frozen artifact is overwritten.
++    source = Path(receipt["query"]["path"])
++    target = destination / "retained-reproduction.olean"
++    environment = {
++        **os.environ,
++        "LEAN_PATH": os.pathsep.join((str(source.parent), str(profile["lib"]))),
++        "LEAN_SYSROOT": str(stable.LEAN.parent.parent),
++        "LEAN_NUM_THREADS": "1",
++    }
++    rebuilt = execute(
++        [source, "-o", target],
++        source.parent,
++        environment,
++        destination / "reproduce.stdout",
++        destination / "reproduce.stderr",
++    )
++    if rebuilt.returncode or stable.file_ref(target)["sha256"] != receipt["object"]["sha256"]:
++        raise ValueError("retained object is not the exact original-query result")
++    result = check_query(expected, destination / "fresh", roots)
++    if result["status"] != "conditional_graph_checked":
++        raise ValueError("fresh kernel/audit did not check")
++    if result["audit"]["statements"] != old_kernel["audit"]["statements"]:
++        raise ValueError("fresh exact-root theorem statements differ")
++
++    def normalized(raw, query):
++        return {
++            **raw,
++            "imports": [
++                {
++                    **r,
++                    "olean": "$EXACT_QUERY_OBJECT"
++                    if Path(r["olean"]).resolve() == Path(query).resolve()
++                    else r["olean"],
++                }
++                for r in raw["imports"]
++            ],
++        }
++
++    if normalized(result["audit"]["raw"], result["object"]["path"]) != normalized(
++        old_kernel["audit"]["raw"], receipt["object"]["path"]
++    ):
++        raise ValueError("fresh exact transitive audit/import roster differs")
++    for row in collect_refs(receipt):
++        exact(row)
++    fixed_context()
++    response = {
++        "schema": "merlin.graph-state-pipeline.fresh-replay.v1",
++        "status": "conditional_graph_checked",
++        "receipt": stable.file_ref(receipt_path),
++        "fresh_report": stable.file_ref(destination / "fresh/report.json"),
++        "retained_object_reproduced": True,
++        "exact_original_query_path_reproduced": True,
++        "claims": dict(CLAIMS),
++        "qualified": False,
++        "host_transport_proved_in_Lean": False,
++    }
++    write(destination / "report.json", response)
++    return response
