@@ -1,0 +1,201 @@
+{
+  "selected_context": {
+    "proof": {
+      "executable": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+      "library": "/home/jeremy/Projects/merlin/out/build/graph-memory-scf/memory-scf-v1/lib",
+      "build_record": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/proof-closure.json",
+      "build_sha256": "a2aadae04afecfbada51ca3bd38ce9550b5d2718f07ec9a1c21ed55ed199b5d4"
+    },
+    "source": "/home/jeremy/Projects/merlin-graph-proof-intake",
+    "revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+    "manifest": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/independent-cases-v2/rank_two_prefix/CAPTURE.json",
+    "manifest_sha256": "0644dc42b845293831a35e921fe08b1014bd53b9ac60f7f41d3271ce61ecc298",
+    "fixed_context": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/fixed-context-v1/CONTEXT.json",
+    "fixed_context_sha256": "b185962ee7c9f8af17360e2a6c8b792ce1c297e36ab4006fa81b93c4d4791c00"
+  },
+  "owned_host_sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops.py",
+      "sha256": "83700aa0044b5abf4166bbeecdbfe8a20ce72e3c563ce66f6558af00f7aed805",
+      "bytes": 13606
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_capacity.py",
+      "sha256": "1b88518675b54bd25b7dcfab7fe84640367d5b1a4f3da9b7f8b527c9272ea98d",
+      "bytes": 13123
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_capacity_capture.py",
+      "sha256": "32b2d091edcd6adc09549d8b60415e1cb39a99bf4a6e2d41f189fec30913ca8e",
+      "bytes": 3797
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_capture.py",
+      "sha256": "d4224363dec549cb6f5d2b6b4b13226ea65fe18c233496d08b1a7035cce2cb18",
+      "bytes": 11686
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_effects.py",
+      "sha256": "97794532d22909052fdf5c0faaf8c598f12f9ffd0ad2d8a24067d4764ae2715a",
+      "bytes": 6726
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_memory_scf.py",
+      "sha256": "5a17f1932da0ddd1bbfe9be92a464ba7fd2dac849ad45878433a3c4241eb4da7",
+      "bytes": 7112
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+      "sha256": "c14ceb21489b6ffaf862ceb21554de43f3de5da92e3c155764f2b518f16bbe83",
+      "bytes": 4763
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_memory_scf_cases.py",
+      "sha256": "4ba135144cb7c856ee2465c541d9f7989d5ae4928aa3dd81bc440634b32c1a95",
+      "bytes": 1717
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+      "sha256": "f065b5d82adbaee702bedd60c08d165e0ca81eae030484d18806a971c9f32ae6",
+      "bytes": 8638
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "sha256": "3d522ee9d47732e009a9c0e46932e91bba2896b07fcdf4c40dc5d3806054e6b8",
+      "bytes": 13383
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_memory_scf_runtime.py",
+      "sha256": "3617723bd6463db4ad3af39a5529f3ca2477b4b5a0e4c96a47ca134148c2af99",
+      "bytes": 7240
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_memory_scf_selection.py",
+      "sha256": "cf8569b4a7a05b44f32dbf9738cfb9eb5996a416aca4831fccaa23b0a5acf8a8",
+      "bytes": 5336
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_memory_scf_witness.py",
+      "sha256": "211791bb9d1cb2e1f5e8bf360584a927a12de9b73a23e575c3feee9b4c17dfc5",
+      "bytes": 8413
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_reuse.py",
+      "sha256": "0b9287801df6436335843b9d28ad09f181ff5c9e144818a14bc35c749ee9c577",
+      "bytes": 18032
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_reuse_capture.py",
+      "sha256": "2479ffd848dfac16aa3946f4fdb74d7ff3717c584f95e8692355743caf21d258",
+      "bytes": 6509
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_reuse_cases.py",
+      "sha256": "e0eb58c226d0337d41e2ad92ba458ca0d77b44b5062efd807c7abadf1fa10274",
+      "bytes": 7345
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_reuse_projection.py",
+      "sha256": "fcf75ecc44039a2a5b6a8a69cff1b7a8a9a23ac449100fe21c88464a56266102",
+      "bytes": 18764
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_reuse_runtime.py",
+      "sha256": "d0f99cf17bd807c00d398dcd45bcf806da90febbbcbb90fb80703a8a2b0bfa0f",
+      "bytes": 6036
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_segment.py",
+      "sha256": "d134a9916342fd1405de10543760069bbb3511103a9de7c63a7d4fe5174f5789",
+      "bytes": 14867
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_segment_capture.py",
+      "sha256": "ab8b6b45b64cd20100cfe53eb84d9d27ba5b0997433db7e1ed4f9f94baf64669",
+      "bytes": 6485
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_segment_project.py",
+      "sha256": "74cc04576035f8d05e7c5ed765ed45082cc80d4787fa1712377e5d2a56ac7604",
+      "bytes": 2609
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_segment_projection.py",
+      "sha256": "c522dcd9b440f5deb3d9147aeabb3fea36fd69d129bb60fc1533185cd33d1ae8",
+      "bytes": 12966
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_storage.py",
+      "sha256": "2151f30b88e5d17f5d57a40dc0898ee64f4620b5acdd391366a3c61d67a51241",
+      "bytes": 22023
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_unroll.py",
+      "sha256": "498f94a866cbe286d437818f3c1cfb9e39795df0c49128b7d21d6dc2f4501ccc",
+      "bytes": 14973
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_unroll_capture.py",
+      "sha256": "9031f3a16e501d39558164403ca391c7dc2a5a0e3ad97d6cea90f7e13e064e4d",
+      "bytes": 6365
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_unroll_cases.py",
+      "sha256": "6a1e33d53e27bc5bfaa49663e2f4e7f0e5f5a85c6195983148b7c91d8243e922",
+      "bytes": 3665
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_unroll_composition.py",
+      "sha256": "de83f271f03ba013f8fddc3e6d54061a560f7a752d259a013f8d159c7c4e47dc",
+      "bytes": 6718
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_loops_unroll_projection.py",
+      "sha256": "63cc9e95e23bcd97447dded8b04d0cf16c9b4ca26d75e9691a6b151a2fd0c994",
+      "bytes": 16405
+    },
+    {
+      "path": "/usr/bin/python3.14",
+      "sha256": "d78f9cf7178ecff09963551399855543c297f37ac207e626228bfe43cb26a70c",
+      "bytes": 14424
+    }
+  ],
+  "root_audit": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/actual-query-v6/RUN.json",
+    "sha256": "7ac76240dd2fe3b2c37555f8ad00f00b4f472aae44b9e7a67c14e5442fe0ac0f",
+    "bytes": 7206
+  },
+  "proof_modules": [
+    "Merlin.GraphLoopsMemorySCF",
+    "Merlin.GraphLoopsMemorySCFBounds",
+    "Merlin.GraphLoopsMemorySCFComposition",
+    "Merlin.GraphLoopsMemorySCFCoverage",
+    "Merlin.GraphLoopsMemorySCFEffects",
+    "Merlin.GraphLoopsMemorySCFLoops",
+    "Merlin.GraphLoopsMemorySCFModel",
+    "Merlin.GraphLoopsMemorySCFModes",
+    "Merlin.GraphLoopsMemorySCFOperational",
+    "Merlin.GraphLoopsMemorySCFRect",
+    "Merlin.GraphLoopsMemorySCFScope",
+    "Merlin.GraphLoopsMemorySCFSimulation",
+    "Merlin.GraphLoopsMemorySCFWitness",
+    "Merlin.GraphLoopsReuse",
+    "Merlin.GraphLoopsReuseCountermodels",
+    "Merlin.GraphLoopsReuseGeometry",
+    "Merlin.GraphLoopsReuseLifetime",
+    "Merlin.GraphLoopsReuseModel",
+    "Merlin.GraphLoopsReuseProtocol",
+    "Merlin.GraphLoopsReuseSemantics",
+    "Merlin.GraphLoopsSegment",
+    "Merlin.GraphLoopsSegmentBounds",
+    "Merlin.GraphLoopsSegmentModel",
+    "Merlin.GraphLoopsSegmentState",
+    "Merlin.GraphLoopsUnroll",
+    "Merlin.GraphLoopsUnrollGrouping",
+    "Merlin.ResourceGeometry",
+    "Merlin.StateEffects"
+  ],
+  "allocator_mode": "total_private_unobservable",
+  "review_status": "PENDING_INDEPENDENT_PROJECTION_PRIMITIVE_ALLOCATOR_REVIEW"
+}

@@ -1,0 +1,100 @@
+{
+  "runs": [
+    {
+      "command": [
+        "/home/jeremy/Projects/merlin/.venv/bin/python",
+        "-m",
+        "pytest",
+        "merlin/tests/ir/test_lean_graph_loops_memory_scf.py",
+        "merlin/tests/ir/test_lean_graph_loops_memory_scf_runtime.py",
+        "merlin/tests/ir/test_lean_graph_loops_memory_scf_selection.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "memory_scf_runtime_observer",
+        "-o",
+        "tmp_path_retention_policy=all",
+        "-o",
+        "tmp_path_retention_count=1",
+        "--basetemp=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest",
+        "--junitxml=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/junit.xml"
+      ],
+      "returncode": 0,
+      "fresh_process": true,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/stdout.log",
+        "sha256": "34335a11585d559d99bef5800c2cacc9dbc47f8c5be119dbcf840f340474ef85",
+        "bytes": 110
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/stderr.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "tests": 71,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "retained": {
+        "Obligation.lean": 24,
+        "CHECK.json": 24,
+        "REFUSAL.json": 19,
+        "RUNTIME.json": 14,
+        "Witness.lean": 1,
+        "INHABITED.json": 1,
+        "Mutated.lean": 6
+      }
+    },
+    {
+      "command": [
+        "/home/jeremy/Projects/merlin/.venv/bin/python",
+        "-m",
+        "pytest",
+        "merlin/tests/ir/test_lean_graph_loops_memory_scf.py",
+        "merlin/tests/ir/test_lean_graph_loops_memory_scf_runtime.py",
+        "merlin/tests/ir/test_lean_graph_loops_memory_scf_selection.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "memory_scf_runtime_observer",
+        "-o",
+        "tmp_path_retention_policy=all",
+        "-o",
+        "tmp_path_retention_count=1",
+        "--basetemp=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/fresh-replay/pytest",
+        "--junitxml=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/fresh-replay/junit.xml"
+      ],
+      "returncode": 0,
+      "fresh_process": true,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/fresh-replay/stdout.log",
+        "sha256": "e7bdc1689cf770dc365bacafdadd60a96972e247178afbe51648810ccc041ab6",
+        "bytes": 110
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/fresh-replay/stderr.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "tests": 71,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "retained": {
+        "Obligation.lean": 24,
+        "CHECK.json": 24,
+        "REFUSAL.json": 19,
+        "RUNTIME.json": 14,
+        "Witness.lean": 1,
+        "INHABITED.json": 1,
+        "Mutated.lean": 6
+      }
+    }
+  ],
+  "same_loaded_runtime": true,
+  "postchecks_unchanged": true,
+  "review_complete": false,
+  "pipeline_receipt_issued": false
+}

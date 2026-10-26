@@ -1,0 +1,17 @@
+{
+  "proof": {
+    "executable": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+    "library": "/home/jeremy/Projects/merlin/out/build/graph-memory-scf/memory-scf-v1/lib",
+    "build_record": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/proof-closure.json",
+    "build_sha256": "a2aadae04afecfbada51ca3bd38ce9550b5d2718f07ec9a1c21ed55ed199b5d4"
+  },
+  "source": "/home/jeremy/Projects/merlin-graph-proof-intake",
+  "revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "manifest": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/independent-cases-v2/rank_two_prefix/CAPTURE.json",
+  "manifest_sha256": "0644dc42b845293831a35e921fe08b1014bd53b9ac60f7f41d3271ce61ecc298",
+  "fixed_context": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/fixed-context-v1/CONTEXT.json",
+  "fixed_context_sha256": "b185962ee7c9f8af17360e2a6c8b792ce1c297e36ab4006fa81b93c4d4791c00",
+  "contract": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/CONTRACT.json",
+  "contract_sha256": "ad900a84ce0933a8f34e5ccda11a83d6851bf7748b5c3a8c584f1e446b1e1558"
+}

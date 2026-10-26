@@ -1,0 +1,22 @@
+{
+  "source_files_checked": 72,
+  "worker_evidence_files_checked_separately": 1061,
+  "results": [
+    {
+      "case": "positive",
+      "lean_complete_composition_checked": true,
+      "returncode": 0,
+      "pipeline_receipt_issued": false
+    },
+    {
+      "case": "negative_tail_mutation",
+      "lean_complete_composition_checked": false,
+      "returncode": 1,
+      "pipeline_receipt_issued": false
+    }
+  ],
+  "independent_specification_review": false,
+  "parser_projection_trusted": true,
+  "allocator_total_private_unobservable_is_premise": true,
+  "all_graph_verified": false
+}

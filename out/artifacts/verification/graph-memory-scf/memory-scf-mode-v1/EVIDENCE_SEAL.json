@@ -1,0 +1,73 @@
+{
+  "schema": "merlin.graph.memory_scf.evidence_seal.v1",
+  "packet_seal": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/SEAL.json",
+    "sha256": "628842565a2d9e78d91de7548181bd508f9953f6265a894edc364a07b705eafe",
+    "bytes": 3085
+  },
+  "index": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/EVIDENCE_INDEX.json",
+    "sha256": "b20607f60d9ffa2361e23d26a535d3d814e46399dfc4e8c369774fc106c9fc4e",
+    "bytes": 303016
+  },
+  "indexed_files": 1061,
+  "paper_and_small_reports": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/paper-evidence/CHECKER_OUTPUT.json",
+      "sha256": "799c9e6b18515b718f5755db58087b95308b18365454bb771dea0a60924dbfdc",
+      "bytes": 1930
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/paper-evidence/INITIAL_EVIDENCE.json",
+      "sha256": "5a8e170e6376b56def8b4360e8efa1e0bec76f0dc7d773c279f88357137a3187",
+      "bytes": 67827
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/paper-evidence/README.md",
+      "sha256": "abb29a2f5fe0403fab9c522a026a6a516b708753019c8b33b39acd0781b2e0ab",
+      "bytes": 4168
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/paper-evidence/WORKED_EXAMPLE.md",
+      "sha256": "128222c14ac77a4f034bd0e235bf53788bf86872aabbc409e5bc3f9c379c271d",
+      "bytes": 2655
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/original-checks-v1/RUN.json",
+      "sha256": "9676a0f87ca166169743376fb250cd3375dde08106da29796e4a02e248c4fbde",
+      "bytes": 1254
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/original-checks-v1/stdout.log",
+      "sha256": "7be216244fba1425f63000d57ee5ea2d045e0b74dcdf95654fe923c8a0a5cf9d",
+      "bytes": 113
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/closure-extension-v1/ASSESSMENT.json",
+      "sha256": "b8f83ae1be4a20c272ce82eb81d6f3954dfdd120a614c0ce668e4840a0a75266",
+      "bytes": 189496
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/gates-v1/structure.log",
+      "sha256": "a74fd03006fa95e1c4f31406ea1eb13f41ba657aac4711aa6f071593655cef83",
+      "bytes": 535
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/gates-v1/ruff.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/gates-v1/format.log",
+      "sha256": "75b7030be9d7de96bf4e76e79b1f03f14af8899d169fd8d79564d59167d1ab80",
+      "bytes": 27
+    }
+  ],
+  "all_indexed_bytes_checked": true,
+  "source_objects_imports_host_context_unchanged": true,
+  "qualified_relation_scoped": true,
+  "review_complete": false,
+  "all_graph_transformations_verified": false,
+  "pipeline_gating_integrated": false,
+  "sealed": true
+}

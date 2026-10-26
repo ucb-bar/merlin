@@ -1,0 +1,38 @@
+{
+  "positive": {
+    "schema": "merlin.graph.memory_scf.actual_composition.v1",
+    "originals": [
+      {
+        "bytes": 2151,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/before.mlir",
+        "sha256": "bb5d985ac001a8c9e3b04ff889003965c798796f2b3bc351f0eabf5610190110"
+      },
+      {
+        "bytes": 3526,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/after.mlir",
+        "sha256": "9e2a5e8315002c1ad00e57508729112d4a5e01871e41ced4ecca1a10bf259ff5"
+      },
+      {
+        "bytes": 4238,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-buffer-reuse/actual-neighbor-segment-v1/after.mlir",
+        "sha256": "a98bd7576316e4ad9b4ba873beb9dfe5440e9db1f37460cf52628833f3134773"
+      }
+    ],
+    "returncode": 0,
+    "lean_complete_composition_checked": true,
+    "python_projection_trusted": true,
+    "same_semantics_exact_middle": true,
+    "independent_review_complete": false,
+    "pipeline_receipt_issued": false
+  },
+  "negative": {
+    "schema": "merlin.graph.memory_scf.actual_composition.v1",
+    "returncode": 1,
+    "lean_complete_composition_checked": false,
+    "refusal": "Lean refused complete operational memory/SSA/control/multiple-boundary composition"
+  },
+  "retained_positive": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_actual_complete_common_me0/proof/CHECK.json",
+  "retained_negative": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_compiler_valid_mutations_4/proof/CHECK.json",
+  "qualification": "out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/QUALIFICATION.json",
+  "seal": "out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/SEAL.json"
+}
