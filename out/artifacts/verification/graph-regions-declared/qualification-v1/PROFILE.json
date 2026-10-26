@@ -1,0 +1,240 @@
+{
+  "branch": "feat/pass-verification",
+  "head": "c399e441e86042752c407a4ba917d4510b16585b",
+  "independently_reviewed": false,
+  "native_execution_run": false,
+  "numerical_execution_run": false,
+  "retry_policy": "no retry-to-promote",
+  "schema": "merlin.graph-regions.declared-qualification.v1",
+  "source_operational_bridge": "UNQUALIFIED; not imported",
+  "source_roster": {
+    "merlin/tests/infra/test_lean_graph_regions_declared.py": {
+      "original": {
+        "bytes": 16202,
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/infra/test_lean_graph_regions_declared.py",
+        "sha256": "2beb83f38b1a8fdf0ae6d11aa660d688df93829cb7e493aaf35982b3dbf91510"
+      },
+      "snapshot": {
+        "bytes": 16202,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/merlin/tests/infra/test_lean_graph_regions_declared.py",
+        "sha256": "2beb83f38b1a8fdf0ae6d11aa660d688df93829cb7e493aaf35982b3dbf91510"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean": {
+      "original": {
+        "bytes": 7003,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean",
+        "sha256": "238812250de03f62906a8af05f0eea84ab7cf9b918b4b226a6685f504c8aa2b8"
+      },
+      "snapshot": {
+        "bytes": 7003,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean",
+        "sha256": "238812250de03f62906a8af05f0eea84ab7cf9b918b4b226a6685f504c8aa2b8"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean": {
+      "original": {
+        "bytes": 2701,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean",
+        "sha256": "56794f6d7e1d57d292e94d1fb9b6654b7f310a1aa88844e3afac107ba8ef5a51"
+      },
+      "snapshot": {
+        "bytes": 2701,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean",
+        "sha256": "56794f6d7e1d57d292e94d1fb9b6654b7f310a1aa88844e3afac107ba8ef5a51"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean": {
+      "original": {
+        "bytes": 7506,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean",
+        "sha256": "91305aa0c4af5bc7e1b31462c0aa83201dceb10abe60d04c8ce91c05d71dc66d"
+      },
+      "snapshot": {
+        "bytes": 7506,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean",
+        "sha256": "91305aa0c4af5bc7e1b31462c0aa83201dceb10abe60d04c8ce91c05d71dc66d"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean": {
+      "original": {
+        "bytes": 4594,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean",
+        "sha256": "218ca5a0e2e20649477cf33efb998c23bb93df6e3e992f8f04b768db4862855f"
+      },
+      "snapshot": {
+        "bytes": 4594,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean",
+        "sha256": "218ca5a0e2e20649477cf33efb998c23bb93df6e3e992f8f04b768db4862855f"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean": {
+      "original": {
+        "bytes": 13321,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean",
+        "sha256": "0f8f1e34f085890493e83ffecc1c98bd896fd765e207ece0f9795d2bab65c6d0"
+      },
+      "snapshot": {
+        "bytes": 13321,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean",
+        "sha256": "0f8f1e34f085890493e83ffecc1c98bd896fd765e207ece0f9795d2bab65c6d0"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean": {
+      "original": {
+        "bytes": 8378,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean",
+        "sha256": "655797e30a22b49ab1bc8bc422149586a6375ac234e5c63b794acbb98b2721e0"
+      },
+      "snapshot": {
+        "bytes": 8378,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean",
+        "sha256": "655797e30a22b49ab1bc8bc422149586a6375ac234e5c63b794acbb98b2721e0"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean": {
+      "original": {
+        "bytes": 5519,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean",
+        "sha256": "9be7f585db6e32ceba6e6926e75cf290565dbbaa2d8363855aa500121a172971"
+      },
+      "snapshot": {
+        "bytes": 5519,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean",
+        "sha256": "9be7f585db6e32ceba6e6926e75cf290565dbbaa2d8363855aa500121a172971"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean": {
+      "original": {
+        "bytes": 3722,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean",
+        "sha256": "a4943fbb742c5d5bc5b4338c1f007faed5a5561e186999de91c686178e806343"
+      },
+      "snapshot": {
+        "bytes": 3722,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean",
+        "sha256": "a4943fbb742c5d5bc5b4338c1f007faed5a5561e186999de91c686178e806343"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean": {
+      "original": {
+        "bytes": 5803,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean",
+        "sha256": "07da97265f745171912645dcdbd5ca4f24ec910e221332bdb8cfeeee32b2c04e"
+      },
+      "snapshot": {
+        "bytes": 5803,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean",
+        "sha256": "07da97265f745171912645dcdbd5ca4f24ec910e221332bdb8cfeeee32b2c04e"
+      }
+    },
+    "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean": {
+      "original": {
+        "bytes": 4162,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean",
+        "sha256": "e8bf9d1c1b2c1967ef0c7d05c329fb35922ffbd4e10931a972a33bed301d6001"
+      },
+      "snapshot": {
+        "bytes": 4162,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean",
+        "sha256": "e8bf9d1c1b2c1967ef0c7d05c329fb35922ffbd4e10931a972a33bed301d6001"
+      }
+    },
+    "src/merlin/verify/lean_graph_regions_declared_ast.py": {
+      "original": {
+        "bytes": 5430,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_ast.py",
+        "sha256": "f14077f533c73685d10ec716951529c8098f158613a5383d141db64ea070db5b"
+      },
+      "snapshot": {
+        "bytes": 5430,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_ast.py",
+        "sha256": "f14077f533c73685d10ec716951529c8098f158613a5383d141db64ea070db5b"
+      }
+    },
+    "src/merlin/verify/lean_graph_regions_declared_capture.py": {
+      "original": {
+        "bytes": 11987,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_capture.py",
+        "sha256": "898cef71246d8ef510ba157a6e691da7437d1373d6ef94f05d8b642cf6e47565"
+      },
+      "snapshot": {
+        "bytes": 11987,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_capture.py",
+        "sha256": "898cef71246d8ef510ba157a6e691da7437d1373d6ef94f05d8b642cf6e47565"
+      }
+    },
+    "src/merlin/verify/lean_graph_regions_declared_check.py": {
+      "original": {
+        "bytes": 7176,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_check.py",
+        "sha256": "3bd8947279c49249848761a2016dd8344b8202532258c80909d094ef36da88b7"
+      },
+      "snapshot": {
+        "bytes": 7176,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_check.py",
+        "sha256": "3bd8947279c49249848761a2016dd8344b8202532258c80909d094ef36da88b7"
+      }
+    },
+    "src/merlin/verify/lean_graph_regions_declared_context.py": {
+      "original": {
+        "bytes": 9634,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_context.py",
+        "sha256": "2800a9702c2c2187a0930ce26852d6e3f617ec1fd3a37ac110ee85ed58579bc6"
+      },
+      "snapshot": {
+        "bytes": 9634,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_context.py",
+        "sha256": "2800a9702c2c2187a0930ce26852d6e3f617ec1fd3a37ac110ee85ed58579bc6"
+      }
+    },
+    "src/merlin/verify/lean_graph_regions_declared_oracle.py": {
+      "original": {
+        "bytes": 4233,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_oracle.py",
+        "sha256": "c39c16d4c220457c3aabc3a57372e409556ff62d092e8e9de1a12d82c2405c34"
+      },
+      "snapshot": {
+        "bytes": 4233,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_oracle.py",
+        "sha256": "c39c16d4c220457c3aabc3a57372e409556ff62d092e8e9de1a12d82c2405c34"
+      }
+    },
+    "src/merlin/verify/lean_graph_regions_declared_packet.py": {
+      "original": {
+        "bytes": 18518,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_packet.py",
+        "sha256": "ec84f2d87d1449b7f00f939a95db190d31b4b5e59259d06e2f3b1b83f1c4836f"
+      },
+      "snapshot": {
+        "bytes": 18518,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_packet.py",
+        "sha256": "ec84f2d87d1449b7f00f939a95db190d31b4b5e59259d06e2f3b1b83f1c4836f"
+      }
+    },
+    "src/merlin/verify/lean_graph_regions_declared_qualify.py": {
+      "original": {
+        "bytes": 9208,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_qualify.py",
+        "sha256": "27e099ddb645608e45bda1a4a83c163d37712d71d939475148504cbb7188fef4"
+      },
+      "snapshot": {
+        "bytes": 9208,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_qualify.py",
+        "sha256": "27e099ddb645608e45bda1a4a83c163d37712d71d939475148504cbb7188fef4"
+      }
+    },
+    "src/merlin/verify/lean_graph_regions_declared_verify.py": {
+      "original": {
+        "bytes": 14711,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_verify.py",
+        "sha256": "34b79274140d22336a4ce0a071222554b82001f3a095d6f19208b4cc14cb47e3"
+      },
+      "snapshot": {
+        "bytes": 14711,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_verify.py",
+        "sha256": "34b79274140d22336a4ce0a071222554b82001f3a095d6f19208b4cc14cb47e3"
+      }
+    }
+  }
+}

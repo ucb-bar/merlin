@@ -1,0 +1,856 @@
+diff --git a/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBindings.lean b/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBindings.lean
+new file mode 100644
+index 000000000..9a7ca9b7b
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBindings.lean
+@@ -0,0 +1,55 @@
++/- Additive strengthening over the immutable 46-case declared-call cut.
++Bind source live-in/public output ordering to the independently retained original
++ABI windows. These checks do not prove the runtime ownership/packing contract. -/
++import Merlin.GraphRegionsDeclaredRaw
++import Merlin.GraphRegionsDeclaredProjection
++
++namespace Merlin.GraphRegionsDeclared
++open Merlin.GraphRegions
++
++structure ExternalBindings where
++  inputNames : List String
++  inputs : List Window
++  outputNames : List String
++  outputs : List Window
++  byteOrders : List String
++  declaresDisjoint : Bool
++  deriving DecidableEq, Repr
++
++def originalBindingsValid (region suffix : List Node) (observations : List Nat)
++    (addresses : Nat → Window) (shape : List Nat) (width : Nat)
++    (arguments : List TensorArgument) (bindings : ExternalBindings) : Prop :=
++  let inputs := (liveIns region).eraseDups
++  let outputs := liveOuts region suffix observations
++  inputs.map addresses = bindings.inputs ∧ outputs.map addresses = bindings.outputs ∧
++  bindings.inputNames.length = inputs.length ∧ bindings.outputNames.length = outputs.length ∧
++  arguments.map (·.name) = bindings.inputNames ++ bindings.outputNames ∧
++  arguments.map (·.shape) = List.replicate arguments.length shape ∧
++  arguments.map (·.dtype) = List.replicate arguments.length (typeTag (.int width)) ∧
++  arguments.map (·.access) = List.replicate inputs.length "read" ++ List.replicate outputs.length "write" ∧
++  bindings.byteOrders = List.replicate arguments.length "little" ∧ bindings.declaresDisjoint = true
++
++instance (region suffix : List Node) (observations : List Nat) (addresses : Nat → Window)
++    (shape : List Nat) (width : Nat) (arguments : List TensorArgument) (bindings : ExternalBindings) :
++    Decidable (originalBindingsValid region suffix observations addresses shape width arguments bindings) := by
++  unfold originalBindingsValid; infer_instance
++
++def checkOriginalBindings (region suffix : List Node) (observations : List Nat)
++    (addresses : Nat → Window) (shape : List Nat) (width : Nat)
++    (arguments : List TensorArgument) (bindings : ExternalBindings) : Bool :=
++  decide (originalBindingsValid region suffix observations addresses shape width arguments bindings)
++
++/-- Physical initial/public correspondence is recomputed from original ABI
++declarations and actual graph liveness. The disjoint flag is a DECLARATION;
++runtime disjointness, instruction fidelity and completion remain premises. -/
++theorem checkOriginalBindings_sound {region suffix : List Node} {observations : List Nat}
++    {addresses : Nat → Window} {shape : List Nat} {width : Nat}
++    {arguments : List TensorArgument} {bindings : ExternalBindings}
++    (accepted : checkOriginalBindings region suffix observations addresses shape width arguments bindings = true) :
++    ((liveIns region).eraseDups).map addresses = bindings.inputs ∧
++      (liveOuts region suffix observations).map addresses = bindings.outputs := by
++  have valid : originalBindingsValid region suffix observations addresses shape width arguments bindings :=
++    of_decide_eq_true accepted
++  exact ⟨valid.1, valid.2.1⟩
++
++end Merlin.GraphRegionsDeclared
+diff --git a/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEffects.lean b/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEffects.lean
+new file mode 100644
+index 000000000..ab40f936f
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEffects.lean
+@@ -0,0 +1,67 @@
++/- Complete post-allocation effect declarations and independent scalar buffers.
++Serialized facts are checked data; their physical truth remains an instruction
++contract. The qualified v1 source leaves remain unchanged. -/
++import Merlin.GraphRegionsDeclaredBindings
++
++namespace Merlin.GraphRegionsDeclared
++
++structure DeclaredAccess where
++  window : Window
++  writes : Bool
++  deriving DecidableEq, Repr
++
++structure CompleteEffect where
++  role : String
++  accesses : List DeclaredAccess
++  completion : String
++  token : Option String
++  waits : List String
++  exactCopy : Bool
++  elements : Nat
++  byteOrders : List String
++  stages : List String
++  readout : Option String
++  scalarEncoding : String
++  scalarLength : Nat
++  scalarBytes : List UInt8
++  deriving DecidableEq, Repr
++
++def effectFrameValid (bound : BoundCall) (effect : CompleteEffect) : Prop :=
++  effect.role = bound.role ∧ effect.accesses.map (·.window) = bound.reads ++ [bound.output] ∧
++  effect.accesses.map (·.writes) = List.replicate bound.reads.length false ++ [true] ∧
++  effect.completion = bound.completion ∧ effect.token = bound.token ∧ effect.waits = bound.waits ∧
++  effect.exactCopy = false
++
++def effectScalarValid (elements : Nat) (bound : BoundCall) (effect : CompleteEffect) (actualBytes : List UInt8) : Prop :=
++  effect.elements = elements ∧ effect.byteOrders = bound.byteOrders ∧ effect.stages = [bound.instruction] ∧
++  effect.readout = none ∧ effect.scalarEncoding = "hex" ∧ effect.scalarLength = effect.scalarBytes.length ∧
++  effect.scalarBytes = actualBytes
++
++instance (bound : BoundCall) (effect : CompleteEffect) : Decidable (effectFrameValid bound effect) := by
++  unfold effectFrameValid; infer_instance
++
++instance (elements : Nat) (bound : BoundCall) (effect : CompleteEffect) (actualBytes : List UInt8) :
++    Decidable (effectScalarValid elements bound effect actualBytes) := by unfold effectScalarValid; infer_instance
++
++def checkCompleteEffect (elements : Nat) (bound : BoundCall) (effect : CompleteEffect) (actualBytes : List UInt8) : Bool :=
++  decide (effectFrameValid bound effect ∧ effectScalarValid elements bound effect actualBytes)
++
++theorem checkCompleteEffect_iff {elements : Nat} {bound : BoundCall} {effect : CompleteEffect}
++    {actualBytes : List UInt8} :
++    checkCompleteEffect elements bound effect actualBytes = true ↔
++      effectFrameValid bound effect ∧ effectScalarValid elements bound effect actualBytes := by
++  simp only [checkCompleteEffect, decide_eq_true_eq]
++
++/-- Acceptance preserves exact read/write order and binds the actual post-pass
++scalar bytes. A separately authoritative export/match supplies their scalar AST
++meaning. Native truth of this declaration is NOT inferred. -/
++theorem checkCompleteEffect_sound {elements : Nat} {bound : BoundCall} {effect : CompleteEffect} {actualBytes : List UInt8}
++    (accepted : checkCompleteEffect elements bound effect actualBytes = true) :
++    effect.accesses.map (·.window) = bound.reads ++ [bound.output] ∧
++      effect.accesses.map (·.writes) = List.replicate bound.reads.length false ++ [true] ∧
++      effect.scalarBytes = actualBytes := by
++  have valid : effectFrameValid bound effect ∧ effectScalarValid elements bound effect actualBytes :=
++    of_decide_eq_true accepted
++  exact ⟨valid.1.2.1, valid.1.2.2.1, valid.2.2.2.2.2.2.2⟩
++
++end Merlin.GraphRegionsDeclared
+diff --git a/src/merlin/verify/lean_graph_regions_declared_bound.py b/src/merlin/verify/lean_graph_regions_declared_bound.py
+new file mode 100644
+index 000000000..66b549d60
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_regions_declared_bound.py
+@@ -0,0 +1,317 @@
++"""Additive original-ABI/complete-after-effect binding over immutable v1.
++
++The 46-case v1 sources and capsules are never edited. Stronger evidence imports
++their fixed leaves, validates every post-pass effect field and independently
++exports the actual post-pass adapter function buffers.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import subprocess
++from pathlib import Path
++
++from merlin.common.paths import artifacts_dir
++from merlin.verify import lean_graph_regions as base
++from merlin.verify import lean_graph_regions_declared_ast as ast
++from merlin.verify import lean_graph_regions_declared_verify as v1
++from merlin.verify.lean_graph_regions_declared_check import save
++from merlin.verify.lean_graph_regions_declared_context import build, select
++from merlin.verify.lean_graph_regions_declared_packet import load, packet, strings, window
++
++ROOTS = v1.ROOTS + ["actual_strengthened_complete_observers"]
++
++
++def fixed_v1():
++    root = artifacts_dir() / "verification/graph-regions-declared/qualification-v1"
++    status = load(root, "STATUS.json")
++    if status["engineering_qualified"] is not True or status["fixed_cases"] != 46:
++        raise ValueError("expected fixed v1 cut unavailable")
++    profile = load(root, "PROFILE.json")
++    for row in profile["source_roster"].values():
++        if base.fresh_ref(row["original"]).read_bytes() != base.fresh_ref(row["snapshot"]).read_bytes():
++            raise ValueError("immutable v1 source differs")
++    for ref in status["original_receipts"]:
++        receipt = json.loads(base.fresh_ref(ref).read_text())
++        v1.validate(receipt)
++    return base.file_ref(root / "SEAL.json")
++
++
++def build_bound(destination):
++    prior = fixed_v1()
++    selected = select(destination / "context")
++    lean, environment, identity = build(
++        destination / "build", selected, ["Merlin.GraphRegionsDeclaredBridge", "Merlin.GraphRegionsDeclaredEffects"]
++    )
++    save(destination / "FIXED-V1.json", prior)
++    return lean, environment, identity
++
++
++def boolean(value):
++    if type(value) is not bool:
++        raise ValueError("strict effect Boolean required")
++    return str(value).lower()
++
++
++def effect_term(effect, backings):
++    if set(effect) != {"semantic_key", "accesses", "completion", "token", "waits", "exact_copy", "elementwise"}:
++        raise ValueError("complete post-pass effect fields required")
++    elementwise = effect["elementwise"]
++    if set(elementwise) != {"function_ir", "elements", "stages", "byte_orders", "readout"}:
++        raise ValueError("complete post-pass elementwise fields required")
++    function = elementwise["function_ir"]
++    if set(function) != {"encoding", "hex", "bytes"}:
++        raise ValueError("complete post-pass scalar bytes required")
++    accesses = []
++    for access in effect["accesses"]:
++        if set(access) != {"space", "start", "size", "writes"}:
++            raise ValueError("complete post-pass access required")
++        accesses.append(f"⟨{window(access, backings)},{boolean(access['writes'])}⟩")
++    readout = elementwise["readout"]
++    return (
++        f"⟨{ast.text(effect['semantic_key'])},[{','.join(accesses)}],{ast.text(effect['completion'])},"
++        f"{ast.optional(effect['token'], ast.text)},{strings(effect['waits'])},{boolean(effect['exact_copy'])},"
++        f"{ast.natural(elementwise['elements'])},{strings(elementwise['byte_orders'])},{strings(elementwise['stages'])},"
++        f"{ast.optional(None if readout is None else json.dumps(readout, sort_keys=True), ast.text)},"
++        f"{ast.text(function['encoding'])},{ast.natural(function['bytes'])},"
++        f"{ast.array(list(bytes.fromhex(function['hex'])), ast.natural)}⟩"
++    )
++
++
++def bindings_term(bindings, backings):
++    if set(bindings) != {"inputs", "outputs", "byte_orders", "external_buffers_disjoint"}:
++        raise ValueError("complete original ABI bindings required")
++    for access in bindings["inputs"] + bindings["outputs"]:
++        if set(access) != {"space", "start", "size"}:
++            raise ValueError("complete original ABI window required")
++    return (
++        f"⟨{strings([v['space'] for v in bindings['inputs']])},"
++        f"{ast.array(bindings['inputs'], lambda value: window(value, backings))},"
++        f"{strings([v['space'] for v in bindings['outputs']])},"
++        f"{ast.array(bindings['outputs'], lambda value: window(value, backings))},"
++        f"{strings(bindings['byte_orders'])},{boolean(bindings['external_buffers_disjoint'])}⟩"
++    )
++
++
++def strong_query(snapshot, documents, after_documents, actual_bytes):
++    text, model = packet(snapshot, documents)
++    backings = model["backings"]
++    bindings = load(snapshot, "original-provider-bindings.json")
++    effects = load(snapshot, "actual-output-effects.json")
++    shape = load(snapshot, "CAPTURE.json")["case"]["shape"]
++    start = model["source_generic_indices"][0]
++    text = "import Merlin.GraphRegionsDeclaredEffects\n" + text
++    text += f"\ndef originalBindings : ExternalBindings := {bindings_term(bindings, backings)}\n"
++    text += f"""theorem actual_original_bindings : checkOriginalBindings
++    ((actualGraph.nodes.drop {start}).take 3) (actualGraph.nodes.drop {start + 3}) actualGraph.observations
++    addresses {ast.array(shape, ast.natural)} stage0.program.output originalKernel.arguments
++      originalBindings = true := by
++  have checked := actual_realization
++  simp only [checkRealization, checkFusion, Bool.and_eq_true, decide_eq_true_eq] at checked
++  simp only [checkOriginalBindings, decide_eq_true_eq, originalBindingsValid]
++  rw [← checked.2.1.2, ← checked.2.2]
++  repeat first | apply And.intro | rfl | decide
++"""
++    for i, effect in enumerate(effects):
++        text += f"def completeEffect{i} : CompleteEffect := {effect_term(effect, backings)}\n"
++        text += f"def afterAdapterBytes{i} : List UInt8 := {ast.array(list(actual_bytes[i]), ast.natural)}\n"
++        text += f"def afterAdapter{i} : Module := {ast.module(after_documents[i])}\n"
++        (function,) = after_documents[i]["module"]["ops"]
++        (source_function,) = documents[f"stage-{i}-source"]["module"]["ops"]
++        source_attrs, attrs = source_function["attrs"], function["attrs"]
++        text += f"theorem actual_effect{i} : checkCompleteEffect {model['elements']} bound{i} "
++        text += f"completeEffect{i} afterAdapterBytes{i} = true := by\n"
++        text += "  apply checkCompleteEffect_iff.mpr\n  constructor\n"
++        text += "  · exact ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩\n"
++        text += "  · exact ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩\n"
++        text += f"theorem actual_after_adapter{i} : checkScalar scalar{i}_source afterAdapter{i} "
++        text += f"{ast.text(source_attrs['sym_name']['value'])} {ast.text(attrs['sym_name']['value'])} "
++        text += f"{ast.optional(source_attrs.get('sym_visibility', {}).get('value'), ast.text)} "
++        text += f"{ast.optional(attrs.get('sym_visibility', {}).get('value'), ast.text)} program{i} = true := by\n"
++        text += "  apply checkScalar_iff.mpr\n  exact ⟨rfl,rfl,by decide⟩\n"
++    text += """
++theorem actual_after_common_execution {α : Type} (primitive : Primitive → List α → α) (arguments : Environment α) :
++    (ScalarExecution primitive scalar0_source arguments (program0.evaluate primitive arguments) ∧
++      ScalarExecution primitive afterAdapter0 arguments (program0.evaluate primitive arguments)) ∧
++    (ScalarExecution primitive scalar1_source arguments (program1.evaluate primitive arguments) ∧
++      ScalarExecution primitive afterAdapter1 arguments (program1.evaluate primitive arguments)) ∧
++    (ScalarExecution primitive scalar2_source arguments (program2.evaluate primitive arguments) ∧
++      ScalarExecution primitive afterAdapter2 arguments (program2.evaluate primitive arguments)) :=
++  ⟨checkScalar_sound actual_after_adapter0 primitive arguments,
++   checkScalar_sound actual_after_adapter1 primitive arguments,
++   checkScalar_sound actual_after_adapter2 primitive arguments⟩
++"""
++    elements = model["elements"]
++    text += f"""
++theorem actual_strengthened_complete_observers {{α M : Type}} [Inhabited α]
++    (primitive : Primitive → List α → α)
++    (fallback : ∀ node, TypedAction node (Tensor {elements} α) (fun _ _ => True))
++    (read : M → Window → Option (Tensor {elements} α)) (invoke : BoundCall → M → Option M)
++    (contracts : ∀ item ∈ items, InstructionContract read invoke primitive item.call item.stage.program)
++    (pack : StateEffects.State (Tensor {elements} α) → M)
++    (initialized : ∀ entry, Refines read addresses initialKnown entry (pack entry))
++    (native : StateEffects.Action
++      ⟨liveIns ((actualGraph.nodes.drop {start}).take 3),
++       liveOuts ((actualGraph.nodes.drop {start}).take 3)
++         (actualGraph.nodes.drop {start + 3}) actualGraph.observations⟩ (Tensor {elements} α))
++    (publication : ∀ entry final, runCalls invoke items (pack entry) = some final →
++      ∀ slot ∈ liveOuts ((actualGraph.nodes.drop {start}).take 3)
++          (actualGraph.nodes.drop {start + 3}) actualGraph.observations,
++        read final (addresses slot) = some (native.step entry slot))
++    (initial : StateEffects.State (Tensor {elements} α)) :
++    checkOriginalBindings ((actualGraph.nodes.drop {start}).take 3) (actualGraph.nodes.drop {start + 3})
++      actualGraph.observations addresses {ast.array(shape, ast.natural)} stage0.program.output
++      originalKernel.arguments originalBindings = true ∧
++    checkCompleteEffect {elements} bound0 completeEffect0 afterAdapterBytes0 = true ∧
++    checkCompleteEffect {elements} bound1 completeEffect1 afterAdapterBytes1 = true ∧
++    checkCompleteEffect {elements} bound2 completeEffect2 afterAdapterBytes2 = true ∧
++    (∀ arguments,
++      (ScalarExecution primitive scalar0_source arguments (program0.evaluate primitive arguments) ∧
++       ScalarExecution primitive afterAdapter0 arguments (program0.evaluate primitive arguments)) ∧
++      (ScalarExecution primitive scalar1_source arguments (program1.evaluate primitive arguments) ∧
++       ScalarExecution primitive afterAdapter1 arguments (program1.evaluate primitive arguments)) ∧
++      (ScalarExecution primitive scalar2_source arguments (program2.evaluate primitive arguments) ∧
++       ScalarExecution primitive afterAdapter2 arguments (program2.evaluate primitive arguments))) ∧
++    SourceBinding actualBefore actualRetained sites actualGraph ∧
++    checkKernel actualKernel originalKernel.name originalKernel.arguments
++      [schema0,schema1,schema2] [bound0,bound1,bound2] = true ∧
++    (let meaning := registry primitive fallback (items.map CallStage.stage)
++     actualGraph.observations.map (executeNodes meaning (actualGraph.nodes.drop {start + 3})
++       (native.step (executeNodes meaning (actualGraph.nodes.take {start}) initial))) =
++       actualGraph.observations.map (executeNodes meaning actualGraph.nodes initial)) := by
++  have previous := actual_complete_observers primitive fallback read invoke contracts pack initialized
++    native publication initial
++  exact ⟨actual_original_bindings, actual_effect0, actual_effect1, actual_effect2,
++    (fun arguments => actual_after_common_execution primitive arguments), previous.1, previous.2.1,
++    previous.2.2.2.2.2⟩
++#print axioms actual_strengthened_complete_observers
++"""
++    return text, model
++
++
++def verify_bound(capture, destination, *, identity_file, fixed_oracles):
++    destination.mkdir(parents=True, exist_ok=False)
++    fixed = fixed_v1()
++    receipt = v1.verify(capture, destination / "base", identity_file=identity_file, fixed_oracles=fixed_oracles)
++    documents = {role: json.loads(base.fresh_ref(ref).read_text()) for role, ref in receipt["exports"].items()}
++    snapshot = destination / "base/capture"
++    effects = load(snapshot, "actual-output-effects.json")
++    if len(effects) != 3:
++        raise ValueError("exactly the producer and both consumer effects required")
++    after_documents, actual_bytes, after_refs, oracles = [], [], [], []
++    for index, effect in enumerate(effects):
++        data = bytes.fromhex(effect["elementwise"]["function_ir"]["hex"])
++        path = destination / f"after-adapter-{index}.mlir"
++        path.write_bytes(data)
++        result = v1.oracle(
++            "mlir",
++            path,
++            destination / f"after-adapter-{index}-oracle",
++            python=Path(json.loads(base.fresh_ref(receipt["identity"]).read_text())["context"]["oracle_invocation"]),
++            fixed=fixed_oracles["mlir-scalar"],
++        )
++        actual_bytes.append(data)
++        after_documents.append(load(destination / f"after-adapter-{index}-oracle", "export.json"))
++        after_refs.append(base.file_ref(path))
++        if after_documents[-1]["source"] != {key: after_refs[-1][key] for key in ("sha256", "bytes")}:
++            raise ValueError("post-pass adapter export does not bind its actual bytes")
++        oracles.append(result)
++    text, model = strong_query(snapshot, documents, after_documents, actual_bytes)
++    proof = destination / "Check.lean"
++    proof.write_text(text)
++    identity = json.loads(base.fresh_ref(receipt["identity"]).read_text())
++    env = os.environ | {"LEAN_PATH": str((identity_file.parent / "compiled").resolve())}
++    command = [identity["context"]["fixed_identity"]["lean"]["path"], "-j1", str(proof.resolve())]
++    result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=90)
++    save(
++        destination / "process.json",
++        dict(command=command, returncode=result.returncode, stdout=result.stdout, stderr=result.stderr),
++    )
++    result.check_returncode()
++    save(destination / "AUDIT.json", v1.audit(result.stdout, ROOTS))
++    v1.validate(receipt)
++    v1.fresh_identity(identity)
++    strong = dict(
++        schema="merlin.graph-regions.declared-boundary-strong.v1",
++        base=base.file_ref(destination / "base/EVIDENCE.json"),
++        fixed_v1=fixed,
++        generator=base.file_ref(Path(__file__)),
++        after_buffers=after_refs,
++        after_oracles=oracles,
++        after_exports=[base.file_ref(destination / f"after-adapter-{i}-oracle/export.json") for i in range(3)],
++        proof=base.file_ref(proof),
++        process=base.file_ref(destination / "process.json"),
++        audit=base.file_ref(destination / "AUDIT.json"),
++        independently_reviewed=False,
++        native_fidelity_proved=False,
++    )
++    save(destination / "EVIDENCE.json", strong)
++    return strong
++
++
++def validate_bound(receipt):
++    if receipt["schema"] != "merlin.graph-regions.declared-boundary-strong.v1":
++        raise ValueError("wrong stronger receipt schema")
++    if receipt["fixed_v1"] != fixed_v1() or receipt["generator"] != base.file_ref(Path(__file__)):
++        raise ValueError("strong checker/fixed-v1 source association differs")
++    original = json.loads(base.fresh_ref(receipt["base"]).read_text())
++    v1.validate(original)
++    documents = {role: json.loads(base.fresh_ref(ref).read_text()) for role, ref in original["exports"].items()}
++    snapshot = Path(original["snapshots"]["CAPTURE.json"]["path"]).parent
++    effects = load(snapshot, "actual-output-effects.json")
++    if any(len(receipt[key]) != 3 for key in ("after_buffers", "after_exports", "after_oracles")) or len(effects) != 3:
++        raise ValueError("exactly three post-pass scalar buffers/exports/oracles required")
++    after_documents, actual_bytes = [], []
++    for index, (buffer, exported, oracle) in enumerate(
++        zip(receipt["after_buffers"], receipt["after_exports"], receipt["after_oracles"], strict=True)
++    ):
++        data = base.fresh_ref(buffer).read_bytes()
++        if data != bytes.fromhex(effects[index]["elementwise"]["function_ir"]["hex"]):
++            raise ValueError("actual after-effect/scalar bytes association differs")
++        document = json.loads(base.fresh_ref(exported).read_text())
++        if document["source"] != {key: buffer[key] for key in ("sha256", "bytes")}:
++            raise ValueError("actual post-pass scalar/export association differs")
++        if (
++            oracle["source"] != buffer
++            or oracle["valid"] is not True
++            or oracle["host"] != original["fixed_oracles"]["mlir-scalar"]
++        ):
++            raise ValueError("after-adapter source/oracle association differs")
++        for reference in v1.host_refs(oracle["host"]):
++            base.fresh_ref(reference)
++        after_documents.append(document)
++        actual_bytes.append(data)
++    text, _ = strong_query(snapshot, documents, after_documents, actual_bytes)
++    if base.fresh_ref(receipt["proof"]).read_text() != text:
++        raise ValueError("strong proof does not bind actual source/call/effect bytes")
++    process = json.loads(base.fresh_ref(receipt["process"]).read_text())
++    checked = json.loads(base.fresh_ref(receipt["audit"]).read_text())
++    identity = json.loads(base.fresh_ref(original["identity"]).read_text())
++    command = [identity["context"]["fixed_identity"]["lean"]["path"], "-j1", receipt["proof"]["path"]]
++    if process["command"] != command or process["returncode"] != 0 or v1.audit(process["stdout"], ROOTS) != checked:
++        raise ValueError("strong Lean proof/process/exact-root association differs")
++    return True
++
++
++def replay_bound(receipt, destination):
++    validate_bound(receipt)
++    original = json.loads(base.fresh_ref(receipt["base"]).read_text())
++    capture = Path(original["originals"]["CAPTURE.json"]["path"]).parent
++    current = verify_bound(
++        capture, destination, identity_file=Path(original["identity"]["path"]), fixed_oracles=original["fixed_oracles"]
++    )
++    validate_bound(current)
++    for field in ("proof", "audit"):
++        if base.fresh_ref(receipt[field]).read_bytes() != base.fresh_ref(current[field]).read_bytes():
++            raise ValueError("strong fresh replay differs")
++    save(
++        destination / "REPLAY.json",
++        dict(
++            identical_checked_content=True,
++            native_execution_run=False,
++            original=receipt["proof"],
++            current=current["proof"],
++        ),
++    )
++    return current
+diff --git a/src/merlin/verify/lean_graph_regions_declared_bound_qualify.py b/src/merlin/verify/lean_graph_regions_declared_bound_qualify.py
+new file mode 100644
+index 000000000..412834758
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_regions_declared_bound_qualify.py
+@@ -0,0 +1,167 @@
++"""Freeze the additive ABI/full-after-effect cut over immutable qualification v1."""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import shutil
++import subprocess
++import sys
++from pathlib import Path
++
++from merlin.common.paths import artifacts_dir, repo_root
++from merlin.verify import lean_graph_regions as base
++from merlin.verify import lean_graph_regions_declared_bound as bound
++from merlin.verify.lean_graph_regions_declared_check import save
++from merlin.verify.lean_graph_regions_declared_qualify import command, seal, source_patch
++
++
++def sources():
++    root = repo_root()
++    return [
++        root / path
++        for path in (
++            "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBindings.lean",
++            "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEffects.lean",
++            "src/merlin/verify/lean_graph_regions_declared_bound.py",
++            "src/merlin/verify/lean_graph_regions_declared_bound_qualify.py",
++            "merlin/tests/infra/test_lean_graph_regions_declared_bound.py",
++        )
++    ]
++
++
++def run(name):
++    root = repo_root()
++    parent = artifacts_dir() / "verification/graph-regions-declared"
++    destination = parent / name
++    destination.mkdir(parents=True, exist_ok=False)
++    fixed = bound.fixed_v1()
++    roster = {}
++    for path in sources():
++        relative = path.relative_to(root)
++        target = destination / "source-snapshot" / relative
++        target.parent.mkdir(parents=True, exist_ok=True)
++        shutil.copyfile(path, target)
++        roster[str(relative)] = dict(original=base.file_ref(path), snapshot=base.file_ref(target))
++    profile = dict(
++        fixed_v1=fixed,
++        sources=roster,
++        head=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
++        branch=subprocess.check_output(["git", "branch", "--show-current"], text=True).strip(),
++        relation="common-total-primitive, per-instruction contracts and complete observer preservation",
++        native_fidelity_proved=False,
++        independent_review="pending",
++        ordinary_compiler_gating=False,
++    )
++    save(destination / "PROFILE.json", profile)
++    status = dict(
++        engineering_qualified=False,
++        phase="collection",
++        independently_reviewed=False,
++        native_execution_run=False,
++        numerical_execution_run=False,
++        full_model_verified=False,
++    )
++    environment = os.environ | {"PYTHONDONTWRITEBYTECODE": "1", "MERLIN_GRAPH_DECLARED_BOUND_RUN": name + "-originals"}
++    test = "merlin/tests/infra/test_lean_graph_regions_declared_bound.py"
++    pytest = [sys.executable, "-B", "-m", "pytest", "-q", test]
++    try:
++        if command(pytest + ["--collect-only"], destination / "collection", environment) != 0:
++            raise ValueError("new fixed roster unavailable")
++        nodes = [
++            line
++            for line in (destination / "collection.stdout").read_text().splitlines()
++            if line.startswith(test + "::")
++        ]
++        if not nodes or len(nodes) != len(set(nodes)):
++            raise ValueError("empty or duplicate new roster")
++        save(destination / "ROSTER.json", nodes)
++        for row in roster.values():
++            base.fresh_ref(row["original"])
++        status["phase"] = "originals"
++        if command(pytest + ["--tb=short"], destination / "originals", environment) != 0:
++            raise ValueError("new original qualification failed; first failure retained")
++        if (destination / "originals.stdout").read_text().splitlines()[-1].split()[:2] != [str(len(nodes)), "passed"]:
++            raise ValueError("not every fixed case passed; no skips/unavailable promotion")
++        originals = parent / (name + "-originals")
++        receipts = [originals / ("verified-" + label) / "EVIDENCE.json" for label in ("i8", "i16shared")]
++        for path in receipts:
++            bound.validate_bound(json.loads(path.read_text()))
++        status["phase"] = "one fresh replay batch"
++        args = [
++            sys.executable,
++            "-B",
++            str(Path(__file__).resolve()),
++            "--replay",
++            str(destination / "fresh-replay"),
++            "--receipts",
++            *map(str, receipts),
++        ]
++        if command(args, destination / "fresh-process", environment) != 0:
++            raise ValueError("fresh replay failed; preserve original and fresh evidence")
++        for row in roster.values():
++            if base.fresh_ref(row["original"]).read_bytes() != base.fresh_ref(row["snapshot"]).read_bytes():
++                raise ValueError("source changed after frozen run")
++        if bound.fixed_v1() != fixed:
++            raise ValueError("fixed v1 dependency changed")
++        first = json.loads(receipts[0].read_text())
++        base_receipt = json.loads(base.fresh_ref(first["base"]).read_text())
++        build = Path(base_receipt["identity"]["path"]).parent
++        identity = json.loads(base.fresh_ref(base_receipt["identity"]).read_text())
++        external = {}
++        for label, directory in (("originals", originals), ("build", build)):
++            external[label] = {
++                str(path.relative_to(directory)): base.file_ref(path)
++                for path in sorted(directory.rglob("*"))
++                if path.is_file()
++            }
++        save(destination / "EXTERNAL-RETENTION.json", external)
++        closure = {}
++        for row in identity["actual_import_closure"].values():
++            if row["project"]:
++                path = base.fresh_ref(row["source"])
++                relative = path.relative_to(root)
++                target = destination / "project-source-closure" / relative
++                target.parent.mkdir(parents=True, exist_ok=True)
++                shutil.copyfile(path, target)
++                closure[str(relative)] = dict(original=row["source"], snapshot=base.file_ref(target))
++        save(destination / "PROJECT-SOURCE-CLOSURE.json", closure)
++        source_patch(sources(), destination / "owned-additive-source.patch", profile["head"])
++        status.update(
++            engineering_qualified=True,
++            phase="complete",
++            fixed_cases=len(nodes),
++            fresh_process_batches=1,
++            receipts=[base.file_ref(path) for path in receipts],
++            primitive_fidelity_proved=False,
++        )
++    except Exception as error:
++        status.update(failure=repr(error), phase_failed=status["phase"])
++        source_patch(sources(), destination / "owned-additive-partial.patch", profile["head"])
++    save(destination / "STATUS.json", status)
++    seal(destination, status)
++    print(json.dumps(dict(destination=str(destination), status=status), indent=2))
++    return 0 if status["engineering_qualified"] else 1
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--name")
++    parser.add_argument("--replay", type=Path)
++    parser.add_argument("--receipts", nargs="*", type=Path)
++    args = parser.parse_args()
++    if args.replay is not None:
++        args.replay.mkdir(parents=True, exist_ok=False)
++        if not args.receipts:
++            raise ValueError("empty replay batch")
++        for index, receipt in enumerate(args.receipts):
++            bound.replay_bound(json.loads(receipt.read_text()), args.replay / str(index))
++        return 0
++    if args.name is None:
++        raise ValueError("explicit fresh run name required")
++    return run(args.name)
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/merlin/tests/infra/test_lean_graph_regions_declared_bound.py b/merlin/tests/infra/test_lean_graph_regions_declared_bound.py
+new file mode 100644
+index 000000000..e7a5ce83e
+--- /dev/null
++++ b/merlin/tests/infra/test_lean_graph_regions_declared_bound.py
+@@ -0,0 +1,220 @@
++"""Additional ABI/full-effect/actual-after-buffer qualification over frozen v1."""
++
++from __future__ import annotations
++
++import copy
++import json
++import os
++import subprocess
++from pathlib import Path
++
++import pytest
++
++from merlin.common.paths import artifacts_dir, build_dir
++from merlin.verify import lean_graph_regions as base
++from merlin.verify import lean_graph_regions_declared_bound as bound
++from merlin.verify.lean_graph_regions_declared_check import save
++from merlin.verify.lean_graph_regions_declared_verify import audit, oracle
++
++
++@pytest.fixture(scope="module")
++def run():
++    name = os.environ.get("MERLIN_GRAPH_DECLARED_BOUND_RUN", "bound-tests-development-v1")
++    root = artifacts_dir() / "verification/graph-regions-declared" / name
++    root.mkdir(parents=True, exist_ok=False)
++    lean, environment, identity = bound.build_bound(build_dir() / "graph-regions-declared" / name)
++    prior = artifacts_dir() / "verification/graph-regions-declared/qualification-v1-originals"
++    fixed = json.loads((prior / "FIXED-ORACLES.json").read_text())
++    return dict(
++        root=root,
++        lean=lean,
++        environment=environment,
++        identity_file=build_dir() / "graph-regions-declared" / name / "build/IDENTITY.json",
++        prior=prior,
++        fixed=fixed,
++        receipts={},
++        failed={},
++    )
++
++
++def positive(run, label):
++    if label in run["failed"]:
++        pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
++    if label not in run["receipts"]:
++        try:
++            run["receipts"][label] = bound.verify_bound(
++                run["prior"] / ("actual-" + label),
++                run["root"] / ("verified-" + label),
++                identity_file=run["identity_file"],
++                fixed_oracles=run["fixed"],
++            )
++        except Exception as error:
++            run["failed"][label] = repr(error)
++            raise
++    return run["receipts"][label]
++
++
++def query(run, label, extra, names):
++    receipt = positive(run, "i8")
++    destination = run["root"] / label
++    destination.mkdir()
++    proof = destination / "Check.lean"
++    proof.write_text(base.fresh_ref(receipt["proof"]).read_text() + extra)
++    result = subprocess.run(
++        [str(run["lean"]), "-j1", str(proof.resolve())],
++        env=run["environment"],
++        capture_output=True,
++        text=True,
++        timeout=90,
++    )
++    save(destination / "process.json", dict(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr))
++    assert result.returncode == 0, result.stdout
++    return audit(result.stdout, bound.ROOTS + names)
++
++
++@pytest.mark.parametrize("label", ["i8", "i16shared"])
++def test_complete_stronger_boundary(run, label):
++    assert bound.validate_bound(positive(run, label))
++
++
++@pytest.mark.parametrize(
++    "field",
++    [
++        "read_flag",
++        "write_flag",
++        "copy_flag",
++        "readout",
++        "stages",
++        "waits",
++        "token",
++        "encoding",
++        "byte_length",
++        "byte_order",
++    ],
++)
++def test_full_effect_metadata_refused(run, field):
++    change = {
++        "read_flag": "accesses := [⟨bound0.reads[0]?.getD bound0.output,true⟩,"
++        "⟨bound0.reads[1]?.getD bound0.output,false⟩,⟨bound0.reads[2]?.getD bound0.output,false⟩,"
++        "⟨bound0.output,true⟩]",
++        "write_flag": "accesses := completeEffect0.accesses.map (fun access => {access with writes := false})",
++        "copy_flag": "exactCopy := true",
++        "readout": 'readout := some "extra readout"',
++        "stages": 'stages := ["wrong stage"]',
++        "waits": 'waits := ["unexpected wait"]',
++        "token": 'token := some "async token"',
++        "encoding": 'scalarEncoding := "unsupported"',
++        "byte_length": "scalarLength := completeEffect0.scalarLength + 1",
++        "byte_order": 'byteOrders := ["big","little","little","little"]',
++    }[field]
++    extra = (
++        f"\ndef badEffect : CompleteEffect := {{completeEffect0 with {change}}}\n"
++        + """
++theorem full_effect_refused : checkCompleteEffect 141 bound0 badEffect afterAdapterBytes0 = false := by decide
++#print axioms full_effect_refused
++"""
++    )
++    if field == "byte_length":
++        extra = extra.replace(
++            "= false := by decide",
++            """= false := by
++  apply Bool.eq_false_iff.mpr
++  intro accepted
++  have wrong := (checkCompleteEffect_iff.mp accepted).2.2.2.2.2.2.1
++  have original := (checkCompleteEffect_iff.mp actual_effect0).2.2.2.2.2.2.1
++  change completeEffect0.scalarLength + 1 = completeEffect0.scalarBytes.length at wrong
++  have impossible := wrong.trans original.symm
++  exact (Nat.ne_of_gt (Nat.lt_succ_self _)) impossible""",
++        )
++    query(run, "effect-" + field, extra, ["full_effect_refused"])
++
++
++@pytest.mark.parametrize("kind", ["inputs", "outputs"])
++def test_independent_original_windows_refused(run, kind):
++    field = "1" if kind == "inputs" else "2"
++    original_list = "actualFused.inputs" if kind == "inputs" else "actualFused.outputs"
++    extra = (
++        f"\ndef badBindings : ExternalBindings := {{originalBindings with {kind} := originalBindings.{kind}.reverse}}\n"
++    )
++    extra += f"""
++theorem original_windows_refused : checkOriginalBindings
++    ((actualGraph.nodes.drop 4).take 3) (actualGraph.nodes.drop 7) actualGraph.observations
++    addresses [3,47] stage0.program.output originalKernel.arguments badBindings = false := by
++  apply Bool.eq_false_iff.mpr
++  intro accepted
++  have facts := checkOriginalBindings_sound accepted
++  have checked := actual_realization
++  simp only [checkRealization, checkFusion, Bool.and_eq_true, decide_eq_true_eq] at checked
++  rw [← checked.2.1.2, ← checked.2.2] at facts
++  have different : {original_list}.map addresses ≠ badBindings.{kind} := by decide
++  exact different facts.{field}
++#print axioms original_windows_refused
++"""
++    query(run, "original-" + kind, extra, ["original_windows_refused"])
++
++
++def test_coherent_wrong_after_scalar_refused(run):
++    from merlin.verify import lean_graph_regions_declared_ast as ast
++
++    receipt = positive(run, "i8")
++    original = base.fresh_ref(receipt["after_buffers"][0])
++    mutant = run["root"] / "coherent-after-scalar.mlir"
++    mutant.write_text(original.read_text().replace("%r=arith.addi", "%r=arith.subi"))
++    base_receipt = json.loads(base.fresh_ref(receipt["base"]).read_text())
++    identity = json.loads(base.fresh_ref(base_receipt["identity"]).read_text())
++    oracle(
++        "mlir",
++        mutant,
++        run["root"] / "coherent-after-scalar-oracle",
++        python=Path(identity["context"]["oracle_invocation"]),
++        fixed=run["fixed"]["mlir-scalar"],
++    )
++    document = json.loads((run["root"] / "coherent-after-scalar-oracle/export.json").read_text())
++    extra = (
++        f"\ndef changedAfter : Module := {ast.module(document)}\n"
++        + """
++theorem changed_after_refused : checkScalar scalar0_source changedAfter
++    "source" "forward" none none program0 = false := by
++  apply checkScalar_refuse_trace
++  decide
++#print axioms changed_after_refused
++"""
++    )
++    query(run, "coherent-after-scalar-lean", extra, ["changed_after_refused"])
++
++
++@pytest.mark.parametrize("kind", ["swapped", "missing", "substituted", "rehashed_proof"])
++def test_strong_receipt_associations(run, kind):
++    receipt = copy.deepcopy(positive(run, "i8"))
++    if kind == "swapped":
++        receipt["after_buffers"][1], receipt["after_buffers"][2] = (
++            receipt["after_buffers"][2],
++            receipt["after_buffers"][1],
++        )
++    elif kind == "missing":
++        receipt["after_buffers"][0]["path"] = str((run["root"] / "missing-after.mlir").resolve())
++    elif kind == "substituted":
++        path = run["root"] / "substituted-after.mlir"
++        path.write_bytes(base.fresh_ref(receipt["after_buffers"][1]).read_bytes())
++        receipt["after_buffers"][0] = base.file_ref(path)
++    else:
++        other = positive(run, "i16shared")
++        for field in ("proof", "process", "audit"):
++            receipt[field] = other[field]
++    save(run["root"] / (kind + "-rehashed-receipt.json"), receipt)
++    with pytest.raises((ValueError, FileNotFoundError)):
++        bound.validate_bound(receipt)
++
++
++def test_new_soundness_roots(run):
++    extra = "\n#print axioms Merlin.GraphRegionsDeclared.checkOriginalBindings_sound\n"
++    extra += "#print axioms Merlin.GraphRegionsDeclared.checkCompleteEffect_sound\n"
++    query(
++        run,
++        "new-exact-root-audit",
++        extra,
++        [
++            "Merlin.GraphRegionsDeclared.checkOriginalBindings_sound",
++            "Merlin.GraphRegionsDeclared.checkCompleteEffect_sound",
++        ],
++    )

@@ -1,0 +1,262 @@
+{
+  "approved_pass_verification": false,
+  "case": {
+    "shape": [
+      3,
+      47
+    ],
+    "shared": false,
+    "width": 1
+  },
+  "execution_contracts_proved": false,
+  "generator": {
+    "bytes": 11987,
+    "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_capture.py",
+    "sha256": "898cef71246d8ef510ba157a6e691da7437d1373d6ef94f05d8b642cf6e47565"
+  },
+  "graph_hashes_used_as_proof": false,
+  "host_intake": {
+    "bytes": 136259,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/HOST-INTAKE.json",
+    "sha256": "8f08505727d221df027fdc486e3287e4bcd2721160cf19003a23559c9c34b30f"
+  },
+  "input_value_locators": [
+    {
+      "index": 2,
+      "kind": "argument",
+      "owner_ordinal": 1,
+      "type": "tensor<3x47xi8>"
+    },
+    {
+      "index": 0,
+      "kind": "argument",
+      "owner_ordinal": 1,
+      "type": "tensor<3x47xi8>"
+    },
+    {
+      "index": 3,
+      "kind": "argument",
+      "owner_ordinal": 1,
+      "type": "tensor<3x47xi8>"
+    },
+    {
+      "index": 1,
+      "kind": "argument",
+      "owner_ordinal": 1,
+      "type": "tensor<3x47xi8>"
+    }
+  ],
+  "machine_execution_run": false,
+  "numerical_execution_run": false,
+  "original_provider_kernel": {
+    "bytes": 3949,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/original-provider-kernel.json",
+    "sha256": "7ced8494a29cb2d7e6162a11d9c6862e2a2537b9ab4a6a020f023610a80e8e22"
+  },
+  "output_value_locators": [
+    {
+      "index": 0,
+      "kind": "result",
+      "owner_ordinal": 10,
+      "type": "tensor<3x47xi8>"
+    },
+    {
+      "index": 0,
+      "kind": "result",
+      "owner_ordinal": 13,
+      "type": "tensor<3x47xi8>"
+    }
+  ],
+  "physical_compilation": "actual production compile_source_multioutput",
+  "reference_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "reference_root": "/home/jeremy/Projects/merlin-graph-proof-intake",
+  "retained_source": {
+    "bytes": 3852,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/retained-source.mlir",
+    "sha256": "1a6d48ae471f28253035e84370379e909466c3c2941393cb8d6027879926c389"
+  },
+  "schema": "merlin.graph-regions.declared-source-intake.v1",
+  "source": {
+    "bytes": 3852,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/source.mlir",
+    "sha256": "1a6d48ae471f28253035e84370379e909466c3c2941393cb8d6027879926c389"
+  },
+  "source_inputs": [
+    "tensor<3x47xi8>",
+    "tensor<3x47xi8>",
+    "tensor<3x47xi8>",
+    "tensor<3x47xi8>"
+  ],
+  "source_outputs": [
+    "tensor<3x47xi8>",
+    "tensor<3x47xi8>"
+  ],
+  "stages": [
+    {
+      "adapter_declaration": {
+        "bytes": 126,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-0-adapter.mlir",
+        "sha256": "59996c0775ee174959ffdab7ee515804d563b35c35dc8f83c4956444afe09520"
+      },
+      "index": 0,
+      "input_indices": [
+        0,
+        1,
+        2
+      ],
+      "instruction": "produce",
+      "scalar_source": {
+        "bytes": 387,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-0-source.mlir",
+        "sha256": "0e5d2ef9c71973d76a8b7fcee28901f9aabb81da5f3e9a8fe4ca427364d78e8f"
+      },
+      "selected_declaration": {
+        "bytes": 126,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-0-selected.mlir",
+        "sha256": "59996c0775ee174959ffdab7ee515804d563b35c35dc8f83c4956444afe09520"
+      },
+      "semantic_role": "('produce', 1, 2, 3, 4, 0)",
+      "source_operands": [
+        {
+          "index": 2,
+          "kind": "argument",
+          "owner_ordinal": 1,
+          "type": "tensor<3x47xi8>"
+        },
+        {
+          "index": 0,
+          "kind": "argument",
+          "owner_ordinal": 1,
+          "type": "tensor<3x47xi8>"
+        },
+        {
+          "index": 3,
+          "kind": "argument",
+          "owner_ordinal": 1,
+          "type": "tensor<3x47xi8>"
+        },
+        {
+          "index": 0,
+          "kind": "result",
+          "owner_ordinal": 3,
+          "type": "tensor<3x47xi8>"
+        }
+      ],
+      "source_operation_ordinal": 6,
+      "source_results": [
+        {
+          "index": 0,
+          "kind": "result",
+          "owner_ordinal": 6,
+          "type": "tensor<3x47xi8>"
+        }
+      ]
+    },
+    {
+      "adapter_declaration": {
+        "bytes": 97,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-1-adapter.mlir",
+        "sha256": "7fcbabbb3820d187a0c2664ae424576b377f18484bbb9cd037d95c0d183ac264"
+      },
+      "index": 1,
+      "input_indices": [
+        -1,
+        3
+      ],
+      "instruction": "add",
+      "scalar_source": {
+        "bytes": 274,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-1-source.mlir",
+        "sha256": "a8f3c7b1b6386ff345c1db2fe388311f59624f046dafeb14ce92e7574a84cf7e"
+      },
+      "selected_declaration": {
+        "bytes": 97,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-1-selected.mlir",
+        "sha256": "7fcbabbb3820d187a0c2664ae424576b377f18484bbb9cd037d95c0d183ac264"
+      },
+      "semantic_role": "('add', 1, 0, 5, 0, 6)",
+      "source_operands": [
+        {
+          "index": 0,
+          "kind": "result",
+          "owner_ordinal": 6,
+          "type": "tensor<3x47xi8>"
+        },
+        {
+          "index": 1,
+          "kind": "argument",
+          "owner_ordinal": 1,
+          "type": "tensor<3x47xi8>"
+        },
+        {
+          "index": 0,
+          "kind": "result",
+          "owner_ordinal": 4,
+          "type": "tensor<3x47xi8>"
+        }
+      ],
+      "source_operation_ordinal": 10,
+      "source_results": [
+        {
+          "index": 0,
+          "kind": "result",
+          "owner_ordinal": 10,
+          "type": "tensor<3x47xi8>"
+        }
+      ]
+    },
+    {
+      "adapter_declaration": {
+        "bytes": 97,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-2-adapter.mlir",
+        "sha256": "539026391655fad7ea726f53697540a23708a9f07626ae2a9dce3d561da2e280"
+      },
+      "index": 2,
+      "input_indices": [
+        -1,
+        3
+      ],
+      "instruction": "multiply",
+      "scalar_source": {
+        "bytes": 274,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-2-source.mlir",
+        "sha256": "146fdd3158ef99eb6ee52b1b57512078a4fcc6dd8c8d1b301deafcda6908757e"
+      },
+      "selected_declaration": {
+        "bytes": 97,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/actual-i8/stage-2-selected.mlir",
+        "sha256": "539026391655fad7ea726f53697540a23708a9f07626ae2a9dce3d561da2e280"
+      },
+      "semantic_role": "('multiply', 1, 0, 5, 0, 7)",
+      "source_operands": [
+        {
+          "index": 0,
+          "kind": "result",
+          "owner_ordinal": 6,
+          "type": "tensor<3x47xi8>"
+        },
+        {
+          "index": 1,
+          "kind": "argument",
+          "owner_ordinal": 1,
+          "type": "tensor<3x47xi8>"
+        },
+        {
+          "index": 0,
+          "kind": "result",
+          "owner_ordinal": 5,
+          "type": "tensor<3x47xi8>"
+        }
+      ],
+      "source_operation_ordinal": 13,
+      "source_results": [
+        {
+          "index": 0,
+          "kind": "result",
+          "owner_ordinal": 13,
+          "type": "tensor<3x47xi8>"
+        }
+      ]
+    }
+  ]
+}

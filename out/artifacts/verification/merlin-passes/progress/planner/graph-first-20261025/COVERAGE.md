@@ -28,7 +28,7 @@ row batching, recomputation, connected regions and host/runtime binding.
 
 | Family | Current honest status |
 | --- | --- |
-| Logical region/fusion and observers | Qualified logical complete-context result; physical implementation contract remains explicit. Active declaration/call task derives finer local correspondence from actual provider declarations and calls. |
+| Logical region/fusion and observers | Qualified logical complete-context result plus historical declared-call v1 qualification:46 originals and one fresh replay batch, two actual typed boundaries. Per-instruction/packing/ABI/Action contracts remain explicit. Stronger ABI/full-after-effect wrapper is UNQUALIFIED after pre-oracle stale-host-reference gate; no fresh replay. Source-only capture/closure work continues. |
 | Configuration hoisting / effect exchanges | Qualified conditional StateEffects packets and actual two-pass chains. Locality/effect/alias/completion contracts and host projection remain review obligations. |
 | Configuration elimination | Source/diagnostic candidate UNQUALIFIED after fifth original Lean SIGSEGV; zero qualified originals/replays. Do not count94 passing tests as qualification. |
 | Source tensor→graph bridge | PARTIAL/UNQUALIFIED after external Std.Time.Format.Basic binding discrepancy, despite53 passing corrected tests. No silent promotion or numerical/native admission. |
@@ -48,3 +48,16 @@ until their binding/audit/qualification completes. Shape normalization is the
 loop worker's next whole-boundary graph task.
 All-graph, numerical, native, full-pass/pipeline/model and policy approval flags
 remain false. Publication is source delivery, not semantic approval.
+
+## Frontend host-gate observation
+
+The stronger declaration wrapper failed at the first i8 MLIR-full host freshness
+check BEFORE its oracle invocation. The exact stale reference and cause are
+UNKNOWN; the error did not retain that identity. A single owner comparison found
+no current mismatches; the coordinator did not repeat it or run the failed
+profile. The original46-case v1 seal remains historical, not a live new
+attestation. New stronger-wrapper dependent failures are not semantic refusals.
+F continues additive source-only proof/binding work; execution/qualification is
+held pending honestly established context. Other workers retain their own
+explicit fixed bindings; this observation does not establish global toolchain
+innocence or invalidate every unrelated artifact.

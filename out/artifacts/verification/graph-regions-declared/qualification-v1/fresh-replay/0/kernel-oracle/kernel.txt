@@ -1,0 +1,4 @@
+kernel retained_producer(input0: i8[3,47] read, input1: i8[3,47] read, input2: i8[3,47] read, input3: i8[3,47] read, output0: i8[3,47] write, output1: i8[3,47] write)
+  produce(n=141, a=2, ao=0, b=3, bo=0, c=4, co=0, dst=0, out=0, width=1)
+  add(n=141, a=0, ao=0, b=5, bo=0, c=0, co=0, dst=6, out=0, width=1)
+  multiply(n=141, a=0, ao=0, b=5, bo=0, c=0, co=0, dst=7, out=0, width=1)

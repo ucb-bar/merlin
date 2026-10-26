@@ -1,0 +1,1298 @@
+{
+  "detail": {
+    "exporter": {
+      "bytes": 11821,
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/mlir_export.py",
+      "sha256": "8a00b918597f110a806fb5bba957bd074d7dd494a5f82d54d78321df5f5633b6"
+    },
+    "version": "20261001"
+  },
+  "host": {
+    "configuration": {
+      "bytes": 172,
+      "path": "/home/jeremy/Projects/model2MLIR/.venv/pyvenv.cfg",
+      "sha256": "96a360f13f418fcef35eda79c869be1ba7883f32bcad1617ec6853c87853b123"
+    },
+    "mapped": {
+      "/etc/ld.so.cache": {
+        "bytes": 155599,
+        "path": "/etc/ld.so.cache",
+        "sha256": "2d739a1197d8c4afff46bc417f7ebfbdeea443ee63f35a9770685b7ddebb5bfc"
+      },
+      "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12": {
+        "bytes": 30913848,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+        "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy.libs/libgfortran-83c28eba-468e71e5.so.5.0.0": {
+        "bytes": 2862249,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy.libs/libgfortran-83c28eba-468e71e5.so.5.0.0",
+        "sha256": "a6a368328d02a5d8a149746f13f6268f8cc9192df5c18777b25c3c9b5ef52160"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy.libs/libquadmath-2284e583-a9307bba.so.0.0.0": {
+        "bytes": 275553,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy.libs/libquadmath-2284e583-a9307bba.so.0.0.0",
+        "sha256": "6bc3069003caec1f075be3c51ae8355332f081fa9465910c4b5724e7fe7d8ad4"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy.libs/libscipy_openblas64_-f48b354e.so": {
+        "bytes": 24325657,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy.libs/libscipy_openblas64_-f48b354e.so",
+        "sha256": "432e1c1739731468ba305771af96773939e43016643e2d630f58cb45b6670e96"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_multiarray_umath.cpython-312-x86_64-linux-gnu.so": {
+        "bytes": 10637297,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_multiarray_umath.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "b185dfe64b07180bedc7c15fb2735b0d0f4f4e09eb9c15bd8e67f74568aebcbf"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/linalg/_umath_linalg.cpython-312-x86_64-linux-gnu.so": {
+        "bytes": 235897,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/linalg/_umath_linalg.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "2e075f582c3a25a21fe97a55931a0fdb22ceb84f4fce8203a5040d405ccf65ce"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so": {
+        "bytes": 288336,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so",
+        "sha256": "c4b3095b8748e6de5e70907cfdb7b6c3c1c12cfee442c2f8ecb165e3e8dddb1e"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlirRegisterEverything.abi3.so": {
+        "bytes": 19216,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlirRegisterEverything.abi3.so",
+        "sha256": "a2453367bb2d84dbb5b56d8c3af9b2f5034d72790744168a556fae7d05daa63a"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libMLIRPythonSupport-torch_mlir.so": {
+        "bytes": 2768928,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libMLIRPythonSupport-torch_mlir.so",
+        "sha256": "6eae5c6ffd7e16201c58c3ff717a236e9dcb5cfa5b55a74af9d5286925a4e77b"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libTorchMLIRAggregateCAPI.so": {
+        "bytes": 215428112,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libTorchMLIRAggregateCAPI.so",
+        "sha256": "d7a5eed64bf28faa1e41c396d3d29015f3d09064cf50a6759fe107961ef6057e"
+      },
+      "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libnanobind-abi3-torch_mlir.so": {
+        "bytes": 210568,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libnanobind-abi3-torch_mlir.so",
+        "sha256": "b0fed6e1bd2eff4a60c1f5c82a49e781e13c609a5b1b766015b3d87b97184d22"
+      },
+      "/usr/lib/gconv/gconv-modules.cache": {
+        "bytes": 27010,
+        "path": "/usr/lib/gconv/gconv-modules.cache",
+        "sha256": "0fde9bfd93c2ac83b23f0ab2e89f438be92f3c368247410eff58ccc847d7a783"
+      },
+      "/usr/lib/ld-linux-x86-64.so.2": {
+        "bytes": 263152,
+        "path": "/usr/lib/ld-linux-x86-64.so.2",
+        "sha256": "d011113b7054c641c8ca064f58bcc23804fd2654a3dff2444dad06ddeda61bfb"
+      },
+      "/usr/lib/libc.so.6": {
+        "bytes": 2215072,
+        "path": "/usr/lib/libc.so.6",
+        "sha256": "e221b10fee9ee4776d8f0f1701253bc06817f7a4dbe6c5292487277d0bf8ffff"
+      },
+      "/usr/lib/libdl.so.2": {
+        "bytes": 14352,
+        "path": "/usr/lib/libdl.so.2",
+        "sha256": "9b3812e7f6b766e2d0a1d9eeca1a58c1272392859e8b04f708b2f86b2256d03c"
+      },
+      "/usr/lib/libgcc_s.so.1": {
+        "bytes": 182512,
+        "path": "/usr/lib/libgcc_s.so.1",
+        "sha256": "e618cb9c90c2eb3a1dad1cfea5b6c1eebcf2e799ad805976f4ae47bdd61c716a"
+      },
+      "/usr/lib/libm.so.6": {
+        "bytes": 1268336,
+        "path": "/usr/lib/libm.so.6",
+        "sha256": "965106704753eefe8c31ae7da6daba3ead3d18c52b19b5fcc41178bcc4aa999d"
+      },
+      "/usr/lib/libpthread.so.0": {
+        "bytes": 14360,
+        "path": "/usr/lib/libpthread.so.0",
+        "sha256": "839b91403f89fa4c6888d50deb2b59cd0612f8cfe3d57dd9d6314832b4cb31ab"
+      },
+      "/usr/lib/librt.so.1": {
+        "bytes": 14424,
+        "path": "/usr/lib/librt.so.1",
+        "sha256": "e06e12b8a78494908d08376838c380fb3817bfd7d54f6a86ef050016f7ade5f8"
+      },
+      "/usr/lib/libstdc++.so.6.0.36": {
+        "bytes": 2939928,
+        "path": "/usr/lib/libstdc++.so.6.0.36",
+        "sha256": "f5fc7380f2ae46fa4053a64be04e7b98109f1066a4bbfff3c37042488aa0be0e"
+      },
+      "/usr/lib/libutil.so.1": {
+        "bytes": 14352,
+        "path": "/usr/lib/libutil.so.1",
+        "sha256": "8c2cbf01f52acb42478b9ab10506af9878b7e8d47aefacc8896bb5b37384c222"
+      },
+      "/usr/lib/libz.so.1.3.2": {
+        "bytes": 104464,
+        "path": "/usr/lib/libz.so.1.3.2",
+        "sha256": "9ba92a0b85dc9b659e8f5e596a69452cec801def6ece0883a8a2c1f032e52397"
+      },
+      "/usr/lib/locale/C.utf8/LC_CTYPE": {
+        "bytes": 369120,
+        "path": "/usr/lib/locale/C.utf8/LC_CTYPE",
+        "sha256": "40680545df4f92443c15e7c6f51a7fdc9154ebedd9eff1ed5c48437039add365"
+      },
+      "/usr/lib/locale/locale-archive": {
+        "bytes": 3064432,
+        "path": "/usr/lib/locale/locale-archive",
+        "sha256": "7bf2da63b17127e5976936957419603a8b057f606dcf56de1e81e9256ad06a32"
+      }
+    },
+    "modules": {
+      "__editable___m2m_0_0_1_finder": {
+        "bytes": 3379,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/__editable___m2m_0_0_1_finder.py",
+        "sha256": "2702fcf560e3586c9dc3f2170391aa744dfe692e79546eede70399662a2149fd"
+      },
+      "__future__": {
+        "bytes": 5218,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/__future__.py",
+        "sha256": "981d4c398849f9ebcab72300d9c1fe288fd6d7f28957b3b3fa3a493a5836d95c"
+      },
+      "__main__": {
+        "bytes": 4233,
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_oracle.py",
+        "sha256": "c39c16d4c220457c3aabc3a57372e409556ff62d092e8e9de1a12d82c2405c34"
+      },
+      "_collections_abc": {
+        "bytes": 32089,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/_collections_abc.py",
+        "sha256": "d4945c8410c4bab351741b04bca3de066f7c27ed7e38df89e206a96617102ffb"
+      },
+      "_compat_pickle": {
+        "bytes": 8761,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/_compat_pickle.py",
+        "sha256": "12c8356a3d40bd0a336f13d7c6e2bed50d5c1a876563766a3175a6b328b5855e"
+      },
+      "_compression": {
+        "bytes": 5681,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/_compression.py",
+        "sha256": "3ad5d60627477a60939ee44fc1bb3a05dbe8fb52f0f75039b8f5d8f1a278b981"
+      },
+      "_distutils_hack": {
+        "bytes": 6800,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/_distutils_hack/__init__.py",
+        "sha256": "ced72e54431ecf2d8d7dbd8a1e27724f1b171af3ca1503c304bf11c59a7fe861"
+      },
+      "_frozen_importlib": {
+        "bytes": 57057,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/_bootstrap.py",
+        "sha256": "d112d54b7831cf4a818d4841d5ff8003b54df220a6dabafa61f67d7c7a5603f7"
+      },
+      "_frozen_importlib_external": {
+        "bytes": 69428,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/_bootstrap_external.py",
+        "sha256": "e6ad72f3f0f9b65c99ab52598cd02ab748511dcdce1dd51f18dace9be9a680c6"
+      },
+      "_sitebuiltins": {
+        "bytes": 3128,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/_sitebuiltins.py",
+        "sha256": "b9388bc1d6d12ed6be12da420ab1feca40f99c0e33ec315d92b1e01cb69b25bc"
+      },
+      "_virtualenv": {
+        "bytes": 5246,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/_virtualenv.py",
+        "sha256": "cfb3db86aaa53bb62b5ff764970bec2d71c9228590a0ebec57f6ec926cc0bf1a"
+      },
+      "_weakrefset": {
+        "bytes": 5893,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/_weakrefset.py",
+        "sha256": "91895a451d06e9f521a1171b31b9b19bc9740f35af00d4fa106338ab7167c9ac"
+      },
+      "abc": {
+        "bytes": 6538,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/abc.py",
+        "sha256": "e558702a95cdce3febd289da021715d2b92bc43995b8a1bc58dfa1c3d8010287"
+      },
+      "argparse": {
+        "bytes": 101155,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/argparse.py",
+        "sha256": "7cc582dcb3b76e2c957f78a3f74e9809d6c311d6aab7bcaa2c9954d0cbff5f30"
+      },
+      "ast": {
+        "bytes": 64452,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/ast.py",
+        "sha256": "b515c23dbbc459329d3b802a3aac742cc456d7472e66f7ed6e9dc97e40596d7d"
+      },
+      "base64": {
+        "bytes": 20635,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/base64.py",
+        "sha256": "8d1f608dbf030d11d6ec4df9e4c55b73fb68cdfbd9f53a7c91684a93b55564b5"
+      },
+      "bisect": {
+        "bytes": 3423,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/bisect.py",
+        "sha256": "f1cf7b85fc36b5da249813fc5ab97d9464f8cc1bc817f7146206fa2713e35999"
+      },
+      "bz2": {
+        "bytes": 11847,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/bz2.py",
+        "sha256": "76ab3252924e71e859d7d90e8d3db13b6554975cfcac0fdadced4de7f8779330"
+      },
+      "calendar": {
+        "bytes": 25864,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/calendar.py",
+        "sha256": "0010004d32c694e4afa554db2434952040819c09c438e88d465dcf6d9fb63718"
+      },
+      "codecs": {
+        "bytes": 36870,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/codecs.py",
+        "sha256": "7b7839e53a77961153240aecfe11edc8054d05b1dedd83894450dae21ec05785"
+      },
+      "collections": {
+        "bytes": 52378,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/collections/__init__.py",
+        "sha256": "7fdb04dd248ab37909f46d2085bfee56b32d7e91e49ad3a2fad99c453295659b"
+      },
+      "collections.abc": {
+        "bytes": 119,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/collections/abc.py",
+        "sha256": "9cb4208f99128a0489b6c8e6c61637617dd7d4250c59e065491957eda084dd10"
+      },
+      "contextlib": {
+        "bytes": 27637,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/contextlib.py",
+        "sha256": "8b7a477f978a8532852fd81e241c78182516bc4975d672d580a5848a76e11eb6"
+      },
+      "contextvars": {
+        "bytes": 129,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/contextvars.py",
+        "sha256": "5ed260be8d1f4fe92261b7810b4bb1e8539c42093d7493f677d076e1a87f459a"
+      },
+      "copyreg": {
+        "bytes": 7614,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/copyreg.py",
+        "sha256": "c8eda41f05c6bf95a4da4726a530409d2485ae060b8d019b3a8034389a15d3e9"
+      },
+      "csv": {
+        "bytes": 17132,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/csv.py",
+        "sha256": "2fd2a39ec59a5cbcd71596a93205001e593c65dc2ca3bef6028f148372028a88"
+      },
+      "ctypes": {
+        "bytes": 18268,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/ctypes/__init__.py",
+        "sha256": "e048845f8f5c14a5fc873526a27da4a19d4eed25ab2f2a01fa6e0b79faca78d0"
+      },
+      "ctypes._endian": {
+        "bytes": 2535,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/ctypes/_endian.py",
+        "sha256": "c5d692bdce10dfee242752620061bab684633bc72445a3def484961ef1bdbf3a"
+      },
+      "datetime": {
+        "bytes": 268,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/datetime.py",
+        "sha256": "ef20dc6b3554cd585dddffdc573f1f9a7a54c522f2a3fb4576c44edbb1e14238"
+      },
+      "dis": {
+        "bytes": 30227,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/dis.py",
+        "sha256": "44c0b389c96124d8fb5cb0bc41c7a2aa7a6848ef4001b4000dcbd858efa4a1a2"
+      },
+      "email": {
+        "bytes": 1764,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/__init__.py",
+        "sha256": "e4f46e3414c4602c9abb8b404a45e84412fc49dbe38a3d163f9575132dc7c93e"
+      },
+      "email._encoded_words": {
+        "bytes": 8541,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/_encoded_words.py",
+        "sha256": "4178321600c0a19ca04cfe8542ce44487f339d15d89a473b58cea63c0b230217"
+      },
+      "email._parseaddr": {
+        "bytes": 17821,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/_parseaddr.py",
+        "sha256": "4308932872acbf4a674312a45a49b870e48026e3dfedc878ee2f512ddf2f30ba"
+      },
+      "email._policybase": {
+        "bytes": 15535,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/_policybase.py",
+        "sha256": "284be073d7fe99d1021958e6dbeefe4c98a6c00021ea465d01aac71338d1579f"
+      },
+      "email.base64mime": {
+        "bytes": 3551,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/base64mime.py",
+        "sha256": "e2b4b87a5f42a8c5780e343f675513bbcc6abdd23fa14f8f1a7d4f7d72304770"
+      },
+      "email.charset": {
+        "bytes": 17063,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/charset.py",
+        "sha256": "a90653f13a4dc5eb3205079dda1d62561a8bf9a7b45585f5dbf90aa31a966680"
+      },
+      "email.encoders": {
+        "bytes": 1778,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/encoders.py",
+        "sha256": "690b275529788cc48e8f541a2aef321dc31e92f75764ac7924896db72d8a9555"
+      },
+      "email.errors": {
+        "bytes": 3814,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/errors.py",
+        "sha256": "dbfb4bbfc85e9d556d3385dc6356518846d8a122bc643b171ea61b6e8dc42c8b"
+      },
+      "email.feedparser": {
+        "bytes": 22796,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/feedparser.py",
+        "sha256": "6046239fcdd6977d1c25841581cabedaeec8046cc5fedcb8ff2d6450a36442bd"
+      },
+      "email.header": {
+        "bytes": 24092,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/header.py",
+        "sha256": "4d9baa908ad5288dd8fad8cf20b3802ffac77ba1642727804a633b201c56e5ca"
+      },
+      "email.iterators": {
+        "bytes": 2129,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/iterators.py",
+        "sha256": "1080a2d03779176d6d45f6ecd976dbe69f5579f7e4e83b75224c3f92fd258102"
+      },
+      "email.message": {
+        "bytes": 48396,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/message.py",
+        "sha256": "ba32efea2602ea52e73028a2817afddccccacc4385b9800896556d5c22db2b90"
+      },
+      "email.parser": {
+        "bytes": 4975,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/parser.py",
+        "sha256": "88890ea9994c55ff7d6c1fd570fece2785f51ed407ee95df4aff946e250bcd66"
+      },
+      "email.quoprimime": {
+        "bytes": 9864,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/quoprimime.py",
+        "sha256": "77b454bd3ba3b5e3776be28ae3a0fd8de5d1e50d5b8ee10dd539c37c2bd68082"
+      },
+      "email.utils": {
+        "bytes": 16071,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/email/utils.py",
+        "sha256": "65d259aded3b7d29609d320decdb59cb0a0f7f0e5c453e1d3c380e8a4a5d61c9"
+      },
+      "encodings": {
+        "bytes": 5884,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/encodings/__init__.py",
+        "sha256": "78c4744d407690f321565488710b5aaf6486b5afa8d185637aa1e7633ab59cd8"
+      },
+      "encodings.aliases": {
+        "bytes": 15677,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/encodings/aliases.py",
+        "sha256": "6fdcc49ba23a0203ae6cf28e608f8e6297d7c4d77d52e651db3cb49b9564c6d2"
+      },
+      "encodings.utf_8": {
+        "bytes": 1005,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/encodings/utf_8.py",
+        "sha256": "ba0cac060269583523ca9506473a755203037c57d466a11aa89a30a5f6756f3d"
+      },
+      "encodings.utf_8_sig": {
+        "bytes": 4133,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/encodings/utf_8_sig.py",
+        "sha256": "1ef3da8d8aa08149e7f274dc64dbfce2155da812e5258ca8e8f832428d3b5c2d"
+      },
+      "enum": {
+        "bytes": 81540,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/enum.py",
+        "sha256": "f35e542d8c4c1d2b5e910138d726fa48774925f3c4dc5462793ebcb66aa55501"
+      },
+      "fnmatch": {
+        "bytes": 5999,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/fnmatch.py",
+        "sha256": "6683da36e47af523f3f41e18ad244d837783e19e98911cc0b7415dea81494ebc"
+      },
+      "functools": {
+        "bytes": 37940,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/functools.py",
+        "sha256": "de4a1d37c795e2a065124b5c49357893433bc6bb111b41277ccc9930ef08d4c9"
+      },
+      "genericpath": {
+        "bytes": 5572,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/genericpath.py",
+        "sha256": "2b0b35d2206778af4081cf81dd9b513876e72c35a55bec941402e1fa62b1f1aa"
+      },
+      "gettext": {
+        "bytes": 21320,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/gettext.py",
+        "sha256": "a5c249a522b6b8e3aa6f1b12a8bcc09508b99ad612b58d2fc973db27ea3b7cc3"
+      },
+      "hashlib": {
+        "bytes": 9349,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/hashlib.py",
+        "sha256": "6dbdebf270868b391080e21dc9687eddfaf321c965ad979f68d3f5c423c613ab"
+      },
+      "importlib": {
+        "bytes": 4784,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/__init__.py",
+        "sha256": "d540b5ac137fcb3e26a8d5f2939649e34373c6685f98a30a9f682cf231be5854"
+      },
+      "importlib._abc": {
+        "bytes": 1354,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/_abc.py",
+        "sha256": "80aab7931dc999dee581c8b8b56fcd973fe156335a96ceeaf6acfc03cebf10e8"
+      },
+      "importlib._bootstrap": {
+        "bytes": 57057,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/_bootstrap.py",
+        "sha256": "d112d54b7831cf4a818d4841d5ff8003b54df220a6dabafa61f67d7c7a5603f7"
+      },
+      "importlib._bootstrap_external": {
+        "bytes": 69428,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/_bootstrap_external.py",
+        "sha256": "e6ad72f3f0f9b65c99ab52598cd02ab748511dcdce1dd51f18dace9be9a680c6"
+      },
+      "importlib.abc": {
+        "bytes": 7612,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/abc.py",
+        "sha256": "5f9cb36ca1bce9d5df00bc8d4d7f46b7ea2353dfa99292ad7f099affddfb5d03"
+      },
+      "importlib.machinery": {
+        "bytes": 880,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/machinery.py",
+        "sha256": "d045cd7ecf2a12b6ecbfbef79eb114e87ef2ebd756f5b705f73e6f3266e3dede"
+      },
+      "importlib.metadata": {
+        "bytes": 28757,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/metadata/__init__.py",
+        "sha256": "1a26dfee8cb302b729501e944626f77e2cbcc4675038f3d18c2d8534751b3e8b"
+      },
+      "importlib.metadata._adapters": {
+        "bytes": 2406,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/metadata/_adapters.py",
+        "sha256": "de9a880abc4513af1b69ce150cd5a5093201c39131717cdc2ba6b19f4364c163"
+      },
+      "importlib.metadata._collections": {
+        "bytes": 743,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/metadata/_collections.py",
+        "sha256": "089d0e4c21c88d6034648552e2fa0e440b27d91e11d9c40112d3ec6442690126"
+      },
+      "importlib.metadata._functools": {
+        "bytes": 2895,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/metadata/_functools.py",
+        "sha256": "3ec636fb8aeb297e1155e442d681a9d65075a660bd78a37cf3f7fe6c3f6e3a80"
+      },
+      "importlib.metadata._itertools": {
+        "bytes": 2068,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/metadata/_itertools.py",
+        "sha256": "72faffdaff0145bc5c225e71e6575fa9d1e3848f188bcb3cca4e741bf9e6ea34"
+      },
+      "importlib.metadata._meta": {
+        "bytes": 1590,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/metadata/_meta.py",
+        "sha256": "bd3504040497cd049e6b529bde0b461f63cd2be3070f2d0815d4dd7609b266c8"
+      },
+      "importlib.metadata._text": {
+        "bytes": 2166,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/metadata/_text.py",
+        "sha256": "1c2b0592c66924b7933f734493f9e0ac079755146d4ebb7287d78e001a113f80"
+      },
+      "importlib.resources": {
+        "bytes": 532,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/resources/__init__.py",
+        "sha256": "4146e1d00d56a783d4087f15257f0c284fae52e71fa3f20613fa268d911bf6d5"
+      },
+      "importlib.resources._adapters": {
+        "bytes": 4482,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/resources/_adapters.py",
+        "sha256": "be9ac919b51e1db6a35fa5c2b8c3fa27794caea0a2f8ffcc4e5ce225447b8df9"
+      },
+      "importlib.resources._common": {
+        "bytes": 5486,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/resources/_common.py",
+        "sha256": "a0de4a899a2aa787b052f92f516b39f80b183c3f0d409d1305cc6dc374f18870"
+      },
+      "importlib.resources._legacy": {
+        "bytes": 2949,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/resources/_legacy.py",
+        "sha256": "79c566fdf1a61129683e38e8c11a660d6233dd84422456ae5dd230e658a7857f"
+      },
+      "importlib.resources.abc": {
+        "bytes": 5203,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/resources/abc.py",
+        "sha256": "a726c48590b21ba5532f0c654735991571bc0ecafe88145cb8891d82cd364e5e"
+      },
+      "importlib.util": {
+        "bytes": 10994,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/importlib/util.py",
+        "sha256": "671f2995653f673f6d5056a1089debef473bc28ae7114f7a8db71475733d6876"
+      },
+      "inspect": {
+        "bytes": 127125,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/inspect.py",
+        "sha256": "5c54ebf0bfdc25397750e5d0f63800751650ee50e65325ff3ea4069c9bfa5f75"
+      },
+      "io": {
+        "bytes": 3582,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/io.py",
+        "sha256": "7cec3cb8ac004058dd0a5af246e6d950fb59c7ddd0058fda48bcb3fcb98d8822"
+      },
+      "ipaddress": {
+        "bytes": 81414,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/ipaddress.py",
+        "sha256": "ba8d3389ff084fcb232b48204ec04f2b3ea4bd0eadf7b18c814947d185de2c64"
+      },
+      "json": {
+        "bytes": 14020,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/json/__init__.py",
+        "sha256": "d5d41e2c29049515d295d81a6d40b4890fbec8d8482cfb401630f8ef2f77e4d5"
+      },
+      "json.decoder": {
+        "bytes": 12525,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/json/decoder.py",
+        "sha256": "382cd02af6f7efede5a6d4abbcda1015e5c7a75794b0016022878f9cf32a24f6"
+      },
+      "json.encoder": {
+        "bytes": 16075,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/json/encoder.py",
+        "sha256": "52bfb1b66029cc70fa3bd7fe11df9f2e03922d413407a341b387a22c987f24f8"
+      },
+      "json.scanner": {
+        "bytes": 2434,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/json/scanner.py",
+        "sha256": "572958017eae8842eeddd0e3d18d3c56cc0a197348224915e1d87ce937841764"
+      },
+      "keyword": {
+        "bytes": 1073,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/keyword.py",
+        "sha256": "18c2be738c04ad20ad375f6a71db34b3823c7f40b0340f5294d0e89f3c9b093b"
+      },
+      "linecache": {
+        "bytes": 5800,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/linecache.py",
+        "sha256": "9eb9194707991b49f9fea67a5222b0e6a0e49c865cdffc69fbc80a1f829e77fb"
+      },
+      "locale": {
+        "bytes": 78599,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/locale.py",
+        "sha256": "3988c5419552d5b9f0bef3695102376f79357f0f440e9cd1f32c501f966e6ef3"
+      },
+      "logging": {
+        "bytes": 83437,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/logging/__init__.py",
+        "sha256": "43f86bbc08fdd5c7b6e697abffe1381f534a92bb32e1f1aee8360d6a142592a1"
+      },
+      "lzma": {
+        "bytes": 13277,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/lzma.py",
+        "sha256": "58fb9d2fdc8a8af7b25e218f17ea3b51bdfa53bdf40f440ab33c605974ca5c2e"
+      },
+      "ntpath": {
+        "bytes": 30404,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/ntpath.py",
+        "sha256": "6c0d55ee892f98ef87b1ed3c50c9dfc7e267a98d2db47e08d3dc67529af56725"
+      },
+      "numbers": {
+        "bytes": 11467,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/numbers.py",
+        "sha256": "ac381960a3dc1db0498b0bd43d8ef278d6599713121a186b153ff09d9552e0db"
+      },
+      "numpy": {
+        "bytes": 25220,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/__init__.py",
+        "sha256": "09295a80660f17925ae23765ce8cbd7ff7ceae968d5f2f89349f1cb74c0b9e11"
+      },
+      "numpy.__config__": {
+        "bytes": 5196,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/__config__.py",
+        "sha256": "97e0a7833f258e52f44ee156d422aa1659186490c0979f4b05cf2f3adf531ed5"
+      },
+      "numpy._array_api_info": {
+        "bytes": 10515,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_array_api_info.py",
+        "sha256": "4332889405b9c5b4f946d761086346f58c0acb82bbfb5f9180b30d5520b5c972"
+      },
+      "numpy._core": {
+        "bytes": 6662,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/__init__.py",
+        "sha256": "837ce8aec8693095d2e1c7c306d385d1785a50be97a009935c64cae04e3555d2"
+      },
+      "numpy._core._add_newdocs": {
+        "bytes": 215165,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_add_newdocs.py",
+        "sha256": "2fc06f2d919b16afc1e1f1abdb161bdce9eedafe3e07f127bb0f45b0841964c6"
+      },
+      "numpy._core._add_newdocs_scalars": {
+        "bytes": 12933,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_add_newdocs_scalars.py",
+        "sha256": "db6f2b889f9dcfd7d5df64ef3a430f532b3fdbfc279c3b94f8451b1757a16efb"
+      },
+      "numpy._core._asarray": {
+        "bytes": 3894,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_asarray.py",
+        "sha256": "f5aa779032cd51c8ca49039fae454fcebd2d64647513576d0884ff61e68525d2"
+      },
+      "numpy._core._dtype": {
+        "bytes": 10514,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_dtype.py",
+        "sha256": "59a285cabfcef070f8c3e6eaa15c1d4fde4791983e374e275944fd638c11f926"
+      },
+      "numpy._core._dtype_ctypes": {
+        "bytes": 3726,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_dtype_ctypes.py",
+        "sha256": "28f3e56a40ec3e4b938523abe6a1705b48c9f559e36ef5b811684e6c21d81881"
+      },
+      "numpy._core._exceptions": {
+        "bytes": 5159,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_exceptions.py",
+        "sha256": "5fc120d61ab5b94f0bf7088ec05a368d1aba4b4be78c27606051e3de1016f42a"
+      },
+      "numpy._core._internal": {
+        "bytes": 29401,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_internal.py",
+        "sha256": "497f1ce325bcc6ffc2ccf013e2cdd2ff2e32c55106a0a07997213d45d6c777a0"
+      },
+      "numpy._core._methods": {
+        "bytes": 9393,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_methods.py",
+        "sha256": "724facf7e63c5b8fcc2fac14bf31a02cb048d9e28f516d86502ba5077a425476"
+      },
+      "numpy._core._multiarray_umath": {
+        "bytes": 10637297,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_multiarray_umath.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "b185dfe64b07180bedc7c15fb2735b0d0f4f4e09eb9c15bd8e67f74568aebcbf"
+      },
+      "numpy._core._string_helpers": {
+        "bytes": 2845,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_string_helpers.py",
+        "sha256": "e929a0a22ea80f60ae9e3c014abf41676d079029ef5ba9d33db953394de95a78"
+      },
+      "numpy._core._type_aliases": {
+        "bytes": 3797,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_type_aliases.py",
+        "sha256": "fd576d1516aca4b752b374a3b448f03a9acc6b748243dd72f89619f7b300344d"
+      },
+      "numpy._core._ufunc_config": {
+        "bytes": 15611,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/_ufunc_config.py",
+        "sha256": "0e938bb63600619bfe9028e8f285f9ddcd925b62d0220690ec4a650a48ac45a5"
+      },
+      "numpy._core.arrayprint": {
+        "bytes": 65695,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/arrayprint.py",
+        "sha256": "ea1e7577acc4048383d842a628827e33dc544f06842ab5848b3ee3bb298eaea2"
+      },
+      "numpy._core.einsumfunc": {
+        "bytes": 57834,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/einsumfunc.py",
+        "sha256": "4b4fc2d54ebe6b533f680fde2fa468d30449c2d44afc73041b6debb6e302dedf"
+      },
+      "numpy._core.fromnumeric": {
+        "bytes": 143960,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "sha256": "09b04d56271fa78c43f6aca66ec06c802b0b22b026ae2fa6153575459b6dab53"
+      },
+      "numpy._core.function_base": {
+        "bytes": 19689,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/function_base.py",
+        "sha256": "97925f5f2a271088cbff838a149a6312335d8dac80ac0314f0c85a31b442c1b5"
+      },
+      "numpy._core.getlimits": {
+        "bytes": 14614,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/getlimits.py",
+        "sha256": "ec0927f602302ef9b449f2773151deaab480cb5ad8eff4c8bbba59e489daf106"
+      },
+      "numpy._core.memmap": {
+        "bytes": 12638,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/memmap.py",
+        "sha256": "9f79da21b64da6722a66cc86e126061b33371ad66139314580de483a0ebc254c"
+      },
+      "numpy._core.multiarray": {
+        "bytes": 56885,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/multiarray.py",
+        "sha256": "afd14181b927aa10800a0c5dab5f456f52e219726847dbef379e313419029d49"
+      },
+      "numpy._core.numeric": {
+        "bytes": 80583,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/numeric.py",
+        "sha256": "feb150554b4879d4df7bd0a4ab7b1a6b818de7ba994ed0c73583fee177533417"
+      },
+      "numpy._core.numerictypes": {
+        "bytes": 14816,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/numerictypes.py",
+        "sha256": "de7be532bd85cff56ad4e29786d76ec5bf2d511f7e364919bdd7cb0ad93ad3a8"
+      },
+      "numpy._core.overrides": {
+        "bytes": 7478,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/overrides.py",
+        "sha256": "88cf63f86be1eba2a303d221f011af2077194d819c06a10c725f01c939afe4ca"
+      },
+      "numpy._core.printoptions": {
+        "bytes": 1056,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/printoptions.py",
+        "sha256": "345a6fcb96e78dbbea9ca7aa42dd2f784131a400180153688865c7de98255807"
+      },
+      "numpy._core.records": {
+        "bytes": 37264,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/records.py",
+        "sha256": "f6c0878df1c604fda7043d738e8b2bb54d8f771ceffa92b81236407a99475df5"
+      },
+      "numpy._core.shape_base": {
+        "bytes": 32712,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/shape_base.py",
+        "sha256": "1d6e897dfdb7edf2d71e8ed75254a6e7106b1a947592f88d91af96d1ad2c469e"
+      },
+      "numpy._core.umath": {
+        "bytes": 2117,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_core/umath.py",
+        "sha256": "fabc529bdfcc632ae82bcaaa5539494802757e5a52c492999e2ebfe10f396987"
+      },
+      "numpy._distributor_init": {
+        "bytes": 421,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_distributor_init.py",
+        "sha256": "14148976054795071ae41ad011560fa059ba2924c98481675ad59b1241214d2a"
+      },
+      "numpy._expired_attrs_2_0": {
+        "bytes": 3775,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_expired_attrs_2_0.py",
+        "sha256": "a6cf0f96202d89f172abe6ad706fe252ba7672ee35091722bd70870c83a0426f"
+      },
+      "numpy._globals": {
+        "bytes": 4156,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_globals.py",
+        "sha256": "fe13921c6f4a00bd12891da7d800f2a42f878c067d8ed881ddf0af3fbace3a36"
+      },
+      "numpy._pytesttester": {
+        "bytes": 5658,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_pytesttester.py",
+        "sha256": "cc2729e50688028a9aeedb131b2a12c0480f3477cc1c0e84be7f5d4177164002"
+      },
+      "numpy._typing": {
+        "bytes": 4597,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/__init__.py",
+        "sha256": "23712a130b95f1134c0e93988ee72abe6c1015180277768ac13bae4fe1c8f59b"
+      },
+      "numpy._typing._array_like": {
+        "bytes": 3391,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_array_like.py",
+        "sha256": "5c9d8a290c4d76fe7e85f4367f21fdc33f40eed80b44f66d6378629fb4271bf8"
+      },
+      "numpy._typing._char_codes": {
+        "bytes": 6562,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_char_codes.py",
+        "sha256": "c1ad22e8a3fb2405b257e8bdb303a07ff0a923ab23f7175bf5af3b6b62316bd1"
+      },
+      "numpy._typing._dtype_like": {
+        "bytes": 3706,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_dtype_like.py",
+        "sha256": "060ecb1f4c35793a8a3b4fe200cb1151b51b7d17fc2e53ac7699da4271752bc7"
+      },
+      "numpy._typing._nbit": {
+        "bytes": 536,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_nbit.py",
+        "sha256": "9a353bc8328b57ad47a79fbe36eae4c48272b136a7307df7b70e5ae2e725a284"
+      },
+      "numpy._typing._nbit_base": {
+        "bytes": 3014,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_nbit_base.py",
+        "sha256": "496ed60d5b3b711b201c21e1608c9f2e3f4757f0173f85ffd83d7187e54da43c"
+      },
+      "numpy._typing._nested_sequence": {
+        "bytes": 2640,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_nested_sequence.py",
+        "sha256": "3bc45b3564a962a54c203adede2390a7c852ba48349a4c9332a5e7abfe3f2c24"
+      },
+      "numpy._typing._scalars": {
+        "bytes": 873,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_scalars.py",
+        "sha256": "02ee1deaaea050040b408b9613fe4f1de80b45290a5c1bb38d5d70a76a6eb7f5"
+      },
+      "numpy._typing._shape": {
+        "bytes": 246,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_shape.py",
+        "sha256": "8086f11c19de0c82c78caa3617e4d4f0834ae82afd843befb0f88e9700137a3e"
+      },
+      "numpy._typing._ufunc": {
+        "bytes": 156,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_typing/_ufunc.py",
+        "sha256": "1ce91a13eeb05747dddeb9876460b7f580072087fcb72be5cde903e32e064310"
+      },
+      "numpy._utils": {
+        "bytes": 3477,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_utils/__init__.py",
+        "sha256": "4a9a9d941150a1648e017b1efcd2ebb8ffdde730f9c0366f1d826121eb099caf"
+      },
+      "numpy._utils._conversions": {
+        "bytes": 329,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_utils/_conversions.py",
+        "sha256": "d3133175e2cece20e61ec44cffc96e121e12fa441d328320e86c4d0c36acebd9"
+      },
+      "numpy._utils._inspect": {
+        "bytes": 7436,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/_utils/_inspect.py",
+        "sha256": "cc5b890011f4f03d4a82afde79c6240f53a0834397a75b78a2a8d9c4cd2474b9"
+      },
+      "numpy.dtypes": {
+        "bytes": 2909,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/dtypes.py",
+        "sha256": "29ba7455e6125e2986d6e1149cd4ae9d699b208ad23edf1cd7482fdac29bda4a"
+      },
+      "numpy.exceptions": {
+        "bytes": 7709,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/exceptions.py",
+        "sha256": "df16e967d97b1779a1c2dca6be5d2fa84e346a237c6e471e6a8f1a5df66c9795"
+      },
+      "numpy.lib": {
+        "bytes": 2694,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/__init__.py",
+        "sha256": "9983bd3542d050794af5c33999f9d6caedb36fc2c4c3184442b842fef757d92d"
+      },
+      "numpy.lib._array_utils_impl": {
+        "bytes": 1704,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_array_utils_impl.py",
+        "sha256": "4644b9438e60d2a4cc38e0fb70d2a36b0887e0ae2251b37a1a9bb6b4da0a7b6e"
+      },
+      "numpy.lib._arraypad_impl": {
+        "bytes": 33519,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_arraypad_impl.py",
+        "sha256": "69f17907431860505f879f7ac0f69be927464119e4068583b5f84f11fee63131"
+      },
+      "numpy.lib._arraysetops_impl": {
+        "bytes": 37341,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_arraysetops_impl.py",
+        "sha256": "9f896cc0ddc2f4f94ed7cf0b28fa5dba777ec77df3c44788afcd6448d55416b4"
+      },
+      "numpy.lib._arrayterator_impl": {
+        "bytes": 7218,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_arrayterator_impl.py",
+        "sha256": "1ed3800c81ee1bd0036db3138268783ff9ae91ed55fbc13e14d10eddb54e18f0"
+      },
+      "numpy.lib._datasource": {
+        "bytes": 22723,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_datasource.py",
+        "sha256": "9ead7eb599f6ed893aae85ddf9a8316502b4efd0595cea2b9ddf7af1ab097460"
+      },
+      "numpy.lib._format_impl": {
+        "bytes": 36882,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_format_impl.py",
+        "sha256": "5d7fd66e8c78d0bd9fab82e8893609ba88f7fcd3569eaebb0748f40768e85c16"
+      },
+      "numpy.lib._function_base_impl": {
+        "bytes": 194310,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py",
+        "sha256": "6b892b2733cdd036443c360cbf5ff702f62e2b37affe7a541c424236d8f18a27"
+      },
+      "numpy.lib._histograms_impl": {
+        "bytes": 38438,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_histograms_impl.py",
+        "sha256": "3f4f1940f437fe139d852031afe1c2b9f85e32a2c32f8d90c0125445af9f16cd"
+      },
+      "numpy.lib._index_tricks_impl": {
+        "bytes": 31523,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_index_tricks_impl.py",
+        "sha256": "e168b1ab86f91c9c8ab64e97b2fdc7eb3fe0559c8432d33c9b267b68b4eb407e"
+      },
+      "numpy.lib._iotools": {
+        "bytes": 30889,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_iotools.py",
+        "sha256": "04e6c05a9fe7ebd9a92d888524bf15512926b9272b453ae5c4ac5c63ab816b48"
+      },
+      "numpy.lib._nanfunctions_impl": {
+        "bytes": 71405,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_nanfunctions_impl.py",
+        "sha256": "d923a746bdfc4cbc254cd932c03670a9f7566827002b2cf5dc40db8bc81bb5fb"
+      },
+      "numpy.lib._npyio_impl": {
+        "bytes": 96284,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_npyio_impl.py",
+        "sha256": "51eb4572baad1e8198f71b3488a3cbcdb81ac85aa3c15cc2708cd907198a1fb5"
+      },
+      "numpy.lib._polynomial_impl": {
+        "bytes": 44222,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_polynomial_impl.py",
+        "sha256": "530f29b1db6a1610bd02291c94196e100a3dd7b80f3a278fb6173e29dd297545"
+      },
+      "numpy.lib._scimath_impl": {
+        "bytes": 15684,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_scimath_impl.py",
+        "sha256": "6f9ffec91cd62483bc75afd9e01f2a41eebc8fc9693bc82db4696f18da65cadc"
+      },
+      "numpy.lib._shape_base_impl": {
+        "bytes": 37860,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_shape_base_impl.py",
+        "sha256": "b550d0cc5e7efe46dc1c77f0286330fcb4100fcbbeb98f41aa9127c2c44e01ec"
+      },
+      "numpy.lib._stride_tricks_impl": {
+        "bytes": 21372,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_stride_tricks_impl.py",
+        "sha256": "0db57f30a81b00919e7922828cc23c4c32759c07a647639b76d1e157871fe862"
+      },
+      "numpy.lib._twodim_base_impl": {
+        "bytes": 35242,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_twodim_base_impl.py",
+        "sha256": "a11d0bdecd5064dae7aca1ecbc3fdb9ff0eacae4cdfa8ed1a644ac0bb4a58fe6"
+      },
+      "numpy.lib._type_check_impl": {
+        "bytes": 20104,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_type_check_impl.py",
+        "sha256": "53a091170f8fe5fafb13e7b241f8d04c352185c1253125c389aba52ee37e4939"
+      },
+      "numpy.lib._ufunclike_impl": {
+        "bytes": 6419,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_ufunclike_impl.py",
+        "sha256": "f468fbb02ccb1038be6194044b04d3f873604c130f59841612109b0e1718feea"
+      },
+      "numpy.lib._utils_impl": {
+        "bytes": 16851,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_utils_impl.py",
+        "sha256": "4cb745a05e5cef826bc6c38c55d62cd02113a61d4531b26098c7d86ff2ae2435"
+      },
+      "numpy.lib._version": {
+        "bytes": 4783,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/_version.py",
+        "sha256": "0affabe9bf73540e9b0febf2158f2d09746ef5de4eb069e3a976a57d8d9194e0"
+      },
+      "numpy.lib.array_utils": {
+        "bytes": 144,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/array_utils.py",
+        "sha256": "5db732849f52d0894d9cff4dcbacb280b30400259650f34e53cbdebe3d531292"
+      },
+      "numpy.lib.format": {
+        "bytes": 477,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/format.py",
+        "sha256": "9e9274789853eee28d2b96b49423067e226ff91e23c8d86220f7996c970d5c1b"
+      },
+      "numpy.lib.introspect": {
+        "bytes": 2749,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/introspect.py",
+        "sha256": "e97a1b86c7a928352ff339a83e47d53391206421afeb53f63ca97f6916c49074"
+      },
+      "numpy.lib.mixins": {
+        "bytes": 7195,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/mixins.py",
+        "sha256": "cd047e8888c2492796c5ea4ae62fbbba34967f0163ad467fab18deac88a4c3a6"
+      },
+      "numpy.lib.npyio": {
+        "bytes": 68,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/npyio.py",
+        "sha256": "79a3ef7c7192cd413bd132471cb3823c85fd1b98a132e0447b1cbafcf36127d4"
+      },
+      "numpy.lib.scimath": {
+        "bytes": 169,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/scimath.py",
+        "sha256": "aa315a41eab4cc4225ee02aa3a16a3fef9820bf29a15dc9398774b514912a792"
+      },
+      "numpy.lib.stride_tricks": {
+        "bytes": 88,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/lib/stride_tricks.py",
+        "sha256": "c74fc17f097270102547706fa714e775e3fde9d1c14ff7c049b9134d3cc16202"
+      },
+      "numpy.linalg": {
+        "bytes": 2076,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/linalg/__init__.py",
+        "sha256": "3b50094af1bb3530254d3bcb19349c612d5db6f859707320a466c7f71499abc2"
+      },
+      "numpy.linalg._linalg": {
+        "bytes": 115382,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/linalg/_linalg.py",
+        "sha256": "99ec3bec6f80194741a62407fbcea521a0690577105fe9f3096f156842de76a9"
+      },
+      "numpy.linalg._umath_linalg": {
+        "bytes": 235897,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/linalg/_umath_linalg.cpython-312-x86_64-linux-gnu.so",
+        "sha256": "2e075f582c3a25a21fe97a55931a0fdb22ceb84f4fce8203a5040d405ccf65ce"
+      },
+      "numpy.matrixlib": {
+        "bytes": 243,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/matrixlib/__init__.py",
+        "sha256": "52de88a9f8ee03e930c28e8704e6008058d75c2fe1ed857fdc7c83b0a33bd9d9"
+      },
+      "numpy.matrixlib.defmatrix": {
+        "bytes": 30834,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/matrixlib/defmatrix.py",
+        "sha256": "8ce552b26458ede8773335bba3835e1c6793f28d5c83ef29dcaa535a8f645c53"
+      },
+      "numpy.version": {
+        "bytes": 293,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/numpy/version.py",
+        "sha256": "344c87cc95d8d56eb4addbefe63e798107e1ab2b32141097dd5623ebe166f7ba"
+      },
+      "opcode": {
+        "bytes": 13174,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/opcode.py",
+        "sha256": "192f6008508f28d3273bff42eaea9b01c8394dab1607cd36aea778bdd166c3a6"
+      },
+      "operator": {
+        "bytes": 10965,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/operator.py",
+        "sha256": "b2af20f67667203c1730e686cc5d0427becc94db4c97f1d3efe3ed2158473f6a"
+      },
+      "os": {
+        "bytes": 40821,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/os.py",
+        "sha256": "54c43a1fc69c979c70d8f7d097174cee163bfe59937723ee353043dd4a0211e1"
+      },
+      "os.path": {
+        "bytes": 17356,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/posixpath.py",
+        "sha256": "03825681086638649a43480954f7f6a16b4da3bd41ece956864ae96e4f795cd9"
+      },
+      "pathlib": {
+        "bytes": 51052,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/pathlib.py",
+        "sha256": "10ba48ae8063cfe7589436041d0d4628c05f427c7709cf8e75e486f8930cc32c"
+      },
+      "pickle": {
+        "bytes": 66911,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/pickle.py",
+        "sha256": "7e3447b6d993a6306a7893fd2fba916010ed79f8e09ceb56158a550fa8099a14"
+      },
+      "pkgutil": {
+        "bytes": 18281,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/pkgutil.py",
+        "sha256": "44300bc77f6f52ef2ad74d26e5053309c04f49eaa91c099356eb61426cde504f"
+      },
+      "platform": {
+        "bytes": 43388,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/platform.py",
+        "sha256": "f5ff83f15c841792be42709a6710dc8d7a9f72791c1ae4cad719b1fb0abe0a05"
+      },
+      "posixpath": {
+        "bytes": 17356,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/posixpath.py",
+        "sha256": "03825681086638649a43480954f7f6a16b4da3bd41ece956864ae96e4f795cd9"
+      },
+      "quopri": {
+        "bytes": 7184,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/quopri.py",
+        "sha256": "a1cd7f3b22033d32151209886cc855d4b71cc4c83530769f920097582339013a"
+      },
+      "random": {
+        "bytes": 34689,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/random.py",
+        "sha256": "de48263a837339c7e01cf9f3c4d756696e0e0775f7778eb9cf81ad5b00134569"
+      },
+      "re": {
+        "bytes": 16315,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/re/__init__.py",
+        "sha256": "8ff3c37c63b917fcf8dc8d50993a502292a3dc159e41de4f4018c72a53d1c07b"
+      },
+      "re._casefix": {
+        "bytes": 5444,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/re/_casefix.py",
+        "sha256": "1b12d9136f23db6c3f6f26053fefc15ca964b886838c7b9c1fabf8d2efc1e5c8"
+      },
+      "re._compiler": {
+        "bytes": 26399,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/re/_compiler.py",
+        "sha256": "c75620761098a70ed75b9accef63ef2881d8abb6d4e5cbfd10074bd165eefe4d"
+      },
+      "re._constants": {
+        "bytes": 5930,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/re/_constants.py",
+        "sha256": "fa4fdb200f238f9e7817b63892b0d69833d8165134801e775e10cc113348a375"
+      },
+      "re._parser": {
+        "bytes": 41201,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/re/_parser.py",
+        "sha256": "a51a85b37cf3f44ba7ff25754da5f31306e4ccfa6eb3c017f9d37bdf4e770840"
+      },
+      "reprlib": {
+        "bytes": 7148,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/reprlib.py",
+        "sha256": "e177bc70da83a7fbcde6fd261dc15da34e8a20873b1cccd4f9a1f8f27cca3779"
+      },
+      "runpy": {
+        "bytes": 12885,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/runpy.py",
+        "sha256": "81e07da29bb2235111079bb64efea7d291639c5d2cf163e7af187d6a38cef389"
+      },
+      "selectors": {
+        "bytes": 19671,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/selectors.py",
+        "sha256": "1eeb102373e18c96311203f30c516e785bd8642275aa0bd66e43a284c9692385"
+      },
+      "shutil": {
+        "bytes": 56198,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/shutil.py",
+        "sha256": "53496e06742fe008fee2bccc8caeac77473e69923bec05358bd43eea467db1f8"
+      },
+      "site": {
+        "bytes": 23198,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/site.py",
+        "sha256": "b39ab288cc7a6d0cb3bb2655179221411340b22418e4efdee4c20175537a5fa2"
+      },
+      "socket": {
+        "bytes": 37815,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/socket.py",
+        "sha256": "7d4d4c66e6f4bcc961ab462c4f08002ca97def8713a4be1c7373bdbd970a5274"
+      },
+      "stat": {
+        "bytes": 5485,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/stat.py",
+        "sha256": "052af0327eae6941b69b05c088b3e748f79995635f80ac4cc7125eb333eb4c77"
+      },
+      "string": {
+        "bytes": 11786,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/string.py",
+        "sha256": "24aeae1f0526250f442022022bf98df9a823b1cb330543ee79e70e44907462e9"
+      },
+      "struct": {
+        "bytes": 257,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/struct.py",
+        "sha256": "9c231f9497caf513a22dee8f790b07f969b0e45854a0bdd6dd84b492e08c2856"
+      },
+      "tempfile": {
+        "bytes": 32386,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/tempfile.py",
+        "sha256": "2eea4401f4f29d0d3647ed6fc8bcf6aa1daf879c8aa407a8ea310edac9dfc317"
+      },
+      "textwrap": {
+        "bytes": 19718,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/textwrap.py",
+        "sha256": "62867e40cdea6669b361f72af4d7daf0359f207c92cbeddfc7c7506397c1f31c"
+      },
+      "threading": {
+        "bytes": 60200,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/threading.py",
+        "sha256": "846f450ae794e4aab823a163f8c71d27751148af33e91dd3de886686a4e8ebfb"
+      },
+      "token": {
+        "bytes": 2511,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/token.py",
+        "sha256": "1a4d994ce9744f4bfe2d964fc24d112a1e76796a08c2e45a2d73c82a8587f922"
+      },
+      "tokenize": {
+        "bytes": 21570,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/tokenize.py",
+        "sha256": "026f566ac63e60d69c8185a3880831b657accc5eac984fadf271fc99a5e5825d"
+      },
+      "torch_mlir._mlir_libs": {
+        "bytes": 8512,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/__init__.py",
+        "sha256": "1e053fc5d003af7296a29f55ae8079f10a81c36b35819e03b283fe5dbb8e6dea"
+      },
+      "torch_mlir._mlir_libs._mlir": {
+        "bytes": 288336,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so",
+        "sha256": "c4b3095b8748e6de5e70907cfdb7b6c3c1c12cfee442c2f8ecb165e3e8dddb1e"
+      },
+      "torch_mlir._mlir_libs._mlirRegisterEverything": {
+        "bytes": 19216,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlirRegisterEverything.abi3.so",
+        "sha256": "a2453367bb2d84dbb5b56d8c3af9b2f5034d72790744168a556fae7d05daa63a"
+      },
+      "torch_mlir._mlir_libs._site_initialize_0": {
+        "bytes": 495,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_site_initialize_0.py",
+        "sha256": "64e209fa32f6ba3e0484d6668f2798cd21212a08937ff2c69020ae65cba6b47b"
+      },
+      "torch_mlir.dialects._arith_enum_gen": {
+        "bytes": 8226,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/dialects/_arith_enum_gen.py",
+        "sha256": "bc60c532ccb9b0fffd4a84d3ff79f7873aa3fea027f32175d03baec3cac60836"
+      },
+      "torch_mlir.dialects._arith_ops_gen": {
+        "bytes": 160488,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/dialects/_arith_ops_gen.py",
+        "sha256": "d677e8f4464965d9c7cfeb2fb213173299843973880c3d3a5213f43d83e2cb1d"
+      },
+      "torch_mlir.dialects._builtin_ops_gen": {
+        "bytes": 8442,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/dialects/_builtin_ops_gen.py",
+        "sha256": "36a4cc9cf5d755dd6ec17f85eef42b7c03a18cec08d7099d8b1e26a6f826d11e"
+      },
+      "torch_mlir.dialects._func_ops_gen": {
+        "bytes": 24498,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/dialects/_func_ops_gen.py",
+        "sha256": "cd549fb50405227115e051ab28ad26f0f3b659ab7358e3622958737c80f64465"
+      },
+      "torch_mlir.dialects._ods_common": {
+        "bytes": 10887,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/dialects/_ods_common.py",
+        "sha256": "52f38ee6701961f4840d52958feb128f3fcc31a0c41ef586bd70a6e63d95b7a7"
+      },
+      "torch_mlir.dialects.arith": {
+        "bytes": 3182,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/dialects/arith.py",
+        "sha256": "2e2b231fbfc8fb0006f2c504de46b7c79884059970e735bef0c4300e67f9f36c"
+      },
+      "torch_mlir.dialects.builtin": {
+        "bytes": 1280,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/dialects/builtin.py",
+        "sha256": "9bf7d15623bc5009d2f18f66d241b5edfc9dc7e43eda9e7bba302435af8ec43d"
+      },
+      "torch_mlir.dialects.func": {
+        "bytes": 12900,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/dialects/func.py",
+        "sha256": "668e11d1df620f1c96f088142a355057bad655810a0a558ff09914568d37d44b"
+      },
+      "torch_mlir.extras.meta": {
+        "bytes": 3271,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/extras/meta.py",
+        "sha256": "83e65e4fcff06e96295da4c3262507c24d0aba75fda51def93090c3eb23755b1"
+      },
+      "torch_mlir.ir": {
+        "bytes": 12758,
+        "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/ir.py",
+        "sha256": "d4fb18407e74c6d496eeeaeda99a9be354f5ffbd9edad41b8498525c4ebfdaf9"
+      },
+      "traceback": {
+        "bytes": 46393,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/traceback.py",
+        "sha256": "2c44af2848836d9af0c7b3547469695cd22586c64274d362eafcf466af284bd6"
+      },
+      "types": {
+        "bytes": 10993,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/types.py",
+        "sha256": "345474ef027a1273f353da9bdc1f7c18f65335e72e681bcc0376774cc51f2405"
+      },
+      "typing": {
+        "bytes": 118836,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/typing.py",
+        "sha256": "be92d60fb8382bb29ead21c128825d7c96d0e8c915b44f840791e49f5a8d554c"
+      },
+      "urllib": {
+        "bytes": 0,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/urllib/__init__.py",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "urllib.parse": {
+        "bytes": 45676,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/urllib/parse.py",
+        "sha256": "e6af7f475262f1de335bb2e41e26adb94d6103977cf5fe1ddc430dc6a3b1623f"
+      },
+      "warnings": {
+        "bytes": 21909,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/warnings.py",
+        "sha256": "6405e281882932205eae641b2d31fba7776f94517a206d289465a1caffbf310e"
+      },
+      "weakref": {
+        "bytes": 21513,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/weakref.py",
+        "sha256": "56f8d313fb74019e53eb9287400702fbce788b7fe30e097b0b6e06296f3f080c"
+      },
+      "zipfile": {
+        "bytes": 89520,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/zipfile/__init__.py",
+        "sha256": "83031a1582b84054fdde260a372f8ed25d9dedfbfcbedcef2bc015bcca7c5332"
+      },
+      "zipfile._path": {
+        "bytes": 10860,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/zipfile/_path/__init__.py",
+        "sha256": "63fc930890d38a662253bcf7ae50a1bfa06ce38bade19084f9c89f964dcd0e12"
+      },
+      "zipfile._path.glob": {
+        "bytes": 1158,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/zipfile/_path/glob.py",
+        "sha256": "64e27d3872da2ea18b901718c91297d32b9610ebdad058de8561344b0a10e8d7"
+      },
+      "zipimport": {
+        "bytes": 27840,
+        "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/zipimport.py",
+        "sha256": "a96f1d7a7b6aaf421a3cf382b94b1422f4f0ad452fdd0bb61d635b560d7a4e91"
+      }
+    },
+    "python": {
+      "bytes": 30913848,
+      "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+      "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526"
+    },
+    "python_version": "3.12.14 (main, Sep  1 2026, 14:16:52) [Clang 22.1.3 ]"
+  },
+  "source": {
+    "bytes": 102,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-2-adapter.mlir",
+    "sha256": "86ffa40126ba6b05d7cc43e486888785e515d8f71f6ced1273d47ffe165fa2e6"
+  },
+  "valid": true,
+  "worker": {
+    "bytes": 4233,
+    "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_oracle.py",
+    "sha256": "c39c16d4c220457c3aabc3a57372e409556ff62d092e8e9de1a12d82c2405c34"
+  }
+}

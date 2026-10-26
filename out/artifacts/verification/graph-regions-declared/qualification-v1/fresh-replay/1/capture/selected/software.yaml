@@ -1,0 +1,1611 @@
+isa:
+  facts_sha256: 3eeb37ad4b982441b8e9b08828647c704cdaff62c4b2c04d8692cd72156ba6e2
+  instructions:
+  - effects:
+      reads:
+      - private0
+      - private1
+      - input0
+      - input1
+      - input2
+      - input3
+      - output0
+      - output1
+      writes:
+      - private0
+      - private1
+      - input0
+      - input1
+      - input2
+      - input3
+      - output0
+      - output1
+    encoding:
+    - fixed:
+        fact:
+        - facts
+        - codes
+        - 0
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 0
+      width:
+        fact:
+        - facts
+        - opcode_bits
+    - argument: n
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 1
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: a
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 2
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: ao
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 3
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: b
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 4
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: bo
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 5
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: c
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 6
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: co
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 7
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: dst
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 8
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: out
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 9
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: width
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 10
+      width:
+        fact:
+        - facts
+        - argument_bits
+    immediates: []
+    name: produce
+    operands:
+    - name: n
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: a
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: ao
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: b
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: bo
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: c
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: co
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: dst
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: out
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: width
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    results: []
+    semantics:
+      bindings:
+        a: a
+        ao: ao
+        b: b
+        bo: bo
+        c: c
+        co: co
+        dst: dst
+        n: n
+        out: out
+        width: width
+      primitive: neutral.produce
+  - effects:
+      reads:
+      - private0
+      - private1
+      - input0
+      - input1
+      - input2
+      - input3
+      - output0
+      - output1
+      writes:
+      - private0
+      - private1
+      - input0
+      - input1
+      - input2
+      - input3
+      - output0
+      - output1
+    encoding:
+    - fixed:
+        fact:
+        - facts
+        - codes
+        - 1
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 0
+      width:
+        fact:
+        - facts
+        - opcode_bits
+    - argument: n
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 1
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: a
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 2
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: ao
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 3
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: b
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 4
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: bo
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 5
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: c
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 6
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: co
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 7
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: dst
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 8
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: out
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 9
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: width
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 10
+      width:
+        fact:
+        - facts
+        - argument_bits
+    immediates: []
+    name: add
+    operands:
+    - name: n
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: a
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: ao
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: b
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: bo
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: c
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: co
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: dst
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: out
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: width
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    results: []
+    semantics:
+      bindings:
+        a: a
+        ao: ao
+        b: b
+        bo: bo
+        c: c
+        co: co
+        dst: dst
+        n: n
+        out: out
+        width: width
+      primitive: neutral.add
+  - effects:
+      reads:
+      - private0
+      - private1
+      - input0
+      - input1
+      - input2
+      - input3
+      - output0
+      - output1
+      writes:
+      - private0
+      - private1
+      - input0
+      - input1
+      - input2
+      - input3
+      - output0
+      - output1
+    encoding:
+    - fixed:
+        fact:
+        - facts
+        - codes
+        - 2
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 0
+      width:
+        fact:
+        - facts
+        - opcode_bits
+    - argument: n
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 1
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: a
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 2
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: ao
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 3
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: b
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 4
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: bo
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 5
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: c
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 6
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: co
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 7
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: dst
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 8
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: out
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 9
+      width:
+        fact:
+        - facts
+        - argument_bits
+    - argument: width
+      offset:
+        fact:
+        - facts
+        - offsets
+        - 10
+      width:
+        fact:
+        - facts
+        - argument_bits
+    immediates: []
+    name: multiply
+    operands:
+    - name: n
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: a
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: ao
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: b
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: bo
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: c
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: co
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: dst
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: out
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    - name: width
+      type:
+        bits:
+          fact:
+          - facts
+          - argument_bits
+        kind: integer
+        signed: false
+      unit: integer
+    results: []
+    semantics:
+      bindings:
+        a: a
+        ao: ao
+        b: b
+        bo: bo
+        c: c
+        co: co
+        dst: dst
+        n: n
+        out: out
+        width: width
+      primitive: neutral.multiply
+  namespace: neutral_multioutput
+  resources:
+  - capacity:
+      fact:
+      - facts
+      - capacity
+    kind: memory
+    name: private0
+    unit: bytes
+  - capacity:
+      fact:
+      - facts
+      - capacity
+    kind: memory
+    name: private1
+    unit: bytes
+  - capacity:
+      fact:
+      - facts
+      - capacity
+    kind: memory
+    name: input0
+    unit: bytes
+  - capacity:
+      fact:
+      - facts
+      - capacity
+    kind: memory
+    name: input1
+    unit: bytes
+  - capacity:
+      fact:
+      - facts
+      - capacity
+    kind: memory
+    name: input2
+    unit: bytes
+  - capacity:
+      fact:
+      - facts
+      - capacity
+    kind: memory
+    name: input3
+    unit: bytes
+  - capacity:
+      fact:
+      - facts
+      - capacity
+    kind: memory
+    name: output0
+    unit: bytes
+  - capacity:
+      fact:
+      - facts
+      - capacity
+    kind: memory
+    name: output1
+    unit: bytes
+  schema: merlin.isa_spec.v1
+  word_bits:
+    fact:
+    - facts
+    - word_bits
+scheduling:
+  configuration: {}
+  fusion:
+    elementwise:
+      add:
+        byte_orders:
+        - little
+        - little
+        - little
+        element_bits:
+        - &id001
+          fact:
+          - facts
+          - element_bits
+        - *id001
+        - *id001
+        elements:
+        - argument: n
+        execution: contiguous_read_then_write
+        readout: null
+        scalar_ir: 'builtin.module {func.func @forward(%p:i16,%w:i16)->i16 {
+
+          %r=arith.addi %p,%w:i16
+
+          func.return %r:i16
+
+          }}'
+        stages:
+        - add
+      multiply:
+        byte_orders:
+        - little
+        - little
+        - little
+        element_bits:
+        - &id002
+          fact:
+          - facts
+          - element_bits
+        - *id002
+        - *id002
+        elements:
+        - argument: n
+        execution: contiguous_read_then_write
+        readout: null
+        scalar_ir: 'builtin.module {func.func @forward(%p:i16,%w:i16)->i16 {
+
+          %r=arith.muli %p,%w:i16
+
+          func.return %r:i16
+
+          }}'
+        stages:
+        - multiply
+      produce:
+        byte_orders:
+        - little
+        - little
+        - little
+        - little
+        element_bits:
+        - &id003
+          fact:
+          - facts
+          - element_bits
+        - *id003
+        - *id003
+        - *id003
+        elements:
+        - argument: n
+        execution: contiguous_read_then_write
+        readout: null
+        scalar_ir: 'builtin.module {func.func @forward(%x:i16,%w:i16,%s:i16)->i16
+          {
+
+          %p=arith.muli %x,%w:i16
+
+          %r=arith.addi %p,%s:i16
+
+          func.return %r:i16
+
+          }}'
+        stages:
+        - produce
+    readouts: {}
+    schema: merlin.physical_fusion_contract.v1
+  instruction_byteorder: little
+  numerical_policy: integer-modular-16
+  schema: merlin.schedule_effects.v1
+  storage:
+    banks:
+      private0:
+        alignment:
+          fact:
+          - facts
+          - alignment
+        backing: common
+        ownership: invocation_private
+        size:
+          fact:
+          - facts
+          - capacity
+        start:
+          fact:
+          - facts
+          - zero
+      private1:
+        alignment:
+          fact:
+          - facts
+          - alignment
+        backing: common
+        ownership: invocation_private
+        size:
+          fact:
+          - facts
+          - capacity
+        start:
+          fact:
+          - facts
+          - zero
+    external:
+      input0:
+        backing: input0
+        ownership: runtime_managed
+        size:
+          fact:
+          - facts
+          - capacity
+        start:
+          fact:
+          - facts
+          - zero
+      input1:
+        backing: input1
+        ownership: runtime_managed
+        size:
+          fact:
+          - facts
+          - capacity
+        start:
+          fact:
+          - facts
+          - zero
+      input2:
+        backing: input2
+        ownership: runtime_managed
+        size:
+          fact:
+          - facts
+          - capacity
+        start:
+          fact:
+          - facts
+          - zero
+      input3:
+        backing: input3
+        ownership: runtime_managed
+        size:
+          fact:
+          - facts
+          - capacity
+        start:
+          fact:
+          - facts
+          - zero
+      output0:
+        backing: output0
+        ownership: runtime_managed
+        size:
+          fact:
+          - facts
+          - capacity
+        start:
+          fact:
+          - facts
+          - zero
+      output1:
+        backing: output1
+        ownership: runtime_managed
+        size:
+          fact:
+          - facts
+          - capacity
+        start:
+          fact:
+          - facts
+          - zero
+    instructions:
+      add:
+        accesses:
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: a
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: ao
+          writes: false
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: b
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: bo
+          writes: false
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: dst
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: out
+          writes: true
+        completion: synchronous
+        exact_copy: false
+        token: null
+        waits: []
+      multiply:
+        accesses:
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: a
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: ao
+          writes: false
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: b
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: bo
+          writes: false
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: dst
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: out
+          writes: true
+        completion: synchronous
+        exact_copy: false
+        token: null
+        waits: []
+      produce:
+        accesses:
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: a
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: ao
+          writes: false
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: b
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: bo
+          writes: false
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: c
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: co
+          writes: false
+        - size:
+            element_bits:
+              fact:
+              - facts
+              - element_bits
+            elements:
+            - argument: n
+          space:
+            argument: dst
+            choices:
+            - resource: private0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 0
+            - resource: private1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 1
+            - resource: input0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 2
+            - resource: input1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 3
+            - resource: input2
+              value:
+                fact:
+                - facts
+                - selectors
+                - 4
+            - resource: input3
+              value:
+                fact:
+                - facts
+                - selectors
+                - 5
+            - resource: output0
+              value:
+                fact:
+                - facts
+                - selectors
+                - 6
+            - resource: output1
+              value:
+                fact:
+                - facts
+                - selectors
+                - 7
+          start:
+            argument: out
+          writes: true
+        completion: synchronous
+        exact_copy: false
+        token: null
+        waits: []
+    reservations: []
+    schema: merlin.temporary_storage_contract.v1
+schema: merlin.software_spec.v1
+status: reviewed
+target: neutral

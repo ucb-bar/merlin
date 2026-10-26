@@ -1,0 +1,191 @@
+F.FFFFFFFFFFFFFFFFFF                                                     [100%]
+=================================== FAILURES ===================================
+_____________________ test_complete_stronger_boundary[i8] ______________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:77: in test_complete_stronger_boundary
+    assert bound.validate_bound(positive(run, label))
+                                ^^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:45: in positive
+    run["receipts"][label] = bound.verify_bound(
+src/merlin/verify/lean_graph_regions_declared_bound.py:196: in verify_bound
+    receipt = v1.verify(capture, destination / "base", identity_file=identity_file, fixed_oracles=fixed_oracles)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/merlin/verify/lean_graph_regions_declared_verify.py:192: in verify
+    oracles[role] = oracle(
+src/merlin/verify/lean_graph_regions_declared_verify.py:77: in oracle
+    base.fresh_ref(ref)
+src/merlin/verify/lean_graph_regions.py:67: in fresh_ref
+    raise ValueError("stale file reference")
+E   ValueError: stale file reference
+_________________ test_full_effect_metadata_refused[read_flag] _________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+________________ test_full_effect_metadata_refused[write_flag] _________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+_________________ test_full_effect_metadata_refused[copy_flag] _________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+__________________ test_full_effect_metadata_refused[readout] __________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+__________________ test_full_effect_metadata_refused[stages] ___________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+___________________ test_full_effect_metadata_refused[waits] ___________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+___________________ test_full_effect_metadata_refused[token] ___________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+_________________ test_full_effect_metadata_refused[encoding] __________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+________________ test_full_effect_metadata_refused[byte_length] ________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+________________ test_full_effect_metadata_refused[byte_order] _________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:129: in test_full_effect_metadata_refused
+    query(run, "effect-" + field, extra, ["full_effect_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+______________ test_independent_original_windows_refused[inputs] _______________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:153: in test_independent_original_windows_refused
+    query(run, "original-" + kind, extra, ["original_windows_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+______________ test_independent_original_windows_refused[outputs] ______________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:153: in test_independent_original_windows_refused
+    query(run, "original-" + kind, extra, ["original_windows_refused"])
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+___________________ test_coherent_wrong_after_scalar_refused ___________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:159: in test_coherent_wrong_after_scalar_refused
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+__________________ test_strong_receipt_associations[swapped] ___________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:188: in test_strong_receipt_associations
+    receipt = copy.deepcopy(positive(run, "i8"))
+                            ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+__________________ test_strong_receipt_associations[missing] ___________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:188: in test_strong_receipt_associations
+    receipt = copy.deepcopy(positive(run, "i8"))
+                            ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+________________ test_strong_receipt_associations[substituted] _________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:188: in test_strong_receipt_associations
+    receipt = copy.deepcopy(positive(run, "i8"))
+                            ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+_______________ test_strong_receipt_associations[rehashed_proof] _______________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:188: in test_strong_receipt_associations
+    receipt = copy.deepcopy(positive(run, "i8"))
+                            ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+___________________________ test_new_soundness_roots ___________________________
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:212: in test_new_soundness_roots
+    query(
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:58: in query
+    receipt = positive(run, "i8")
+              ^^^^^^^^^^^^^^^^^^^
+merlin/tests/infra/test_lean_graph_regions_declared_bound.py:42: in positive
+    pytest.fail("retained first positive failure; no retry: " + run["failed"][label])
+E   Failed: retained first positive failure; no retry: ValueError('stale file reference')
+=========================== short test summary info ============================
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_complete_stronger_boundary[i8]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[read_flag]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[write_flag]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[copy_flag]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[readout]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[stages]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[waits]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[token]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[encoding]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[byte_length]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_full_effect_metadata_refused[byte_order]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_independent_original_windows_refused[inputs]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_independent_original_windows_refused[outputs]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_coherent_wrong_after_scalar_refused
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_strong_receipt_associations[swapped]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_strong_receipt_associations[missing]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_strong_receipt_associations[substituted]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_strong_receipt_associations[rehashed_proof]
+FAILED merlin/tests/infra/test_lean_graph_regions_declared_bound.py::test_new_soundness_roots
+19 failed, 1 passed in 82.11s (0:01:22)

@@ -1,0 +1,15 @@
+{
+  "current": {
+    "bytes": 1164622,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/EVIDENCE.json",
+    "sha256": "22ea837eed15b9a07ce2322ff04b911d13c8caf9e583ab2d39fe8aca8f8ee34a"
+  },
+  "identical_checked_content": true,
+  "independently_reviewed": false,
+  "native_execution_run": false,
+  "original": {
+    "bytes": 1165077,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/verified-i8/EVIDENCE.json",
+    "sha256": "4ee6584c9b835ecbb9e11319ead14524fc4bdfbe971ad3f8208596934c7b50fa"
+  }
+}

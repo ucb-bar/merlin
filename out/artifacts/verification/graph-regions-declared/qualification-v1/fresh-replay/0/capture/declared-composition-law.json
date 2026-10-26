@@ -1,0 +1,24 @@
+{
+  "adapter_qualification_identity": "original-neutral-fixed-integer-byte-machine-v1",
+  "complete_projected_effects": true,
+  "configuration_identity": "rtl:1287dd7f8650c91b54abcf4702a7cafb36894cd2b80c34960e76dad14b1d8e69",
+  "epilogues": [
+    [
+      "add",
+      "('add', 1, 0, 5, 0, 6)"
+    ],
+    [
+      "multiply",
+      "('multiply', 1, 0, 5, 0, 7)"
+    ]
+  ],
+  "numerical_policy_identity": "integer-modular-8",
+  "producer": [
+    "produce",
+    "('produce', 1, 2, 3, 4, 0)"
+  ],
+  "qualification_identity": "original-neutral-fixed-integer-byte-machine-v1",
+  "suppressed_intermediate_transfers_no_faults": true,
+  "suppressed_intermediate_transfers_unobserved": true,
+  "synchronous_private_composition": true
+}

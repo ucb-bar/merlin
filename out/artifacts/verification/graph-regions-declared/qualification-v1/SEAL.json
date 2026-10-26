@@ -1,0 +1,1073 @@
+{
+  "files": {
+    "EXTERNAL-RETENTION.json": {
+      "bytes": 405948,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/EXTERNAL-RETENTION.json",
+      "sha256": "387db1e92f55d9a20a7552ad69795ee9a8ac6a7e251a51ac68c163b651a742fe"
+    },
+    "PROFILE.json": {
+      "bytes": 12688,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/PROFILE.json",
+      "sha256": "e5335a876bb7c417fccd361eb1b38397e053bc7397106590a3124b34fd4f618e"
+    },
+    "PROJECT-SOURCE-CLOSURE.json": {
+      "bytes": 9348,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/PROJECT-SOURCE-CLOSURE.json",
+      "sha256": "537aeced05684b678b7debf0b2ca05d965be3b034d6fe01cbf28ee23629522e6"
+    },
+    "ROSTER.json": {
+      "bytes": 5032,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/ROSTER.json",
+      "sha256": "0cf79824a38b38d9644ccdc8ec89284ee0178575ab847b41bd8abc388c8619b7"
+    },
+    "STATUS.json": {
+      "bytes": 864,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/STATUS.json",
+      "sha256": "d4c17e6647a101a3b29e87b1fda1fdb8e5db1b6ed1ad0de0781aea42736d8145"
+    },
+    "collection.json": {
+      "bytes": 222,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/collection.json",
+      "sha256": "80ae4fc55e364f005eeffed4bc7e48a30ee84586df86676dc3a7980b83a7d0f7"
+    },
+    "collection.stderr": {
+      "bytes": 0,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/collection.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "collection.stdout": {
+      "bytes": 4828,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/collection.stdout",
+      "sha256": "2ffe3f82e5537bc2ba67055c7a31b514cc0ecec9f7b8ae59560c2fd602cd919d"
+    },
+    "fresh-process.json": {
+      "bytes": 638,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-process.json",
+      "sha256": "60e49f5a1a9364553135af7af026466c11b20c9ba769ca1fbf45109be46f2222"
+    },
+    "fresh-process.stderr": {
+      "bytes": 0,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-process.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "fresh-process.stdout": {
+      "bytes": 0,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-process.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "fresh-replay/0/AUDIT.json": {
+      "bytes": 366,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/AUDIT.json",
+      "sha256": "aeb7dafab58edc8cc034cb5e306fccb7d93393e363ec9ee325451a7a7b9d2c90"
+    },
+    "fresh-replay/0/Check.lean": {
+      "bytes": 26321,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/Check.lean",
+      "sha256": "a4abc04170b9ecdc1041dd7d427b4ce517258fbb7d855db82f99a48b63c2835f"
+    },
+    "fresh-replay/0/EVIDENCE.json": {
+      "bytes": 1164622,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/EVIDENCE.json",
+      "sha256": "22ea837eed15b9a07ce2322ff04b911d13c8caf9e583ab2d39fe8aca8f8ee34a"
+    },
+    "fresh-replay/0/MODEL.json": {
+      "bytes": 579,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/MODEL.json",
+      "sha256": "dbd375b763e146797c06ac5cea96b993c8292709edbe3e8de08c09f7fb495ddf"
+    },
+    "fresh-replay/0/REPLAY.json": {
+      "bytes": 642,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/REPLAY.json",
+      "sha256": "a7180379370ce5987dda2c6b638f318e08709c003eda6f126ec181a114694900"
+    },
+    "fresh-replay/0/before-oracle.process.json": {
+      "bytes": 606,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/before-oracle.process.json",
+      "sha256": "1ed0807bbd0bbbc84bcd239e02f0ccf9dd62bf137c08bfe3bf137e78df843fb3"
+    },
+    "fresh-replay/0/before-oracle/ORACLE.json": {
+      "bytes": 79741,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/before-oracle/ORACLE.json",
+      "sha256": "d86fe159128996d8bcac07fd0b724ac9c1cf4a1a978bcffa4022db1e7bfb8bb2"
+    },
+    "fresh-replay/0/before-oracle/export.json": {
+      "bytes": 11787,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/before-oracle/export.json",
+      "sha256": "90b1d3227df79519d9267edc4ee684384bc3d78b314d033777a1536c06b206d6"
+    },
+    "fresh-replay/0/capture/CAPTURE.json": {
+      "bytes": 8194,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/CAPTURE.json",
+      "sha256": "390852e2bfba443bbc3efdbdd3db4a5af0b53cc452823d824f6dafa9e0f67593"
+    },
+    "fresh-replay/0/capture/HOST-INTAKE.json": {
+      "bytes": 136259,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/HOST-INTAKE.json",
+      "sha256": "8f08505727d221df027fdc486e3287e4bcd2721160cf19003a23559c9c34b30f"
+    },
+    "fresh-replay/0/capture/actual-image-0.bin": {
+      "bytes": 123,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/actual-image-0.bin",
+      "sha256": "d0ee96cfb38e15d535f450c7d4bc5c2426caa3323a7dcadbd30e1ca301158743"
+    },
+    "fresh-replay/0/capture/actual-output-conformance.json": {
+      "bytes": 1323,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/actual-output-conformance.json",
+      "sha256": "f42fb6cd5c427ccdce50fd350c7f8980eff7d6f6b68ee17bd4cfb640d2280a94"
+    },
+    "fresh-replay/0/capture/actual-output-effects.json": {
+      "bytes": 3182,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/actual-output-effects.json",
+      "sha256": "20b86dea4ca6e1c0f6ee1371686140470eadb89364cd855de7107a9963ae4b24"
+    },
+    "fresh-replay/0/capture/actual-output-kernel.json": {
+      "bytes": 3940,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/actual-output-kernel.json",
+      "sha256": "c579c5215324435a81a2bcc34aa0c928b99d2f51e2874024a42e6ff66fa88bea"
+    },
+    "fresh-replay/0/capture/declared-composition-law.json": {
+      "bytes": 725,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/declared-composition-law.json",
+      "sha256": "29d6774c47ea6c3b7590ceae4044b04aaaa2fe8323f32017f58f6a68e784dedd"
+    },
+    "fresh-replay/0/capture/original-connected-plan-values.json": {
+      "bytes": 720,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/original-connected-plan-values.json",
+      "sha256": "93717355ff86d7990f7d16a5b71d3c001f75c73c71bf977ae19a7747d62b5853"
+    },
+    "fresh-replay/0/capture/original-connected-plan.json": {
+      "bytes": 1344,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/original-connected-plan.json",
+      "sha256": "bb8b74c136b4419e2698494fe88a8235f2388329c5cdbe33d854078cc6ec9633"
+    },
+    "fresh-replay/0/capture/original-provider-bindings.json": {
+      "bytes": 630,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/original-provider-bindings.json",
+      "sha256": "ad012c74aaa9fcbb03ba0b4d76a650b7cfcb32a190a0e4b46d754d374fbc822b"
+    },
+    "fresh-replay/0/capture/original-provider-kernel.json": {
+      "bytes": 3949,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/original-provider-kernel.json",
+      "sha256": "7ced8494a29cb2d7e6162a11d9c6862e2a2537b9ab4a6a020f023610a80e8e22"
+    },
+    "fresh-replay/0/capture/original-provider-objects.json": {
+      "bytes": 114,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/original-provider-objects.json",
+      "sha256": "52c12c97a5582a63d6bcf0f5ce54d98db1cee4728feff2b6c32353547963fb35"
+    },
+    "fresh-replay/0/capture/retained-source.mlir": {
+      "bytes": 3852,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/retained-source.mlir",
+      "sha256": "1a6d48ae471f28253035e84370379e909466c3c2941393cb8d6027879926c389"
+    },
+    "fresh-replay/0/capture/selected-fusion-declarations.json": {
+      "bytes": 1561,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/selected-fusion-declarations.json",
+      "sha256": "eba220c9216d5bbe9dbabffde72b766a88ad9bd69b42670c7802d8a0ad96d576"
+    },
+    "fresh-replay/0/capture/selected-record.json": {
+      "bytes": 7572,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/selected-record.json",
+      "sha256": "48001f9e88f01db7282d6596543ea10d9325798e4872ef8600a23aa031235681"
+    },
+    "fresh-replay/0/capture/selected-storage-declarations.json": {
+      "bytes": 12264,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/selected-storage-declarations.json",
+      "sha256": "d89ae317e98635df6344848064bb83c60f2d3fc13cedc05b46a2ab6cf4e65b05"
+    },
+    "fresh-replay/0/capture/selected-storage-windows.json": {
+      "bytes": 1373,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/selected-storage-windows.json",
+      "sha256": "55e6d34dc0d62bd600be702bd6aad87fce4cf797cc043f916f85341862e19fec"
+    },
+    "fresh-replay/0/capture/selected/facts.json": {
+      "bytes": 273,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/selected/facts.json",
+      "sha256": "1287dd7f8650c91b54abcf4702a7cafb36894cd2b80c34960e76dad14b1d8e69"
+    },
+    "fresh-replay/0/capture/selected/software.yaml": {
+      "bytes": 32118,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/selected/software.yaml",
+      "sha256": "d28da209ed43422700c035243056c2dc6d332e2e5bd21b5f105ede5831de91e3"
+    },
+    "fresh-replay/0/capture/source.mlir": {
+      "bytes": 3852,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/source.mlir",
+      "sha256": "1a6d48ae471f28253035e84370379e909466c3c2941393cb8d6027879926c389"
+    },
+    "fresh-replay/0/capture/stage-0-adapter.mlir": {
+      "bytes": 126,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-0-adapter.mlir",
+      "sha256": "59996c0775ee174959ffdab7ee515804d563b35c35dc8f83c4956444afe09520"
+    },
+    "fresh-replay/0/capture/stage-0-baseline-bindings.json": {
+      "bytes": 434,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-0-baseline-bindings.json",
+      "sha256": "2be9b33c70b979f72ae9929b209b19987171410d2d665173009b8c1c2dc2bd27"
+    },
+    "fresh-replay/0/capture/stage-0-baseline-kernel.json": {
+      "bytes": 1626,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-0-baseline-kernel.json",
+      "sha256": "9c1f5cf172cc208407eed8e9f548c8cbb2cfc9d05cf8679b283baf7eaa3f184d"
+    },
+    "fresh-replay/0/capture/stage-0-effect.json": {
+      "bytes": 1085,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-0-effect.json",
+      "sha256": "6315ac0ac0045c769bf7435281e9124ad22e3dbd921a63db1b8923231ceab783"
+    },
+    "fresh-replay/0/capture/stage-0-selected.mlir": {
+      "bytes": 126,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-0-selected.mlir",
+      "sha256": "59996c0775ee174959ffdab7ee515804d563b35c35dc8f83c4956444afe09520"
+    },
+    "fresh-replay/0/capture/stage-0-source.mlir": {
+      "bytes": 387,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-0-source.mlir",
+      "sha256": "0e5d2ef9c71973d76a8b7fcee28901f9aabb81da5f3e9a8fe4ca427364d78e8f"
+    },
+    "fresh-replay/0/capture/stage-1-adapter.mlir": {
+      "bytes": 97,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-1-adapter.mlir",
+      "sha256": "7fcbabbb3820d187a0c2664ae424576b377f18484bbb9cd037d95c0d183ac264"
+    },
+    "fresh-replay/0/capture/stage-1-baseline-bindings.json": {
+      "bytes": 346,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-1-baseline-bindings.json",
+      "sha256": "84dbda983b14892f682e6cf1553e20f464fd8ce4b12eb16aae37ddb7e9cf0b5c"
+    },
+    "fresh-replay/0/capture/stage-1-baseline-kernel.json": {
+      "bytes": 1489,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-1-baseline-kernel.json",
+      "sha256": "808b0c3c2615177a252a82a5e4525d7c18b3de0e7fdbfec2a699890c8c8e990c"
+    },
+    "fresh-replay/0/capture/stage-1-effect.json": {
+      "bytes": 906,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-1-effect.json",
+      "sha256": "edb0b496919ac738a15991d553cfaa31c4f6f16c46a15ff0f11774da8725842f"
+    },
+    "fresh-replay/0/capture/stage-1-selected.mlir": {
+      "bytes": 97,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-1-selected.mlir",
+      "sha256": "7fcbabbb3820d187a0c2664ae424576b377f18484bbb9cd037d95c0d183ac264"
+    },
+    "fresh-replay/0/capture/stage-1-source.mlir": {
+      "bytes": 274,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-1-source.mlir",
+      "sha256": "a8f3c7b1b6386ff345c1db2fe388311f59624f046dafeb14ce92e7574a84cf7e"
+    },
+    "fresh-replay/0/capture/stage-2-adapter.mlir": {
+      "bytes": 97,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-2-adapter.mlir",
+      "sha256": "539026391655fad7ea726f53697540a23708a9f07626ae2a9dce3d561da2e280"
+    },
+    "fresh-replay/0/capture/stage-2-baseline-bindings.json": {
+      "bytes": 346,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-2-baseline-bindings.json",
+      "sha256": "84dbda983b14892f682e6cf1553e20f464fd8ce4b12eb16aae37ddb7e9cf0b5c"
+    },
+    "fresh-replay/0/capture/stage-2-baseline-kernel.json": {
+      "bytes": 1499,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-2-baseline-kernel.json",
+      "sha256": "7b804fb2b11a8700f1e01e7ee06d4cd2fe7d5f90980054cd2ffa557a4e3abf8e"
+    },
+    "fresh-replay/0/capture/stage-2-effect.json": {
+      "bytes": 916,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-2-effect.json",
+      "sha256": "3ff960d406dd104e30e1b91869176bb005bf20b10958de8ba457a061ae278111"
+    },
+    "fresh-replay/0/capture/stage-2-selected.mlir": {
+      "bytes": 97,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-2-selected.mlir",
+      "sha256": "539026391655fad7ea726f53697540a23708a9f07626ae2a9dce3d561da2e280"
+    },
+    "fresh-replay/0/capture/stage-2-source.mlir": {
+      "bytes": 274,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/capture/stage-2-source.mlir",
+      "sha256": "146fdd3158ef99eb6ee52b1b57512078a4fcc6dd8c8d1b301deafcda6908757e"
+    },
+    "fresh-replay/0/kernel-oracle.process.json": {
+      "bytes": 526,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/kernel-oracle.process.json",
+      "sha256": "a270c5a009d93181d24c9d368d07a4c2ce5983f45c060d690c859b654491a508"
+    },
+    "fresh-replay/0/kernel-oracle/ORACLE.json": {
+      "bytes": 72732,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/kernel-oracle/ORACLE.json",
+      "sha256": "e6d62b1caffc774d6b6c7bb3ed8d1c273d5f4e552f904a125aafc2e0facab5a0"
+    },
+    "fresh-replay/0/kernel-oracle/kernel.txt": {
+      "bytes": 383,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/kernel-oracle/kernel.txt",
+      "sha256": "2da71cef76e4efeff92c052aedd2cfb43ffe1d6dfd25464cf000fcde67fdcf5d"
+    },
+    "fresh-replay/0/process.json": {
+      "bytes": 644,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/process.json",
+      "sha256": "3971a6904f2f4594f4a04c936c922f450ae548452defbe9c96ea178cce4e1fe1"
+    },
+    "fresh-replay/0/retained-oracle.process.json": {
+      "bytes": 617,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/retained-oracle.process.json",
+      "sha256": "4c9f6534d81f3e188ed853a8cbb248bb2cd53562fc947301cb8ccba9902e9469"
+    },
+    "fresh-replay/0/retained-oracle/ORACLE.json": {
+      "bytes": 79750,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/retained-oracle/ORACLE.json",
+      "sha256": "f68ff34aeb9c6ed2bea11f907cec0e92818a248b2ec7aa8b9d3109fee750b7df"
+    },
+    "fresh-replay/0/retained-oracle/export.json": {
+      "bytes": 11787,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/retained-oracle/export.json",
+      "sha256": "90b1d3227df79519d9267edc4ee684384bc3d78b314d033777a1536c06b206d6"
+    },
+    "fresh-replay/0/stage-0-adapter-oracle.process.json": {
+      "bytes": 624,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-adapter-oracle.process.json",
+      "sha256": "bd48f1ef82f94353d7882ede811137f0d84c96b6c3d4b36b6b4e1ed0d47027ce"
+    },
+    "fresh-replay/0/stage-0-adapter-oracle/ORACLE.json": {
+      "bytes": 68006,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-adapter-oracle/ORACLE.json",
+      "sha256": "c3821478178cd81de7c46ecc6ba89ea0cd6351c4c0c32b1f57f268669fe60f9d"
+    },
+    "fresh-replay/0/stage-0-adapter-oracle/export.json": {
+      "bytes": 1438,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-adapter-oracle/export.json",
+      "sha256": "1509395462569df6d7d8f5ea16ff5a9f34e82be3c8beee751747f36d3207ba2c"
+    },
+    "fresh-replay/0/stage-0-selected-oracle.process.json": {
+      "bytes": 626,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-selected-oracle.process.json",
+      "sha256": "0853a5e534652fe5a1872972786e7d848f78078a578ee4a2a19c722d9e02d2b4"
+    },
+    "fresh-replay/0/stage-0-selected-oracle/ORACLE.json": {
+      "bytes": 68007,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-selected-oracle/ORACLE.json",
+      "sha256": "d807881ff9d3f94cada4ae5f2ce10a1d11cb9d7dca0a3f6dd5110d665f08f546"
+    },
+    "fresh-replay/0/stage-0-selected-oracle/export.json": {
+      "bytes": 1438,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-selected-oracle/export.json",
+      "sha256": "1509395462569df6d7d8f5ea16ff5a9f34e82be3c8beee751747f36d3207ba2c"
+    },
+    "fresh-replay/0/stage-0-source-oracle.process.json": {
+      "bytes": 622,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-source-oracle.process.json",
+      "sha256": "615dcaecd7503166415dd9f81b7dda2f4dac46b0498998b216704eb1f79ebad9"
+    },
+    "fresh-replay/0/stage-0-source-oracle/ORACLE.json": {
+      "bytes": 68005,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-source-oracle/ORACLE.json",
+      "sha256": "a044186d3663cd7e44ce31702ef88731ec8ba59ba74494b627eed940848ee872"
+    },
+    "fresh-replay/0/stage-0-source-oracle/export.json": {
+      "bytes": 1437,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-0-source-oracle/export.json",
+      "sha256": "f3ddfe393894985893281bbee12ddb6254a544f9a381bebd0c7d7716efa425e5"
+    },
+    "fresh-replay/0/stage-1-adapter-oracle.process.json": {
+      "bytes": 624,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-adapter-oracle.process.json",
+      "sha256": "570f0a35bf3a0441f6445e7cf0b2ea367cc4091063737c2d2140ed829da3af2b"
+    },
+    "fresh-replay/0/stage-1-adapter-oracle/ORACLE.json": {
+      "bytes": 68005,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-adapter-oracle/ORACLE.json",
+      "sha256": "246d84ea69d35c27e0aabfcf08d30256dd2790e96e27c12808a513581d3265d6"
+    },
+    "fresh-replay/0/stage-1-adapter-oracle/export.json": {
+      "bytes": 1106,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-adapter-oracle/export.json",
+      "sha256": "de6467855d5532eecc942273e666802d1b80f1bc8edd8fa16b79cb03baa68edd"
+    },
+    "fresh-replay/0/stage-1-selected-oracle.process.json": {
+      "bytes": 626,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-selected-oracle.process.json",
+      "sha256": "148d4f8d406dbc19e593b9035aa61409e21ab7e1277b5191763b6cd1f96fbc5e"
+    },
+    "fresh-replay/0/stage-1-selected-oracle/ORACLE.json": {
+      "bytes": 68006,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-selected-oracle/ORACLE.json",
+      "sha256": "447d7b993063eda13d2e65bd9901051930575cd12b77ea1f08bd101d4bd18dac"
+    },
+    "fresh-replay/0/stage-1-selected-oracle/export.json": {
+      "bytes": 1106,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-selected-oracle/export.json",
+      "sha256": "de6467855d5532eecc942273e666802d1b80f1bc8edd8fa16b79cb03baa68edd"
+    },
+    "fresh-replay/0/stage-1-source-oracle.process.json": {
+      "bytes": 622,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-source-oracle.process.json",
+      "sha256": "02c15cf24a83ee49a3324138c9f8d2358d5b6fc64d31e28b61c2f20fe7dd1088"
+    },
+    "fresh-replay/0/stage-1-source-oracle/ORACLE.json": {
+      "bytes": 68005,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-source-oracle/ORACLE.json",
+      "sha256": "4b91b121c1f93a35250d4c8675b8006aa9e3323c061d8dac612b4f5202700c7e"
+    },
+    "fresh-replay/0/stage-1-source-oracle/export.json": {
+      "bytes": 1106,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-1-source-oracle/export.json",
+      "sha256": "34d2d352b124ba72004a4d6e0c3047bdb9b742dee8f112027d139c2db9685b6a"
+    },
+    "fresh-replay/0/stage-2-adapter-oracle.process.json": {
+      "bytes": 624,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-adapter-oracle.process.json",
+      "sha256": "0a2964ebe476655c54edad5b48911e7c7820e1f52968b2fe7dd9af110759935d"
+    },
+    "fresh-replay/0/stage-2-adapter-oracle/ORACLE.json": {
+      "bytes": 68005,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-adapter-oracle/ORACLE.json",
+      "sha256": "57bc8147ceeb32d803af29d419195bc6c21aed17dcbc9007af00880076c2fb52"
+    },
+    "fresh-replay/0/stage-2-adapter-oracle/export.json": {
+      "bytes": 1106,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-adapter-oracle/export.json",
+      "sha256": "a150a975cc47546fd4077bf58c503eab4e4621e0f7ab738c37499526b9cb6ae8"
+    },
+    "fresh-replay/0/stage-2-selected-oracle.process.json": {
+      "bytes": 626,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-selected-oracle.process.json",
+      "sha256": "0493c02a8d130e2bd282d7ceb31bf1e933006a3dfd150a005e8ce2393aa4bb32"
+    },
+    "fresh-replay/0/stage-2-selected-oracle/ORACLE.json": {
+      "bytes": 68006,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-selected-oracle/ORACLE.json",
+      "sha256": "6435c2370c3002cb91b2a05a9bb39871cb2ec96ad7b803add241de17e08ba062"
+    },
+    "fresh-replay/0/stage-2-selected-oracle/export.json": {
+      "bytes": 1106,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-selected-oracle/export.json",
+      "sha256": "a150a975cc47546fd4077bf58c503eab4e4621e0f7ab738c37499526b9cb6ae8"
+    },
+    "fresh-replay/0/stage-2-source-oracle.process.json": {
+      "bytes": 622,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-source-oracle.process.json",
+      "sha256": "de6c45cf7e1b1b91137c2fee89988af20e4bd7c55881233065659206b9fe6c8e"
+    },
+    "fresh-replay/0/stage-2-source-oracle/ORACLE.json": {
+      "bytes": 68005,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-source-oracle/ORACLE.json",
+      "sha256": "99797972388c944192e361f6ac12990c8d0f8bb8ea3168fbe2408f59b0310dd3"
+    },
+    "fresh-replay/0/stage-2-source-oracle/export.json": {
+      "bytes": 1106,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/0/stage-2-source-oracle/export.json",
+      "sha256": "d521bcf450c5baa6ab52ec225b495087a5f71f10289587d7104382b01e9f7eb1"
+    },
+    "fresh-replay/1/AUDIT.json": {
+      "bytes": 366,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/AUDIT.json",
+      "sha256": "aeb7dafab58edc8cc034cb5e306fccb7d93393e363ec9ee325451a7a7b9d2c90"
+    },
+    "fresh-replay/1/Check.lean": {
+      "bytes": 26489,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/Check.lean",
+      "sha256": "ad924392a0dff9860bb799f138ed390bdd0578dc1a70bb4c5e2fce0f006d7ab9"
+    },
+    "fresh-replay/1/EVIDENCE.json": {
+      "bytes": 1164900,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/EVIDENCE.json",
+      "sha256": "956f420752e440196d42ce83eea4a01c880b34307591b0aead2c46b6c2bb3875"
+    },
+    "fresh-replay/1/MODEL.json": {
+      "bytes": 571,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/MODEL.json",
+      "sha256": "2e9751ee5cd003f1acffe044f4f389080e616e74c67d5c64a88e4e09f1b7e55c"
+    },
+    "fresh-replay/1/REPLAY.json": {
+      "bytes": 649,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/REPLAY.json",
+      "sha256": "495257a4da84f44901c20c23e96764ff9647b35aaf671e8fcd6f788f185d7e98"
+    },
+    "fresh-replay/1/before-oracle.process.json": {
+      "bytes": 606,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/before-oracle.process.json",
+      "sha256": "72f4b89d1856f2faa7ffae1744cf0fdc7ff34859471de34b00992d5f65055d54"
+    },
+    "fresh-replay/1/before-oracle/ORACLE.json": {
+      "bytes": 79741,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/before-oracle/ORACLE.json",
+      "sha256": "3c73861ccd19c79debd63bb29f36a695f7bf4aa4ca521cd3aba9d5146ab737dd"
+    },
+    "fresh-replay/1/before-oracle/export.json": {
+      "bytes": 11830,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/before-oracle/export.json",
+      "sha256": "0e9df99400e9bf5a040f55a8c864d4ee14afecfd50a6ef7cc31444e65cb1e729"
+    },
+    "fresh-replay/1/capture/CAPTURE.json": {
+      "bytes": 8313,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/CAPTURE.json",
+      "sha256": "d1369525e2a18a7b379c587ec7db22eddffe29f76034337183702d7a4dcf367b"
+    },
+    "fresh-replay/1/capture/HOST-INTAKE.json": {
+      "bytes": 136259,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/HOST-INTAKE.json",
+      "sha256": "8f08505727d221df027fdc486e3287e4bcd2721160cf19003a23559c9c34b30f"
+    },
+    "fresh-replay/1/capture/actual-image-0.bin": {
+      "bytes": 123,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/actual-image-0.bin",
+      "sha256": "c95c6cd71dbfdf2e31d454196c3927b25f6f9483b820f9d0e1084efb19046051"
+    },
+    "fresh-replay/1/capture/actual-output-conformance.json": {
+      "bytes": 1319,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/actual-output-conformance.json",
+      "sha256": "fd562144e03853147ef3b63485caff87ce79526f794f7792ab47851c4db83bc7"
+    },
+    "fresh-replay/1/capture/actual-output-effects.json": {
+      "bytes": 3205,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/actual-output-effects.json",
+      "sha256": "846e99209b3335bcf0bce228ab634f6bae00e328b771494dc1591c2e3d610960"
+    },
+    "fresh-replay/1/capture/actual-output-kernel.json": {
+      "bytes": 3943,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/actual-output-kernel.json",
+      "sha256": "9abc7b5c308324273612fc2802e816f376974f6aab3178f88644c894daadedab"
+    },
+    "fresh-replay/1/capture/declared-composition-law.json": {
+      "bytes": 726,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/declared-composition-law.json",
+      "sha256": "e7c5ce8af07c32fd3a88a4c795b0a72f51e5dcec7be102fc158e1125116da221"
+    },
+    "fresh-replay/1/capture/original-connected-plan-values.json": {
+      "bytes": 727,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/original-connected-plan-values.json",
+      "sha256": "1a0b2d4424e487d3d47492017283a96fb849c1815a2c26f202add0204617ef24"
+    },
+    "fresh-replay/1/capture/original-connected-plan.json": {
+      "bytes": 1351,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/original-connected-plan.json",
+      "sha256": "0dcc2152b17e3122a44b2da49521d9705f1ee82a806d2bb5cb82f0057db16b99"
+    },
+    "fresh-replay/1/capture/original-provider-bindings.json": {
+      "bytes": 624,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/original-provider-bindings.json",
+      "sha256": "2426abc11a06d5a957338756e821bb384e25fdc39a0be4e5615b96a0816d8b4e"
+    },
+    "fresh-replay/1/capture/original-provider-kernel.json": {
+      "bytes": 3952,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/original-provider-kernel.json",
+      "sha256": "eb9ff341c57c8a286d8e11a5ab8205f25672925a37cb2852e61da8c0d47e5266"
+    },
+    "fresh-replay/1/capture/original-provider-objects.json": {
+      "bytes": 113,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/original-provider-objects.json",
+      "sha256": "9aed7e538c04a370ed20828c7638fae3adf7b13078f0a0e05d8cf08e3fc1379d"
+    },
+    "fresh-replay/1/capture/retained-source.mlir": {
+      "bytes": 3931,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/retained-source.mlir",
+      "sha256": "101f81fa3d8b473ac0f5894693e1b429f27a27f80590f883f9a28e5a21d70eee"
+    },
+    "fresh-replay/1/capture/selected-fusion-declarations.json": {
+      "bytes": 1588,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/selected-fusion-declarations.json",
+      "sha256": "d7dd69ae9dedc4f9a8dc48ba74eb87740c619061f1f366c4761ebbdceaf98119"
+    },
+    "fresh-replay/1/capture/selected-record.json": {
+      "bytes": 7587,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/selected-record.json",
+      "sha256": "d8a0922dc022df5a58123064d2c35e8caeaae02362d212e7589f7335c6d6b65d"
+    },
+    "fresh-replay/1/capture/selected-storage-declarations.json": {
+      "bytes": 12264,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/selected-storage-declarations.json",
+      "sha256": "27e3cc95ffcff9d0f56c233e85a68e5c8a72139d4f0110e924f3b41f03573be5"
+    },
+    "fresh-replay/1/capture/selected-storage-windows.json": {
+      "bytes": 1369,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/selected-storage-windows.json",
+      "sha256": "226311b66e70950327cb5b8c0b3a48e7d5d83d649ac4cc5fa54d41271ac916a9"
+    },
+    "fresh-replay/1/capture/selected/facts.json": {
+      "bytes": 274,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/selected/facts.json",
+      "sha256": "3eeb37ad4b982441b8e9b08828647c704cdaff62c4b2c04d8692cd72156ba6e2"
+    },
+    "fresh-replay/1/capture/selected/software.yaml": {
+      "bytes": 32142,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/selected/software.yaml",
+      "sha256": "a61bee78038c08f0ea48c6687b43ff4b0c54a813aff1759daab4cb3d2f9ede82"
+    },
+    "fresh-replay/1/capture/source.mlir": {
+      "bytes": 3931,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/source.mlir",
+      "sha256": "101f81fa3d8b473ac0f5894693e1b429f27a27f80590f883f9a28e5a21d70eee"
+    },
+    "fresh-replay/1/capture/stage-0-adapter.mlir": {
+      "bytes": 133,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-0-adapter.mlir",
+      "sha256": "2da35caa33afa551a708dff870168b7c29889ae6c12f72a7c46237ac13d72c55"
+    },
+    "fresh-replay/1/capture/stage-0-baseline-bindings.json": {
+      "bytes": 430,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-0-baseline-bindings.json",
+      "sha256": "36362f0d4db9d58310fddd721b9fcdf812b47822e47e7ae7dffa733cceb75c1c"
+    },
+    "fresh-replay/1/capture/stage-0-baseline-kernel.json": {
+      "bytes": 1629,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-0-baseline-kernel.json",
+      "sha256": "0b80fbcb15e39d49ffc62a6720edb6a7bd0fd37f7eff9b461182eaaea19161a2"
+    },
+    "fresh-replay/1/capture/stage-0-effect.json": {
+      "bytes": 1094,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-0-effect.json",
+      "sha256": "482e7b2a9082c1352bb68115b5c01a049d3f69b0990e0379e249251c84e647fb"
+    },
+    "fresh-replay/1/capture/stage-0-selected.mlir": {
+      "bytes": 133,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-0-selected.mlir",
+      "sha256": "2da35caa33afa551a708dff870168b7c29889ae6c12f72a7c46237ac13d72c55"
+    },
+    "fresh-replay/1/capture/stage-0-source.mlir": {
+      "bytes": 401,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-0-source.mlir",
+      "sha256": "9a1e394c6cb26b0c5a4a72ea6bcd019779af288ee6a64dba5a7de9fa09f71f44"
+    },
+    "fresh-replay/1/capture/stage-1-adapter.mlir": {
+      "bytes": 102,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-1-adapter.mlir",
+      "sha256": "5ad3dc46a56797e58a2cedfae6402dabd866d91e8d9048e172ec6419b895fab9"
+    },
+    "fresh-replay/1/capture/stage-1-baseline-bindings.json": {
+      "bytes": 343,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-1-baseline-bindings.json",
+      "sha256": "98567081b18187aed7156023cbf619a4730bb579bdbaaf89a3761493f0f0d973"
+    },
+    "fresh-replay/1/capture/stage-1-baseline-kernel.json": {
+      "bytes": 1491,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-1-baseline-kernel.json",
+      "sha256": "06553990134f72310239e456b27d7ab3984effdcfb5c2c1b8d11357421d4fd22"
+    },
+    "fresh-replay/1/capture/stage-1-effect.json": {
+      "bytes": 913,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-1-effect.json",
+      "sha256": "0c11ddcf4023d82cea90508e0fe6e1e7a0110f592b125fc184aecc2c7f6660b6"
+    },
+    "fresh-replay/1/capture/stage-1-selected.mlir": {
+      "bytes": 102,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-1-selected.mlir",
+      "sha256": "5ad3dc46a56797e58a2cedfae6402dabd866d91e8d9048e172ec6419b895fab9"
+    },
+    "fresh-replay/1/capture/stage-1-source.mlir": {
+      "bytes": 283,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-1-source.mlir",
+      "sha256": "991ef900aedc2322686fa331fd1b3a03b2462cb9d0fa6516cbd19a2ff23ec75c"
+    },
+    "fresh-replay/1/capture/stage-2-adapter.mlir": {
+      "bytes": 102,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-2-adapter.mlir",
+      "sha256": "86ffa40126ba6b05d7cc43e486888785e515d8f71f6ced1273d47ffe165fa2e6"
+    },
+    "fresh-replay/1/capture/stage-2-baseline-bindings.json": {
+      "bytes": 343,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-2-baseline-bindings.json",
+      "sha256": "98567081b18187aed7156023cbf619a4730bb579bdbaaf89a3761493f0f0d973"
+    },
+    "fresh-replay/1/capture/stage-2-baseline-kernel.json": {
+      "bytes": 1501,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-2-baseline-kernel.json",
+      "sha256": "2750251ea6d4f591ae31a6edc599c6265bf395d6504915076c004debd502ec89"
+    },
+    "fresh-replay/1/capture/stage-2-effect.json": {
+      "bytes": 923,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-2-effect.json",
+      "sha256": "0b7417e62f327a63c4fb2a4a1270cd6331f593475a921b6be3bf7f07a2933592"
+    },
+    "fresh-replay/1/capture/stage-2-selected.mlir": {
+      "bytes": 102,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-2-selected.mlir",
+      "sha256": "86ffa40126ba6b05d7cc43e486888785e515d8f71f6ced1273d47ffe165fa2e6"
+    },
+    "fresh-replay/1/capture/stage-2-source.mlir": {
+      "bytes": 283,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/stage-2-source.mlir",
+      "sha256": "6b498440ebeadb956f0d9debd4d21910be842a61d85fc1b59ed72a61b398f76a"
+    },
+    "fresh-replay/1/kernel-oracle.process.json": {
+      "bytes": 526,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/kernel-oracle.process.json",
+      "sha256": "e83cfdc4fc2aa21ed7eb9ae403c0d2d88fba923016e3ff773fe451281c706fc5"
+    },
+    "fresh-replay/1/kernel-oracle/ORACLE.json": {
+      "bytes": 72732,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/kernel-oracle/ORACLE.json",
+      "sha256": "697ae427554851641606603f88bb458c182707f987905313da3aabdef66f3607"
+    },
+    "fresh-replay/1/kernel-oracle/kernel.txt": {
+      "bytes": 386,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/kernel-oracle/kernel.txt",
+      "sha256": "30488c8e8477156d682f0ef98b99e0fc7f0140a266e93ccdee0fdf200d0f8353"
+    },
+    "fresh-replay/1/process.json": {
+      "bytes": 644,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/process.json",
+      "sha256": "950d9c37398f860fbbbdb3a224864ff81c0bd40f34267e92cb4f9d8801055342"
+    },
+    "fresh-replay/1/retained-oracle.process.json": {
+      "bytes": 617,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/retained-oracle.process.json",
+      "sha256": "cb01a8c3f7e7cbf96e11dec66077402736199568dfa164b6d838102ddb45c224"
+    },
+    "fresh-replay/1/retained-oracle/ORACLE.json": {
+      "bytes": 79750,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/retained-oracle/ORACLE.json",
+      "sha256": "0b01174b341ba9863da6cbf6fe8df228cc990cbc7013a343d2fd77ab503753d0"
+    },
+    "fresh-replay/1/retained-oracle/export.json": {
+      "bytes": 11830,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/retained-oracle/export.json",
+      "sha256": "0e9df99400e9bf5a040f55a8c864d4ee14afecfd50a6ef7cc31444e65cb1e729"
+    },
+    "fresh-replay/1/stage-0-adapter-oracle.process.json": {
+      "bytes": 624,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-adapter-oracle.process.json",
+      "sha256": "d97d306c3d490fb2c323f6a22e1544cb414ac798e40ab3d133f87086896cd8c7"
+    },
+    "fresh-replay/1/stage-0-adapter-oracle/ORACLE.json": {
+      "bytes": 68006,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-adapter-oracle/ORACLE.json",
+      "sha256": "1ceae030e6d528ad024675992f09c1e5b79f3df4907a5b25bad2d980f8297fd4"
+    },
+    "fresh-replay/1/stage-0-adapter-oracle/export.json": {
+      "bytes": 1447,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-adapter-oracle/export.json",
+      "sha256": "9dae7810f48b79a72f4c3b3d545fbd8b1c726443d4dedea3cee73aeb4ab5fbd9"
+    },
+    "fresh-replay/1/stage-0-selected-oracle.process.json": {
+      "bytes": 626,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-selected-oracle.process.json",
+      "sha256": "f225803bccd0b18962631cca1fb3ec8dad3bff8c7d52d0c1f04cacece91f123d"
+    },
+    "fresh-replay/1/stage-0-selected-oracle/ORACLE.json": {
+      "bytes": 68007,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-selected-oracle/ORACLE.json",
+      "sha256": "7098aa402b0e1939d99426fa3a58a49036f5619725bba430f6fe75a860be4c58"
+    },
+    "fresh-replay/1/stage-0-selected-oracle/export.json": {
+      "bytes": 1447,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-selected-oracle/export.json",
+      "sha256": "9dae7810f48b79a72f4c3b3d545fbd8b1c726443d4dedea3cee73aeb4ab5fbd9"
+    },
+    "fresh-replay/1/stage-0-source-oracle.process.json": {
+      "bytes": 622,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-source-oracle.process.json",
+      "sha256": "1ec5af06b6c2aa0b5838fa5a1570dc79ea816c56593fbe758db3c5283038cc89"
+    },
+    "fresh-replay/1/stage-0-source-oracle/ORACLE.json": {
+      "bytes": 68005,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-source-oracle/ORACLE.json",
+      "sha256": "3fed8d88728d95a08ba67784ec9c56d978ad69c8ccf953cd2e7bda2941d0bc9e"
+    },
+    "fresh-replay/1/stage-0-source-oracle/export.json": {
+      "bytes": 1446,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-0-source-oracle/export.json",
+      "sha256": "3a54990b18a6dee6e779eaad7ac3bb3e207c93bcf380160f95daf25b2ae005bf"
+    },
+    "fresh-replay/1/stage-1-adapter-oracle.process.json": {
+      "bytes": 624,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-adapter-oracle.process.json",
+      "sha256": "023644b3eb189cb738b6be78e186ea5eb00e7606af46e823010e7602cf0b832c"
+    },
+    "fresh-replay/1/stage-1-adapter-oracle/ORACLE.json": {
+      "bytes": 68006,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-adapter-oracle/ORACLE.json",
+      "sha256": "d8bd3294d2d380471dada655e68a42ffe32c1bdf29aa3d37dc5dc409dabfee6f"
+    },
+    "fresh-replay/1/stage-1-adapter-oracle/export.json": {
+      "bytes": 1113,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-adapter-oracle/export.json",
+      "sha256": "c08e9b80db459b30978d32e55997bba2768078956eadf4d7aa390b6d90cfea14"
+    },
+    "fresh-replay/1/stage-1-selected-oracle.process.json": {
+      "bytes": 626,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-selected-oracle.process.json",
+      "sha256": "40c03df917071ab7ea5a6ab423d6e51b82998f3cdcb8bdf2ad5b945389d34e34"
+    },
+    "fresh-replay/1/stage-1-selected-oracle/ORACLE.json": {
+      "bytes": 68007,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-selected-oracle/ORACLE.json",
+      "sha256": "9e416443a8baec06018737ad30d2cb70e5df7610f11554dbce82647c436a321e"
+    },
+    "fresh-replay/1/stage-1-selected-oracle/export.json": {
+      "bytes": 1113,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-selected-oracle/export.json",
+      "sha256": "c08e9b80db459b30978d32e55997bba2768078956eadf4d7aa390b6d90cfea14"
+    },
+    "fresh-replay/1/stage-1-source-oracle.process.json": {
+      "bytes": 622,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-source-oracle.process.json",
+      "sha256": "7c0b07f5fe3b5a7d36a57907ea360341db23851aec8a1549877f04b12602f2ee"
+    },
+    "fresh-replay/1/stage-1-source-oracle/ORACLE.json": {
+      "bytes": 68005,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-source-oracle/ORACLE.json",
+      "sha256": "d3a651c1f5ed4c2409c49e74deafb09587d3a029dce7e80a3b4d54aa8f06468e"
+    },
+    "fresh-replay/1/stage-1-source-oracle/export.json": {
+      "bytes": 1112,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-1-source-oracle/export.json",
+      "sha256": "f88f5d3230cca59e30e12fef62a481756fe58c860d16d02ebe20d558ef338987"
+    },
+    "fresh-replay/1/stage-2-adapter-oracle.process.json": {
+      "bytes": 624,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-adapter-oracle.process.json",
+      "sha256": "94a3c5bee2645461eca79946ad4d20455c75aeecc31d652a4645b4c24fc2b1a9"
+    },
+    "fresh-replay/1/stage-2-adapter-oracle/ORACLE.json": {
+      "bytes": 68006,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-adapter-oracle/ORACLE.json",
+      "sha256": "bc5e1d85efff939dd431b93ca5cb9e8a309c0e2d1aeec0f9232f8b2b89b554a9"
+    },
+    "fresh-replay/1/stage-2-adapter-oracle/export.json": {
+      "bytes": 1113,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-adapter-oracle/export.json",
+      "sha256": "ea24d8beb3a0628824f8fba581a70dd8aef221aca92e20d13b76615138c729dc"
+    },
+    "fresh-replay/1/stage-2-selected-oracle.process.json": {
+      "bytes": 626,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-selected-oracle.process.json",
+      "sha256": "3a31f3159c7f5180f29c384d536d77900fe0b887274dfcdf786d1a4f07533a5b"
+    },
+    "fresh-replay/1/stage-2-selected-oracle/ORACLE.json": {
+      "bytes": 68007,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-selected-oracle/ORACLE.json",
+      "sha256": "6bfcb6093e14c582ddf112a2a28ac8bd615ee923472d30a561df30e35c2b3564"
+    },
+    "fresh-replay/1/stage-2-selected-oracle/export.json": {
+      "bytes": 1113,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-selected-oracle/export.json",
+      "sha256": "ea24d8beb3a0628824f8fba581a70dd8aef221aca92e20d13b76615138c729dc"
+    },
+    "fresh-replay/1/stage-2-source-oracle.process.json": {
+      "bytes": 622,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-source-oracle.process.json",
+      "sha256": "faf78be0c772625a0f849faf79e72a75b862f598d23370115d6e092ceee5b36e"
+    },
+    "fresh-replay/1/stage-2-source-oracle/ORACLE.json": {
+      "bytes": 68005,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-source-oracle/ORACLE.json",
+      "sha256": "633d420b0ba62a506ed1a34f0a0b8a2a76e3c8505a71bb69595c6e885d14c748"
+    },
+    "fresh-replay/1/stage-2-source-oracle/export.json": {
+      "bytes": 1112,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/stage-2-source-oracle/export.json",
+      "sha256": "c48ea24e7b0e81544ddf3c087b809ad21a86d1dd6784db4559bccc63482b0f87"
+    },
+    "originals.json": {
+      "bytes": 218,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/originals.json",
+      "sha256": "859c440cd9a11d9f642e376a2e61932a3a207efbb1b9bf741527d700e850188d"
+    },
+    "originals.stderr": {
+      "bytes": 0,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/originals.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "originals.stdout": {
+      "bytes": 111,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/originals.stdout",
+      "sha256": "48a562b38e97a1b7fb20737cfd99966e522bf978ebab4cbf9644bfe54581b020"
+    },
+    "owned-source.patch": {
+      "bytes": 91403,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/owned-source.patch",
+      "sha256": "c1e978802407f44d7867a5e7149ad6a059f828ed1630d8b8eaadfb708045638f"
+    },
+    "project-source-closure/merlin/lean/MerlinVerify/Core/AST.lean": {
+      "bytes": 6765,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/merlin/lean/MerlinVerify/Core/AST.lean",
+      "sha256": "022cec55c189ddc40e1ee77e8cc9d8ede4f7734e4ce45a8848e98b96ee5643cd"
+    },
+    "project-source-closure/merlin/lean/MerlinVerify/Core/Eq.lean": {
+      "bytes": 16084,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/merlin/lean/MerlinVerify/Core/Eq.lean",
+      "sha256": "0bd85efa4087bde2070f157165ad5c9cf07469cfd216314bf2524ced769515f2"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegions.lean": {
+      "bytes": 18039,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegions.lean",
+      "sha256": "dd54f1b6c42b1f4e84029461e15eb3f87e0810827fadc322326487a165d96bac"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean": {
+      "bytes": 7003,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean",
+      "sha256": "238812250de03f62906a8af05f0eea84ab7cf9b918b4b226a6685f504c8aa2b8"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean": {
+      "bytes": 2701,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean",
+      "sha256": "56794f6d7e1d57d292e94d1fb9b6654b7f310a1aa88844e3afac107ba8ef5a51"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean": {
+      "bytes": 7506,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean",
+      "sha256": "91305aa0c4af5bc7e1b31462c0aa83201dceb10abe60d04c8ce91c05d71dc66d"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean": {
+      "bytes": 4594,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean",
+      "sha256": "218ca5a0e2e20649477cf33efb998c23bb93df6e3e992f8f04b768db4862855f"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean": {
+      "bytes": 13321,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean",
+      "sha256": "0f8f1e34f085890493e83ffecc1c98bd896fd765e207ece0f9795d2bab65c6d0"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean": {
+      "bytes": 8378,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean",
+      "sha256": "655797e30a22b49ab1bc8bc422149586a6375ac234e5c63b794acbb98b2721e0"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean": {
+      "bytes": 5519,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean",
+      "sha256": "9be7f585db6e32ceba6e6926e75cf290565dbbaa2d8363855aa500121a172971"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean": {
+      "bytes": 3722,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean",
+      "sha256": "a4943fbb742c5d5bc5b4338c1f007faed5a5561e186999de91c686178e806343"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean": {
+      "bytes": 5803,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean",
+      "sha256": "07da97265f745171912645dcdbd5ca4f24ec910e221332bdb8cfeeee32b2c04e"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean": {
+      "bytes": 4162,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean",
+      "sha256": "e8bf9d1c1b2c1967ef0c7d05c329fb35922ffbd4e10931a972a33bed301d6001"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsFusion.lean": {
+      "bytes": 9226,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/GraphRegionsFusion.lean",
+      "sha256": "7076119973823d6f1e9e5e09e5f4b8c23a679423c37475f6b78fe99329f45949"
+    },
+    "project-source-closure/src/merlin/verify/lean/Merlin/StateEffects.lean": {
+      "bytes": 4537,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/project-source-closure/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    "source-snapshot/merlin/tests/infra/test_lean_graph_regions_declared.py": {
+      "bytes": 16202,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/merlin/tests/infra/test_lean_graph_regions_declared.py",
+      "sha256": "2beb83f38b1a8fdf0ae6d11aa660d688df93829cb7e493aaf35982b3dbf91510"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean": {
+      "bytes": 7003,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean",
+      "sha256": "238812250de03f62906a8af05f0eea84ab7cf9b918b4b226a6685f504c8aa2b8"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean": {
+      "bytes": 2701,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean",
+      "sha256": "56794f6d7e1d57d292e94d1fb9b6654b7f310a1aa88844e3afac107ba8ef5a51"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean": {
+      "bytes": 7506,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean",
+      "sha256": "91305aa0c4af5bc7e1b31462c0aa83201dceb10abe60d04c8ce91c05d71dc66d"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean": {
+      "bytes": 4594,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean",
+      "sha256": "218ca5a0e2e20649477cf33efb998c23bb93df6e3e992f8f04b768db4862855f"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean": {
+      "bytes": 13321,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean",
+      "sha256": "0f8f1e34f085890493e83ffecc1c98bd896fd765e207ece0f9795d2bab65c6d0"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean": {
+      "bytes": 8378,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean",
+      "sha256": "655797e30a22b49ab1bc8bc422149586a6375ac234e5c63b794acbb98b2721e0"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean": {
+      "bytes": 5519,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean",
+      "sha256": "9be7f585db6e32ceba6e6926e75cf290565dbbaa2d8363855aa500121a172971"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean": {
+      "bytes": 3722,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean",
+      "sha256": "a4943fbb742c5d5bc5b4338c1f007faed5a5561e186999de91c686178e806343"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean": {
+      "bytes": 5803,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean",
+      "sha256": "07da97265f745171912645dcdbd5ca4f24ec910e221332bdb8cfeeee32b2c04e"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean": {
+      "bytes": 4162,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean",
+      "sha256": "e8bf9d1c1b2c1967ef0c7d05c329fb35922ffbd4e10931a972a33bed301d6001"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_ast.py": {
+      "bytes": 5430,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_ast.py",
+      "sha256": "f14077f533c73685d10ec716951529c8098f158613a5383d141db64ea070db5b"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_capture.py": {
+      "bytes": 11987,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_capture.py",
+      "sha256": "898cef71246d8ef510ba157a6e691da7437d1373d6ef94f05d8b642cf6e47565"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_check.py": {
+      "bytes": 7176,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_check.py",
+      "sha256": "3bd8947279c49249848761a2016dd8344b8202532258c80909d094ef36da88b7"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_context.py": {
+      "bytes": 9634,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_context.py",
+      "sha256": "2800a9702c2c2187a0930ce26852d6e3f617ec1fd3a37ac110ee85ed58579bc6"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_oracle.py": {
+      "bytes": 4233,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_oracle.py",
+      "sha256": "c39c16d4c220457c3aabc3a57372e409556ff62d092e8e9de1a12d82c2405c34"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_packet.py": {
+      "bytes": 18518,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_packet.py",
+      "sha256": "ec84f2d87d1449b7f00f939a95db190d31b4b5e59259d06e2f3b1b83f1c4836f"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_qualify.py": {
+      "bytes": 9208,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_qualify.py",
+      "sha256": "27e099ddb645608e45bda1a4a83c163d37712d71d939475148504cbb7188fef4"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_verify.py": {
+      "bytes": 14711,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_verify.py",
+      "sha256": "34b79274140d22336a4ce0a071222554b82001f3a095d6f19208b4cc14cb47e3"
+    }
+  },
+  "retention_policy": "all",
+  "status": {
+    "engineering_qualified": true,
+    "fixed_cases": 46,
+    "fresh_process_batches": 1,
+    "full_model_verified": false,
+    "graph_contract_review": "pending",
+    "independently_reviewed": false,
+    "ordinary_compiler_gating": false,
+    "original_receipts": [
+      {
+        "bytes": 1165077,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/verified-i8/EVIDENCE.json",
+        "sha256": "4ee6584c9b835ecbb9e11319ead14524fc4bdfbe971ad3f8208596934c7b50fa"
+      },
+      {
+        "bytes": 1165810,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/verified-i16shared/EVIDENCE.json",
+        "sha256": "b5dad045228edee79eb2efc4fa5dcec902683bbf36e42d30b3aa9991e8e1cb24"
+      }
+    ],
+    "phase": "complete",
+    "primitive_fidelity_proved": false
+  }
+}

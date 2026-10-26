@@ -210,3 +210,21 @@ independent review. Prioritize this new row in packages2–3 after the scalar
 worked example. Its possible COMPLETE public-outcome relation excludes tagged
 failure/divergence equivalence and retains trusted parser/projection and total
 private/unobservable allocation premises. Compiler gating remains unintegrated.
+
+## Frontend review inputs and a new unresolved gate
+
+The declared-call worker's qualification-v1 has46 original cases and one fresh
+process replay batch over two actual typed boundaries. Its exact19 sources,
+sealed reports and current paper-evidence packet are available for review. A
+NEW five-source stronger wrapper checks ABI window order/full-after-effects,
+but its frozen run is UNQUALIFIED: the first i8 host-reference check failed
+before any oracle invocation; i16 passed and dependent i8 cases were not retried.
+The stale file identity/cause is UNKNOWN, and one bounded current comparison
+found no mismatches. Keep these qualifications separate. The coordinator's
+frontend-declared-observation-v1.json records a source/evidence-only inspection.
+
+Packages3 and5 should examine this gate and the exact host trust boundary.
+A later matching hash is not an explanation or an approval. Do not rerun/rehash
+the failed profile to promote it. An independently identified environment can
+provide separately attributed reproduction; preserve the original failure. F is
+continuing source-only captured-literal/closure proof work.
