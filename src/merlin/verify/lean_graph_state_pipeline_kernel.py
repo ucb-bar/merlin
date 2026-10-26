@@ -57,11 +57,23 @@ def dependencies():
     freeze = json.loads(freeze_path.read_text())
     incident_path = artifacts_dir() / "verification/graph-state-scalar/review/sealed-v1/shared-binding-check-once.json"
     incident = json.loads(incident_path.read_text())
-    if incident["target_in_actual_proof_import_object_closure"] or not incident["all_recorded_object_tool_bindings_exact"]:
+    if (
+        incident["target_in_actual_proof_import_object_closure"]
+        or not incident["all_recorded_object_tool_bindings_exact"]
+    ):
         raise ValueError("existing scalar fixed context affected/unconfirmed")
-    scalar_sources = [stable.file_ref(repo_root() / ("src/merlin/verify/lean/Merlin/" + name + ".lean")) for name in (
-        "GraphStateScalarContract", "GraphStateScalarNormalize", "GraphStateScalarSound", "GraphStateScalarTyping",
-        "GraphStateScalarInitialized", "GraphStateScalar", "GraphStateScalarSteps")]
+    scalar_sources = [
+        stable.file_ref(repo_root() / ("src/merlin/verify/lean/Merlin/" + name + ".lean"))
+        for name in (
+            "GraphStateScalarContract",
+            "GraphStateScalarNormalize",
+            "GraphStateScalarSound",
+            "GraphStateScalarTyping",
+            "GraphStateScalarInitialized",
+            "GraphStateScalar",
+            "GraphStateScalarSteps",
+        )
+    ]
     ready = []
     for path in sorted((build_dir() / "graph-verification/state-scalar/kernel").glob("*/ready.json")):
         data = json.loads(path.read_text())
@@ -72,9 +84,17 @@ def dependencies():
     ready_path, scalar = ready[0]
     w = json.loads(Path(freeze["selection"]["path"]).read_text())
     closure = json.loads(Path(w["proof"]["build_record"]).read_text())
-    rows = [freeze_ref, freeze["selection"], *freeze["proof_dependencies"], *freeze["lean_loaded_files"],
-            stable.file_ref(ready_path), *scalar["files"], *scalar_sources,
-            *incident["fixed_standard_object_bindings"], *incident["fixed_tool_bindings"]]
+    rows = [
+        freeze_ref,
+        freeze["selection"],
+        *freeze["proof_dependencies"],
+        *freeze["lean_loaded_files"],
+        stable.file_ref(ready_path),
+        *scalar["files"],
+        *scalar_sources,
+        *incident["fixed_standard_object_bindings"],
+        *incident["fixed_tool_bindings"],
+    ]
     indexed, mismatches = {}, []
     for row in rows:
         if row["path"] in indexed and indexed[row["path"]] != row:
@@ -91,13 +111,19 @@ def dependencies():
             mismatches.append({"path": row["path"], "reason": str(error)})
     data = {
         "schema": "merlin.graph-state-pipeline.dependency-check.v1",
-        "exact": not mismatches, "mismatches": mismatches, "target_in_selected_closure": target_present,
-        "bindings": list(indexed.values()), "scalar_ready": str(ready_path),
-        "scalar_library": str(ready_path.parent / "lib/lean"), "w_library": w["proof"]["library"],
+        "exact": not mismatches,
+        "mismatches": mismatches,
+        "target_in_selected_closure": target_present,
+        "bindings": list(indexed.values()),
+        "scalar_ready": str(ready_path),
+        "scalar_library": str(ready_path.parent / "lib/lean"),
+        "w_library": w["proof"]["library"],
         "foreign_objects": [attempt["object"] for attempt in closure["attempts"]],
         "sidecars_and_host_from_sealed_W_freeze": True,
-        "reads_per_unique_selected_binding": 1, "toolchain_written_or_rebuilt": False,
-        "identity_refreshed_to_promote": False, "qualification_issued": False,
+        "reads_per_unique_selected_binding": 1,
+        "toolchain_written_or_rebuilt": False,
+        "identity_refreshed_to_promote": False,
+        "qualification_issued": False,
     }
     write(active, data)
     if mismatches:
@@ -134,12 +160,24 @@ def invoke(source, *, module=None):
     copy.write_bytes(content)
     target = build_dir() / BUILD / "development/lib/Merlin" / (source.stem + ".olean")
     with (directory / "stdout").open("x") as out, (directory / "stderr").open("x") as err:
-        result = run_owned([str(stable.LEAN), "-j1", str(copy), "-o", str(target)],
-                           cwd=directory, env=env, stdout=out, stderr=err, timeout=60, check=False)
-    record = {"returncode": result.returncode, "source": stable.file_ref(copy),
-              "stdout": stable.file_ref(directory / "stdout"), "stderr": stable.file_ref(directory / "stderr"),
-              "object": stable.file_ref(target) if result.returncode == 0 else None,
-              "phase": "development-only; not qualification", "qualified": False}
+        result = run_owned(
+            [str(stable.LEAN), "-j1", str(copy), "-o", str(target)],
+            cwd=directory,
+            env=env,
+            stdout=out,
+            stderr=err,
+            timeout=60,
+            check=False,
+        )
+    record = {
+        "returncode": result.returncode,
+        "source": stable.file_ref(copy),
+        "stdout": stable.file_ref(directory / "stdout"),
+        "stderr": stable.file_ref(directory / "stderr"),
+        "object": stable.file_ref(target) if result.returncode == 0 else None,
+        "phase": "development-only; not qualification",
+        "qualified": False,
+    }
     write(directory / "result.json", record)
     if result.returncode < 0:
         write(build_dir() / BUILD / "NATIVE_BLOCKER.json", {**record, "cause": "UNKNOWN", "retry_permitted": False})
