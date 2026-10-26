@@ -309,31 +309,13 @@ def _fp32_stage_observation(
     }
 
 
-def _exported_integer_mm_count(module, *, batched: bool = False) -> int:
+def _exported_integer_mm_count(module, *, batched: bool = False, func_name: str = "forward") -> int:
     """Count integer contractions, separating matrix and batched matrix forms."""
-    from xdsl.dialects.builtin import IntegerType, TensorType
-
-    def width(value) -> int | None:
-        typ = getattr(value, "type", None)
-        if not isinstance(typ, TensorType) or not isinstance(typ.element_type, IntegerType):
-            return None
-        return int(typ.element_type.width.data)
+    from merlin.targetgen.integerization_export import _contractions
 
     if module is None:
         return 0
-    count = 0
-    for op in module.walk():
-        if op.name != "linalg.generic" or len(op.operands) < 3 or len(op.results) != 1:
-            continue
-        prov = op.attributes.get("prov.op")
-        if (
-            str(getattr(prov, "data", "")) == "int_matmul"
-            and [width(value) for value in op.operands[:2]] == [8, 8]
-            and width(op.results[0]) == 32
-            and (len(op.results[0].type.get_shape()) > 2) == batched
-        ):
-            count += 1
-    return count
+    return sum((rank > 2) == batched for _, _, rank in _contractions(module, func_name=func_name))
 
 
 def _materialize_session(
@@ -1292,12 +1274,25 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     opaque = opaque_report(res.mlir_text)
     n_opaque = sum(opaque.values())
     if integerization_receipt is not None:
-        integerization_receipt["exported_integer_mm_count"] = _exported_integer_mm_count(res.module)
-        integerization_receipt["exported_integer_bmm_count"] = _exported_integer_mm_count(res.module, batched=True)
-    from merlin.targetgen.integerization_export import receipt_export_complete
+        integerization_receipt["exported_integer_mm_count"] = _exported_integer_mm_count(
+            res.module, func_name=a.func_name
+        )
+        integerization_receipt["exported_integer_bmm_count"] = _exported_integer_mm_count(
+            res.module, batched=True, func_name=a.func_name
+        )
+        from merlin.targetgen.integerization_export import contraction_census
 
-    integerization_ok = integerization_receipt is None or receipt_export_complete(
-        integerization_receipt, integer_partition
+        integerization_receipt["integer_contraction_census"] = contraction_census(
+            res.module, (getattr(res, "capture_trace", None) or {}).get("graphs", {}).get("prepared", {}),
+            ((quant_stats or {}).get("dynamic_contractions") or {}).get("device_calls", 0),
+            func_name=a.func_name,
+        )
+    from merlin.targetgen.integerization_export import worker_export_complete
+
+    integerization_ok = worker_export_complete(
+        res, integer_partition, func_name=a.func_name,
+        metadata=dict(recipe=recipe, recipe_sha256=(recipe or {}).get("recipe_sha256"), recipe_agreement=agreement,
+                      quantization_stats=quant_stats, integerization_receipt=integerization_receipt),
     )
     # A recipe requests a format; only the applied transform and its emitted
     # arithmetic establish the captured scheme. In particular, an already-

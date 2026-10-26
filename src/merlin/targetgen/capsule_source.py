@@ -173,6 +173,7 @@ def _require_pt2e_integerization_receipt(
     *,
     agreement_tolerance: tuple[float, float] | None,
     capture_root: Path | None = None,
+    func_name: str | None = None,
 ) -> None:
     """Admit a static W8A8 model only if its whole PT2E region was integerized.
 
@@ -307,24 +308,21 @@ def _require_pt2e_integerization_receipt(
     emitted_bmm = count(receipt.get("integer_bmm_emitted", 0), "emitted integer batched matmul count")
     if emitted + emitted_bmm < rewritten:
         raise M2MUnavailable("integerization receipt emitted fewer integer matmuls than rewritten regions")
-    from merlin.targetgen.integerization_export import exported_integer_counts
+    from merlin.common import mlir_query
+    from merlin.targetgen.integerization_export import admit_integerization_census, read_capture_dynamic_evidence
 
-    structural, structural_bmm = exported_integer_counts(program)
-    if structural < emitted:
-        raise M2MUnavailable(
-            f"integerization receipt claims {emitted} integer matmuls, but export contains only {structural}"
-        )
-    reported_export = count(receipt.get("exported_integer_mm_count"), "exported integer matmul count")
-    if reported_export != structural:
-        raise M2MUnavailable(
-            f"integerization receipt export count {reported_export} disagrees with parsed program {structural}"
-        )
-    reported_bmm = count(receipt.get("exported_integer_bmm_count", 0), "exported integer batched matmul count")
-    if emitted_bmm != structural_bmm or reported_bmm != structural_bmm:
-        raise M2MUnavailable(
-            f"integerization receipt batched export counts {emitted_bmm}/{reported_bmm} "
-            f"disagree with parsed program {structural_bmm}"
-        )
+    program_sha256 = hashlib.sha256(program.encode("utf-8")).hexdigest()
+    try:
+        module = mlir_query.parse(program)
+    except Exception as exc:
+        raise M2MUnavailable(f"cannot verify integerized model export: {exc}") from exc
+    verdict = admit_integerization_census(
+        receipt, module, func_name=func_name or meta.get("func_name", "forward"),
+        program_sha256=program_sha256,
+        dynamic_evidence=lambda: read_capture_dynamic_evidence(meta, capture_root, program_sha256=program_sha256),
+    )
+    if not verdict.accepted:
+        raise M2MUnavailable(f"integerization export provenance census does not reconcile: {verdict.reason}")
 
 
 def _require_materialized_contraction(program: str, *, dtype: str) -> int:

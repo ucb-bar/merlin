@@ -371,7 +371,7 @@ def test_single_program_partition_counts_verified_dynamic_contractions(tmp_path:
         sealed_m2m, "_materialized_v2", lambda *_args: {"status": "verified_materialized", "receipt_sha256": "a" * 64}
     )
     plan = {"dtype": "int8", "recipe": {"recipe_sha256": "unused"}}
-    (stage / "meta.json").write_text(json.dumps(_integer_meta(meta, exported=7)))
+    (stage / "meta.json").write_text(json.dumps(_attach_census(stage, _integer_meta(meta, exported=7))))
     assert sealed_m2m._materialized_v3(stage, tmp_path, stage, plan)["integer_contractions"] == 7
     # The historical census, unchanged: without the dynamic block the extra contractions are unexplained.
     plain = _integer_meta(meta, exported=7)
@@ -382,11 +382,27 @@ def test_single_program_partition_counts_verified_dynamic_contractions(tmp_path:
     plain["integerization_receipt"]["exported_integer_mm_count"] = 2
     (stage / "meta.json").write_text(json.dumps(plain))
     assert sealed_m2m._materialized_v3(stage, tmp_path, stage, plan)["integer_contractions"] == 2
-    low = _integer_meta(meta, exported=7)
+    low = _attach_census(stage, _integer_meta(meta, exported=7))
     low["quantization_stats"]["dynamic_contractions"]["sites"][1]["verification"]["cosine_min"] = 0.5
     (stage / "meta.json").write_text(json.dumps(low))
     with pytest.raises(sealed_m2m.SealedM2MError, match="declared agreement bar"):
         sealed_m2m._materialized_v3(stage, tmp_path, stage, plan)
+
+
+def _attach_census(stage: Path, meta: dict) -> dict:
+    """Synthetic saved census for this fixture's traced contraction operations."""
+    trace = json.loads((stage / "frontend-trace.json").read_text())
+    calls = [{"source_node_id": node["id"], "rank": 2, "provenance": node["transformation"],
+              "origin_node_ids": node["origin_node_ids"]} for node in trace["graphs"]["prepared"]["nodes"]]
+    identities = {row["source_node_id"] for row in calls}
+    bindings = [{"ordinal": index, "rank": 2, "source_node_ids": row["source_node_ids"],
+                 "contraction_source_ids": sorted(identities.intersection(row["source_node_ids"]))}
+                for index, row in enumerate(trace["mlir"]["operations"]) if len(row["operand_types"]) >= 2]
+    meta["integerization_receipt"]["integer_contraction_census"] = {
+        "schema": "merlin.integer_contraction_census.v1", "calls": calls, "export_bindings": bindings,
+        "static_attention_device_calls": sum(row["provenance"] == "static_attention" for row in calls),
+    }
+    return meta
 
 
 def _receipt(stage: Path, meta: dict) -> None:
@@ -394,6 +410,8 @@ def _receipt(stage: Path, meta: dict) -> None:
     import hashlib
 
     meta = copy.deepcopy(meta)
+    if (stage / "frontend-trace.json").is_file():
+        _attach_census(stage, meta)
     meta["scheme"] = "int8_static_act_int8_weight"
     agreement = meta["integerization_receipt"]["golden_agreement"]
     agreement["source"] = {"sha256": "a" * 64}

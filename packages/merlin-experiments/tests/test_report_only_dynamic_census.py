@@ -7,7 +7,7 @@ import json
 
 import pytest
 from merlin_experiments.capture_execution import sealed_m2m
-from test_sealed_dynamic_census import _census, _empty_dynamic, _integer_meta, _receipt, _stage
+from test_sealed_dynamic_census import _attach_census, _census, _empty_dynamic, _integer_meta, _receipt, _stage
 
 from merlin.capture.integerization import dynamic_integerization_count
 from merlin.targetgen.application_inventory import verified_static_integerization, verify_capture_receipt
@@ -173,7 +173,7 @@ def test_report_only_empty_domain_cannot_hide_traced_dynamic_work(tmp_path):
 def test_selected_recipe_file_plan_and_metadata_remain_independent_joins(tmp_path, monkeypatch):
     """Keep the actual v2 plan/file join; stub only the unrelated worker bootstrap."""
     stage, meta = _stage(tmp_path)
-    meta = _integer_meta(_report_only(meta), exported=7)
+    meta = _attach_census(stage, _integer_meta(_report_only(meta), exported=7))
     meta["recipe"].update(activation={"dtype": "int8", "mode": "static"}, weight={"dtype": "int8"})
     _redigest(meta)
     meta.update(dtype="int8", scheme="int8_static_act_int8_weight")

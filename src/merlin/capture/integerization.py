@@ -166,6 +166,9 @@ def contraction_partition(receipt: dict) -> dict[str, int]:
     return {"seen": seen, "integerized": integerized, "preserved": remaining}
 
 
+INTEGER_MM_TARGETS = frozenset({"aten._int_mm.default", "m2m_q.int_mm_seeded.default"})
+
+
 _DYNAMIC_TRANSFORMS = frozenset({"static_attention", "dynamic_contraction"})
 
 
@@ -190,7 +193,7 @@ def _i8_i8_i32(row: dict) -> bool:
 def traced_integer_owners(trace: dict, program_sha256: str) -> tuple[int, dict[tuple[str, ...], int]]:
     """Owners of every emitted i8 x i8 -> i32 contraction, from the stage's byte-bound frontend trace.
 
-    Each such ``linalg.generic`` must come from exactly one prepared-graph ``aten._int_mm`` node, every
+    Each emitted contraction must come from exactly one prepared ordinary or seeded integer call; every
     such node must be emitted exactly once, and the node's transformation names its owner: the PT2E
     integerization (a weight contraction) or a recipe rewrite (a dynamic site, keyed by the original
     nodes of its lineage). Returns (weight contractions, dynamic contractions per lineage).
@@ -208,30 +211,32 @@ def traced_integer_owners(trace: dict, program_sha256: str) -> tuple[int, dict[t
         or not isinstance(prepared.get("nodes"), list)
     ):
         raise ValueError("dynamic contraction census trace is not bound to the stage program")
-    int_mm = {
+    owners = {
         node["id"]: node
         for node in prepared["nodes"]
-        if isinstance(node, dict) and node.get("target") == "aten._int_mm.default" and isinstance(node.get("id"), str)
+        if isinstance(node, dict) and node.get("target") in INTEGER_MM_TARGETS and isinstance(node.get("id"), str)
     }
     selected_nodes = [
-        node for node in prepared["nodes"] if isinstance(node, dict) and node.get("target") == "aten._int_mm.default"
+        node for node in prepared["nodes"] if isinstance(node, dict) and node.get("target") in INTEGER_MM_TARGETS
     ]
-    if len(selected_nodes) != len(int_mm):
+    if len(selected_nodes) != len(owners):
         raise ValueError("traced integer contractions have duplicate or missing node identities")
     seen: Counter = Counter()
     weight, dynamic = 0, Counter()
     for row in mlir["operations"]:
-        if not isinstance(row, dict) or row.get("operation") != "linalg.generic" or not _i8_i8_i32(row):
+        if (not isinstance(row, dict)
+                or row.get("operation") not in {"linalg.generic", "linalg.matmul"}
+                or not _i8_i8_i32(row)):
             continue
         sources = row.get("source_node_ids")
         if (
             not isinstance(sources, list)
             or len(sources) != 1
             or not isinstance(sources[0], str)
-            or sources[0] not in int_mm
+            or sources[0] not in owners
         ):
             raise ValueError("an emitted integer contraction has no unique traced owner")
-        node = int_mm[sources[0]]
+        node = owners[sources[0]]
         seen[sources[0]] += 1
         transform = node.get("transformation")
         if transform == "pt2e_integerization":
@@ -246,7 +251,7 @@ def traced_integer_owners(trace: dict, program_sha256: str) -> tuple[int, dict[t
             dynamic[key] += 1
         else:
             raise ValueError("an emitted integer contraction has an unknown traced transformation")
-    if set(seen) != set(int_mm) or any(count != 1 for count in seen.values()):
+    if set(seen) != set(owners) or any(count != 1 for count in seen.values()):
         raise ValueError("traced integer contractions are not each emitted exactly once")
     return weight, dict(dynamic)
 
@@ -331,7 +336,7 @@ def dynamic_integerization_count(evidence: dict, *, emitted: int, exported: int,
     families, samples = evidence.get("families"), evidence.get("samples")
     if not isinstance(families, list) or not families or any(not isinstance(f, str) for f in families):
         raise ValueError("invalid selected dynamic contraction families")
-    if any(type(value) is not int or value <= 0 for value in (emitted, exported)):
+    if type(emitted) is not int or emitted < 0 or type(exported) is not int or exported < 0:
         raise ValueError("invalid integer contraction counts")
     weight, roster = evidence.get("weight_contractions"), evidence.get("dynamic_owners")
     if type(weight) is not int or weight < 0 or not isinstance(roster, list):
