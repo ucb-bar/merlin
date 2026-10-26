@@ -860,8 +860,9 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                     missing.append("quantization_contract.storage")
                 elif canonical(operand) not in [canonical(dtype) for dtype in quantization["storage"]]:
                     refused.append("operand_dtype is outside quantization_contract.storage")
-        special = (spec.get("native_ieee_special_values")
-                   if signature.get("native_ieee_special_values") is True else None)
+        special = (
+            spec.get("native_ieee_special_values") if signature.get("native_ieee_special_values") is True else None
+        )
         for declaration in (row, special):
             if not isinstance(declaration, dict) or "admission_conditions" not in declaration:
                 continue
@@ -1069,8 +1070,11 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                 "op": op,
                 "declaration": row["id"],
                 "admission_basis": row.get("admission_basis", "authored"),
-                **({"emission_obligations": copy.deepcopy(row["emission_obligations"])}
-                   if row.get("emission_obligations") else {}),
+                **(
+                    {"emission_obligations": copy.deepcopy(row["emission_obligations"])}
+                    if row.get("emission_obligations")
+                    else {}
+                ),
                 "constraints_status": "refused" if refused else "unknown" if missing else "matched",
                 "unresolved_constraints": missing,
                 **({"numerical_policy_review": numeric_review} if numeric_review is not None else {}),

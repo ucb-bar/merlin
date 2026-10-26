@@ -198,17 +198,26 @@ def prepare_spec_int8(
         selection = select_spec(kwargs["target"], kwargs["facts"], kwargs["software_spec"], kwargs["host_capabilities"])
         numeric = selection["spec"].get("numerical_semantics") or {}
         storage = (numeric.get("quantized_native_fallback") or {}).get("operand_storage", [])
-        unsupported = sorted({
-            abi["dtype"]
-            for record in report["cases"] if record.get("status") == "bundled"
-            for abi in record.get("input_abi", [])
-            if abi["dtype"].startswith("complex") and abi["dtype"] not in storage
-        })
-        if numeric.get("component_domain", {}).get("floating_storage_arithmetic") == "declared_quantized_model" and unsupported:
+        unsupported = sorted(
+            {
+                abi["dtype"]
+                for record in report["cases"]
+                if record.get("status") == "bundled"
+                for abi in record.get("input_abi", [])
+                if abi["dtype"].startswith("complex") and abi["dtype"] not in storage
+            }
+        )
+        if (
+            numeric.get("component_domain", {}).get("floating_storage_arithmetic") == "declared_quantized_model"
+            and unsupported
+        ):
             from merlin.targetgen.core_aten_exact_dtype import _host_plan
 
             return _host_plan(
-                directory, report["cases"], selection, "quantized_operand_storage_unproved",
+                directory,
+                report["cases"],
+                selection,
+                "quantized_operand_storage_unproved",
                 "declared quantized arithmetic has no validated operand storage: " + ", ".join(unsupported),
             )
     result = _prepare_spec_int8_candidates(directory, report, **kwargs)

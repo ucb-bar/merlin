@@ -6,12 +6,26 @@ import math
 from collections.abc import Mapping
 
 # Closed dispatch names implemented on decoded, retired commands in composition_audit.
-INSTRUCTION_CHECKS = frozenset({
-    "unit_mvin_scale", "nonzero_dram", "pool_off", "transfer_rows",
-    "movement_bytes", "nonnegative_stride", "weight_stationary",
-    "full_i32", "raw_i32_exit", "max_columns", "pool_window",
-    "mvout_scale", "mvout_relu", "mvout_pool_stride", "mvout_pool_size", "primitive_k_bound",
-})
+INSTRUCTION_CHECKS = frozenset(
+    {
+        "unit_mvin_scale",
+        "nonzero_dram",
+        "pool_off",
+        "transfer_rows",
+        "movement_bytes",
+        "nonnegative_stride",
+        "weight_stationary",
+        "full_i32",
+        "raw_i32_exit",
+        "max_columns",
+        "pool_window",
+        "mvout_scale",
+        "mvout_relu",
+        "mvout_pool_stride",
+        "mvout_pool_size",
+        "primitive_k_bound",
+    }
+)
 
 
 def validate_source_conditions(condition):
@@ -60,8 +74,7 @@ def validate_emission_obligations(obligations):
 def obligation_condition(name, obligation):
     if "condition" in obligation:
         return obligation["condition"]
-    return {"path": name, **{("in" if k == "one_of" else k): v
-                             for k, v in obligation["constraints"].items()}}
+    return {"path": name, **{("in" if k == "one_of" else k): v for k, v in obligation["constraints"].items()}}
 
 
 def screen_emission_obligations(obligations, observations):
@@ -71,9 +84,13 @@ def screen_emission_obligations(obligations, observations):
     This screen is deliberately separate from admit_operation.
     """
     validate_emission_obligations(obligations)
-    return {name: {**obligation,
-                   "observation_status": screen_conditions(obligation_condition(name, obligation), observations)[0]}
-            for name, obligation in obligations.items()}
+    return {
+        name: {
+            **obligation,
+            "observation_status": screen_conditions(obligation_condition(name, obligation), observations)[0],
+        }
+        for name, obligation in obligations.items()
+    }
 
 
 #: Contracts keep the two distinct source rounding boundaries separate.
@@ -193,8 +210,12 @@ def validate_conditions(condition):
             return
     operators = set(condition) - {"path"}
     path = condition.get("path")
-    if (not isinstance(path, str) or not all(path.split(".")) or not operators
-            or operators - {"eq", "in", "min", "max", "gt", "finite", "integer"}):
+    if (
+        not isinstance(path, str)
+        or not all(path.split("."))
+        or not operators
+        or operators - {"eq", "in", "min", "max", "gt", "finite", "integer"}
+    ):
         raise ValueError("admission condition requires a path and supported comparisons")
     if "in" in condition and (not isinstance(condition["in"], list) or not condition["in"]):
         raise ValueError("admission condition in requires nonempty choices")

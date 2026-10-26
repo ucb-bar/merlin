@@ -42,8 +42,9 @@ from merlin.kernels import shapes as KS
 from merlin.llvmlower.quant_scope import value_preserving_input
 from merlin.xdsl_dialects.lowering import contraction_coverage as CC
 
-from .group_target_admission import Admission as Admission, TargetOracle as TargetOracle
 from .group_composition import readout_absorbs as readout_absorbs
+from .group_target_admission import Admission as Admission
+from .group_target_admission import TargetOracle as TargetOracle
 from .scale_geometry import _axis_through as _axis_through
 from .scale_geometry import _granularity as _granularity
 from .scale_geometry import _int_array as _int_array
@@ -1233,7 +1234,8 @@ def _grow(
         sequence_check = getattr(oracle, "absorbs_sequence", None)
         if absorbable.admitted and sequence_check is not None:
             absorbable = sequence_check(
-                [*(stage_of[id(member)].kind for member in members), stage.kind], unit=group.placement,
+                [*(stage_of[id(member)].kind for member in members), stage.kind],
+                unit=group.placement,
             )
         if not absorbable.admitted:
             group.stopped_by, group.stopped_at = stage.kind, pending_pad or user

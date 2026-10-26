@@ -30,7 +30,8 @@ def test_group_growth_requires_one_readout_for_the_complete_composition(combined
             super().__init__()
             readouts = (
                 ({"selector": "one", "applies": ["bias_add", "relu", "acc_scale"]},)
-                if combined else (
+                if combined
+                else (
                     {"selector": "first", "applies": ["bias_add"]},
                     {"selector": "second", "applies": ["relu", "acc_scale"]},
                 )
