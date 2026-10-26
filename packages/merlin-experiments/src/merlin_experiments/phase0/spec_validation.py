@@ -19,7 +19,9 @@ The record consumes the per-case shard results that
 ``build_tools/scripts/run_bounded_core_aten_suite.py`` writes under
 ``<output>/<label>/shards/<capture name>/`` (``result.json`` plus the
 ``spec-int8-admission.json`` preparation plan), and the runner's
-``provenance.json`` stamp.
+``provenance.json`` stamp. Expectations and execution use the component host
+capabilities; derivation binds the descriptor host capabilities. Both document
+paths and byte digests are sealed, and verification reopens the component document.
 """
 
 from __future__ import annotations
@@ -63,6 +65,11 @@ def digest(record: Mapping[str, Any]) -> str:
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _file_identity(path: str | Path) -> dict:
+    path = Path(path).resolve()
+    return {"path": str(path), "sha256": _sha(path)}
 
 
 def case_key(case: Mapping[str, Any]) -> str:
@@ -433,6 +440,7 @@ def prepare(
     run_root: str | Path,
     *,
     label: str,
+    component_host_capabilities: str | Path,
     software_spec: str | Path | None = None,
     host_capabilities: str | Path | None = None,
     rtl_facts: str | Path | None = None,
@@ -447,11 +455,17 @@ def prepare(
 ) -> dict:
     """Build the sealed spec-validation record from completed runner shards.
 
+    ``host_capabilities`` is the descriptor lane bound for derivation, while
+    ``component_host_capabilities`` is the suite execution and expectation lane.
+    Both document identities (path and sha256) are recorded.
+
     ``case_keys`` names ``(source, case_id)`` pairs and validates a subset (for example
     the 193); such a record is at most ``incomplete`` and never satisfies the derivation gate.
     """
+    from merlin.common.yaml import load_yaml
     from merlin.targetgen.core_aten_capture import case_capture_name
     from merlin.targetgen.functional_truth_admission import select_admission
+    from merlin.targetgen.host_capabilities import validate_host_capabilities
     from merlin.targetgen.operator_review import acceptance
 
     if receipt_policy not in RECEIPT_POLICIES:
@@ -463,26 +477,27 @@ def prepare(
     stamp = json.loads(stamp_path.read_bytes())
     software_spec = Path(software_spec) if software_spec is not None else None
     spec_sha = _sha(software_spec) if software_spec is not None else stamp.get("software_spec_sha256")
-    host_sha = _sha(Path(host_capabilities)) if host_capabilities is not None else stamp.get("host_capabilities_sha256")
+    component_host = _file_identity(component_host_capabilities)
     if not spec_sha:
         raise ValueError("spec validation requires the selected software spec identity")
     if stamp.get("software_spec_sha256") not in (None, spec_sha):
         raise ValueError("runner executed a different software spec than the one being validated")
-    if host_sha and stamp.get("host_capabilities_sha256") not in (None, host_sha):
-        raise ValueError("runner executed different host capabilities than the ones being validated")
+    if stamp.get("host_capabilities_sha256") != component_host["sha256"]:
+        raise ValueError("runner executed different component host capabilities than the ones being validated")
     target = target or stamp.get("target")
     if software_spec is None or host_capabilities is None or rtl_facts is None or target is None:
         raise ValueError("spec validation requires the selected software spec, host capabilities, RTL facts and target")
     if stamp.get("target") not in (None, target):
         raise ValueError("runner executed a different target than the one being validated")
+    descriptor_host = _file_identity(host_capabilities)
     admission = select_admission(
-        target, rtl_facts=Path(rtl_facts), software_spec=software_spec, host_capabilities=Path(host_capabilities)
+        target, rtl_facts=Path(rtl_facts), software_spec=software_spec, host_capabilities=Path(component_host["path"])
     )
     input_identity = selection_identity(
         resolved_spec=admission["spec"],
         rtl_facts=admission["rtl_facts"],
         capability_contracts=[admission["capability_contract"]],
-        host_capabilities=[admission["host_capabilities"]],
+        host_capabilities=[validate_host_capabilities(load_yaml(Path(descriptor_host["path"])))],
     )
     if verify_evidence is None and reverify_evidence:
         from merlin.targetgen.core_aten_device import verify_execution_evidence as verify_evidence
@@ -509,6 +524,8 @@ def prepare(
         expectation = spec_expectation(directory, case, admission)
         if expectation.get("software_spec_sha256") not in (None, spec_sha):
             raise ValueError(f"{key}: admission plan selected a different software spec")
+        if expectation.get("host_capabilities_sha256") not in (None, component_host["sha256"]):
+            raise ValueError(f"{key}: admission plan selected different component host capabilities")
         seen = observed(result)
         evidence = (
             (((result.get("observation") or {}).get("evidence") or {}).get("semantic_verdict") or {})
@@ -546,7 +563,8 @@ def prepare(
         selection=selection,
         complete_scope=case_keys is None,
         spec_sha=spec_sha,
-        host_sha=host_sha,
+        descriptor_host=descriptor_host,
+        component_host=component_host,
         input_identity=input_identity,
         stamp=stamp,
         receipt_policy=receipt_policy,
@@ -565,7 +583,8 @@ def _assemble(
     selection,
     complete_scope,
     spec_sha,
-    host_sha,
+    descriptor_host,
+    component_host,
     input_identity,
     stamp,
     receipt_policy,
@@ -611,7 +630,8 @@ def _assemble(
         "verdict": verdict,
         "input_identity": input_identity,
         "software_spec_sha256": spec_sha,
-        "host_capabilities_sha256": host_sha,
+        "descriptor_host_capabilities": descriptor_host,
+        "component_host_capabilities": component_host,
         "numeric_policy": NUMERIC_POLICY,
         "quantization_scheme": scheme,
         "operator_review": review,
@@ -657,13 +677,20 @@ def write(record: Mapping[str, Any], path: str | Path) -> Path:
 
 
 def verify(path: str | Path) -> dict:
-    """Load a record, refusing changed bytes, a wrong schema or an inconsistent verdict."""
+    """Refuse changed record/component bytes, a wrong schema or an inconsistent verdict."""
     raw = Path(path).read_bytes()
     record = json.loads(raw)
     if not isinstance(record, dict) or record.get("schema") != SCHEMA:
         raise ValueError(f"{path}: not a {SCHEMA} record")
     if record.get("sha256") != digest(record) or raw != canonical_json(record) + b"\n":
         raise ValueError(f"{path}: spec-validation record bytes differ from its sealed digest")
+    component = record.get("component_host_capabilities")
+    if (
+        not isinstance(component, dict)
+        or not component.get("path")
+        or _sha(Path(component["path"])) != component.get("sha256")
+    ):
+        raise ValueError(f"{path}: component host capabilities differ from the sealed record; rerun spec validation")
     counts = Counter(row["verdict"] for row in record["cases"])
     if set(counts) - VERDICTS or dict(sorted(counts.items())) != record["verdict_counts"]:
         raise ValueError(f"{path}: spec-validation case verdicts differ from the record summary")

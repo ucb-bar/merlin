@@ -110,7 +110,16 @@ class Run:
         self.root = tmp_path / "run"
         self.spec = spec
         self.spec_sha = hashlib.sha256(spec.read_bytes()).hexdigest()
-        self.stamp = {"software_spec_sha256": self.spec_sha, "suite_sha256": "c" * 64}
+        self.descriptor_host = repo_root() / "examples/gemmini/platform/host-capabilities-portable-v3.yaml"
+        self.component_host = tmp_path / "component-host.yaml"
+        self.component_host.write_bytes(
+            (repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml").read_bytes()
+        )
+        self.stamp = {
+            "software_spec_sha256": self.spec_sha,
+            "host_capabilities_sha256": hashlib.sha256(self.component_host.read_bytes()).hexdigest(),
+            "suite_sha256": "c" * 64,
+        }
         (self.root / LABEL).mkdir(parents=True)
         (self.root / LABEL / "provenance.json").write_text(json.dumps(self.stamp))
         self.cases = {}
@@ -123,6 +132,9 @@ class Run:
         shard.mkdir(parents=True)
         if admitted is not None:
             plan = _plan(admitted, kwargs.pop("plan_sha", self.spec_sha), steps=kwargs.pop("steps", None))
+            plan["selection"]["identities"]["host_capabilities"] = {
+                "sha256": kwargs.pop("plan_host_sha", self.stamp["host_capabilities_sha256"])
+            }
             (shard / "spec-int8-admission.json").write_text(json.dumps(plan))
         if result is not False:
             (shard / "result.json").write_text(json.dumps(result or _result(executed_case, self.stamp, **kwargs)))
@@ -138,9 +150,8 @@ class Run:
         kwargs.setdefault("software_spec", self.spec)
         kwargs.setdefault("target", "gemmini")
         kwargs.setdefault("rtl_facts", repo_root() / "merlin/tests/fixtures/core_aten_device/facts.json")
-        kwargs.setdefault(
-            "host_capabilities", repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml"
-        )
+        kwargs.setdefault("host_capabilities", self.descriptor_host)
+        kwargs.setdefault("component_host_capabilities", self.component_host)
         return SV.prepare(self.selection(), self.root, label=LABEL, **kwargs)
 
 
@@ -408,8 +419,7 @@ def test_cli_resolves_suite_files_and_passes_namespaced_subset_to_runner(run, tm
     run.add(_case("same"), source="corpus_193", admitted=True, lane="device", count=3)
     run.add(_case("same", "aten.sort.default"), source="bounded", admitted=False, lane="host")
     path, suites, _ = _write_selection(tmp_path, run.cases)
-    host = tmp_path / "host.yaml"
-    host.write_bytes((repo_root() / "examples/gemmini/platform/host-capabilities-core-aten.yaml").read_bytes())
+    host = run.descriptor_host
     cli = runpy.run_path(str(repo_root() / "build_tools/scripts/run_spec_validation.py"))
     commands = []
     monkeypatch.setattr(cli["subprocess"], "run", lambda command, **kwargs: commands.append(command))
@@ -428,6 +438,8 @@ def test_cli_resolves_suite_files_and_passes_namespaced_subset_to_runner(run, tm
                 str(run.spec),
                 "--host-capabilities",
                 str(host),
+                "--component-host-capabilities",
+                str(run.component_host),
                 "--source",
                 "bounded",
                 "--case-id",
@@ -444,11 +456,16 @@ def test_cli_resolves_suite_files_and_passes_namespaced_subset_to_runner(run, tm
     )
     command = commands[0]
     assert "--case-ids" in command
+    assert command.count("--host-capabilities") == 1
+    assert command[command.index("--host-capabilities") + 1] == str(run.component_host)
+    assert "--component-host-capabilities" not in command
     assert json.loads((run.root / LABEL / "selected-case-ids.json").read_text()) == ["bounded:same"]
     record = SV.verify(run.root / LABEL / "record.json")
     assert record["selection"]["sha256"] == SV.load_selection(path, suites)["selection_sha256"]
     assert [(row["source"], row["case_id"]) for row in record["cases"]] == [("bounded", "same")]
     assert record["verdict"] == "incomplete"
+    assert record["descriptor_host_capabilities"]["path"] == str(host.resolve())
+    assert record["component_host_capabilities"]["path"] == str(run.component_host.resolve())
     selection = SV.load_selection(path, suites)
     assert cli["_subset"](selection, Namespace(source=None, case_id=["same"], limit=None)) == [
         ("bounded", "same"),
@@ -636,3 +653,107 @@ def test_gate_rejects_missing_input_identities(run, tmp_path):
     SV.write(record, path)
     with pytest.raises(ValueError, match="current selection"):
         SV.bind(path, software_spec=run.spec, workload_spec=required, input_identity=current)
+
+
+def test_distinct_host_lanes_bind_the_descriptor_and_screen_the_component(run, tmp_path, monkeypatch):
+    from merlin.targetgen import functional_truth_admission as admission
+
+    select = admission.select_admission
+    descriptor = select(
+        "gemmini",
+        rtl_facts=repo_root() / "merlin/tests/fixtures/core_aten_device/facts.json",
+        software_spec=run.spec,
+        host_capabilities=run.descriptor_host,
+    )
+    inputs = SV.selection_identity(
+        resolved_spec=descriptor["spec"],
+        rtl_facts=descriptor["rtl_facts"],
+        capability_contracts=[descriptor["capability_contract"]],
+        host_capabilities=[descriptor["host_capabilities"]],
+    )
+    original_expectation = SV.spec_expectation
+
+    def expectation(directory, case, selected):
+        assert selected["identities"]["host_capabilities"]["path"] == str(run.component_host.resolve())
+        assert selected["host_capabilities"] == yaml.safe_load(run.component_host.read_bytes())
+        return original_expectation(directory, case, selected)
+
+    monkeypatch.setattr(SV, "spec_expectation", expectation)
+    path = _record(run, tmp_path)
+    record = SV.verify(path)
+    for field, host in (
+        ("descriptor_host_capabilities", run.descriptor_host),
+        ("component_host_capabilities", run.component_host),
+    ):
+        assert record[field] == {"path": str(host.resolve()), "sha256": hashlib.sha256(host.read_bytes()).hexdigest()}
+    assert record["descriptor_host_capabilities"]["sha256"] != record["component_host_capabilities"]["sha256"]
+    assert record["input_identity"] == inputs
+    assert (
+        record["cases"][0]["spec_expectation"]["host_capabilities_sha256"]
+        == record["component_host_capabilities"]["sha256"]
+    )
+    required = {"phase0_spec_validation": "required"}
+    binding = SV.bind(path, software_spec=run.spec, workload_spec=required, input_identity=inputs)
+    SV.verify_binding(binding, software_spec_sha256=run.spec_sha, workload_spec=required, input_identity=inputs)
+    component_inputs = SV.selection_identity(
+        resolved_spec=descriptor["spec"],
+        rtl_facts=descriptor["rtl_facts"],
+        capability_contracts=[descriptor["capability_contract"]],
+        host_capabilities=[yaml.safe_load(run.component_host.read_bytes())],
+    )
+    with pytest.raises(ValueError, match="host_capabilities_sha256"):
+        SV.bind(path, software_spec=run.spec, workload_spec=required, input_identity=component_inputs)
+    with pytest.raises(ValueError, match="host_capabilities_sha256"):
+        SV.verify_binding(
+            binding, software_spec_sha256=run.spec_sha, workload_spec=required, input_identity=component_inputs
+        )
+    run.component_host.write_bytes(run.component_host.read_bytes() + b"# changed after binding\n")
+    with pytest.raises(ValueError, match="component host capabilities differ"):
+        SV.verify(path)
+    with pytest.raises(ValueError, match="component host capabilities differ"):
+        SV.bind(path, software_spec=run.spec, workload_spec=required, input_identity=inputs)
+    with pytest.raises(ValueError, match="component host capabilities differ"):
+        SV.verify_binding(binding, software_spec_sha256=run.spec_sha, workload_spec=required, input_identity=inputs)
+
+
+def test_prepare_refuses_substituted_component_document(run):
+    run.add(_case("dev"), admitted=True, lane="device", count=3)
+    with pytest.raises(ValueError, match="runner executed different component host capabilities"):
+        run.prepare(component_host_capabilities=run.descriptor_host)
+
+
+def test_prepare_refuses_mismatched_component_admission_plan(run):
+    run.add(_case("dev"), admitted=True, lane="device", count=3, plan_host_sha="f" * 64)
+    with pytest.raises(ValueError, match="admission plan selected different component host capabilities"):
+        run.prepare()
+
+
+@pytest.mark.parametrize(
+    "extra,message",
+    [
+        ([], "--component-host-capabilities"),
+        (
+            ["--component-host-capabilities", "component.yaml", "--", "--host-capabilities", "override.yaml"],
+            "before --",
+        ),
+        (["--component-host-capabilities", "component.yaml", "--", "--host-capabilities=override.yaml"], "before --"),
+    ],
+)
+def test_cli_requires_component_and_refuses_runner_host_override(extra, message, capsys):
+    cli = runpy.run_path(str(repo_root() / "build_tools/scripts/run_spec_validation.py"))
+    with pytest.raises(SystemExit) as error:
+        cli["main"](
+            [
+                "--selection",
+                "selection.json",
+                "--output",
+                "run",
+                "--software-spec",
+                "spec.yaml",
+                "--host-capabilities",
+                "descriptor.yaml",
+                *extra,
+            ]
+        )
+    assert error.value.code == 2
+    assert message in capsys.readouterr().err

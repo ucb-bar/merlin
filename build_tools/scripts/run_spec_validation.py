@@ -3,7 +3,10 @@
 
 The reference backend executes every selected case through
 ``run_bounded_core_aten_suite.py`` under ``--numeric-policy spec_int8`` (resumable:
-completed shards with the same case digest and provenance stamp are reused). The
+completed shards with the same case digest and provenance stamp are reused).
+``--component-host-capabilities`` is required for suite execution and per-case
+expectations. ``--host-capabilities`` selects the descriptor host lane bound into
+the record for derivation; both document paths and digests are recorded. The
 selection resolves cases from byte-pinned ``--corpus-193`` and/or ``--bounded``
 suite files. The shards are then judged against the spec's own admission decisions and written as
 ``merlin.phase0.spec_validation.v1``. Nothing here writes capsules.
@@ -50,7 +53,15 @@ def main(argv=None) -> int:
     parser.add_argument("--label", default="spec-validation")
     parser.add_argument("--record", type=Path, help="record path (default <output>/<label>/record.json)")
     parser.add_argument("--software-spec", type=Path, required=True)
-    parser.add_argument("--host-capabilities", type=Path, required=True)
+    parser.add_argument(
+        "--host-capabilities", type=Path, required=True, help="descriptor host lane bound for derivation"
+    )
+    parser.add_argument(
+        "--component-host-capabilities",
+        type=Path,
+        required=True,
+        help="component host lane used by the suite and expectations",
+    )
     parser.add_argument("--source", action="append", choices=("corpus_193", "bounded"))
     parser.add_argument("--case-id", action="append")
     parser.add_argument("--limit", type=int, help="evenly spread smoke subset")
@@ -62,6 +73,8 @@ def main(argv=None) -> int:
     args, runner_args = parser.parse_known_args(argv)
     if runner_args[:1] == ["--"]:
         runner_args = runner_args[1:]
+    if any(arg.split("=", 1)[0] == "--host-capabilities" for arg in runner_args):
+        parser.error("use --component-host-capabilities before -- to select the suite host lane")
     admission_parser = argparse.ArgumentParser(add_help=False)
     admission_parser.add_argument("--target", required=True)
     admission_parser.add_argument("--facts", type=Path, required=True)
@@ -90,7 +103,7 @@ def main(argv=None) -> int:
             "--software-spec",
             str(args.software_spec),
             "--host-capabilities",
-            str(args.host_capabilities),
+            str(args.component_host_capabilities),
             "--target",
             admission_args.target,
             "--facts",
@@ -110,6 +123,7 @@ def main(argv=None) -> int:
         label=args.label,
         software_spec=args.software_spec,
         host_capabilities=args.host_capabilities,
+        component_host_capabilities=args.component_host_capabilities,
         rtl_facts=admission_args.facts,
         target=admission_args.target,
         case_keys=keys,
