@@ -227,10 +227,14 @@ files may contain newer changes.
 | Dependency scheduling and wider mechanisms | `GraphStateSchedule.lean`, `GraphStateScheduleCountermodels.lean`; schedule checkpoint/handoff | Development only. Individual compiled lemmas or one scalar example cannot qualify wider scheduling, buffering/prefetch/pipelining, staged dense rewrites or the user's gSIM figure. Put unsupported rows outside the paper's proved set. |
 
 Historical engineering packets report 64 tests/eight originals/eight replays for
-the four-pass chain; 75 tests/17 originals/17 replays for corrected integer v2;
-78 originals/78 replays for standalone shape; 71/71 for memory-SCF; and 46/46
-for declared-call v1. Consult each fixed roster for meanings and exclusions.
-These counts overlap in dependencies and **must not be summed as passes proved**.
+the four-pass chain and 75 tests/17 originals/17 replays for corrected integer v2.
+Standalone shape has 78 tests per original/replay batch, memory-SCF 71 tests per
+batch, and declared-call v1 46 tests per batch. Those are NOT counts of positive
+original receipts: declared-call STATUS cites two actual original receipts.
+Derive distinct positive receipt/replay counts from the raw fixed rosters;
+do not infer them from pytest totals. Consult each roster for exclusions and
+positive, negative and protocol-test categories. Counts overlap in dependencies
+and **must not be summed as passes proved**.
 The newest shape adapter and frontend capture extensions remain development
 work; do not inherit their parents' historical counts.
 

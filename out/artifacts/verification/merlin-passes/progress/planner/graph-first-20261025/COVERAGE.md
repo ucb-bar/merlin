@@ -1,5 +1,16 @@
 # Graph claim coverage — coordinator intake, not independent approval
 
+**Current 2026-10-26:** five workers are active on fixes and independent review;
+see [the deadline assignments](../paper-deadline-20261026/README.md). Test totals
+were corrected against raw rosters; positive receipt counts are separate.
+
+**Historical end-of-day state:** all three original workers were paused. New shape/memory composition
+passed71 DEVELOPMENT tests; frontend reached20 modules/80 std3 development roots;
+the scheduling adapter remains partial. Fresh qualification is held after the
+shared selected libleanshared binding failure (cause UNKNOWN). Read
+[TODAY_PROGRESS.md](TODAY_PROGRESS.md) for exact distinctions and handoffs.
+Earlier qualified rows below are historical evidence, not current host re-attestation.
+
 Source denominator: pinned producer4499eebb959c0f92cefd92cc6d80646ba66474ed,
 `transforms/certificates.py:TRANSFORM_SCOPES` and `transforms/pipeline.py`.
 There are EIGHT registered common-pipeline transformation kinds. These are not
@@ -8,7 +19,7 @@ is inferred. Evidence counts are recorded earlier qualifications, not new runs.
 
 | Registered kind | Existing evidence and actual domain | Remaining paper obligation |
 | --- | --- | --- |
-| shape_view_normalization | Qualified standalone whole-module descriptor/SSA/heap-world result:78 originals plus one78-test replay,35/41 std3 roots,22 source files. Actual identical casts/static dimensions, calls and surrounding context are bound by a trusted full-tree matcher. | Runtime descriptor/primitive fidelity and independent mapping review remain explicit. A NEW actual shape→reuse→segment semantic adapter is kernel-checked DEVELOPMENT (201 std3 roots), not yet checker-qualified; historical standalone join refusal remains. No ordinary compiler gating. |
+| shape_view_normalization | Qualified standalone whole-module descriptor/SSA/heap-world result:78 original-batch tests plus one78-test replay (test totals, not positive receipt counts),35/41 std3 roots,22 source files. Actual identical casts/static dimensions, calls and surrounding context are bound by a trusted full-tree matcher. | Runtime descriptor/primitive fidelity and independent mapping review remain explicit. A NEW actual shape→reuse→segment semantic adapter is kernel-checked DEVELOPMENT (201 std3 roots), not yet checker-qualified; historical standalone join refusal remains. No ordinary compiler gating. |
 | exact_integer_simplification | NEW sealed whole-context v2 derives canonical runtime values from entries and local result contracts, and checks actual all-five-changed six-buffer integer→CSE/DCE→LICM→unroll→segment chains.75 tests,17 originals(14 changed/3 identity),one fresh batch17;20 sources,2250 retained files matched by coordinator. | Canonical initialized/no-poison representation, local successful result typing, primitive/effect/native fidelity, trusted projection, independent review and broker integration remain explicit. V1's host-classification diagnostic remains UNQUALIFIED. No implicit bridge to separately identified MerlinVerify semantics. |
 | scalar_redundancy_elimination | Qualified Scalar.check_sound/normalize_sound: complete typed SSA, total pure nodes and retained partial opaque steps, full returned/world/error observation. | Review primitive/projection/control contracts, supported variants and actual host admission; retain model/native limits. |
 | scalar_loop_invariant_motion | Same qualified scalar framework; positive constant stride, nested/empty finite iteration sequences, scoped captures/carries/yields and total speculation. The sealed scalar/loop pipeline derives index/range/scope correspondence for its narrower static no-tail bulk domain. | Primitive/control fidelity and independent review remain explicit; do not generalize the qualified composed domain to arbitrary SCF. |
@@ -28,7 +39,7 @@ row batching, recomputation, connected regions and host/runtime binding.
 
 | Family | Current honest status |
 | --- | --- |
-| Logical region/fusion and observers | Qualified logical complete-context result plus historical declared-call v1 qualification:46 originals and one fresh replay batch, two actual typed boundaries. Per-instruction/packing/ABI/Action contracts remain explicit. Stronger ABI/full-after-effect wrapper is UNQUALIFIED after pre-oracle stale-host-reference gate; no fresh replay. Capture/closure candidates now compile in a separate guarded pure DEVELOPMENT context; no capture qualification follows. |
+| Logical region/fusion and observers | Qualified logical complete-context result plus historical declared-call v1 qualification:46 original-batch tests and one46-test fresh replay batch, two actual original receipts/typed boundaries. Per-instruction/packing/ABI/Action contracts remain explicit. Stronger ABI/full-after-effect wrapper is UNQUALIFIED after pre-oracle stale-host-reference gate; no fresh replay. Capture/closure candidates now compile in a separate guarded pure DEVELOPMENT context; no capture qualification follows. |
 | Configuration hoisting / effect exchanges | Qualified conditional StateEffects packets and actual two-pass chains. Locality/effect/alias/completion contracts and host projection remain review obligations. |
 | Configuration elimination | Source/diagnostic candidate UNQUALIFIED after fifth original Lean SIGSEGV; zero qualified originals/replays. Do not count94 passing tests as qualification. |
 | Source tensor→graph bridge | PARTIAL/UNQUALIFIED after external Std.Time.Format.Basic binding discrepancy, despite53 passing corrected tests. No silent promotion or numerical/native admission. |
