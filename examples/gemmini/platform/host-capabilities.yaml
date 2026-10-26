@@ -73,7 +73,7 @@ operations:
     ops: [aten._to_copy.default]
     families: [elementwise_map]
     placement: host
-    signature: {ordered_operand_dtypes: [i32, f32], ordered_result_dtypes: [f32], ranks: [2]}
+    signature: {ordered_operand_dtypes: [i32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3, 4]}
     numerical_contract:
       status: reviewed
       semantics: {conversion: signed_int32_to_ieee754_binary32, rounding: round_to_nearest_even, exact_range: "|x| <= 2^24"}
@@ -999,6 +999,68 @@ operations:
       status: unreviewed
       semantics: {arithmetic: none, selection: exact_captured_table_row_and_output_column, index_domain: "0 <= index < table_rows; out-of-range inputs are not admitted", scope: conditional_source_build_link_host_placement_only, native_equivalence: unqualified}
       evidence: {source_schema: merlin.static_embedding_gather_body.v1, selected_index_and_elf_join: required}
+
+  - id: host_source_roundeven_f32
+    status: reviewed
+    ops: [aten.round.default]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_math_source_body.v1, operation: math.roundeven}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: source_host_placement_only, rounding: half_even, native_equivalence: unqualified, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_static_unary_source_body, selected_lowering_and_complete_outputs: required}
+  - id: host_source_literal_interval_f32
+    status: reviewed
+    ops: [aten.clamp.default]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: clamp_literal_interval_f32}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: source_host_placement_only, ordered_operations: maximum_then_minimum, bounds: exact_finite_source_literals, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_static_scalar_SSA_body, selected_lowering_and_complete_outputs: required}
+  - id: host_source_bounded_roundeven_cast_i8
+    status: reviewed
+    ops: [aten._to_copy.default]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, i8], ordered_result_dtypes: [i8]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: fptosi_i8_of_rounded_literal_interval}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: source_host_placement_only, input: proved_roundeven_then_integral_i8_interval_clamp, nonfinite_native: unqualified, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_same_shape_producer_chain, selected_lowering_and_complete_outputs: required}
+
+  - id: host_source_static_f32_exp
+    status: reviewed
+    ops: [aten.exp.default]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_math_source_body.v1, operation: math.exp}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: exact_static_source_host_build_only, selected_libm_accuracy: unqualified, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_unflagged_unary_scalar_body, selected_lowering_and_complete_outputs: required}
+  - id: host_source_projected_f32_subtract
+    status: reviewed
+    ops: [aten.sub.Tensor]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.subf}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: exact_static_source_host_build_only, broadcast: source_affine_projection, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_unflagged_scalar_SSA_and_projected_tensor_maps, selected_lowering_and_complete_outputs: required}
+  - id: host_source_static_f32_sum
+    status: reviewed
+    ops: [aten.sum.dim_IntList]
+    placement: host
+    signature: {family: reduction, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
+    source_body: {schema: merlin.static_f32_sum_source_body.v1, operation: arith.addf}
+    numerical_contract:
+      status: unreviewed
+      semantics: {scope: exact_prepared_source_host_build_only, initial_bits: positive_zero, reduction_order: selected_lowering, framework_equivalence: not_proved, existing_numerical_tolerance: unchanged}
+      evidence: {basis: exact_closed_addf_reduction_source, selected_compiler_index_observation: required, selected_lowering_and_complete_outputs: required}
 
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.

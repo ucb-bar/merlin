@@ -3,11 +3,11 @@ title: Compose shared compiler transformations in an authoring loop
 kind: guide
 status: current
 owner: compile
-last_verified: 2026-10-25
+last_verified: 2026-10-26
 code_refs:
   - src/merlin/compile/composition_catalog.py
   - src/merlin/compile/scheduling/api_catalog.py
-  - examples/gemmini/phase1/launch/prepare_author_library.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/prepare_author_library.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/full_compiler_workspace.py
 ---
 
@@ -21,16 +21,26 @@ the target emitter and the original independent checks.
 
 ## Select and discover sources
 
-Use `examples/gemmini/phase1/launch/prepare_author_library.py` with
-`--library-version 19`, an exact source revision, the previous reviewed library
+Use `python -m merlin_experiments.phase1.prepare_author_library` with
+`--library-version 22`, an exact source revision, the previous reviewed library
 selection and a fresh output directory. Additional generic leaves require explicit
 `--reviewed-module` selections. The normal preparation retains existing access
-policy and checks the source export and contract. Inventory V19 corresponds to
-`merlin.common_compiler_substrate.v12`; its shared-library document uses schema
-`merlin.shared_scheduling_library.v13`. Select matching profile, SDK and additional
-library identities together. Existing frozen selections keep their versions.
+policy and checks the source export and contract. Inventory V20 corresponds to
+`merlin.common_compiler_substrate.v13` (shared-library schema
+`merlin.shared_scheduling_library.v14`), V21 to `merlin.common_compiler_substrate.v14`
+(schema `v15`) and V22 to `merlin.common_compiler_substrate.v15` (schema `v16`).
+Select matching profile, SDK and additional library identities together. Existing
+frozen selections keep their versions.
 
-Inspect `scheduling_capabilities(19)` from
+V22 keeps the V21 scheduling roster and catalog. Its SDK release stages no
+author-inaccessible module (`merlin.common.access.author_inaccessible`: a package in
+`AUTHOR_WITHHELD_PREFIXES` or an access-policy grader/oracle module), even where an
+arm tool grant names one: the CCA spine stays operator-side behind its broker
+clients, and the bundle records those grants as denials. It stages the generic
+`merlin.compile.analysis` modules the remaining tools import instead. Inventories
+V19 to V21 remain unchanged for frozen runs and sealed bundles.
+
+Inspect `scheduling_capabilities(22)` from
 `merlin.compile.scheduling.api_catalog`. For composition, pass the exact available
 module roster to the separate catalog:
 
@@ -38,7 +48,7 @@ module roster to the separate catalog:
 from merlin.compile.composition_catalog import composition_capabilities
 from merlin.compile.scheduling.library_sources import library_modules
 
-small_sdk = composition_capabilities(selected_modules=library_modules(19))
+small_sdk = composition_capabilities(selected_modules=library_modules(22))
 # For an additional reviewed library, use its selected contract instead:
 additional = composition_capabilities(
     selected_modules=tuple(selected_contract.public_modules),
@@ -112,7 +122,7 @@ core and keeps original host readouts. It is mutually exclusive with the spatial
 route and opaque source/ABI rewrites. Independent many-to-one source membership
 and actual-object audits preserve the original required-source denominator.
 The owned automatic caller accepts an optional candidate
-`source_composition.json` with exactly these fields:
+`source_composition.json` with these required fields:
 
 ```json
 {
@@ -121,6 +131,23 @@ The owned automatic caller accepts an optional candidate
   "prepack_weights": true
 }
 ```
+
+The optional Boolean `share_exact_tensor_preparations` selects the existing
+source-exact immutable view/constant and exact integer-to-float preparation pass.
+It is also available as an explicit `OwnedHostModelCompiler.compile` argument.
+Omitting it preserves the prior request identity and default lowering. Merged
+provenance and all original numerical/target checks remain required.
+
+The optional Boolean `dense_input_views` exposes only the original generated
+logical shim’s readonly rank-two dense-stride/nonzero-offset ABI. The owner
+reopens actual shim compilation and interfaces before binding it; noncontiguous
+inputs retain layout-conversion copies, and guards on outputs and aliases remain intact.
+This opt-in can compose with exact preparation sharing and ordinary immutable
+weight prepacking on the supported group route. A callee argument gains the dense
+layout only when every original call proves it; an unproved or strided call keeps
+the original layout for that position across all calls.
+It is separately available on `OwnedHostModelCompiler.compile`. Both options
+retain the ordinary numerical and target checks; neither predicts a speedup.
 
 These are optimization requests. The original owner rederives source membership
 and retains the baseline when the complete sibling form is inapplicable. The

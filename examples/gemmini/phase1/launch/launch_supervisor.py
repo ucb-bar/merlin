@@ -236,6 +236,11 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
             if elapsed >= total or charged > limit or available < headroom:
                 stopping = "campaign_deadline" if elapsed >= total else "campaign_memory_guard"
                 break
+            # Observed BEFORE the ledger and publication are read below: a controller seen finished here
+            # had already written them, so the correspondence this pass records is final when the loop
+            # ends on it. Polled after the read, a controller exiting in between ended the campaign on a
+            # correspondence taken while it was still publishing.
+            native_code = native_process.poll()
             native_records = processes.owned("native")
             if elapsed >= total - reserve:
                 for pid, (_, ticks) in native_records.items():
@@ -319,11 +324,16 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
                 if current:
                     rows = {}
                     for name, child in current["children"].items():
+                        # One poll per child, taken BEFORE its report is read: a child seen exited had
+                        # already written its report, so the row judges the final one. The loop ends on
+                        # these recorded exit codes, never on a later poll that could see an exit the
+                        # row did not.
+                        exit_code = child["process"].poll()
                         try:
                             report = F.read(child["report"]) if child["report"].is_file() else {}
                         except (OSError, ValueError):
                             report = {}  # The ordinary report writer may still be publishing its final JSON.
-                        complete = child["process"].poll() == 0 and F.report_complete(
+                        complete = exit_code == 0 and F.report_complete(
                             report, selected["models"].model(name), policy, current["package"]
                         )
                         judged_complete = complete
@@ -339,7 +349,7 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
                             complete = all_outputs["status"] == "pass"
                         rows[name] = {
                             "pid": child["process"].pid,
-                            "exit_code": child["process"].poll(),
+                            "exit_code": exit_code,
                             "report": str(child["report"]),
                             "full_chain_complete": complete,
                             "judged_full_chain_complete": judged_complete,
@@ -364,8 +374,7 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
                             )
                         state["all_outputs_finalization"] = current["all_outputs_finalization"]
                         state["full_model_execution_complete"] = current["all_outputs_finalization"]["status"] == "pass"
-            native_code = native_process.poll()
-            model_running = current and any(row["process"].poll() is None for row in current["children"].values())
+            model_running = current and any(row["exit_code"] is None for row in state["models"].values())
             if native_code is not None and not model_running and not waiting_snapshot:
                 state["controller_exit_code"] = native_code
                 break

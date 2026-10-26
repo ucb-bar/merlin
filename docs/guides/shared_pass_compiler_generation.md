@@ -3,7 +3,7 @@ title: Generate compilers that consume shared passes
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-20
+last_verified: 2026-10-26
 related: [phase0_phase1_setup, shared_pass_phase2, default_pass_evaluation, verified_compiler_tooling]
 code_refs:
   - src/merlin/targetgen/shared_pass_contract.py
@@ -22,9 +22,10 @@ code_refs:
 
 Select the shared library and interface requirements before fresh Phase 1
 authoring. The generated backend supplies target operations, physical mapping
-and emission. Merlin supplies reusable transformations and checks. Normal
-compilation should run applicable passes with conservative defaults during
-Phase 1 iteration; Phase 2 tunes the legal alternatives afterward.
+and emission. Merlin supplies reusable transformations and checks. In the joint experiment, correctness and performance development proceed together.
+Build capabilities in parallel and evaluate immutable snapshots while authoring
+continues; applicable shared passes and legal alternatives can be improved from
+the first executable compiler. Historical separate workflows remain available.
 
 The opt-in interface contract checks declarations and their stability. It does
 not establish that a generated compiler implements its promises. Qualification
@@ -40,7 +41,7 @@ flowchart LR
   C --> D[Reuse, allocation and scheduling]
   D --> E[Target emission]
   E --> F[Actual program checks]
-  P[Phase 2 policy] -. legal bounded choices .-> B
+  P[Shape and resource policy] -. legal bounded choices .-> B
   P -. legal bounded choices .-> D
 ```
 

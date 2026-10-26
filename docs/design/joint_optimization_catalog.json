@@ -1044,6 +1044,172 @@
       "remaining_adapter_or_feedback": "Existing fixed-argument support is not a complete cold/warm benchmark or cache-state contract",
       "evidence_to_request": "Setup cost, first-call cost, repeated-call distribution, persistent bytes and invalidation events",
       "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "final_k_accumulator_readout_frontier",
+      "facet": "overlap",
+      "required_traits": [
+        "accumulator",
+        "scratchpad",
+        "INT32_accumulation"
+      ],
+      "mechanism": "Read out each accumulator tile at its final-K causal frontier instead of after the whole reduction",
+      "compiler": {
+        "module": "merlin.compile.scheduling.dense_ready_readout",
+        "symbol": "propose_dense_ready_readout",
+        "path": "src/merlin/compile/scheduling/dense_ready_readout.py",
+        "line": 61,
+        "sha256": "ba45176bd200172ccb9d08093561ec103cb7e1bb4736ef00ef1d0307346b774d",
+        "public_in_v6": false,
+        "source_summary": "Final-K causal accumulator readout frontiers over a checked segmented schedule.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "Overlapping producer retirement and accumulator pending-write read readiness are declared for the selected target",
+      "remaining_adapter_or_feedback": "Target adapter supplies the causal readiness law; store snapshots and finite queues stay exact",
+      "evidence_to_request": "Readout issue points relative to final reduction commits, accumulator stall cycles and exact outputs",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "accumulator_readout_compute_overlap",
+      "facet": "overlap",
+      "required_traits": [
+        "accumulator",
+        "scratchpad",
+        "async_issue"
+      ],
+      "mechanism": "Overlap accumulator readout of finished tiles with compute into disjoint accumulator space",
+      "compiler": {
+        "module": "merlin.compile.scheduling.dense_readout_overlap",
+        "symbol": "propose_dense_readout_overlap",
+        "path": "src/merlin/compile/scheduling/dense_readout_overlap.py",
+        "line": 26,
+        "sha256": "b0cdf4cbc62a89a855f092ac2febe8ff0312cd2b4614a4af1439f540bc8d7836",
+        "public_in_v6": false,
+        "source_summary": "Disjoint accumulator readout/compute epochs over a checked segmented pipeline.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "Separate store snapshot, backpressure and full-drain completion laws with disjoint accumulator regions",
+      "remaining_adapter_or_feedback": "Target adapter declares readout/compute concurrency; epoch hazards are checked before counted emission",
+      "evidence_to_request": "Accumulator-busy cycles, overlapped readout epochs and exact outputs before and after",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "array_weight_retention",
+      "facet": "storage",
+      "required_traits": [
+        "systolic",
+        "scratchpad",
+        "resident_operands"
+      ],
+      "mechanism": "Retain the array-resident weight operand across consecutive output tiles that reuse it",
+      "compiler": {
+        "module": "merlin.compile.scheduling.dense_array_retention",
+        "symbol": "propose_dense_array_retention",
+        "path": "src/merlin/compile/scheduling/dense_array_retention.py",
+        "line": 143,
+        "sha256": "b7695436346a3ce239e3a300a2bcea60e90e09aa97e9f8a1bc62a0526b25d39a",
+        "public_in_v6": false,
+        "source_summary": "Counted array-weight retention proposals with independent verification.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "Pure K,N,M paired run with invariant RHS identity, depth and width and continued scratch residency",
+      "remaining_adapter_or_feedback": "Target adapter declares array preload persistence; fresh captures and output descriptors stay separate",
+      "evidence_to_request": "Weight preload count, array-load cycles and exact outputs",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "segmented_k_retained_operand_pipeline",
+      "facet": "overlap",
+      "required_traits": [
+        "scratchpad",
+        "accumulator",
+        "split_reduction"
+      ],
+      "mechanism": "Pipeline segmented-K reductions with a retained operand and future loads overlapped with commits",
+      "compiler": {
+        "module": "merlin.compile.scheduling.dense_segmented_pipeline",
+        "symbol": "schedule_dense_segmented_pipeline",
+        "path": "src/merlin/compile/scheduling/dense_segmented_pipeline.py",
+        "line": 448,
+        "sha256": "c67f42c436a1215a071e8ca828827fc4295fc4c4ff0ab290439c459a852a020f",
+        "public_in_v6": false,
+        "source_summary": "Typed segmented-K retained-operand pipelines with exact tile loads and batched readouts.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "Ordered reduction commits and disjoint future-load execution laws over the complete original source",
+      "remaining_adapter_or_feedback": "Capacity-legal issue order and tile-load admission come from target facts",
+      "evidence_to_request": "Load/compute overlap, accumulator and scratchpad occupancy and exact outputs",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "source_axis_loop_transforms",
+      "facet": "scheduling",
+      "required_traits": [
+        "systolic",
+        "tiling"
+      ],
+      "mechanism": "Discover loop axes from projected source operands and apply typed split, reorder and unroll transforms",
+      "compiler": {
+        "module": "merlin.compile.scheduling.loop_schedule",
+        "symbol": "propose_loop_transforms",
+        "path": "src/merlin/compile/scheduling/loop_schedule.py",
+        "line": 152,
+        "sha256": "8bfb4825436f085628afd41a796c0965a05d2624f3007afdbb2f4a59219b0e19",
+        "public_in_v6": false,
+        "source_summary": "Split, unroll, reorder, fuse and fission proposals over checked loop nests.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "Axes come from projected original operands; every transform is re-verified against source, storage and effects",
+      "remaining_adapter_or_feedback": "Proposals carry no legality; the complete verifier decides each transformed schedule",
+      "evidence_to_request": "Chosen axis order and unroll factors, command count and cycles per variant",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "counted_configuration_cleanup",
+      "facet": "issue",
+      "required_traits": [
+        "persistent_configuration",
+        "CPU_issued"
+      ],
+      "mechanism": "Eliminate repeated configuration commands inside counted loops when the configuration is invariant",
+      "compiler": {
+        "module": "merlin.compile.scheduling.configuration_loop_cleanup",
+        "symbol": "eliminate_counted_configuration",
+        "path": "src/merlin/compile/scheduling/configuration_loop_cleanup.py",
+        "line": 75,
+        "sha256": "59aa2b91e85d73196e5190935b12d5446e7b917e12af7d9503c3b4ffb424f1f7",
+        "public_in_v6": false,
+        "source_summary": "Counted configuration rewrites checked against loop-invariant effects.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "Configuration values and their visibility are invariant across the counted loop body",
+      "remaining_adapter_or_feedback": "Selected target configuration persistence law decides what may be hoisted",
+      "evidence_to_request": "Configuration command count per inner iteration, issue cycles and exact outputs",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "quantized_spatial_readout_cache",
+      "facet": "storage",
+      "required_traits": [
+        "convolution",
+        "scratchpad",
+        "accumulator"
+      ],
+      "mechanism": "Retain quantized spatial readout rows for window consumers instead of reloading them",
+      "compiler": {
+        "module": "merlin.compile.scheduling.spatial_readout_cache",
+        "symbol": "propose_spatial_readout_cache",
+        "path": "src/merlin/compile/scheduling/spatial_readout_cache.py",
+        "line": 116,
+        "sha256": "9d47537c35a182e55d9def98fd9095ab35e182b29d7f36094a26d3aeec1d4a5c",
+        "public_in_v6": false,
+        "source_summary": "Source-exact quantized spatial readout retention for pooled windows.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "Original packed spatial plan with disjoint caller-owned windows and exact reload semantics",
+      "remaining_adapter_or_feedback": "Supported source window shapes and producer activation are checked per source",
+      "evidence_to_request": "Readout rows reloaded versus retained, scratchpad occupancy and exact pooled outputs",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
     }
   ],
   "missing_capabilities": [
@@ -1184,7 +1350,7 @@
   ],
   "validation": {
     "kind": "static repository symbol lookup only",
-    "mechanism_count": 45,
+    "mechanism_count": 52,
     "target_runs": 0,
     "tests_run": 0,
     "source_files_sha256_pinned": true

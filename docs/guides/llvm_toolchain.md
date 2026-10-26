@@ -28,7 +28,7 @@ examples need two of them.
 |---|---|---|
 | `bin/clang-23` | `llvmlower.toolchain.clang()` — override `MERLIN_CLANG` | Every compile to a RISC-V object. The Zephyr backend takes it directly (`runtime/backends/zephyr_model.py:1199`), as do the K1 and spike backends. |
 | `bin/mlir-translate` | `llvmlower.toolchain.mlir_translate()` — override `MERLIN_MLIR_TRANSLATE` | The **OpenMP/multicore** path only. `llvmlower/pipeline.py:572` runs it `--mlir-to-llvmir` out-of-process, because the torch-mlir wheel's in-process bridge segfaults on whole-model `omp` IR. Single-hart images do not reach it; every multi-hart image does. |
-| `bin/llvm-objdump` | `kernels/decode/objdump.py:18` | Kernel mining and the ELF audits that read back emitted code. |
+| `bin/llvm-objdump` | `compile/analysis/disassembly.py:20` | Kernel mining and the ELF audits that read back emitted code. |
 | `bin/llvm-mc`, `bin/llvm-objcopy` | `targetgen/program_oracle.py` | Assembling target-ISA directives for the targetgen oracle. |
 | `lib/`, `include/`, MLIR CMake config | `MERLIN_MLIR_INSTALL` (`targetgen/contract/toolchain.py:19`) | Building out-of-tree C++ MLIR packages (`gemmini-opt`). This is why the install is 4 GB and cannot be pruned to a `bin/` directory. |
 | `FileCheck` | `targetgen/rtl_check_runner.py:47` | RTL-check screening. Note it looks in the **build** tree, not the install — see [What is deliberately absent](#what-is-deliberately-absent). |

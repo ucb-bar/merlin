@@ -62,6 +62,25 @@ rtl_extraction:
     dispatch:
       module: ReservationStation
       classes: {load: io_issue_ld_, store: io_issue_st_, execute: io_issue_ex_}
+      # Port anchors for merlin.targetgen.rtl.command_ordering, which drives this module alone to
+      # read which queue each command enters, whether a younger command waits for an older one's
+      # issue or its completion, and how many local rows each operand covers. Names only: every
+      # queue, release point and span formula is observed on the elaborated HW. `issue` names port
+      # suffixes after each class prefix above; `config_fields` names the configuration bundles
+      # whose fields the span search may find latched (a stride, a block stride and its state).
+      ordering:
+        reset: reset
+        allocate: {valid: io_alloc_valid, ready: io_alloc_ready, funct: io_alloc_bits_cmd_inst_funct,
+                   rs1: io_alloc_bits_cmd_rs1, rs2: io_alloc_bits_cmd_rs2}
+        issue: {valid: valid, ready: ready, id: rob_id, funct: cmd_cmd_inst_funct, rs1: cmd_cmd_rs1,
+                rs2: cmd_cmd_rs2}
+        completion: {valid: io_completed_valid, id: io_completed_bits}
+        config_fields:
+          - {bundle: ConfigExRs1, operand: rs1}
+          - {bundle: ConfigExRs2, operand: rs2}
+          - {bundle: ConfigMvinRs1, operand: rs1}
+          - {bundle: ConfigMvoutRs1, operand: rs1}
+          - {bundle: ConfigMvoutRs2, operand: rs2}
     memory_protocol: {request: a_bits_, response: d_bits_, id: source, data: data, size: size, size_encoding: log2_bytes}
     memory_clients:
       dma_read: {module: StreamReader, port_prefix: auto_core_out_}

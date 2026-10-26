@@ -19,7 +19,9 @@ The schemas are the cross-workstream coordination contract (see [Contracts](cont
 | `dialect_requirement` | Dialect Requirement | What a *validated interface candidate* requires from a target dialect (L6): the ops, types and verifier conditions a target must provide to implement the abs… |
 | `dse_axis_triage` | DSE Axis Triage | The key DSE-guidance output: a ranking of accelerator DSE axes by how much of the measured/trace-derived target gap each axis can actually close for a given… |
 | `dse_result` | DSE Result | Results of comparing variants (baseline / software_visible / hardware_managed / oracle) for a candidate feature, with measurable cost-model parameters. Owned… |
+| `evidence_repair` | Sealed Evidence Repair Receipt | The record an operator-approved repair of sealed Phase 0 evidence leaves beside the derivation it repaired (`<derivation>.repair-receipt-<TS>.json`). Sealed… |
 | `evidence_report` | Evidence Report Index | Machine-readable index of the source evidence TargetGen collected for a target: the files discovered (docs, Scala/Chisel, examples) with short filename/first… |
+| `evidence_seal` | Sealed Evidence Record | The seal an operator places beside a reviewed Phase 0 derivation (`<derivation>.evidence-seal.json`): the digest of every member, so verification can name ea… |
 | `exactness_contract` | Exactness Contract | Per form, how far a program's output may differ from its reference: exact (the default and the only default) or bounded by a stated number of output LSB (and… |
 | `exploitability_report` | Exploitability Report | How much of the oracle benefit a compiler can actually capture for a feature across a parameter sweep (the 'compiler exploitability' of an abstraction). Owne… |
 | `instruction_semantics` | Instruction Semantics | Versioned, target-owned descriptions of exact instruction computations, typed operands/results, legal parameter domains, and memory effects. Phase 0 binds th… |

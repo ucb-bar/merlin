@@ -3,9 +3,12 @@ title: Contributing compiler transformations and coverage
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-23
+last_verified: 2026-10-26
 related: [../reference/shared_compiler_passes, conditional_compiler_pipelines, verified_compiler_tooling, phase0_specification, ../design/compiler_verification, artifact_evaluation]
 code_refs:
+  - src/merlin/transforms/evaluated_exploration.py
+  - src/merlin/sched/primitives/loop_handles.py
+  - src/merlin/llvmlower/source_program.py
   - src/merlin/transforms/pipeline_state.py
   - src/merlin/transforms/pipeline_policy.py
   - src/merlin/compile/scheduling/dense_source.py
@@ -59,3 +62,30 @@ For an actual campaign, use [artifact setup](artifact_evaluation.md) and
 [terminal monitoring](experiment_dashboard.md). Fresh-machine inputs and physical
 validation remain separate requirements; pass tests do not establish full-model
 correctness or reproducibility of a historical result.
+
+## Connect construction to evaluation
+
+`merlin.llvmlower.source_program.prepare_source_program` preserves the original
+sibling integer source, its host epilogues, complete outputs and logical pointer
+ABI. `emit_source_program` consumes actual device and stock-host emitter results.
+The initial adapter supports rank-two sibling integer contractions; other graph
+families retain their existing route or refuse. ABI and link checks do not prove
+arithmetic, unavoidable device work or physical effects.
+
+Use `merlin.sched.primitives.loop_handles.locate_loop` for an explicit structural
+occurrence when sibling loop names repeat. Handles bind a kernel digest and
+expire after rewriting; `transform_loop` returns replacement occurrences for
+supported split, unroll and ordered-partition composition. Ambiguous legacy name
+selection still refuses.
+
+`merlin.transforms.evaluated_exploration.explore_evaluated` joins actual registered
+pass factories to external evaluations. It deduplicates emitted bytes and returns
+the evaluated winning product under matching source, inputs, ABI, reference,
+facts, library, provider and whole-call scope identities. UNKNOWN, incomplete
+windows and numerical failures cannot win. Counts, traffic and utilization are
+diagnostics; complete elapsed cycles determine the performance comparison.
+
+The compact scheduling SDK exposes these APIs only when its selected inventory
+contains their modules. The editable full compiler has a separate reviewed
+inventory. Inspect availability before choosing a route; do not infer a grant
+from an advertised name or copy a target implementation into the shared library.

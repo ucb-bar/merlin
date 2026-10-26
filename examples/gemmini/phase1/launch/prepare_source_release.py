@@ -15,12 +15,30 @@ import yaml
 from merlin_experiments.corpus import release
 
 
-def prepare(previous, output, sdk, public_reference_manifest=None, logical_storage_budget_bytes=None,
-            public_scalability=None, public_supplement=None,
-            common_substrate="merlin.common_compiler_substrate.v8"):
-    if common_substrate not in ("merlin.common_compiler_substrate.v8", "merlin.common_compiler_substrate.v9",
-                                 "merlin.common_compiler_substrate.v10", "merlin.common_compiler_substrate.v11",
-                                 "merlin.common_compiler_substrate.v12"):
+def prepare(
+    previous,
+    output,
+    sdk,
+    public_reference_manifest=None,
+    logical_storage_budget_bytes=None,
+    public_scalability=None,
+    public_supplement=None,
+    public_program_suite=None,
+    host_capability_selection=None,
+    common_substrate="merlin.common_compiler_substrate.v8",
+    source_run=None,
+    phase1_policy_descriptor=None,
+):
+    if common_substrate not in (
+        "merlin.common_compiler_substrate.v8",
+        "merlin.common_compiler_substrate.v9",
+        "merlin.common_compiler_substrate.v10",
+        "merlin.common_compiler_substrate.v11",
+        "merlin.common_compiler_substrate.v12",
+        "merlin.common_compiler_substrate.v13",
+        "merlin.common_compiler_substrate.v14",
+        "merlin.common_compiler_substrate.v15",
+    ):
         raise ValueError("source refresh requires an explicitly supported reviewed common substrate")
     previous, output, sdk = Path(previous), Path(output), Path(sdk)
     old = json.loads((previous / "private/preparation.json").read_bytes())
@@ -38,12 +56,15 @@ def prepare(previous, output, sdk, public_reference_manifest=None, logical_stora
     def pair(row):
         return Path(row["path"]), row["sha256"]
 
+    # A new Phase 0 generation of the same reviewed derivation may replace the previous source run.
     return release.prepare(
-        Path(old["source_run"]),
+        Path(source_run) if source_run is not None else Path(old["source_run"]),
         output,
         generated_only=True,
         capsule_scope=assembly["capsule_scope"]["kind"],
-        phase1_policy_descriptor=Path(old["phase1_policy"]["source_path"]),
+        phase1_policy_descriptor=Path(phase1_policy_descriptor)
+        if phase1_policy_descriptor is not None
+        else Path(old["phase1_policy"]["source_path"]),
         lean_toolchain_manifest=lean,
         selected_levels=("EL4",),
         selected_variants=("public_v0",),
@@ -60,12 +81,39 @@ def prepare(previous, output, sdk, public_reference_manifest=None, logical_stora
             else Path(assembly["public_supplement"]["selection"]["path"]),
         public_scalability=Path(public_scalability) if public_scalability is not None
             else Path(scale["source"]["selection"]["path"]),
+        public_program_suite=Path(public_program_suite) if public_program_suite is not None else None,
+        host_capability_selection=host_capability_selection,
         public_reference_manifest=(
             Path(public_reference_manifest)
             if public_reference_manifest is not None
             else Path(scaffold["public_reference_sources"]["path"])
         ),
     )
+
+
+def carry_phase1_gates(previous, source_run, output):
+    """Write the previous release's Phase 1 gates onto a new run's own Phase 0 descriptor.
+
+    A Phase 1 policy overlay may differ from its run's descriptor only in ``phase1_gates``. A new
+    derivation binds the revision's descriptor, so the previous overlay no longer matches it. The
+    campaign's reviewed gates are kept unchanged and every other field is the new run's own.
+    """
+    previous, output = Path(previous), Path(output)
+    old = json.loads((previous / "private/preparation.json").read_bytes())
+    selected = Path(old["phase1_policy"]["source_path"])
+    if hashlib.sha256(selected.read_bytes()).hexdigest() != old["phase1_policy"]["sha256"]:
+        raise ValueError("previous Phase 1 policy descriptor changed since it was prepared")
+    gates = (yaml.safe_load(selected.read_text()) or {}).get("phase1_gates")
+    if not isinstance(gates, dict) or not gates:
+        raise ValueError("previous Phase 1 policy descriptor has no phase1_gates")
+    plan, _, _ = release.source_run(Path(source_run).expanduser().resolve(strict=True))
+    descriptor = yaml.safe_load(Path(plan["phases"]["0"]["inputs"]["descriptor"]).read_text())
+    if not isinstance(descriptor, dict):
+        raise ValueError("source run descriptor must be a mapping")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("x") as handle:
+        handle.write(yaml.safe_dump({**descriptor, "phase1_gates": gates}, sort_keys=False))
+    return output
 
 
 def selected_lean_manifest(bundle):
@@ -108,13 +156,38 @@ def main():
     p.add_argument("--logical-storage-budget-bytes", type=int)
     p.add_argument("--public-scalability", type=Path, help="Explicit source selection for a new release epoch")
     p.add_argument("--public-supplement", type=Path, help="Explicit additive source selection for a new release epoch")
-    p.add_argument("--common-substrate", default="merlin.common_compiler_substrate.v8",
-                   choices=("merlin.common_compiler_substrate.v8", "merlin.common_compiler_substrate.v9",
-                                 "merlin.common_compiler_substrate.v10", "merlin.common_compiler_substrate.v11",
-                                 "merlin.common_compiler_substrate.v12"),
-                   help="explicit prospective source epoch; default preserves the existing V8 profile")
+    p.add_argument("--source-run", type=Path, help="New Phase 0 generation run replacing the previous source run")
+    p.add_argument(
+        "--phase1-policy-descriptor",
+        type=Path,
+        help="Phase 1 policy overlay of the new run's descriptor (see carry_phase1_gates)",
+    )
+    p.add_argument(
+        "--common-substrate",
+        default="merlin.common_compiler_substrate.v8",
+        choices=(
+            "merlin.common_compiler_substrate.v8",
+            "merlin.common_compiler_substrate.v9",
+            "merlin.common_compiler_substrate.v10",
+            "merlin.common_compiler_substrate.v11",
+            "merlin.common_compiler_substrate.v12",
+            "merlin.common_compiler_substrate.v13",
+            "merlin.common_compiler_substrate.v14",
+            "merlin.common_compiler_substrate.v15",
+        ),
+        help="explicit prospective source epoch; default preserves the existing V8 profile",
+    )
+    p.add_argument("--host-capability-spec", type=Path, help="Exact reviewed support source for the existing host package")
+    p.add_argument("--host-capability-spec-sha256", help="Digest of the explicitly selected host support source")
+    p.add_argument("--public-program-suite", type=Path, help="Explicit reviewed complete-program roster")
     args = p.parse_args()
-    report = prepare(**vars(args))
+    values = vars(args)
+    host_spec, host_sha = values.pop("host_capability_spec"), values.pop("host_capability_spec_sha256")
+    if (host_spec is None) != (host_sha is None):
+        p.error("host capability source and digest must be selected together")
+    if host_spec is not None:
+        values["host_capability_selection"] = (host_spec, host_sha)
+    report = prepare(**values)
     (args.output.parent / "release-inspection.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
     print(json.dumps({k: report[k] for k in ("review_digest", "target") if k in report}))
 

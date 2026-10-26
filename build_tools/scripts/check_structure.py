@@ -120,6 +120,9 @@ REQUIRED_SCHEMAS = [
     "exactness_contract",
     # Full-model check report (merlin.model_check): build, census, kernel exactness, model metrics.
     "model_check_report",
+    # Custody of sealed Phase 0 evidence (merlin_experiments.corpus.evidence_custody).
+    "evidence_seal",
+    "evidence_repair",
 ]
 
 REQUIRED_DOCS = [

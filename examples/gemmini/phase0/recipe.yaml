@@ -14,4 +14,11 @@ datapath:
   requant_output_dtype: i8
   requant_shift: 3
   required_oracle_tiers: [L0, L1, L2, L3]
+# Declared size classes of the correctness cohort: the largest contraction extent of each case, in
+# multiples of the array's tile edge (below one tile is `sub_tile`). Correctness cases stay small on
+# purpose -- tails, partial tiles and epilogues show at a few tiles -- and model-scale work belongs to
+# the performance-demand cohort. Phase 0 records the written distribution against these classes.
+correctness_size_classes:
+  edges: [1, 2, 4, 32]
+  intent: generality at tile boundaries; multi-tile iteration; deep-K and capacity knees only where a requirement asks
 capsules: []

@@ -3,7 +3,7 @@ title: Compiler construction and representation study
 kind: design
 status: draft
 owner: experiments
-last_verified: 2026-10-23
+last_verified: 2026-10-25
 related: [joint_campaign_execution, ../guides/public_capability_planning, ../guides/conditional_compiler_pipelines, ../guides/artifact_evaluation]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/capability_inventory.py
@@ -176,6 +176,9 @@ separate reported/L2/L3 passes, snapshot identity, three shared failure groups,
 scoped performance priorities and bounded approach notes. Full redacted records
 remain on disk. Give helpers capability-specific briefs and references; avoid
 copying the whole history, API catalog or result collection into every turn.
+Both verdict files also carry `failure_clusters`: failing public cases grouped by
+one normalized redacted failure, each with its members, one example detail and a
+reproduce command, so the lead can hand a whole cluster to one helper.
 
 ## Readiness and subsequent comparisons
 

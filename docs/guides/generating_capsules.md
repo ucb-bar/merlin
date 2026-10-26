@@ -18,7 +18,7 @@ code_refs:
   - src/merlin/targetgen/group_capsule_entries.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/model_forms.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/form_perf.py
-  - src/merlin/kernels/endpoints.py
+  - src/merlin/compile/analysis/compute_endpoints.py
   - src/merlin/perf/isa_prohibition.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/instruction_roles.py
 ---
@@ -173,7 +173,7 @@ through `phase0.group_forms.write_group_capsule`, under `group_binding` -- the c
 accumulator the recipe, contract or RTL facts state, never a literal.
 
 An experiment's `policy.prohibited_instruction_roles` names closed-vocabulary roles
-(`merlin.kernels.roles`). Phase 0 resolves them against the target's derived instruction taxonomy
+(`merlin.compile.analysis.instruction_roles`). Phase 0 resolves them against the target's derived instruction taxonomy
 and records the result as `instruction_policy` in `MANIFEST.yaml` and `coverage/generation.json`;
 Phase 1 receives it in `MERLIN_PROHIBITED_INSTRUCTION_ROLES` and every phase command carries it.
 Declaring a role does not by itself scan a program; enforcement is a separate whole-ELF check.

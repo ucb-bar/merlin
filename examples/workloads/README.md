@@ -17,6 +17,18 @@ Their smaller shapes are deliberate. Inspect exact frontend and MLIR signatures,
 layouts, storage/compute/accumulator precision and transfer obligations before
 making a property-specific comparison. A matching operator name alone is insufficient.
 
+### Explicit connected-block source roster
+
+[Connected blocks](connected_blocks/loader.py) provide independent complete residual bottleneck/projection
+stages, causal RMSNorm/RoPE attention with updated KV live-outs and a SiLU MLP, and repeated MLP calls
+sharing explicit weight inputs while returning every result. The [additional roster](connected_blocks/phase0-workloads.yaml)
+selects nine small/medium/representative **performance-source inputs** through ordinary
+`corpus stage-workloads --roster`. They are not nine admitted capsules or new required L3 cases.
+Select each resulting root with `corpus capture select --workload-root ... --dtype int8 --recipe ...`;
+the existing selected recipe determines quantization. These loaders grant no device support or numeric
+admission, and do not modify any baseline target roster or capsule. Unsupported operations retain their
+ordinary source/host obligations; capture, complete-output checks and admission are separate steps.
+
 ### Optional profiles
 
 The residual CNN, causal decoder and multimodal policy each read an optional

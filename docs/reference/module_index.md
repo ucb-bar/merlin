@@ -7,6 +7,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | package | purpose |
 |---|---|
 | `merlin` | merlin: compiler-centered HW/SW abstraction exploration. |
+| `merlin.agentreport.campaign` | Campaign figure: one agentic compiler-construction campaign drawn as a single stitched run. |
 | `merlin.agentreport.phase1` | Post-hoc Phase 1 run, treatment and model reports with explicit artifact inputs. |
 | `merlin.baselines` | External-baseline K1-RVV comparison harness. |
 | `merlin.baselines.exo_kernels` | EXO kernel sources for the K1-RVV whole-model baseline arm. |
@@ -15,6 +16,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.common` | Shared utilities: schema loading/validation, IO, common types. |
 | `merlin.compare` | merlin.compare — unified, spec-driven, versioned comparison driver. |
 | `merlin.compile` | Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, and mesh execution. |
+| `merlin.compile.analysis` | Target-agnostic analyses that derive facts from IR, shapes and a target's own derived tables. |
 | `merlin.compile.scheduling` | Scheduling passes over a target's derived on-chip geometry. |
 | `merlin.design_pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
 | `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, dispatch, bufferized, loop, trace), one module per cut point. |

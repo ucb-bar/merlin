@@ -3,7 +3,7 @@ title: Disk under out/ — why it grows and what is safe to reclaim
 kind: guide
 status: current
 owner: infra
-last_verified: 2026-10-11
+last_verified: 2026-10-26
 related: [reproducibility, getting_started, phase0_phase1_setup]
 code_refs: [src/merlin/common/content_store.py,
             src/merlin/common/oot_repo.py,
@@ -14,6 +14,10 @@ code_refs: [src/merlin/common/content_store.py,
             src/merlin/common/storage_cli.py,
             src/merlin/common/storage_lifecycle.py,
             src/merlin/common/storage_ops.py,
+            src/merlin/common/cited_evidence.py,
+            src/merlin/common/immutability.py,
+            packages/merlin-experiments/src/merlin_experiments/corpus/evidence_custody.py,
+            packages/merlin-experiments/src/merlin_experiments/phase1/feedback/scratch_retention.py,
             packages/merlin-experiments/src/merlin_experiments/phase2/external_resources.py,
             packages/merlin-experiments/src/merlin_experiments/phase2/_kernel_resources.py,
             merlin/contract/storage.yaml,
@@ -317,6 +321,43 @@ only the current workspace last, including after frozen-input overlays. Sibling 
 run results stay hidden. Tests assert that order and include a real bwrap negative control, skipped
 when the host cannot create namespaces. The lexical `bwrap.is_exposed` model selects the longest
 mount destination and is not proof of arbitrary later ancestor remount behavior.
+
+### Records that cite a path protect it
+
+A lease or pin only protects what a writer remembered to register. Twice a disk cleanup deleted
+sealed Phase 0 evidence that no pin covered but that a record pinned by path and digest: on
+2026-10-17 the captures a derivation cited, on 2026-10-24 37 members of a reviewed derivation
+(`materialized/*/pytorch-opset.json`, two frontend traces, 30 `evidence/` members). Each loss
+surfaced only when a later preparation re-read the exact bytes.
+
+`merlin.common.cited_evidence` reads those records instead. The roster in `storage.yaml`
+(`cited_evidence`) names the record files (`seal.json`, receipts, attestations, `run_record.json`,
+`resolved-plan.json`, `derivation.json`, `synthesis.yaml`, `meta.json`, evidence manifests, ...). Every
+absolute path in a record is cited, and so is every relative `path`/`*_path` that sits beside a digest
+and every member of a receipt's `artifacts` map. A `private/seal.json` anchors its whole release, and
+a record's `protects` list anchors the trees it names. Removing a cited path, or a directory holding
+one, is refused. Removing something inside a cited directory is refused only when the citation pins
+that tree (it carries a digest) or anchors it. A citation never blocks removing the citing record
+itself together with what it cites (a run unit dropped whole), except a seal.
+
+`prune`, `retain` and `move` all consult the registry when they plan and again under the removal
+lock. Grade scratch retention (`phase1.feedback.scratch_retention`) does too, against the run directory
+and the extra roots. When retention cannot read the registry it removes nothing. The registry walks
+`out/`, the scan roots, the contract's `extra_roots` and `MERLIN_CITED_ROOTS` (`os.pathsep`-separated).
+Set that variable to cover evidence kept outside `out/`, such as task `.tmp/` trees and paper ledgers.
+Before deleting anything by hand, ask:
+
+```bash
+MERLIN_CITED_ROOTS=/work/merlin/tasks merlin-storage cited <path>...   # exit 1 = something cites it
+```
+
+Sealed evidence is also locked where the host allows it. `merlin-experiment corpus seal` and
+`merlin-experiment corpus evidence seal` clear write bits and ask for `chattr +i`
+(`MERLIN_SEAL_IMMUTABLE=attempt|sudo|off`), and the seal records how many members the host actually
+made immutable. `corpus evidence verify` names every missing or tampered member of a derivation.
+`corpus evidence repair --source ... --by ... --reason ...` restores missing members only from
+digest-equal sources and writes a `merlin.evidence_repair.v1` receipt beside the derivation. It never
+overwrites, deletes or unlocks.
 
 The second rule has a consequence worth reading as a finding: 472 of `perf-bench`'s 505 unit
 directories are named outside the convention (`development_phase2_global_encoding_20260908`,

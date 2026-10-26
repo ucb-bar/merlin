@@ -258,6 +258,14 @@ review evidence, not proof that a transitive or dynamically loaded path never ra
 
 ## Making compiler improvements compound
 
+Prepare reviewed shared libraries for any target with
+`python -m merlin_experiments.phase1.prepare_author_library --help`.
+The same command selects source inventories and optionally includes explicitly
+pinned neutral ISA products; it supplies no target backend or schedule.
+The older Gemmini example path is a compatibility wrapper for this shared CLI.
+Inventory 20 includes the loop-carried event implementation and requires its
+matching source profile. Frozen earlier runs retain their existing selections.
+
 Promote reusable graph algorithms and host code from the candidate fork into
 Merlin only after reviewing their contracts and relevant independent cases.
 Keep instruction selection and resource realization in the OOT backend.
@@ -273,6 +281,21 @@ traffic heuristic as a calibrated whole-system cycle model. Qualification of a
 shared pass and demonstrated target performance remain separate release claims.
 
 ## Using public scheduled implementations
+
+For inexpensive feedback from actual emitted LLVM, use
+`merlin.perf.emitted_work.summarize_emitted_work(function, command_kind=classifier)`
+with the additional compiler sources selected. The classifier labels original
+assembly or call sites; exact CFG multiplicities produce dynamic command and
+host IR operation counts without expanding rectangular loop domains. Ordinary
+candidate diagnostics also expose this observation for the selected entry.
+Unknown control refuses the complete count. Unclassified commands remain
+visible. These counts do not establish transfer bytes, callee work, cycles or
+physical utilization; use the selected timing and execution tools for those.
+The same observer is available as a standalone command:
+
+```sh
+python -m merlin.perf.emitted_work kernel.llvm.mlir --entry kernel_entry --output work.json
+```
 
 Public optimized examples can guide compiler construction and be declared as
 experiment inputs. Pin their revision, retain their license, and distinguish

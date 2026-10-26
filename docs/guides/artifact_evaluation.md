@@ -11,7 +11,7 @@ code_refs:
   - build_tools/scripts/package_worker_inputs.py
   - examples/gemmini/phase1/launch/launch_phase1.py
   - examples/gemmini/phase1/launch/prepare_author_launch.py
-  - examples/gemmini/phase1/launch/prepare_author_library.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/prepare_author_library.py
   - examples/gemmini/phase1/launch/resource_reservation.py
   - packages/merlin-experiments/src/merlin_experiments/tracking/terminal.py
   - packages/merlin-experiments/src/merlin_experiments/tracking/qualification_audit.py

@@ -1,5 +1,6 @@
-The default descriptor selects `host-capabilities-attention-v2.yaml` through
-`host_lane.capability_spec`. Its prospective successor is
+`host-capabilities-attention-v2.yaml` is a retained host view; the default
+descriptor's `host_lane.capability_spec` selects the reviewed
+`host-capabilities.yaml`. This view's prospective successor is
 `attention-host-placement-v2-20261019`. The historical `host-capabilities.yaml` and immutable scalar compiler package are
 unchanged. The nine added declarations cover closed typed attention preparation
 and boolean negation; they do not move supported INT8 contractions onto the host.

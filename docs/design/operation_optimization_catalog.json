@@ -1,0 +1,480 @@
+{
+  "schema": "merlin.operation_optimization_catalog.v1",
+  "scope": "Per-operation optimization principles for compiler authors. Families are derived from each case's own declaration (operation, operands, window, epilogue, program structure), never from a case or model name. Principles are stated without assuming an architecture or naming a target; mechanisms point to generic library catalog entries, author skills and recipes. Advice only: no legality, pass order, threshold or performance claim.",
+  "review": {
+    "status": "reviewed",
+    "reviewed_on": "2026-10-26",
+    "basis": "Generalized from repeated public compiler-authoring evidence: which schedule choices moved cycles, which regressed other shape classes, and which feedback was missed. No run names, measurements or targets are recorded here."
+  },
+  "claim_policy": [
+    "Principles are hypotheses to test on the author's own cases; cycles of the same evidence kind decide.",
+    "No tile sizes, thresholds, cutoffs or winning constants; derive choices from declared shapes and selected hardware facts.",
+    "An entry that relies on an instruction role the run policy prohibits is not staged.",
+    "Mechanism availability is not proof that it applies to an input or improves it."
+  ],
+  "general": {
+    "title": "Every operation",
+    "focus": "Decide with comparable cycle evidence across shape classes; read the per-case feedback before choosing what to change.",
+    "principles": [
+      {
+        "id": "same_kind_evidence",
+        "kind": "evidence",
+        "text": "Compare variants on the same cases with cycle evidence of the same kind: measurements with measurements, and model estimates only under the same model, facts, input and scope identities."
+      },
+      {
+        "id": "unknown_is_missing_evidence",
+        "kind": "evidence",
+        "text": "UNKNOWN timing is missing evidence, not a measured loss. Keep such a variant as a candidate, obtain cycles on a small representative case of the same kind, and record which evidence decided."
+      },
+      {
+        "id": "counts_are_diagnostics",
+        "kind": "evidence",
+        "text": "Instruction or command counts and functional-simulator counts explain a result; they are not elapsed cycles. Fewer instructions alone is not a speedup."
+      },
+      {
+        "id": "defaults_govern_every_shape",
+        "kind": "pitfall",
+        "text": "A default schedule applies to every shape it reaches. A default tuned on one aspect ratio can slow square, long-N, single-row and ragged shapes; compare the affected shape classes before changing it, and prefer shape-dependent plans derived from operand sizes and local capacities over one global default."
+      },
+      {
+        "id": "shared_pipeline_specialized_plan",
+        "kind": "principle",
+        "text": "Keep one shared lowering pipeline and specialize only the plan geometry (blocking, resident operand, pipeline kind) through shape and capacity predicates validated on held-out shape classes."
+      },
+      {
+        "id": "read_per_case_feedback",
+        "kind": "evidence",
+        "text": "Read each case's optimization_next and the performance brief: bound class, roofline gap, compute-ceiling attainment, capacity_use (operand bytes read against the compulsory bytes and what local capacity allows) and fence_overlap. The busiest modeled resource is a hypothesis to check in the emitted stream."
+      },
+      {
+        "id": "compose_library_first",
+        "kind": "principle",
+        "text": "Composing an existing library pass or recipe is usually quicker than writing a new schedule; register alternatives as variants or tuning knobs so they stay comparable, and keep your own schedules where they measure better."
+      },
+      {
+        "id": "ordering_and_numerics",
+        "kind": "pitfall",
+        "text": "More buffering or fewer ordering points is not automatically faster or legal: preserve source-derived completion ordering between overlapping writes and reads, and never keep a faster variant whose numerical result changed."
+      },
+      {
+        "id": "parallel_shape_class_searches",
+        "kind": "principle",
+        "text": "Searches over independent shape classes or operation families parallelize well; give each search its representative cases and hand a finished search its next class."
+      }
+    ],
+    "mechanisms": [
+      {"kind": "skill", "id": "shape-schedule-selection", "use": "Turn per-shape choices into guarded per-class selections with held-out classes."},
+      {"kind": "skill", "id": "ab-library-pass", "use": "Paired A/B of one library pass on the same cases."},
+      {"kind": "skill", "id": "explore-schedules", "use": "Screen emitted alternatives and run the shape panel."},
+      {"kind": "skill", "id": "cycle-model-and-gsim", "use": "Which cycle evidence is comparable and how to obtain it for one case."},
+      {"kind": "skill", "id": "scheduling-api", "use": "Library inventory (scripts/library_inventory.py) and pass contracts."},
+      {"kind": "recipe", "id": "heavy-pass-recipes/library_pipeline_policy.py", "use": "Choose among registered library pipelines per shape class from panel cycles."}
+    ],
+    "evidence": [
+      "agent_selfcheck.py --panel FAMILY: one representative case per shape class against its earlier best of the same evidence kind.",
+      "performance_brief and optimization_next of the cases you changed, plus at least one large case of the family."
+    ]
+  },
+  "families": [
+    {
+      "id": "contraction",
+      "title": "Contraction (matrix multiplication, batched or sharing an operand)",
+      "applies_when": "A declared contraction over two operands without a sliding window and with more than one output row.",
+      "panel_family": "dense",
+      "related": ["matrix_vector", "elementwise_epilogue", "connected_chain"],
+      "focus": "Balance operand reuse against local capacity, and keep partial-sum and readout work off the critical path.",
+      "principles": [
+        {
+          "id": "reuse_versus_capacity",
+          "kind": "principle",
+          "text": "Choose which operand stays resident and the block shape from the operand sizes and the local operand and partial-sum capacities. Re-streaming one operand for every block of the other output dimension multiplies transfer volume; compare operand bytes read with the compulsory bytes."
+        },
+        {
+          "id": "panel_before_default_change",
+          "kind": "evidence",
+          "text": "Before changing a contraction default, compare candidates on square, long-M, long-N, single-row (M=1) and ragged shapes and a model-derived layer, alongside the shapes that motivated the change."
+        },
+        {
+          "id": "partial_sum_work",
+          "kind": "principle",
+          "text": "When partial-sum storage or readout is the busiest resource, give it less work: initialize partial sums once, read each output tile out at its final reduction step, and overlap readout of finished tiles with compute into disjoint partial-sum space."
+        },
+        {
+          "id": "long_reductions",
+          "kind": "principle",
+          "text": "When a full-depth operand pair no longer fits locally, segment the reduction with one operand retained and the next segment's loads overlapped with the current commits."
+        },
+        {
+          "id": "overlap_transfers",
+          "kind": "principle",
+          "text": "Overlap transfers with compute through disjoint local regions with explicit lifetimes (prologue, steady state, drain); verify the overlap in the emitted stream, not only in the plan."
+        },
+        {
+          "id": "single_buffer_pitfall",
+          "kind": "pitfall",
+          "text": "Reusing the same local addresses for every reduction step, or placing an ordering point after every block, serializes transfers and compute."
+        },
+        {
+          "id": "edges_and_issue",
+          "kind": "principle",
+          "text": "Handle ragged edges without padding the whole problem, hoist invariant configuration out of loops, and emit counted loops instead of fully unrolled command streams when issue is the bottleneck."
+        },
+        {
+          "id": "loop_descriptor_candidate",
+          "kind": "principle",
+          "uses_instruction_roles": ["loop_descriptor"],
+          "text": "Where the target declares an instruction role that runs a whole loop nest and the run policy permits it, compare it as one more candidate against the explicit schedule on the same cases."
+        }
+      ],
+      "mechanisms": [
+        {"kind": "catalog", "id": "capacity_tiles"},
+        {"kind": "catalog", "id": "resident_rhs"},
+        {"kind": "catalog", "id": "array_weight_retention"},
+        {"kind": "catalog", "id": "tile_traversal"},
+        {"kind": "catalog", "id": "block_order"},
+        {"kind": "catalog", "id": "partial_sum_initialization"},
+        {"kind": "catalog", "id": "final_k_accumulator_readout_frontier"},
+        {"kind": "catalog", "id": "accumulator_readout_compute_overlap"},
+        {"kind": "catalog", "id": "segmented_k_retained_operand_pipeline"},
+        {"kind": "catalog", "id": "double_buffer_ownership"},
+        {"kind": "catalog", "id": "pipeline_phases"},
+        {"kind": "catalog", "id": "copy_pipeline"},
+        {"kind": "catalog", "id": "sibling_input_reuse"},
+        {"kind": "catalog", "id": "counted_configuration_cleanup"},
+        {"kind": "catalog", "id": "command_loops"},
+        {"kind": "recipe", "id": "heavy-pass-recipes/dense_readout_recipe.py", "use": "Readout overlap and ready readout for a partial-sum-bound product."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/long_k_recipe.py", "use": "Segmented reduction with a retained operand."},
+        {"kind": "skill", "id": "shape-schedule-selection", "use": "Capacity-derived per-class plans; capacity_pipeline_example.py."}
+      ],
+      "evidence": [
+        "capacity_use.operand_reads: bytes read against compulsory bytes and the capacity-bound ratio.",
+        "agent_selfcheck.py --panel dense before and after a default change."
+      ]
+    },
+    {
+      "id": "matrix_vector",
+      "title": "Matrix-vector (contraction with a single output row)",
+      "applies_when": "A declared contraction whose output has one row (M=1), such as a decode step or a batched vector product.",
+      "panel_family": "gemv",
+      "related": ["contraction", "attention"],
+      "focus": "Bandwidth-bound by weight bytes: keep weight transfers streaming and overlapped, and use the compute array's full width per transfer.",
+      "principles": [
+        {
+          "id": "weight_bandwidth_bound",
+          "kind": "principle",
+          "text": "Each weight element is used once per call, so the floor is the weight transfer time. The useful changes keep weight transfers streaming at full rate: double-buffered weight tiles, large contiguous transfers, and compute overlapped with the next transfer."
+        },
+        {
+          "id": "use_array_width",
+          "kind": "principle",
+          "text": "A mapping that holds weights stationary feeds only one array row per loaded tile when there is one output row. Prefer mappings where the vector is the held or broadcast operand and weights stream, or combine several independent vectors or sibling projections that share the call so each loaded weight tile feeds more of the array."
+        },
+        {
+          "id": "prepare_weights_once",
+          "kind": "principle",
+          "text": "Weights are immutable across calls: prepare their layout once so each call only streams them, and lay them out contiguously along the streamed dimension."
+        },
+        {
+          "id": "not_a_small_contraction",
+          "kind": "pitfall",
+          "text": "Treating a single-row product as a small contraction inherits block shapes and ordering points tuned for reuse it does not have; include a single-row case in every contraction default comparison."
+        }
+      ],
+      "mechanisms": [
+        {"kind": "catalog", "id": "persistent_prepack"},
+        {"kind": "catalog", "id": "cold_warm_state_policy"},
+        {"kind": "catalog", "id": "copy_pipeline"},
+        {"kind": "catalog", "id": "copy_prefetch"},
+        {"kind": "catalog", "id": "double_buffer_ownership"},
+        {"kind": "catalog", "id": "dma_coalescing"},
+        {"kind": "catalog", "id": "strided_tile_loads"},
+        {"kind": "catalog", "id": "sibling_input_reuse"},
+        {"kind": "skill", "id": "roofline-and-utilization", "use": "Read the transfer floor against the compute floor."}
+      ],
+      "evidence": [
+        "Transfer-bound roofline gap and compute-ceiling attainment of the single-row cases.",
+        "agent_selfcheck.py --panel gemv, and the dense panel's thin class when a shared default changes."
+      ]
+    },
+    {
+      "id": "convolution",
+      "title": "Convolution and windowed reductions",
+      "applies_when": "A declared operation with a sliding window (kernel, stride, dilation or padding), including pooling windows.",
+      "panel_family": "conv",
+      "related": ["contraction", "elementwise_epilogue", "connected_chain"],
+      "focus": "Reuse input windows across neighbouring outputs with multi-row transfers and keep weights resident; never write the same local rows twice without an ordering point.",
+      "principles": [
+        {
+          "id": "reuse_windows",
+          "kind": "principle",
+          "text": "Neighbouring outputs share input rows: stage contiguous multi-row or strided runs that serve many outputs and every live output-channel tile, instead of gathering one row per output element."
+        },
+        {
+          "id": "resident_weights",
+          "kind": "principle",
+          "text": "Keep weights resident across output tiles when they fit, and batch several output tiles per ordering point; an ordering point after every output tile serializes transfers and compute."
+        },
+        {
+          "id": "no_double_write",
+          "kind": "pitfall",
+          "text": "Never write the same local buffer rows twice without an ordering point between the writes (for example initialize-then-overwrite): writes can complete out of order. Load each row or zero-source it once."
+        },
+        {
+          "id": "padding_once",
+          "kind": "principle",
+          "text": "Padding is either loaded or initialized once per row, or materialized once as a border so every tap is in bounds; do not re-create it per tap or per output."
+        },
+        {
+          "id": "address_increments",
+          "kind": "principle",
+          "text": "Advance addresses by increments in counted loops rather than recomputing per-element division and remainder on the host."
+        },
+        {
+          "id": "few_channels",
+          "kind": "pitfall",
+          "text": "Inputs with few channels padded to the array width waste most of the compute; pack kernel taps or channels into the reduction dimension and watch the useful fraction of padded work."
+        },
+        {
+          "id": "no_full_window_matrix",
+          "kind": "principle",
+          "text": "Stage windows incrementally rather than materializing the complete window matrix of the input when it does not fit or is not reused."
+        },
+        {
+          "id": "loop_descriptor_candidate",
+          "kind": "principle",
+          "uses_instruction_roles": ["loop_descriptor"],
+          "text": "Where the target declares an instruction role that runs a whole window loop nest and the run policy permits it, compare it as one more candidate against the explicit schedule on the same cases."
+        }
+      ],
+      "mechanisms": [
+        {"kind": "catalog", "id": "convolution_tiles"},
+        {"kind": "catalog", "id": "direct_padding_gather"},
+        {"kind": "catalog", "id": "strided_tile_loads"},
+        {"kind": "catalog", "id": "dma_coalescing"},
+        {"kind": "catalog", "id": "array_weight_retention"},
+        {"kind": "catalog", "id": "quantized_spatial_readout_cache"},
+        {"kind": "catalog", "id": "host_address_arithmetic"},
+        {"kind": "catalog", "id": "barrier_cleanup"},
+        {"kind": "catalog", "id": "sync_legality"},
+        {"kind": "catalog", "id": "placement_legality"},
+        {"kind": "recipe", "id": "heavy-pass-recipes/conv_window_recipe.py", "use": "Window row runs with retained input and resident weights; hazard check on rows written twice."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/spatial_chain_recipe.py", "use": "A windowed operation feeding a pool through the composition catalog."}
+      ],
+      "evidence": [
+        "fence_overlap: ordering points and output tiles per ordering point.",
+        "Input transfers and rows per transfer against the count a per-element gather would issue (recipe output).",
+        "agent_selfcheck.py --panel conv."
+      ]
+    },
+    {
+      "id": "attention",
+      "title": "Attention (score product, normalization, value product)",
+      "applies_when": "A declared attention operation, or its score or value products.",
+      "panel_family": null,
+      "related": ["contraction", "matrix_vector", "reduction_normalization", "connected_chain"],
+      "focus": "Batch heads into larger products and keep scores and probabilities resident between the two products.",
+      "principles": [
+        {
+          "id": "batch_heads",
+          "kind": "principle",
+          "text": "Batch heads and query rows so each product is large enough to use the compute array; a single-query step makes both products single-row and the matrix-vector principles apply."
+        },
+        {
+          "id": "resident_intermediates",
+          "kind": "principle",
+          "text": "Keep scores and probabilities local between the score product, the normalization and the value product when capacity allows, instead of writing them out and reading them back."
+        },
+        {
+          "id": "row_normalization",
+          "kind": "principle",
+          "text": "Normalize complete rows in chunks with the declared reduction order and numeric contract (including any maximum subtraction), so it can stay between the two products."
+        },
+        {
+          "id": "reuse_keys_values",
+          "kind": "principle",
+          "text": "Reuse keys and values across query tiles; when keys and values are streamed per step, the step is transfer-bound and the transfer principles of matrix-vector products apply."
+        },
+        {
+          "id": "masked_blocks",
+          "kind": "principle",
+          "text": "Skip blocks that a declared mask removes entirely rather than computing and then masking them, keeping partially masked blocks exact."
+        }
+      ],
+      "mechanisms": [
+        {"kind": "catalog", "id": "row_normalization"},
+        {"kind": "catalog", "id": "ordered_reductions"},
+        {"kind": "catalog", "id": "epilogue_fusion"},
+        {"kind": "catalog", "id": "temporary_reuse"},
+        {"kind": "catalog", "id": "sibling_input_reuse"},
+        {"kind": "skill", "id": "fusion", "use": "Region fusion with all live outputs preserved."},
+        {"kind": "skill", "id": "quantization", "use": "Exact integer scales and requantization between stages."}
+      ],
+      "evidence": [
+        "Bytes written and re-read between the two products.",
+        "The panel of the product's own shape class (dense or gemv)."
+      ]
+    },
+    {
+      "id": "elementwise_epilogue",
+      "title": "Elementwise, epilogue and requantization",
+      "applies_when": "A declared elementwise operation, or a contraction or window operation declaring an epilogue, scale, activation, pooling stage or composed elementwise family.",
+      "panel_family": "elementwise_map",
+      "related": ["contraction", "convolution", "connected_chain"],
+      "focus": "Fuse epilogues into the producer's readout; a standalone elementwise pass is transfer-bound.",
+      "principles": [
+        {
+          "id": "fuse_into_readout",
+          "kind": "principle",
+          "text": "Apply bias, scale, activation, requantization, pooling and residual additions while results leave partial-sum storage, rather than in a separate pass over memory."
+        },
+        {
+          "id": "standalone_is_transfer_bound",
+          "kind": "principle",
+          "text": "A standalone elementwise operation is bound by its bytes: minimize passes over the data, combine adjacent elementwise operations, and use large contiguous transfers."
+        },
+        {
+          "id": "exact_requantization",
+          "kind": "pitfall",
+          "text": "Requantization scale, rounding and saturation follow the declared numeric contract exactly; independent sibling outputs keep their own scales and activation state."
+        },
+        {
+          "id": "no_host_round_trip",
+          "kind": "pitfall",
+          "text": "Moving a small epilogue to the host between device stages adds a round trip and ordering point per call; keep it with its producer where the numeric contract allows."
+        }
+      ],
+      "mechanisms": [
+        {"kind": "catalog", "id": "epilogue_fusion"},
+        {"kind": "catalog", "id": "requant_proof"},
+        {"kind": "catalog", "id": "independent_sibling_epilogues"},
+        {"kind": "catalog", "id": "connected_multioutput"},
+        {"kind": "catalog", "id": "dma_coalescing"},
+        {"kind": "skill", "id": "fusion", "use": "Fuse with the producer while preserving every live output."},
+        {"kind": "skill", "id": "quantization", "use": "Prove exact scales and output saturation."}
+      ],
+      "evidence": [
+        "Separate passes over the output in the emitted stream.",
+        "agent_selfcheck.py --panel elementwise_map for standalone operations."
+      ]
+    },
+    {
+      "id": "reduction_normalization",
+      "title": "Reductions and normalization",
+      "applies_when": "A declared reduction, normalization or softmax without a sliding window.",
+      "panel_family": null,
+      "related": ["attention", "elementwise_epilogue"],
+      "focus": "Preserve the declared reduction order and finish each row in as few passes as the contract allows.",
+      "principles": [
+        {
+          "id": "declared_order",
+          "kind": "pitfall",
+          "text": "Keep the declared reduction order, seed and accumulation type; a reordering that changes results is not an optimization."
+        },
+        {
+          "id": "few_passes",
+          "kind": "principle",
+          "text": "Compute the statistics a row needs in one pass where the contract allows, keep them local, and chunk over the complete row domain."
+        },
+        {
+          "id": "fold_scale_forward",
+          "kind": "principle",
+          "text": "Where legal, fold the normalization's final scale into the next operation's preparation or epilogue instead of a separate pass."
+        }
+      ],
+      "mechanisms": [
+        {"kind": "catalog", "id": "ordered_reductions"},
+        {"kind": "catalog", "id": "row_normalization"},
+        {"kind": "catalog", "id": "epilogue_fusion"},
+        {"kind": "catalog", "id": "owned_scalar_host"},
+        {"kind": "catalog", "id": "scalar_loop_outline"}
+      ],
+      "evidence": [
+        "Passes over each row and bytes moved per row in the emitted program."
+      ]
+    },
+    {
+      "id": "data_movement",
+      "title": "Data movement and layout",
+      "applies_when": "A declared movement, layout, copy, slice, concatenation or permutation operation.",
+      "panel_family": "movement",
+      "related": ["connected_chain"],
+      "focus": "Remove copies by choosing layouts consumers can read directly; coalesce what remains.",
+      "principles": [
+        {
+          "id": "eliminate_before_optimizing",
+          "kind": "principle",
+          "text": "Choose producer and consumer layouts so a copy or permutation disappears; a copy that remains should be coalesced into large contiguous or strided transfers rather than per-row moves."
+        },
+        {
+          "id": "prepare_fixed_layouts_once",
+          "kind": "pitfall",
+          "text": "Re-preparing the layout of immutable operands on every call repeats work that can be done once."
+        },
+        {
+          "id": "dead_and_duplicate_moves",
+          "kind": "principle",
+          "text": "Remove writes nobody reads and deduplicate equal preparation views."
+        }
+      ],
+      "mechanisms": [
+        {"kind": "catalog", "id": "dma_coalescing"},
+        {"kind": "catalog", "id": "strided_tile_loads"},
+        {"kind": "catalog", "id": "preparation_cse"},
+        {"kind": "catalog", "id": "persistent_prepack"},
+        {"kind": "catalog", "id": "borrowed_preparation"},
+        {"kind": "catalog", "id": "dead_private_writes"},
+        {"kind": "catalog", "id": "temporary_reuse"}
+      ],
+      "evidence": [
+        "Transfers and bytes per call against the logical bytes the operation must move."
+      ]
+    },
+    {
+      "id": "connected_chain",
+      "title": "Connected chains and whole programs",
+      "applies_when": "A declared program, model or component graph with several operations, or several products sharing an operand.",
+      "panel_family": null,
+      "related": ["contraction", "convolution", "elementwise_epilogue", "attention"],
+      "focus": "Keep intermediates on the device and resident across adjacent stages; prepare fixed operands once.",
+      "principles": [
+        {
+          "id": "resident_across_stages",
+          "kind": "principle",
+          "text": "Keep intermediates on the device and, where capacity allows, local across adjacent stages; fuse epilogues and share inputs among sibling products."
+        },
+        {
+          "id": "cold_versus_warm",
+          "kind": "principle",
+          "text": "Separate one-time preparation from per-call work: fixed weights and layouts are prepared once across calls, and repeated calls pay only the steady state."
+        },
+        {
+          "id": "complete_outputs",
+          "kind": "pitfall",
+          "text": "Preserve every live output, numerical order and completion ordering of the whole chain; do not drop stages or move device work to the host to make the chain pass."
+        },
+        {
+          "id": "check_chains_early",
+          "kind": "evidence",
+          "text": "Check connected programs as soon as their operation families compile; whole chains exercise interfaces and storage lifetimes no single operation does. Optimize the stages that dominate the chain with their own family's principles."
+        }
+      ],
+      "mechanisms": [
+        {"kind": "catalog", "id": "physical_composition"},
+        {"kind": "catalog", "id": "connected_multioutput"},
+        {"kind": "catalog", "id": "epilogue_fusion"},
+        {"kind": "catalog", "id": "sibling_input_reuse"},
+        {"kind": "catalog", "id": "persistent_prepack"},
+        {"kind": "catalog", "id": "cold_warm_state_policy"},
+        {"kind": "catalog", "id": "temporary_reuse"},
+        {"kind": "catalog", "id": "preparation_cse"},
+        {"kind": "skill", "id": "compose-pass-pipeline", "use": "Compose library passes over a connected source."},
+        {"kind": "skill", "id": "fusion", "use": "Bounded fusion discovery with a correct unfused route retained."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/spatial_chain_recipe.py", "use": "A connected window chain found through the composition catalog."}
+      ],
+      "evidence": [
+        "agent_selfcheck.py --suite programs for the connected programs.",
+        "Intermediate bytes written to and read back from main memory between stages."
+      ]
+    }
+  ]
+}

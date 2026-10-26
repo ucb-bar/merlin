@@ -13,7 +13,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/run_inputs.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/generated_isa_library.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
-  - examples/gemmini/phase1/launch/prepare_author_library.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/prepare_author_library.py
   - examples/gemmini/phase1/launch/prepare_source_release.py
   - examples/gemmini/phase1/launch/prepare_author_launch.py
   - examples/gemmini/phase1/launch/resource_reservation.py
@@ -23,10 +23,11 @@ code_refs:
 
 ## Prepare a concrete refreshed author environment
 
-The operator helpers in `examples/gemmini/phase1/launch/` prepare prospective
-inputs; none launches an author or reserves CPUs:
+Shared library preparation uses a target-independent package CLI. The remaining
+operator examples in `examples/gemmini/phase1/launch/` assemble prospective inputs;
+none launches an author or reserves CPUs:
 
-1. `prepare_author_library.py` refreshes the existing explicit reviewed source
+1. `python -m merlin_experiments.phase1.prepare_author_library` refreshes the existing explicit reviewed source
    membership from a committed compiler revision. It retains the editable generic
    compiler grant, closes imports, and refuses newly discovered SDK leaves without
    a separate review. Both generic-only and optional scaffold selections are
