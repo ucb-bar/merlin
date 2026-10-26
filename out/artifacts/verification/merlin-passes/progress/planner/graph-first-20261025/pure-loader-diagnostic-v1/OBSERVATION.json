@@ -1,0 +1,35 @@
+{
+  "status": "STARTUP_PATHS_MATCH_ORIGINAL_PINS",
+  "mapped_file_paths": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+    "/usr/lib/libc.so.6",
+    "/usr/lib/libpthread.so.0",
+    "/usr/lib/libdl.so.2",
+    "/usr/lib/libm.so.6",
+    "/usr/lib/ld-linux-x86-64.so.2",
+    "/usr/lib/librt.so.1"
+  ],
+  "original_runtime_refs_checked": 11,
+  "postcheck_unchanged": true,
+  "virtual_kernel_objects": [
+    "linux-vdso.so.1 (0x00007f1942d83000)"
+  ],
+  "system_preload_absent_pre_post": true,
+  "environment_replaced_not_inherited": true,
+  "cache_inhibited": true,
+  "built_in_hwcaps_search_masked_empty": true,
+  "default_directory_search_formally_denied": false,
+  "late_load_or_import_closure_established": false,
+  "pure_Lean_execution_authorized": false,
+  "held_oracle_or_failed_profile_rerun": false,
+  "old_failure_explained_or_repaired": false,
+  "new_expected_runtime_hashes_created": false,
+  "graph_checker_qualification": false,
+  "trust": [
+    "host OS/kernel/vDSO and documented loader diagnostics",
+    "pinned loader/runtime and host observation"
+  ]
+}

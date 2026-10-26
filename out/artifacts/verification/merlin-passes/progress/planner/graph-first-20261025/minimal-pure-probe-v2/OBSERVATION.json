@@ -1,0 +1,106 @@
+{
+  "status": "MINIMAL_PURE_PROBE_CHECKED",
+  "selected_original_refs_checked_pre_post": 3294,
+  "all_original_pins_unchanged": true,
+  "actual_reported_import_paths": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/Init.olean"
+  ],
+  "original_metadata_closure_module_count": 653,
+  "observed_import_startup": {
+    "init_files": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "fini_files": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "link_maps": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "main_initialized_and_transferred": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "empty_main_fini_namespace_zero": 1,
+    "unbound_libraries": []
+  },
+  "observed_proof_startup": {
+    "init_files": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "fini_files": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "link_maps": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "main_initialized_and_transferred": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "empty_main_fini_namespace_zero": 1,
+    "unbound_libraries": []
+  },
+  "root_theorem": "MerlinCoordinatorPureProbe.checked_kernel",
+  "root_axioms": [],
+  "v1_diagnostic_trace_parse_error_retained": true,
+  "failed_oracle_profile_rerun": false,
+  "runtime_expected_hashes_refreshed": false,
+  "formal_OS_loader_denial_proved": false,
+  "arbitrary_future_late_loads_ruled_out": false,
+  "graph_checker_qualification": false,
+  "captured_graph_sources_compiled_here": false,
+  "trust": [
+    "OS/kernel/vDSO",
+    "pinned loader diagnostics",
+    "pinned Lean module reporting/kernel",
+    "original SDK metadata and host transport"
+  ]
+}

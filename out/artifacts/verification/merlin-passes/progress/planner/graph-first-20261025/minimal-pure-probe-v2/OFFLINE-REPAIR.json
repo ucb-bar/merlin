@@ -1,0 +1,47 @@
+{
+  "v1_native_command_returncode": 0,
+  "known_parser_error": "main fini is [0] and path fini lines carry [0] suffix",
+  "v1_raw_buffers_preserved": true,
+  "imports_not_rerun": true,
+  "recovered_trace": {
+    "init_files": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "fini_files": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "link_maps": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "/usr/lib/libc.so.6",
+      "/usr/lib/libdl.so.2",
+      "/usr/lib/libm.so.6",
+      "/usr/lib/libpthread.so.0",
+      "/usr/lib/librt.so.1"
+    ],
+    "main_initialized_and_transferred": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "empty_main_fini_namespace_zero": 1,
+    "unbound_libraries": []
+  }
+}

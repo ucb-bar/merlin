@@ -1,0 +1,40 @@
+{
+  "commands": [
+    [
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "--inhibit-cache",
+      "--glibc-hwcaps-mask",
+      "",
+      "--library-path",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean:/usr/lib",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "--deps",
+      "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/minimal-pure-probe-v1/PureProbe.lean"
+    ],
+    [
+      "/usr/lib/ld-linux-x86-64.so.2",
+      "--inhibit-cache",
+      "--glibc-hwcaps-mask",
+      "",
+      "--library-path",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean:/usr/lib",
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-j1",
+      "-o",
+      "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/minimal-pure-probe-v1/PureProbe.olean",
+      "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/minimal-pure-probe-v1/PureProbe.lean"
+    ]
+  ],
+  "environment": {
+    "LANG": "C",
+    "LC_ALL": "C",
+    "LEAN_SYSROOT": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0",
+    "LEAN_PATH": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean",
+    "LD_DEBUG": "libs,files"
+  },
+  "cwd": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/minimal-pure-probe-v1",
+  "original_ref_count": 3294,
+  "scope": "minimal Init-only diagnostic, not graph/oracle qualification",
+  "LD_DEBUG": "exact fixed diagnostic setting, not inherited user input",
+  "old_context_modified": false
+}
