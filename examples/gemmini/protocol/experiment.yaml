@@ -151,7 +151,7 @@ models:
     architecture: {selected_vlm_layers: 16, expert_layers: 16, base_text_config_layers: 32, expert_width_multiplier: 0.75, self_attention_every_n_layers: 2, attention_mode: cross_attn, batch: 1, actual_cameras: 1, checkpoint_declared_cameras: 3, language_slots: 48, prefix_slots: 113, action_horizon: 50, semantic_action_channels: 6, padded_action_channels: 32}
     source_precision: FP32_policy_with_two_captured_wider_rotary_exceptions_in_flow
     capture_input: {dataset: lerobot/aloha_sim_insertion_human, revision: cc571a3c661df81b566dbfde3d5c1e85fcdf7884, episode: 0, frame: 0, noise_seed: 0, synthetic: false}
-    external_evaluation_input: {selection: visible/v00, dataset: lerobot/aloha_sim_insertion_human, episode: 0, frame: 100, noise_seed: 1000, derived_member: visible/v00/observation.npz, sha256: 8c4c0dca184abf8da7af74c187531cecc172c3eb50f51aa7b6d6d0c61fef3daf}
+    external_evaluation_input: {selection: visible/v00, dataset: lerobot/aloha_sim_insertion_human, episode: 0, frame: 100, noise_seed: 1000, derived_member: visible/v00/observation.npz, sha256: e4863c12cb7f9ae9bdf9f20ec48d6788083a81f29bb680738f420daed5405414}
     preprocessing: LeRobot_0.6_processors_resize_pad512_STATE_and_ACTION_MEAN_STD_VISUAL_IDENTITY
     calibration: {samples_per_program: 1}
     host_math_policy: portable_neural_f32
