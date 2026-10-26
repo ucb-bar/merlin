@@ -22,3 +22,4 @@ experiments/reference-data/** -text -eol
 
 # Preserve the frozen handoff parts, ELF and source-bound receipts byte for byte.
 out/artifacts/handoff/gemmini-firesim-dse-publication/** -text -eol
+out/artifacts/handoff/gemmini-tinyllama-synthetic/** -text -eol

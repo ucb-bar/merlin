@@ -1,0 +1,14 @@
+{
+  "status": "FAIL_SELECTED_EL4_PROFILE",
+  "scope": "Preserved diagnostic, not a selected-profile release or paid-job queue",
+  "audit": "examples/gemmini/comparisons/tvm/EL4_INPUT_AUDIT.md",
+  "differences": [
+    "synthetic max-abs calibration instead of selected histogram/WikiText preparation",
+    "missing selected SmoothQuant/outlier transforms and attention planes",
+    "cache/position/logit ABI",
+    "host math",
+    "reference producer"
+  ],
+  "current_runnable_selected_campaigns": 0,
+  "archive_and_execution_evidence_unchanged": true
+}

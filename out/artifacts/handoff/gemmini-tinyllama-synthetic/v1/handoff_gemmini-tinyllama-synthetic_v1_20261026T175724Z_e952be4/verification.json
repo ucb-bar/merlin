@@ -1,0 +1,93 @@
+{
+  "source_scope": "User-authorized synthetic local inputs, not team v00 or WikiText",
+  "calibration": {
+    "sequences": 3,
+    "tokens_each": 64,
+    "measurement_roster_separate": true,
+    "scales_frozen": true,
+    "weight_group": 16,
+    "activation_granularity": "per tensor",
+    "bias": "none"
+  },
+  "full_source": {
+    "output_arrays": 99,
+    "exact_source_replay": "pass",
+    "change": "Initial position is an ordinary frozen source buffer; identical values",
+    "target_execution": "NOT_RUN"
+  },
+  "full_frontend": [
+    {
+      "phase": "prefill",
+      "status": "pass",
+      "matmuls": 1563,
+      "matmul_types": "INT8 x INT8 -> INT32",
+      "inputs": 1,
+      "scope": "Full existing frontend intake; no target compilation or hardware timing"
+    },
+    {
+      "phase": "decode",
+      "status": "pass",
+      "matmuls": 1563,
+      "matmul_types": "INT8 x INT8 -> INT32",
+      "inputs": 3,
+      "scope": "Full existing frontend intake; no target compilation or hardware timing"
+    }
+  ],
+  "chunks": {
+    "count": 14,
+    "llvm_passed": 14,
+    "zero_max_error": true,
+    "distinct_contractions": 18,
+    "initial_campaign_coverage": 9,
+    "initial_tinyllama_proposals": 24
+  },
+  "native_controls": {
+    "mlp": {
+      "controls": [
+        {
+          "label": "valid",
+          "returncode": 0,
+          "expected": 0,
+          "marker_present": true,
+          "status": "pass"
+        },
+        {
+          "label": "bad-oracle",
+          "returncode": 22,
+          "expected": 22,
+          "marker_present": true,
+          "status": "pass"
+        }
+      ],
+      "gemmini_matmul_functions": 2,
+      "cpu_matmul_functions": 0,
+      "prohibited_instruction_hits": []
+    },
+    "attention": {
+      "controls": [
+        {
+          "label": "valid",
+          "returncode": 0,
+          "expected": 0,
+          "marker_present": true,
+          "status": "pass"
+        },
+        {
+          "label": "bad-oracle",
+          "returncode": 22,
+          "expected": 22,
+          "marker_present": true,
+          "status": "pass"
+        }
+      ],
+      "gemmini_matmul_functions": 5,
+      "cpu_matmul_functions": 0,
+      "prohibited_instruction_hits": []
+    }
+  },
+  "unit_tests": "6 passed",
+  "firesim": "NOT_RUN",
+  "model_quality": "NOT_RUN",
+  "portable_archive_files_checked": 59,
+  "frozen_chunk_fixture_replay_identical": 14
+}

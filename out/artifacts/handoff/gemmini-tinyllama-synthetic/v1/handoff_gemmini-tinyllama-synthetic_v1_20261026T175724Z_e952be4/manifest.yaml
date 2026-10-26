@@ -1,0 +1,21 @@
+artifacts:
+- ELFS/tinyllama-decode-attention.elf
+- ELFS/tinyllama-decode-mlp.elf
+- README.md
+- SHA256SUMS
+- check_chunks.py
+- config.json
+- make_session_inputs.py
+- manifest.yaml
+- protocol-conformance.json
+- synthetic-inputs.tar.gz
+- transfer-manifest.json
+- verification.json
+git_sha: e952be4
+notes: Preserved nonconforming synthetic TinyLlama diagnostic. See protocol-conformance.json and EL4_INPUT_AUDIT.md; not selected-profile DSE readiness.
+run_id: handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4
+sources: []
+target: gemmini-tinyllama-synthetic
+timestamp: 20261026T175724Z
+topic: handoff
+version: 1

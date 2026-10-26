@@ -391,3 +391,26 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/firesim-round2-handoff.tar.gz.part-002
 !/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/firesim-round2-handoff.tar.gz.part-003
 !/out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/firesim-round2-handoff.tar.gz.part-004
+
+# Reviewed synthetic diagnostic and EL4 audit; no checkpoint/full-export blobs.
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/README.md
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/manifest.yaml
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/SHA256SUMS
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/transfer-manifest.json
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/verification.json
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/protocol-conformance.json
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/config.json
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/synthetic-inputs.tar.gz
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/ELFS/tinyllama-decode-attention.elf
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/ELFS/tinyllama-decode-mlp.elf
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/check_chunks.py
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/handoff_gemmini-tinyllama-synthetic_v1_20261026T175724Z_e952be4/make_session_inputs.py
+!/out/artifacts/handoff/gemmini-tinyllama-synthetic/v1/latest
+!/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/manifest.yaml
+!/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/README.md
+!/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/report.json
+!/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/smolvla-chunks.pending.json
+!/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/authority/protocol/experiment.yaml
+!/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/authority/protocol/README.md
+!/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/authority/numerics/models.yaml
+!/out/artifacts/audits/gemmini-el4-input-conformance/v1/latest

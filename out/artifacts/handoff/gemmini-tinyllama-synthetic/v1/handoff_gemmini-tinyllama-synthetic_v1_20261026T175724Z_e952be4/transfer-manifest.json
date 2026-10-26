@@ -1,0 +1,29 @@
+{
+  "files": [
+    {
+      "path": "synthetic-inputs.tar.gz",
+      "sha256": "ef1df742a6e3008a752b7e6c140a2b0e527a49b742fb7db6663f11fb3803c939",
+      "bytes": 21826168
+    },
+    {
+      "path": "ELFS/tinyllama-decode-attention.elf",
+      "sha256": "82ed8a8f15802c1e3408a846a387067286a1fa748f4e786bf263f1e6b9bd6534",
+      "bytes": 9679520
+    },
+    {
+      "path": "ELFS/tinyllama-decode-mlp.elf",
+      "sha256": "d80f0707d6ce2591a34c567a9e80defdb9a5ababa545719fab97a40e1b7c0ca5",
+      "bytes": 34712240
+    },
+    {
+      "path": "config.json",
+      "sha256": "486bedda3a6988332e60d9638a09ca4b260d34ebcf1b19e22cf3b140b63d8fe9",
+      "bytes": 608
+    }
+  ],
+  "scope": "User-authorized non-shared synthetic TinyLlama input; not the team benchmark",
+  "checkpoint_sha256": "6e6001da2106d4757498752a021df6c2bdc332c650aae4bae6b0c004dcf14933",
+  "software_source": "Checkpoint model revision fe8a4ea1ffedaf415f4da2f062534de366a451e6; current branch source generator",
+  "large_exports": "Two full 22-layer PT2 exports generated and imported locally; regenerate with frozen inputs on new machine; not stored in Git",
+  "hardware": "Existing pinned Gemmini ISA only; no hardware changes; FireSim NOT_RUN"
+}
