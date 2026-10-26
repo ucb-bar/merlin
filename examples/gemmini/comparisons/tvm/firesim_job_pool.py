@@ -90,7 +90,7 @@ class FireSimPool:
             if callable(measured_limit):
                 measured_limit = measured_limit()
             request = dict(
-                schema="gemmini_firesim_probe_request_v2",
+                schema="gemmini_firesim_probe_request_v3",
                 elf=identity(elf),
                 hardware=self.hardware,
                 slot=slot["id"],
@@ -100,6 +100,8 @@ class FireSimPool:
                 configure_memory=False,
                 startup_included=False,
                 cutoff_comparison="active_cycles >= incumbent",
+                required_cycle_limit_scope="active_measured",
+                required_limit_refresh_scope="in_flight" if live_limit else None,
                 measured_cycle_limit=measured_limit,
                 wall_seconds=wall,
                 deadline_epoch=self.deadline,
@@ -140,8 +142,15 @@ class FireSimPool:
                 raise ValueError("FireSim result differs from the supplied deployment receipt")
             if measured_limit is not None and not result.get("measured_limit_enforced"):
                 raise ValueError("Installed adapter has not qualified incumbent-cycle enforcement")
+            if measured_limit is not None and result.get("cycle_limit_scope") != "active_measured":
+                raise ValueError(
+                    "Require live active measured-cycle enforcement; "
+                    "total-cycle caps or completion filters do not qualify"
+                )
             if measured_limit is not None and live_limit and not result.get("moving_limit_enforced"):
                 raise ValueError("Installed adapter has not qualified live incumbent refresh")
+            if measured_limit is not None and live_limit and result.get("limit_refresh_scope") != "in_flight":
+                raise ValueError("Require in-flight incumbent refresh; refreshing only at launch does not qualify")
             log = checked(result["transcript"]).read_text()
             boot = json.loads(checked(result["boot_evidence"]).read_text())
             if boot.get("elf_sha256") != request["elf"]["sha256"]:

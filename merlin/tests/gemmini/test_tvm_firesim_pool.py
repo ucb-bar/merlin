@@ -5,7 +5,6 @@ import json
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 import pytest
 
@@ -19,10 +18,16 @@ request=json.loads(Path(request).read_text());folder=Path(result).parent
 def ident(path):return dict(path=str(path),sha256=hashlib.sha256(path.read_bytes()).hexdigest())
 start=time.monotonic();time.sleep(.15)
 (folder/"interval.json").write_text(json.dumps([start,time.monotonic()]))
-boot=folder/"boot.json";boot.write_text(json.dumps(dict(elf_sha256=request["elf"]["sha256"] if mode!="boot" else "wrong")))
+boot=folder/"boot.json"
+boot.write_text(json.dumps(dict(elf_sha256=request["elf"]["sha256"] if mode!="boot" else "wrong")))
 first=999999999 if mode=="startup" else 123
-log=folder/"guest.log";log.write_text(f"BOOT_LOADING_CYCLES=999999999\\nDSE_CYCLES first={first} second=100\\n"+("DSE_PASS\\n" if mode!="marker" else ""))
+log=folder/"guest.log"
+log.write_text(f"BOOT_LOADING_CYCLES=999999999\\nDSE_CYCLES first={first} second=100\\n"
+               +("DSE_PASS\\n" if mode!="marker" else ""))
 value=dict(status="passed",guest_exit=0,elf_sha256=request["elf"]["sha256"],hardware_sha256=request["hardware"].get("sha256"),transcript=ident(log),boot_evidence=ident(boot),wall_limit_enforced=True,measured_limit_enforced=mode!="limit")
+value["cycle_limit_scope"]={"total":"total_target","completion":"completion_only"}.get(mode,"active_measured")
+if mode=="legacy":del value["cycle_limit_scope"]
+if mode=="launch":value.update(moving_limit_enforced=True,limit_refresh_scope="at_launch")
 if mode=="sha":value["transcript"]["sha256"]="wrong"
 if mode=="deadline":value["wall_limit_enforced"]=False
 Path(result).write_text(json.dumps(value))
@@ -71,7 +76,7 @@ def test_valid_warm_interval(setup, tmp_path):
     assert make().run(elf, tmp_path / "job", measured_limit=101) == 100
 
 
-@pytest.mark.parametrize("mode", ["boot", "marker", "sha", "limit", "deadline"])
+@pytest.mark.parametrize("mode", ["boot", "marker", "sha", "limit", "deadline", "total", "completion", "legacy"])
 def test_reject_unbound_or_unbounded_result(setup, tmp_path, mode):
     _, make, elf = setup
     with pytest.raises(ValueError):
@@ -92,6 +97,17 @@ def test_live_refresh_requires_backend_confirmation(setup, tmp_path):
             elf,
             tmp_path / "job",
             measured_limit=lambda: 101,
+            live_limit=dict(path=str(tmp_path / "limits.json"), key="test"),
+        )
+
+
+def test_launch_only_refresh_does_not_satisfy_moving_limit(setup, tmp_path):
+    _, make, elf = setup
+    with pytest.raises(ValueError, match="in-flight"):
+        make("launch").run(
+            elf,
+            tmp_path / "job",
+            measured_limit=101,
             live_limit=dict(path=str(tmp_path / "limits.json"), key="test"),
         )
 
@@ -157,7 +173,10 @@ def test_live_incumbent_can_tighten_after_submission(setup, tmp_path):
     # acknowledgement here and still require the client to reject a stale cost.
     adapter = tmp_path / "adapter.py"
     adapter.write_text(
-        ADAPTER.replace("wall_limit_enforced=True,", "wall_limit_enforced=True,moving_limit_enforced=True,")
+        ADAPTER.replace(
+            "wall_limit_enforced=True,",
+            'wall_limit_enforced=True,moving_limit_enforced=True,limit_refresh_scope="in_flight",',
+        )
     )
     module = setup[0]
     pool.config["adapter_sources"] = [module.identity(adapter)]

@@ -72,6 +72,8 @@ def build_request(path):
 def tune(args):
     import measure
     import tvm
+    from firesim_runner_seconds import SecondsRunner, cycles_to_seconds
+    from graph_plans import GraphPlan
     from program_io import import_program
     from tune_models import bind_operator_workloads, extract_inventory
     from tvm import meta_schedule as ms
@@ -90,17 +92,36 @@ def tune(args):
     root.mkdir(parents=True, exist_ok=False)
     toolchain = load_toolchain(args.toolchain)
     pool = FireSimPool(args.pool, deadline_epoch=args.deadline_epoch)
+    cycles_to_seconds(1, args.target_clock_hz)
+    write_json(
+        root / "measurement-units.json",
+        dict(
+            database_cost_unit="seconds",
+            raw_measurement_unit="target_cycles",
+            target_cycle_counter_hz=args.target_clock_hz,
+            frequency_scope="Documented target cycle-counter frequency, not FPGA host/emulation throughput",
+            pool=pool.config_identity,
+        ),
+    )
     if (
         toolchain.hardware_receipt is not None
         and pool.hardware.get("sha256") != identity(toolchain.hardware_receipt)["sha256"]
     ):
         raise ValueError("Build and runner hardware identities differ")
     caps = GemminiCapabilities()
-    prepared, eligible, inventory = extract_inventory(
-        import_program(args.program), caps, fusion_level=2, eliminate_common_subexpr=args.graph_cse
-    )
+    program = import_program(args.program)
+    graph_plan = GraphPlan(fusion_level=args.graph_fusion_level, eliminate_common_subexpr=args.graph_cse)
+    prepared, eligible, inventory = extract_inventory(program, caps, **graph_plan.preparation_options)
+    write_json(root / "graph-plan.json", graph_plan.identity(program, prepared))
     selected_names = {row["task"] for row in inventory if row["kind"] == "contraction"}
     tasks = [task for task in eligible if task.task_name in selected_names]
+    if args.workload_key:
+        requested = set(args.workload_key)
+        available = {str(task.dispatched[0]["main"].attrs[WORKLOAD_ATTR]) for task in tasks}
+        if requested - available:
+            raise ValueError("Requested workload keys are absent from this exact prepared chunk")
+        tasks = [task for task in tasks if str(task.dispatched[0]["main"].attrs[WORKLOAD_ATTR]) in requested]
+        selected_names = {task.task_name for task in tasks}
     if not tasks:
         raise ValueError("Chunk has no supported contractions")
     write_json(
@@ -108,6 +129,7 @@ def tune(args):
         dict(
             tasks=inventory,
             selected=sorted(selected_names),
+            selected_workload_keys=[str(task.dispatched[0]["main"].attrs[WORKLOAD_ATTR]) for task in tasks],
             scope="Contraction DSE; surrounding CPU work retained in whole-chunk validation",
         ),
     )
@@ -164,6 +186,8 @@ def tune(args):
 
     def run(path):
         artifact = json.loads(Path(path).read_text())
+        if not artifact.get("native"):
+            raise ValueError("Eligible contraction candidates must retain Gemmini placement")
         folder = Path(artifact["folder"])
         elf = artifact["elfs"]["valid"]
         key = Path(artifact["workload"]).name
@@ -250,22 +274,38 @@ def tune(args):
     write_json(
         root / "baselines.json", [dict(task=t.task_name, cycles=c, artifact=a) for t, _, c, a in baseline_records]
     )
+
+    def describe(path):
+        proof_path = Path(path).parent / "measurement.json" if path else None
+        proof = json.loads(proof_path.read_text()) if proof_path and proof_path.exists() else {}
+        cycles = proof.get("cycles") if proof.get("status") == "passed" else None
+        return dict(
+            cycles=cycles,
+            run_secs=cycles_to_seconds(cycles, args.target_clock_hz) if cycles else None,
+            database_cost_unit="seconds",
+            raw_measurement_unit="target_cycles",
+        )
+
     database = tune_gemmini_tasks(
         tasks,
         work_dir=root / "database",
         capabilities=caps,
         builder=GemminiBuilder(build, max_workers=args.builders),
-        runner=GemminiRunner(run, max_workers=len(pool.slots)),
+        runner=SecondsRunner(GemminiRunner(run, max_workers=len(pool.slots)), args.target_clock_hz),
         max_trials_global=args.trials,
         num_trials_per_iter=args.batch,
         include_cpu=False,
         compact=True,
         log=root / "trials.jsonl",
+        describe=describe,
     )
     for task, trace, cycles, _ in baseline_records:
         database.commit_tuning_record(
             ms.database.TuningRecord(
-                trace, database.commit_workload(task.dispatched[0]), [float(cycles)], caps.target()
+                trace,
+                database.commit_workload(task.dispatched[0]),
+                [cycles_to_seconds(cycles, args.target_clock_hz)],
+                caps.target(),
             )
         )
 
@@ -275,7 +315,11 @@ def tune(args):
         return hashlib.sha256(tvm.ir.save_json(trace.as_json()).encode()).hexdigest()
 
     admitted = {
-        (str(task.dispatched[0]["main"].attrs[WORKLOAD_ATTR]), trace_key(trace), float(cycles))
+        (
+            str(task.dispatched[0]["main"].attrs[WORKLOAD_ATTR]),
+            trace_key(trace),
+            cycles_to_seconds(cycles, args.target_clock_hz),
+        )
         for task, trace, cycles, _ in baseline_records
     }
     for line in (root / "trials.jsonl").read_text().splitlines():
@@ -287,7 +331,7 @@ def tune(args):
             raise ValueError("Search label differs from runner admission")
         native_trace = json.dumps(row["trace"])
         trace_json = tvm.ir.save_json(tvm.ir.load_json(native_trace))
-        admitted.add((row["workload"], hashlib.sha256(trace_json.encode()).hexdigest(), float(row["cycles"])))
+        admitted.add((row["workload"], hashlib.sha256(trace_json.encode()).hexdigest(), float(row["run_secs"])))
     (root / "validated-database").mkdir()
     validated = ms.database.JSONDatabase(work_dir=str(root / "validated-database"))
     for record in database.get_all_tuning_records():
@@ -321,8 +365,13 @@ def tune(args):
             historical_costs_imported=False,
             deadline_epoch=args.deadline_epoch,
             graph_cse=args.graph_cse,
+            graph_plan=identity(root / "graph-plan.json"),
+            measurement_units=identity(root / "measurement-units.json"),
+            validated_database_sources=[
+                identity(path) for path in sorted((root / "validated-database").glob("*.json"))
+            ],
             optimizer="stock TVM gradient scheduler / EvolutionarySearch / XGB / JSONDatabase",
-            qualification="operator experiments only; winners require whole-chunk independent reference and full-shape checks",
+            qualification="Operator experiments; independently confirm whole chunks and full shapes before deployment",
         ),
     )
 
@@ -341,9 +390,25 @@ def main():
         help="Shared absolute deadline across all chunk studies; never renewed per process",
     )
     parser.add_argument("--trials", type=int, default=12)
+    parser.add_argument(
+        "--workload-key", action="append", help="Tune only these exact structural keys; repeat as needed"
+    )
+    parser.add_argument(
+        "--target-clock-hz",
+        type=float,
+        required=True,
+        help="Documented frequency of the target cycle counter; never substitute FPGA host or emulation frequency",
+    )
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--builders", type=int, default=2)
     parser.add_argument("--graph-cse", action="store_true")
+    parser.add_argument(
+        "--graph-fusion-level",
+        type=int,
+        choices=(0, 1, 2, 3),
+        default=2,
+        help="Existing TVM FuseOps level, saved as a replayable Relax graph choice; fixed within each inner DSE",
+    )
     parser.add_argument(
         "--seed-database", type=Path, help="Replay matching traces, remeasure here; never import their historical costs"
     )
