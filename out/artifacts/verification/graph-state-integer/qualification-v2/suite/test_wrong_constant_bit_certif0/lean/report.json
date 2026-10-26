@@ -1,0 +1,32 @@
+{
+  "schema": "merlin.graph-state-integer.kernel.v1",
+  "status": "refused",
+  "returncode": 1,
+  "source": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_wrong_constant_bit_certif0/lean/GraphStateIntegerInstance.lean",
+    "sha256": "0b29dc8b2e2caa93e7db591545115275f45de4964d120373ec058a00005fa763",
+    "bytes": 200
+  },
+  "roots": [
+    "Merlin.GraphStateIntegerInstance.forged"
+  ],
+  "stdout": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_wrong_constant_bit_certif0/lean/kernel.stdout",
+    "sha256": "038e7261dae554ca6ff3ac41c637a8f07bd53e8982c522f6261c2f03e96abbef",
+    "bytes": 255
+  },
+  "stderr": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_wrong_constant_bit_certif0/lean/kernel.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "profile": {
+    "path": "/home/jeremy/Projects/merlin/out/build/graph-verification/state-integer/profiles/dcfbb7297a34cf885f1e2e3747bba79d3ee0542550985e6ea864a9887a69a493/ready.json",
+    "sha256": "d572ed68d812ad9c23284a65b0720b02993adf18ed816cdba8a8101ef4d66a6e",
+    "bytes": 34922
+  },
+  "qualified": false,
+  "audit": {
+    "status": "not_run"
+  }
+}

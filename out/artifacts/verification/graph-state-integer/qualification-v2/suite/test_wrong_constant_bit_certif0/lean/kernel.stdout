@@ -1,0 +1,3 @@
+/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_wrong_constant_bit_certif0/lean/GraphStateIntegerInstance.lean:4:43: error: Tactic `decide` proved that the proposition
+  word 8 0 = word 8 1
+is false

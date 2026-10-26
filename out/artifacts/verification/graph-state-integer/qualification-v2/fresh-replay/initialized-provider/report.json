@@ -1,0 +1,60 @@
+{
+  "schema": "merlin.graph-state-integer.fresh-replay.v1",
+  "status": "conditional_graph_checked",
+  "receipt": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/receipt.json",
+    "sha256": "5cce4215646448ce24405366fe1abd15207d74c9a2fe3794ba4016f0887ae788",
+    "bytes": 871192
+  },
+  "fresh_report": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/initialized-provider/fresh/report.json",
+    "sha256": "485cb09be1a36c0724996abdc1aa3bce84c4133fd681b80646fe8e3051cf04d6",
+    "bytes": 511794
+  },
+  "retained_object_reproduced": true,
+  "exact_original_query_path_reproduced": true,
+  "claims": {
+    "relation": "canonical-entry complete return/error/terminal-world correspondence",
+    "runtime_intermediate_typing_derived": true,
+    "local_result_contracts_required": true,
+    "canonical_entries_required": true,
+    "python_projection_proved": false,
+    "review_approved": false,
+    "public_acceptance_issued": false,
+    "native_fidelity_proved": false,
+    "poison_freedom_proved": false,
+    "source_success_for_all_models": false,
+    "all_graph_passes_verified": false,
+    "full_model_claim": false,
+    "broker_integration": false,
+    "old_failure_promoted": false
+  },
+  "model": {
+    "mode": "initialized-symbolic-provider-v1",
+    "inputs": [
+      3,
+      5
+    ],
+    "initial_world": 7,
+    "success": {
+      "values": [
+        17
+      ],
+      "world": 32
+    },
+    "failure": {
+      "error": 17,
+      "world": 8
+    },
+    "source_success_assumed": false,
+    "domain": "initialized canonical Int words; no physical poison constructor",
+    "external": "explicit typed constant-word17 provider; world increment1; optional first observer fault",
+    "primitive_fidelity_proved": false,
+    "native_fidelity_proved": false,
+    "review_approved": false,
+    "old_literal_trace_promoted": false
+  },
+  "qualified": false,
+  "original_authenticity_external": true,
+  "host_transport_proved_in_Lean": false
+}

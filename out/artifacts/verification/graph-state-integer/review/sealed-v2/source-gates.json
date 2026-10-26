@@ -1,0 +1,36 @@
+{
+  "owned_ruff_check": {
+    "status": "passed",
+    "python_files": 12
+  },
+  "broad_structure_gate": {
+    "status": "failed_foreign_module_ceiling",
+    "path": "src/merlin/runtime/backends/zephyr_model.py",
+    "observed_lines": 3557,
+    "ceiling": 3537,
+    "foreign_file_edited": false,
+    "other_structure_sections_passed": true
+  },
+  "development_tests": {
+    "rules": 7,
+    "context_and_mutations": 35,
+    "receipt_protocol": 20,
+    "identity_domain": 4,
+    "added_opcode_refusal": 1,
+    "mocked_host_guard_v2": 9,
+    "structured_malformed_refusals_v2": 4
+  },
+  "qualification_is_separate": true,
+  "review_approved": false,
+  "held_qualification_v1": {
+    "status": "UNQUALIFIED_KNOWN_HOST_CLASSIFICATION_GAP",
+    "measured": {
+      "tests": 66,
+      "originals": 17,
+      "replays": 17
+    },
+    "qualified_originals": 0,
+    "qualified_replays": 0,
+    "unknown_native_failure": false
+  }
+}

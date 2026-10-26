@@ -1,0 +1,10 @@
+{
+  "mutation": {
+    "kind": "exposed-site",
+    "compiler_valid": true,
+    "malformed": false,
+    "changed": true
+  },
+  "classification": "unsupported",
+  "native_failure_counted": false
+}

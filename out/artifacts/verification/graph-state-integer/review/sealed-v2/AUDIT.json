@@ -1,0 +1,430 @@
+[
+  {
+    "name": "receipt-protocol",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F1.actual",
+      "Merlin.GraphStateIntegerInstance.F1.reached",
+      "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F2.actual",
+      "Merlin.GraphStateIntegerInstance.F2.reached",
+      "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+    ]
+  },
+  {
+    "name": "rules-i128",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F1.actual",
+      "Merlin.GraphStateIntegerInstance.F1.reached",
+      "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F2.actual",
+      "Merlin.GraphStateIntegerInstance.F2.reached",
+      "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+    ]
+  },
+  {
+    "name": "rules-i16",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F1.actual",
+      "Merlin.GraphStateIntegerInstance.F1.reached",
+      "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F2.actual",
+      "Merlin.GraphStateIntegerInstance.F2.reached",
+      "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+    ]
+  },
+  {
+    "name": "rules-i1",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F1.actual",
+      "Merlin.GraphStateIntegerInstance.F1.reached",
+      "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F2.actual",
+      "Merlin.GraphStateIntegerInstance.F2.reached",
+      "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+    ]
+  },
+  {
+    "name": "rules-i256",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F1.actual",
+      "Merlin.GraphStateIntegerInstance.F1.reached",
+      "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F2.actual",
+      "Merlin.GraphStateIntegerInstance.F2.reached",
+      "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+    ]
+  },
+  {
+    "name": "rules-i32",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F1.actual",
+      "Merlin.GraphStateIntegerInstance.F1.reached",
+      "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F2.actual",
+      "Merlin.GraphStateIntegerInstance.F2.reached",
+      "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+    ]
+  },
+  {
+    "name": "rules-i64",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F1.actual",
+      "Merlin.GraphStateIntegerInstance.F1.reached",
+      "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F2.actual",
+      "Merlin.GraphStateIntegerInstance.F2.reached",
+      "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+    ]
+  },
+  {
+    "name": "rules-i8",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F1.actual",
+      "Merlin.GraphStateIntegerInstance.F1.reached",
+      "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F2.actual",
+      "Merlin.GraphStateIntegerInstance.F2.reached",
+      "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+    ]
+  },
+  {
+    "name": "nested",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F3.actual",
+      "Merlin.GraphStateIntegerInstance.F3.reached",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F4.actual",
+      "Merlin.GraphStateIntegerInstance.F4.reached",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+    ]
+  },
+  {
+    "name": "zero-trip",
+    "theorems": 907,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F3.actual",
+      "Merlin.GraphStateIntegerInstance.F3.reached",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F4.actual",
+      "Merlin.GraphStateIntegerInstance.F4.reached",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+    ]
+  },
+  {
+    "name": "chain-i32",
+    "theorems": 1009,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphStateIntegerInstance.complete",
+      "Merlin.GraphStateIntegerInstance.exactMiddle",
+      "Merlin.GraphStateIntegerInstance.Suffix.complete",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F3.actual",
+      "Merlin.GraphStateIntegerInstance.F3.reached",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F4.actual",
+      "Merlin.GraphStateIntegerInstance.F4.reached",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+    ]
+  },
+  {
+    "name": "chain-i64",
+    "theorems": 1009,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphStateIntegerInstance.complete",
+      "Merlin.GraphStateIntegerInstance.exactMiddle",
+      "Merlin.GraphStateIntegerInstance.Suffix.complete",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F3.actual",
+      "Merlin.GraphStateIntegerInstance.F3.reached",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F4.actual",
+      "Merlin.GraphStateIntegerInstance.F4.reached",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+    ]
+  },
+  {
+    "name": "chain-i8",
+    "theorems": 1009,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphStateIntegerInstance.complete",
+      "Merlin.GraphStateIntegerInstance.exactMiddle",
+      "Merlin.GraphStateIntegerInstance.Suffix.complete",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F3.actual",
+      "Merlin.GraphStateIntegerInstance.F3.reached",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F4.actual",
+      "Merlin.GraphStateIntegerInstance.F4.reached",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+    ]
+  },
+  {
+    "name": "initialized-provider",
+    "theorems": 1056,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphStateIntegerInstance.complete",
+      "Merlin.GraphStateIntegerInstance.exactMiddle",
+      "Merlin.GraphStateIntegerInstance.Suffix.complete",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F3.actual",
+      "Merlin.GraphStateIntegerInstance.F3.reached",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F4.actual",
+      "Merlin.GraphStateIntegerInstance.F4.reached",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.body_success",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.body_failure",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_success",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_failure",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached",
+      "Merlin.GraphState.Integer.Countermodels.noncanonical_entry_refutes_neutral_deletion",
+      "Merlin.GraphState.Integer.Countermodels.entry_really_noncanonical",
+      "Merlin.GraphState.Integer.Countermodels.missing_primitive_contract_refutes_deletion",
+      "Merlin.GraphState.Integer.Countermodels.provider_programs_statically_typed",
+      "Merlin.GraphState.Integer.Countermodels.missing_local_result_contract_refutes_deletion",
+      "Merlin.GraphState.Integer.Countermodels.hidden_effect_countermodel"
+    ]
+  },
+  {
+    "name": "unchanged-flagged",
+    "theorems": 900,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F0.actual",
+      "Merlin.GraphStateIntegerInstance.F0.reached",
+      "Merlin.GraphStateIntegerInstance.F0.localRewrites"
+    ]
+  },
+  {
+    "name": "unchanged-index",
+    "theorems": 900,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F0.actual",
+      "Merlin.GraphStateIntegerInstance.F0.reached",
+      "Merlin.GraphStateIntegerInstance.F0.localRewrites"
+    ]
+  },
+  {
+    "name": "unchanged-floating",
+    "theorems": 900,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F0.actual",
+      "Merlin.GraphStateIntegerInstance.F0.reached",
+      "Merlin.GraphStateIntegerInstance.F0.localRewrites"
+    ]
+  }
+]

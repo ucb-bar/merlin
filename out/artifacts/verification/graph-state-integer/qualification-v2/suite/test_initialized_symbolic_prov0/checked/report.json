@@ -1,0 +1,192 @@
+{
+  "schema": "merlin.graph-state-integer.boundary.v1",
+  "status": "conditional_graph_checked",
+  "originals": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage0.mlir",
+      "sha256": "501cbb7a5d907aec06747aaa8f302389865b9dfa14aa9116a9a4e85799c3a928",
+      "bytes": 2454
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage1.mlir",
+      "sha256": "5eb8639a8618f741d153ca3d1c67bf9b367b3d731326e87943e51f21bf91ad72",
+      "bytes": 2102
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage2.mlir",
+      "sha256": "dcb9864923cfd44b1b47230a378eb3fd1ed5d45533d4ad67cd7c19bbeeb45673",
+      "bytes": 1581
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage3.mlir",
+      "sha256": "3f286f5129ea9bb42cfff7d6f7db3c1ed6c3bb4900bc3f3caf808b4a2a15e25c",
+      "bytes": 1579
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage4.mlir",
+      "sha256": "2dc634128ca43d248f4fd60eade3154663603195b7447b91b7fb9aba54902b5a",
+      "bytes": 2257
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage5.mlir",
+      "sha256": "4c30f6466fe3a1da00610b847c963d6216ea1707371a640b0c01749f651cac0d",
+      "bytes": 2671
+    }
+  ],
+  "capture": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/intake/actual/CAPTURE.json",
+    "sha256": "eb4e951efb6aad95f3267b7f6d89d5c76abe53fe728d5de98e343be56517f9ff",
+    "bytes": 303513
+  },
+  "settings": {
+    "factor": 2,
+    "tile": 3,
+    "index_bits": 32
+  },
+  "reference": "/home/jeremy/Projects/merlin-graph-proof-intake",
+  "sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer.py",
+      "sha256": "881c51e6b1bd26be1196a8574d0d89fe20f71fd916b77bb8db8cdf6c43035f6e",
+      "bytes": 8292
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_host.py",
+      "sha256": "95f6e5290f3bd081eb737a73cc89a704b7b3d7177c9aa55f66b77fb01ca38923",
+      "bytes": 3197
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_mutations.py",
+      "sha256": "4917908943ec208fea2ee4a70188d6aacfe7688a322ebb1bd746df7336ada7d1",
+      "bytes": 4238
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_receipts.py",
+      "sha256": "a33eb47fce9f27d78576ca01798e04dc566653740d1d9c753153604ca238a2c7",
+      "bytes": 9402
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean",
+      "sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+      "bytes": 9070
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean",
+      "sha256": "83249dfd93f8e4e472ba9b4d450a55aa60d6f4a5a730e83349e912e37f494dd2",
+      "bytes": 3419
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean",
+      "sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+      "bytes": 8106
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean",
+      "sha256": "8232ab65cb3e8b4c903b9aba8d2f161070917e7831ea42881841c9a379b8440c",
+      "bytes": 7063
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+      "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+      "bytes": 4850
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean",
+      "sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+      "bytes": 4275
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+      "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+      "bytes": 7321
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean",
+      "sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+      "bytes": 7097
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer.py",
+      "sha256": "2272475e998de3ce0a47c4d69e6f45e597fdac61565b9a9e31211d1f7db57d1f",
+      "bytes": 8414
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_capture.py",
+      "sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5",
+      "bytes": 8060
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_emit.py",
+      "sha256": "0d41bf9e18ff5204d4c0052308e4e6a27c8b3de2707680c0c593aed96eaaba80",
+      "bytes": 16467
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_kernel.py",
+      "sha256": "eaa2515ab01030b656b716590289ada431df961857bfac005e54db6044fa0dfa",
+      "bytes": 6274
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_models.py",
+      "sha256": "91de1d4ba3c249b4adc53c312c864ce60d76ff4e33d25bbced7173fbaf3f3d78",
+      "bytes": 9769
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_mutate.py",
+      "sha256": "fd9b8516d5ccf80feebf8e0ff1753d384904f7d48db6e37b939c9f1d59ed691e",
+      "bytes": 5936
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_proof.py",
+      "sha256": "adf3091b68dd916413d614ed177f2ad9e96979ad3bdbc13e933fb1edbcac4263",
+      "bytes": 8657
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_receipt.py",
+      "sha256": "420f93195419fcd9198ecd85f01a3a217ffa6c31063a8a52fc253d47f39dda8f",
+      "bytes": 11662
+    }
+  ],
+  "mode": "initialized-symbolic-provider-v1",
+  "model": {
+    "mode": "initialized-symbolic-provider-v1",
+    "inputs": [
+      3,
+      5
+    ],
+    "initial_world": 7,
+    "success": {
+      "values": [
+        17
+      ],
+      "world": 32
+    },
+    "failure": {
+      "error": 17,
+      "world": 8
+    },
+    "source_success_assumed": false,
+    "domain": "initialized canonical Int words; no physical poison constructor",
+    "external": "explicit typed constant-word17 provider; world increment1; optional first observer fault",
+    "primitive_fidelity_proved": false,
+    "native_fidelity_proved": false,
+    "review_approved": false,
+    "old_literal_trace_promoted": false
+  },
+  "proof": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/report.json",
+    "sha256": "a800edd1ff25305b5b2b0ac7fb6042a20285708d1a9fae0b91a8ddcc95dc243a",
+    "bytes": 511904
+  },
+  "changed": [
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "qualified": false,
+  "review_approved": false,
+  "native_fidelity_proved": false,
+  "poison_freedom_proved": false,
+  "claim": "canonical-entry complete returned/error/world correspondence under local operation contracts"
+}

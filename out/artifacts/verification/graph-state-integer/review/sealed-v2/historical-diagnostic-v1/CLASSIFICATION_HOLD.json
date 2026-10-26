@@ -1,0 +1,10 @@
+{
+  "status": "UNQUALIFIED_HOST_REFUSAL_CLASSIFICATION_GAP",
+  "discovered_after_freeze": true,
+  "actual_unknown_native_failure": false,
+  "actual_suite_passed": 66,
+  "reason": "intake converts every nonzero producer exit, including signals/setup errors, into ValueError/unsupported. Final source must require structured known-domain refusal and preserve unknown exits as unavailable.",
+  "v1_sources_and_reports_to_preserve": true,
+  "v1_final_seal_prohibited": true,
+  "next": "finish owned measurement; retain diagnostic capsule; correct known host guard and qualify new source snapshot without changing original SDK bindings"
+}

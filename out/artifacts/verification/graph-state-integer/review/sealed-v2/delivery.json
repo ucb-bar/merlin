@@ -1,0 +1,1484 @@
+{
+  "status": "SEALED_CONDITIONAL_GRAPH_QUALIFICATION",
+  "checkout": "/home/jeremy/Projects/merlin",
+  "branch": "feat/pass-verification",
+  "observed_HEAD": "480e59e7c32cd557a63d281ec651cfa9fa56ff70",
+  "initial_additive_base": "c50d6cb07a2100b09806b5a105eebc9ba23a189d",
+  "incremental_patch_base": "480e59e7c32cd557a63d281ec651cfa9fa56ff70",
+  "owned_sources": [
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer.py",
+        "sha256": "881c51e6b1bd26be1196a8574d0d89fe20f71fd916b77bb8db8cdf6c43035f6e",
+        "bytes": 8292
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/merlin/tests/ir/test_lean_graph_state_integer.py",
+        "sha256": "881c51e6b1bd26be1196a8574d0d89fe20f71fd916b77bb8db8cdf6c43035f6e",
+        "bytes": 8292
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_host.py",
+        "sha256": "95f6e5290f3bd081eb737a73cc89a704b7b3d7177c9aa55f66b77fb01ca38923",
+        "bytes": 3197
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/merlin/tests/ir/test_lean_graph_state_integer_host.py",
+        "sha256": "95f6e5290f3bd081eb737a73cc89a704b7b3d7177c9aa55f66b77fb01ca38923",
+        "bytes": 3197
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_mutations.py",
+        "sha256": "4917908943ec208fea2ee4a70188d6aacfe7688a322ebb1bd746df7336ada7d1",
+        "bytes": 4238
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/merlin/tests/ir/test_lean_graph_state_integer_mutations.py",
+        "sha256": "4917908943ec208fea2ee4a70188d6aacfe7688a322ebb1bd746df7336ada7d1",
+        "bytes": 4238
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_receipts.py",
+        "sha256": "a33eb47fce9f27d78576ca01798e04dc566653740d1d9c753153604ca238a2c7",
+        "bytes": 9402
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/merlin/tests/ir/test_lean_graph_state_integer_receipts.py",
+        "sha256": "a33eb47fce9f27d78576ca01798e04dc566653740d1d9c753153604ca238a2c7",
+        "bytes": 9402
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean",
+        "sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+        "bytes": 9070
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean",
+        "sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+        "bytes": 9070
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean",
+        "sha256": "83249dfd93f8e4e472ba9b4d450a55aa60d6f4a5a730e83349e912e37f494dd2",
+        "bytes": 3419
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean",
+        "sha256": "83249dfd93f8e4e472ba9b4d450a55aa60d6f4a5a730e83349e912e37f494dd2",
+        "bytes": 3419
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean",
+        "sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+        "bytes": 8106
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean",
+        "sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+        "bytes": 8106
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean",
+        "sha256": "8232ab65cb3e8b4c903b9aba8d2f161070917e7831ea42881841c9a379b8440c",
+        "bytes": 7063
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean",
+        "sha256": "8232ab65cb3e8b4c903b9aba8d2f161070917e7831ea42881841c9a379b8440c",
+        "bytes": 7063
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+        "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+        "bytes": 4850
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+        "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+        "bytes": 4850
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean",
+        "sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+        "bytes": 4275
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean",
+        "sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+        "bytes": 4275
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+        "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+        "bytes": 7321
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+        "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+        "bytes": 7321
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean",
+        "sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+        "bytes": 7097
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean",
+        "sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+        "bytes": 7097
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer.py",
+        "sha256": "2272475e998de3ce0a47c4d69e6f45e597fdac61565b9a9e31211d1f7db57d1f",
+        "bytes": 8414
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean_graph_state_integer.py",
+        "sha256": "2272475e998de3ce0a47c4d69e6f45e597fdac61565b9a9e31211d1f7db57d1f",
+        "bytes": 8414
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_capture.py",
+        "sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5",
+        "bytes": 8060
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean_graph_state_integer_capture.py",
+        "sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5",
+        "bytes": 8060
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_emit.py",
+        "sha256": "0d41bf9e18ff5204d4c0052308e4e6a27c8b3de2707680c0c593aed96eaaba80",
+        "bytes": 16467
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean_graph_state_integer_emit.py",
+        "sha256": "0d41bf9e18ff5204d4c0052308e4e6a27c8b3de2707680c0c593aed96eaaba80",
+        "bytes": 16467
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_kernel.py",
+        "sha256": "eaa2515ab01030b656b716590289ada431df961857bfac005e54db6044fa0dfa",
+        "bytes": 6274
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean_graph_state_integer_kernel.py",
+        "sha256": "eaa2515ab01030b656b716590289ada431df961857bfac005e54db6044fa0dfa",
+        "bytes": 6274
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_models.py",
+        "sha256": "91de1d4ba3c249b4adc53c312c864ce60d76ff4e33d25bbced7173fbaf3f3d78",
+        "bytes": 9769
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean_graph_state_integer_models.py",
+        "sha256": "91de1d4ba3c249b4adc53c312c864ce60d76ff4e33d25bbced7173fbaf3f3d78",
+        "bytes": 9769
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_mutate.py",
+        "sha256": "fd9b8516d5ccf80feebf8e0ff1753d384904f7d48db6e37b939c9f1d59ed691e",
+        "bytes": 5936
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean_graph_state_integer_mutate.py",
+        "sha256": "fd9b8516d5ccf80feebf8e0ff1753d384904f7d48db6e37b939c9f1d59ed691e",
+        "bytes": 5936
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_proof.py",
+        "sha256": "adf3091b68dd916413d614ed177f2ad9e96979ad3bdbc13e933fb1edbcac4263",
+        "bytes": 8657
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean_graph_state_integer_proof.py",
+        "sha256": "adf3091b68dd916413d614ed177f2ad9e96979ad3bdbc13e933fb1edbcac4263",
+        "bytes": 8657
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_receipt.py",
+        "sha256": "420f93195419fcd9198ecd85f01a3a217ffa6c31063a8a52fc253d47f39dda8f",
+        "bytes": 11662
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/sources/src/merlin/verify/lean_graph_state_integer_receipt.py",
+        "sha256": "420f93195419fcd9198ecd85f01a3a217ffa6c31063a8a52fc253d47f39dda8f",
+        "bytes": 11662
+      }
+    }
+  ],
+  "full_owned_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/owned.patch",
+    "sha256": "9fcc272cbdb09573361e56eac6c5f2880276c401c69b1c4ab0087dd436131c21",
+    "bytes": 159720
+  },
+  "incremental_owned_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/incremental-owned.patch",
+    "sha256": "9fcc272cbdb09573361e56eac6c5f2880276c401c69b1c4ab0087dd436131c21",
+    "bytes": 159720
+  },
+  "dependency_source_snapshots": 106,
+  "tests": {
+    "tests": 75,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "originals": [
+    {
+      "name": "receipt-protocol",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/integer-receipt-protocol0/receipt.json",
+        "sha256": "afda27344c2f69c0dc96c390c4df268fb793654417e34fb02ac9ec6726146ad0",
+        "bytes": 865354
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/integer-receipt-protocol0/producer/actual/stage0.mlir",
+          "sha256": "d02ca499dd86ae658f81a058a1d9e4e4fd402c10e6538317d3a68114c77b02af",
+          "bytes": 1522
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/integer-receipt-protocol0/producer/actual/stage1.mlir",
+          "sha256": "ed3e1e0a41db1aeb3bd31744744b3eb3496f559b4b561e56d3a3af47eba6d50b",
+          "bytes": 952
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F1.actual",
+        "Merlin.GraphStateIntegerInstance.F1.reached",
+        "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F2.actual",
+        "Merlin.GraphStateIntegerInstance.F2.reached",
+        "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/integer-receipt-protocol0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "4a1c512fd371770672f016e2cf532afbd33522624662f50bfea6110e376386f7",
+        "bytes": 9311
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/integer-receipt-protocol0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "aa58cfc83a4abfd9ad7d6fe25ec454184b4017db2fe6711959d4eee994767761",
+        "bytes": 220192
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "rules-i128",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_128_0/receipt.json",
+        "sha256": "a99aaab571a169604db5e83651f217eff625c70115cc04cca594ae2523a584e7",
+        "bytes": 865503
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_128_0/producer/actual/stage0.mlir",
+          "sha256": "994286d16a4adc0daf697568772d8270a446971f9fd42a43c762e32abb4c0feb",
+          "bytes": 1650
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_128_0/producer/actual/stage1.mlir",
+          "sha256": "c21ee5df9921f2754eda200a3fa3eaf337a6b77a61ae22f2458b30c912215a7d",
+          "bytes": 1116
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F1.actual",
+        "Merlin.GraphStateIntegerInstance.F1.reached",
+        "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F2.actual",
+        "Merlin.GraphStateIntegerInstance.F2.reached",
+        "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_128_0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "eb3f4eeef279f9060bd293e2e2b86bebfe0e344fa62115fe5c5e0343fd560963",
+        "bytes": 10635
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_128_0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "597e1df41f72a2ce31b550f155d961e28697a8bb85075cbde4d0a829c768cd64",
+        "bytes": 222832
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "rules-i16",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_16_0/receipt.json",
+        "sha256": "7981282dc8e188d3a1a79eeab032cffa8d43a08d63652a5e2a95fcbcd1eb43b8",
+        "bytes": 865474
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_16_0/producer/actual/stage0.mlir",
+          "sha256": "60f8efad3423ac3015078dc90683c591d04fa9e56981c51b446c4425339ef138",
+          "bytes": 1570
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_16_0/producer/actual/stage1.mlir",
+          "sha256": "2b891c8e4c7718aafdb5f7b806121f355de53f2c2dd777a11b74dcabe52f06f1",
+          "bytes": 986
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F1.actual",
+        "Merlin.GraphStateIntegerInstance.F1.reached",
+        "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F2.actual",
+        "Merlin.GraphStateIntegerInstance.F2.reached",
+        "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_16_0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "ea5d660c6ab307357d5cd8f6e330c22edf7945726d3a7de15647dbea9070db77",
+        "bytes": 9493
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_16_0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "62f72b95be62859b3e578fec99add461f70e2c3d8579d27df4b727a6fd4093f3",
+        "bytes": 220488
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "rules-i1",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_1_0/receipt.json",
+        "sha256": "67c4b79ff7b2eaf838009a9cbb4589134fe544c1dc31331b2a26f491d0d0ee2a",
+        "bytes": 865453
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_1_0/producer/actual/stage0.mlir",
+          "sha256": "c449daeb155a5bb30043b5f7f8b98b7d9fdbab47d3a48db77be5811a9bce753f",
+          "bytes": 1514
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_1_0/producer/actual/stage1.mlir",
+          "sha256": "90df3a27d2c06c6aaffbf1a1688a4689e93da6187812930c198c177101ad7945",
+          "bytes": 1120
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F1.actual",
+        "Merlin.GraphStateIntegerInstance.F1.reached",
+        "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F2.actual",
+        "Merlin.GraphStateIntegerInstance.F2.reached",
+        "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_1_0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "5ce38c790d1339158bb7e85c6d6c3e89bb3a58f187f40edd0be9615808147ccb",
+        "bytes": 9678
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_1_0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "45418eb29822e05170cb14b1cfdbd76a7a5c95d0f1f6536c68c15fd544a71eba",
+        "bytes": 213776
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "rules-i256",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_256_0/receipt.json",
+        "sha256": "980f7fea86fb10863bf5628d3f48cd55ea0e8f7df4ae7e0f16086844a6ca3049",
+        "bytes": 865503
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_256_0/producer/actual/stage0.mlir",
+          "sha256": "c2af03e6f24abda5a96d1315d3150ef4ad9b233e538e49f70d206838079e22f5",
+          "bytes": 1688
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_256_0/producer/actual/stage1.mlir",
+          "sha256": "9d2e2a01d81be22dc96050f83646e6c46a6ac2b7685714e71dc19d327332d289",
+          "bytes": 1230
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F1.actual",
+        "Merlin.GraphStateIntegerInstance.F1.reached",
+        "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F2.actual",
+        "Merlin.GraphStateIntegerInstance.F2.reached",
+        "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_256_0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "8d1adaa2cd6c6c73e14a54e93fb8193bfb577c3d0f9420d505fc1f2a64c5a7c2",
+        "bytes": 11775
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_256_0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "6d9c4cbfaf284bcf4dce71b78ee09078db8cd901434042cc4eb550dd11abfcd3",
+        "bytes": 222944
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "rules-i32",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_32_0/receipt.json",
+        "sha256": "800c67f4e64d9252a7b87b1c408cd5c285a4db7c36f429e8817bb13fac5a3d62",
+        "bytes": 865477
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_32_0/producer/actual/stage0.mlir",
+          "sha256": "82ea1b8bdbb0a0ecf2e401b950df5dd79ee4ccd60fba0bfcfb9dc4297f46992c",
+          "bytes": 1575
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_32_0/producer/actual/stage1.mlir",
+          "sha256": "212b27439985d1d44914083bb027ed9992f8dde0c00c9ce64185411a5f770159",
+          "bytes": 1001
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F1.actual",
+        "Merlin.GraphStateIntegerInstance.F1.reached",
+        "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F2.actual",
+        "Merlin.GraphStateIntegerInstance.F2.reached",
+        "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_32_0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "f095b65684dbeba5499f8222b32cfe90c7055087af71454abca9a9c6872c3aae",
+        "bytes": 9643
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_32_0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "e777c7ef8ecf43971118f4e7b1c64f57c02999f373fa5bf4841585c13f7fa374",
+        "bytes": 220488
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "rules-i64",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_64_0/receipt.json",
+        "sha256": "b6dcc9e1b6bdb0762810485e894a6cc8db275bff7f2d66687b683428560dbe4e",
+        "bytes": 865477
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_64_0/producer/actual/stage0.mlir",
+          "sha256": "9879778fc299097e94abfe6d163fc92280bb43479cfc4919834d32343c8f3e87",
+          "bytes": 1584
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_64_0/producer/actual/stage1.mlir",
+          "sha256": "f8ca3c5cba1dc29b9a934468f3556327d03cb67cc2f522a89881619944e859f0",
+          "bytes": 1028
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F1.actual",
+        "Merlin.GraphStateIntegerInstance.F1.reached",
+        "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F2.actual",
+        "Merlin.GraphStateIntegerInstance.F2.reached",
+        "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_64_0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "7ffaf15d075a51e8bb26fec39a2f2a1c8f0c9a519dbb8122ae93e4cc713257a8",
+        "bytes": 9913
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_64_0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "22191fddee31d82a5b9c0d2fef73c994f33ee9ee4a3193530b0a778955ea35ca",
+        "bytes": 221280
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "rules-i8",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_8_0/receipt.json",
+        "sha256": "196e79812a4ecc8328aec0290eb7fb44766af33534f61e53b1bc03c4f961de20",
+        "bytes": 865450
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_8_0/producer/actual/stage0.mlir",
+          "sha256": "d02ca499dd86ae658f81a058a1d9e4e4fd402c10e6538317d3a68114c77b02af",
+          "bytes": 1522
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_8_0/producer/actual/stage1.mlir",
+          "sha256": "ed3e1e0a41db1aeb3bd31744744b3eb3496f559b4b561e56d3a3af47eba6d50b",
+          "bytes": 952
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F1.actual",
+        "Merlin.GraphStateIntegerInstance.F1.reached",
+        "Merlin.GraphStateIntegerInstance.F1.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F2.actual",
+        "Merlin.GraphStateIntegerInstance.F2.reached",
+        "Merlin.GraphStateIntegerInstance.F2.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_8_0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "4a1c512fd371770672f016e2cf532afbd33522624662f50bfea6110e376386f7",
+        "bytes": 9311
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_integer_rules_8_0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "aa58cfc83a4abfd9ad7d6fe25ec454184b4017db2fe6711959d4eee994767761",
+        "bytes": 220192
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "nested",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr0/receipt.json",
+        "sha256": "0f2f424b8281254f6a9c23cf807d974692907432b1d6b2b22a7ebfab523989bd",
+        "bytes": 865503
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr0/producer/actual/stage0.mlir",
+          "sha256": "7593472ef75139b19d1db33861a6dc9a39b54c762c21e850e82cb6da5b48260e",
+          "bytes": 2362
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr0/producer/actual/stage1.mlir",
+          "sha256": "4b0d140ce6cce4a4d4b2500e6d6a38dba8a93a179d2e3cbc4e6fc60ece96b598",
+          "bytes": 2006
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F3.actual",
+        "Merlin.GraphStateIntegerInstance.F3.reached",
+        "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F4.actual",
+        "Merlin.GraphStateIntegerInstance.F4.reached",
+        "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "4422312b191be6cf2fe757049c3b8cbe5fa676b84f6ccd16455c93c958af1268",
+        "bytes": 11826
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "aae03867f1eafed4174b8b453a3c494f336de6c84ed63f75b3dcba571218afbf",
+        "bytes": 325432
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "zero-trip",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr1/receipt.json",
+        "sha256": "4a75610e8c90222c804d3446caab04da21d78b9588dc8108af21e21910112ff4",
+        "bytes": 865503
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr1/producer/actual/stage0.mlir",
+          "sha256": "606cd939534dc53818b44970a2363933ddb59f94fdc6e34b45e9ef3385751e62",
+          "bytes": 2362
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr1/producer/actual/stage1.mlir",
+          "sha256": "a14d27ab2c6ae30594b2e3d63dc9f74ad8a2fe1e8ba9c288d54ec5f5592ad012",
+          "bytes": 2006
+        }
+      ],
+      "audit_theorems": 907,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F3.actual",
+        "Merlin.GraphStateIntegerInstance.F3.reached",
+        "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F4.actual",
+        "Merlin.GraphStateIntegerInstance.F4.reached",
+        "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+      ],
+      "changed": [
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr1/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "422f8c857e1d89fe7e04adff9c5d611700871cf27c33730fe84d3d052d799370",
+        "bytes": 11791
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_nested_and_zero_tr1/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "70e114d86fc06f4faf6753482926e61158afafa613378f28da848282ad5107bf",
+        "bytes": 323288
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "chain-i32",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/receipt.json",
+        "sha256": "1171774c8d1593332fb41c22f1d945cc0e41a11ef18289ae5ad6957076934166",
+        "bytes": 869229
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage0.mlir",
+          "sha256": "501cbb7a5d907aec06747aaa8f302389865b9dfa14aa9116a9a4e85799c3a928",
+          "bytes": 2454
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage1.mlir",
+          "sha256": "5eb8639a8618f741d153ca3d1c67bf9b367b3d731326e87943e51f21bf91ad72",
+          "bytes": 2102
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage2.mlir",
+          "sha256": "dcb9864923cfd44b1b47230a378eb3fd1ed5d45533d4ad67cd7c19bbeeb45673",
+          "bytes": 1581
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage3.mlir",
+          "sha256": "3f286f5129ea9bb42cfff7d6f7db3c1ed6c3bb4900bc3f3caf808b4a2a15e25c",
+          "bytes": 1579
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage4.mlir",
+          "sha256": "4a8480afdc58541b5d75dbe88f5db5dbc23ffe61710faa02f2b5e2f77543b321",
+          "bytes": 2797
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage5.mlir",
+          "sha256": "89d26974abe9a9410781de48c16c1ab565ebed0e6d923a94677c4738d5de358d",
+          "bytes": 3226
+        }
+      ],
+      "audit_theorems": 1009,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphStateIntegerInstance.complete",
+        "Merlin.GraphStateIntegerInstance.exactMiddle",
+        "Merlin.GraphStateIntegerInstance.Suffix.complete",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F3.actual",
+        "Merlin.GraphStateIntegerInstance.F3.reached",
+        "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F4.actual",
+        "Merlin.GraphStateIntegerInstance.F4.reached",
+        "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+      ],
+      "changed": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "98ab1e5cd4ee4bdf849a1d762c53818db4efa4c416ba8dd0eba69545bd57bd9d",
+        "bytes": 42713
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "156e4db1f4bc0aa5b24772114ac8cfbd61854e870b6869f79f3efe64037cd3fe",
+        "bytes": 1891976
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "chain-i64",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/receipt.json",
+        "sha256": "c01fa1981a8a4e34e392253ce54819cef8c40a057b63887d98b539aeb3d740d2",
+        "bytes": 869229
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/producer/actual/stage0.mlir",
+          "sha256": "000d86a71f93e6207c7591ecb7bbdc480960c8b2346f9e32509cd61dc0cd99fa",
+          "bytes": 2454
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/producer/actual/stage1.mlir",
+          "sha256": "984dcddc93e8264075db859c24f3ed360e15a19b4c1705fbecfe7d408a3fb49f",
+          "bytes": 2102
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/producer/actual/stage2.mlir",
+          "sha256": "ad856b862bb5ddb7081ed256a6f76dbbd18ec264411d78dbfe9b8b2573ba0561",
+          "bytes": 1581
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/producer/actual/stage3.mlir",
+          "sha256": "40413c798ad96878941b55db1fbb5bf00d166886175135ddd56b936bc6549c82",
+          "bytes": 1579
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/producer/actual/stage4.mlir",
+          "sha256": "d8f45d497cb1b52f4f8c2d51d8e94830ae54a7a77ceca171b6df3ce831be585b",
+          "bytes": 3337
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/producer/actual/stage5.mlir",
+          "sha256": "6300adf79eb0c1244376c2c0312855047e730422c92632ad86014d6a797d26a1",
+          "bytes": 3783
+        }
+      ],
+      "audit_theorems": 1009,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphStateIntegerInstance.complete",
+        "Merlin.GraphStateIntegerInstance.exactMiddle",
+        "Merlin.GraphStateIntegerInstance.Suffix.complete",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F3.actual",
+        "Merlin.GraphStateIntegerInstance.F3.reached",
+        "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F4.actual",
+        "Merlin.GraphStateIntegerInstance.F4.reached",
+        "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+      ],
+      "changed": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "467188fb3fc48b0a61b932b6fe3ab67ee99a03cc26fdde3019769797fb4eb20f",
+        "bytes": 46785
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_60/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "d098f855d7840269e2e3d1e7c965b65754905c621d673e28e4b52c202258caab",
+        "bytes": 2547544
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "chain-i8",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/receipt.json",
+        "sha256": "6f0b19a07b0f265da54f04045c0cb8579329412dc4229c985cff506c3820437f",
+        "bytes": 869229
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/producer/actual/stage0.mlir",
+          "sha256": "6a501ae9b2e02ad950db402a7a44d6e4cf202935efc9e969564ca48e132c4a5b",
+          "bytes": 2397
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/producer/actual/stage1.mlir",
+          "sha256": "6479ccc4ee6ffe0d98228bb006191114b7c90721b3f657e9cf2f7cdbb214a223",
+          "bytes": 2055
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/producer/actual/stage2.mlir",
+          "sha256": "f33392949cc6c6dba08110e23432304df23c049f797a8256850c10ae138ab104",
+          "bytes": 1550
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/producer/actual/stage3.mlir",
+          "sha256": "b01005bdc35eb6bfc94e41662f39a36b2781f3f4bedb7aff4f6464687741cd77",
+          "bytes": 1548
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/producer/actual/stage4.mlir",
+          "sha256": "c32065becde26ac6f98dad14129ea170d93cc1d3a15d77f23c2f9ad775c8de1d",
+          "bytes": 2217
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/producer/actual/stage5.mlir",
+          "sha256": "7475736d95a2e609f0e6da1c961f012f9f379eafa71e7c87eb428178f6ce49c0",
+          "bytes": 2627
+        }
+      ],
+      "audit_theorems": 1009,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphStateIntegerInstance.complete",
+        "Merlin.GraphStateIntegerInstance.exactMiddle",
+        "Merlin.GraphStateIntegerInstance.Suffix.complete",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F3.actual",
+        "Merlin.GraphStateIntegerInstance.F3.reached",
+        "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F4.actual",
+        "Merlin.GraphStateIntegerInstance.F4.reached",
+        "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+      ],
+      "changed": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "0c9182c5afb7de5ab1d16e687c999b9ff0081b189af87d6e74d23d38f6a0f05c",
+        "bytes": 38517
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_80/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "2c685daa6504ec0b411a34da154b22a6c686adac38a9eda9be10ac406881c6d0",
+        "bytes": 1392168
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "initialized-provider",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/receipt.json",
+        "sha256": "5cce4215646448ce24405366fe1abd15207d74c9a2fe3794ba4016f0887ae788",
+        "bytes": 871192
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage0.mlir",
+          "sha256": "501cbb7a5d907aec06747aaa8f302389865b9dfa14aa9116a9a4e85799c3a928",
+          "bytes": 2454
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage1.mlir",
+          "sha256": "5eb8639a8618f741d153ca3d1c67bf9b367b3d731326e87943e51f21bf91ad72",
+          "bytes": 2102
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage2.mlir",
+          "sha256": "dcb9864923cfd44b1b47230a378eb3fd1ed5d45533d4ad67cd7c19bbeeb45673",
+          "bytes": 1581
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage3.mlir",
+          "sha256": "3f286f5129ea9bb42cfff7d6f7db3c1ed6c3bb4900bc3f3caf808b4a2a15e25c",
+          "bytes": 1579
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage4.mlir",
+          "sha256": "2dc634128ca43d248f4fd60eade3154663603195b7447b91b7fb9aba54902b5a",
+          "bytes": 2257
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage5.mlir",
+          "sha256": "4c30f6466fe3a1da00610b847c963d6216ea1707371a640b0c01749f651cac0d",
+          "bytes": 2671
+        }
+      ],
+      "audit_theorems": 1056,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphStateIntegerInstance.complete",
+        "Merlin.GraphStateIntegerInstance.exactMiddle",
+        "Merlin.GraphStateIntegerInstance.Suffix.complete",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F3.actual",
+        "Merlin.GraphStateIntegerInstance.F3.reached",
+        "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+        "Merlin.GraphStateIntegerInstance.F4.actual",
+        "Merlin.GraphStateIntegerInstance.F4.reached",
+        "Merlin.GraphStateIntegerInstance.F4.localRewrites",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.body_success",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.body_failure",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.source_success",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.source_failure",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure",
+        "Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached",
+        "Merlin.GraphState.Integer.Countermodels.noncanonical_entry_refutes_neutral_deletion",
+        "Merlin.GraphState.Integer.Countermodels.entry_really_noncanonical",
+        "Merlin.GraphState.Integer.Countermodels.missing_primitive_contract_refutes_deletion",
+        "Merlin.GraphState.Integer.Countermodels.provider_programs_statically_typed",
+        "Merlin.GraphState.Integer.Countermodels.missing_local_result_contract_refutes_deletion",
+        "Merlin.GraphState.Integer.Countermodels.hidden_effect_countermodel"
+      ],
+      "changed": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "03a6deb63cc9c22a94647054722c735033181ed85ce94eeb201b18870f808225",
+        "bytes": 44022
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "6c433278218109f66d0c1f40ce16bce484745601c5eb3d14e292b0b553b508e9",
+        "bytes": 1567120
+      },
+      "mode": "initialized-symbolic-provider-v1",
+      "model": {
+        "mode": "initialized-symbolic-provider-v1",
+        "inputs": [
+          3,
+          5
+        ],
+        "initial_world": 7,
+        "success": {
+          "values": [
+            17
+          ],
+          "world": 32
+        },
+        "failure": {
+          "error": 17,
+          "world": 8
+        },
+        "source_success_assumed": false,
+        "domain": "initialized canonical Int words; no physical poison constructor",
+        "external": "explicit typed constant-word17 provider; world increment1; optional first observer fault",
+        "primitive_fidelity_proved": false,
+        "native_fidelity_proved": false,
+        "review_approved": false,
+        "old_literal_trace_promoted": false
+      }
+    },
+    {
+      "name": "unchanged-flagged",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite0/receipt.json",
+        "sha256": "ed22904197f979ff79c7e1a0481b558f81d1f4bd1634c0148164f76c74747157",
+        "bytes": 865335
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite0/producer/actual/stage0.mlir",
+          "sha256": "ca05ce85b330431b83a69f37d06f86ff7bb6ab959fa0cdb43bf3feb4b80a6fc8",
+          "bytes": 317
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite0/producer/actual/stage1.mlir",
+          "sha256": "ca05ce85b330431b83a69f37d06f86ff7bb6ab959fa0cdb43bf3feb4b80a6fc8",
+          "bytes": 317
+        }
+      ],
+      "audit_theorems": 900,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F0.actual",
+        "Merlin.GraphStateIntegerInstance.F0.reached",
+        "Merlin.GraphStateIntegerInstance.F0.localRewrites"
+      ],
+      "changed": [
+        false
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite0/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "52e289e47bff6c81df3136519c5fecd4c646e56e8d31e09ca25f12c9fbb47962",
+        "bytes": 3347
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite0/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "ffdb77ed418ee5bd86531ea4a5699ce63da67ab01f69c596e4e0b7338ec750f7",
+        "bytes": 83096
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "unchanged-index",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite1/receipt.json",
+        "sha256": "bfea70da2faf3268c13987dd5ead2d74bab4b246be958c31dcea17a828affd6e",
+        "bytes": 865335
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite1/producer/actual/stage0.mlir",
+          "sha256": "315688b7258c79ee3e601340f6e600aa48e9c936d0f083fe41abfd36b27a3d97",
+          "bytes": 345
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite1/producer/actual/stage1.mlir",
+          "sha256": "315688b7258c79ee3e601340f6e600aa48e9c936d0f083fe41abfd36b27a3d97",
+          "bytes": 345
+        }
+      ],
+      "audit_theorems": 900,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F0.actual",
+        "Merlin.GraphStateIntegerInstance.F0.reached",
+        "Merlin.GraphStateIntegerInstance.F0.localRewrites"
+      ],
+      "changed": [
+        false
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite1/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "03a20de0dd7f5520947cfea2cfed5f9123a3bac2cc4f280e437c7a4821e28f73",
+        "bytes": 3380
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite1/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "ce12c91fefe69239b82fb8b82f03e830cad36b2f6a70bfa36ca7dd18f522be1c",
+        "bytes": 80384
+      },
+      "mode": "graph",
+      "model": null
+    },
+    {
+      "name": "unchanged-floating",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite2/receipt.json",
+        "sha256": "11e3fc0edfb86aa8acb011a9e34c11be1feddbc66525f2aa706a2a4084069fff",
+        "bytes": 865335
+      },
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite2/producer/actual/stage0.mlir",
+          "sha256": "91db95a16439e502d15859e8e4fd73656397395474e4e08c32dcb2f8122af567",
+          "bytes": 333
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite2/producer/actual/stage1.mlir",
+          "sha256": "91db95a16439e502d15859e8e4fd73656397395474e4e08c32dcb2f8122af567",
+          "bytes": 333
+        }
+      ],
+      "audit_theorems": 900,
+      "roots": [
+        "Merlin.GraphStateIntegerInstance.prefix_actual",
+        "Merlin.GraphState.Integer.programs_sound",
+        "Merlin.GraphState.Integer.Relation.sound",
+        "Merlin.GraphState.Integer.typed_result",
+        "Merlin.GraphState.Integer.typed_reached",
+        "Merlin.GraphState.Integer.canonical_iff",
+        "Merlin.GraphStateIntegerInstance.F0.actual",
+        "Merlin.GraphStateIntegerInstance.F0.reached",
+        "Merlin.GraphStateIntegerInstance.F0.localRewrites"
+      ],
+      "changed": [
+        false
+      ],
+      "query": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite2/checked/lean/GraphStateIntegerInstance.lean",
+        "sha256": "e0eb0c4f491c8167bfdfbb913a5bdadf740e54f232e434e98d43eedecb071398",
+        "bytes": 3465
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_unchanged_outside_rewrite2/checked/lean/GraphStateIntegerInstance.olean",
+        "sha256": "4a24c4a5c76f7225a6618d865c20e82d50622978d9b77037c4e5a267b672d2ba",
+        "bytes": 81320
+      },
+      "mode": "graph",
+      "model": null
+    }
+  ],
+  "fresh_replays": [
+    {
+      "name": "receipt-protocol",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/receipt-protocol/report.json",
+        "sha256": "61c4f247f622dfd71ae3183fb5a9929fe276ebd8a4e19a8192e301ea8081fc9e",
+        "bytes": 1472
+      }
+    },
+    {
+      "name": "rules-i128",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/rules-i128/report.json",
+        "sha256": "c2e6626407e834a8965a595394b0a583c634527aac90b33819691c24a225ec00",
+        "bytes": 1472
+      }
+    },
+    {
+      "name": "rules-i16",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/rules-i16/report.json",
+        "sha256": "55a8787058d891ba1bfe7912d2c07f32fd946a7819115131b640bbef0360821b",
+        "bytes": 1470
+      }
+    },
+    {
+      "name": "rules-i1",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/rules-i1/report.json",
+        "sha256": "e4c8430a73c2846f8cd081ddb35c110c344adfbe1b795d47b419ba8e3432b898",
+        "bytes": 1468
+      }
+    },
+    {
+      "name": "rules-i256",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/rules-i256/report.json",
+        "sha256": "da7c1c46ca55aa91b8825b9023b26cc16d3dac40214ddf4160470364deae5745",
+        "bytes": 1472
+      }
+    },
+    {
+      "name": "rules-i32",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/rules-i32/report.json",
+        "sha256": "12b5e3edd51699915b11a9eef7f7fab4a0e80f061e4012ca3677f62488672bc6",
+        "bytes": 1470
+      }
+    },
+    {
+      "name": "rules-i64",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/rules-i64/report.json",
+        "sha256": "eceb0e70d9fc0e1c703e3029473c74b3fadaade2e596d3b249efb0cc8ebf8257",
+        "bytes": 1470
+      }
+    },
+    {
+      "name": "rules-i8",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/rules-i8/report.json",
+        "sha256": "770d7c9daeb3897ec1d42ba30c9249c4b8b2cfe71be317a29d30a417d52a7e9c",
+        "bytes": 1468
+      }
+    },
+    {
+      "name": "nested",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/nested/report.json",
+        "sha256": "d8d40f39eceb9fecd297aa6aa4a13aedb252d318afb6dc7ec6f804ec38844cf7",
+        "bytes": 1468
+      }
+    },
+    {
+      "name": "zero-trip",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/zero-trip/report.json",
+        "sha256": "fd1a80fdc9f1d9f5cdff4e8cd5fa1074679e90593da908b2f7a9967033e042e9",
+        "bytes": 1471
+      }
+    },
+    {
+      "name": "chain-i32",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/chain-i32/report.json",
+        "sha256": "03e95da2cd9c34c762b3b5cf4c7a0ad98c3a70514d3288eba105f84c5cc9d547",
+        "bytes": 1471
+      }
+    },
+    {
+      "name": "chain-i64",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/chain-i64/report.json",
+        "sha256": "0600b51e28990f9cf4762eb029462e99905e6f71e54aa6709220302c33d3c965",
+        "bytes": 1471
+      }
+    },
+    {
+      "name": "chain-i8",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/chain-i8/report.json",
+        "sha256": "5eabafa3f6f61c27b5da548fa51f5eb3efc7d2197fd75375b3c8f69ea8b6838c",
+        "bytes": 1470
+      }
+    },
+    {
+      "name": "initialized-provider",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/initialized-provider/report.json",
+        "sha256": "5b6631977ae0e8f556fbaacc7e298e6f243a7170980ba48e355ee99e399fbe74",
+        "bytes": 2108
+      }
+    },
+    {
+      "name": "unchanged-flagged",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/unchanged-flagged/report.json",
+        "sha256": "0208c82197c944f085230c586e8d22cf573ccedcefa49da603fdef8b33a3b60b",
+        "bytes": 1479
+      }
+    },
+    {
+      "name": "unchanged-index",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/unchanged-index/report.json",
+        "sha256": "505f10303184445a92fee4495b7d07c8ebdef45d06062918a29abe4c2e61e1ad",
+        "bytes": 1477
+      }
+    },
+    {
+      "name": "unchanged-floating",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/unchanged-floating/report.json",
+        "sha256": "23b177dc937421fd71e9a4dadbe0c6db286734100290d43295eb04ff5d87126e",
+        "bytes": 1480
+      }
+    }
+  ],
+  "positive_replay_batches": 1,
+  "changed_originals": 14,
+  "unchanged_originals": 3,
+  "claims": {
+    "relation": "canonical-entry complete return/error/terminal-world correspondence",
+    "runtime_intermediate_typing_derived": true,
+    "local_result_contracts_required": true,
+    "canonical_entries_required": true,
+    "python_projection_proved": false,
+    "review_approved": false,
+    "public_acceptance_issued": false,
+    "native_fidelity_proved": false,
+    "poison_freedom_proved": false,
+    "source_success_for_all_models": false,
+    "all_graph_passes_verified": false,
+    "full_model_claim": false,
+    "broker_integration": false,
+    "old_failure_promoted": false
+  },
+  "old75_sources_and_capsules_preserved": [
+    {
+      "packet": "out/artifacts/verification/graph-state/review/sealed-v2",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state/review/sealed-v2/MANIFEST.json",
+        "sha256": "0fb830998b4dd508db2d68af090e97b3b43ee1ef6d8bd3dfd4f897a65997493a",
+        "bytes": 272124
+      },
+      "files": 1126,
+      "sources": 12,
+      "mismatches": 0
+    },
+    {
+      "packet": "out/artifacts/verification/graph-state-chain/review/sealed-packed-v1",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-chain/review/sealed-packed-v1/MANIFEST.json",
+        "sha256": "7fab2dc80e035a0db9953dcdc988164faa29f101ad94bcdbbaf6bba20351d0f3",
+        "bytes": 3545559
+      },
+      "files": 12149,
+      "sources": 15,
+      "mismatches": 0
+    },
+    {
+      "packet": "out/artifacts/verification/graph-state-elision/review/sealed-diagnostic-v1",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-elision/review/sealed-diagnostic-v1/MANIFEST.json",
+        "sha256": "460db8d27e03239effd9d1fe9e0942dd0b93a6f1963244f237c7d462320cdb58",
+        "bytes": 2124361
+      },
+      "files": 8145,
+      "sources": 10,
+      "mismatches": 0
+    },
+    {
+      "packet": "out/artifacts/verification/graph-state-scalar/review/sealed-v1",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/MANIFEST.json",
+        "sha256": "6d30bf2d41962d1110edac2a63e8f2eea27dc4e5dcea1f759bb0ea4a09c8ad65",
+        "bytes": 2909918
+      },
+      "files": 11086,
+      "sources": 18,
+      "mismatches": 0
+    },
+    {
+      "packet": "out/artifacts/verification/graph-state-pipeline/review/sealed-v1",
+      "manifest": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/review/sealed-v1/MANIFEST.json",
+        "sha256": "55600dbe207fed3446a99d79003f7cf2b50b0c520b71eda44dc0bcf636035b10",
+        "bytes": 1036636
+      },
+      "files": 4001,
+      "sources": 20,
+      "mismatches": 0
+    }
+  ],
+  "selected_models": [],
+  "broker_selected": false,
+  "review_approved": false,
+  "host_process_guard_version": 2,
+  "held_v1_qualified_originals": 0,
+  "held_v1_diagnostic_manifest": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-diagnostic-v1/MANIFEST.json",
+    "sha256": "1779b3443bc0208ae9dcd90f505f0445b706db726e5f5986233751a7e09db06f",
+    "bytes": 518418
+  },
+  "broad_structure_gate": "foreign zephyr_model.py ceiling failure; owned source checks clean"
+}
