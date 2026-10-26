@@ -372,7 +372,14 @@ _LINEAR = "%z=arith.constant 1 : i32\n%v=arith.subi %a,%z : i32"
 
 
 @pytest.mark.parametrize(
-    "body,compares", [(_LINEAR, False), (_SELF_TEST, False), (_THRESHOLD, True)], ids=["linear", "self", "threshold"]
+    "body,compares",
+    [
+        (_LINEAR, False),
+        (_SELF_TEST, False),
+        (_THRESHOLD, True),
+        ("%z=arith.constant 0 : i32\n%v=arith.maxsi %a,%z : i32", True),
+    ],
+    ids=["linear", "self", "threshold", "maxsi"],
 )
 def test_component_form_does_not_carry_a_data_compare_select(body, compares):
     from mlir_fixtures import pointwise
@@ -386,6 +393,40 @@ def test_component_form_does_not_carry_a_data_compare_select(body, compares):
     assert decision["observed_signature"]["arithmetic"] == "integer_components"
     assert decision["status"] == ("unsupported" if compares else "admitted")
     assert decision["declaration"] == "component_linear"
+
+
+@pytest.mark.parametrize(
+    "operation,element",
+    [(name, "i32") for name in ("maxsi", "minsi", "maxui", "minui")]
+    + [(name, "f32") for name in ("maximumf", "minimumf", "maxnumf", "minnumf")],
+)
+@pytest.mark.parametrize("distinct", [False, True])
+def test_minmax_orders_only_distinct_data_words(operation, element, distinct):
+    from mlir_fixtures import pointwise
+
+    from merlin.targetgen.functional_truth_admission import _data_comparisons
+
+    other = "%b" if distinct else "%a"
+    module = pointwise(
+        [f"tensor<2x3x{element}>"] * 2,
+        f"tensor<2x3x{element}>",
+        f"%v=arith.{operation} %a,{other} : {element}",
+    )
+    assert _data_comparisons(module) is distinct
+
+
+def test_index_minmax_is_addressing_and_division_is_not_a_data_comparison():
+    from mlir_fixtures import pointwise
+
+    from merlin.targetgen.functional_truth_admission import _data_comparisons
+
+    module = pointwise(
+        ["tensor<2x3xi32>"] * 2,
+        "tensor<2x3xi32>",
+        "%i=linalg.index 0 : index\n%j=linalg.index 1 : index\n"
+        "%bound=arith.maxsi %i,%j : index\n%v=arith.divsi %a,%b : i32",
+    )
+    assert not _data_comparisons(module)
 
 
 def test_contraction_rank_is_the_rank_the_source_contracts():
@@ -406,6 +447,52 @@ def test_contraction_rank_is_the_rank_the_source_contracts():
     assert operator["observed_signature"]["rank"] == 4 and operator["status"] != "admitted"
     assert source["observed_signature"]["rank"] == 2
     assert source["status"] == "admitted" and source["declaration"] == "component_bilinear"
+
+
+@pytest.mark.parametrize("with_matmul", [False, True])
+@pytest.mark.parametrize("product", ["data", "literal", "index", "none"])
+def test_unclassified_product_reduction_preserves_operator_result_rank(with_matmul, product):
+    from mlir_fixtures import forward, generic
+
+    from merlin.targetgen.functional_truth_admission import admit
+    from merlin.targetgen.functional_truth_types import Case
+
+    case = _int_case("aten.convolution.default")
+    bodies = {
+        "data": "%m=arith.muli %a,%b : i32\n%v=arith.addi %unused,%m : i32",
+        "literal": "%c=arith.constant 2 : i32\n%m=arith.muli %a,%c : i32\n%v=arith.addi %unused,%m : i32",
+        "index": "%i=linalg.index 0 : index\n%j=linalg.index 1 : index\n"
+        "%m=arith.muli %i,%j : index\n%v=arith.addi %unused,%a : i32",
+        "none": "%v=arith.addi %unused,%a : i32",
+    }
+    reduction = generic(
+        [("%a4", "tensor<2x3x4x5xi32>"), ("%b4", "tensor<2x3x5x6xi32>")],
+        "tensor<2x3x4x6xi32>",
+        bodies[product],
+        name="%r4",
+        iterators=["parallel"] * 4 + ["reduction"],
+        maps=[
+            "affine_map<(d0,d1,d2,d3,d4)->(d0,d1,d2,d4)>",
+            "affine_map<(d0,d1,d2,d3,d4)->(d0,d1,d4,d3)>",
+            "affine_map<(d0,d1,d2,d3,d4)->(d0,d1,d2,d3)>",
+        ],
+    )
+    matmul = (
+        "\n%zero=arith.constant 0 : i32\n%init=tensor.splat %zero : tensor<4x6xi32>\n"
+        "%r=linalg.matmul ins(%x,%y:tensor<4x5xi32>,tensor<5x6xi32>) outs(%init:tensor<4x6xi32>) -> tensor<4x6xi32>"
+    )
+    module = forward(
+        "%a4:tensor<2x3x4x5xi32>,%b4:tensor<2x3x5x6xi32>,%x:tensor<4x5xi32>,%y:tensor<5x6xi32>",
+        "(tensor<2x3x4x6xi32>, tensor<4x6xi32>)" if with_matmul else "tensor<2x3x4x6xi32>",
+        reduction + (matmul if with_matmul else ""),
+        ret="%r4, %r" if with_matmul else "%r4",
+    )
+    decision = admit(Case(case, "test"), case, "N1", _full_spec(), source_module=module)
+    fallback = product == "data" or not with_matmul
+    assert decision["observed_signature"]["rank"] == (4 if fallback else 2)
+    # Additive scans retain their existing linear reduction admission.
+    unsupported = product == "data" or (product == "literal" and not with_matmul)
+    assert decision["status"] == ("unsupported" if unsupported else "admitted")
 
 
 _FOLD = {"authority": "static_capture_input_descriptors", "inputs": [], "queries": [{"value": 3}]}

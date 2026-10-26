@@ -220,9 +220,21 @@ def _storage_only(module, *, arithmetic=()) -> bool:
     from xdsl.dialects.builtin import IndexType
 
     structural = {
-        "builtin.module", "func.func", "func.return", "linalg.generic", "linalg.yield", "linalg.index",
-        "arith.constant", "tensor.empty", "tensor.cast", "tensor.collapse_shape", "tensor.expand_shape",
-        "tensor.extract_slice", "tensor.insert_slice", "tensor.concat", "tensor.splat",
+        "builtin.module",
+        "func.func",
+        "func.return",
+        "linalg.generic",
+        "linalg.yield",
+        "linalg.index",
+        "arith.constant",
+        "tensor.empty",
+        "tensor.cast",
+        "tensor.collapse_shape",
+        "tensor.expand_shape",
+        "tensor.extract_slice",
+        "tensor.insert_slice",
+        "tensor.concat",
+        "tensor.splat",
     }
     for op in module.walk():
         if op.name in structural or op.name in arithmetic:
@@ -231,7 +243,9 @@ def _storage_only(module, *, arithmetic=()) -> bool:
             continue
         if op.name == "arith.select":
             condition = op.operands[0].owner
-            if getattr(condition, "name", None) == "arith.cmpi" and all(isinstance(v.type, IndexType) for v in condition.operands):
+            if getattr(condition, "name", None) == "arith.cmpi" and all(
+                isinstance(v.type, IndexType) for v in condition.operands
+            ):
                 continue
         return False
     return True
@@ -275,13 +289,26 @@ def _nonfinite_literals(module) -> bool:
 def _data_comparisons(module) -> bool:
     """The source orders a data word against another value, as a threshold or compare/select does.
 
-    Loop-index comparisons are addressing. A word compared with itself is an IEEE special-value
-    test (``uno``/``ord``), which typed component proofs carry; it orders nothing.
+    Min/max against a different word also orders data. Loop-index comparisons are addressing.
+    A word compared with itself is an IEEE special-value test (``uno``/``ord``), which typed
+    component proofs carry; it orders nothing.
     """
     from xdsl.dialects.builtin import IndexType
 
     return any(
-        op.name in {"arith.cmpi", "arith.cmpf"}
+        op.name
+        in {
+            "arith.cmpi",
+            "arith.cmpf",
+            "arith.maxsi",
+            "arith.minsi",
+            "arith.maxui",
+            "arith.minui",
+            "arith.maximumf",
+            "arith.minimumf",
+            "arith.maxnumf",
+            "arith.minnumf",
+        }
         and not all(isinstance(v.type, IndexType) for v in op.operands)
         and op.operands[0] is not op.operands[1]
         for op in module.walk()
@@ -289,10 +316,29 @@ def _data_comparisons(module) -> bool:
 
 
 def _contraction_rank(module) -> int | None:
-    """The largest result rank of a contraction the source performs, or ``None`` without one."""
+    """The largest classified contraction rank, or ``None`` if a product reduction is unclassified.
+
+    An incomplete observation cannot replace the operator's result rank.
+    """
+    from xdsl.dialects.builtin import IndexType
+
     from merlin.kernels.shapes import observe_contractions
 
-    ranks = [len(op.results[0].type.get_shape()) for op, _shape in observe_contractions(module)]
+    observed = observe_contractions(module)
+    classified = {op for op, _shape in observed}
+    for op in module.walk():
+        if op.name != "linalg.generic" or op in classified:
+            continue
+        if not any(it.data.value == "reduction" for it in op.get_iterator_types()):
+            continue
+        if any(
+            child.name in {"arith.muli", "arith.mulf"}
+            and not all(isinstance(value.type, IndexType) for value in child.operands)
+            and all(getattr(value.owner, "name", None) != "arith.constant" for value in child.operands)
+            for child in op.walk()
+        ):
+            return None
+    ranks = [len(op.results[0].type.get_shape()) for op, _shape in observed]
     return max(ranks) if ranks else None
 
 
@@ -319,9 +365,10 @@ def admit(case, raw: Mapping, family_code: str, admission: Mapping, *, source_mo
     * A source of storage selectors alone is movement, unless it materializes a nonfinite
       literal: exact literal producers cover finite words only.
     * A contraction's rank is the rank of the contraction in the source (an im2col
-      convolution contracts a matrix), not the operator's result rank.
+      convolution contracts a matrix). An unclassified product reduction leaves the
+      operator's result rank in place.
     * Radix components are a closed linear producer. A source that compares data words
-      (a threshold, a compare/select) is not linear in them, so the component form does
+      (a threshold, a compare/select, min/max) is not linear in them, so the component form does
       not carry it.
     """
     from merlin.targetgen.software_spec import admit_operation
@@ -338,12 +385,16 @@ def admit(case, raw: Mapping, family_code: str, admission: Mapping, *, source_mo
         if _storage_only(normalized) and not _nonfinite_literals(normalized):
             from merlin.targetgen.native_unit_policy import construction_evidence
 
-            excluded = (spec.get("numerical_semantics", {}).get("native_unit_contract") or {}).get("excluded_constructions")
+            excluded = (spec.get("numerical_semantics", {}).get("native_unit_contract") or {}).get(
+                "excluded_constructions"
+            )
             if construction_evidence(normalized, excluded=excluded)["status"] == "eligible":
                 family_code = "N4"
         elif (
             {dclass(tensor.dtype) for tensor in case.ins} <= {"int", "bool"}
-            and _storage_only(source_module, arithmetic={"arith.addi", "arith.subi", "arith.extsi", "arith.extui", "arith.trunci"})
+            and _storage_only(
+                source_module, arithmetic={"arith.addi", "arith.subi", "arith.extsi", "arith.extui", "arith.trunci"}
+            )
             and any(
                 op.name == "linalg.generic" and any(it.data.value == "reduction" for it in op.get_iterator_types())
                 for op in source_module.walk()
@@ -363,7 +414,9 @@ def admit(case, raw: Mapping, family_code: str, admission: Mapping, *, source_mo
             case, raw, family_code, spec, components=True, contraction_rank=contraction_rank
         )[1]
         if alternative.get("arithmetic") == "integer_components" and alternative != signature:
-            represented = _component_refusal(alternative, spec) or admit_operation(spec, case.ov, alternative, "accelerator")
+            represented = _component_refusal(alternative, spec) or admit_operation(
+                spec, case.ov, alternative, "accelerator"
+            )
             if represented["status"] == "admitted":
                 signature, decision = alternative, represented
     if (
