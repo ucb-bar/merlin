@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -51,6 +52,8 @@ PASSING = frozenset({AGREE_DEVICE, AGREE_HOST, NO_WORK})
 FAILING = frozenset({ADMITTED_NOT_DEVICE, DEVICE_NOT_ADMITTED, NUMERIC_FAIL, CAPTURE_UNAVAILABLE})
 VERDICTS = PASSING | FAILING | {NOT_RUN}
 RECEIPT_POLICIES = ("execution_evidence", "spec_qualified")
+#: The capture's typed refusal for a floating reference that is itself NaN or infinite.
+NONFINITE_REFERENCE = "nonfinite_reference"
 _FULL_SCOPES = frozenset({"full", "values+mutation+observed-metadata"})
 
 
@@ -284,6 +287,21 @@ def structural_no_work(case: Mapping[str, Any]) -> bool:
     return bool(results) and all(0 in (tensor.get("shape") or [1]) for tensor in results)
 
 
+def _nonfinite_leaf(value: Any) -> bool:
+    if isinstance(value, dict):
+        if value.get("kind") == "float":
+            return not math.isfinite(float(value["value"]))
+        return any(_nonfinite_leaf(child) for child in value.values())
+    if isinstance(value, list):
+        return any(_nonfinite_leaf(child) for child in value)
+    return isinstance(value, float) and not math.isfinite(value)
+
+
+def nonfinite_reference(case: Mapping[str, Any]) -> bool:
+    """Some recorded floating-point result is NaN or infinite; decided from the case alone."""
+    return any(_nonfinite_leaf(tensor.get("values")) for tensor in _tensors(case.get("expected")))
+
+
 def _case_dtype(case: Mapping[str, Any]) -> str | None:
     assigned = (case.get("partition_assignment") or {}).get("dtype")
     if assigned:
@@ -358,6 +376,17 @@ def classify(
         and structural_no_work(case)
     ):
         return NO_WORK, "empty or metadata-only result on the host lane"
+    if (
+        not on_device
+        and passed
+        and seen["lane"] == "host"
+        and seen["executed_instructions"] == 0
+        and expectation.get("backend_reason") == NONFINITE_REFERENCE
+        and nonfinite_reference(case)
+    ):
+        # No int8 model agrees with a NaN/inf reference: the case and the capture's typed
+        # refusal both name it, so the host lane is the expected outcome.
+        return AGREE_HOST, "nonfinite floating reference; typed capture refusal on the host lane"
     if admitted and not on_device:
         if seen["lane"] == "device" and seen["executed_instructions"] > 0:
             return ADMITTED_NOT_DEVICE, "device execution evidence did not re-verify"

@@ -135,6 +135,9 @@ class Run:
             plan["selection"]["identities"]["host_capabilities"] = {
                 "sha256": kwargs.pop("plan_host_sha", self.stamp["host_capabilities_sha256"])
             }
+            refusal = kwargs.pop("refusal_code", None)
+            if refusal:
+                plan.update(status="refused", refusal_code=refusal, native_admission={"status": "host"})
             (shard / "spec-int8-admission.json").write_text(json.dumps(plan))
         if result is not False:
             (shard / "result.json").write_text(json.dumps(result or _result(executed_case, self.stamp, **kwargs)))
@@ -312,6 +315,55 @@ def test_unverified_device_evidence_or_missing_receipt_is_not_device(run):
     record = run.prepare(receipt_policy="spec_qualified")
     assert _verdicts(record)["dev"] == SV.ADMITTED_NOT_DEVICE
     assert record["cases"][0]["reason"] == "no spec-qualified device receipt"
+
+
+def _nonfinite(case, value="inf"):
+    """Record the first result tensor with one portable special leaf; its shape is kept."""
+    tensor = next(SV._tensors(case["expected"]))
+    rows, columns = tensor["shape"]
+    tensor["values"] = [[0.5] * columns for _ in range(rows)]
+    tensor["values"][0][0] = {"kind": "float", "value": value}
+    return case
+
+
+@pytest.mark.parametrize("value", ["inf", "-inf", "nan"])
+def test_nonfinite_reference_with_typed_capture_refusal_agrees_on_the_host(run, value):
+    run.add(_nonfinite(_case("special"), value), admitted=True, lane="host", refusal_code="nonfinite_reference")
+    run.add(_nonfinite(_case("declined", "aten.sort.default"), value), admitted=False, lane="host")
+    record = run.prepare()
+    assert _verdicts(record) == {"special": SV.AGREE_HOST, "declined": SV.AGREE_HOST}
+    rows = {row["case_id"]: row for row in record["cases"]}
+    assert rows["special"]["spec_expectation"]["placement"] == "accelerator"
+    assert rows["special"]["spec_expectation"]["backend_reason"] == "nonfinite_reference"
+    assert rows["special"]["reason"].startswith("nonfinite floating reference")
+
+
+def test_nonfinite_reference_host_outcome_needs_both_the_case_and_the_typed_refusal(run):
+    run.add(_nonfinite(_case("untyped")), admitted=True, lane="host")
+    run.add(_case("finite"), admitted=True, lane="host", refusal_code="nonfinite_reference")
+    run.add(_nonfinite(_case("other-code")), admitted=True, lane="host", refusal_code="nonfinite_calibration")
+    run.add(
+        _nonfinite(_case("wrong")), admitted=True, lane="host", refusal_code="nonfinite_reference", status="mismatch"
+    )
+    run.add(
+        _nonfinite(_case("escaped", "aten.sort.default")),
+        admitted=False,
+        lane="device",
+        count=4,
+        refusal_code="nonfinite_reference",
+    )
+    assert _verdicts(run.prepare()) == {
+        "untyped": SV.ADMITTED_NOT_DEVICE,
+        "finite": SV.ADMITTED_NOT_DEVICE,
+        "other-code": SV.ADMITTED_NOT_DEVICE,
+        "wrong": SV.ADMITTED_NOT_DEVICE,
+        "escaped": SV.DEVICE_NOT_ADMITTED,
+    }
+
+
+def test_nonfinite_reference_admitted_on_the_device_still_agrees_on_the_device(run):
+    run.add(_nonfinite(_case("dev"), "nan"), admitted=True, lane="device", count=9)
+    assert _verdicts(run.prepare())["dev"] == SV.AGREE_DEVICE
 
 
 def test_truth_disagreement_is_reported_but_never_gates(run, monkeypatch):

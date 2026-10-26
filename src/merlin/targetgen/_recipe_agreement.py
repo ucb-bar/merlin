@@ -10,6 +10,18 @@ class AgreementError(ValueError):
     """The result trees have no complete, finite tensor correspondence."""
 
 
+class NonfiniteReference(AgreementError):
+    """The floating-point reference itself is NaN or infinite, so no agreement exists to report.
+
+    Distinct from a nonfinite candidate: the quantized path did not introduce the special value,
+    the source arithmetic did (a nonfinite input, an overflow, a degenerate normalization).
+    """
+
+    def __init__(self, *, sample, output, nonfinite_count):
+        super().__init__(f"agreement reference output {output} of sample {sample} is not finite")
+        self.details = {"sample": sample, "output_index": output, "nonfinite_count": nonfinite_count}
+
+
 class _Metrics:
     def __init__(self):
         self.count = self.agree = 0
@@ -62,7 +74,7 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
     topology = None
     empty = 0
     with torch.no_grad():
-        for sample in islice(samples, limit):
+        for sample_index, sample in enumerate(islice(samples, limit)):
             inputs = as_tuple(sample)
             pristine = copy.deepcopy(inputs)
             leaves = [leaf for leaf in torch.utils._pytree.tree_flatten(inputs)[0] if isinstance(leaf, torch.Tensor)]
@@ -100,6 +112,9 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
                 if left.numel() == 0:
                     pairs.append(None)
                     continue
+                if left.is_floating_point() and not bool(torch.isfinite(left).all()):
+                    count = int((~torch.isfinite(left)).sum())
+                    raise NonfiniteReference(sample=sample_index, output=index, nonfinite_count=count)
                 left, right = left.float().flatten(), right.float().flatten()
                 if not bool(torch.isfinite(left).all()) or not bool(torch.isfinite(right).all()):
                     raise AgreementError(f"agreement output {index} is not finite")

@@ -1031,11 +1031,16 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 quant_stats.get("plan_sha256") if isinstance(quant_stats, dict) else None
             )
         # Diagnostic agreement on owned samples, independently of correctness.
-        agreement = RQ.agreement(
-            reference if agreement_reference is None else agreement_reference,
-            mdl,
-            [tuple(inputs), *(calibration or [])],
-        )
+        try:
+            agreement = RQ.agreement(
+                reference if agreement_reference is None else agreement_reference,
+                mdl,
+                [tuple(inputs), *(calibration or [])],
+            )
+        except RQ.NonfiniteReference as exc:
+            # The floating reference is itself NaN/inf: a typed refusal keeps the original host graph.
+            write_exception_refusal(out, exc, fallback_code="nonfinite_reference")
+            return 4
         formats = {str(recipe[part]["dtype"]) for part in ("activation", "weight")}
         if formats == {"int8"}:
             provenance_scheme = "int8_static_act_int8_weight" if static else "int8_dyn_act_int8_weight"

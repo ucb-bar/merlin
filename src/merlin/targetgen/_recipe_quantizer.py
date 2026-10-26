@@ -80,6 +80,16 @@ class CalibrationRefused(RecipeError):
         self.details = details or {}
 
 
+class NonfiniteReference(RecipeError):
+    """The floating-point reference produced NaN or infinity on an owned agreement sample."""
+
+    code = "nonfinite_reference"
+
+    def __init__(self, reason, *, details=None):
+        super().__init__(reason)
+        self.details = details or {}
+
+
 def require_finite_observer_state(model, observer_base, histogram_observer, *, calibration_sample):
     """Reject nonfinite statistics produced internally from finite observer inputs."""
     import torch
@@ -2073,5 +2083,7 @@ def agreement(
 
     try:
         return RA.compare(reference, candidate, samples, limit=limit, as_tuple=_as_tuple)
+    except RA.NonfiniteReference as error:
+        raise NonfiniteReference(str(error), details=error.details) from error
     except RA.AgreementError as error:
         raise RecipeError(str(error)) from error

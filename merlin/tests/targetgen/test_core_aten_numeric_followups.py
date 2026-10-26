@@ -154,6 +154,7 @@ def test_native_integer_grade_qualifies_only_exact_measured_device(monkeypatch, 
     [
         "no_eligible_recipe_operations",
         "nonfinite_calibration",
+        "nonfinite_reference",
         "complex_calibration",
         "integerization_golden_disagreement",
     ],

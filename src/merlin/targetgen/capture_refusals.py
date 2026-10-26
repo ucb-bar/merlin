@@ -63,6 +63,7 @@ def read_refusal(path):
         not in {
             "no_eligible_recipe_operations",
             "nonfinite_calibration",
+            "nonfinite_reference",
             "complex_calibration",
             "declared_affine_domain_unproved",
             "unquantized_special_readout_unproved",

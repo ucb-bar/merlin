@@ -53,9 +53,28 @@ for name, function in bad.items():
     try:
         RQ.agreement(ref, function, [(x,)])
     except RQ.RecipeError as error:
+        assert not isinstance(error, RQ.NonfiniteReference), name
         errors[name] = str(error)
     else:
         raise AssertionError('accepted malformed result: ' + name)
+
+# A NaN/inf in the floating reference itself is typed, whatever the candidate computes; a value
+# that is finite at its own width but not at float32 is no such reference.
+references = {}
+for name, special in {'inf': float('inf'), '-inf': float('-inf'), 'nan': float('nan')}.items():
+    try:
+        RQ.agreement(lambda x: (mask, x * special), ref, [(x,), (x,)])
+    except RQ.NonfiniteReference as error:
+        references[name] = dict(code=error.code, details=error.details)
+    else:
+        raise AssertionError('accepted a nonfinite reference: ' + name)
+wide = torch.tensor([1e300], dtype=torch.float64)
+try:
+    RQ.agreement(lambda x: (mask, wide), lambda x: (mask, wide), [(x,)])
+except RQ.NonfiniteReference:
+    raise AssertionError('a finite float64 reference is not a nonfinite reference')
+except RQ.RecipeError as error:
+    references['narrowed'] = str(error)
 
 def bounded():
     yield (x,)
@@ -68,7 +87,8 @@ large_exact = RQ.agreement(lambda x: (mask, x), lambda x: (mask, x), [(large,)])
 empty = RQ.agreement(reference, reference, [], limit=2)
 zero = RQ.agreement(reference, reference, bounded(), limit=0)
 print(json.dumps(dict(changed=changed, small=small, nested=nested, single=single,
-                     errors=errors, limited=limited, dynamic=dynamic, empty=empty, zero=zero, large_exact=large_exact)))
+                     errors=errors, references=references,
+                     limited=limited, dynamic=dynamic, empty=empty, zero=zero, large_exact=large_exact)))
 """
 
 
@@ -109,6 +129,17 @@ def test_nested_results_retain_complete_output_correspondence(observed):
 @pytest.mark.parametrize("case", ["arity", "structure", "shape", "nonfinite", "nontensor", "complex"])
 def test_malformed_later_results_refuse_even_when_the_mask_matches(observed, case):
     assert observed["errors"][case]
+
+
+@pytest.mark.parametrize("special", ["inf", "-inf", "nan"])
+def test_a_nonfinite_reference_is_a_typed_refusal_not_a_candidate_failure(observed, special):
+    refusal = observed["references"][special]
+    assert refusal["code"] == "nonfinite_reference"
+    assert refusal["details"] == {"sample": 0, "output_index": 1, "nonfinite_count": 3}
+
+
+def test_only_the_reference_at_its_own_width_selects_the_typed_refusal(observed):
+    assert observed["references"]["narrowed"] == "agreement output 1 is not finite"
 
 
 def test_single_result_receipts_and_dynamic_extents_remain_supported(observed):
@@ -194,3 +225,72 @@ def get_model_and_inputs():
     assert report["samples"] == 1 and report["max_abs_error"] > 0
     assert report["outputs"][0]["max_abs_error"] == 0
     assert report["outputs"][1]["max_abs_error"] > 0
+
+
+def test_capture_refuses_a_nonfinite_float_reference_with_a_typed_receipt(tmp_path):
+    python, m2m = os.environ.get("MERLIN_M2M_PYTHON"), os.environ.get("MERLIN_M2M_DIR")
+    if not python or not m2m:
+        pytest.skip("an explicit trace-capable capture interpreter is required")
+    loader = tmp_path / "loader.py"
+    # Finite inputs and weights whose float32 product overflows: calibration observes finite
+    # values, and only the floating reference is infinite.
+    loader.write_text("""
+import torch
+class Model(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.projection = torch.nn.Linear(2, 2, bias=False)
+        with torch.no_grad():
+            self.projection.weight.copy_(torch.tensor([[3e38, 3e38], [-.732, .287]]))
+    def forward(self, x):
+        return self.projection(x)
+def get_model_and_inputs():
+    return Model().eval(), (torch.tensor([[.75, 1.25], [1.25, .5]]),)
+""")
+    tensor = dict(dtype="int8", granularity="tensor", symmetric=True, block=None, mode="static")
+    recipe = dict(
+        schema="quant_recipe_v1",
+        target="synthetic",
+        unit="matrix",
+        status="derived",
+        weight={**tensor, "quant_min": -127, "quant_max": 127},
+        activation={**tensor, "quant_min": -128, "quant_max": 127},
+        families=["contraction"],
+        bias_domain="accumulator",
+        software_numerical_engine="integer_reference",
+    )
+    recipe["recipe_sha256"] = QR.digest(recipe)
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_text(json.dumps(recipe))
+    out = tmp_path / "capture"
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([str(Path(worker.__file__).parents[2]), os.environ.get("PYTHONPATH", "")]),
+    }
+    completed = subprocess.run(
+        [
+            python,
+            worker.__file__,
+            "--m2m-dir",
+            m2m,
+            "--loader",
+            str(loader),
+            "--dtype",
+            "int8",
+            "--recipe",
+            str(recipe_path),
+            "--materialize-bundle",
+            "--out",
+            str(out),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert completed.returncode == 4, completed.stderr[-4000:]
+    refusal = json.loads((out / "refusal.json").read_text())
+    assert refusal["code"] == "nonfinite_reference"
+    assert refusal["sample"] == 0 and refusal["output_index"] == 0 and refusal["nonfinite_count"] > 0
+    assert not (out / "meta.json").exists()
