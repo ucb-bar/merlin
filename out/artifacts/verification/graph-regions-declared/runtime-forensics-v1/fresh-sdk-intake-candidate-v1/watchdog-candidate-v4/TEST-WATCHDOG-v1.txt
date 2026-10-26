@@ -1,0 +1,16 @@
+test_block_close (__main__.WatchdogTests.test_block_close) ... ok
+test_block_open (__main__.WatchdogTests.test_block_open) ... ok
+test_block_read (__main__.WatchdogTests.test_block_read) ... ok
+test_invalid_command_and_grace (__main__.WatchdogTests.test_invalid_command_and_grace) ... ok
+test_kill_reap (__main__.WatchdogTests.test_kill_reap) ... ok
+test_no_resume (__main__.WatchdogTests.test_no_resume) ... ok
+test_nonzero (__main__.WatchdogTests.test_nonzero) ... ok
+test_normal (__main__.WatchdogTests.test_normal) ... ok
+test_parent_prelaunch_failure (__main__.WatchdogTests.test_parent_prelaunch_failure) ... ok
+test_proposal_not_permission (__main__.WatchdogTests.test_proposal_not_permission) ... ok
+test_wrong_source_pin (__main__.WatchdogTests.test_wrong_source_pin) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 2.307s
+
+OK

@@ -1,0 +1,11 @@
+test_changed_tag_or_noncommit (__main__.ReleaseTests.test_changed_tag_or_noncommit) ... ok
+test_duplicate_or_missing_asset (__main__.ReleaseTests.test_duplicate_or_missing_asset) ... ok
+test_exact_retained_identity (__main__.ReleaseTests.test_exact_retained_identity) ... ok
+test_missing_digest_or_redirect_url (__main__.ReleaseTests.test_missing_digest_or_redirect_url) ... ok
+test_size_bounds (__main__.ReleaseTests.test_size_bounds) ... ok
+test_wrong_platform (__main__.ReleaseTests.test_wrong_platform) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.001s
+
+OK

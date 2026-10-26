@@ -1,0 +1,23 @@
+{
+  "budget_seconds": 1,
+  "command": [
+    "/usr/bin/python3",
+    "-I",
+    "-S",
+    "-B",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/own_child_control.py",
+    "normal"
+  ],
+  "deadline_cleanup_errors": [],
+  "error": "injected launch failure",
+  "error_notes": [],
+  "error_type": "OSError",
+  "in_memory_evidence": "Child in-memory evidence may be unavailable; existing files preserved",
+  "kill_reap_grace_seconds": 0.1,
+  "native_authorized": false,
+  "old_holds_cleared": false,
+  "retry": false,
+  "signals": [],
+  "status": "PARENT_FIRST_FAILURE",
+  "terminate_grace_seconds": 0.1
+}

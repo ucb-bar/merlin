@@ -1,0 +1,386 @@
+{
+  "schema": "merlin.frontend.publication-source-inventory.v1",
+  "head_observed": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "branch": "feat/pass-verification",
+  "source_status": "CURRENT_SOURCE_ONLY_NOT_NEW_QUALIFICATION",
+  "canonical_owned_sources": [
+    {
+      "path": "merlin/tests/infra/test_lean_graph_regions_declared.py",
+      "bytes": 16202,
+      "sha256": "2beb83f38b1a8fdf0ae6d11aa660d688df93829cb7e493aaf35982b3dbf91510"
+    },
+    {
+      "path": "merlin/tests/infra/test_lean_graph_regions_declared_bound.py",
+      "bytes": 8579,
+      "sha256": "84d9d52e0a487869aca425d96d2269a1c45c751abe99214e05571f934236911d"
+    },
+    {
+      "path": "merlin/tests/infra/test_lean_graph_regions_declared_loader_plan.py",
+      "bytes": 12614,
+      "sha256": "9130c966d87fec098aa428dcd8a6efaa203025dc6ec38cfae4560797b7e5b9f6"
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_original_image_context.py",
+      "bytes": 32038,
+      "sha256": "ad8d703a916f3031f5b8ad877f4fb4dc0895d4bd3ade7d5354e24f2fe5383ca5"
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_original_image_context_diagnostics.py",
+      "bytes": 2920,
+      "sha256": "205a1432897e3dc864650abf369824f88bac54751b496e016da483b6e2af6e1f"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBindings.lean",
+      "bytes": 3166,
+      "sha256": "9a7ec4e0d2c15bd74d421422cce72f491720d4d8bc0db250117d4941ed82b952"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBridge.lean",
+      "bytes": 7003,
+      "sha256": "238812250de03f62906a8af05f0eea84ab7cf9b918b4b226a6685f504c8aa2b8"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCapture.lean",
+      "bytes": 5184,
+      "sha256": "22810e218dadf5635e13c9c58242865b6a9fdabb76b59d2af60707f8b365068e"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureActualGraph.lean",
+      "bytes": 6206,
+      "sha256": "6c620d9d1057bf0c611f557478d93965035cc64c43a4ed5dbbd3edfc95a84043"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureContract.lean",
+      "bytes": 4084,
+      "sha256": "259f9f72bd506db83e1858ec00697e6cd48ad264536f3930096788260008511d"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureDeclaration.lean",
+      "bytes": 4512,
+      "sha256": "d8fb37efb090a9c919f31c2bd2c6d5f07633428f5f7dd02abcabc60b29b0632b"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureExamples.lean",
+      "bytes": 4262,
+      "sha256": "96aa345288cf1d7f64b241fc0d83ab1571262a4456e14bf5d0ba52913535ea6e"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureFanout.lean",
+      "bytes": 8332,
+      "sha256": "0ab4705b8283b32e5b525179eba2254c31a8a697137f30e3b5acea25c9ce0582"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureFusion.lean",
+      "bytes": 9030,
+      "sha256": "a71c26ae9e5fd65de1f84a68e9706c362d2b0f2314a2971c219176e142cf7198"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureGraph.lean",
+      "bytes": 5726,
+      "sha256": "91adcf2bd67aa2f3aad31003f6bc5b76d0c12a25b84fc531bbe145c85bcad46d"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureInitialize.lean",
+      "bytes": 8065,
+      "sha256": "ddea1bb9d61648b96f66278230b190d6cc5e71b44313d39da39976ed1b0360f2"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureKernel.lean",
+      "bytes": 10550,
+      "sha256": "f49e8ca3a97a0d5e8c6d34559af64eb6978e1adffba41da564041040c58f2e19"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureKernelExamples.lean",
+      "bytes": 6502,
+      "sha256": "e862934bdc03790d49a9c53c13b5df592b7a2e0bbe7463ed43b460a23cf5c859"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureMatch.lean",
+      "bytes": 5692,
+      "sha256": "88abc610f948bc4cfa5c2af114380f31db7a59dab9834780eec331e4461a213e"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureParent.lean",
+      "bytes": 6179,
+      "sha256": "c52243f784c74be99d391cfb3a01728abad34ebb38603e4a03db4b98d44746f8"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureParentExamples.lean",
+      "bytes": 3950,
+      "sha256": "2662ecfd4c44dd2e03ea3b5e813fce7003808572824196011b42d43d57e1990e"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCapturePrefix.lean",
+      "bytes": 7768,
+      "sha256": "eba8d47cba13554d00965fd3526662b6673b1b5bf9bc78987c09a02dea980e32"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCapturePrefixBridge.lean",
+      "bytes": 6401,
+      "sha256": "bd258469f1039863b6c1953fdd6249e96acedebeeefee7ff9569d4960e1f147d"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureProjection.lean",
+      "bytes": 11084,
+      "sha256": "5e8450257e7040de4166462f522d84a7d2906e4ee2aea107670b54effbff586c"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureRefusals.lean",
+      "bytes": 5338,
+      "sha256": "e83b385de45bc37864ae6330d26ea4e41c9f8291d5545739db35d8cea536aa8b"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureRetainedI8.lean",
+      "bytes": 32486,
+      "sha256": "72e002204f9c474b0086153739bbc0828c7f7f24bd33d51338f07a72890770ad"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCaptureTensor.lean",
+      "bytes": 4947,
+      "sha256": "1d2e314223f9a308b053e9011545a5e35db009bc3359de3d612bb4505f5aa29e"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredCountermodels.lean",
+      "bytes": 2701,
+      "sha256": "56794f6d7e1d57d292e94d1fb9b6654b7f310a1aa88844e3afac107ba8ef5a51"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEffects.lean",
+      "bytes": 3350,
+      "sha256": "682b9dc0d95499fe68e30138edb11494acac0818fb73f26ee7c676e18d6ff3bb"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEvaluation.lean",
+      "bytes": 7506,
+      "sha256": "91305aa0c4af5bc7e1b31462c0aa83201dceb10abe60d04c8ce91c05d71dc66d"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredGeneric.lean",
+      "bytes": 4594,
+      "sha256": "218ca5a0e2e20649477cf33efb998c23bb93df6e3e992f8f04b768db4862855f"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMatch.lean",
+      "bytes": 13321,
+      "sha256": "0f8f1e34f085890493e83ffecc1c98bd896fd765e207ece0f9795d2bab65c6d0"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredMemory.lean",
+      "bytes": 8378,
+      "sha256": "655797e30a22b49ab1bc8bc422149586a6375ac234e5c63b794acbb98b2721e0"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredNodes.lean",
+      "bytes": 5519,
+      "sha256": "9be7f585db6e32ceba6e6926e75cf290565dbbaa2d8363855aa500121a172971"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredProjection.lean",
+      "bytes": 3722,
+      "sha256": "a4943fbb742c5d5bc5b4338c1f007faed5a5561e186999de91c686178e806343"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredRaw.lean",
+      "bytes": 5803,
+      "sha256": "07da97265f745171912645dcdbd5ca4f24ec910e221332bdb8cfeeee32b2c04e"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphRegionsDeclaredScalar.lean",
+      "bytes": 4162,
+      "sha256": "e8bf9d1c1b2c1967ef0c7d05c329fb35922ffbd4e10931a972a33bed301d6001"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context.py",
+      "bytes": 24711,
+      "sha256": "bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context_data.py",
+      "bytes": 15692,
+      "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context_diagnostic_proposal.py",
+      "bytes": 2014,
+      "sha256": "2a6a33e6a71a56a8993984e8ef56a4454bb14ae2f36f030596fd881cb0238b16"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context_io.py",
+      "bytes": 4512,
+      "sha256": "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_ast.py",
+      "bytes": 5430,
+      "sha256": "f14077f533c73685d10ec716951529c8098f158613a5383d141db64ea070db5b"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_bound.py",
+      "bytes": 18041,
+      "sha256": "8a130251c5961b7e31c54b76f41283b7409df8d194a7a0fd26789b79d8c1cbe0"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_bound_qualify.py",
+      "bytes": 7434,
+      "sha256": "803952b9dea1e0e3fd6a27b3a58f3bb56c023806071699be07f5089774d27784"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_capture.py",
+      "bytes": 11987,
+      "sha256": "898cef71246d8ef510ba157a6e691da7437d1373d6ef94f05d8b642cf6e47565"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_check.py",
+      "bytes": 7176,
+      "sha256": "3bd8947279c49249848761a2016dd8344b8202532258c80909d094ef36da88b7"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_context.py",
+      "bytes": 9634,
+      "sha256": "2800a9702c2c2187a0930ce26852d6e3f617ec1fd3a37ac110ee85ed58579bc6"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_elf.py",
+      "bytes": 7161,
+      "sha256": "c76a4a7cb687d2eab5a07b920fcab89050e6087d9b84cc570c83d3907f256a70"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_loader_evidence.py",
+      "bytes": 7729,
+      "sha256": "8b8984cf43af760cc1789b7c6e6318289b726dc68dce9f81e47e188228799915"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_loader_plan.py",
+      "bytes": 23330,
+      "sha256": "df974ee99e06b53fb91fbae0123987ffe4f18d26c5fd5eacd0de133588761488"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_loader_selftest.py",
+      "bytes": 13098,
+      "sha256": "a29bf139c759070881b83b5e2759e7675a715a0e94aedb404f37413f111f41a9"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_oracle.py",
+      "bytes": 4233,
+      "sha256": "c39c16d4c220457c3aabc3a57372e409556ff62d092e8e9de1a12d82c2405c34"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_packet.py",
+      "bytes": 18518,
+      "sha256": "ec84f2d87d1449b7f00f939a95db190d31b4b5e59259d06e2f3b1b83f1c4836f"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure.py",
+      "bytes": 22574,
+      "sha256": "44336af8082db648d1d4e00c7eb60c764ca5f71c3fa53ebfdfd8a0b654bde1e9"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_projection.py",
+      "bytes": 14120,
+      "sha256": "f080a29f31fd81ed70d7fb37d6a9a06af1fb73a5b43b5f04c18652d42a06a95f"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_projection_selftest.py",
+      "bytes": 7636,
+      "sha256": "34894f7bfad861c1bbf362f5abb723a14e3cb9d72b131583a74c440a3dac07df"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_recover.py",
+      "bytes": 9252,
+      "sha256": "d52ceb2e368b4cf6e0821415beaf8a4194f6d72ff282a89d56110ee197851d5c"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_retained.py",
+      "bytes": 13036,
+      "sha256": "6bb4add0ae6dfbcc8aeb8bd15762e2bffa8ef59c9fd051187b4a03015f16619b"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_retained_selftest.py",
+      "bytes": 5294,
+      "sha256": "ac87195034b54683c08bcce105ee297ebe472be322b794b7773b1da495618cbc"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_review.py",
+      "bytes": 2796,
+      "sha256": "cb1bff5c7a021b73fd74f478699a1721a4beb82f800eb5dce3ef25da3b6ef273"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_selection.py",
+      "bytes": 5666,
+      "sha256": "876d8681bef5122b600d5b6afac376ced0fd38df3968265a815b3d39fc7a02e2"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_selection_selftest.py",
+      "bytes": 6550,
+      "sha256": "a75e6249ef2009b5af93d8d0f2253da39f180404e1b49910baa2b28fee3062fd"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_pure_trace.py",
+      "bytes": 9118,
+      "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_qualify.py",
+      "bytes": 9208,
+      "sha256": "27e099ddb645608e45bda1a4a83c163d37712d71d939475148504cbb7188fef4"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_regions_declared_verify.py",
+      "bytes": 14711,
+      "sha256": "34b79274140d22336a4ce0a071222554b82001f3a095d6f19208b4cc14cb47e3"
+    }
+  ],
+  "small_review_entrypoints": [
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/paper-evidence/README.md",
+      "bytes": 14785,
+      "sha256": "9fc38a52c20c22e8f30da98fbe5d081de084012566db78d0d2784dac5ccd4106"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/today-handoff-20261025/README.md",
+      "bytes": 9815,
+      "sha256": "d1453f7226e65bc97e8d55731176472e15105e51fcdeb91553e557832ec9ed23"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/today-handoff-20261025/STATUS.json",
+      "bytes": 1089,
+      "sha256": "4c94d49e364e50d0600282e97a71caa660b9099924e13936e3f09607f5eb5aee"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/input-admission-review-v1/README.md",
+      "bytes": 8449,
+      "sha256": "6956f95b83659f94bacae6bfb9b088f013295396555036100aedd860b06167eb"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/README.md",
+      "bytes": 3748,
+      "sha256": "0e3128668c1cd394456419e82b70e1ad5b7f45cb94cdb1e36404d66f40dee590"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/README.md",
+      "bytes": 2737,
+      "sha256": "2be74b1afb2c2beb3f7eb2dad681c548d18e5bd0c9f33f3f7b049523e992973f"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/MANIFEST.json",
+      "bytes": 12907,
+      "sha256": "9391c61bf2b3a22ad0506275633e9f101a0bfe6a66c60fe46c2a2fcd57c2f999"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/README.md",
+      "bytes": 3998,
+      "sha256": "71d346621a7c547e13c3c4be92c03003cb2c2135a969b783e839fc40eca70f2d"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/MANIFEST.json",
+      "bytes": 10187,
+      "sha256": "497c2d09dab2746c0dec3a5e4b4f41fc1c940b48a5c508e5335c52db8a33d418"
+    }
+  ],
+  "sdk_binary_archive_included": false,
+  "new_native_qualification": false,
+  "shared_or_foreign_edit_authorized": false,
+  "staging_publishing_owner": "coordinator",
+  "new_context_status": "fixed source/data candidate, no current edits",
+  "historical_status_warning": "Historical v1 seal applies only to its original fixed sources; stronger bound profile PARTIAL, Capture 20-module/80-root checking DEVELOPMENT before shared runtime hold. Do not extend historical qualification to present hashes."
+}

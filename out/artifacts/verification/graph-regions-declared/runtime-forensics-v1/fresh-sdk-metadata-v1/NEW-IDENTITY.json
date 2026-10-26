@@ -1,0 +1,18 @@
+{
+  "version": "4.35.0",
+  "tag": "v4.35.0",
+  "commit": "eb6cafb7290e8bd5f2937522d8d804f58f02bafc",
+  "platform": "Linux x86_64 (release matrix/source interpretation)",
+  "release_id": 410881210,
+  "asset_id": 634574461,
+  "archive_name": "lean-4.35.0-linux.zip",
+  "archive_url": "https://github.com/leanprover/lean4/releases/download/v4.35.0/lean-4.35.0-linux.zip",
+  "compressed_bytes": 925899528,
+  "publisher_platform_sha256": "c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+  "checksum_provenance": "GitHub official release API digest over HTTPS; not independent signature verification",
+  "old_sdk_identity_reused": false,
+  "download_authorized": false,
+  "install_authorized": false,
+  "native_authorized": false,
+  "old_holds_cleared": false
+}

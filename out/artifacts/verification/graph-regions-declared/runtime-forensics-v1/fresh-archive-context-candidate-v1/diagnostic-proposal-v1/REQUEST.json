@@ -1,0 +1,135 @@
+{
+  "schema": "merlin.fresh-archive-repr-diagnostic-proposal.v1",
+  "status": "INCOMPLETE_PENDING_ARCHIVE_AND_HOST_REVIEW_NOT_LAUNCHABLE",
+  "native_authorized": false,
+  "cases": [
+    {
+      "id": "InitNat",
+      "module": "Merlin.DiagnosticReprInitNat",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/InitNat.lean",
+        "bytes": 211,
+        "sha256": "a8e251852c73cf90d43deb653f0be806e75bd365fedda1ccdbea41b681cdcb57"
+      },
+      "final_root": "DiagnosticReprInitNat.witness_value",
+      "support_roots": [
+        "DiagnosticReprInitNat.instReprPayload"
+      ],
+      "project_sources": {},
+      "compile_audit_roots": {},
+      "workspace": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/f-fresh-archive-repr-candidate-v1-InitNat",
+      "status": "PROPOSED_UNLAUNCHED_UNCOMPILED_IN_NEW_CONTEXT",
+      "expected_domain": "literal structural codegen diagnostic only; no graph or numerical claim"
+    },
+    {
+      "id": "InitListNat",
+      "module": "Merlin.DiagnosticReprInitListNat",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/InitListNat.lean",
+        "bytes": 236,
+        "sha256": "3af6ce7abe9d170b263b1248cb6338c10486a952882f310729e85790c2c7a960"
+      },
+      "final_root": "DiagnosticReprInitListNat.witness_value",
+      "support_roots": [
+        "DiagnosticReprInitListNat.instReprPayload"
+      ],
+      "project_sources": {},
+      "compile_audit_roots": {},
+      "workspace": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/f-fresh-archive-repr-candidate-v1-InitListNat",
+      "status": "PROPOSED_UNLAUNCHED_UNCOMPILED_IN_NEW_CONTEXT",
+      "expected_domain": "literal structural codegen diagnostic only; no graph or numerical claim"
+    },
+    {
+      "id": "OmegaListNat",
+      "module": "Merlin.DiagnosticReprOmegaListNat",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/OmegaListNat.lean",
+        "bytes": 256,
+        "sha256": "416dfcbe6de483e63d4e94501d72269ab612e6a16c354bd1fb0c82ef9ac2d918"
+      },
+      "final_root": "DiagnosticReprOmegaListNat.witness_value",
+      "support_roots": [
+        "DiagnosticReprOmegaListNat.instReprPayload"
+      ],
+      "project_sources": {},
+      "compile_audit_roots": {},
+      "workspace": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/f-fresh-archive-repr-candidate-v1-OmegaListNat",
+      "status": "PROPOSED_UNLAUNCHED_UNCOMPILED_IN_NEW_CONTEXT",
+      "expected_domain": "literal structural codegen diagnostic only; no graph or numerical claim"
+    }
+  ],
+  "controller_sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/archive_selection.py",
+      "bytes": 9637,
+      "sha256": "7ffc6c0a84dc0a4099954b14d88cfe83904460f4a9d839c1027e6961ade1e191"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context.py",
+      "bytes": 24830,
+      "sha256": "4366cea947377af182647a99bae6e0f42b33735a74acec395dd60eb48bb49629"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context_data.py",
+      "bytes": 15692,
+      "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context_io.py",
+      "bytes": 7265,
+      "sha256": "92c8b43ec1b2d5a8e66f8d819c3079f2cdd7be12d559a67efc1505b4cec2118c"
+    }
+  ],
+  "trace_parser": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/trace_parser-source.py",
+    "bytes": 9118,
+    "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba"
+  },
+  "review": null,
+  "required_review_roles": [
+    "request",
+    "manifest",
+    "roster",
+    "selection",
+    "host",
+    "trace"
+  ],
+  "missing": [
+    "actual authenticated archive manifest and complete module/IR families",
+    "separate exact host loader/runtime closure and finite symbol policy",
+    "root-reviewed exact execution context and runner"
+  ],
+  "protocol": {
+    "ordered_cases": [
+      "InitNat",
+      "InitListNat",
+      "OmegaListNat"
+    ],
+    "attempts_per_case": 1,
+    "max_commands_per_case": 6,
+    "max_commands_total": 18,
+    "timeout_per_command_seconds": 120,
+    "stop_entire_batch_on_first_error": true,
+    "reuse_project_objects": false,
+    "no_graph_qualification": true,
+    "first_failure_retention": "common raw/source/intent/guard records and already-read failure buffer; no retry",
+    "old_holds_cleared": false
+  },
+  "unchanged_microcase_source_refs": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/repr-prerequisite-v1/microcases/InitNat.lean",
+      "sha256": "a8e251852c73cf90d43deb653f0be806e75bd365fedda1ccdbea41b681cdcb57",
+      "bytes": 211
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/repr-prerequisite-v1/microcases/InitListNat.lean",
+      "sha256": "3af6ce7abe9d170b263b1248cb6338c10486a952882f310729e85790c2c7a960",
+      "bytes": 236
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/repr-prerequisite-v1/microcases/OmegaListNat.lean",
+      "sha256": "416dfcbe6de483e63d4e94501d72269ab612e6a16c354bd1fb0c82ef9ac2d918",
+      "bytes": 256
+    }
+  ]
+}

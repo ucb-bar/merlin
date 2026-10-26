@@ -1,0 +1,27 @@
+{
+  "records": [
+    {
+      "url": "https://api.github.com/repos/leanprover/lean4/git/commits/eb6cafb7290e8bd5f2937522d8d804f58f02bafc",
+      "max_bytes": 1048576,
+      "timeout_seconds": 20,
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "date": "Mon, 26 Oct 2026 20:55:53 GMT",
+      "bytes": 1128,
+      "sha256": "50884615dc5ab424c952c55d167e44ea7612b00a4283da0fa8f9b162bc4544b6"
+    },
+    {
+      "url": "https://api.github.com/repos/leanprover/lean4/contents/.github/workflows?ref=eb6cafb7290e8bd5f2937522d8d804f58f02bafc",
+      "max_bytes": 1048576,
+      "timeout_seconds": 20,
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "date": "Mon, 26 Oct 2026 20:55:54 GMT",
+      "bytes": 19978,
+      "sha256": "ddef3f345b475bac4ae64b3fe0db654161b364a35c0d65ba21042fef82721577"
+    }
+  ],
+  "archive_downloads": 0,
+  "sdk_reads": 0,
+  "native_launches": 0
+}

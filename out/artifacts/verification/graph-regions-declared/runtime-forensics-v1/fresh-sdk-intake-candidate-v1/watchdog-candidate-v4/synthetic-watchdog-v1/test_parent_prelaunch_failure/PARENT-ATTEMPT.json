@@ -1,0 +1,19 @@
+{
+  "attempt_consumed": true,
+  "budget_seconds": 1,
+  "command": [
+    "/usr/bin/python3",
+    "-I",
+    "-S",
+    "-B",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/own_child_control.py",
+    "normal"
+  ],
+  "kill_reap_grace_seconds": 0.1,
+  "native_authorized": false,
+  "old_holds_cleared": false,
+  "retry": false,
+  "signals": [],
+  "status": "PREPARING",
+  "terminate_grace_seconds": 0.1
+}

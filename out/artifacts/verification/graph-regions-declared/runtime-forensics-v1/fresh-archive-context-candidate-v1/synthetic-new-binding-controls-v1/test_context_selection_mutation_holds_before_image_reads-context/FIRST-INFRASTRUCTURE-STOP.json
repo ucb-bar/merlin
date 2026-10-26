@@ -1,0 +1,7 @@
+{
+  "evidence": null,
+  "reason": "context definition mutated",
+  "retry": false,
+  "status": "UNQUALIFIED_CONTEXT_HELD",
+  "type": "ContextRefusal"
+}

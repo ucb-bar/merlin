@@ -1,0 +1,185 @@
+{
+  "status": "SOURCE_ONLY_UNQUALIFIED_FIXED_FOR_REVIEW",
+  "files": [
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/BASELINE.json",
+        "bytes": 1016,
+        "sha256": "6338b0f7666ae929f7238a0d7e58198f56f2f5850e7d2cabdbc450877febca28"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/BASELINE.json",
+        "bytes": 1016,
+        "sha256": "6338b0f7666ae929f7238a0d7e58198f56f2f5850e7d2cabdbc450877febca28"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/COMMON-CONTEXT-DELTA.patch",
+        "bytes": 5876,
+        "sha256": "8ac77520b535e93edd6bfae61b8eb525601a03f49f084435cfad69747613734a"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/COMMON-CONTEXT-DELTA.patch",
+        "bytes": 5876,
+        "sha256": "8ac77520b535e93edd6bfae61b8eb525601a03f49f084435cfad69747613734a"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/README.md",
+        "bytes": 3998,
+        "sha256": "71d346621a7c547e13c3c4be92c03003cb2c2135a969b783e839fc40eca70f2d"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/README.md",
+        "bytes": 3998,
+        "sha256": "71d346621a7c547e13c3c4be92c03003cb2c2135a969b783e839fc40eca70f2d"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/TRACE-SOURCE-REF.json",
+        "bytes": 632,
+        "sha256": "ad227ff6f2c6349a5c3d01a8dbf39bb9b4d83401acd5e8f7e684e66621a8b719"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/TRACE-SOURCE-REF.json",
+        "bytes": 632,
+        "sha256": "ad227ff6f2c6349a5c3d01a8dbf39bb9b4d83401acd5e8f7e684e66621a8b719"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/InitListNat.lean",
+        "bytes": 236,
+        "sha256": "3af6ce7abe9d170b263b1248cb6338c10486a952882f310729e85790c2c7a960"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/diagnostic-proposal-v1/InitListNat.lean",
+        "bytes": 236,
+        "sha256": "3af6ce7abe9d170b263b1248cb6338c10486a952882f310729e85790c2c7a960"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/InitNat.lean",
+        "bytes": 211,
+        "sha256": "a8e251852c73cf90d43deb653f0be806e75bd365fedda1ccdbea41b681cdcb57"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/diagnostic-proposal-v1/InitNat.lean",
+        "bytes": 211,
+        "sha256": "a8e251852c73cf90d43deb653f0be806e75bd365fedda1ccdbea41b681cdcb57"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/OmegaListNat.lean",
+        "bytes": 256,
+        "sha256": "416dfcbe6de483e63d4e94501d72269ab612e6a16c354bd1fb0c82ef9ac2d918"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/diagnostic-proposal-v1/OmegaListNat.lean",
+        "bytes": 256,
+        "sha256": "416dfcbe6de483e63d4e94501d72269ab612e6a16c354bd1fb0c82ef9ac2d918"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/README.md",
+        "bytes": 1185,
+        "sha256": "31a088fd7ecb25b7b49f6cecd681896245bef6e1141b3aae248f4f40fd4a8555"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/diagnostic-proposal-v1/README.md",
+        "bytes": 1185,
+        "sha256": "31a088fd7ecb25b7b49f6cecd681896245bef6e1141b3aae248f4f40fd4a8555"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/REQUEST.json",
+        "bytes": 6204,
+        "sha256": "b8e7a2110bebff2d9a45dc964420fb4a13c97b231af341a00efc6fb8158f7efc"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/diagnostic-proposal-v1/REQUEST.json",
+        "bytes": 6204,
+        "sha256": "b8e7a2110bebff2d9a45dc964420fb4a13c97b231af341a00efc6fb8158f7efc"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/archive_selection.py",
+        "bytes": 9637,
+        "sha256": "7ffc6c0a84dc0a4099954b14d88cfe83904460f4a9d839c1027e6961ade1e191"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/source/archive_selection.py",
+        "bytes": 9637,
+        "sha256": "7ffc6c0a84dc0a4099954b14d88cfe83904460f4a9d839c1027e6961ade1e191"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context.py",
+        "bytes": 24830,
+        "sha256": "4366cea947377af182647a99bae6e0f42b33735a74acec395dd60eb48bb49629"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/source/lean_graph_original_image_context.py",
+        "bytes": 24830,
+        "sha256": "4366cea947377af182647a99bae6e0f42b33735a74acec395dd60eb48bb49629"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context_data.py",
+        "bytes": 15692,
+        "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/source/lean_graph_original_image_context_data.py",
+        "bytes": 15692,
+        "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context_io.py",
+        "bytes": 7265,
+        "sha256": "92c8b43ec1b2d5a8e66f8d819c3079f2cdd7be12d559a67efc1505b4cec2118c"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/source/lean_graph_original_image_context_io.py",
+        "bytes": 7265,
+        "sha256": "92c8b43ec1b2d5a8e66f8d819c3079f2cdd7be12d559a67efc1505b4cec2118c"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/test_archive_context.py",
+        "bytes": 13711,
+        "sha256": "86a8fea6ccbcbc7cbb9ca170f0beb7fa055e3a7007468b9f97e8de9d8e5bd3ac"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/test_archive_context.py",
+        "bytes": 13711,
+        "sha256": "86a8fea6ccbcbc7cbb9ca170f0beb7fa055e3a7007468b9f97e8de9d8e5bd3ac"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/trace_parser-source.py",
+        "bytes": 9118,
+        "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/trace_parser-source.py",
+        "bytes": 9118,
+        "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba"
+      }
+    }
+  ]
+}

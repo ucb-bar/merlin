@@ -1,0 +1,77 @@
+{
+  "members": [
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/bin/lean",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/lib/lean/libleanshared.so",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/src/lean/Init.lean",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/lib/lean/Init.olean",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/lib/lean/Init.olean.private",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/lib/lean/Init.olean.server",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/lib/lean/Init.ilean",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/lib/lean/Init.ir",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "path": "fake-sdk/lib/lean/Init.ir.sig",
+      "source_mode": 33188
+    }
+  ],
+  "parent_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+}

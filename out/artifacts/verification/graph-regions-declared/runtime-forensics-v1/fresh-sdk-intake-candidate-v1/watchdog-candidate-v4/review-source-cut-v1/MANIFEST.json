@@ -1,0 +1,233 @@
+{
+  "status": "FIXED_SOURCE_REVIEW_ONLY",
+  "files": [
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/PLAN-REF.json",
+        "bytes": 252,
+        "sha256": "96bc3cab8a21ce4c9e730280af79d74e051c1f95ac8af68f874f3bf799aa71b9"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/PLAN-REF.json",
+        "bytes": 252,
+        "sha256": "96bc3cab8a21ce4c9e730280af79d74e051c1f95ac8af68f874f3bf799aa71b9"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/README.md",
+        "bytes": 2737,
+        "sha256": "2be74b1afb2c2beb3f7eb2dad681c548d18e5bd0c9f33f3f7b049523e992973f"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/README.md",
+        "bytes": 2737,
+        "sha256": "2be74b1afb2c2beb3f7eb2dad681c548d18e5bd0c9f33f3f7b049523e992973f"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/REQUEST.json",
+        "bytes": 2759,
+        "sha256": "3d9abc6a31bc99f9248ded9a5e727f44f793bc210cadb031f318c29e516f4e11"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/REQUEST.json",
+        "bytes": 2759,
+        "sha256": "3d9abc6a31bc99f9248ded9a5e727f44f793bc210cadb031f318c29e516f4e11"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/REVIEW-REQUEST.json",
+        "bytes": 3140,
+        "sha256": "f5e7bb5845e8fd74e0104d1d4d2ed9521148159f465731db828132900a6f03f0"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/REVIEW-REQUEST.json",
+        "bytes": 3140,
+        "sha256": "f5e7bb5845e8fd74e0104d1d4d2ed9521148159f465731db828132900a6f03f0"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/WATCHDOG-REVIEW-REQUEST.json",
+        "bytes": 3848,
+        "sha256": "581e5192e7d0c3f9c6775074ae5f107555980cea83be87209c2e8fc6c860ea73"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/WATCHDOG-REVIEW-REQUEST.json",
+        "bytes": 3848,
+        "sha256": "581e5192e7d0c3f9c6775074ae5f107555980cea83be87209c2e8fc6c860ea73"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/child_bootstrap.py",
+        "bytes": 1934,
+        "sha256": "ae0b12dce1704f634e679ed7789ac31468c12f3a0bdd07eadea6281a2fb962fd"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/child_bootstrap.py",
+        "bytes": 1934,
+        "sha256": "ae0b12dce1704f634e679ed7789ac31468c12f3a0bdd07eadea6281a2fb962fd"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/context_schema.py",
+        "bytes": 5647,
+        "sha256": "4ccfb2b3126177a8e271ed6cf660c64b85feba578fbde4f65885bc2389b8d8c3"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/context_schema.py",
+        "bytes": 5647,
+        "sha256": "4ccfb2b3126177a8e271ed6cf660c64b85feba578fbde4f65885bc2389b8d8c3"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/fdio.py",
+        "bytes": 3419,
+        "sha256": "512ced3092f7df792d9533fb0ddfb9ff16c058cd0f7434da8e7a69554b7ad98f"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/fdio.py",
+        "bytes": 3419,
+        "sha256": "512ced3092f7df792d9533fb0ddfb9ff16c058cd0f7434da8e7a69554b7ad98f"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/http_fetch.py",
+        "bytes": 4561,
+        "sha256": "20678771d5bf71ac20f4013b838ea778e86421e9c7ed53b21d3c903723b93aa8"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/http_fetch.py",
+        "bytes": 4561,
+        "sha256": "20678771d5bf71ac20f4013b838ea778e86421e9c7ed53b21d3c903723b93aa8"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/intake.py",
+        "bytes": 2947,
+        "sha256": "7f3121bdb4e9e0cc5948c0470335cb57d91cdbd43bd905b905ae38cf60c5db64"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/intake.py",
+        "bytes": 2947,
+        "sha256": "7f3121bdb4e9e0cc5948c0470335cb57d91cdbd43bd905b905ae38cf60c5db64"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/outer_deadline.py",
+        "bytes": 2731,
+        "sha256": "bf2956eaf29f0098c2815b4056d720aea599de03966c0f16013fc6e8ce482716"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/outer_deadline.py",
+        "bytes": 2731,
+        "sha256": "bf2956eaf29f0098c2815b4056d720aea599de03966c0f16013fc6e8ce482716"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/own_child_control.py",
+        "bytes": 1203,
+        "sha256": "eb15c23b3689c2ca17c983a19c6d7495173c586e3949f156cf3fab6768b39623"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/own_child_control.py",
+        "bytes": 1203,
+        "sha256": "eb15c23b3689c2ca17c983a19c6d7495173c586e3949f156cf3fab6768b39623"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/policy.py",
+        "bytes": 4550,
+        "sha256": "efea82f860bee8fde5e6d228fc9df892248d4c05fd2152c0779cbc7a23423c1a"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/policy.py",
+        "bytes": 4550,
+        "sha256": "efea82f860bee8fde5e6d228fc9df892248d4c05fd2152c0779cbc7a23423c1a"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/run_intake.py",
+        "bytes": 3615,
+        "sha256": "85a1e388813847358bdb9bf17fe47c8cdfdef48eff191e22e048bde82dae2cb8"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/run_intake.py",
+        "bytes": 3615,
+        "sha256": "85a1e388813847358bdb9bf17fe47c8cdfdef48eff191e22e048bde82dae2cb8"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/test_intake.py",
+        "bytes": 19407,
+        "sha256": "b3c4c5e06aaefc3d1dddc5783c9b1c56cdb0f2f818311a3a975bc10c006fdddc"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/test_intake.py",
+        "bytes": 19407,
+        "sha256": "b3c4c5e06aaefc3d1dddc5783c9b1c56cdb0f2f818311a3a975bc10c006fdddc"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/test_watchdog.py",
+        "bytes": 5616,
+        "sha256": "4ffd0c8eaa71e2fc378d01b575c387a87e0470eca6fe5af3eeb1de975046c2db"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/test_watchdog.py",
+        "bytes": 5616,
+        "sha256": "4ffd0c8eaa71e2fc378d01b575c387a87e0470eca6fe5af3eeb1de975046c2db"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/watchdog.py",
+        "bytes": 5795,
+        "sha256": "82c16ee1477997eb82bcba69464086f39bc1ec730cf33e71eec23f8f10e9f70d"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/watchdog.py",
+        "bytes": 5795,
+        "sha256": "82c16ee1477997eb82bcba69464086f39bc1ec730cf33e71eec23f8f10e9f70d"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/watchdog_runner.py",
+        "bytes": 4232,
+        "sha256": "d710102cb49800f03109af85040cbadacfb5ed2e8763ef49bf3e0097f48a2513"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/watchdog_runner.py",
+        "bytes": 4232,
+        "sha256": "d710102cb49800f03109af85040cbadacfb5ed2e8763ef49bf3e0097f48a2513"
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/zip_intake.py",
+        "bytes": 10746,
+        "sha256": "6ca539f64f06f19250b5ca7d3ff044c16f22f53c18e35dd1b8d7dfc884146f4c"
+      },
+      "copy": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/zip_intake.py",
+        "bytes": 10746,
+        "sha256": "6ca539f64f06f19250b5ca7d3ff044c16f22f53c18e35dd1b8d7dfc884146f4c"
+      }
+    }
+  ]
+}

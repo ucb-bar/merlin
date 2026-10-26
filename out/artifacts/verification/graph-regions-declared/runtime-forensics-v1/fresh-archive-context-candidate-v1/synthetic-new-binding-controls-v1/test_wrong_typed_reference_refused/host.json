@@ -1,0 +1,19 @@
+{
+  "archive_manifest": {
+    "bytes": 3442,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-new-binding-controls-v1/test_wrong_typed_reference_refused/manifest.json",
+    "sha256": "c7e3f1797fe94c22e7a2dd63c643512d57b0dbf9e6637c60d5a9a7847f2198e4"
+  },
+  "finite_allowed_misses": [],
+  "interpreter": "/usr/lib/SYNTHETIC-NEVER-OPEN-LOADER",
+  "native_authorized": false,
+  "refs": [
+    {
+      "bytes": 1,
+      "path": "/usr/lib/SYNTHETIC-NEVER-OPEN-LOADER",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  ],
+  "schema": "merlin.fresh-archive-separate-host-closure.v1",
+  "success_only_misses": []
+}

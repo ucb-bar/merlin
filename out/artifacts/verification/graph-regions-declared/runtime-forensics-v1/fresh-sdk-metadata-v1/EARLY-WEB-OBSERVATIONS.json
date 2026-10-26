@@ -1,0 +1,15 @@
+{
+  "observations": [
+    {
+      "url": "https://api.github.com/repos/leanprover/lean4/releases/tags/v4.35.0",
+      "tool": "web",
+      "result": "tool reported inaccessible; later bounded direct official metadata GET retained200"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/leanprover/lean4/eb6cafb7290e8bd5f2937522d8d804f58f02bafc/.github/workflows/release.yml",
+      "tool": "web",
+      "result": "404; actual pinned directory metadata identified ci.yml and build-template.yml"
+    }
+  ],
+  "asset_requests": 0
+}

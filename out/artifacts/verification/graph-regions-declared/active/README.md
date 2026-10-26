@@ -1,8 +1,164 @@
-# ACTIVE — current user resume 2026-10-25
+# PAUSED BY NEW USER STOP — 2026-10-26, allowance 5%
+
+Stop supersedes every older continuous-work/resume instruction. No automatic continuation after compaction; a NEW user resume is required. Zero live owned jobs; no process needed stopping. No real SDK intake or native launch authorized/performed in this final batch. All UNKNOWN runtime holds remain. Coordinator alone publishes; no index/commit/push actions by F.
+
+Current branch feat/pass-verification, HEAD observed 1483336b07fcc9732b017a1ba2ce93c870e64c05. Exact checkpoint: runtime-forensics-v1/portable-checkpoint-20261026-v1/HANDOFF.md, SOURCES.json and current-owned-additions.patch. Both watchdog and fresh archive Context source cuts remain fixed SOURCE_ONLY/UNQUALIFIED; pending root review/authorization, not pending background jobs.
+
+## Historical active record (superseded by stop above)
+
+# ACTIVE — COMPLETE-INTAKE OWN-CHILD WATCHDOG; THEN COMMON CONTEXT SOURCE QUEUE
+
+CURRENT user decision: implement minimal one-owned-child Python watchdog for COMPLETE intake inclcleanup, alongside inner timer. Parent budget1800s, terminate2s+kill/reap3s (totalgrace<=5s), boundedreap; only Popen-ownedchild signals. Journalbeforelaunch, keep partialdata/firstparenterror, disclose unavailable in-memory buffers onforcedstop. Source+tiny ownchild blockingopen/read/CLOSE/normal tests; no realnetwork/SDK/native. New watchdog-candidate-v4 under ownedfreshSDKroot; oldv2/v3/fixedcuts unchanged. V2 unusedauthorization explicitly SUSPENDED.
+
+After watchdogcut fixed, continue CONTINUOUS-F-FRESH-CONTEXT-V1 post-intake SOURCE queue: additive authenticated member Selection/guards reusing SAME common Context check_query/revalidate/same-live typedauthority/header-object/rootaudits/failurebuffer; synthetic manifests/source tests only. Then exact minimal InitNat/List/Omega diagnostic proposal, NOT launch. Actualarchive/memberinspection/runtimehostloader/native all held until exactrootreview. OriginalIR112MB batch terminal/consumed. Rootalonepublishes; nonewagents/models/numerics/foreign/protected edits. Root will explicitly trigger safe stop nearweekly5%; do not selfstop. Currentnext: watchdogimplementation+focusedownchildtests, then contextsource.
+
+
+Watchdog v4 fixed: 11 focused controls PASS; review-source-cut-v1 and PACKET.json frozen, no real intake. Zero live owned jobs. Next: additive authenticated-member Selection/common Context source adapter, fake data only. Current branch feat/pass-verification; HEAD observed 9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e.
+
+
+Common Context candidate v1 SOURCE batch fixed: fresh-archive-context-candidate-v1/review-source-cut-v1 and PACKET.json; 12+3 focused source/data tests PASS. Same common check_query and seven protocol methods preserved; additive archive Selection and failure-buffer revalidation. Exact three diagnostic sources/root lists prepared, review null until actual archive/host approval. No native/SDK reads, mocks NOT proof. Zero live owned jobs. Next: independent/root review of fixed watchdog and adapter; actual intake only under NEW exact root authority, then real manifest/host review.
+
+
+Portable checkpoint requested by root at7% quota: runtime-forensics-v1/portable-checkpoint-20261026-v1/HANDOFF.md and SOURCES.json. No final stop received yet; current source queue complete, awaiting exact new root action. Zero live owned jobs. No new long campaign, native permission or old-profile retries.
+
+## Historical checkpoints
+
+# ACTIVE SOURCE/DATA-ONLY — CLEANUP SUCCESSOR FIXED FOR REVIEW
+
+Independent reviewer found fixed450e8d cleanup notes omitted from durable FIRST-FAILURE and runner JSON although primary refusal preserved. Retained evidence: planner/paper-deadline-20261026/independent-proof-review/graph-successor-review-v1/deadline-cleanup-evidence/RESULT.json. Preserve oldcut/firstfailure. Implement NEW fresh-sdk-intake-candidate-v1/cleanup-evidence-candidate-v3 only: serialize original notes and structured cleanup diagnostics without replacing primary error. Source/fakeIO tests only; no realnetwork/SDK/images/native. Root notified before any newlaunch permission.
+
+IR2144 DATA transport completedonce/authorityconsumed; no further originalreads. Oldruntime causesUNKNOWN/allholds active. Zero liveownedjobs. Coordinator alone publishes/reviewslaunch. Cleanup evidence successor COMPLETE:4cleanup+2timer+6runner tests PASS, exact source/request cut frozen under cleanup-evidence-candidate-v3/review-source-cut-v1. Notes+structured cleanup evidence survive durable FIRST-FAILURE and runner JSON; original primary remains. Tiny example retained. Independent/root review pending; no real intake authority. NEW separate cleanup-bound obligation: already-expired one-shot timer cannot interrupt subsequent blocking response.close. Exact independent result retained in cleanup-bound-analysis-v1; root notified. v3 serialization fix does NOT close this bound. Need root-reviewed cleanup-budget/nonblocking-abandon policy; do not claim complete fetch/cleanup bound or launch. All prior cuts unchanged.
+
+## Historical status
+
+# ACTIVE SOURCE/DATA-ONLY — IR DATA TRANSPORT COMPLETE; DEADLINE SOURCE REVIEW COMPLETE
+
+Root AUTHORIZED-IR-TRANSPORT-V2.json SHA0cb85cb56f0f7a15fca44386441c32993cd8797cb246f84a0f71d4ed1ad44d73 permits ONE exact2144 originalIR DATA batch. Source cut and durable LAUNCH-INTENT in ir-transport-candidate-v2/authorized-run-v1. Exact source-byte isolated bootstrap, no stale candidate pyc; first error terminal/no retry. No base/runtime/.so/installed SDK/native/lookup integration/hold clearance. OWN session12781 TERMINAL rc0: COMPLETE_DATA_TRANSPORT_ONLY,2144members, 112308680measuredbytes; original sizes null. ONE attempt authority CONSUMED; NO further original image reads/transport retries authorized. Zero live owned jobs. Exact descriptor+2146documentary refs recorded under authorized-run-v1. All runtime/native/qualification holds unchanged.
+
+FreshSDK timer successor safely frozen: fresh-sdk-intake-candidate-v1/deadline-candidate-v2 fixedmanifest450e8d05..., reviewb309cf6b..., packet e56e42f3...;10timer+6intake+6runner PASS, independent reviewer reports12own controls PASS on fixed450e8d05; exact DEADLINE_RESULTS reference retained. Missing interruption mechanism addressed under POSIX/CPython assumptions; not hard real-time proof. RealSDKdownload remains UNAUTHORIZED until root exact decision. All runtime causes UNKNOWN/held. Root alone publishes.
+
+## Historical status
+
+# ACTIVE — ROOT-AUTHORIZED POSIX OUTER-DEADLINE SOURCE REMEDY
+
+IR successor DONE: ir-transport-candidate-v2 fixedmanifest0eb237cb...;9focused+8metadata PASS; oldcuts/failedmatrix unchanged. Root explicitly directs NEW intake successor using stdlibPOSIX outer timer, main-thread-only, reject existing active timer, dedicatedSIGALRM failure during blockingopen/read, restorehandler/timerfinally, preservepartialbytes/firsterror. Implementing under fresh-sdk-intake-candidate-v1/deadline-candidate-v2; old051de7d cut immutable. Fake blockingIO and ownprocess timer tests ONLY; no realnetwork/archive/image/native. Root explicitly says no hardreal-time/scheduler guarantee; operational deadline with hostsignal trust.
+
+Next step: timer module+scoped fetch hook, source/request newpins, tests interruption/restoration and backendfailures, fixedreviewcut. Newrealintake still UNAUTHORIZED. Allhashincidents UNKNOWN/held. Zero liveownedjobs; coordinatoralone stages/publishes.
+
+## Historical records
+
+# ACTIVE SOURCE/DATA-ONLY — FRESH INTAKE SEALED; IR SUCCESSOR NEXT
+
+Fresh SDK implementation batch COMPLETE pending independent review in runtime-forensics-v1/fresh-sdk-intake-candidate-v1. Fixed source MANIFEST051de7d5...; REVIEW-REQUEST7482e35a...;48 baseline synthetic tests,5 final fresh-directory-FD controls,6 final runner tests PASS; first41-case test failure retained. Real archive/network requests0, actual SDK reads0, native0. Root/reviewer receive exact source cut; current code frozen. No real fetch/extract/install/native authority.
+
+NEW root continuation: consume independent ir-transport-debug-v1 reproducer/private patch and make NEW IR transport cut after focused controls, preserving oldfixedcut. Reviewer reports stale enumeration view on FD opened before children: none/fstat/readlink fail; seek-current/fresh-dot succeed; corrected private patch9controls PASS. This is not attribution of libleanshared hash cause. Next implement additive ir-transport-candidate-v2 fresh-dot enumeration+same-dir identity and closed review flags, then targeted synthetic qualification/new seal. Old runtime incidents UNKNOWN/all holds active. Root alone stages/publishes/reviews launch. Zero live owned jobs.
+
+## Historical current-task records
+
+# ACTIVE — FRESH SDK INTAKE IMPLEMENTATION SOURCE/SYNTHETIC DATA ONLY
+
+NEW user batch: fresh-sdk-intake-candidate-v1 only. Implement exact pinned bounded HTTPS fetch and DATA-only ZIP intake, exhaustive tiny ZIP/fake-HTTP failures, frozen runner/request/source closure and additive archive-member/host-loader context schema. NO real archive requests/downloads/extraction/install/native/SDK reads; existing diagnostic permission consumed. Preserve fresh-sdk-metadata-v1 and IR fixedcut unchanged. Current step: review exact sealed INTAKE-PLAN then implement pure schemas, bounded fetch and FD-safe ZIP extraction. Runtime incidents remain UNKNOWN/all holds active. Root alone reviews launch/stages/publishes. Zero live owned jobs.
+
+Independent IR reviewer reported I01 four-file positive full-roster refusal; source/harness inspected OFFLINE, cause not established. Preserve matrix/raw failure; no rerun or fixedcut edit. Reviewer investigating.
+
+## Historical status
+
+# ACTIVE SOURCE/DATA-ONLY — IR CANDIDATE SEALED; NEW PRIMARY RELEASE METADATA STUDY
+
+Latest root direction: finish IR source/data queue and investigate official PRIMARY Lean4.35.0 release/source metadata by read-only network lookup for a NEW isolated SDK intake. No download/install/execute; no old pin refresh, SDK repair, image reads or native permission. Current fixed IR candidate: runtime-forensics-v1/ir-transport-candidate-v1/review-source-cut-v1/MANIFEST.json + PACKET.json;32 synthetic+8 metadata tests pass,3 tiny retained expected failures; real transport attempts0. Independent reviewer01a17973-5716-7a02-bab9-138a67ca2750 requested exact source cut; send it. Source/requests now fixed for review; preserve all earlier packets.
+
+Primary metadata study COMPLETE: fresh-sdk-metadata-v1/PACKET.json 85201f8936e76b8b0e372c650b5ae858c39e8808c20bc904ce1739f1855f298c; INTAKE-PLAN.json4b37789e...; official commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Linux ZIP925899528B published SHA c8531faa...; six offline tests PASS. No archive download/install/image read/native launch. Root notified. Next: address independent IR source review deltas in NEW versions; any real transport/fresh intake/new diagnostic requires root review of exact source/context. Hash incident UNKNOWN; Repr hypothesis separate. Existing runtime holds UNKNOWN/active; consumed prior diagnostic permission remains consumed. Zero live owned jobs. Coordinator alone publishes; no agents/model changes/numerics/protected edits.
+
+## Historical current queue records
+
+# ACTIVE — IR TRANSPORT CANDIDATE SOURCE/DATA-ONLY
+
+NEW user queue: implement exact original2144-sibling transport descriptor, bounded FD-safe one-shot DATA transport candidate, synthetic/metadata refusals, exact unlaunched request and additive provider guard support in runtime-forensics-v1/ir-transport-candidate-v1. Read this block after compaction. No real SDK/archive/runtime image reads/copies/guards/native launches. Previous diagnostic permission consumed; mismatch UNKNOWN/all holds retained. Source/metadata and tiny synthetic fixtures only. Old forensic/IR/provider packets immutable; coordinator alone stages/integrates/pushes. Current step: strict pure request/descriptor schema, then bounded FD transport and adversarial tests. No live owned jobs.
+
+## Historical checkpoint below
+
+# ACTIVE SOURCE/DATA-ONLY — DIAGNOSTIC COMPLETE, HOLDS ACTIVE
+
+Current user queue and authorized followup completed in runtime-forensics-v1/README.md, STATUS.json and PACKET.json. OWN session48386 TERMINAL rc0: ONE exact authorized runner attempt, FOUR commands; fixed workload completed, mismatch NOT reproduced. All permission CONSUMED. NO live owned jobs. Cause UNKNOWN; old Q/W/installed/private/Basic.olean holds remain. No runtime/SDK/archive image reads, guard/native launches, retries, repair, new pins or selection expansion without NEW exact root authorization.
+
+Source/data followup complete: original2,144 IR sibling proposal binds unchanged4,527 base refs and documentary11-runtime boundary.13 SDK-free metadata/refusal tests pass. No original sizes invented; candidate remains nonlaunchable, unapproved; no images opened. Full reports, exact owned source snapshot and32 native documentary records retained. Old sources/capsules unchanged. Next substantive dependency is root review of IR transport/size provenance plus independent runtime hold handling; no further experiment authorized. Coordinator alone publishes; no worker staging/commit/push. Primary feat/pass-verification; launch HEAD e501e823fdce2ffd804674eb8673730fff40da22.
+
+## Historical authorization/status below — superseded by current block
+
+# ACTIVE — SOLE AUTHORIZED ONE-SHOT DATA FORENSIC INVESTIGATOR
+
+LATEST FORENSIC STATUS: F alone consumed FORENSIC_READ_AUTHORIZATION_F_ONLY exactly once per private/archive source. BOTH one-pass231113560B DATA captures observed original efef27df...; private inode6033553/size/mtime/ctime equal Q's earlier c892 mismatch metadata. Full capture comparison0 differing bytes/0 ranges,36 identical ELF sections; GNUsha256sum9.11, Python streaming and separate whole-buffer hashlib agree on CAPTURES ONLY. Bad c892 byte buffer was not recovered; cause UNKNOWN and NO hold cleared. Original source read authority is CONSUMED; no further original/private/archive/installed image read/hash/guard/native launch permitted. Own capture command exited0 and all analysis/tests completed; NO live jobs.
+
+Current work is NEW source-only diagnostic IO proposal in runtime-forensics-v1/diagnostic-provider-candidate-v1: before raising same primary error, preserve exact already-read bytes and original stat/error; sink failure cannot accept or replace primary failure. Old v5 sources/receipts unchanged.7 captured-DATA/synthetic IO tests and4 source/protocol tests pass; no native run of candidate. Capture tests6 and analyzer tests4 separate. One concrete NEXT-EXPERIMENT.json proposal pins NEW3source controller,2unchanged scalar modules, unchanged4527+11 runtime metadata, <=4nativecommands, one attempt/first-error stop, no accepted graph receipt and no hold clearance even if mismatch does not recur. Proposal5de6bf97... is NOT AUTHORIZED and runner never launched. Root must review any new source/image/native permission. The import-dependent Repr/2,144 original IR-sibling lead stays separate; no IR selection expansion.
+
+CURRENT GLOBAL HOLD: Q q-gate-minimal-context-v2 retained a PRIVATE original-runtime-candidate-v1 libleanshared.so mismatch (expected efef27df..., observed c8929745..., same size/stable stats; cause UNKNOWN). ALL native permissions suspended. No installed/private/archive runtime read/rehash/guard/native launch/repair/reselection/new expected pins. Root owns environment review. Own session16415 had already exited2 before this hold;14 authorized diagnostic commands completed, NO live owned job. Do not revalidate/reread runtime to promote these observations. Exact own response is shared-private-runtime-hold-response-v1/STATUS.json, with a copy/hash of the RETAINED Q failure JSON only. Old repr-prerequisite-v1 packet54files/433cd819... remains immutable; prior tiny successes are historical DEVELOPMENT, not current qualified context. Continue SOURCE/DATA only.
+
+Read deadline/CONTINUOUS-WORK-QUEUES.json after compaction. This NEW explicit user resume supersedes the prior completed-batch final; continue all four ordered items until the queue is actually complete or a NEW user stop. Primary /home/jeremy/Projects/merlin, feat/pass-verification, HEAD e501e823fdce2ffd804674eb8673730fff40da22. Coordinator alone publishes; no index/commit/push/reset/stash/switch, new workers or model changes.
+
+1. Compare Q/W retained derived-Repr failures, exact source, original SDK inventory METADATA and older successful build commands/contexts. Separate observation from possible cause. No frozen Repr deletion/noncomputable change.
+2. Prepare EXACT three cases: Init+Nat Repr, Init+List Nat Repr, Lean.Omega+same Repr, exact source/root/context/command protocol for ROOT REVIEW. Do not launch without explicit authorization of this NEW exact context.
+3. Search ORIGINAL inventory METADATA for executable/IR artifact references; retain pin/provenance-only candidate inventory and minimal prerequisite plan. Do not open/copy images or learn hashes.
+4. Finish stable common-provider source/release dossier and SDK-free protocol regressions for a justified remedy; preserve typed authority, unknown-runtime holds and explicit host-source-policy trust. Continue independent queue items while native work is held.
+
+CURRENT QUEUE CHECKPOINT: all four independent items delivered in repr-prerequisite-v1/STATUS.json + PACKET.json. (1) old successful/failed/current frozen source comparisons complete; (2) exact root-authorized three-case microbatch completed14commands: InitNat6 PASS roots none; InitListNat6 PASS witness none/Repr propext; OmegaListNat2 STOP exit1 on SAME no-executable-code specialization; (3) original metadata-only2,144 IR/signature sibling candidates for1,072 already-selected modules, original sizes unavailable; (4) stable v5 provider source-only patch/dependency dossier and8 new SDK-free inventory/protocol tests. Reverse patch check PASS; no git mutation.
+
+OWN session16415 exited2; NO live jobs. All native permission for this batch is consumed; no further image/SDK/native reads/launches/retries permitted without a NEW exact authorization. Failed Omega and all prior Q/W contexts remain HELD. Two tiny diagnostic successes are not graph qualification. Missing IR causal hypothesis remains unproved; no frozen Repr/noncomputable/source workaround or active selection expansion. Root received exact results. Next substantive dependency is root's concrete original-IR transport/size-provenance/new-context decision; current source/data prerequisite plan is ready and provider bytes stay unchanged.
+
+Completed preserved packets: input-admission-review-v1 (81 SDK-free tests), original-image-context-review-v5 (49 SDK-free tests, descriptor899 exact misses/181 success-only, runtime11 unchanged). Three controller bytes stay stable: main bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6; data77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1; IO9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09. Descriptor ccb70d1da9990d786dd59328686a389f4cd891c1a8aa24cf78625e3924a8e2f8. No data tests confer Lean/native qualification. All v1-v5 packets/first failures/counterexamples remain unchanged.
+
+Q q-gate-context-v5 failed GraphLoopsSegmentModel:42 derived Repr: Std.Format.joinSep...Lean.Meta.instReprSimpCongrTheorem.repr.spec_0.spec_0 has no executable code. Nonzero policy correctly stopped. Existing selected-copy inventory has1072 each olean/private/server,653 each lean/ilean,4so+executable and no.ir entries. That absence is an observation, NOT diagnosed cause or authority to expand selection. Installed libleanshared/Basic.olean incidents remain UNKNOWN; no old capsule promotion. Q independently reduces scalar-only dependencies; do not duplicate or alter that work.
+
+## Historical records below — superseded, never current authorization
+
+# PAUSED BY NEW USER STOP — 2026-10-25
+
+The user explicitly stopped work for today and plans to resume tomorrow. **Do not continue substantive work, tests, proof/native launches or packaging after this checkpoint. A NEW genuine user instruction is required; queued tasks and compaction are not a resume.**
+
+Current path `/home/jeremy/Projects/merlin`, branch `feat/pass-verification`, HEAD `58dbc7c00acdb6770d440b773cc2954328c78472`. Shared selected libleanshared.so runtime hold remains UNKNOWN; no SDK/archive-runtime reads/hashes, retries, repairs, expected-pin refresh or alternate selection. Coordinator alone publishes; no local index/commit/push.
+
+**OWN job status: zero live jobs; last controller163450/v8 had already completed rc0 before hold inspection. No signals/foreign actions.** Recorded pre-hold development20 Capture modules/80 std3 roots remains historical/UNQUALIFIED. Source-only field association14 literals and20 data tests completed before this NEW stop;11 earlier source-reference tests retained. No new qualification/native/review/model claim.
+
+Exact handoff: today-handoff-20261025/README.md, OWNED-SOURCES.json (35 owned source files), PROJECT-DEPENDENCIES.json (14 additional project source dependencies), source-snapshot/ and owned-source.patch. Current unresolved owned lint: E501 in pure_projection_selftest.py:148; no repair/test rerun authorized today. All first failures/old seals/counterexamples remain.
+
+After NEW resume, read this handoff and current graph-declared-call-correspondence assignment; continue graph source/receipt/IR mapping work within ownership. Native checking additionally requires explicit release/resolution of the shared runtime hold. No automatic continuation.
+
+## Historical state before today's NEW stop — not resume authorization
+
+# ACTIVE SOURCE-ONLY — CURRENT SHARED SELECTED RUNTIME HOLD
+
+CURRENT user direction: shared-lean-runtime-hold-v1 supersedes ALL earlier native/development launch permissions. W reported a changed ORIGINAL libleanshared.so in the SAME selected v4.35.0 runtime; cause UNKNOWN and no observed hash retained by the first guard. **STOP all new native Lean/MLIR/proof/development/qualification launches. No SDK/runtime reread, rehash, retry, repair, expected-pin refresh or alternate profile hiding this dependency.** Read the shared hold and this block after compaction.
+
+Own job status at hold inspection: module-runtime-development-v8 controller PID163450 had ALREADY completed rc0, including its final audit/pre/post/runtime records. **No live owned job, no signals sent, no foreign process action.** Only retained project JSON/source records were read to establish that status. V8's recorded80 std3 roots and all earlier compiled observations remain historical DEVELOPMENT/UNQUALIFIED; current selected-runtime fidelity is unresolved and no qualification/repair is claimed. Exact own response: selected-runtime-hold-v1/STATUS.json.
+
+The SAME complete graph assignment remains ACTIVE SOURCE-ONLY until a NEW genuine user stop. Continue substantial owned actual IR-field mapping, checker/receipt/model/proof candidate source, adversarial/witness and coherent source delivery work. Any NEW candidate is UNCOMPILED; any NEW receipt is UNQUALIFIED. Isolated stdlib tests may use retained/synthetic source data only, with NO inspected binary/SDK opens. Do not stop after acknowledgement or packaging. Coordinator alone stages/publishes. All protected/shared/frozen/production/foreign/old source seals and numerical holds remain unchanged.
+
+Path `/home/jeremy/Projects/merlin`, branch `feat/pass-verification`; last observed coordinator HEAD `58dbc7c00acdb6770d440b773cc2954328c78472`. Coordinator alone stages/commits/pushes; expected HEAD advances do not refresh source/tool identities.
+
+**Historical pre-hold development:** module-runtime-development-v8 completed the explicit uninitialized-input/fault exclusions and current retained-source extension before the shared hold inspection. No further native run is authorized. Previous v7 completed all20 Capture modules and78 exact transitive std3 roots. V6's ordinary frozen typed-equality reduction error remains preserved; the bounded proof used existing simp lemmas, without changing checks. V7 binds the complete captured fanout parent (producer, two consumers, unchanged observer), and an OFFLINE extension of the actual retained i8 source/Kernel/MLIR-valid negative. No old observer/native invocation was repeated. `retained-literal-binding-v3` binds original receipts using their existing EXTERNAL-RETENTION pins and copies29 source/export inputs, including negative originals. New source-data tests passed11/11 in retained-binding-tests-v1. None of this is new graph/native qualification.
+
+**Current next step:** finish the coherent checked pure-source packet: current source snapshots/patch/transitive project dependencies, exact theorem/IR-field/host-trust map, source guards and explicit remaining native/capture/ABI/adjacent-realization holds. Continue useful structural integration within the full graph assignment. Actual scalar declarations now derive the finer instruction contract used by complete raw Kernel Option execution and the full captured-parent theorem. Explicit initialized input/fault restrictions are in v8. Historical source-only comments were corrected in current owned sources; every earlier source snapshot remains retained.
+
+Historical reviewed context, NOW HELD: ALL five ORIGINAL files of EVERY653 Init module + original11 runtime =3276 selected refs. Isolated metadata tests17/17 passed BEFORE native launch. All1959 compiled refs also match original W metadata. Eighteen auxiliary/tool/alternative-runtime files are outside this reviewed rule. Neither libclang-cpp nor Std.Time.Format.Basic may be reread. Old whole-SDK v9 remains PARTIAL/UNKNOWN after its third command POSTCHECK; never retry, rehash, refresh, repair or promote it.
+
+Finite diagnostic allowance: only original libleanshared.so / `l_Lean_Parser_Tactic_simpLemma___boxed`, undefined-symbol case in namespace0 with rc0, unchanged selected source/object/runtime refs and otherwise known maps. Baseline and exact already-bound project initializer rules remain. No wildcard/other unknown errors. Maintain actual source/object import reporting, closed env, full raw loader diagnostics and all3276 selected pre/post guards. Selected mismatch/unknown signal/load stops the NEW context. OS/kernel/vDSO, pinned loader/module reporting and host transport are explicit trust, not a formal Linux search-denial theorem. Old stronger inspector flags remain false.
+
+Completed development:13 core Capture leaves including full ActualGraph/Fusion/Projection/Refusals compiled with successful original guards in module-runtime-development-v1. Examples native compile rc0 was recovered OFFLINE under exact finite review; old observer profile stays PARTIAL. Nine earlier Capture modules/four std3 roots and all first failures remain retained. All15 current Capture leaves are checked; complete-parent/projection/initialized nonzero/empty-return witnesses and35 exact roots passed in v3. New raw/declaration integration leaves will have separate checked status. No historical qualification attaches to new code.
+
+**Next:** finish bounded proof repairs, checked complete-parent/prefix/cache/all-site SSA/full-projection/observer examples and refusals, exact-root audits and a coherent checked pure-source packet; then continue actual-parent/IR-field/complete boundary correspondence within the existing full assignment. Do not stop after one lemma, offline test or packaging. Actual captured-provider/compiler-valid mutations, graph/native qualification, ordinary compiler gating, independent source/policy/native review and model coverage remain separate/held. Never claim an additive source model identifies the separately unqualified frozen Core.Sem bridge.
+
+Read current references under `out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/`: `frontend-original-module-runtime-context/{README.md,SELECTION.json}`, `frontend-finite-symbol-review-v1/{README.md,REVIEW.json}`, and original `assignments/graph-declared-call-correspondence/README.md` under planner. Paper target stays graph transformations before numerics.
+
+No MLIR-full oracle, old qualification retry, LLVM/Clang/Lake/download/toolchain writes, numerical work, agents, protected/shared/production/spec/lock/foreign edits or worker index/publication. Std3 only; no sorry/admit/new axioms/native_decide/bv_decide/reflection/implementation substitution. Preserve all old55 sources, failed profiles, raw first errors, corrections, counterexamples and seals. Current owned new leaves are GraphRegionsDeclaredCapture*.lean and lean_graph_regions_declared_pure*.py plus existing owned offline helpers/tests; refresh exact source inventory at the next coherent checkpoint.
+
+# Historical working chronology — not current resume instructions
+
+Everything below is superseded chronology retained for evidence. Old CURRENT/hold/live-job descriptions apply only to their recorded time; the ACTIVE block above is authoritative.
+
+## Historical — ACTIVE — current user resume 2026-10-25
 
 Current authorization: the user explicitly resumed the existing graph work via the appointed coordinator. Graph transformations before numerics. This supersedes the Oct24 stop; a NEW genuine user stop wins.
 
-Path: `/home/jeremy/Projects/merlin`; branch `feat/pass-verification`; HEAD `229f42c627854c49476a101cb393d0b15044fab8`.
+Path: `/home/jeremy/Projects/merlin`; branch `feat/pass-verification`; latest observed HEAD `53ca756243419ff8d9d07d3766f5ce79485bf2bf` (coordinator publication; no worker index actions).
 
 Read after compaction: this record, `out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/README.md`, current full assignment `out/artifacts/verification/merlin-passes/progress/planner/assignments/graph-declared-call-correspondence/README.md`, and the immutable `../laptop-handoff/README.md` for prior details. Do not restore snapshots over live sources.
 
@@ -12,7 +168,7 @@ Owned: new GraphRegionsDeclared*.lean, lean_graph_regions_declared*.py, matching
 
 Preserve Basic.olean incident UNKNOWN and sourcebridge PARTIAL/UNQUALIFIED, elision crash and all prior failures. New development only in verified unaffected fixed contexts; no retry/rehash-to-promote. Prior laptop handoff is historical and unchanged. Native/effects/alias/completion/allocator/review/full-model obligations remain separate.
 
-## Current checkpoint after resume
+## Historical — Current checkpoint after resume
 
 Six actual scalar source/adapter/selected pairs compiled in resume-scalar-development-v2 after preserving the first frozen-AST decidability failure in v1. Own Match gained structural acceptance iff and refl proofs; no frozen change. Physical production compile_source_multioutput captures exist for i8 and shared i16 under physical-development-v1-*. No machine execution. New Nodes/Memory compiled before the registry addition; registry and new Bridge are currently awaiting development compilation. All current evidence is development, not a frozen qualification.
 
@@ -20,13 +176,13 @@ Current owned additions: GraphRegionsDeclaredScalar/Match/Evaluation/Nodes/Memor
 
 Latest steering: paper-evidence/README.md required (PAPER_TARGET.md read). Coordinator alone owns staging/commits/push under NEW publication authorization; expected HEAD advances do not authorize changing fixed source/tool identities. No local index actions.
 
-## Current compiled milestone
+## Historical — Current compiled milestone
 
 Declared Scalar/Match/Evaluation/Nodes/Memory/Bridge/Raw/Generic/Projection compile in private bridge-development-v1 (development repairs retained). Both complete actual packet-development-v4-i8 and -i16shared compile: scalar triples, full source generic/SSA binding, decoded physical Kernel, actual connected plan, and conditional actual_complete_observers through existing root. No new qualification yet. paper-evidence/README.md + EXAMPLE-BINDINGS.json describe exact current scope and open premises. Need integrate source/scalar acceptance into final evidence root, complete mutation/witness/countermodel/receipt/qualification and capture/adjacent gap coverage.
 
 Coordinator reports published source cut HEAD c399e441e86042752c407a4ba917d4510b16585b; later files/edits local and unqualified. No index actions by this worker.
 
-## 2026-10-25 active qualification progress (supersedes earlier counts)
+## Historical — 2026-10-25 active qualification progress (supersedes earlier counts)
 
 Ten new Declared Lean leaves and eight declared Python leaves plus one test now exist. Actual integrated source/scalar/call/observer roots compile for i8 and shared i16; mathematical nonzero witnesses compile without raising proof/recursion limits after a preserved rfl recursion-depth failure and a qualified-name simp repair. Current theorem includes SourceBinding and scalar executions in its conclusion; it does not assume whole-region equality.
 
@@ -34,32 +190,128 @@ Preserved development runs: v1=15 pass/14 fail (fixed-host full vs scalar lazy i
 
 No-regex guard passed. check_structure failed only on foreign zephyr_model.py (3557 > 3537), unchanged. New qualification driver being prepared; no official frozen original+fresh replay has run. Current leaf qualifier script unqualified. All original31 sources, old failed profiles/SDK incident/elision failure unchanged. Coordinator alone publishes; this worker has made no index/commit/push action.
 
-## Qualification checkpoint
+## Historical — Qualification checkpoint
 
 Bounded trace repair passed scalar opcode, constant and nested-observer refusals. The complete previously failing refusal subset then passed 13/13 in refusal-focused-v5 (33 deselected), preserving v4=33pass/13fail unchanged. All owned Ruff checks pass. Starting NEW frozen qualification-v1: 46 fixed cases, actual i8/shared-i16 originals, exact-root audits and one fresh-process replay batch. No code edits are planned during this run. All current Native/effect/alias/completion/ABI/total-context contracts remain explicit; old source operational bridge stays UNQUALIFIED.
 
-## Frozen v1 complete; additive stronger wrapper ACTIVE
+## Historical — Frozen v1 complete; additive stronger wrapper ACTIVE
 
 qualification-v1 completed: 46/46 originals, two accepted actual-boundary receipts, exact-root std3 audits, one fresh-process replay batch, post-checks and immutable seal/source patch/dependency closure. All 19 v1 sources will now remain unchanged; no stronger claim is retroactively attached. Existing old31 also remain read-only.
 
 Current independent strengthening owns NEW GraphRegionsDeclaredBindings.lean, GraphRegionsDeclaredEffects.lean and lean_graph_regions_declared_bound.py. It checks original input/public ABI windows against recomputed source liveness; all after-effect fields including read/write flags/extra copy/readout declarations; and independently exports the actual AFTER adapter scalar bytes, rather than relying on the earlier adapter buffers. These structural associations were previously supplied by packing/fidelity premises. Native truth, runtime aliasing, complete Action frame/locality, completion and initialized packing remain separate. Current new roots awaiting development results; no V2 qualification yet. Continue this SAME assignment and preserve v1 sources/capsule.
 
-## Stronger wrapper current checkpoint
+## Historical — Stronger wrapper current checkpoint
 
 Both new binding/effect Lean modules compiled against the verified immutable v1 closure. Full strong actual i8 and shared-i16 instances now compile, including an explicitly stated actual_strengthened_complete_observers theorem (all original per-instruction/pack/ABI/action premises retained) and independent actual AFTER-adapter exports. Wire bytes now use UInt8; proof-producing conjunctions avoid the default recursion cap without changing limits. First development strong proof failures v1/v2/v3 preserved; v4 repair passed std3.
 
 New four-source strong test run bound-tests-development-v1 is in progress with its own source snapshot. It has found a proof-generator recursion-cap failure in the byte_length refusal only so far; positive strong boundaries and other tested refusals passed. Do not restart/retry unchanged run; after completion fix that refusal by deriving its contradictory length equation from checkCompleteEffect_iff, then do a bounded check. No V2 frozen qualification yet. All frozen v1 nineteen sources and earlier31 remain unchanged.
 
-## Stronger qualification checkpoint
+## Historical — Stronger qualification checkpoint
 
 Strong development run completed 19 pass / 1 fail (byte_length refusal proof hit the default reduction cap); all artifacts/source snapshots retained in bound-tests-process-v1 and bound-tests-development-v1. A bounded copied-query repair passed by deriving the contradictory length equation from checkCompleteEffect_iff and the already proved original length. No checker criteria or limits were weakened. The current explicit strong theorem compiles for both i8/shared-i16 and retains every native/pack/ABI/action premise.
 
 Starting NEW bound-qualification-v1: five additive sources frozen, 20 fixed cases, originals and one fresh-process replay batch, with immutable qualification-v1 as a checked dependency. All old19/new-v1 and previous31 sources remain unchanged. Native truth/review/captured closure/adjacent physical realization/shared gating remain open as documented; this run does not claim all graph transformations.
 
-## CURRENT GATE — bound-qualification-v1 sealed PARTIAL/UNQUALIFIED
+## Historical — CURRENT GATE — bound-qualification-v1 sealed PARTIAL/UNQUALIFIED
 
 New frozen strong run finished 19 failed / 1 passed. Exact FIRST failure: before any i8 MLIR oracle invocation, v1.oracle's pre-invocation fresh_ref rejected a stale fixed MLIR-full host file reference. Error omitted its file identity. i16 succeeded; every dependent i8 test was refused without retry. No fresh batch was run. This is NOT a theorem refutation. Preserve bound-qualification-v1 source snapshot/STATUS/SEAL/partial patch and all earlier capsules.
 
 ONE bounded stable-stat comparison against the original fixed full/scalar/kernel oracle manifests found zero CURRENT mismatches. Exact stale file/cause UNKNOWN. No new expected hashes, retries, reselection or promotion. Observation is bound-qualification-host-incident-v1/OBSERVATION.json. Stored MLIR-full and bundled Lean/core manifest paths are disjoint, but actual loader closure completeness is not newly established; POTENTIAL-CLOSURE-INTERSECTION.json retained. Further execution checking/qualification is HELD; continue SOURCE-ONLY proof/binding/document work until an honestly unaffected fixed context is established. Do not rerun this failed profile. Coordinator informed under real-dependency exception.
 
 Compiled strong theorem and 19/20 earlier development results (length refusal repaired in a bounded copied query) remain source/proof evidence. Strong five sources are now preserved unchanged as part of partial frozen packet; new work must be additive leaves. Current remaining independent task: explicit captured-literal closure/domain correspondence proposal and proof source; integrate honest source-only coverage/refusals without new native parsing or proof runs. Keep historical 46-case v1 qualified seal separate from the new failed strong host gate. New genuine user stop still wins.
+
+## Historical — CURRENT additive source-only continuation
+
+Coordinator published immutable v1 nineteen sources and bound partial five sources at HEAD 53ca756243419ff8d9d07d3766f5ce79485bf2bf (expected branch advance). All24 live sources and prior31 remain unchanged. New captured-literal files are GraphRegionsDeclaredCapture{,Match,Initialize,Contract,Examples}.lean; current copied candidate is capture-source-candidate-v1/SOURCES.json. Only Capture.lean had a pure candidate build/std3 print before the NEW explicit source-only hold. The other four are UNCOMPILED candidates; no theorem/refusal result is claimed. No new oracle/proof execution will run under the current hold.
+
+Continue source-only review/integration of captured literals and actual prefix-initialization/caching agreement, preserving the distinction between syntax checks, additive source-region model, complete-program graph execution and actual native/ABI contracts. Need full parent execution/cache agreement and capture-aware projection/composition; actual production captures, authoritative compiler-valid mutants and qualification are unavailable pending a justified oracle context. Do not treat cache construction as proof of execution of every prefix operation. Current paper-evidence README updated with historical46-case qualification and newer failed bound originals. No generic paused acknowledgement; user authorization remains ACTIVE and a NEW genuine user stop wins.
+
+## Historical — CURRENT next step after compaction — source-only Capture parent/graph connection
+
+Nine current Capture*.lean candidate files are copied in capture-source-candidate-v2/SOURCES.json. Only Capture.lean has a pre-hold pure check; Match/Initialize/Contract/Examples/Prefix/PrefixBridge/Tensor/Parent are UNCOMPILED candidates. New source now covers a restricted complete parent grammar, constructive actual-prefix literal initialization, cache/closed-function agreement, tensor lifting and context equality. No actual captured program qualification or frozen-source-semantics bridge is claimed.
+
+Continue source-only review: strengthen/check source-parent projection and graph-root correspondence, and write explicit adversarial/inhabited-domain proof cases. Do not execute the held MLIR oracle, failed qualification, new Lean builds or tests under current source-only direction. Formal checking of eight candidate files, actual production captures, valid mutation runs and qualification remain outstanding. Current paper-evidence already distinguishes historical46-case seal, stronger failed20-case originals, explicit premises and review limits. Current user authorization remains ACTIVE until a NEW genuine stop. Preserve all prior snapshots/seals and all24 frozen declared sources plus prior31. Coordinator owns index/publication.
+
+## Historical — CURRENT priority — offline runtime-evidence API; execution hold unchanged
+
+Coordinator requested the additive offline ELF/loader-plan and closed-environment evidence API as the present dependency priority. Original provenance is `out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/pure-runtime-provenance-v1.json`: original F SDK manifest plus only the selected ORIGINAL W runtime refs. Coordinator's eleven matching refs are retained observations, not actual loaded-file closure or permission to repeat a failed gate. No new expected runtime hash is selected.
+
+Current owned unfrozen sources: eleven `GraphRegionsDeclaredCapture*.lean` files (new Graph/ActualGraph beyond the nine-file candidate-v2 snapshot), `lean_graph_regions_declared_elf.py`, `lean_graph_regions_declared_loader_plan.py`, `lean_graph_regions_declared_loader_evidence.py`, and `merlin/tests/infra/test_lean_graph_regions_declared_loader_plan.py`. Only Capture.lean had an earlier pre-hold pure compilation; the other ten Lean files remain UNCOMPILED. Four Python sources pass Ruff static checks; their tests and offline planner have NOT RUN. No target ELF/loader/Lean/oracle/new checking context has executed.
+
+The offline source implements structural ELF32/64 metadata extraction, exact original F/W pin provenance/conflicts, PT_INTERP/DT_NEEDED/RPATH/RUNPATH selection, symlink reporting, no fall-through past an unpinned existing library, closed replacement environment, and separate documentary-observation form inspection. Launch/qualification status is always UNAVAILABLE. Inherited RPATH, selector stability, default/hwcaps search, system preload, late loads, actual imports/objects, observer completeness and platform truth remain explicit open obligations. `--inhibit-cache` alone does not close defaults. Documentary strings/booleans never establish the process loaded closure.
+
+Next: finish exact unexecuted command/evidence proposal and source-only delivery checkpoint for coordinator review, then continue manual captured-prefix/multi-site actual-parent correspondence and refusal source. Do not execute the planner on actual runtime refs, target binaries, loader, Lean, MLIR oracle or new tests until the independently reviewed hold is released. All55 prior sources (old31 + declared19 + partial-bound5), prior snapshots/seals/first failures and UNKNOWN causes remain unchanged. Source-only candidate work does not inherit historical qualification. ACTIVE under current continuous user authorization; coordinator alone stages/commits/pushes.
+
+## Historical — CURRENT checkpoint — authorized data-only diagnostic and isolated tests complete
+
+Coordinator subsequently authorized ONLY offline original-pin planning and isolated stdlib-only parser/plan tests. Executed exact copied sources via absolute Python `-I -S -B` direct scripts, with LANG/LC_ALL C and no normal Merlin package initializer. No fake packages/mocks, inspected ELF/loader, Init probe, Lean, MLIR oracle, failed-profile rerun or numerical execution. Original expected runtime pins were not refreshed.
+
+`offline-runtime-diagnostic-v1`: 11 original-pinned ELF nodes; 33 DT_NEEDED edges resolved to original refs. PT_INTERP's CURRENT `/lib64 -> usr/lib` selector has no original pin. Launch/static-resolution remain UNAVAILABLE. Full report/source snapshots/command/output retained. Preload/default/hwcaps/late loads/selector stability/actual import-object consumption/observer-host truth remain open; this is not actual loaded closure or an unaffected graph checker selection.
+
+`offline-metadata-tests-v1`: 14/14 isolated stdlib-only unit methods passed, with exact preselected sources/roster and retained synthetic buffers. Pure data/host tests, not formal graph proofs or runtime qualification. Normal pytest/package-import tests and documentary evidence API remain unrun. New selftest leaf is `lean_graph_regions_declared_loader_selftest.py`.
+
+Current source-only snapshot is `source-only-candidate-v5/OWNED-SOURCES.json` + exact owned patch/dependency record: 13 Capture Lean leaves, four offline Python helpers and one unrun pytest source = 18 sources. Capture.lean alone has an earlier pre-hold check; the other12 Lean files, including CaptureFusion.checked_capture_fusion and refusal candidates, remain UNCOMPILED. All current Python leaves pass Ruff. Previous candidate-v1..v4 snapshots and all55 prior frozen sources/capsules remain unchanged.
+
+Paper now includes `paper-evidence/WORKED-EXAMPLE.md` and QUALIFIED-EXAMPLE-BINDINGS.json from the unchanged sealed v1 i8 original: actual three-field Kernel relocation, both consumers/outside observer, distinct walk/body/SSA mapping, retained std3 checker output, fresh replay and compiler-valid wrong-operand refusal. No historical checker was rerun. Independent scalar-only const/sub/cast positives are distinguished from the two physical mul/add regions.
+
+Next independent proof step: explicit capture-aware full source graph projection/prefix-cell/elision correspondence. GraphParent.graph's tensor-site projection is NOT silently equated with v1 projectModule's graph containing prefix nodes. Whole actual captured-provider/raw after-Kernel binding, compiler-valid mutations, kernel checking/audits and new qualification remain pending. Keep native/graph checking HELD until an independently reviewed unaffected context is established. Continue source-only work under current user authorization; coordinator alone owns staging/publication.
+
+## Historical — CURRENT source proof extension after data-only packet
+
+New UNCOMPILED `GraphRegionsDeclaredCaptureProjection.lean` makes the previously explicit prefix/full-projection gap a proof-producing structural obligation and candidate transport theorem: exact `projectModule actual ... = some parent.fullGraph`, prefix read/return privacy, derived frame/suffix observer transport, then the same finer per-instruction local law through existing checkRealization_native on the FULL graph. The proposed final root is `Capture.checked_full_capture_fusion`. Refusal source now includes observed/uninitialized prefix uses and stale full projections. No semantic whole-program equality is assumed, no source-success/global-typing shortcut used, and no actual projected instance/kernel acceptance is claimed.
+
+Current exact owned patch/snapshot is `source-only-candidate-v6`: 14 Capture leaves + four offline helpers + unrun pytest source = 19 sources. Thirteen Lean leaves UNCOMPILED; only initial Capture had a pre-hold check. The 14 passed offline metadata unit methods and 11-node diagnostic remain unchanged data-only evidence. CAPTURE-THEOREM-v1.md records exact statement/domain/premises and remaining actual-instance/query/raw-buffer/review/qualification obligations. Previous v1..v5 source candidates remain intact. Source-only continuation next: actual complete captured-parent instance/query binding and explicit admitted-domain/refusal inventory. Native/graph checking remains HELD; user authorization remains ACTIVE; coordinator alone publishes.
+
+## Historical — CURRENT AUTHORIZATION — new reviewed pure development context
+
+Read the latest normal user direction and planner/graph-first-20261025/frontend-pure-development-context/README.md. Root completed a separate original-bound loader listing + FIRST Init-only proof, with unchanged3294 original refs,653-module metadata and known runtime traces; v1 import parser issue was repaired OFFLINE without rerunning that command. No old oracle/profile ran. The GDB/strace/perf proposal is superseded and will NOT be implemented or invoked.
+
+NOW authorized: NEW stdlib-only captured-literal development controller, exact direct pinned-loader recipe/full diagnostics, all ORIGINAL SDK/runtime pre/post checks, actual project/standard source+object import reporting/binding, private source/object outputs, candidate compilation, mathematical examples/refusals and exact-root std3 audits. Trust OS/kernel/vDSO, pinned loader/module reports and host transport explicitly. Do not demand formal Linux/default-directory denial; old stronger API flags remain false/unchanged. No new expected runtime hashes.
+
+Current concrete step: implement new lean_graph_regions_declared_pure*.py leaves and a NEW private development profile. Freeze14 Capture source copies + preserved v1 project source refs, discover actual imports, build in dependency order, retain FIRST ordinary elaboration errors and bounded repaired source identities. Reuse/copy only explicitly bound objects, or compile unchanged old sources privately; never rebuild/edit an old capsule. Complete prefix/source-parent/cache/all-site/full-projection bridges and checked examples instead of leaving drafts uncompiled.
+
+Held: MLIR-full oracle, failed bound-qualification replay, runtime pin refresh, graph/native qualification and numerics. Unknown native signals/runtime/binding changes stop this NEW context. No protected/shared/foreign/production/spec/lock/source-seal/toolchain edits, agents or index/commit/push. Coordinator alone publishes. ACTIVE under this latest user direction after compaction; a NEW genuine stop wins. Source-only-v6 and the existing data packets remain historical exact snapshots, not retroactively qualified.
+
+## Historical — CURRENT development runs and bounded repairs
+
+Implemented NEW stdlib-only `lean_graph_regions_declared_pure.py` + `_pure_trace.py`. Direct -I -S -B controller copies old qualified project sources/new owned captures privately, uses actual Lean --src-deps/--deps, validates all3294 ORIGINAL runtime/SDK refs and source/object/helper/document bindings before/after, preserves full traces and rejects unknown libraries/namespaces/dynamic loads. Host/OS/loader/module reporting trust remains explicit. No old inspector flag changed. Exact-root std3 audit support added.
+
+pure-development-v1 stopped after privately compiling Core.AST: Core.Eq returned0 but the baseline-only observer refused its exact bound Core.AST initializer lookup in original libleanshared. Root reviewed this case. OFFLINE finite-table repair is restricted to exact initialize_<module> symbols for ALREADY source/object-bound project objects; all other unknown diagnostics still refuse. `pure-guard-tests-v1` passed7/7 wrong module/DSO/namespace/error/symbol/missing-object negatives and genuine positive. No native call in those tests. v1 remains PARTIAL; offline analysis is separate.
+
+pure-development-v2 (already in flight when the offline-test-order gate arrived) remains development-only PARTIAL: new-context base closure + initial Capture compiled, then FIRST actual CaptureMatch source parser error (`prefix` is a Lean keyword). No runtime/signal/binding mismatch. Failed source copies/raw outputs retained; automatic failed-parser recovery warnings were NOT accepted as proofs. A structural nested-comment/string-aware token rename changed only complete `prefix` identifiers to `leading` in10 owned draft files; no frozen sources touched. Repair record is pure-development-v2-keyword-repair.json.
+
+CURRENT owned live job: pure-development-v3 controller (unified exec session13506), started AFTER7/7 offline tests, with new frozen copies and explicit bound new-context object cache from v2. It compiles the full capture/refusal/example dependency chain, stopping on first error; planned30 exact-root std3 prints if all sources compile. No graph/native qualification, held MLIR oracle, old profile replay, numerical work or runtime expected-hash refresh. On any new genuine stop, safely record only this owned job. Continue ordinary source repairs as needed; unknown native signal/runtime/binding errors stop the NEW context and remain visible. Coordinator owns publication.
+
+## Historical — CURRENT checked pure progress; next owned live job
+
+v3 compiled CaptureMatch after the reserved-prefix repair, then failed Initialize on reserved `initialize`. Renamed only that complete code identifier to cacheLiterals in4 owned files, preserving failed copies and theorem names. v4 then reported an existential instruction-type inference error; added explicit Nat/Int/Instruction binder types. `pure-development-v5-initialize` compiled the complete Initialize module and all dependencies, and the FIRST four-root audit Lean command returned0 with only std3. Its host audit reader refused wrapped axiom lists; that first observer error is retained. Repaired only the new parser OFFLINE, with8/8 structural positive/negative tests in pure-audit-parser-tests-v1. Recovered exact transitive four-root prints are retained there; no old query rerun or profile promotion.
+
+CURRENT owned live job: pure-development-v6 controller (new exec session printed by tool; prior sessions16993/59968/13506/82942/94542 are complete). Full downstream capture-parent/prefix/tensor/graph/projection/refusal/example chain plus30 exact-root audits; explicit source/object cache only from completed NEW-context modules. Root-reviewed7/7 finite initializer guard tests remain unchanged. Source current context/original3294 pre/post/runtime traces preserved per command. No MLIR/full-bound/oracle/numerics/graph-native qualification. Continue bounded source proof repairs and all-site/actual-parent examples. Current owned new Python controller/trace leaves are additive and not covered by source-only-v6; refresh exact owned source snapshot after this coherent checked batch. Coordinator alone publishes.
+
+## Historical — CURRENT GATE — NEW original-SDK mismatch; native development stopped
+
+pure-development-v6 compiled Contract, then retained two ordinary Prefix proof errors. Bounded fixes unfold Instruction.result in freshness membership and return Option constructor congruence after dependent lookup cases. v7 compiled Prefix/PrefixBridge/Tensor, then Parent needed explicit Nat/Prefix.Instruction.empty annotations. v8 compiled Parent + Graph (nine Capture modules now checked under prior successful3294 pre/post guards), then ActualGraph reported reserved proof binder `matches`. Renamed that binder to sameModule; NOT yet checked. Added UNCOMPILED mathematical complete-parent/full-projection/initialized nonzero/empty-return examples in CaptureParentExamples. All prior source/error snapshots preserved.
+
+NEW pure-development-v9 stopped in POSTCHECK after its third source-import command (0002-CaptureFusion) returned0. That command PRECHECK passed; POSTCHECK/RUNTIME records are absent because the SDK mismatch stopped the guard before runtime parsing. Two earlier source-header commands have complete return0/pre+post/runtime records: original SDK /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libclang-cpp.so.23.1,67766536B, expected d7adb9dfd7170742a0dce7773e4ffe5903830b11c2af316908058516017fcc92, first observed c01b49c0976bf814efb0da28f39f346470fcbb116f24721ea0de1019e8f2fe90. Stable before/after descriptor stats retained in pure-development-v9/build/FIRST-ERROR.json. Cause UNKNOWN. NO reread, rehash, retry, expected-hash refresh, library omission or denominator narrowing. Coordinator notified. Earlier successful per-command math/build/axiom evidence remains retained; this NEW context is now STOPPED/PARTIAL and supplies no qualification.
+
+ALL owned exec sessions are complete; no live owned job. NOW continue SOURCE-ONLY work and seal a truthful current partial packet while awaiting independently reviewed context direction. Do NOT run further Lean/loader/oracle/build/test commands under the stopped context. Never use current matching reads to promote it. Do not revisit/relabel the old Basic.olean or MLIR-full incidents. Preserve source-only-v1..v6 snapshots, every pure-development-v1..v9 first failure/control/source/raw trace, finite guard7/7 and offline audit parser8/8 evidence. Fifteen current Capture leaves exist (nine checked before this mismatch; newer revisions remain distinct); two pure control leaves are new owned sources. Update exact owned source/partial delivery next. User graph-first authorization remains ACTIVE, not paused; coordinator alone publishes; a NEW genuine stop wins.
+
+## Historical — LATEST reviewed NEW direction — exact original module/runtime context
+
+Read latest normal user direction and planner/graph-first-20261025/frontend-original-module-runtime-context/{README.md,SELECTION.json} metadata. This supersedes source-only ONLY for a DISTINCT new context with a reviewed rule: ALL five original files of EVERY653 Init module +original11 runtime refs =3276; all1959 compiled Init refs independently match pre-existing W metadata. Eighteen auxiliary/alternative-runtime/tool files are outside this rule, not individually skipped. No suspect file reread, pin refresh, SDK repair or old-profile promotion. V9 remains stopped/PARTIAL with third-command POSTCHECK mismatch cause UNKNOWN; no rehash/reread.
+
+Current implementation step: NEW pure_selection metadata validator; FIRST isolated stdlib membership/conflict/missing/extra/held/wrong-pin tests without any SDK/runtime file opens. THEN distinctly named module-runtime-development profile may resume candidate compilation/audits with actual imports/objects, same closed env/runtime traces/bound initializer symbols and all selected3276 pre/post checks. Any selected mismatch/unknown signal/load stops NEW context. Root baseline metadata/OS/kernel/loader/module-reporting/host trust explicit. No clang/LLVM/MLIR/Lake/download/toolchain writes. Old denial flags and failed contexts remain unchanged. Coordinator alone stages/publishes. Continuous graph batch ACTIVE after compaction; new genuine stop wins.
+
+## Historical — CURRENT live reviewed module/runtime development
+
+NEW pure_selection.py + pure_selection_selftest.py implement/recompute the exact rule from original F/W METADATA: five file families of EVERY653 Init module + original11 runtime =3276. All1959 compiled refs require independent W equality; reject any overlapping conflict, missing family/runtime, extra auxiliary/held member, wrong pin/key/type, nonInit module and incorrect parent identity. No SDK/runtime file is read by selection. `module-runtime-selection-tests-v1` passed17/17 isolated stdlib cases BEFORE launch (all653 members in each of5 families checked; no target process/SDK opens). Sources/roster/output retained.
+
+Controller gained optional explicit --selection mode before any SDK/runtime preflight, separate context schema/name and source/document guards; old whole-SDK mode/capsules stay unchanged. NOW running `module-runtime-development-v1` (owned exec session96212), private copied controller +15 Capture source leaves, selected3276 guards, original loader/trace/env/bound initializer table, actual imports/objects and planned35 roots. Cache comes only from explicitly bound pre-v9 successful NEW-context modules in v8; no old-profile replay/promotion. No suspect SDK file reread, new runtime hash, clang/LLVM/MLIR/Lake/toolchain write or graph/native qualification. Any NEW selected mismatch/signal/load stops this context. HEAD last observed d0a8075701d5240d194496d4a793dd6fb6a0a604, expected coordinator advance; no worker index actions. Continue full graph batch after compaction; a NEW genuine stop wins.
+
+## Historical — LATEST finite-symbol review and current live job
+
+Read latest normal user direction + planner/graph-first-20261025/frontend-finite-symbol-review-v1/{README.md,REVIEW.json}. It approves ONLY exact (original libleanshared.so,l_Lean_Parser_Tactic_simpLemma___boxed) undefined-symbol diagnostic, namespace0, rc0, unchanged original3276/source/objects, otherwise known runtime maps. No wildcard/other errors/pins. Old observer profile stays PARTIAL and v9 mismatch stays UNKNOWN/held.
+
+module-runtime-development-v1 successfully compiled13 core Capture modules INCLUDING ActualGraph/Fusion/Projection/Refusals under selected3276 guards. Examples command returned0/pre+post passed; strict observer stopped on that ONE extra builtin parser symbol. Exact5-case OFFLINE evidence/root review retained. New pure_review.py binds exact review input/guard bytes; controller applies extra pair ONLY for process rc0. New pure_recover.py recomputes retained source/command/private-produced-object/pre+post/runtime association OFFLINE, with explicit private-output ownership/host trust. `module-runtime-examples-offline-recovery-v2` binds Examples.olean + exact direct object import report separately from transitive cache inputs; no SDK/runtime reads or native rerun. Recovery-v1 preserved (overapprox import-description corrected by v2). No original profile status edited/promoted.
+
+CURRENT owned live job: module-runtime-development-v2, exec session returned with launch. It uses NEW frozen controller/review/selection sources, recovered Examples cache, FIRST-TIME ParentExamples and35 exact-root std3 prints (original30+five new complete-parent/witness/refusal roots). Source-only/meta/runtime/basic proof context trust stays explicit. Still NO MLIR-held oracle, actual-capture/native qualification, old profile retry/pin refresh, SDK repair, numerical work or foreign/protected edits. Coordinator alone publishes. Continue full batch after compaction; NEW genuine stop wins.

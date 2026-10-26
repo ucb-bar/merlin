@@ -1,0 +1,16 @@
+{
+  "Merlin.QueryAudit": {
+    "MOCKED_NOT_PROOF": {
+      "bytes": 47,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_changed_query_preserves_failed_buffer-context/source/Merlin/QueryAudit.lean",
+      "sha256": "4c67a1e9ed8ad9451f90442a5b4ea70421db57bc074f696492500d8976f089e5"
+    }
+  },
+  "Merlin.QueryTypes": {
+    "MOCKED_NOT_PROOF": {
+      "bytes": 122,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_changed_query_preserves_failed_buffer-context/source/Merlin/QueryTypes.lean",
+      "sha256": "18a0ba04d1013f904e4fbe72171444c373f212a7c1ce12f698476839720829d8"
+    }
+  }
+}

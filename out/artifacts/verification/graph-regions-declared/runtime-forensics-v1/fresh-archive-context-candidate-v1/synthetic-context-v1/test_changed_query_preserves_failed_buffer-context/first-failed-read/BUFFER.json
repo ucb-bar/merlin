@@ -1,0 +1,10 @@
+{
+  "buffer_sha256_at_preservation": "24bd8a7c61c0572929656c91dead972b73aa185614f01ec470c441feda3a9410",
+  "bytes": 28,
+  "holds_cleared": false,
+  "native_authorized": false,
+  "original_observed_sha256": "24bd8a7c61c0572929656c91dead972b73aa185614f01ec470c441feda3a9410",
+  "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_changed_query_preserves_failed_buffer-context/first-failed-read/already-read-buffer.bin",
+  "primary_failure_preserved": true,
+  "source_reopens": 0
+}

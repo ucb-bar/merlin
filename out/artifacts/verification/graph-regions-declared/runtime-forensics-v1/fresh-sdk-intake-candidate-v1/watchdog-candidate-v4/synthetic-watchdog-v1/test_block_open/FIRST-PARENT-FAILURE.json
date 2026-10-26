@@ -1,0 +1,22 @@
+{
+  "budget_seconds": 0.5,
+  "command": [
+    "/usr/bin/python3",
+    "-I",
+    "-S",
+    "-B",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/own_child_control.py",
+    "open"
+  ],
+  "error": "owned complete intake, including cleanup, exceeded parent budget",
+  "forced_stop": true,
+  "in_memory_evidence": "Unavailable child buffers/first exception may be lost on forced stop; retained files are not deleted",
+  "kill_reap_grace_seconds": 0.2,
+  "native_authorized": false,
+  "old_holds_cleared": false,
+  "owned_pid": 235737,
+  "retry": false,
+  "signals": [],
+  "status": "COMPLETE_INTAKE_BUDGET_EXCEEDED",
+  "terminate_grace_seconds": 0.1
+}

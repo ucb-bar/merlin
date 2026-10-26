@@ -1,0 +1,80 @@
+{
+  "schema": "merlin.fresh-official-sdk-intake-plan.v1",
+  "status": "PROPOSED_NOT_AUTHORIZED_NOT_LAUNCHABLE",
+  "identity": {
+    "version": "4.35.0",
+    "tag": "v4.35.0",
+    "commit": "eb6cafb7290e8bd5f2937522d8d804f58f02bafc",
+    "platform": "Linux x86_64 (release matrix/source interpretation)",
+    "release_id": 410881210,
+    "asset_id": 634574461,
+    "archive_name": "lean-4.35.0-linux.zip",
+    "archive_url": "https://github.com/leanprover/lean4/releases/download/v4.35.0/lean-4.35.0-linux.zip",
+    "compressed_bytes": 925899528,
+    "publisher_platform_sha256": "c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+    "checksum_provenance": "GitHub official release API digest over HTTPS; not independent signature verification",
+    "old_sdk_identity_reused": false,
+    "download_authorized": false,
+    "install_authorized": false,
+    "native_authorized": false,
+    "old_holds_cleared": false
+  },
+  "new_root": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/fresh-official-lean435-v1",
+  "reuse_old_sdk_or_objects": false,
+  "base_runtime_read_authority": false,
+  "archive_fetch": {
+    "url": "https://github.com/leanprover/lean4/releases/download/v4.35.0/lean-4.35.0-linux.zip",
+    "expected_sha256": "c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+    "exact_bytes": 925899528,
+    "max_read_bytes_including_sentinel": 925899529,
+    "attempts": 1,
+    "resume": false,
+    "redirects_max": 3,
+    "https_hosts": [
+      "github.com",
+      "release-assets.githubusercontent.com"
+    ],
+    "connect_timeout_seconds": 30,
+    "total_deadline_seconds": 1800,
+    "chunk_bytes": 1048576,
+    "output": "download/lean-4.35.0-linux.zip.part",
+    "no_extract_before_original_publisher_digest_matches": true
+  },
+  "extraction_proposal": {
+    "format": "zip",
+    "expected_top_directory": "lean-4.35.0-linux",
+    "member_count_max": 50000,
+    "per_member_bytes_max": 1073741824,
+    "total_uncompressed_bytes_max": 17179869184,
+    "disk_reserve_bytes": 21474836480,
+    "reject": [
+      "absolute/traversal/NUL paths",
+      "duplicates and file/directory collisions",
+      "symlink/hardlink/device/FIFO",
+      "encrypted members",
+      "unsupported compression",
+      "size/CRC mismatch",
+      "cap exceedance"
+    ],
+    "regular_data_only_first": true,
+    "execute_archive_scripts": false,
+    "write_old_sdk_or_elan": false
+  },
+  "future_diagnostic": {
+    "permission": "SEPARATE_AFTER_ARCHIVE_AND_FULL_NEW_CONTEXT_REVIEW",
+    "first_cases": [
+      "InitNat",
+      "InitListNat",
+      "OmegaListNat"
+    ],
+    "max_native_commands": 18,
+    "first_failure_stops_entire_batch": true,
+    "no_graph_acceptance": true,
+    "fresh_proofs_and_audits_required": true,
+    "new_loader_runtime_closure_not_yet_known": true
+  },
+  "implementation_status": "No downloader/extractor/native runner implemented or launched; exact sources require future root review",
+  "old_holds_cleared": false,
+  "repr_failure_cause_established": false,
+  "hash_incident_cause_established": false
+}

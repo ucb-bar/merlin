@@ -1,0 +1,22 @@
+[
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/release_identity.py",
+    "sha256": "7ca4a2455f89b6712ef8dc30f77dfc02f01d313c7cae4847dff87a9346df9b62",
+    "bytes": 2253
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/test_release_identity.py",
+    "sha256": "fe9128a4573a3a510df0f567fbf9b93b6914daa2bad30ea1f56403d7f15b9fb0",
+    "bytes": 2520
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-metadata-v1/release.json",
+    "sha256": "dae99e3c6cf350277745139bd8a0f16b8574e55a8c65cd1eaa8220d52d86b99d",
+    "bytes": 18796
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-metadata-v1/tag.json",
+    "sha256": "f179968e849f28a1b2426b68733243394847b8c78d3436b757cbe6cf1dcfdf6b",
+    "bytes": 343
+  }
+]

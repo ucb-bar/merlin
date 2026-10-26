@@ -1,0 +1,3357 @@
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/child_bootstrap.py
+@@ -0,0 +1,44 @@
++"""Own child: load exact authorized source bytes, never candidate pyc."""
++import argparse
++import hashlib
++import json
++from pathlib import Path
++import sys
++import types
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument("--authorization", type=Path, required=True)
++    p.add_argument("--authorization-sha256", required=True)
++    args = p.parse_args()
++    with args.authorization.open("rb") as stream:
++        raw = stream.read(1024**2 + 1)
++    if len(raw) > 1024**2 or hashlib.sha256(raw).hexdigest() != args.authorization_sha256:
++        raise ValueError("exact child authorization binding")
++    review = json.loads(raw)
++    if review["status"] != "AUTHORIZED_ONE_FRESH_OFFICIAL_SDK_DATA_INTAKE_F_ONLY":
++        raise ValueError("child DATA permission required")
++    order = ("policy", "fdio", "http_fetch", "zip_intake", "outer_deadline", "intake", "run_intake")
++    refs = {Path(x["path"]).stem: x for x in review["source_refs"]}
++    if set(refs) != set(order) or len(review["source_refs"]) != len(order):
++        raise ValueError("exact child source closure")
++    for name in order:
++        ref = refs[name]
++        path = Path(ref["path"])
++        if path.parent != Path(__file__).absolute().parent:
++            raise ValueError("same bound child source directory")
++        raw = path.read_bytes()
++        if len(raw) != ref["bytes"] or hashlib.sha256(raw).hexdigest() != ref["sha256"]:
++            raise ValueError("child source binding")
++        module = types.ModuleType(name)
++        module.__file__, module.__package__ = str(path), ""
++        sys.modules[name] = module
++        exec(compile(raw, str(path), "exec"), module.__dict__)
++    sys.argv = [refs["run_intake"]["path"], "--authorization", str(args.authorization),
++                "--authorization-sha256", args.authorization_sha256]
++    return sys.modules["run_intake"].main()
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/context_schema.py
+@@ -0,0 +1,91 @@
++"""Pure NEW context proposal schema. No selection IO, guard, loader or proof API.
++
++Host documentary authenticity is a separate review premise. Valid JSON is not
++evidence that archive extraction/host review occurred, and yields no authority.
++"""
++from dataclasses import dataclass
++from pathlib import PurePosixPath
++
++from policy import AUTHORITY, absolute, identity, require, validate
++
++
++def sha(value):
++    require(type(value) is str and len(value) == 64 and not set(value) - set("0123456789abcdef"), "SHA256 string")
++
++
++def validate_manifest(request, manifest, roster):
++    validate(request)
++    require(set(manifest) == {"schema", "parent_archive", "members", "expanded_bytes", "new_environment_pins",
++                             "old_expectations_replaced", "authority", "request_identity"}, "manifest fields")
++    require(manifest["schema"] == "merlin.fresh-sdk-authenticated-member-manifest.v1", "manifest schema")
++    require(manifest["authority"] == AUTHORITY and all(v is False for v in manifest["authority"].values()), "no authority")
++    require(manifest["new_environment_pins"] is True and manifest["old_expectations_replaced"] is False, "new identity only")
++    require(manifest["request_identity"] == identity(request), "request association")
++    expected_parent = {"url": request["fetch"]["url"], "sha256": request["fetch"]["expected_sha256"],
++                       "bytes": request["fetch"]["exact_bytes"], "identity": request["environment_identity"]}
++    require(manifest["parent_archive"] == expected_parent and roster["parent_sha256"] == expected_parent["sha256"], "parent archive association")
++    require(type(manifest["members"]) is list and len(manifest["members"]) == len(roster["members"]), "full member roster")
++    total, paths = 0, set()
++    for member, original in zip(manifest["members"], roster["members"], strict=True):
++        require({k: member.get(k) for k in original} == original, "ZIP entry association")
++        p = PurePosixPath(member["path"])
++        require(not p.is_absolute() and ".." not in p.parts and p.parts[0] == request["extract"]["expected_top_directory"], "member path")
++        require(str(p) not in paths, "duplicate member")
++        paths.add(str(p))
++        size = member["measured_bytes"]
++        require(type(size) is int and 0 <= size <= request["extract"]["per_member_bytes_max"]
++                and size == original["declared_bytes"], "member byte count")
++        if member["kind"] == "file":
++            sha(member["sha256"])
++            require(set(member) == set(original) | {"measured_bytes", "sha256", "output_stat"}, "file fields")
++            total += size
++        else:
++            require(member["kind"] == "directory" and size == 0 and member["sha256"] is None
++                    and set(member) == set(original) | {"measured_bytes", "sha256"}, "directory fields")
++    require(type(manifest["expanded_bytes"]) is int and manifest["expanded_bytes"] == total
++            and total <= request["extract"]["total_uncompressed_bytes_max"], "full expanded count")
++
++
++@dataclass(frozen=True)
++class ContextProposal:
++    """Documentary proposal only, deliberately not a CheckedQuery or runnable Context."""
++    archive_identity: str
++    manifest_identity: str
++    member_refs: tuple
++    host_review_identity: str | None
++    host_refs: tuple
++    status: str
++
++
++def prepare(request, manifest, roster, selected_paths, host_review=None):
++    validate_manifest(request, manifest, roster)
++    require(type(selected_paths) is tuple and selected_paths and len(set(selected_paths)) == len(selected_paths), "explicit unique selection")
++    files = {x["path"]: x for x in manifest["members"] if x["kind"] == "file"}
++    require(set(selected_paths) <= files.keys(), "selected member absent/nonregular")
++    refs = tuple((str(PurePosixPath(request["new_root"]) / "data" / p), files[p]["sha256"], files[p]["measured_bytes"])
++                 for p in selected_paths)
++    host_refs, review_identity = (), None
++    if host_review is not None:
++        require(set(host_review) == {"schema", "review_ref", "refs", "interpreter", "closure_scope", "native_authorized"}, "host closure fields")
++        require(host_review["schema"] == "merlin.separate-host-closure-proposal.v1"
++                and host_review["closure_scope"] == "EXPLICIT_FINITE_REVIEW_REQUIRED"
++                and host_review["native_authorized"] is False, "documentary host closure only")
++        ref = host_review["review_ref"]
++        require(set(ref) == {"path", "sha256", "bytes"}, "separate review reference")
++        absolute(ref["path"])
++        sha(ref["sha256"])
++        require(type(ref["bytes"]) is int and ref["bytes"] > 0, "review size")
++        require(type(host_review["refs"]) is list and 0 < len(host_review["refs"]) <= 64, "finite host closure")
++        host = {}
++        for row in host_review["refs"]:
++            require(set(row) == {"path", "sha256", "bytes"}, "host reference fields")
++            path = absolute(row["path"])
++            sha(row["sha256"])
++            require(str(path) not in host and not path.is_relative_to(absolute(request["new_root"])), "host duplicate/SDK overlap")
++            require(type(row["bytes"]) is int and row["bytes"] > 0, "host size")
++            host[str(path)] = (row["sha256"], row["bytes"])
++        require(host_review["interpreter"] in host, "interpreter outside closure")
++        host_refs = tuple((p, *v) for p, v in sorted(host.items()))
++        review_identity = identity(host_review)
++    return ContextProposal(identity(manifest["parent_archive"]), identity(manifest), refs,
++                           review_identity, host_refs, "SOURCE_ONLY_NOT_RUNNABLE_NO_AUTHORITY")
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/fdio.py
+@@ -0,0 +1,109 @@
++"""Exclusive FD-rooted DATA IO. Imports do not access any path."""
++import json
++import os
++import stat
++from pathlib import PurePosixPath
++
++from policy import absolute, require
++
++DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
++
++
++def facts(s):
++    return {k: getattr(s, k) for k in ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")}
++
++
++def directory(path):
++    p = absolute(str(path))
++    fd = os.open("/", DIR)
++    try:
++        for part in p.parts[1:]:
++            new = os.open(part, DIR, dir_fd=fd)
++            os.close(fd)
++            fd = new
++        return fd
++    except BaseException:
++        os.close(fd)
++        raise
++
++
++def child_dirs(root, parts):
++    fd = os.dup(root)
++    try:
++        for part in parts:
++            require(part not in ("", ".", "..") and "/" not in part, "directory component")
++            try:
++                os.mkdir(part, 0o700, dir_fd=fd)
++            except FileExistsError:
++                pass
++            new = os.open(part, DIR, dir_fd=fd)
++            os.close(fd)
++            fd = new
++        return fd
++    except BaseException:
++        os.close(fd)
++        raise
++
++
++def new_file(parent, name):
++    require(PurePosixPath(name).name == name and name not in (".", ".."), "file component")
++    return os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o400, dir_fd=parent)
++
++
++def write_all(fd, raw):
++    view = memoryview(raw)
++    while view:
++        n = os.write(fd, view)
++        require(n > 0, "write made no progress")
++        view = view[n:]
++
++
++def save(root, name, value):
++    raw = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
++    fd = new_file(root, name)
++    try:
++        write_all(fd, raw)
++        os.fsync(fd)
++    finally:
++        os.close(fd)
++    os.fsync(root)
++
++
++def stable_file(fd, parent, name, size):
++    st = os.fstat(fd)
++    live = os.stat(name, dir_fd=parent, follow_symlinks=False)
++    require(stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and st.st_size == size
++            and facts(st) == facts(live), "output FD/path/stat association")
++    return facts(st)
++
++
++class IntakeStop(RuntimeError):
++    def __init__(self, evidence):
++        self.evidence = evidence
++        super().__init__(evidence["error"])
++
++
++def error_details(error):
++    """Preserve primary notes and structured cleanup facts across wrappers/JSON."""
++    retained = error.evidence if isinstance(error, IntakeStop) else {}
++    return {"error_type": type(error).__name__, "error": str(error),
++            "error_notes": list(getattr(error, "__notes__", retained.get("error_notes", []))),
++            "deadline_cleanup_errors": list(getattr(error, "deadline_cleanup_errors",
++                                                      retained.get("deadline_cleanup_errors", [])))}
++
++
++def stop(root, error, evidence, pending=b""):
++    evidence = {**evidence, **error_details(error),
++                "accepted": False, "retry": False, "old_holds_cleared": False}
++    try:
++        save(root, "FIRST-FAILURE.json", evidence)
++        if pending:
++            fd = new_file(root, "pending-read-buffer.bin")
++            try:
++                write_all(fd, pending)
++                os.fsync(fd)
++            finally:
++                os.close(fd)
++    except BaseException as failure:
++        evidence["preservation_failure"] = {"type": type(failure).__name__, "error": str(failure)}
++    raise IntakeStop(evidence) from error
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/http_fetch.py
+@@ -0,0 +1,103 @@
++"""Bounded stdlib HTTPS fetch. Real backend is never constructed by tests."""
++import hashlib
++import os
++import sys
++import time
++from urllib.parse import urljoin
++
++from fdio import write_all
++from policy import https_url, require
++
++
++class StdlibHTTPS:
++    def __init__(self):
++        import ssl
++        import urllib.request
++        import urllib.error
++
++        class NoRedirect(urllib.request.HTTPRedirectHandler):
++            def redirect_request(self, req, fp, code, msg, headers, newurl):
++                return None
++        self.request = urllib.request
++        self.error = urllib.error
++        self.opener = urllib.request.build_opener(
++            urllib.request.ProxyHandler({}), NoRedirect(),
++            urllib.request.HTTPSHandler(context=ssl.create_default_context()))
++
++    def open(self, url, timeout):
++        request = self.request.Request(url, headers={"User-Agent": "Merlin-reviewed-data-intake",
++                                                     "Accept-Encoding": "identity"})
++        try:
++            return self.opener.open(request, timeout=timeout)
++        except self.error.HTTPError as response:
++            return response
++
++
++def fetch(policy, output_fd, state, backend, clock=time.monotonic):
++    start = clock()
++    url, redirects = policy["url"], 0
++    response = None
++    digest = hashlib.sha256()
++    count = 0
++
++    def remaining():
++        left = policy["total_deadline_seconds"] - (clock() - start)
++        require(left > 0, "fetch deadline exceeded")
++        return left
++    try:
++        while True:
++            https_url(url, policy["https_hosts"])
++            state.update(phase="HTTP", url=url, redirects=redirects)
++            response = backend.open(url, min(policy["connect_timeout_seconds"], remaining()))
++            remaining()
++            status = response.status
++            if status in (301, 302, 303, 307, 308):
++                require(redirects < policy["redirects_max"], "redirect bound exceeded")
++                location = response.headers.get("Location")
++                require(type(location) is str and bool(location), "redirect has no location")
++                url = https_url(urljoin(url, location), policy["https_hosts"])
++                redirects += 1
++                response.close()
++                response = None
++                continue
++            require(status == 200, "HTTP status is not 200")
++            require(response.headers.get("Content-Encoding", "identity") == "identity", "encoded response forbidden")
++            lengths = response.headers.get_all("Content-Length", []) if hasattr(response.headers, "get_all") else (
++                [response.headers["Content-Length"]] if "Content-Length" in response.headers else [])
++            require(len(lengths) <= 1, "ambiguous content length")
++            if lengths:
++                require(lengths[0].isascii() and lengths[0].isdigit()
++                        and int(lengths[0]) == policy["exact_bytes"], "published content length differs")
++            require(not (lengths and response.headers.get("Transfer-Encoding")), "ambiguous transfer length")
++            break
++        while True:
++            remaining()
++            limit = min(policy["chunk_bytes"], policy["exact_bytes"] + 1 - count)
++            require(limit > 0, "finite fetch bound exhausted")
++            block = response.read(limit)
++            require(type(block) is bytes and len(block) <= limit, "HTTP read contract")
++            state["pending"] = block
++            state.update(phase="download", pending_offset=count, received_bytes=count + len(block))
++            remaining()
++            if not block:
++                break
++            digest.update(block)
++            count += len(block)
++            write_all(output_fd, block)
++            state["pending"] = b""
++            require(count <= policy["exact_bytes"], "download exceeds published size")
++        state["observed_sha256"] = digest.hexdigest()
++        require(count == policy["exact_bytes"], "short download")
++        require(digest.hexdigest() == policy["expected_sha256"], "publisher archive digest mismatch")
++        os.fsync(output_fd)
++        return {"original_publisher_sha256": policy["expected_sha256"], "archive_bytes": count,
++                "redirects": redirects, "received_hash_matched": True}
++    finally:
++        if response is not None:
++            primary = sys.exc_info()[0]
++            try:
++                response.close()
++            except BaseException as error:
++                state["response_close_error"] = str(error)
++                if primary is None:
++                    raise
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/intake.py
+@@ -0,0 +1,57 @@
++"""One exclusive NEW DATA intake. Backend injection is only for synthetic tests."""
++import os
++import time
++
++import fdio
++from http_fetch import fetch
++from policy import absolute, identity, require, validate
++from zip_intake import extract
++from outer_deadline import fetch_deadline
++
++
++def run(request, backend, *, clock=time.monotonic):
++    validate(request)
++    path = absolute(request["new_root"])
++    parent = fdio.directory(path.parent)
++    root = download = archive = None
++    state = {"phase": "prepare", "pending": b"", "request_identity": identity(request)}
++    try:
++        os.mkdir(path.name, 0o700, dir_fd=parent)
++        root = os.open(path.name, fdio.DIR, dir_fd=parent)
++        root_stat = os.fstat(root)
++        fdio.save(root, "ATTEMPT.json", {"request": request, "attempt_consumed": True, "retry": False})
++        os.fsync(parent)
++        disk = os.fstatvfs(root)
++        require(disk.f_bavail * disk.f_frsize >= request["extract"]["disk_reserve_bytes"], "disk reserve unavailable")
++        os.mkdir("download", 0o700, dir_fd=root)
++        download = os.open("download", fdio.DIR, dir_fd=root)
++        archive = fdio.new_file(download, "lean-4.35.0-linux.zip.part")
++        with fetch_deadline(request["fetch"]["total_deadline_seconds"]):
++            fetched = fetch(request["fetch"], archive, state, backend, clock)
++        archive_stat = fdio.stable_file(archive, download, "lean-4.35.0-linux.zip.part", request["fetch"]["exact_bytes"])
++        fdio.save(root, "FETCH.json", {**fetched, "archive_stat": archive_stat})
++        state.update(phase="ZIP", pending=b"")
++        manifest = extract(archive, root, request, state)
++        fdio.stable_file(archive, download, "lean-4.35.0-linux.zip.part", request["fetch"]["exact_bytes"])
++        live_root = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
++        require((root_stat.st_dev, root_stat.st_ino, root_stat.st_mode) ==
++                (live_root.st_dev, live_root.st_ino, live_root.st_mode), "root association changed")
++        manifest["request_identity"] = identity(request)
++        fdio.save(root, "MEMBER-MANIFEST.json", manifest)
++        fdio.save(root, "RESULT.json", {"status": "AUTHENTICATED_NEW_ARCHIVE_DATA_ONLY",
++                  "manifest_identity": identity(manifest), "authority": dict(request["authority"])})
++        return manifest
++    except BaseException as error:
++        pending = state.pop("pending", b"")
++        if archive is not None:
++            try:
++                state["partial_archive_stat"] = fdio.facts(os.fstat(archive))
++            except OSError as stat_error:
++                state["partial_archive_stat_error"] = str(stat_error)
++        if root is not None:
++            fdio.stop(root, error, state, pending)
++        raise fdio.IntakeStop({**state, **fdio.error_details(error), "retry": False}) from error
++    finally:
++        for fd in (archive, download, root, parent):
++            if fd is not None:
++                os.close(fd)
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/outer_deadline.py
+@@ -0,0 +1,62 @@
++"""Own-process POSIX alarm scope for a single main-thread DATA fetch.
++
++Host signal delivery/CPython interruption are trusted; no hard real-time or
++uninterruptible-kernel guarantee. Imports do not install a handler or timer.
++"""
++from contextlib import contextmanager
++import math
++import signal
++import threading
++
++
++class FetchDeadline(TimeoutError):
++    pass
++
++
++@contextmanager
++def fetch_deadline(seconds):
++    if threading.current_thread() is not threading.main_thread():
++        raise ValueError("fetch deadline requires own main-thread process")
++    if type(seconds) not in (int, float) or not math.isfinite(seconds) or not 0 < seconds <= 1800:
++        raise ValueError("finite positive deadline at most 1800 seconds required")
++    previous_timer = signal.getitimer(signal.ITIMER_REAL)
++    if previous_timer != (0.0, 0.0):
++        raise ValueError("preexisting timer; no timer takeover")
++    blocked = signal.pthread_sigmask(signal.SIG_BLOCK, [])
++    if signal.SIGALRM in blocked or signal.SIGALRM in signal.sigpending():
++        raise ValueError("blocked/pending SIGALRM; no signal takeover")
++    previous_handler = signal.getsignal(signal.SIGALRM)
++    if previous_handler not in (signal.SIG_DFL, signal.SIG_IGN) and not callable(previous_handler):
++        raise ValueError("unrestorable prior SIGALRM handler; no signal takeover")
++
++    def expired(signum, frame):
++        raise FetchDeadline(f"outer fetch deadline expired after {seconds} seconds")
++
++    primary = None
++    signal.signal(signal.SIGALRM, expired)
++    try:
++        signal.setitimer(signal.ITIMER_REAL, seconds, 0.0)
++        yield
++    except BaseException as error:
++        primary = error
++        raise
++    finally:
++        # Cancel before restoring the old handler. Never replace a body failure
++        # with a cleanup failure; attach cleanup evidence to the original object.
++        errors = []
++        try:
++            signal.setitimer(signal.ITIMER_REAL, 0.0, 0.0)
++        except BaseException as error:
++            errors.append({"operation": "cancel_timer", "type": type(error).__name__, "error": str(error)})
++        try:
++            signal.signal(signal.SIGALRM, previous_handler)
++        except BaseException as error:
++            errors.append({"operation": "restore_handler", "type": type(error).__name__, "error": str(error)})
++        if errors:
++            if primary is not None:
++                primary.deadline_cleanup_errors = errors
++                primary.add_note("deadline cleanup errors: " + "; ".join(x["error"] for x in errors))
++            else:
++                failure = RuntimeError("deadline cleanup failed: " + "; ".join(x["error"] for x in errors))
++                failure.deadline_cleanup_errors = errors
++                raise failure
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/own_child_control.py
+@@ -0,0 +1,41 @@
++"""Tiny synthetic child only: no network, SDK, compiler or descendants."""
++import os
++from pathlib import Path
++import signal
++import sys
++
++
++def block():
++    while True:
++        signal.pause()
++
++
++mode = sys.argv[1]
++Path("CONTROL-STARTED.txt").write_text(mode)
++if mode == "normal":
++    Path("COMPLETE.txt").write_text("complete including cleanup")
++elif mode == "open":
++    os.mkfifo("synthetic-open.fifo", 0o600)
++    os.open("synthetic-open.fifo", os.O_RDONLY)
++elif mode == "read":
++    Path("partial.bin").write_bytes(b"retained before blocked read")
++    reader, writer = os.pipe()
++    os.read(reader, 1)
++elif mode == "close":
++    Path("partial.bin").write_bytes(b"retained before blocking close")
++    class Response:
++        def close(self):
++            Path("CLOSE-ENTERED.txt").write_text("cleanup after first failure")
++            block()
++    try:
++        raise ValueError("synthetic first child error only in memory")
++    finally:
++        Response().close()
++elif mode == "kill":
++    signal.signal(signal.SIGTERM, signal.SIG_IGN)
++    Path("IGNORE-TERM-READY.txt").write_text("only this child")
++    block()
++elif mode == "nonzero":
++    raise SystemExit(7)
++else:
++    raise ValueError("unknown tiny control")
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/policy.py
+@@ -0,0 +1,90 @@
++"""Pure policy for a NEW archive identity; no original SDK pins are reused."""
++import hashlib
++import json
++from pathlib import PurePosixPath
++from urllib.parse import urlsplit
++
++AUTHORITY = {"execute": False, "install": False, "graph_verified": False, "old_holds_cleared": False}
++
++
++def require(ok, reason):
++    if not ok:
++        raise ValueError(reason)
++
++
++def identity(obj):
++    return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
++
++
++def strict_json(raw):
++    def pairs(items):
++        out = {}
++        for k, v in items:
++            require(k not in out, "duplicate JSON key")
++            out[k] = v
++        return out
++
++    def constant(_):
++        raise ValueError("nonfinite JSON value")
++    return json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
++
++
++def absolute(text):
++    require(type(text) is str and "\x00" not in text and not text.startswith("//"), "path string")
++    p = PurePosixPath(text)
++    require(p.is_absolute() and str(p) == text and ".." not in p.parts and ".elan" not in p.parts,
++            "canonical new absolute path; installed SDK forbidden")
++    return p
++
++
++def positive(value, maximum):
++    require(type(value) is int and 0 < value <= maximum, "finite positive integer bound")
++
++
++def https_url(url, hosts):
++    p = urlsplit(url)
++    require(p.scheme == "https" and p.hostname in hosts and p.port in (None, 443)
++            and p.username is None and p.password is None and not p.fragment
++            and not any(ord(c) < 33 or ord(c) == 127 for c in url), "unapproved HTTPS destination")
++    return url
++
++
++def request_from_plan(plan, plan_ref):
++    return {"schema": "merlin.fresh-sdk-data-intake.v1", "plan": plan_ref,
++            "environment_identity": plan["identity"], "new_root": plan["new_root"],
++            "fetch": plan["archive_fetch"], "extract": plan["extraction_proposal"],
++            "attempts": 1, "authority": dict(AUTHORITY),
++            "outer_deadline": "POSIX_ITIMER_REAL_MAIN_THREAD_NO_EXISTING_TIMER_V1"}
++
++
++def validate(request):
++    require(set(request) == {"schema", "plan", "environment_identity", "new_root", "fetch", "extract", "attempts", "authority", "outer_deadline"}, "request fields")
++    require(request["outer_deadline"] == "POSIX_ITIMER_REAL_MAIN_THREAD_NO_EXISTING_TIMER_V1", "outer timer policy")
++    require(request["schema"] == "merlin.fresh-sdk-data-intake.v1", "request schema")
++    require(type(request["attempts"]) is int and request["attempts"] == 1, "one attempt")
++    require(request["authority"] == AUTHORITY and all(v is False for v in request["authority"].values()), "no execution authority")
++    absolute(request["new_root"])
++    f, z = request["fetch"], request["extract"]
++    require(f["https_hosts"] == ["github.com", "release-assets.githubusercontent.com"], "closed HTTPS hosts")
++    https_url(f["url"], f["https_hosts"])
++    require(type(f["expected_sha256"]) is str and len(f["expected_sha256"]) == 64
++            and not set(f["expected_sha256"]) - set("0123456789abcdef"), "original publisher digest")
++    positive(f["exact_bytes"], 1024**3)
++    positive(f["chunk_bytes"], 1024**2)
++    require(type(f["max_read_bytes_including_sentinel"]) is int
++            and f["max_read_bytes_including_sentinel"] == f["exact_bytes"] + 1, "finite oversize sentinel")
++    require(type(f["attempts"]) is int and f["attempts"] == 1 and f["resume"] is False, "no retry/resume")
++    require(type(f["redirects_max"]) is int and 0 <= f["redirects_max"] <= 3, "redirect cap")
++    positive(f["connect_timeout_seconds"], 30)
++    positive(f["total_deadline_seconds"], 1800)
++    require(f["no_extract_before_original_publisher_digest_matches"] is True, "authentication precedes ZIP")
++    require(f["output"] == "download/lean-4.35.0-linux.zip.part", "exclusive fixed archive name")
++    require(z["format"] == "zip" and z["expected_top_directory"] == "lean-4.35.0-linux", "exact ZIP family")
++    for key, maximum in (("member_count_max", 50000), ("per_member_bytes_max", 1024**3),
++                         ("total_uncompressed_bytes_max", 16 * 1024**3), ("disk_reserve_bytes", 20 * 1024**3)):
++        positive(z[key], maximum)
++    require(z["regular_data_only_first"] is True and z["execute_archive_scripts"] is False
++            and z["write_old_sdk_or_elan"] is False, "data-only extraction")
++    env = request["environment_identity"]
++    require(env["archive_url"] == f["url"] and env["compressed_bytes"] == f["exact_bytes"]
++            and env["publisher_platform_sha256"] == f["expected_sha256"], "identity/fetch association")
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/run_intake.py
+@@ -0,0 +1,75 @@
++"""One future authorized intake; NOT permission to fetch/install/execute now."""
++import argparse
++import hashlib
++import os
++from pathlib import Path
++
++import fdio
++import intake
++from policy import identity, require, request_from_plan, strict_json
++
++MODULES = {"run_intake.py", "intake.py", "fdio.py", "policy.py", "http_fetch.py", "zip_intake.py", "outer_deadline.py"}
++
++
++def read_source_metadata(ref):
++    p = Path(ref["path"])
++    require(p.suffix in {".py", ".json"} and ".elan" not in p.parts, "source/metadata only")
++    require(type(ref["bytes"]) is int and 0 <= ref["bytes"] <= 64 * 1024**2, "source/metadata cap")
++    with p.open("rb") as stream:
++        raw = stream.read(ref["bytes"] + 1)
++    require(len(raw) == ref["bytes"] and hashlib.sha256(raw).hexdigest() == ref["sha256"], "source/metadata binding")
++    return raw
++
++
++def failure_record(error):
++    return {"status": "FIRST_FAILURE_NO_RETRY", **fdio.error_details(error),
++            "evidence": getattr(error, "evidence", None)}
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument("--authorization", type=Path, required=True)
++    p.add_argument("--authorization-sha256", required=True)
++    args = p.parse_args()
++    with args.authorization.open("rb") as stream:
++        raw = stream.read(1024**2 + 1)
++    require(len(raw) <= 1024**2 and hashlib.sha256(raw).hexdigest() == args.authorization_sha256, "authorization binding")
++    auth = strict_json(raw)
++    require(set(auth) == {"schema", "status", "action", "attempts", "attempt_journal", "source_refs",
++                          "plan", "request", "native_authorized", "install_authorized", "old_holds_cleared"}, "closed review fields")
++    require(auth["schema"] == "merlin.fresh-sdk-data-intake-review.v1"
++            and auth["action"] == "ONE_FRESH_OFFICIAL_SDK_DATA_INTAKE", "exact DATA action")
++    require(auth["native_authorized"] is False and auth["install_authorized"] is False
++            and auth["old_holds_cleared"] is False, "review cannot escalate authority")
++    require(auth["status"] == "AUTHORIZED_ONE_FRESH_OFFICIAL_SDK_DATA_INTAKE_F_ONLY", "proposal is not authorization")
++    require(type(auth["attempts"]) is int and auth["attempts"] == 1, "one attempt")
++    journal = Path(auth["attempt_journal"])
++    parent = fdio.directory(journal.parent)
++    try:
++        fdio.save(parent, journal.name, {"authorization_sha256": args.authorization_sha256,
++                  "attempt_consumed": True, "retry": False, "execute": False})
++    finally:
++        os.close(parent)
++    try:
++        refs = auth["source_refs"]
++        require(len(refs) == len(MODULES) and {Path(r["path"]).name for r in refs} == MODULES, "full source closure")
++        require(all(Path(r["path"]).parent == Path(__file__).absolute().parent for r in refs), "same bound source directory")
++        for ref in refs:
++            read_source_metadata(ref)
++        plan = strict_json(read_source_metadata(auth["plan"]))
++        request = strict_json(read_source_metadata(auth["request"]))
++        expected = request_from_plan(plan, auth["plan"])
++        require(identity(request) == identity(expected), "exact original plan/request association")
++        # Only this separately authorized path constructs the real network backend.
++        from http_fetch import StdlibHTTPS
++        intake.run(request, StdlibHTTPS())
++        print('{"status":"NEW_ARCHIVE_DATA_ONLY","native_authorized":false}')
++        return 0
++    except BaseException as error:
++        import json
++        print(json.dumps(failure_record(error)))
++        return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/test_intake.py
+@@ -0,0 +1,446 @@
++"""Tiny ZIPs + injected fake HTTP only. The real HTTPS class is never created."""
++from copy import deepcopy
++import hashlib
++import io
++import json
++import os
++from pathlib import Path
++import stat
++import struct
++import tempfile
++import unittest
++from unittest.mock import patch
++import zipfile
++
++import context_schema
++import fdio
++import http_fetch
++import intake
++import policy
++import zip_intake
++
++TOP = "lean-4.35.0-linux"
++
++
++def archive_bytes(entries=None, compression=zipfile.ZIP_STORED):
++    output = io.BytesIO()
++    with zipfile.ZipFile(output, "w") as archive:
++        for name, raw, mode, extra in entries or [(TOP + "/A.ir", b"alpha", stat.S_IFREG | 0o644, b""),
++                                                  (TOP + "/A.ir.sig", b"opaque", stat.S_IFREG | 0o644, b"")]:
++            info = zipfile.ZipInfo(name)
++            info.create_system = 3
++            info.external_attr = mode << 16
++            info.extra = extra
++            info.compress_type = compression
++            archive.writestr(info, raw)
++    return output.getvalue()
++
++
++class Response:
++    def __init__(self, raw=b"", status=200, headers=None, error_at=None, close_error=False):
++        self.raw, self.status, self.headers = io.BytesIO(raw), status, headers or {}
++        self.error_at, self.calls, self.closed, self.close_error = error_at, 0, False, close_error
++
++    def read(self, n):
++        self.calls += 1
++        if self.error_at == self.calls:
++            raise OSError("injected response read error")
++        return self.raw.read(n)
++
++    def close(self):
++        self.closed = True
++        if self.close_error:
++            raise OSError("injected response close error")
++
++
++class Backend:
++    def __init__(self, *responses):
++        self.responses, self.calls = list(responses), []
++
++    def open(self, url, timeout):
++        self.calls.append({"url": url, "timeout": timeout})
++        if not self.responses:
++            raise AssertionError("unexpected request/retry")
++        out = self.responses.pop(0)
++        if isinstance(out, BaseException):
++            raise out
++        return out
++
++
++class IntakeTests(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temp.cleanup)
++        self.root = Path(self.temp.name)
++        plan_path = Path(json.loads((Path(__file__).parent / "PLAN-REF.json").read_bytes())["path"])
++        self.plan = json.loads(plan_path.read_bytes())
++        self.plan["new_root"] = str(self.root / "intake")
++        self.plan["extraction_proposal"].update(member_count_max=10, per_member_bytes_max=64,
++                                               total_uncompressed_bytes_max=128, disk_reserve_bytes=1024**2)
++        self.plan["archive_fetch"]["chunk_bytes"] = 32
++        self.raw = archive_bytes()
++        self.bind_synthetic(self.raw)
++
++    def bind_synthetic(self, raw):
++        """Only new tiny fixtures get their own test content identity, never real pins."""
++        h = hashlib.sha256(raw).hexdigest()
++        self.plan["archive_fetch"].update(expected_sha256=h, exact_bytes=len(raw), max_read_bytes_including_sentinel=len(raw) + 1)
++        self.plan["identity"].update(publisher_platform_sha256=h, compressed_bytes=len(raw))
++        self.request = policy.request_from_plan(self.plan, {"synthetic": True})
++
++    def run_one(self, backend=None, **kwargs):
++        return intake.run(self.request, backend or Backend(Response(self.raw)), **kwargs)
++
++    def refused(self, backend=None, **kwargs):
++        with self.assertRaises(fdio.IntakeStop) as error:
++            self.run_one(backend, **kwargs)
++        self.assertFalse((self.root / "intake/MEMBER-MANIFEST.json").exists())
++        self.assertTrue((self.root / "intake/FIRST-FAILURE.json").exists())
++        self.assertFalse(error.exception.evidence["accepted"])
++        return error.exception.evidence
++
++    def bad_zip(self, raw):
++        self.raw = raw
++        self.bind_synthetic(raw)
++        return self.refused()
++
++    def test_positive_parent_binding_complete_manifest(self):
++        value = self.run_one()
++        self.assertEqual(len(value["members"]), 2)
++        self.assertEqual(value["parent_archive"]["sha256"], hashlib.sha256(self.raw).hexdigest())
++        self.assertTrue(value["new_environment_pins"])
++        self.assertFalse(value["old_expectations_replaced"])
++        for row in value["members"]:
++            p = self.root / "intake/data" / row["path"]
++            self.assertEqual(hashlib.sha256(p.read_bytes()).hexdigest(), row["sha256"])
++            self.assertEqual(p.stat().st_mode & 0o777, 0o400)
++
++    def test_allowed_redirect(self):
++        backend = Backend(Response(status=302, headers={"Location": "https://release-assets.githubusercontent.com/archive?token=fixture"}), Response(self.raw))
++        self.run_one(backend)
++        self.assertEqual(len(backend.calls), 2)
++
++    def test_redirect_limit(self):
++        backend = Backend(*(Response(status=302, headers={"Location": "https://github.com/next"}) for _ in range(4)))
++        self.assertIn("redirect bound", self.refused(backend)["error"])
++        self.assertEqual(len(backend.calls), 4)
++
++    def test_redirect_bad_host(self):
++        backend = Backend(Response(status=302, headers={"Location": "https://evil.example/file"}))
++        self.assertIn("HTTPS", self.refused(backend)["error"])
++        self.assertEqual(len(backend.calls), 1)
++
++    def test_redirect_http_scheme(self):
++        self.refused(Backend(Response(status=302, headers={"Location": "http://github.com/file"})))
++
++    def test_url_credentials_port_fragment(self):
++        for url in ("https://u:p@github.com/file", "https://github.com:444/file", "https://github.com/file#fragment"):
++            with self.assertRaises(ValueError):
++                policy.https_url(url, self.request["fetch"]["https_hosts"])
++
++    def test_tls_backend_failure(self):
++        backend = Backend(OSError("injected certificate verification failure"))
++        self.assertIn("certificate", self.refused(backend)["error"])
++        self.assertEqual(len(backend.calls), 1)
++
++    def test_non200(self):
++        response = Response(b"error-body-not-read", status=503)
++        self.refused(Backend(response))
++        self.assertEqual(response.calls, 0)
++
++    def test_content_length_mismatch(self):
++        response = Response(self.raw, headers={"Content-Length": "1"})
++        self.assertIn("length", self.refused(Backend(response))["error"])
++        self.assertEqual(response.calls, 0)
++
++    def test_encoded_body(self):
++        self.refused(Backend(Response(self.raw, headers={"Content-Encoding": "gzip"})))
++
++    def test_short_response_retains_prefix(self):
++        self.assertIn("short", self.refused(Backend(Response(self.raw[:10])))["error"])
++        self.assertEqual((self.root / "intake/download/lean-4.35.0-linux.zip.part").read_bytes(), self.raw[:10])
++
++    def test_oversize_retains_sentinel(self):
++        self.assertIn("exceeds", self.refused(Backend(Response(self.raw + b"x")))["error"])
++        self.assertEqual((self.root / "intake/download/lean-4.35.0-linux.zip.part").stat().st_size, len(self.raw) + 1)
++
++    def test_digest_failure_before_any_zip_processing(self):
++        changed = b"x" + self.raw[1:]
++        with patch.object(zip_intake, "central_bound") as parsed:
++            self.assertIn("digest", self.refused(Backend(Response(changed)))["error"])
++            parsed.assert_not_called()
++        self.assertFalse((self.root / "intake/data").exists())
++
++    def test_parent_readback_authentication_before_zip(self):
++        original = intake.fetch
++
++        def corrupt(policy, fd, state, backend, clock):
++            result = original(policy, fd, state, backend, clock)
++            os.pwrite(fd, b"x", 0)
++            return result
++        with patch.object(intake, "fetch", side_effect=corrupt), patch.object(zip_intake, "central_bound") as parsed:
++            self.assertIn("authentication", self.refused()["error"])
++            parsed.assert_not_called()
++
++    def test_deadline_after_read_preserves_pending(self):
++        tick = 0
++
++        def clock():
++            nonlocal tick
++            tick += 1
++            return 0 if tick <= 4 else 2000
++        self.assertIn("deadline", self.refused(clock=clock)["error"])
++        self.assertEqual((self.root / "intake/pending-read-buffer.bin").read_bytes(), self.raw[:32])
++
++    def test_partial_http_read_failure(self):
++        self.refused(Backend(Response(self.raw, error_at=2)))
++        self.assertEqual((self.root / "intake/download/lean-4.35.0-linux.zip.part").read_bytes(), self.raw[:32])
++
++    def test_close_error_cannot_replace_primary(self):
++        evidence = self.refused(Backend(Response(b"", status=503, close_error=True)))
++        self.assertIn("HTTP status", evidence["error"])
++        self.assertIn("response_close_error", evidence)
++
++    def test_partial_output_write_failure_retains_pending(self):
++        original = fdio.write_all
++        fired = False
++
++        def fail(fd, raw):
++            nonlocal fired
++            if raw == b"alpha" and not fired:
++                fired = True
++                os.write(fd, raw[:2])
++                raise OSError("injected member partial write")
++            return original(fd, raw)
++        with patch.object(fdio, "write_all", side_effect=fail):
++            self.refused()
++        self.assertEqual((self.root / "intake/data" / TOP / "A.ir").read_bytes(), b"al")
++        self.assertEqual((self.root / "intake/pending-read-buffer.bin").read_bytes(), b"alpha")
++
++    def test_pending_buffer_write_can_fail_without_masking_primary(self):
++        original = fdio.write_all
++
++        def fail(fd, raw):
++            if raw == b"alpha":
++                os.write(fd, raw[:2])
++                raise OSError("injected repeated write failure")
++            return original(fd, raw)
++        with patch.object(fdio, "write_all", side_effect=fail):
++            evidence = self.refused()
++        self.assertIn("preservation_failure", evidence)
++        self.assertEqual(evidence["error"], "injected repeated write failure")
++        self.assertEqual((self.root / "intake/pending-read-buffer.bin").read_bytes(), b"al")
++
++    def test_positive_directories_nested_four_files_deflate(self):
++        entries = [(TOP + "/", b"", stat.S_IFDIR | 0o755, b""),
++                   (TOP + "/lib/", b"", stat.S_IFDIR | 0o755, b"")]
++        entries += [(TOP + "/lib/" + name, raw, stat.S_IFREG | 0o644, b"")
++                    for name, raw in (("A.ir", b"alpha"), ("A.ir.sig", b"sig-a"),
++                                      ("B.ir", b"beta"), ("B.ir.sig", b"sig-b"))]
++        self.raw = archive_bytes(entries, zipfile.ZIP_DEFLATED)
++        self.bind_synthetic(self.raw)
++        value = self.run_one()
++        self.assertEqual(len(value["members"]), 6)
++
++    def test_partial_network_output_write_preserves_current_chunk(self):
++        actual = http_fetch.write_all
++        fired = False
++
++        def fail(fd, raw):
++            nonlocal fired
++            if not fired:
++                fired = True
++                os.write(fd, raw[:3])
++                raise OSError("injected download partial write")
++            return actual(fd, raw)
++        with patch.object(http_fetch, "write_all", side_effect=fail):
++            self.refused()
++        self.assertEqual((self.root / "intake/download/lean-4.35.0-linux.zip.part").read_bytes(), self.raw[:3])
++        self.assertEqual((self.root / "intake/pending-read-buffer.bin").read_bytes(), self.raw[:32])
++
++    def test_output_tree_extra_member_refuses(self):
++        actual = zip_intake.check_tree
++
++        def extra(fd, members, directories):
++            target = fdio.new_file(fd, "extra")
++            os.close(target)
++            actual(fd, members, directories)
++        with patch.object(zip_intake, "check_tree", side_effect=extra):
++            self.assertIn("roster", self.refused()["error"])
++
++    def test_output_tree_missing_member_refuses(self):
++        actual = zip_intake.check_tree
++
++        def missing(fd, members, directories):
++            os.unlink(self.root / "intake/data" / TOP / "A.ir")
++            actual(fd, members, directories)
++        with patch.object(zip_intake, "check_tree", side_effect=missing):
++            self.assertIn("roster", self.refused()["error"])
++
++    def test_output_tree_symlink_member_refuses(self):
++        actual = zip_intake.check_tree
++
++        def linked(fd, members, directories):
++            p = self.root / "intake/data" / TOP / "A.ir"
++            p.unlink()
++            p.symlink_to("A.ir.sig")
++            actual(fd, members, directories)
++        with patch.object(zip_intake, "check_tree", side_effect=linked):
++            self.assertIn("association", self.refused()["error"])
++
++    def test_missing_host_interpreter_and_escalated_authority(self):
++        value = self.run_one()
++        roster = json.loads((self.root / "intake/ZIP-ROSTER.json").read_bytes())
++        changed = deepcopy(value)
++        changed["authority"]["execute"] = True
++        with self.assertRaises(ValueError):
++            context_schema.prepare(self.request, changed, roster, (TOP + "/A.ir",))
++
++    def test_trailing_zip_data(self):
++        self.assertIn("trailing", self.bad_zip(self.raw + b"extra")["error"])
++
++    def test_missing_content_length_allowed_under_exact_stream_pin(self):
++        self.run_one(Backend(Response(self.raw, headers={})))
++
++    def test_bad_archive_format(self):
++        self.bad_zip(b"not a ZIP")
++
++    def test_duplicate_names(self):
++        self.bad_zip(archive_bytes([(TOP + "/a", b"x", stat.S_IFREG | 0o600, b"")] * 2))
++
++    def test_file_prefix_collision(self):
++        self.bad_zip(archive_bytes([(TOP + "/a", b"x", stat.S_IFREG | 0o600, b""),
++                                   (TOP + "/a/b", b"x", stat.S_IFREG | 0o600, b"")]))
++
++    def test_escape_member(self):
++        self.bad_zip(archive_bytes([(TOP + "/../escape", b"x", stat.S_IFREG | 0o600, b"")]))
++
++    def test_absolute_member(self):
++        self.bad_zip(archive_bytes([("/absolute", b"x", stat.S_IFREG | 0o600, b"")]))
++
++    def test_nul_name(self):
++        raw = self.raw.replace(b"A.ir", b"A\x00ir")
++        self.bad_zip(raw)
++
++    def test_symlink_member(self):
++        self.bad_zip(archive_bytes([(TOP + "/link", b"target", stat.S_IFLNK | 0o777, b"")]))
++
++    def test_nonregular_member(self):
++        self.bad_zip(archive_bytes([(TOP + "/fifo", b"", stat.S_IFIFO | 0o600, b"")]))
++
++    def test_link_extra(self):
++        self.bad_zip(archive_bytes([(TOP + "/a", b"x", stat.S_IFREG | 0o600, struct.pack("<HH", 0x000d, 4) + b"link")]))
++
++    def test_encrypted_member(self):
++        raw = bytearray(self.raw)
++        at = raw.index(b"PK\x01\x02")
++        struct.pack_into("<H", raw, at + 8, 1)
++        self.bad_zip(bytes(raw))
++
++    def test_unsupported_compression(self):
++        raw = bytearray(self.raw)
++        at = raw.index(b"PK\x01\x02")
++        struct.pack_into("<H", raw, at + 10, 99)
++        self.bad_zip(bytes(raw))
++
++    def test_crc_error(self):
++        self.assertIn("CRC", self.bad_zip(self.raw.replace(b"alpha", b"ALPHA"))["error"])
++
++    def test_declared_size_error(self):
++        raw = bytearray(self.raw)
++        at = raw.index(b"PK\x01\x02")
++        struct.pack_into("<L", raw, at + 24, 6)
++        self.bad_zip(bytes(raw))
++
++    def test_member_cap(self):
++        self.request["extract"]["per_member_bytes_max"] = 4
++        self.assertIn("size cap", self.refused()["error"])
++
++    def test_total_expanded_cap(self):
++        self.request["extract"]["total_uncompressed_bytes_max"] = 8
++        self.assertIn("total expanded", self.refused()["error"])
++
++    def test_count_cap_preparser(self):
++        self.request["extract"]["member_count_max"] = 1
++        with patch.object(zip_intake.zipfile, "ZipFile") as parsed:
++            self.refused()
++            parsed.assert_not_called()
++
++    def test_zip64_unsupported(self):
++        raw = bytearray(self.raw)
++        at = raw.rindex(b"PK\x05\x06")
++        struct.pack_into("<HH", raw, at + 8, 65535, 65535)
++        self.assertIn("ZIP64", self.bad_zip(bytes(raw))["error"])
++
++    def test_existing_root_or_retry_no_http(self):
++        self.run_one()
++        backend = Backend()
++        with self.assertRaises(fdio.IntakeStop):
++            self.run_one(backend)
++        self.assertEqual(backend.calls, [])
++
++    def test_failed_attempt_no_retry(self):
++        self.refused(Backend(OSError("first failure")))
++        backend = Backend()
++        with self.assertRaises(fdio.IntakeStop):
++            self.run_one(backend)
++        self.assertEqual(backend.calls, [])
++
++    def test_symlink_parent_refused(self):
++        alias = self.root / "alias"
++        alias.symlink_to(self.root, target_is_directory=True)
++        self.request["new_root"] = str(alias / "output")
++        backend = Backend()
++        with self.assertRaises(OSError):
++            self.run_one(backend)
++        self.assertEqual(backend.calls, [])
++
++    def test_preservation_failure_preserves_primary(self):
++        actual = fdio.save
++
++        def save(fd, name, value):
++            if name == "FIRST-FAILURE.json":
++                raise OSError("injected preservation failure")
++            return actual(fd, name, value)
++        with patch.object(fdio, "save", side_effect=save):
++            with self.assertRaises(fdio.IntakeStop) as error:
++                self.run_one(Backend(OSError("original network error")))
++        self.assertEqual(error.exception.evidence["error"], "original network error")
++        self.assertIn("preservation_failure", error.exception.evidence)
++
++    def test_new_context_schema_no_loader_closure_no_execution(self):
++        manifest = self.run_one()
++        roster = json.loads((self.root / "intake/ZIP-ROSTER.json").read_bytes())
++        selected = (TOP + "/A.ir",)
++        proposal = context_schema.prepare(self.request, manifest, roster, selected)
++        self.assertIsNone(proposal.host_review_identity)
++        self.assertEqual(proposal.status, "SOURCE_ONLY_NOT_RUNNABLE_NO_AUTHORITY")
++        self.assertEqual(proposal.member_refs[0][1], hashlib.sha256(b"alpha").hexdigest())
++        altered = deepcopy(manifest)
++        altered["parent_archive"]["sha256"] = "0" * 64
++        with self.assertRaises(ValueError):
++            context_schema.prepare(self.request, altered, roster, selected)
++        altered = deepcopy(manifest)
++        altered["members"].pop()
++        with self.assertRaises(ValueError):
++            context_schema.prepare(self.request, altered, roster, selected)
++        with self.assertRaises(ValueError):
++            context_schema.prepare(self.request, manifest, roster, (TOP + "/missing",))
++
++    def test_separately_bound_host_closure_documentary_only(self):
++        manifest = self.run_one()
++        roster = json.loads((self.root / "intake/ZIP-ROSTER.json").read_bytes())
++        host = {"schema": "merlin.separate-host-closure-proposal.v1",
++                "review_ref": {"path": "/review/host.json", "sha256": "1" * 64, "bytes": 5},
++                "refs": [{"path": "/host/loader", "sha256": "2" * 64, "bytes": 6}],
++                "interpreter": "/host/loader", "closure_scope": "EXPLICIT_FINITE_REVIEW_REQUIRED",
++                "native_authorized": False}
++        value = context_schema.prepare(self.request, manifest, roster, (TOP + "/A.ir",), host)
++        self.assertIsNotNone(value.host_review_identity)
++        host["refs"].append(deepcopy(host["refs"][0]))
++        with self.assertRaises(ValueError):
++            context_schema.prepare(self.request, manifest, roster, (TOP + "/A.ir",), host)
++
++
++if __name__ == "__main__":
++    unittest.main()
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/test_watchdog.py
+@@ -0,0 +1,113 @@
++"""Small own-child controls; system Python only, never real intake."""
++import hashlib
++import json
++from pathlib import Path
++import sys
++import unittest
++from unittest.mock import patch
++
++import fdio
++import watchdog
++import watchdog_runner
++
++HERE = Path(__file__).absolute().parent
++OUTPUT = HERE / "synthetic-watchdog-v1"
++
++
++class WatchdogTests(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        OUTPUT.mkdir()  # refuse rerun over retained evidence
++
++    def call(self, mode, seconds=.5):
++        workspace = OUTPUT / self._testMethodName
++        command = [sys.executable, "-I", "-S", "-B", str(HERE / "own_child_control.py"), mode]
++        result = watchdog.supervise(command, workspace, seconds=seconds, terminate_seconds=.1, reap_seconds=.2)
++        self.assertTrue(result["child_reaped"])
++        self.assertTrue((workspace / "PARENT-ATTEMPT.json").is_file())
++        self.assertEqual(json.loads((workspace / "OWNED-CHILD.json").read_text())["pid"], result["owned_pid"])
++        return result, workspace
++
++    def timeout(self, mode):
++        result, path = self.call(mode)
++        self.assertEqual(result["status"], "COMPLETE_INTAKE_BUDGET_EXCEEDED")
++        self.assertTrue(result["forced_stop"])
++        self.assertEqual((path / "CONTROL-STARTED.txt").read_text(), mode)
++        self.assertIn("in_memory_evidence", json.loads((path / "FIRST-PARENT-FAILURE.json").read_text()))
++        self.assertTrue(all(s["owned_pid"] == result["owned_pid"] for s in result["signals"]))
++        return result, path
++
++    def test_normal(self):
++        result, path = self.call("normal", 2)
++        self.assertEqual(result["status"], "CHILD_COMPLETED")
++        self.assertFalse(result["signals"])
++        self.assertTrue((path / "COMPLETE.txt").is_file())
++
++    def test_block_open(self):
++        self.timeout("open")
++
++    def test_block_read(self):
++        _, path = self.timeout("read")
++        self.assertEqual((path / "partial.bin").read_bytes(), b"retained before blocked read")
++
++    def test_block_close(self):
++        _, path = self.timeout("close")
++        self.assertTrue((path / "CLOSE-ENTERED.txt").is_file())
++        self.assertEqual((path / "partial.bin").read_bytes(), b"retained before blocking close")
++
++    def test_kill_reap(self):
++        result, path = self.timeout("kill")
++        self.assertTrue((path / "IGNORE-TERM-READY.txt").is_file())
++        self.assertEqual([s["signal"] for s in result["signals"]], ["SIGTERM", "SIGKILL"])
++
++    def test_nonzero(self):
++        result, path = self.call("nonzero", 2)
++        self.assertEqual(result["status"], "CHILD_FAILED")
++        self.assertEqual(result["child_exit_code"], 7)
++        self.assertTrue((path / "FIRST-PARENT-FAILURE.json").is_file())
++
++    def test_no_resume(self):
++        _, path = self.call("normal", 2)
++        before = (path / "PARENT-ATTEMPT.json").read_bytes()
++        with patch.object(watchdog.subprocess, "Popen", side_effect=AssertionError("must not relaunch")):
++            with self.assertRaises(fdio.IntakeStop):
++                watchdog.supervise([sys.executable, "-I", "-S", "-B", str(HERE / "own_child_control.py"), "normal"],
++                                   path, seconds=1, terminate_seconds=.1, reap_seconds=.1)
++        self.assertEqual(before, (path / "PARENT-ATTEMPT.json").read_bytes())
++
++    def test_invalid_command_and_grace(self):
++        command = [sys.executable, "-I", "-S", "-B", str(HERE / "own_child_control.py"), "normal"]
++        with patch.object(watchdog.subprocess, "Popen", side_effect=AssertionError("no launch")):
++            for cmd, term, reap in ((["kill", "123"], 1, 1), (command, 3, 3), (command, float("nan"), 1)):
++                with self.assertRaises(ValueError):
++                    watchdog.supervise(cmd, OUTPUT / "invalid", seconds=1, terminate_seconds=term, reap_seconds=reap)
++
++    def test_parent_prelaunch_failure(self):
++        command = [sys.executable, "-I", "-S", "-B", str(HERE / "own_child_control.py"), "normal"]
++        path = OUTPUT / self._testMethodName
++        with patch.object(watchdog.subprocess, "Popen", side_effect=OSError("injected launch failure")):
++            with self.assertRaises(fdio.IntakeStop):
++                watchdog.supervise(command, path, seconds=1, terminate_seconds=.1, reap_seconds=.1)
++        self.assertEqual(json.loads((path / "FIRST-PARENT-FAILURE.json").read_text())["error"], "injected launch failure")
++
++    def test_wrong_source_pin(self):
++        raw = (HERE / "own_child_control.py").read_bytes()
++        with self.assertRaises(ValueError):
++            watchdog_runner.bound({"path": str(HERE / "own_child_control.py"), "bytes": len(raw), "sha256": "0" * 64})
++
++    def test_proposal_not_permission(self):
++        document = {"schema": "merlin.own-child-intake-watchdog-review.v1", "status": "PROPOSED_NOT_AUTHORIZED",
++                    "action": "ONE_COMPLETE_DATA_INTAKE_CHILD", "attempts": 1, "source_refs": [],
++                    "child_authorization": {}, "workspace": str(OUTPUT / "unauthorized"), "seconds": 1800,
++                    "terminate_seconds": 2, "reap_seconds": 3, "native_authorized": False,
++                    "install_authorized": False, "old_holds_cleared": False}
++        raw = json.dumps(document).encode()
++        path = OUTPUT / "proposal.json"
++        path.write_bytes(raw)
++        with patch.object(sys, "argv", ["runner", "--authorization", str(path), "--authorization-sha256", hashlib.sha256(raw).hexdigest()]):
++            with self.assertRaisesRegex(ValueError, "not complete-intake permission"):
++                watchdog_runner.main()
++
++
++if __name__ == "__main__":
++    unittest.main(verbosity=2)
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/watchdog.py
+@@ -0,0 +1,119 @@
++"""Own-child Python supervisor. Complete child lifetime, including cleanup.
++
++Only the Popen object created here can be signaled. No supplied PID/group or
++external command is accepted. OS scheduling/signal/reap behavior remains trust.
++"""
++import math
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++
++import fdio
++from policy import absolute, require
++
++
++def budget(value, maximum):
++    require(type(value) in (int, float) and math.isfinite(value) and 0 < value <= maximum, "finite watchdog budget")
++
++
++def supervise(command, workspace, *, seconds, terminate_seconds, reap_seconds):
++    budget(seconds, 1800)
++    budget(terminate_seconds, 5)
++    budget(reap_seconds, 5)
++    require(terminate_seconds + reap_seconds <= 5, "at most five seconds termination/reap grace")
++    require(type(command) is list and len(command) >= 5 and command[:4] == [sys.executable, "-I", "-S", "-B"]
++            and all(type(x) is str for x in command), "one isolated own Python child only")
++    absolute(command[4])
++    path = absolute(str(workspace))
++    parent = fdio.directory(path.parent)
++    root = stdout = stderr = None
++    process = None
++    start = time.monotonic()
++    result = {"command": command, "budget_seconds": seconds, "terminate_grace_seconds": terminate_seconds,
++              "kill_reap_grace_seconds": reap_seconds, "retry": False, "native_authorized": False,
++              "old_holds_cleared": False, "signals": [], "status": "PREPARING"}
++    try:
++        os.mkdir(path.name, 0o700, dir_fd=parent)
++        root = os.open(path.name, fdio.DIR, dir_fd=parent)
++        fdio.save(root, "PARENT-ATTEMPT.json", {**result, "attempt_consumed": True})
++        os.fsync(parent)
++        stdout = fdio.new_file(root, "child.stdout.txt")
++        stderr = fdio.new_file(root, "child.stderr.txt")
++        process = subprocess.Popen(command, cwd=str(path), env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
++                                   stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr, close_fds=True)
++        result["owned_pid"] = process.pid
++        fdio.save(root, "OWNED-CHILD.json", {"pid": process.pid, "source": "Popen returned by this one launch", "command": command})
++        try:
++            code = process.wait(timeout=max(0, seconds - (time.monotonic() - start)))
++            result.update(status="CHILD_COMPLETED" if code == 0 else "CHILD_FAILED", child_exit_code=code,
++                          child_reaped=True, forced_stop=False)
++            if code != 0:
++                fdio.save(root, "FIRST-PARENT-FAILURE.json", {**result, "error": "owned child returned nonzero"})
++        except subprocess.TimeoutExpired:
++            result.update(status="COMPLETE_INTAKE_BUDGET_EXCEEDED", forced_stop=True,
++                          error="owned complete intake, including cleanup, exceeded parent budget",
++                          in_memory_evidence="Unavailable child buffers/first exception may be lost on forced stop; retained files are not deleted")
++            # Preserve parent first error BEFORE signaling; a failed record never permits acceptance.
++            try:
++                fdio.save(root, "FIRST-PARENT-FAILURE.json", result)
++            except BaseException as error:
++                result["first_error_preservation_failure"] = fdio.error_details(error)
++            stop_owned(process, result, terminate_seconds, reap_seconds)
++        result["elapsed_seconds"] = time.monotonic() - start
++        os.fsync(stdout)
++        os.fsync(stderr)
++        fdio.save(root, "PARENT-RESULT.json", result)
++        return result
++    except BaseException as error:
++        result.update(status="PARENT_FIRST_FAILURE", **fdio.error_details(error),
++                      in_memory_evidence="Child in-memory evidence may be unavailable; existing files preserved")
++        if root is not None:
++            try:
++                fdio.save(root, "FIRST-PARENT-FAILURE.json", result)
++            except BaseException as preservation:
++                result["first_error_preservation_failure"] = fdio.error_details(preservation)
++        if process is not None and not result.get("stop_attempted") and process.poll() is None:
++            stop_owned(process, result, terminate_seconds, reap_seconds)
++        if root is not None:
++            try:
++                fdio.save(root, "PARENT-ERROR-RESULT.json", result)
++            except BaseException as preservation:
++                result["result_preservation_failure"] = fdio.error_details(preservation)
++        raise fdio.IntakeStop(result) from error
++    finally:
++        for fd in (stderr, stdout, root, parent):
++            if fd is not None:
++                os.close(fd)
++
++
++def stop_owned(process, result, terminate_seconds, reap_seconds):
++    """Bounded escalation using ONLY this launch's Popen handle; no PID input."""
++    result["stop_attempted"] = True
++    try:
++        process.terminate()
++        result["signals"].append({"signal": "SIGTERM", "owned_pid": process.pid})
++    except ProcessLookupError:
++        pass
++    except OSError as error:
++        result["terminate_error"] = str(error)
++    try:
++        result["child_exit_code"] = process.wait(timeout=terminate_seconds)
++        result["child_reaped"] = True
++        return
++    except subprocess.TimeoutExpired:
++        pass
++    try:
++        process.kill()
++        result["signals"].append({"signal": "SIGKILL", "owned_pid": process.pid})
++    except ProcessLookupError:
++        pass
++    except OSError as error:
++        result["kill_error"] = str(error)
++    try:
++        result["child_exit_code"] = process.wait(timeout=reap_seconds)
++        result["child_reaped"] = True
++    except subprocess.TimeoutExpired:
++        result.update(child_reaped=False, status="OWNED_CHILD_UNREAPED_HOLD",
++                      live_owned_pid=process.pid, no_retry=True)
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/watchdog_runner.py
+@@ -0,0 +1,74 @@
++"""One future reviewed complete-intake child; unapproved now, no import IO."""
++import argparse
++import hashlib
++import json
++from pathlib import Path
++import sys
++import types
++
++SOURCES = {"policy", "fdio", "http_fetch", "zip_intake", "outer_deadline", "intake", "run_intake",
++           "watchdog", "watchdog_runner", "child_bootstrap"}
++
++
++def bound(ref):
++    path = Path(ref["path"])
++    if path.suffix not in (".json", ".py") or type(ref["bytes"]) is not int or not 0 <= ref["bytes"] <= 64 * 1024**2:
++        raise ValueError("bounded source/metadata ref")
++    with path.open("rb") as stream:
++        raw = stream.read(ref["bytes"] + 1)
++    if len(raw) != ref["bytes"] or hashlib.sha256(raw).hexdigest() != ref["sha256"]:
++        raise ValueError("source/metadata binding")
++    return raw
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument("--authorization", type=Path, required=True)
++    p.add_argument("--authorization-sha256", required=True)
++    args = p.parse_args()
++    with args.authorization.open("rb") as stream:
++        raw = stream.read(1024**2 + 1)
++    if len(raw) > 1024**2 or hashlib.sha256(raw).hexdigest() != args.authorization_sha256:
++        raise ValueError("parent authorization binding")
++    review = json.loads(raw)
++    fields = {"schema", "status", "action", "attempts", "source_refs", "child_authorization", "workspace",
++              "seconds", "terminate_seconds", "reap_seconds", "native_authorized", "install_authorized", "old_holds_cleared"}
++    if set(review) != fields or review["schema"] != "merlin.own-child-intake-watchdog-review.v1":
++        raise ValueError("closed watchdog review")
++    if review["status"] != "AUTHORIZED_ONE_OWN_CHILD_SDK_DATA_INTAKE_F_ONLY" or review["action"] != "ONE_COMPLETE_DATA_INTAKE_CHILD":
++        raise ValueError("proposal is not complete-intake permission")
++    if type(review["attempts"]) is not int or review["attempts"] != 1 or any(review[k] is not False for k in ("native_authorized", "install_authorized", "old_holds_cleared")):
++        raise ValueError("one DATA attempt; no expanded authority")
++    if any(type(review[k]) is not int for k in ("seconds", "terminate_seconds", "reap_seconds")) or (review["seconds"], review["terminate_seconds"], review["reap_seconds"]) != (1800, 2, 3):
++        raise ValueError("exact parent budget and five-second total grace")
++    refs = {Path(r["path"]).stem: r for r in review["source_refs"]}
++    if len(review["source_refs"]) != len(SOURCES) or set(refs) != SOURCES:
++        raise ValueError("complete parent/child source closure")
++    source = {}
++    for name, ref in refs.items():
++        if Path(ref["path"]).parent != Path(__file__).absolute().parent:
++            raise ValueError("one bound source directory")
++        source[name] = bound(ref)
++    # Only source bytes, never a candidate pyc or installed SDK, supply modules.
++    for name in ("policy", "fdio", "watchdog"):
++        module = types.ModuleType(name)
++        module.__file__, module.__package__ = refs[name]["path"], ""
++        sys.modules[name] = module
++        exec(compile(source[name], module.__file__, "exec"), module.__dict__)
++    child = sys.modules["policy"].strict_json(bound(review["child_authorization"]))
++    expected = {k: refs[k] for k in ("policy", "fdio", "http_fetch", "zip_intake", "outer_deadline", "intake", "run_intake")}
++    if {Path(r["path"]).stem: r for r in child["source_refs"]} != expected:
++        raise ValueError("child source pins differ from parent's bound closure")
++    if child["status"] != "AUTHORIZED_ONE_FRESH_OFFICIAL_SDK_DATA_INTAKE_F_ONLY":
++        raise ValueError("child authorization is still proposed")
++    command = [sys.executable, "-I", "-S", "-B", refs["child_bootstrap"]["path"],
++               "--authorization", review["child_authorization"]["path"],
++               "--authorization-sha256", review["child_authorization"]["sha256"]]
++    outcome = sys.modules["watchdog"].supervise(command, review["workspace"], seconds=1800,
++                                               terminate_seconds=2, reap_seconds=3)
++    print(json.dumps(outcome), flush=True)
++    return 0 if outcome["status"] == "CHILD_COMPLETED" else 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/zip_intake.py
+@@ -0,0 +1,201 @@
++"""Authenticate new archive DATA, then bounded ZIP inspection/extraction only."""
++import hashlib
++import os
++from pathlib import PurePosixPath
++import stat
++import struct
++import zipfile
++import zlib
++
++import fdio
++from policy import require
++
++
++def authenticate(fd, policy):
++    before = os.fstat(fd)
++    require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
++            and before.st_size == policy["exact_bytes"], "parent archive FD/size")
++    os.lseek(fd, 0, os.SEEK_SET)
++    h, count = hashlib.sha256(), 0
++    while block := os.read(fd, min(1024**2, policy["exact_bytes"] + 1 - count)):
++        h.update(block)
++        count += len(block)
++        require(count <= policy["exact_bytes"], "parent archive grew")
++    require(count == policy["exact_bytes"] and h.hexdigest() == policy["expected_sha256"],
++            "parent archive authentication failed before ZIP processing")
++    require(fdio.facts(before) == fdio.facts(os.fstat(fd)), "parent archive changed during authentication")
++    return fdio.facts(before)
++
++
++def central_bound(fd, limits):
++    """Bound central-directory allocation before stdlib ZIP parsing.
++
++    Whole-archive ZIP64/multidisk are explicitly unsupported in this candidate.
++    No relaxation is implied if the uninspected official archive uses them.
++    """
++    size = os.fstat(fd).st_size
++    tail = os.pread(fd, min(size, 65557), max(0, size - 65557))
++    index = tail.rfind(b"PK\x05\x06")
++    require(index >= 0 and len(tail) - index >= 22, "missing ZIP end record")
++    _, disk, cd_disk, disk_count, count, cd_size, cd_offset, comment = struct.unpack_from("<4s4H2LH", tail, index)
++    require(index + 22 + comment == len(tail), "trailing ZIP bytes/end record")
++    require(disk == cd_disk == 0 and disk_count == count, "multidisk ZIP refused")
++    require(count != 65535 and cd_size != 0xffffffff and cd_offset != 0xffffffff, "ZIP64 whole archive unsupported")
++    require(count <= limits["member_count_max"] and cd_size <= 64 * 1024**2, "central directory cap")
++    require(cd_offset + cd_size == size - len(tail) + index, "ZIP central directory layout")
++    return count
++
++
++def roster(infos, limits):
++    require(0 < len(infos) <= limits["member_count_max"], "member count bound")
++    rows, names, files, directories, total = [], set(), set(), set(), 0
++    for info in infos:
++        name = info.orig_filename
++        require(type(name) is str and not any(ord(c) < 32 or ord(c) == 127 for c in name)
++                and "\\" not in name and ":" not in name, "member path/control")
++        clean = name[:-1] if name.endswith("/") else name
++        p = PurePosixPath(clean)
++        require(not p.is_absolute() and str(p) == clean and ".." not in p.parts
++                and p.parts and p.parts[0] == limits["expected_top_directory"], "member escapes top root")
++        require(clean not in names, "duplicate ZIP path")
++        names.add(clean)
++        require(info.flag_bits & (1 | 64) == 0, "encrypted member")
++        require(info.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED), "unsupported compression")
++        mode = (info.external_attr >> 16) & 0xffff
++        kind = stat.S_IFMT(mode)
++        is_dir = name.endswith("/")
++        require(info.create_system == 3 and kind == (stat.S_IFDIR if is_dir else stat.S_IFREG),
++                "nonregular/link/unknown member type")
++        # Only timestamp and UID/GID extras are admitted. Unix link-bearing and
++        # ZIP64/other unknown extras fail closed instead of assuming authenticity.
++        offset, seen = 0, set()
++        while offset < len(info.extra):
++            require(offset + 4 <= len(info.extra), "truncated ZIP extra")
++            key, length = struct.unpack_from("<HH", info.extra, offset)
++            require(key in (0x5455, 0x7875) and key not in seen and offset + 4 + length <= len(info.extra),
++                    "unsupported/link-bearing/duplicate ZIP extra")
++            seen.add(key)
++            offset += 4 + length
++        require(type(info.file_size) is int and 0 <= info.file_size <= limits["per_member_bytes_max"], "member size cap")
++        if is_dir:
++            require(info.file_size == 0 and info.CRC == 0, "directory with payload/CRC")
++            directories.add(clean)
++        else:
++            files.add(clean)
++            total += info.file_size
++        for parent in p.parents:
++            if str(parent) != ".":
++                directories.add(str(parent))
++        rows.append({"path": clean, "kind": "directory" if is_dir else "file", "declared_bytes": info.file_size,
++                     "crc32": info.CRC, "source_mode": mode, "compression": info.compress_type})
++    require(not files & directories, "file/directory prefix collision")
++    require(total <= limits["total_uncompressed_bytes_max"], "total expanded size cap")
++    return rows, directories
++
++
++def extract(archive_fd, output_root, request, state):
++    state.update(phase="parent-authentication", pending=b"")
++    archive_stat = authenticate(archive_fd, request["fetch"])
++    state["parent_archive_stat"] = archive_stat
++    count = central_bound(archive_fd, request["extract"])
++    os.lseek(archive_fd, 0, os.SEEK_SET)
++    # dup shares the authenticated open file description; no path reopen.
++    with os.fdopen(os.dup(archive_fd), "rb") as stream, zipfile.ZipFile(stream) as archive:
++        infos = archive.infolist()
++        require(len(infos) == count, "central directory count mismatch")
++        rows, directories = roster(infos, request["extract"])
++        fdio.save(output_root, "ZIP-ROSTER.json", {"members": rows, "parent_sha256": request["fetch"]["expected_sha256"]})
++        os.mkdir("data", 0o700, dir_fd=output_root)
++        tree = os.open("data", fdio.DIR, dir_fd=output_root)
++        manifests, actual_total = [], 0
++        try:
++            for directory in sorted(directories, key=lambda p: (len(PurePosixPath(p).parts), p)):
++                opened = fdio.child_dirs(tree, PurePosixPath(directory).parts)
++                os.close(opened)
++            for info, row in zip(infos, rows, strict=True):
++                state.update(phase="member", member=row, pending=b"", pending_offset=0, member_received=0)
++                if row["kind"] == "directory":
++                    with archive.open(info) as member:
++                        require(member.read(1) == b"", "directory payload")
++                    manifests.append({**row, "measured_bytes": 0, "sha256": None})
++                    continue
++                p = PurePosixPath(row["path"])
++                parent = fdio.child_dirs(tree, p.parts[:-1])
++                target = None
++                try:
++                    target = fdio.new_file(parent, p.name)
++                    h, size, crc = hashlib.sha256(), 0, 0
++                    with archive.open(info) as member:
++                        while True:
++                            chunk = member.read(min(1024**2, row["declared_bytes"] + 1 - size))
++                            state.update(pending=chunk, pending_offset=size, member_received=size + len(chunk))
++                            if not chunk:
++                                break
++                            size += len(chunk)
++                            actual_total += len(chunk)
++                            require(size <= row["declared_bytes"] and actual_total <= request["extract"]["total_uncompressed_bytes_max"],
++                                    "expanded byte bound")
++                            h.update(chunk)
++                            crc = zlib.crc32(chunk, crc)
++                            fdio.write_all(target, chunk)
++                            state["pending"] = b""
++                    require(size == row["declared_bytes"], "member size mismatch")
++                    require(crc == row["crc32"], "member CRC mismatch")
++                    os.fsync(target)
++                    st = fdio.stable_file(target, parent, p.name, size)
++                    os.fsync(parent)
++                    manifests.append({**row, "measured_bytes": size, "sha256": h.hexdigest(), "output_stat": st})
++                except BaseException:
++                    if target is not None:
++                        state["partial_output_stat"] = fdio.facts(os.fstat(target))
++                    raise
++                finally:
++                    if target is not None:
++                        os.close(target)
++                    os.close(parent)
++            require(archive_stat == fdio.facts(os.fstat(archive_fd)), "parent changed during extraction")
++            check_tree(tree, manifests, directories)
++        finally:
++            os.close(tree)
++    parent_ref = {"url": request["fetch"]["url"], "sha256": request["fetch"]["expected_sha256"],
++                  "bytes": request["fetch"]["exact_bytes"], "identity": request["environment_identity"]}
++    return {"schema": "merlin.fresh-sdk-authenticated-member-manifest.v1", "parent_archive": parent_ref,
++            "members": manifests, "expanded_bytes": actual_total, "new_environment_pins": True,
++            "old_expectations_replaced": False, "authority": dict(request["authority"])}
++
++
++def check_tree(tree, members, directories):
++    """Exact metadata roster; any extra/missing/link reports concrete child sets."""
++    files = {m["path"]: m for m in members if m["kind"] == "file"}
++    children = {}
++    for p in set(files) | directories:
++        parent = str(PurePosixPath(p).parent)
++        children.setdefault(parent, set()).add(PurePosixPath(p).name)
++
++    def visit(fd, prefix):
++        # A fresh open description avoids relying on an enumeration view created
++        # before descendants existed. Bind it to the same directory identity.
++        listing = os.open(".", fdio.DIR, dir_fd=fd)
++        try:
++            original, fresh = os.fstat(fd), os.fstat(listing)
++            require((original.st_dev, original.st_ino, original.st_mode) ==
++                    (fresh.st_dev, fresh.st_ino, fresh.st_mode), "enumeration directory identity")
++            names = os.listdir(listing)
++        finally:
++            os.close(listing)
++        expected = children.get(prefix or ".", set())
++        require(set(names) == expected,
++                f"output roster differs at {prefix!r}: actual={sorted(names)!r} expected={sorted(expected)!r}")
++        for name in names:
++            p = str(PurePosixPath(prefix) / name)
++            if p in directories:
++                child = os.open(name, fdio.DIR, dir_fd=fd)
++                try:
++                    visit(child, p)
++                finally:
++                    os.close(child)
++            else:
++                st = os.stat(name, dir_fd=fd, follow_symlinks=False)
++                require(stat.S_ISREG(st.st_mode) and st.st_nlink == 1
++                        and fdio.facts(st) == files[p]["output_stat"], "output member association changed")
++    visit(tree, "")
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/InitListNat.lean
+@@ -0,0 +1,13 @@
++import Init
++
++namespace DiagnosticReprInitListNat
++
++structure Payload where
++  value : List Nat
++  deriving Repr
++
++def witness : Payload := ⟨[7, 11]⟩
++
++theorem witness_value : witness.value = [7, 11] := rfl
++
++end DiagnosticReprInitListNat
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/InitNat.lean
+@@ -0,0 +1,13 @@
++import Init
++
++namespace DiagnosticReprInitNat
++
++structure Payload where
++  value : Nat
++  deriving Repr
++
++def witness : Payload := ⟨7⟩
++
++theorem witness_value : witness.value = 7 := rfl
++
++end DiagnosticReprInitNat
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/OmegaListNat.lean
+@@ -0,0 +1,13 @@
++import Lean.Elab.Tactic.Omega
++
++namespace DiagnosticReprOmegaListNat
++
++structure Payload where
++  value : List Nat
++  deriving Repr
++
++def witness : Payload := ⟨[7, 11]⟩
++
++theorem witness_value : witness.value = [7, 11] := rfl
++
++end DiagnosticReprOmegaListNat
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/archive_selection.py
+@@ -0,0 +1,146 @@
++"""Pure documentary archive admission into the unchanged common Selection API.
++
++No images are read. A caller must bind/review all six documentary inputs and the
++four controller sources; passing this decoder does NOT authenticate extraction,
++approve host closure or authorize native execution. New archive-derived pins
++never replace original SDK expectations. All source policies remain trusted.
++"""
++from pathlib import PurePosixPath
++import stat
++
++if __package__:
++    from . import lean_graph_original_image_context_data as data
++else:
++    import lean_graph_original_image_context_data as data
++
++FAMILIES = (".lean", ".olean", ".olean.private", ".olean.server", ".ilean", ".ir", ".ir.sig")
++NO_AUTHORITY = {"execute": False, "install": False, "graph_verified": False, "old_holds_cleared": False}
++
++
++def require(value, reason):
++    if not value:
++        raise data.ContextRefusal(reason)
++
++
++def fields(value, names):
++    require(type(value) is dict and set(value) == set(names.split()), "closed documentary fields")
++
++
++def member_path(value, top):
++    require(type(value) is str and value and all(ord(c) >= 32 and ord(c) != 127 for c in value)
++            and "\\" not in value and ":" not in value, "canonical member path")
++    p = PurePosixPath(value)
++    require(not p.is_absolute() and str(p) == value and ".." not in p.parts and p.parts[0] == top,
++            "member escapes exact top directory")
++    return p
++
++
++def count(value, cap):
++    require(type(value) is int and 0 <= value <= cap, "bounded integer, never bool")
++    return value
++
++
++def select(documents, references):
++    """Full manifest roster, all object families, explicit runtime/host closure."""
++    require(set(documents) == {"request", "manifest", "roster", "selection", "host"}, "exact documents")
++    require(set(references) == set(documents) | {"trace"}
++            and all(type(r) is data.FileRef for r in references.values()), "typed six documentary references")
++    request, manifest, roster, selection, host = (documents[k] for k in ("request", "manifest", "roster", "selection", "host"))
++    fields(selection, "schema inputs toolchain members modules sdk_runtime_members forbidden_roots native_authorized")
++    require(selection["schema"] == "merlin.fresh-archive-common-selection.v1" and selection["native_authorized"] is False,
++            "selection has no native authority")
++    require(selection["inputs"] == {k: references[k].record() for k in ("request", "manifest", "roster", "host", "trace")},
++            "all input associations must equal caller-bound originals")
++    require(request["schema"] == "merlin.fresh-sdk-data-intake.v1" and request["authority"] == NO_AUTHORITY
++            and all(v is False for v in request["authority"].values()), "DATA-only request")
++    fields(manifest, "schema parent_archive members expanded_bytes new_environment_pins old_expectations_replaced authority request_identity")
++    fields(roster, "members parent_sha256")
++    require(manifest["schema"] == "merlin.fresh-sdk-authenticated-member-manifest.v1"
++            and manifest["new_environment_pins"] is True and manifest["old_expectations_replaced"] is False
++            and manifest["authority"] == NO_AUTHORITY and all(v is False for v in manifest["authority"].values()),
++            "new DATA manifest, not old expectation refresh")
++    require(manifest["request_identity"] == data.identity(request), "manifest/request content identity")
++    expected = {"url": request["fetch"]["url"], "sha256": request["fetch"]["expected_sha256"],
++                "bytes": request["fetch"]["exact_bytes"], "identity": request["environment_identity"]}
++    require(manifest["parent_archive"] == expected and roster["parent_sha256"] == expected["sha256"],
++            "official parent archive content association")
++    limits = request["extract"]
++    top = limits["expected_top_directory"]
++    require(type(top) is str and PurePosixPath(top).parts == (top,), "one top-directory component")
++    root = data.absolute(request["new_root"]) / "data"
++    sdk = root / top
++    require(selection["toolchain"] == str(sdk), "exact DATA path mapping, no old SDK alias")
++    require(type(roster["members"]) is list and type(manifest["members"]) is list
++            and 0 < len(roster["members"]) == len(manifest["members"]) <= limits["member_count_max"], "full bounded roster")
++    seen, files, dirs, total = set(), {}, set(), 0
++    for original, row in zip(roster["members"], manifest["members"], strict=True):
++        fields(original, "path kind declared_bytes crc32 source_mode compression")
++        require(all(row.get(k) == v and type(row.get(k)) is type(v) for k, v in original.items()), "exact ordered ZIP entry association")
++        path = member_path(original["path"], top)
++        require(str(path) not in seen, "duplicate member")
++        seen.add(str(path))
++        kind = original["kind"]
++        require(kind in ("file", "directory"), "regular file or directory only")
++        count(original["crc32"], 2**32 - 1)
++        count(original["source_mode"], 65535)
++        require(type(original["compression"]) is int and original["compression"] in (0, 8), "stored/deflate only")
++        require(stat.S_IFMT(original["source_mode"]) == (stat.S_IFREG if kind == "file" else stat.S_IFDIR), "no links or special types")
++        size = count(row["measured_bytes"], limits["per_member_bytes_max"])
++        require(type(original["declared_bytes"]) is int and size == original["declared_bytes"], "declared/measured size equality")
++        if kind == "file":
++            fields(row, "path kind declared_bytes crc32 source_mode compression measured_bytes sha256 output_stat")
++            files[str(path)] = data.FileRef(str(root / path), row["sha256"], size)
++            require(type(row["output_stat"]) is dict, "documentary output stat")
++            total += size
++        else:
++            fields(row, "path kind declared_bytes crc32 source_mode compression measured_bytes sha256")
++            require(size == 0 and original["crc32"] == 0 and row["sha256"] is None, "empty directory")
++            dirs.add(str(path))
++        dirs.update(str(p) for p in path.parents if str(p) != ".")
++    require(not set(files) & dirs, "file/directory prefix collision")
++    require(type(manifest["expanded_bytes"]) is int and manifest["expanded_bytes"] == total
++            and total <= limits["total_uncompressed_bytes_max"], "exact total size")
++    require(type(selection["members"]) is list and len(selection["members"]) == len(files)
++            and set(selection["members"]) == set(files), "exact entire regular-member roster, no implicit subset")
++    modules = selection["modules"]
++    require(type(modules) is list and modules and len(set(modules)) == len(modules), "explicit unique module roster")
++    actual_modules = set()
++    prefix = PurePosixPath(top) / "lib/lean"
++    for name in files:
++        p = PurePosixPath(name)
++        if p.is_relative_to(prefix) and name.endswith(".olean"):
++            actual_modules.add(".".join(p.relative_to(prefix).with_suffix("").parts))
++    require(set(modules) == actual_modules, "all actual compiled modules explicitly declared")
++    for module in modules:
++        relative = data.module_name(module).replace(".", "/")
++        for suffix in FAMILIES:
++            folder = "src/lean" if suffix == ".lean" else "lib/lean"
++            require(str(PurePosixPath(top) / folder / (relative + suffix)) in files, "complete source/object/IR signature family")
++    fields(host, "schema archive_manifest refs interpreter finite_allowed_misses success_only_misses native_authorized")
++    require(host["schema"] == "merlin.fresh-archive-separate-host-closure.v1"
++            and host["archive_manifest"] == references["manifest"].record() and host["native_authorized"] is False,
++            "separately bound host proposal, not permission")
++    require(type(host["refs"]) is list and 0 < len(host["refs"]) <= 64, "bounded explicit host closure")
++    runtime = data.unique_refs(host["refs"])
++    require(host["interpreter"] in runtime, "host loader absent")
++    require(all(data.absolute(p).is_relative_to(PurePosixPath("/usr/lib")) and not data.absolute(p).is_relative_to(sdk)
++                for p in runtime), "explicit host-system closure only")
++    selected = selection["sdk_runtime_members"]
++    require(type(selected) is list and selected and len(set(selected)) == len(selected)
++            and set(selected) <= set(files), "explicit unique archive runtime membership")
++    for name in selected:
++        ref = files[name]
++        require(ref.path not in runtime, "host/archive runtime collision")
++        runtime[ref.path] = ref
++    executable = str(sdk / "bin/lean")
++    require(executable in runtime, "actual archive Lean executable absent")
++    require(len({PurePosixPath(p).name for p in runtime}) == len(runtime), "ambiguous loader basename")
++    misses = data.finite_pairs(host["finite_allowed_misses"], runtime)
++    success = data.finite_pairs(host["success_only_misses"], runtime)
++    require(set(success) <= set(misses), "success-only diagnostics outside finite allowed list")
++    forbidden = selection["forbidden_roots"]
++    require(type(forbidden) is list and forbidden and len(set(forbidden)) == len(forbidden), "explicit old held roots")
++    for path in [*runtime, *(ref.path for ref in files.values())]:
++        require(not any(data.absolute(path).is_relative_to(data.absolute(old)) for old in forbidden), "selected path overlaps held root")
++    return data.Selection(str(sdk), tuple(files[k] for k in sorted(files)), tuple(runtime[k] for k in sorted(runtime)),
++                          misses, success, executable, host["interpreter"], tuple(forbidden))
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context.py
+@@ -0,0 +1,499 @@
++"""NEW authenticated-archive common proof controller candidate; review before launch.
++
++No old Pure controller, installed SDK, archive, Lake, MLIR or cached proof is
++used. Construction reads only bound metadata/project/controller sources. Native
++methods are for a separately reviewed/authorized context; source/data tests do
++not authorize invoking them. Process-local results are not replayable authority.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import subprocess
++from pathlib import Path
++
++if __package__:
++    from . import lean_graph_original_image_context_data as data
++    from . import lean_graph_original_image_context_io as io
++    from . import archive_selection as archive
++else:
++    import lean_graph_original_image_context_data as data
++    import lean_graph_original_image_context_io as io
++    import archive_selection as archive
++
++
++class ProofRefused(ValueError):
++    """Ordinary Lean elaboration failure with a valid observed runtime."""
++
++
++class InfrastructureStop(RuntimeError):
++    """Permanent context hold: first raw evidence retained, never retried."""
++
++
++CheckedQuery = data.CheckedQuery
++diagnostic_failure = data.diagnostic_failure
++
++
++class Context:
++    @classmethod
++    def from_review(cls, *, review, project_sources, controller_sources, workspace, compile_audit_roots=None):
++        """Prepare source copies only. Each input ref is independently pinned.
++
++        review keys: request, manifest, roster, selection, host, trace (FileRef instances).
++        project_sources: exact dotted module -> original .lean FileRef mapping.
++        controller_sources: the FOUR current controller/data/IO/archive-selection source refs.
++        compile_audit_roots: reviewed exact roots printed by named frozen project
++        dependencies only. Generated queries are disjoint and must print nothing.
++        Caller/source/context review is an explicit host premise, not a JSON
++        boolean granting launch permission or a whole-program proof receipt.
++        """
++        if set(review) != {"request", "manifest", "roster", "selection", "host", "trace"}:
++            raise data.ContextRefusal("closed authenticated-archive review roles required")
++        if any(type(ref) is not data.FileRef for ref in [*review.values(), *controller_sources]):
++            raise data.ContextRefusal("typed exact references required")
++        review = dict(review)
++        documents = {name: io.read_bound(ref) for name, ref in review.items()}
++        inputs = {name: io.strict_json(documents[name]) for name in review if name != "trace"}
++        selection = archive.select(inputs, review)
++        expected_controls = {str(Path(module.__file__).absolute()) for module in (data, io, archive)} | {
++            str(Path(__file__).absolute())
++        }
++        if {ref.path for ref in controller_sources} != expected_controls or len(controller_sources) != 4:
++            raise data.ContextRefusal("full current controller/data/IO/archive-selection source identity required")
++        for ref in controller_sources:
++            io.read_bound(ref, selection.forbidden_roots)
++        trace = {"__name__": "_reviewed_original_image_trace"}
++        exec(compile(documents["trace"], review["trace"].path, "exec"), trace)
++        result = cls()
++        result.selection, result.trace = selection, trace
++        result.workspace = Path(data.absolute(str(workspace)))
++        result.workspace.mkdir(parents=True, exist_ok=False)
++        result.sources_dir, result.objects_dir = result.workspace / "source", result.workspace / "compiled"
++        result.commands_dir = result.workspace / "commands"
++        for directory in (result.sources_dir, result.objects_dir, result.commands_dir):
++            directory.mkdir()
++        result.review, result.controls = dict(review), tuple(controller_sources)
++        result.compile_audit_roots = dict(compile_audit_roots or {})
++        for module, roots in result.compile_audit_roots.items():
++            if module not in project_sources or type(roots) is not tuple or not roots or len(set(roots)) != len(roots):
++                raise data.ContextRefusal("explicit original-module compile audit roots required")
++            for root in roots:
++                data.module_name(root)
++        result.sources, result.originals, result.objects, result.graph = {}, {}, {}, {}
++        result.active, result._issued, result._key = set(), {}, object()
++        result.pending_outputs, result.unpublished = set(), {}
++        result.held, result.sequence = False, 0
++        for name, ref in sorted(project_sources.items()):
++            data.module_name(name)
++            if not name.startswith(("Merlin.", "MerlinVerify.")) or type(ref) is not data.FileRef:
++                raise data.ContextRefusal("explicit project namespace/source reference required")
++            result.originals[name] = ref
++            result._freeze(name, io.read_bound(ref, selection.forbidden_roots))
++        sdk = Path(selection.toolchain)
++        result.environment = {
++            "LANG": "C",
++            "LC_ALL": "C",
++            "LEAN_SYSROOT": str(sdk),
++            "LEAN_PATH": str(result.objects_dir) + ":" + str(sdk / "lib/lean"),
++            "LEAN_SRC_PATH": str(result.sources_dir) + ":" + str(sdk / "src/lean"),
++            "LD_DEBUG": "libs,files",
++        }
++        result.loader = [
++            selection.interpreter,
++            "--inhibit-cache",
++            "--glibc-hwcaps-mask",
++            "",
++            "--library-path",
++            f"{sdk}/lib/lean:{sdk}/lib:/usr/lib",
++            selection.executable,
++        ]
++        result.definition = {
++            "schema": "merlin.graph.fresh-authenticated-archive-context.v1",
++            "diagnostic_failure_capture": "first-failed-read/already-read-buffer.bin; no acceptance or hold clearance",
++            "import_policy": "trusted-closed-project-header-and-actual-object-report-v1",
++            "selection": selection.record(),
++            "review": {k: v.record() for k, v in review.items()},
++            "controllers": [ref.record() for ref in controller_sources],
++            "project_sources": {k: v.record() for k, v in result.originals.items()},
++            "compile_audit_roots": dict(result.compile_audit_roots),
++            "workspace": str(result.workspace),
++            "environment": result.environment,
++            "loader": result.loader,
++            "old_profile_repaired": False,
++            "native_fidelity_proved": False,
++            "trust": [
++                "official parent/member association and separate host-loader review",
++                "OS/kernel/vDSO",
++                "loader/module reporting",
++                "Lean kernel",
++                "Python host association and process-local authority",
++                "closed literal project-header decoder (not Lean source reporting)",
++            ],
++        }
++        result.context_id = data.identity(result.definition)
++        io.save(result.workspace / "CONTEXT.json", {"context_id": result.context_id, **result.definition})
++        result.context_ref = io.output_reference(result.workspace / "CONTEXT.json", result.workspace)
++        io.save(result.workspace / "PREPARED.json", {"native_invocations": 0, "qualified": False})
++        return result
++
++    def _freeze(self, module, content):
++        data.module_name(module)
++        if module in self.sources or type(content) is not bytes:
++            raise data.ContextRefusal("unique module and exact source bytes required")
++        path = self.sources_dir / (module.replace(".", "/") + ".lean")
++        io.write_new(path, content)
++        ref = data.FileRef(str(path), hashlib.sha256(content).hexdigest(), len(content))
++        io.read_bound(ref, self.selection.forbidden_roots)
++        self.sources[module] = ref
++        return ref
++
++    def _stop(self, error):
++        self.held = True
++        path = self.workspace / "FIRST-INFRASTRUCTURE-STOP.json"
++        if not path.exists():
++            io.save(
++                path,
++                {
++                    "status": "UNQUALIFIED_CONTEXT_HELD",
++                    "retry": False,
++                    "type": type(error).__name__,
++                    "reason": str(error),
++                    "evidence": getattr(error, "evidence", None),
++                },
++            )
++        raise InfrastructureStop(str(error)) from error
++
++    def _guard(self):
++        if self.held or (self.workspace / "FIRST-INFRASTRUCTURE-STOP.json").exists():
++            raise InfrastructureStop("context already held; no new reads or launches")
++        try:
++            if Path("/etc/ld.so.preload").exists() or Path("/etc/ld.so.preload").is_symlink():
++                raise data.ContextRefusal("system preload file exists")
++            if (
++                data.identity(self.definition) != self.context_id
++                or self.selection.record() != self.definition["selection"]
++                or {k: v.record() for k, v in self.originals.items()} != self.definition["project_sources"]
++                or {k: v.record() for k, v in self.review.items()} != self.definition["review"]
++                or [ref.record() for ref in self.controls] != self.definition["controllers"]
++                or self.compile_audit_roots != self.definition["compile_audit_roots"]
++                or self.environment != self.definition["environment"]
++                or self.loader != self.definition["loader"]
++            ):
++                raise data.ContextRefusal("context definition mutated")
++            references = [
++                self.context_ref,
++                *self.selection.images,
++                *self.selection.runtime,
++                *self.review.values(),
++                *self.controls,
++                *self.originals.values(),
++                *self.sources.values(),
++            ]
++            references += [ref for group in self.objects.values() for ref in group.values()]
++            references += list(self.unpublished.values())
++            for directory, allowed in (
++                (Path(self.selection.toolchain), {ref.path for ref in self.selection.images}),
++                (self.sources_dir, {ref.path for ref in self.sources.values()}),
++                (
++                    self.objects_dir,
++                    {ref.path for group in self.objects.values() for ref in group.values()}
++                    | set(self.unpublished)
++                    | self.pending_outputs,
++                ),
++            ):
++                for path in directory.rglob("*"):
++                    if path.is_symlink() or (path.is_file() and str(path) not in allowed):
++                        raise data.ContextRefusal("unbound/symlink file in a selected source/object/runtime directory")
++            for ref in set(references):
++                io.read_bound(ref, self.selection.forbidden_roots,
++                              failure_directory=self.workspace / "first-failed-read")
++            return {
++                "context_id": self.context_id,
++                "authenticated_archive_images": len(self.selection.images),
++                "runtime_images": len(self.selection.runtime),
++                "bound_files": len(set(references)),
++                "installed_sdk_reads": 0,
++                "expectations_refreshed": False,
++            }
++        except InfrastructureStop:
++            raise
++        except Exception as error:
++            self._stop(error)
++
++    def _invoke(self, label, arguments, *, proof_command=False):
++        self._guard()
++        directory = self.commands_dir / f"{self.sequence:05d}-{label}"
++        self.sequence += 1
++        directory.mkdir()
++        command = [*self.loader, "-j1", *arguments]
++        io.save(
++            directory / "INTENT.json",
++            {
++                "command": command,
++                "environment": self.environment,
++                "cwd": str(self.workspace),
++                "context_id": self.context_id,
++            },
++        )
++        io.save(directory / "PRECHECK.json", self._guard())
++        try:
++            with subprocess.Popen(
++                command,
++                cwd=self.workspace,
++                env=self.environment,
++                stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE,
++                stdin=subprocess.DEVNULL,
++            ) as process:
++                timed_out = False
++                try:
++                    stdout, stderr = process.communicate(timeout=120)
++                except subprocess.TimeoutExpired:
++                    timed_out = True
++                    process.kill()  # This exact owned process only.
++                    stdout, stderr = process.communicate()
++            io.write_new(directory / "stdout.txt", stdout)
++            io.write_new(directory / "stderr.txt", stderr)
++            io.save(
++                directory / "PROCESS.json",
++                {"pid": process.pid, "returncode": process.returncode, "timed_out": timed_out},
++            )
++            io.save(directory / "POSTCHECK.json", self._guard())
++            if timed_out or process.returncode < 0:
++                raise data.ContextRefusal("timeout or native signal; not a proof refusal")
++            observed = self.trace["parse"](
++                stderr.decode(),
++                [ref.record() for ref in self.selection.runtime],
++                self.selection.executable,
++                self.selection.interpreter,
++                self.selection.allowed_misses(process.returncode),
++                expected_pid=process.pid,
++                project_initializers={"initialize_" + name.replace(".", "_") for name in self.objects},
++            )
++            io.save(directory / "RUNTIME.json", observed)
++            if process.returncode:
++                if (
++                    proof_command
++                    and process.returncode == 1
++                    and diagnostic_failure(stdout.decode(), {ref.path for ref in self.sources.values()})
++                ):
++                    io.save(directory / "PROOF-REFUSAL.json", {"status": "NOT_ESTABLISHED", "context_held": False})
++                    raise ProofRefused(str(directory))
++                raise data.ContextRefusal("nonzero exit without an ordinary bound-source Lean diagnostic")
++            return stdout.decode(), directory
++        except ProofRefused:
++            raise
++        except InfrastructureStop:
++            raise
++        except Exception as error:
++            self._stop(error)
++
++    def _reported(self, stdout, kind, *, allow_empty=False):
++        known = (
++            {ref.path: module for module, ref in self.sources.items()}
++            if kind == "source"
++            else {group[".olean"].path: module for module, group in self.objects.items()}
++        )
++        standard = {ref.path for ref in self.selection.images}
++        sdk = Path(self.selection.toolchain)
++        project, libraries, imported, seen = set(), set(), [], set()
++        for line in stdout.splitlines():
++            path = data.absolute(line)
++            if not line.endswith(".lean" if kind == "source" else ".olean"):
++                raise data.ContextRefusal("wrong-kind actual module import report")
++            if line in seen:
++                continue  # Same validated canonical path; raw report retains every occurrence.
++            seen.add(line)
++            if line in known:
++                project.add(known[line])
++                imported.append({"path": line, "role": "bound-project-" + kind, "module": known[line]})
++                continue
++            prefix = sdk / ("src/lean" if kind == "source" else "lib/lean")
++            if not path.is_relative_to(prefix):
++                raise data.ContextRefusal("standard reporter path outside private roots; no fallback")
++            relative = path.relative_to(prefix).with_suffix("")
++            module = data.module_name(".".join(relative.parts))
++            family = [
++                str(sdk / "lib/lean" / relative) + suffix for suffix in (".olean", ".olean.private", ".olean.server")
++            ]
++            if any(member not in standard for member in family):
++                raise data.ContextRefusal("incomplete ORIGINAL standard compiled-object family")
++            if kind == "object" and line not in standard:
++                raise data.ContextRefusal("unbound actual standard object")
++            role = "pinned-standard-" + kind if line in standard else "compiled-only-standard-name-cross-check"
++            libraries.add(module)
++            imported.append({"path": line, "module": module, "role": role, "object_family": family})
++        if not imported and not allow_empty:
++            raise data.ContextRefusal("empty actual import report is not a closure")
++        return project, libraries, imported
++
++    def _inspect(self, source):
++        decoded = data.literal_imports(io.read_bound(source, self.selection.forbidden_roots))
++        direct = set(decoded) & self.sources.keys()
++        libraries = set(decoded) - direct
++        # Validate standard membership without opening or fabricating .lean files.
++        standard_paths = [
++            str(Path(self.selection.toolchain) / "lib/lean" / name.replace(".", "/")) + ".olean"
++            for name in sorted(libraries)
++        ]
++        self._reported("\n".join(standard_paths), "object", allow_empty=not libraries)
++        for dependency in sorted(direct):
++            self._build(dependency)
++        stdout, object_log = self._invoke("object-imports", ["--deps", source.path])
++        objects, object_libraries, object_paths = self._reported(stdout, "object", allow_empty=not decoded)
++        if objects != direct or object_libraries != libraries:
++            raise data.ContextRefusal("decoded header/actual object dependency modules differ")
++        return {
++            "source": source.record(),
++            "header_policy": self.definition["import_policy"],
++            "host_decoded_modules": list(decoded),
++            "object_imports": object_paths,
++            "direct_modules": sorted(direct),
++            "standard_modules": sorted(libraries),
++            "logs": [str(object_log)],
++        }
++
++    def _build(self, module):
++        if module in self.objects:
++            return
++        if module in self.active or module not in self.sources:
++            raise data.ContextRefusal("cyclic or missing explicit project source")
++        self.active.add(module)
++        try:
++            source = self.sources[module]
++            inspection = self._inspect(source)
++            target = self.objects_dir / (module.replace(".", "/") + ".olean")
++            target.parent.mkdir(parents=True, exist_ok=True)
++            suffixes = (".olean", ".olean.private", ".olean.server", ".ilean")
++            self.pending_outputs = {str(target.with_suffix(suffix)) for suffix in suffixes}
++            try:
++                stdout, compile_log = self._invoke(
++                    "compile", ["--root=" + str(self.sources_dir), "-o", str(target), source.path], proof_command=True
++                )
++            finally:
++                if not self.held:
++                    for path in self.pending_outputs:
++                        if Path(path).exists():
++                            self.unpublished[path] = io.output_reference(path, self.workspace)
++                self.pending_outputs = set()
++            if module in self.compile_audit_roots:
++                found = self.trace["parse_axioms"](stdout, self.compile_audit_roots[module])
++                io.save(compile_log / "COMPILE-AXIOMS.json", found)
++            elif stdout.strip():
++                raise data.ContextRefusal("unexpected compile output; query must contain only declarations")
++            outputs = {}
++            for suffix in (".olean", ".olean.private", ".olean.server", ".ilean"):
++                path = target.with_suffix(suffix)
++                if path.exists():
++                    outputs[suffix] = io.output_reference(path, self.workspace)
++            if ".olean" not in outputs:
++                raise data.ContextRefusal("successful compile missing actual object")
++            self.objects[module] = outputs
++            self.graph[module] = {
++                **inspection,
++                "outputs": {k: v.record() for k, v in outputs.items()},
++                "compile_log": str(compile_log),
++            }
++            self._guard()
++        finally:
++            self.active.discard(module)
++
++    def check_query(self, module, query_bytes, *, final_root, support_roots=()):
++        """Compile exact generated bytes; audit exact roots and retain full types.
++
++        This is kernel-check evidence only. The caller's approved generator must
++        bind the final root's statement to the complete compiler boundary/claim.
++        An arbitrary local theorem never acquires whole-program policy authority.
++        """
++        roots = (final_root, *support_roots)
++        for name in (module, *roots):
++            data.module_name(name)
++        if len(set(roots)) != len(roots):
++            raise data.ContextRefusal("duplicate exact root")
++        if any(
++            name in self.sources or name in self.compile_audit_roots
++            for name in (module, module + "Audit", module + "Types")
++        ):
++            raise data.ContextRefusal("generated query/audit names must be disjoint from frozen dependencies")
++        self._guard()
++        query = self._freeze(module, query_bytes)
++        try:
++            self._build(module)
++            audit_module = module + "Audit"
++            audit_bytes = (
++                "import " + module + "\n" + "\n".join("#print axioms " + name for name in roots) + "\n"
++            ).encode()
++            audit_source = self._freeze(audit_module, audit_bytes)
++            self.graph[audit_module] = self._inspect(audit_source)
++            stdout, audit_log = self._invoke("root-audit", [audit_source.path], proof_command=True)
++            axioms = self.trace["parse_axioms"](stdout, roots)
++            # Separate buffers keep the strict axiom reader exact. pp.all avoids
++            # pretty-printer omission; these raw type reports remain inspectable.
++            type_source = self._freeze(
++                module + "Types",
++                (
++                    "import " + module + "\nset_option pp.all true\nset_option pp.universes true\n"
++                    "set_option pp.fullNames true\n" + "\n".join("#check @" + name for name in roots) + "\n"
++                ).encode(),
++            )
++            self.graph[module + "Types"] = self._inspect(type_source)
++            types, type_log = self._invoke("root-types", [type_source.path], proof_command=True)
++            if not types.strip():
++                raise data.ContextRefusal("missing exact-root full type output")
++            import_path = self.workspace / (module + "-IMPORTS.json")
++            io.save(import_path, self.graph)
++            audit_path = self.workspace / (module + "-AUDIT.json")
++            io.save(
++                audit_path,
++                {
++                    "context_id": self.context_id,
++                    "query": query.record(),
++                    "roots": axioms,
++                    "axioms_stdout": io.output_reference(audit_log / "stdout.txt", self.workspace).record(),
++                },
++            )
++            records = tuple(
++                io.output_reference(path, self.workspace)
++                for path in sorted(self.commands_dir.rglob("*"))
++                if path.is_file()
++            )
++            result = CheckedQuery(
++                self.context_id,
++                module,
++                query,
++                self.objects[module][".olean"],
++                final_root,
++                tuple(support_roots),
++                tuple((name, tuple(axioms[name])) for name in roots),
++                io.output_reference(audit_path, self.workspace),
++                io.output_reference(type_log / "stdout.txt", self.workspace),
++                io.output_reference(import_path, self.workspace),
++                records,
++                self._key,
++            )
++            self._issued[id(result)] = result
++            self.revalidate(result)
++            return result
++        except ProofRefused:
++            raise
++        except InfrastructureStop:
++            raise
++        except Exception as error:
++            self._stop(error)
++
++    def revalidate(self, result):
++        if (
++            type(result) is not CheckedQuery
++            or self._issued.get(id(result)) is not result
++            or result._key is not self._key
++            or result.context_id != self.context_id
++        ):
++            raise data.ContextRefusal("only this process/context's issued result may be revalidated")
++        self._guard()
++        try:
++            for ref in (result.query, result.object, result.audit, result.types, result.imports, *result.records):
++                io.read_bound(ref, self.selection.forbidden_roots,
++                              failure_directory=self.workspace / "first-failed-read")
++        except Exception as error:
++            self._stop(error)
++        return result
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context_data.py
+@@ -0,0 +1,362 @@
++"""Data-only validation of a NEW reviewed original-image context selection.
++
++This does not open SDK/runtime images, approve a context, or accept proof JSON.
++Original paths are provenance strings only; only their exact private transports
++may ever be read by the controller. The caller must independently bind/review
++the three input documents and the immutable trace parser source.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++from dataclasses import asdict, dataclass, field, replace
++from pathlib import PurePosixPath
++
++
++class ContextRefusal(ValueError):
++    pass
++
++
++def canonical(value):
++    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
++
++
++def identity(value):
++    return hashlib.sha256(canonical(value)).hexdigest()
++
++
++def absolute(value):
++    if type(value) is not str:
++        raise ContextRefusal("path must be an exact string")
++    path = PurePosixPath(value)
++    if not path.is_absolute() or str(path) != value or ".." in path.parts or "\x00" in value:
++        raise ContextRefusal("noncanonical absolute path")
++    return path
++
++
++def module_name(value):
++    if type(value) is not str or not value:
++        raise ContextRefusal("module/root identifier required")
++    for part in value.split("."):
++        if not part or not part.isascii() or not (part[0].isalpha() or part[0] == "_"):
++            raise ContextRefusal("invalid dotted module/root identifier")
++        if any(not (c.isalnum() or c == "_") for c in part):
++            raise ContextRefusal("invalid module/root identifier character")
++    return value
++
++
++def literal_imports(content):
++    """Decode a CLOSED project header; trusted host code, not Lean reporting.
++
++    Admit optional initial `prelude` and one literal dotted module per `import`
++    line, with whitespace and nested/line comments. Other header forms refuse.
++    Stop at the first body command; Lean's actual object report must independently
++    equal this result before compilation. No source/object is opened here.
++    """
++    if type(content) is not bytes:
++        raise ContextRefusal("exact project source bytes required")
++    try:
++        text = content.decode("utf-8", errors="strict")
++    except UnicodeError as error:
++        raise ContextRefusal("invalid UTF-8 project source") from error
++    if "\x00" in text or text.startswith("\ufeff"):
++        raise ContextRefusal("unsupported source prefix/control")
++    position = 0
++
++    def skip():
++        nonlocal position
++        newline = False
++        while position < len(text):
++            if text[position] in " \t\r\n":
++                newline |= text[position] in "\r\n"
++                position += 1
++            elif text.startswith("--", position):
++                end = text.find("\n", position)
++                position = len(text) if end < 0 else end
++            elif text.startswith("/-", position):
++                position += 2
++                depth = 1
++                while depth and position < len(text):
++                    if text.startswith("/-", position):
++                        depth += 1
++                        position += 2
++                    elif text.startswith("-/", position):
++                        depth -= 1
++                        position += 2
++                    else:
++                        newline |= text[position] in "\r\n"
++                        position += 1
++                if depth:
++                    raise ContextRefusal("unterminated project header comment")
++            else:
++                break
++        return newline
++
++    def token():
++        nonlocal position
++        start = position
++        while position < len(text) and (text[position].isalnum() or text[position] in "_."):
++            position += 1
++        return text[start:position]
++
++    imports, first = ["Init"], True
++    skip()
++    while position < len(text):
++        word = token()
++        if word == "prelude":
++            if not first:
++                raise ContextRefusal("prelude must precede all explicit imports")
++            imports = []
++        elif word == "import":
++            skip()
++            name = module_name(token())
++            if name in {"import", "prelude", "public", "private", "meta", "module"}:
++                raise ContextRefusal("unsupported import modifier/name")
++            imports.append(name)
++        elif word in {"public", "private", "meta"}:
++            while word in {"public", "private", "meta"}:
++                skip()
++                word = token()
++            if word in {"import", "prelude"}:
++                raise ContextRefusal("unsupported modified import")
++            break  # A declaration modifier, not part of the import header.
++        elif not word and text[position] in "#@":
++            break  # Body command/attribute; never interpreted as an import.
++        elif word == "module" or not word:
++            raise ContextRefusal("unsupported project header form")
++        else:
++            break
++        first = False
++        newline = skip()
++        if position < len(text) and not newline:
++            raise ContextRefusal("one complete literal header directive per line required")
++    return tuple(dict.fromkeys(imports))
++
++
++@dataclass(frozen=True)
++class FileRef:
++    path: str
++    sha256: str
++    bytes: int
++
++    def __post_init__(self):
++        absolute(self.path)
++        if type(self.bytes) is not int or self.bytes < 0:
++            raise ContextRefusal("nonnegative exact byte count required; bool refused")
++        if type(self.sha256) is not str or len(self.sha256) != 64 or set(self.sha256) - set("0123456789abcdef"):
++            raise ContextRefusal("lowercase SHA256 required")
++
++    @classmethod
++    def parse(cls, row):
++        if type(row) is not dict or set(row) != {"path", "sha256", "bytes"}:
++            raise ContextRefusal("closed file-reference fields required")
++        return cls(**row)
++
++    def record(self):
++        return asdict(self)
++
++
++def unique_refs(rows):
++    result = {}
++    for row in rows:
++        ref = FileRef.parse(row)
++        if ref.path in result:
++            raise ContextRefusal("duplicate/conflicting selected path")
++        result[ref.path] = ref
++    return result
++
++
++@dataclass(frozen=True)
++class Selection:
++    toolchain: str
++    images: tuple[FileRef, ...]
++    runtime: tuple[FileRef, ...]
++    misses: tuple[tuple[str, str], ...]
++    success_only: tuple[tuple[str, str], ...]
++    executable: str
++    interpreter: str
++    forbidden_roots: tuple[str, ...]
++
++    def record(self):
++        return asdict(self)
++
++    def allowed_misses(self, returncode):
++        if type(returncode) is not int:
++            raise ContextRefusal("exact process exit code required")
++        return set(self.misses) if returncode == 0 else set(self.misses) - set(self.success_only)
++
++
++def finite_pairs(rows, runtime):
++    result = []
++    if type(rows) is not list:
++        raise ContextRefusal("explicit finite diagnostic list required")
++    for row in rows:
++        if type(row) is not list or len(row) != 2 or row[0] not in runtime:
++            raise ContextRefusal("unbound finite symbol diagnostic")
++        name = row[1]
++        if type(name) is not str or not name or any(not (c.isascii() and (c.isalnum() or c == "_")) for c in name):
++            raise ContextRefusal("finite symbol must be an exact identifier")
++        result.append(tuple(row))
++    if len(result) != len(set(result)):
++        raise ContextRefusal("duplicate finite diagnostic")
++    return tuple(result)
++
++
++def reviewed_selection(metadata, copied, probe, base_probe, review):
++    if set(probe) != {
++        "schema", "runtime", "finite_allowed_misses", "success_only_misses", "base_intent", "finite_review"
++    }:
++        raise ContextRefusal("closed reviewed runtime descriptor fields required")
++    for key in ("base_intent", "finite_review"):
++        FileRef.parse(probe[key])  # Content binding is performed by the IO controller.
++    if base_probe is None or base_probe.get("schema") != "merlin.original-image.basic-kernel-probe.v1":
++        raise ContextRefusal("original basic-intent provenance required")
++    if review is None or review.get("schema") != "merlin.finite-stdlib-optional-diagnostics.review.v1":
++        raise ContextRefusal("explicit finite stdlib review required")
++    base = select(metadata, copied, base_probe)
++    runtime = {ref.path: ref for ref in base.runtime}
++    if unique_refs(probe["runtime"]) != runtime:
++        raise ContextRefusal("reviewed descriptor changed original runtime references")
++    owner = FileRef.parse(review["original_runtime_owner"])
++    if runtime.get(owner.path) != owner:
++        raise ContextRefusal("finite diagnostic owner differs from original runtime")
++    baseline = finite_pairs(review["baseline_exact_pairs"], runtime)
++    additional = finite_pairs(review["additional_exact_pairs"], runtime)
++    union = finite_pairs(review["proposed_finite_union"], runtime)
++    success = finite_pairs(review["proposed_success_only_pairs"], runtime)
++    if (
++        len(baseline) != 719 or set(baseline) != set(base.misses)
++        or len(additional) != 180 or set(baseline) & set(additional)
++        or any(path != owner.path for path, _ in additional)
++        or len(union) != 899 or set(union) != set(baseline) | set(additional)
++        or len(success) != 181 or set(success) != set(additional) | set(base.success_only)
++    ):
++        raise ContextRefusal("reviewed finite baseline/addition/success-only correspondence differs")
++    actual = finite_pairs(probe["finite_allowed_misses"], runtime)
++    only = finite_pairs(probe["success_only_misses"], runtime)
++    if set(actual) != set(union) or set(only) != set(success):
++        raise ContextRefusal("descriptor diagnostics differ from exact finite review")
++    return replace(base, misses=actual, success_only=only)
++
++
++def select(metadata, copied, probe, *, base_probe=None, finite_review=None):
++    """Match all4527 ORIGINAL refs and the exact eleven-image reviewed runtime.
++
++    Status strings are sanity checks, never evidence of successful checking.
++    Every byte pin is compared across the reviewed documents; no observed file
++    content is used to choose an expectation.
++    """
++    if probe["schema"] == "merlin.original-image.reviewed-runtime-intent.v2":
++        return reviewed_selection(metadata, copied, probe, base_probe, finite_review)
++    if base_probe is not None or finite_review is not None:
++        raise ContextRefusal("legacy basic intent does not admit extra review inputs")
++    if metadata["schema"] != "merlin.deadline.original-snapshot.metadata-review.v2":
++        raise ContextRefusal("unknown original metadata schema")
++    if copied["schema"] != "merlin.original-image-copy.v1":
++        raise ContextRefusal("unknown original-copy schema")
++    if probe["schema"] != "merlin.original-image.basic-kernel-probe.v1":
++        raise ContextRefusal("unknown reviewed runtime-intent schema")
++    originals = unique_refs(row["original"] for row in metadata["selected"])
++    if len(originals) != 4527 or metadata["selected_count"] != 4527 or copied["file_count"] != 4527:
++        raise ContextRefusal("complete ORIGINAL4527 membership required")
++    if any(metadata[key] for key in ("conflicting_original_refs", "archive_missing", "archive_hash_differences")):
++        raise ContextRefusal("original metadata reports unresolved selection conflict")
++    destination, archived = absolute(copied["destination"]), absolute(copied["source_root"])
++    original_exe = [absolute(path) for path in originals if path.endswith("/bin/lean")]
++    if len(original_exe) != 1:
++        raise ContextRefusal("one original Lean executable required")
++    old = original_exe[0].parent.parent
++    if destination == old or destination == archived or destination.is_relative_to(old):
++        raise ContextRefusal("private transport must be separate from installed/archive roots")
++    seen, images = set(), []
++    for row in copied["files"]:
++        original, selected = FileRef.parse(row["original"]), FileRef.parse(row["selected"])
++        if original.path in seen or originals.get(original.path) != original:
++            raise ContextRefusal("missing/duplicate/extra/wrong ORIGINAL copy association")
++        path = absolute(original.path)
++        if not path.is_relative_to(old):
++            raise ContextRefusal("original image outside the reviewed SDK root")
++        if selected.path != str(destination / path.relative_to(old)):
++            raise ContextRefusal("incorrect original-to-private path transport")
++        if (selected.sha256, selected.bytes) != (original.sha256, original.bytes):
++            raise ContextRefusal("private expectation differs from original bytes")
++        if row["archived"] != str(archived / path.relative_to(old)):
++            raise ContextRefusal("archive provenance transport differs")
++        seen.add(original.path)
++        images.append(selected)
++    if seen != set(originals):
++        raise ContextRefusal("not every original image was selected")
++    image_map = {ref.path: ref for ref in images}
++    runtime = unique_refs(probe["runtime"])
++    executable, interpreter = str(destination / "bin/lean"), "/usr/lib/ld-linux-x86-64.so.2"
++    if len(runtime) != 11 or executable not in runtime or interpreter not in runtime:
++        raise ContextRefusal("exact eleven-image runtime including executable/loader required")
++    system = []
++    for path, ref in runtime.items():
++        if absolute(path).is_relative_to(destination):
++            if image_map.get(path) != ref:
++                raise ContextRefusal("runtime image not identical to selected private original")
++        else:
++            if not absolute(path).is_relative_to(PurePosixPath("/usr/lib")):
++                raise ContextRefusal("unreviewed runtime location")
++            system.append(ref)
++    if len(system) != 6 or len({absolute(path).name for path in runtime}) != 11:
++        raise ContextRefusal("six unique original system images required")
++    misses = finite_pairs(probe["finite_allowed_misses"], runtime)
++    return Selection(
++        str(destination),
++        tuple(images),
++        tuple(runtime.values()),
++        tuple(misses),
++        tuple(pair for pair in misses if pair[1] == "l_Lean_Parser_Tactic_simpLemma___boxed"),
++        executable,
++        interpreter,
++        (str(old), str(archived)),
++    )
++
++
++@dataclass(frozen=True)
++class CheckedQuery:
++    context_id: str
++    module: str
++    query: FileRef
++    object: FileRef
++    final_root: str
++    support_roots: tuple[str, ...]
++    axioms: tuple[tuple[str, tuple[str, ...]], ...]
++    audit: FileRef
++    types: FileRef
++    imports: FileRef
++    records: tuple[FileRef, ...]
++    _key: object = field(repr=False, compare=False)
++
++
++def diagnostic_failure(stdout, sources):
++    """Closed one-line diagnostic protocol; unknown/mixed buffers stop context.
++
++    This is intentionally narrower than Lean's full error grammar. In particular,
++    a source location does NOT make interpreter/load/resource errors a logical
++    refusal. Multi-line diagnostics remain infrastructure-unclassified until an
++    exact grammar and retained examples receive separate review.
++    """
++    lines = [line for line in stdout.splitlines() if line.strip()]
++    if not lines:
++        return False
++    for line in lines:
++        filename, sep, tail = line.partition(":")
++        row, sep2, tail = tail.partition(":")
++        column, sep3, message = tail.partition(":")
++        if not (
++            sep
++            and sep2
++            and sep3
++            and filename in sources
++            and row.isascii()
++            and row.isdigit()
++            and column.isascii()
++            and column.isdigit()
++            and message in (" error: type mismatch", " error: unsolved goals")
++        ):
++            return False
++    return True
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context_io.py
+@@ -0,0 +1,168 @@
++"""Bound regular-file IO and append-only records for the new private context.
++
++No SDK is selected or opened at import. Installed/archive roots are forbidden
++before filesystem traversal. Linux directory descriptors and loader reporting
++remain trusted host mechanisms, not formal isolation theorems.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import stat
++from pathlib import Path
++
++if __package__:
++    from .lean_graph_original_image_context_data import ContextRefusal, FileRef, absolute
++else:
++    from lean_graph_original_image_context_data import ContextRefusal, FileRef, absolute
++
++
++class BindingError(ContextRefusal):
++    def __init__(self, reason, evidence):
++        self.evidence = evidence
++        super().__init__(reason)
++
++
++def strict_json(data):
++    def pairs(items):
++        result = {}
++        for key, value in items:
++            if key in result:
++                raise ContextRefusal("duplicate JSON key")
++            result[key] = value
++        return result
++
++    def constant(_):
++        raise ContextRefusal("nonfinite JSON constant")
++
++    return json.loads(data, object_pairs_hook=pairs, parse_constant=constant)
++
++
++def _stats(value):
++    return {name: getattr(value, name) for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")}
++
++
++def _read(path, forbidden, *, failure_directory=None, expected=None):
++    path = absolute(str(path))
++    # These components name the still-held installation/archive in this task.
++    if ".elan" in path.parts or "fresh-environment" in path.parts:
++        raise BindingError("held installed/archive path; not opened", {"path": str(path)})
++    if any(path.is_relative_to(absolute(root)) for root in forbidden):
++        raise BindingError("forbidden original/archive root; not opened", {"path": str(path)})
++    directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
++    descriptor = None
++    chunks = []
++    before = None
++    try:
++        for component in path.parts[1:-1]:
++            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
++            os.close(directory)
++            directory = child
++        descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
++        before = os.fstat(descriptor)
++        if not stat.S_ISREG(before.st_mode):
++            raise BindingError("not a regular selected file", {"path": str(path), "stat": _stats(before)})
++        while chunk := os.read(descriptor, 1024 * 1024):
++            chunks.append(chunk)
++        data = b"".join(chunks)
++        after = os.fstat(descriptor)
++        live = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
++        evidence = {"path": str(path), "before": _stats(before), "after": _stats(after), "live": _stats(live)}
++        if _stats(before) != _stats(after) or _stats(after) != _stats(live):
++            fail_with_buffer(BindingError("selected descriptor/path changed during read", evidence),
++                             data, failure_directory, expected=expected, complete=True)
++        return data, evidence
++    except OSError as error:
++        evidence = {"path": str(path), "error": str(error),
++                    "before": _stats(before) if before is not None else None}
++        fail_with_buffer(BindingError("selected file unavailable/nonregular/symlink", evidence),
++                         b"".join(chunks), failure_directory, expected=expected, complete=False)
++    finally:
++        if descriptor is not None:
++            os.close(descriptor)
++        os.close(directory)
++
++
++def read_bound(reference: FileRef, forbidden=(), *, failure_directory=None):
++    data, evidence = _read(reference.path, forbidden, failure_directory=failure_directory,
++                           expected=reference.record())
++    digest = hashlib.sha256(data).hexdigest()
++    if len(data) != reference.bytes or digest != reference.sha256:
++        failure = BindingError(
++            "selected bytes differ; no refreshed expectation",
++            {
++                **evidence,
++                "expected": reference.record(),
++                "observed_bytes": len(data),
++                "observed_sha256": digest,
++            },
++        )
++        fail_with_buffer(failure, data, failure_directory, expected=reference.record(), complete=True)
++    return data
++
++
++def output_reference(path, workspace):
++    """Observe ONLY a newly produced project artifact, never a runtime image."""
++    path, workspace = absolute(str(path)), absolute(str(workspace))
++    if not path.is_relative_to(workspace):
++        raise ContextRefusal("new output outside private workspace")
++    data, _ = _read(path, ())
++    return FileRef(str(path), hashlib.sha256(data).hexdigest(), len(data))
++
++
++def write_new(path, data):
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
++    with os.fdopen(descriptor, "wb") as stream:
++        stream.write(data)
++
++
++def save(path, value):
++    write_new(path, (json.dumps(value, indent=2, sort_keys=True) + "\n").encode())
++
++
++def fail_with_buffer(error, raw, directory, *, expected, complete):
++    """NEW diagnostic-only sink. Always raise the SAME error after preservation.
++
++    The caller supplies its private workspace. No source is reopened; raw is the
++    already-read immutable bytes. Never replace the original observation or pin.
++    A dump failure is supplementary evidence and never permits acceptance.
++    """
++    if directory is not None:
++        original = {"type": type(error).__name__, "reason": str(error),
++                    "evidence": error.evidence, "expected": expected,
++                    "read_reached_eof": complete}
++        try:
++            directory = Path(directory)
++            directory.mkdir(exist_ok=False)
++            diagnostic_json(directory / "ORIGINAL-FAILURE.json", original)
++            target = directory / "already-read-buffer.bin"
++            descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
++            with os.fdopen(descriptor, "wb") as output:
++                output.write(raw)
++                output.flush()
++                os.fsync(output.fileno())
++            diagnostic = {
++                "path": str(target), "bytes": len(raw),
++                "buffer_sha256_at_preservation": hashlib.sha256(raw).hexdigest(),
++                "original_observed_sha256": error.evidence.get("observed_sha256"),
++                "source_reopens": 0, "primary_failure_preserved": True,
++                "holds_cleared": False, "native_authorized": False,
++            }
++            diagnostic_json(directory / "BUFFER.json", diagnostic)
++            error.evidence = {**error.evidence, "forensic_buffer": diagnostic}
++        except Exception as sink_error:
++            error.evidence = {**error.evidence, "forensic_sink_failed": {
++                "type": type(sink_error).__name__, "error": str(sink_error)}}
++    raise error
++
++
++def diagnostic_json(path, value):
++    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
++    with os.fdopen(descriptor, "wb") as output:
++        output.write((json.dumps(value, indent=2, sort_keys=True) + "\n").encode())
++        output.flush()
++        os.fsync(output.fileno())
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/test_archive_context.py
+@@ -0,0 +1,253 @@
++"""Tiny fake manifest and mocked protocol ONLY; never an SDK/native proof test."""
++import ast
++import copy
++from dataclasses import replace
++import hashlib
++import json
++from pathlib import Path
++import sys
++import unittest
++from unittest.mock import patch
++
++HERE = Path(__file__).absolute().parent
++sys.path.insert(0, str(HERE / "source"))
++import archive_selection as archive
++import lean_graph_original_image_context as controller
++import lean_graph_original_image_context_data as data
++import lean_graph_original_image_context_io as io
++
++OUTPUT = HERE / "synthetic-context-v1"
++TRACE = Path("out/build/graph-paper-deadline/original-runtime-candidate-v1/basic-kernel-probe-v1/trace_parser.py").absolute()
++
++
++def reference(path):
++    raw = path.read_bytes()
++    return data.FileRef(str(path), hashlib.sha256(raw).hexdigest(), len(raw))
++
++
++def documents():
++    top = "fake-sdk"
++    request = {"schema": "merlin.fresh-sdk-data-intake.v1", "authority": archive.NO_AUTHORITY,
++               "new_root": str(OUTPUT / "never-created-sdk"), "fetch": {"url": "https://example.invalid/fake.zip",
++               "expected_sha256": "1" * 64, "exact_bytes": 100}, "environment_identity": {"synthetic": True},
++               "extract": {"expected_top_directory": top, "member_count_max": 30, "per_member_bytes_max": 100,
++                           "total_uncompressed_bytes_max": 1000}}
++    names = [top + "/bin/lean", top + "/lib/lean/libleanshared.so"]
++    names += [f'{top}/{"src/lean" if s == ".lean" else "lib/lean"}/Init{s}' for s in archive.FAMILIES]
++    rows = [{"path": name, "kind": "file", "declared_bytes": 1, "crc32": 1, "source_mode": 0o100644,
++             "compression": 0} for name in names]
++    roster = {"members": rows, "parent_sha256": "1" * 64}
++    manifest = {"schema": "merlin.fresh-sdk-authenticated-member-manifest.v1", "parent_archive": {
++                "url": request["fetch"]["url"], "sha256": "1" * 64, "bytes": 100, "identity": {"synthetic": True}},
++                "members": [{**r, "measured_bytes": 1, "sha256": "2" * 64, "output_stat": {}} for r in rows],
++                "expanded_bytes": len(rows), "new_environment_pins": True, "old_expectations_replaced": False,
++                "authority": archive.NO_AUTHORITY, "request_identity": data.identity(request)}
++    host = {"schema": "merlin.fresh-archive-separate-host-closure.v1", "archive_manifest": None,
++            "refs": [{"path": "/usr/lib/SYNTHETIC-NEVER-OPEN-LOADER", "sha256": "3" * 64, "bytes": 1}],
++            "interpreter": "/usr/lib/SYNTHETIC-NEVER-OPEN-LOADER", "finite_allowed_misses": [],
++            "success_only_misses": [], "native_authorized": False}
++    selection = {"schema": "merlin.fresh-archive-common-selection.v1", "inputs": {},
++                 "toolchain": request["new_root"] + "/data/" + top, "members": names, "modules": ["Init"],
++                 "sdk_runtime_members": names[:2], "forbidden_roots": ["/NEVER-OPEN-OLD-SDK"], "native_authorized": False}
++    return copy.deepcopy(dict(request=request, manifest=manifest, roster=roster, selection=selection, host=host))
++
++
++def bind_docs(path, docs):
++    path.mkdir()
++    refs = {"trace": reference(TRACE)}
++    for name in ("request", "roster", "manifest", "host", "selection"):
++        if name == "host":
++            docs[name]["archive_manifest"] = refs["manifest"].record()
++        if name == "selection":
++            docs[name]["inputs"] = {k: refs[k].record() for k in ("request", "manifest", "roster", "host", "trace")}
++        file = path / (name + ".json")
++        io.save(file, docs[name])
++        refs[name] = reference(file)
++    return refs
++
++
++class ArchiveTests(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        OUTPUT.mkdir()  # no replacement of previous results
++
++    def fixture(self):
++        docs = documents()
++        refs = bind_docs(OUTPUT / self._testMethodName, docs)
++        return docs, refs
++
++    def test_pure_full_selection(self):
++        docs, refs = self.fixture()
++        with patch("os.open", side_effect=AssertionError("pure admission must never open images")):
++            selected = archive.select(docs, refs)
++        self.assertEqual(len(selected.images), 9)
++        self.assertEqual(len(selected.runtime), 3)
++        self.assertFalse((OUTPUT / "never-created-sdk").exists())
++
++    def test_adversarial_associations(self):
++        docs, refs = self.fixture()
++        mutations = {
++            "parent": lambda d: d["manifest"]["parent_archive"].update(sha256="0" * 64),
++            "request": lambda d: d["manifest"].update(request_identity="0" * 64),
++            "input": lambda d: d["selection"]["inputs"]["manifest"].update(sha256="0" * 64),
++            "host_parent": lambda d: d["host"]["archive_manifest"].update(sha256="0" * 64),
++            "missing": lambda d: d["selection"]["members"].pop(),
++            "extra": lambda d: d["selection"]["members"].append("fake-sdk/extra"),
++            "duplicate": lambda d: d["selection"]["members"].append(d["selection"]["members"][0]),
++            "changed_pin": lambda d: d["manifest"]["members"][0].update(sha256="forged"),
++            "wrong_bytes": lambda d: d["manifest"]["members"][0].update(measured_bytes=True),
++            "missing_module": lambda d: d["selection"].update(modules=["Absent"]),
++            "extra_runtime": lambda d: d["selection"]["sdk_runtime_members"].append("fake-sdk/missing.so"),
++            "missing_exe": lambda d: d["selection"]["sdk_runtime_members"].pop(0),
++            "loader": lambda d: d["host"].update(interpreter="/usr/lib/unbound"),
++            "escalation": lambda d: d["selection"].update(native_authorized=True),
++            "held": lambda d: d["selection"]["forbidden_roots"].append(d["selection"]["toolchain"]),
++        }
++        for name, change in mutations.items():
++            altered = copy.deepcopy(docs)
++            change(altered)
++            with self.subTest(name=name), self.assertRaises(data.ContextRefusal):
++                archive.select(altered, refs)
++
++    def test_missing_ir_even_with_matching_manifest_roster(self):
++        docs, refs = self.fixture()
++        index = next(i for i, r in enumerate(docs["roster"]["members"]) if r["path"].endswith(".ir"))
++        member = docs["roster"]["members"].pop(index)["path"]
++        docs["manifest"]["members"].pop(index)
++        docs["manifest"]["expanded_bytes"] -= 1
++        docs["selection"]["members"].remove(member)
++        with self.assertRaisesRegex(data.ContextRefusal, "complete source/object/IR"):
++            archive.select(docs, refs)
++
++    def test_escape_and_prefix_collision(self):
++        docs, refs = self.fixture()
++        for name in ("fake-sdk/../escape", "fake-sdk/lib", "/fake-sdk/escape", "fake-sdk//bad"):
++            changed = copy.deepcopy(docs)
++            changed["roster"]["members"][0]["path"] = name
++            changed["manifest"]["members"][0]["path"] = name
++            with self.subTest(name=name), self.assertRaises(data.ContextRefusal):
++                archive.select(changed, refs)
++
++    def context(self):
++        docs, refs = self.fixture()
++        source = OUTPUT / self._testMethodName / "Baseline.lean"
++        source.write_bytes(b"import Init\nnamespace Merlin\ntheorem baseline : True := True.intro\nend Merlin\n")
++        controls = tuple(reference(HERE / "source" / f) for f in (
++            "lean_graph_original_image_context.py", "lean_graph_original_image_context_data.py",
++            "lean_graph_original_image_context_io.py", "archive_selection.py"))
++        with patch.object(controller.subprocess, "Popen", side_effect=AssertionError("native forbidden")):
++            result = controller.Context.from_review(review=refs, project_sources={"Merlin.Baseline": reference(source)},
++                         controller_sources=controls, workspace=OUTPUT / (self._testMethodName + "-context"))
++        return result
++
++    def mocked_query(self, ctx, *, bad_axiom=False, empty_types=False):
++        ctx._guard = lambda: {"MOCKED_NOT_PROOF": True}
++        def build(module):
++            target = ctx.objects_dir / (module.replace(".", "/") + ".olean")
++            io.write_new(target, b"SYNTHETIC-NOT-A-LEAN-OBJECT")
++            ctx.objects[module] = {".olean": reference(target)}
++        ctx._build = build
++        ctx._inspect = lambda ref: {"MOCKED_NOT_PROOF": ref.record()}
++        def invoke(label, arguments, **kwargs):
++            path = ctx.commands_dir / label
++            path.mkdir()
++            if label == "root-audit":
++                stdout = "'Merlin.query' depends on axioms: [" + ("fakeAxiom" if bad_axiom else "propext") + "]\n"
++            else:
++                stdout = "" if empty_types else "Merlin.query : True\n"
++            io.write_new(path / "stdout.txt", stdout.encode())
++            io.write_new(path / "stderr.txt", b"MOCKED-NOT-A-RUNTIME-TRACE")
++            return stdout, path
++        ctx._invoke = invoke
++        return ctx.check_query("Merlin.Query", b"import Init\nnamespace Merlin\ntheorem query : True := True.intro\nend Merlin\n", final_root="Merlin.query")
++
++    def test_source_prepare_does_not_guard_or_launch(self):
++        ctx = self.context()
++        self.assertEqual(ctx.definition["schema"], "merlin.graph.fresh-authenticated-archive-context.v1")
++        self.assertFalse(ctx.held)
++        self.assertFalse((OUTPUT / "never-created-sdk").exists())
++
++    def test_same_live_typed_authority_with_mocked_execution(self):
++        ctx = self.context()
++        result = self.mocked_query(ctx)
++        self.assertIs(ctx.revalidate(result), result)
++        for forged in (result.__dict__, replace(result), object()):
++            with self.assertRaises(data.ContextRefusal):
++                ctx.revalidate(forged)
++
++    def test_changed_query_preserves_failed_buffer(self):
++        ctx = self.context()
++        result = self.mocked_query(ctx)
++        Path(result.query.path).write_bytes(b"changed tiny synthetic query")
++        with self.assertRaises(controller.InfrastructureStop):
++            ctx.revalidate(result)
++        self.assertTrue(ctx.held)
++        self.assertEqual((ctx.workspace / "first-failed-read/already-read-buffer.bin").read_bytes(), b"changed tiny synthetic query")
++
++    def test_nonstandard_axiom_holds(self):
++        ctx = self.context()
++        with self.assertRaises(controller.InfrastructureStop):
++            self.mocked_query(ctx, bad_axiom=True)
++        self.assertTrue(ctx.held)
++
++    def test_missing_full_type_output_holds(self):
++        ctx = self.context()
++        with self.assertRaises(controller.InfrastructureStop):
++            self.mocked_query(ctx, empty_types=True)
++        self.assertTrue(ctx.held)
++
++    def test_query_roots_and_names(self):
++        ctx = self.context()
++        with patch.object(ctx, "_guard", side_effect=AssertionError("should refuse before image access")):
++            with self.assertRaises(data.ContextRefusal):
++                ctx.check_query("Merlin.Baseline", b"", final_root="Merlin.query")
++            with self.assertRaises(data.ContextRefusal):
++                ctx.check_query("Merlin.New", b"", final_root="Merlin.query", support_roots=("Merlin.query",))
++
++    def test_actual_object_header_disagreement(self):
++        ctx = self.context()
++        ctx._invoke = lambda *a, **k: ("/unbound/Init.olean\n", ctx.commands_dir)
++        with self.assertRaises(data.ContextRefusal):
++            ctx._inspect(ctx.sources["Merlin.Baseline"])
++
++    def test_changed_metadata_bytes_refused_before_preparation(self):
++        docs, refs = self.fixture()
++        path = Path(refs["manifest"].path)
++        changed = copy.deepcopy(docs["manifest"])
++        changed["members"][0]["sha256"] = "f" * 64
++        path.write_text(json.dumps(changed))
++        with patch.object(controller.subprocess, "Popen", side_effect=AssertionError("native forbidden")):
++            with self.assertRaises(io.BindingError):
++                controller.Context.from_review(review=refs, project_sources={}, controller_sources=(),
++                                               workspace=OUTPUT / "must-not-prepare")
++        self.assertFalse((OUTPUT / "must-not-prepare").exists())
++
++    def test_context_selection_mutation_holds_before_image_reads(self):
++        ctx = self.context()
++        ctx.selection = replace(ctx.selection, executable="/unbound/lean")
++        with patch.object(io, "read_bound", side_effect=AssertionError("must fail before image reads")):
++            with self.assertRaises(controller.InfrastructureStop):
++                ctx._guard()
++        self.assertTrue(ctx.held)
++
++    def test_wrong_typed_reference_refused(self):
++        docs, refs = self.fixture()
++        refs["manifest"] = refs["manifest"].record()
++        with self.assertRaises(data.ContextRefusal):
++            controller.Context.from_review(review=refs, project_sources={}, controller_sources=(),
++                                           workspace=OUTPUT / "wrong-typed")
++
++    def test_same_common_protocol_methods(self):
++        baseline = json.loads((HERE / "BASELINE.json").read_text())
++        path = next(r["path"] for r in baseline["source_refs"] if Path(r["path"]).name == "lean_graph_original_image_context.py")
++        def methods(source):
++            tree = ast.parse(source)
++            cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Context")
++            return {n.name: ast.dump(n, include_attributes=False) for n in cls.body if isinstance(n, ast.FunctionDef)}
++        before, after = methods(Path(path).read_text()), methods((HERE / "source/lean_graph_original_image_context.py").read_text())
++        for name in ("check_query", "_inspect", "_reported", "_build", "_invoke", "_stop", "_freeze"):
++            self.assertEqual(before[name], after[name], name)
++
++
++if __name__ == "__main__":
++    unittest.main(verbosity=2)
+--- /dev/null
++++ b/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/trace_parser-source.py
+@@ -0,0 +1,196 @@
++"""Strict structural reader for the reviewed original-loader development trace.
++
++No process is executed. This NEW observational policy uses explicit loader/OS/
++module-reporting trust; it does not change the older denial inspector or prove
++Linux path-search denial. Every raw line remains retained by the controller.
++"""
++
++from __future__ import annotations
++
++
++class TraceRefusal(ValueError):
++    pass
++
++
++def parse_axioms(text, roots):
++    """Consume the complete #print axioms buffer, including wrapped lists."""
++    if len(roots) != len(set(roots)):
++        raise TraceRefusal("duplicate requested exact audit roots")
++    remaining, found = text.strip(), {}
++    allowed = {"propext", "Classical.choice", "Quot.sound"}
++    while remaining:
++        if not remaining.startswith("'"):
++            raise TraceRefusal("unexpected exact-root audit text")
++        name, delimiter, rest = remaining[1:].partition("'")
++        if not delimiter or name not in roots or name in found:
++            raise TraceRefusal("unknown/duplicate/missing quoted audit root")
++        rest = rest.lstrip()
++        if rest.startswith("does not depend on any axioms"):
++            found[name] = []
++            remaining = rest.removeprefix("does not depend on any axioms").lstrip()
++        elif rest.startswith("depends on axioms:"):
++            rest = rest.removeprefix("depends on axioms:").lstrip()
++            if not rest.startswith("["):
++                raise TraceRefusal("missing axiom-list opening bracket")
++            values, delimiter, rest = rest[1:].partition("]")
++            if not delimiter:
++                raise TraceRefusal("unterminated axiom list")
++            axioms = [part.strip() for part in values.split(",")] if values.strip() else []
++            if set(axioms) - allowed or len(set(axioms)) != len(axioms):
++                raise TraceRefusal("non-standard/duplicate axiom in exact root")
++            found[name] = axioms
++            remaining = rest.lstrip()
++        else:
++            raise TraceRefusal("unknown exact-root audit predicate")
++    if set(found) != set(roots):
++        raise TraceRefusal("missing exact-root audit")
++    return found
++
++
++def zero_namespace(value):
++    if value == "[0]":
++        return ""
++    name, separator, suffix = value.rpartition(" [")
++    if not separator or suffix != "0]":
++        raise TraceRefusal("unknown loader namespace syntax: " + value)
++    return name
++
++
++def optional_miss(body, known):
++    """Known pinned Lean interpreter dlsym fallback diagnostics, not dlopen."""
++    marker = ": error: symbol lookup error: undefined symbol: "
++    owner, separator, symbol = body.partition(marker)
++    if not separator:
++        return None
++    if not symbol.endswith(" (fatal)"):
++        raise TraceRefusal("unknown symbol diagnostic syntax")
++    symbol = symbol.removesuffix(" (fatal)")
++    if owner not in known or not symbol or any(not (c.isascii() and (c.isalnum() or c == "_")) for c in symbol):
++        raise TraceRefusal("unbound symbol-diagnostic owner or nonidentifier")
++    return owner, symbol
++
++
++def baseline_misses(raw, known):
++    result = set()
++    for line in raw.splitlines():
++        prefix, colon, body = line.partition(":")
++        if not colon or not prefix.strip().isdigit():
++            raise TraceRefusal("baseline has a non-loader diagnostic line")
++        miss = optional_miss(body.strip(), known)
++        if miss is not None:
++            result.add(miss)
++    return result
++
++
++def parse(raw, runtime_refs, executable, interpreter, allowed_misses, expected_pid=None, project_initializers=()):
++    known = {ref["path"] for ref in runtime_refs}
++    aliases = {}
++    for path in known:
++        basename = path.rsplit("/", 1)[-1]
++        if basename in aliases:
++            raise TraceRefusal("ambiguous original runtime basename")
++        aliases[basename] = path
++
++    def bound(name):
++        if name in known:
++            return name
++        if name in aliases:
++            return aliases[name]
++        raise TraceRefusal("unknown library/main in observed loader trace: " + name)
++
++    initialized, finalized, linked, program, transferred = set(), set(), set(), [], []
++    pids, probes, searches, symbol_misses = set(), [], [], []
++    empty_fini, metadata_rows = 0, 0
++    for number, line in enumerate(raw.splitlines(), 1):
++        prefix, colon, tail = line.partition(":")
++        if not colon or not prefix.strip().isascii() or not prefix.strip().isdigit():
++            raise TraceRefusal(f"non-loader stderr line {number}: {line}")
++        pid = int(prefix.strip())
++        pids.add(pid)
++        if expected_pid is not None and pid != expected_pid:
++            raise TraceRefusal("unexpected process in loader trace")
++        body = tail.strip()
++        if not body:
++            continue
++        miss = optional_miss(body, known)
++        if miss is not None:
++            initializer = miss[0].rsplit("/", 1)[-1] == "libleanshared.so" and miss[1] in project_initializers
++            if miss not in allowed_misses and not initializer:
++                raise TraceRefusal("unreviewed optional symbol diagnostic: " + str(miss))
++            symbol_misses.append(list(miss))
++        elif body.startswith("calling init: "):
++            initialized.add(bound(body.removeprefix("calling init: ").strip()))
++        elif body.startswith("calling fini:"):
++            name = zero_namespace(body.removeprefix("calling fini:").strip())
++            if name:
++                finalized.add(bound(name))
++            else:
++                empty_fini += 1
++        elif body.startswith("initialize program: "):
++            program.append(bound(body.removeprefix("initialize program: ").strip()))
++        elif body.startswith("transferring control: "):
++            transferred.append(bound(body.removeprefix("transferring control: ").strip()))
++        elif body.startswith("file="):
++            value, separator, action = body.removeprefix("file=").partition(";")
++            if not separator:
++                raise TraceRefusal("missing loader file-action delimiter")
++            name = bound(zero_namespace(value.strip()))
++            action = action.strip()
++            if action == "generating link map":
++                linked.add(name)
++            elif action.startswith("needed by "):
++                bound(zero_namespace(action.removeprefix("needed by ").strip()))
++            else:
++                raise TraceRefusal("unreviewed file/dynamic-load action: " + action)
++        elif body.startswith("find library="):
++            value, separator, action = body.removeprefix("find library=").partition(";")
++            if not separator or action.strip() != "searching":
++                raise TraceRefusal("unknown library-search syntax")
++            bound(zero_namespace(value.strip()))
++        elif body.startswith("search path="):
++            searches.append(body)
++        elif body.startswith("trying file="):
++            probes.append(body.removeprefix("trying file="))
++        elif body == "(no such file)":
++            if not probes:
++                raise TraceRefusal("missing-file diagnostic without preceding probe")
++        elif body.startswith(("dynamic:", "entry:")):
++            fields = body.split()
++            labels = ["dynamic:", "base:", "size:"] if body.startswith("dynamic:") else ["entry:", "phdr:", "phnum:"]
++            if len(fields) != 6 or fields[::2] != labels:
++                raise TraceRefusal("unreviewed link-map metadata layout")
++            for label, value in zip(labels, fields[1::2], strict=True):
++                try:
++                    int(value, 10 if label == "phnum:" else 16)
++                except ValueError as error:
++                    raise TraceRefusal("invalid link-map metadata value") from error
++            metadata_rows += 1
++        else:
++            raise TraceRefusal(f"unreviewed loader line {number}: {body}")
++    if len(pids) != 1:
++        raise TraceRefusal("missing or multiple loader processes")
++    expected_libraries = known - {executable}
++    if initialized != expected_libraries or finalized != expected_libraries:
++        raise TraceRefusal("original library init/fini closure differs")
++    # The canonical loader is initialized but supplied by the kernel/direct
++    # invocation, not by an ordinary needed-library link-map diagnostic.
++    if linked != known - {interpreter}:
++        raise TraceRefusal("original link-map closure differs")
++    if program != [executable] or transferred != [executable] or empty_fini != 1:
++        raise TraceRefusal("missing/duplicate/wrong main init/transfer/fini")
++    return dict(
++        pid=next(iter(pids)),
++        init_files=sorted(initialized),
++        fini_files=sorted(finalized),
++        link_maps=sorted(linked),
++        main=executable,
++        empty_main_fini_namespace_zero=empty_fini,
++        searches=searches,
++        attempted_paths=probes,
++        optional_symbol_misses=symbol_misses,
++        link_map_metadata_rows=metadata_rows,
++        dynamic_loads_observed=False,
++        formal_OS_default_directory_denial=False,
++        future_late_loads_ruled_out=False,
++        trust=["OS/kernel/vDSO", "original pinned loader diagnostics", "host transport"],
++    )
