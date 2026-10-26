@@ -8,7 +8,6 @@ entrypoints to that boundary grader. It does not provide a candidate compiler.
 from __future__ import annotations
 
 import argparse
-import functools
 import hashlib
 import json
 import os
@@ -314,7 +313,6 @@ def _write_case(task):
         }
 
 
-@functools.cache
 def _selected_admission(target: str, rtl_facts: str, software_spec: str, host_capabilities: str) -> dict:
     from merlin.targetgen.functional_truth import select_admission
 
@@ -327,7 +325,7 @@ def _selected_admission(target: str, rtl_facts: str, software_spec: str, host_ca
 
 
 def _truth_admission(flow: dict) -> dict:
-    """The fact-resolved spec that decides must-accelerate lanes, selected once per process."""
+    """Select the current fact-resolved spec that decides must-accelerate lanes."""
     return _selected_admission(
         flow["target"], str(flow["rtl_facts"]), str(flow["software_spec"]), str(flow["host_capabilities"])
     )

@@ -133,6 +133,11 @@ def _aliasing(op) -> str | None:
     return "in_place" if any(output is source for output in outputs for source in inputs) else "disjoint_inputs_outputs"
 
 
+def broadcast_axes(omitted, rank: int) -> str:
+    """Classify expanded axes: outer replay preserves the innermost source row."""
+    return "none" if not omitted else "inner" if rank - 1 in omitted else "outer"
+
+
 def primitive_signature(op) -> dict[str, Any]:
     """Observe operand arity, affine scalar dependence and row-preserving broadcast.
 
@@ -162,7 +167,7 @@ def primitive_signature(op) -> dict[str, Any]:
                 and all(0 <= i < len(result_shape) for i in omitted)
                 and tuple(result_shape[i] for i in kept) == tuple(shape)
             ):
-                broadcasting = "none" if not omitted else "inner" if len(result_shape) - 1 in omitted else "outer"
+                broadcasting = broadcast_axes(omitted, len(result_shape))
     if positions is not None and len(positions) > n_in and all(kind == "parallel" for kind in kinds):
         result = positions[-1]
         if result == list(range(len(kinds))):

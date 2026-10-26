@@ -97,6 +97,13 @@ def test_host_floor_compares_storage_bits(reference, changed):
     assert grade_native_bits(record, [bytes.fromhex(reference)])["status"] == "mismatch"
 
 
+def test_host_floor_reports_the_execution_error():
+    error = "catalog declined: no structurally supported device sites"
+    assert grade_native_bits({}, None, execution_error=error) == dict(status="execution_failed", reason=error)
+    record = dict(native_eager_boundary=dict(authority="untransformed_native_cpu_eager"))
+    assert grade_native_bits(record, None)["reason"] == "native dtype execution produced no complete byte boundary"
+
+
 def test_dense_literal_selector_keeps_nan_payload_and_signed_zero_bytes():
     from xdsl.dialects.builtin import DenseIntOrFPElementsAttr
 
@@ -128,9 +135,7 @@ def test_empty_boundary_decision_precedes_provider_and_quantized_capture(tmp_pat
             raise AssertionError("empty boundary must not ask the provider for work")
 
     specification = tmp_path / "software.yaml"
-    specification.write_text(
-        "numerical_semantics: {native_unit_contract: {excluded_constructions: []}}\n"
-    )
+    specification.write_text("numerical_semantics: {native_unit_contract: {excluded_constructions: []}}\n")
     (tmp_path / "model.mlir").write_text("module {}")
     record = dict(
         status="bundled", input_abi=[dict(dtype="f16", shape=[0, 4])], output_abi=[dict(dtype="f16", shape=[0, 4])]

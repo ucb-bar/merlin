@@ -50,13 +50,26 @@ def test_numerics_add_no_scheme_and_leave_scheme_rows_unchanged(document):
     assert with_block == without
 
 
-#: Digests of the v1 scheme's derived artifacts at the parent revision (3531ac020), before the
-#: numerics and operation-domain declarations existed. They must not move.
+#: Digests at 3531ac020, before the numerics and operation-domain declarations existed.
+#: The authored quantization contract excludes only the new numerics block.
 V1_DIGESTS = {
     "scheme_row": "ebbbbf5e186272b83e1322c1354a0d309e85f2f27970fa2c8ff57228f46960c4",
     "recipe_sha256": "7539a6f1f18136d5ce7dcd4ac4e9f7f0e45000af02e6a357251296e05bb47797",
-    "corpus_entries": "ca8214d0463ab365491e8261537e420c28d9f85e09a166c2860eae86c7244427",
-    "composition_truth": "b82dffb93b9e4476687e96619943f9e1762c201f3b1688bdf00f92bd0c89763a",
+    "quantization_contract": "b4c2fcd8d6c70bb26db3fefa962f63cc9f2d0e960de21fcb50e1649fcb182fa2",
+}
+
+# eae0cdbee intentionally changed corpus selection and assigned new shape classes to pow2.
+# These truth digests match 3531ac020's _case + expectation for contraction_readout;
+# other chains have distinct members and instruction obligations even at the same shape.
+# Construct these fixed cases directly, independently of corpus membership or order.
+V1_COMPOSITION_TRUTH = {
+    "aligned": "c20024abf3e6ca33b1cdabda37f5dd4142bc808caf4a9756ddea8cca8bd133e8",
+    "n_tail": "d86eb1e49beedf81149c55fad1230885499bfecfacb50ca1b3f169ed52eb2157",
+    "multi_block": "ef1333069e84ab5f68c10c376b2dfa029d890a379c73718950a979da6e19ec75",
+    "fused_pool": "474c04c6cbf03d77091fc310e562342b5f38681b92ee49a5ec0c9b8e2074432a",
+    "os_constant": "54452f5cde655322ecad3f7a14b92ade40da83bc55d0101dfbd9c2407aeb3533",
+    "os_bound_outside": "d0214a2795ea35fc501e2c7a7c957494931a63eadd305ce7d9aed90e2131f070",
+    "os_runtime": "1c9e1aa0ebf4eb7ea9a1dcbe80d0b45456829d8315bf7ffbbf7f6a78e4a5df0f",
 }
 
 
@@ -75,23 +88,20 @@ def test_v1_scheme_artifacts_are_byte_identical():
     recipe = QR.derive(
         _scheme_facet(3), scheme=v1, calibration_domain=spec["numerical_semantics"]["calibration_domain"]
     ).to_dict()
-    facts = corpus_facts.__wrapped__()
-    entries = [e for e in CC.entries(spec, facts) if e["generalization"]["quantization_scheme_id"] == "q_pow2_tensor"]
-    truth = [
-        FTC.expectation(
-            e["generalization"]["composition_chain"],
-            e["generalization"]["quantization_scheme"],
-            e["generalization"]["composition_instance"],
-            facts=e["generalization"]["composition_facts"],
-        )
-        for e in entries
-    ]
+    quantization = {key: value for key, value in spec["quantization"].items() if key != "numerics"}
     assert {
         "scheme_row": _digest(v1),
         "recipe_sha256": recipe["recipe_sha256"],
-        "corpus_entries": _digest(entries),
-        "composition_truth": _digest(truth),
+        "quantization_contract": _digest(quantization),
     } == V1_DIGESTS
+    facts = corpus_facts.__wrapped__()
+    chain = next(row for row in spec["compositions"]["chains"] if row["id"] == "contraction_readout")
+    assert v1["readout_strategy"] == "exact_rational_host"
+    for shape_class, expected_digest in V1_COMPOSITION_TRUTH.items():
+        case = CC._case(chain, v1, shape_class, facts)["composition_instance"]
+        assert case["multipliers"] == [0.0625]
+        truth = FTC.expectation(chain, v1, case, facts=facts)
+        assert _digest(truth) == expected_digest, (chain["id"], shape_class)
 
 
 @pytest.mark.parametrize("boundary", ["readout_ties", "f32_multiplier_formation", "internal_partial_sum_width"])
@@ -139,6 +149,41 @@ def test_multiplier_formation_follows_the_scheme_readout(document):
     order = _numerics(document)["schemes"]["q_pow2_tensor"]["conversion_order"]["value"]["contraction"]
     next(step for step in order if step["step"] == "multiply")["multiplier"] = "rne_f32_of_exact_rational"
     with pytest.raises(ValueError, match="multiplier formation"):
+        validate_software_spec(document)
+
+
+@pytest.mark.parametrize("scheme_id", ALL)
+@pytest.mark.parametrize("path", QN.PATHS)
+def test_every_conversion_type_must_match_its_property(document, scheme_id, path):
+    order = _numerics(document)["schemes"][scheme_id]["conversion_order"]["value"][path]
+    checked = 0
+    for index, step in enumerate(order):
+        field = {"multiply_accumulate": "operand", "convert": "to", "operand_sum": "load_dtype"}.get(
+            step["step"], "dtype"
+        )
+        if field not in step:
+            continue
+        changed = copy.deepcopy(document)
+        changed_order = _numerics(changed)["schemes"][scheme_id]["conversion_order"]["value"][path]
+        changed_order[index][field] = "uint8"
+        with pytest.raises(ValueError, match="type.*differs"):
+            validate_software_spec(changed)
+        checked += 1
+    assert checked >= 5
+
+
+@pytest.mark.parametrize("signedness", ["unsigned", "unknown"])
+def test_operand_signedness_must_match_the_declared_type(document, signedness):
+    _numerics(document)["schemes"]["q_pow2_tensor"]["signedness"]["value"] = signedness
+    with pytest.raises(ValueError, match="signedness"):
+        validate_software_spec(document)
+
+
+def test_unsigned_operand_cannot_claim_signed_arithmetic(document):
+    document["numerical_semantics"]["operand_dtype"] = "uint8"
+    operand = _numerics(document)["schemes"]["q_pow2_tensor"]["operand_type"]["value"]
+    operand.update(dtype="uint8", range=[0, 255])
+    with pytest.raises(ValueError, match="signedness"):
         validate_software_spec(document)
 
 

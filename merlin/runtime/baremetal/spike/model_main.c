@@ -103,8 +103,6 @@ int main(int hart) {
   /* Before the first character. On a hosted substrate this is a no-op; on real silicon it programs
    * the console UART's clocks and baud divisor, without which printing hangs the core. */
   console_init();
-  uint64_t c0;
-  __asm__ volatile("csrr %0, mcycle" : "=r"(c0));
 
   merlin_reset_session();
   merlin_prepare_step(0);
@@ -117,6 +115,10 @@ int main(int hart) {
 #ifdef MERLIN_GROUP_PROFILE
   uint64_t merlin_forward_start = merlin_group_profile_now();
 #endif
+  /* After session setup and the PRE_BYTES evidence: console output costs a host round trip per
+   * character on FPGA substrates, so it must stay outside the measured window. */
+  uint64_t c0;
+  __asm__ volatile("csrr %0, mcycle" : "=r"(c0));
   merlin_run_multi(MERLIN_ARGS, MERLIN_N_ARGS, (const void *)MERLIN_WEIGHTS_BASE_ADDR,
                    MERLIN_INPUT_PTR, MERLIN_OUTPUT_PTR, DESCS);
 #ifdef MERLIN_GROUP_PROFILE

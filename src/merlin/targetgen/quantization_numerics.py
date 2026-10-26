@@ -255,10 +255,67 @@ def _validate_property(record: object, label: str) -> None:
         raise ValueError(f"{label}.fact applies only to rtl_derived evidence")
 
 
+def _consistent_types(order: Sequence[Mapping], declared: Mapping, label: str, strategy: str) -> None:
+    """Bind every typed conversion to its property and preserve transfer code types."""
+    values = {name: record["value"] for name, record in declared.items()}
+    operand = values["operand_type"]["dtype"]
+    accumulator = values["accumulator_type"]["dtype"]
+    typed = {
+        "quantize": ("dtype", operand),
+        "seed": ("dtype", values["bias"]["dtype"]),
+        "multiply_accumulate": ("operand", operand),
+        "accumulate": ("dtype", accumulator),
+        "saturate": ("dtype", values["saturation"]["dtype"]),
+    }
+
+    def require_type(actual, expected, where):
+        if actual is None or expected is None or _dtype_name(actual) != _dtype_name(expected):
+            raise ValueError(f"{label}.{where} type {actual!r} differs from declared {expected!r}")
+
+    current = None
+    for step in order:
+        kind = step["step"]
+        if kind in typed:
+            field, expected = typed[kind]
+            require_type(step.get(field), expected, f"{kind}.{field}")
+            if kind in {"quantize", "accumulate", "saturate"}:
+                current = expected
+        if kind == "transfer":
+            direction = f"{step.get('from')}_to_{step.get('to')}"
+            transfer = values["transfer"].get(direction, {})
+            require_type(step.get("dtype"), transfer.get("dtype"), f"transfer.{direction}")
+            require_type(step.get("dtype"), current, "transfer.source")
+        elif kind in {"multiply_accumulate", "operand_sum"}:
+            require_type(current, operand, f"{kind}.input")
+            if kind == "operand_sum" and step.get("rounding") == "per_operand":
+                require_type(step.get("load_dtype"), operand, "operand_sum.load_dtype")
+            current = None  # Internal partial sums acquire their storage type at accumulate.
+        elif kind == "convert":
+            if strategy != "f32_product_rne":
+                raise ValueError(f"{label}.convert differs from readout {strategy!r}")
+            require_type(current, accumulator, "convert.input")
+            require_type(step.get("to"), "f32", "convert.to")
+            current = step["to"]
+        elif kind in {"multiply", "round"}:
+            current = None  # Products and rounded integers need saturation before typed transfer.
+
+
 def _consistent(scheme_id: str, row: Mapping, declared: Mapping, scheme: Mapping, semantics: Mapping) -> None:
     """The numerics restate the scheme's axis points and the selected readout; they cannot drift."""
     label = f"quantization.numerics.schemes.{scheme_id}"
     value = lambda name: declared[name]["value"]  # noqa: E731
+    operand_range = _range(value("operand_type")["dtype"])
+    if value("signedness") != "signed_twos_complement" or operand_range[0] >= 0:
+        raise ValueError(f"{label}.signedness differs from the modeled signed operand type")
+    for name in ("operand_type", "accumulator_type", "bias", "saturation"):
+        record = value(name)
+        low, high = _range(record["dtype"])
+        if "range" in record and record["range"] != [low, high]:
+            raise ValueError(f"{label}.{name}.range differs from its dtype")
+        if "width" in record and record["width"] != high.bit_length() + int(low < 0):
+            raise ValueError(f"{label}.{name}.width differs from its dtype")
+    if _dtype_name(value("bias")["dtype"]) != _dtype_name(value("accumulator_type")["dtype"]):
+        raise ValueError(f"{label}.bias differs from the accumulator type")
     if value("scale_value") != scheme["scale_value"]:
         raise ValueError(f"{label}.scale_value differs from the scheme axis point")
     granularity = value("scale_granularity")
@@ -280,6 +337,7 @@ def _consistent(scheme_id: str, row: Mapping, declared: Mapping, scheme: Mapping
     multiply_granularity = "column_block" if scheme["weight_scale_granularity"] != "tensor" else "tensor"
     for path, order in orders.items():
         _validate_steps(order, f"{label}.conversion_order.{path}")
+        _consistent_types(order, declared, f"{label}.conversion_order.{path}", strategy)
         steps = {step["step"]: step for step in order}
         where = f"{label}.conversion_order.{path}"
         multiply = steps.get("multiply") or {}

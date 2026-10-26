@@ -41,7 +41,10 @@ def evaluate(cap):
     if producer == "operand_sum":
         scales = case["operand_multipliers"]
         if scheme["operand_sum_rounding"] == "per_operand":
-            value = readout(env["Left"], [scales[0]], False) + readout(env["Right"], [scales[1]], False)
+            # Each load saturates to a byte; the accumulator adds them at full width.
+            value = readout(env["Left"], [scales[0]], False).astype(np.int64) + readout(
+                env["Right"], [scales[1]], False
+            ).astype(np.int64)
         else:
             value = np.array(
                 [

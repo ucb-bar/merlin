@@ -2,10 +2,12 @@
 
 
 def grade_native_bits(record, outputs, *, execution_error=None):
+    if execution_error is not None:
+        return dict(status="execution_failed", reason=execution_error)
     boundary = record.get("native_eager_boundary")
     if not boundary or boundary.get("authority") != "untransformed_native_cpu_eager":
         return dict(status="ungradable", reason="native dtype execution lacks an independent eager byte boundary")
-    if outputs is None or execution_error is not None:
+    if outputs is None:
         return dict(status="execution_failed", reason="native dtype execution produced no complete byte boundary")
     indices = record.get(
         "native_eager_indices",

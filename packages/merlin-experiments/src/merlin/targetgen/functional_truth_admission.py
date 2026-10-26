@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
+from merlin.targetgen.access_observations import broadcast_axes
+
 from .functional_truth_types import dclass
 
 #: Native construction (functional truth family code) -> (semantic family, arithmetic class).
@@ -79,9 +81,9 @@ def _broadcasting(inputs, result) -> str:
         if any(extent not in (1, out) for extent, out in zip(aligned, result.shape, strict=True)):
             continue
         expanded = [i for i, (extent, out) in enumerate(zip(aligned, result.shape, strict=True)) if extent != out]
-        leading = all(i < len(result.shape) - len(tensor.shape) or aligned[i] == 1 for i in expanded)
-        inner = any(i >= len(result.shape) - len(tensor.shape) for i in expanded)
-        observed = "inner" if inner or not leading else observed if observed == "inner" else "outer"
+        broadcasting = broadcast_axes(expanded, len(result.shape))
+        if observed != "inner" and broadcasting != "none":
+            observed = broadcasting
     return observed
 
 
