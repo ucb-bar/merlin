@@ -93,3 +93,42 @@ def test_import_parent_resolution_cannot_execute_external_shadow(provider):
     with pytest.raises(plugins.PluginError):
         plugins.load_module(root, "package.child", package_name="containment_shadow")
     assert not (outside.parent / "executed").exists()
+
+
+def test_unselected_load_creates_synthetic_namespace_on_demand(provider, monkeypatch):
+    import sys
+
+    root, _ = provider
+    package = root / "package"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (package / "child.py").write_text("def later():\n    from .sibling import VALUE\n    return VALUE\n")
+    (package / "sibling.py").write_text("VALUE = 23\n")
+    monkeypatch.setenv("MERLIN_TARGET_PATH", "")
+    monkeypatch.setattr(plugins, "resolve_support", lambda target: pytest.fail("load_module consulted support"))
+    monkeypatch.delitem(sys.modules, plugins._NAMESPACE_ROOT, raising=False)
+    module = plugins.load_module(root, "package.child", package_name="containment_unselected")
+    assert module.__name__ == f"{plugins._NAMESPACE_ROOT}.containment_unselected.package.child"
+    assert sys.modules[plugins._NAMESPACE_ROOT].__path__ == []
+    assert module.later() == 23
+
+
+def test_refused_load_leaves_no_synthetic_import_path(provider, monkeypatch):
+    import importlib
+    import sys
+
+    root, _ = provider
+    (root / "module.py").write_text("VALUE = 1\n")
+    name = f"{plugins._NAMESPACE_ROOT}.containment_refused"
+
+    def refuse(*args, **kwargs):
+        raise ValueError("refused by the active import system")
+
+    monkeypatch.delitem(sys.modules, plugins._NAMESPACE_ROOT, raising=False)
+    monkeypatch.setattr(importlib, "import_module", refuse)
+    with pytest.raises(plugins.PluginError, match="refused by the active import system"):
+        plugins.load_module(root, "module", package_name="containment_refused")
+    assert name not in sys.modules
+    # The root it created goes too, unless other loads have since registered packages under it.
+    prefix = plugins._NAMESPACE_ROOT + "."
+    assert plugins._NAMESPACE_ROOT not in sys.modules or any(other.startswith(prefix) for other in sys.modules)

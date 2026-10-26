@@ -350,24 +350,32 @@ def _reference_path(root: Path, reference: str, expects: str) -> Path | None:
     return None
 
 
-def _namespace_for(root: Path, name: str) -> str:
-    """Register ``root`` as a synthetic package so its submodules import without touching sys.path."""
+def _namespace_for(root: Path, name: str) -> tuple[str, list[str]]:
+    """Register ``root`` as a synthetic package so its submodules import without touching sys.path.
+
+    The synthetic root and package are created on demand by whichever load needs them, independently of
+    how the package was selected. Returns the package name and the entries this call created, so a load
+    that is then refused leaves no import path behind.
+    """
+    created = []
     if _NAMESPACE_ROOT not in sys.modules:
         parent = types.ModuleType(_NAMESPACE_ROOT)
         parent.__path__ = []  # a namespace with no on-disk location of its own
         sys.modules[_NAMESPACE_ROOT] = parent
+        created.append(_NAMESPACE_ROOT)
     full = f"{_NAMESPACE_ROOT}.{name}"
     existing = sys.modules.get(full)
     if existing is None:
         package = types.ModuleType(full)
         package.__path__ = [str(root)]
         sys.modules[full] = package
+        created.append(full)
     elif getattr(existing, "__path__", None) != [str(root)]:
         raise PluginError(
             f"two packages claim the namespace {full!r} ({getattr(existing, '__path__', None)} vs "
             f"[{str(root)!r}]) — resolve the name collision rather than letting one shadow the other"
         )
-    return full
+    return full, created
 
 
 def load_module(root: str | Path, reference: str, *, package_name: str):
@@ -412,11 +420,21 @@ def load_module(root: str | Path, reference: str, *, package_name: str):
         except (OSError, RuntimeError, ValueError) as exc:
             raise PluginError(f"{reference!r} cannot import under {root_path}: {exc}") from exc
         search = locations
-    namespace = _namespace_for(root_path, package_name)
+    namespace, created = _namespace_for(root_path, package_name)
     try:
+        # Resolved through the active import system, so an installed import guard checks the synthetic
+        # entries (and the package root they expose) before any module under them executes.
         return importlib.import_module(f"{namespace}.{module_ref}")
     except Exception as exc:  # noqa: BLE001 — report which plugin failed
+        _discard(created)
         raise PluginError(f"importing {reference!r} from {root_path} failed: {type(exc).__name__}: {exc}") from exc
+
+
+def _discard(created: list[str]) -> None:
+    """Remove synthetic entries a refused load created, unless an import has since placed a module under them."""
+    for name in reversed(created):
+        if not any(other.startswith(name + ".") for other in tuple(sys.modules)):
+            sys.modules.pop(name, None)
 
 
 def load_object(root: str | Path, reference: str, *, package_name: str) -> Any:

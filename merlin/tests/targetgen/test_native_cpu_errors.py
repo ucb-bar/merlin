@@ -208,7 +208,11 @@ def test_bounded_runner_records_harness_error_without_host(
     monkeypatch.setattr(runner, "bundle_admission_reason", lambda *a: None)
     monkeypatch.setattr(batch, "build_core_aten_batch", lambda *a: {"cases": [{"status": "bundled"}]})
     monkeypatch.setattr(device, "selected_facts", lambda *a: nullcontext({}))
-    monkeypatch.setattr(device, "load_execution_provider", lambda *a: SimpleNamespace(__file__=__file__))
+    monkeypatch.setattr(
+        device,
+        "load_execution_provider",
+        lambda *a, candidate_writable_roots: SimpleNamespace(__file__=__file__),
+    )
 
     def prepare(directory, report, **kwargs):
         assert declined_components(directory, report) is None

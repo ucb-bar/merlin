@@ -2060,6 +2060,62 @@ def test_bound_provider_refuses_candidate_write_grants(selection, full_call_prov
             S.prepare_contract(target="synthetic", contract=selection[0], facts=selection[1])
 
 
+def _device_package(tmp_path):
+    package = tmp_path / "device-package"
+    (package / "backend").mkdir(parents=True)
+    (package / "backend" / "__init__.py").write_text("")
+    (package / "backend" / "catalog.py").write_text(
+        "def build():\n    from .storage import ITEMSIZE\n    return ITEMSIZE\n"
+    )
+    (package / "backend" / "storage.py").write_text(
+        f"from pathlib import Path\nPath({str(tmp_path / 'device-ran')!r}).touch()\nITEMSIZE = 4\n"
+    )
+    return package
+
+
+def _package_loading_provider(full_call_provider, package, name):
+    return _replace_provider(
+        full_call_provider,
+        f"""from merlin.targetgen.plugins import load_module
+TARGET = "synthetic"
+def catalog():
+    return load_module({str(package)!r}, "backend.catalog", package_name={name!r})
+""",
+    )
+
+
+def test_bound_provider_loads_package_modules_under_synthetic_namespace(full_call_provider, tmp_path, monkeypatch):
+    import sys
+
+    from merlin.targetgen import plugins
+    from merlin.targetgen.core_aten_device import load_execution_provider
+
+    provider = _package_loading_provider(full_call_provider, _device_package(tmp_path), "bound_device_loaded")
+    monkeypatch.delitem(sys.modules, plugins._NAMESPACE_ROOT, raising=False)
+    module = load_execution_provider("synthetic", provider, candidate_writable_roots=())
+    catalog = module.catalog()
+    assert catalog.__name__ == f"{plugins._NAMESPACE_ROOT}.bound_device_loaded.backend.catalog"
+    assert sys.modules[catalog.__name__] is catalog
+    # A deferred relative import after the provider call returns needs the synthetic parents to remain.
+    assert catalog.build() == 4
+
+
+def test_bound_provider_refuses_package_modules_under_candidate_roots(full_call_provider, tmp_path, monkeypatch):
+    import sys
+
+    from merlin.targetgen import plugins
+    from merlin.targetgen.core_aten_device import load_execution_provider
+
+    package = _device_package(tmp_path)
+    provider = _package_loading_provider(full_call_provider, package, "bound_device_refused")
+    monkeypatch.delitem(sys.modules, plugins._NAMESPACE_ROOT, raising=False)
+    module = load_execution_provider("synthetic", provider, candidate_writable_roots=(package,))
+    with pytest.raises(plugins.PluginError, match="candidate-writable root"):
+        module.catalog()
+    assert not (tmp_path / "device-ran").exists()
+    assert not any(name.startswith(f"{plugins._NAMESPACE_ROOT}.bound_device_refused") for name in sys.modules)
+
+
 def test_bound_provider_outside_candidate_write_roots_is_allowed(selection, full_call_provider, tmp_path):
     from merlin.targetgen.core_aten_device import load_execution_provider
 
