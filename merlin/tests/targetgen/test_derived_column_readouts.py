@@ -172,3 +172,61 @@ def test_single_lane_physical_scale_blocks_already_exercise_independent_columns(
     rows = CR.requirements(_path(1), ["int8"], ["matmul", "conv2d"])
     assert len(rows) == 4
     assert not any(row["column_readout"].get("logical_granularity") for row in rows)
+
+
+@pytest.mark.parametrize("evidence", ["derived", "UNKNOWN", "missing", "scaled_load"])
+def test_prepared_contract_column_profile_uses_selected_facts_without_changing_inputs(
+    monkeypatch, tmp_path, evidence,
+):
+    from test_derived_epilogue_groups import _oracle, _writable
+    from test_output_epilogue import _SCALED, _accumulates, _contract, _facts, _preload_fir
+
+    from merlin.targetgen import target_registry
+    from merlin.targetgen.rtl import semantic_facts
+    from merlin.targetgen.rtl.facts import observed_facts
+    from merlin.xdsl_dialects.lowering import compute_groups as CG
+    from merlin.xdsl_dialects.lowering import output_fusion as OF
+
+    # Real output-path derivation over small FIRRTL; only the behavioral probe
+    # result is supplied. A changed load must still fail the structural proof.
+    contract = _contract()
+    facts = _facts(_preload_fir(tmp_path, **({"lanes": _SCALED} if evidence == "scaled_load" else {})))
+    original = copy.deepcopy((contract, facts))
+    semantic = _accumulates() if evidence in ("derived", "scaled_load") else {
+        "facts": {"accumulate_on_load": {"status": "UNKNOWN"}} if evidence == "UNKNOWN" else {},
+    }
+    monkeypatch.setattr(semantic_facts, "derive", lambda target, *, only: semantic)
+    _writable(monkeypatch)
+    oracle = _oracle(routed=False)
+    oracle.cap_map["contraction"].arbitrary_mnk = True
+    monkeypatch.setattr(CG, "TargetOracle", lambda target: oracle)
+    # Foreign ambient files must not replace the derive caller's selection.
+    monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(tmp_path / "absent-contract"))
+    monkeypatch.setenv("MERLIN_RTL_FACTS", str(tmp_path / "absent-facts"))
+    with target_registry.observed_contract("synthetic", contract), observed_facts("synthetic", facts):
+        assert OF.declared_path("synthetic") is None
+        requirement = {"groups": CF._group_axis({}, "synthetic")}
+        if evidence == "derived":
+            selected = CR.with_profile(requirement, CR.DISTINCT_SCALES_V2)
+            row = selected["groups"]["required"][-1]
+            assert row["column_readout"]["columns_per_scale"] == 2
+            assert row["column_readout"]["columns"] == 6
+            assert "bias_add" in row["epilogue"]
+        else:
+            with pytest.raises(ValueError, match="with bias preload"):
+                CR.with_profile(requirement, CR.DISTINCT_SCALES_V2)
+        assert "output_epilogue" not in target_registry.load_contract("synthetic")
+    assert (contract, facts) == original
+
+
+def test_prepared_contract_without_facts_does_not_regenerate_them(monkeypatch):
+    from merlin.targetgen import target_registry
+    from merlin.targetgen.rtl import facts
+
+    def unavailable(target, *, regenerate):
+        assert regenerate is False
+        raise FileNotFoundError("no selected facts")
+
+    monkeypatch.setattr(facts, "load_facts", unavailable)
+    with target_registry.observed_contract("synthetic", {}):
+        assert CF._declared_output_path("synthetic") is None

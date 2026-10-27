@@ -2287,11 +2287,21 @@ def _derived_epilogue_groups(target: str, oracle) -> list[dict]:
 
 
 def _declared_output_path(target: str):
+    """Read the selected path, deriving it when a prepared contract omits the record."""
     try:
+        from merlin.targetgen.capability_manifests import derived_output_path
+        from merlin.targetgen.rtl.facts import load_facts
         from merlin.xdsl_dialects.lowering import output_fusion as OF
 
-        return OF.declared_path(target)
-    except (KeyError, ValueError):  # an unreadable declaration evidences nothing
+        path = OF.declared_path(target)
+        if path is not None:
+            return path
+
+        # Prepared execution contracts need not carry output_epilogue. Use the
+        # same fact/probe derivation as fusion enumeration, under the caller's
+        # observed contract/facts scopes, without changing their input identity.
+        return derived_output_path(target, facts=load_facts(target, regenerate=False))
+    except (KeyError, ValueError, FileNotFoundError):  # unreadable inputs evidence nothing
         return None
 
 
