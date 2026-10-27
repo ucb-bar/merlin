@@ -754,7 +754,7 @@ def _application_operation_inventory(
             parent = parent.parent_op()
 
         structural = name in {"builtin.module", "func.func", "func.return", "linalg.yield", "scf.yield"}
-        support = name == "arith.constant" or name.startswith(("tensor.", "memref.", "scf."))
+        support = name in {"arith.constant", "cf.assert"} or name.startswith(("tensor.", "memref.", "scf."))
         family: str | None = None
         family_basis = "unknown"
         reduction_kind = cc.reduction_kind(op) if name in {"linalg.generic", "linalg.reduce"} else None
