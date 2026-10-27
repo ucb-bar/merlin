@@ -1948,7 +1948,9 @@ def apply_recipe(
                 for sample in samples:
                     if calibrated >= sample_limit:
                         break
-                    require_finite_calibration(sample)
+                    # Only observer edges belong to calibration. Unselected host
+                    # branches may consume complex/nonfinite values; the pre-hooks
+                    # above still reject them if they reach an actual observer.
                     prepared(*_as_tuple(sample))
                     calibrated += 1
                     require_finite_observer_state(
