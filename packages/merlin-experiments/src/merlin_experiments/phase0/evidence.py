@@ -1282,6 +1282,7 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
         selection.software_spec,
         {
             "contract": selection.contract,
+            "facts": selection.refreshed_facts,
             "quantization_candidates": selection.quantization_snapshot.get("quantization_candidates", []),
             "readout_facets": selection.readout_facets,
             "readout_numerics": selection.readout_numerics,

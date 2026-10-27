@@ -694,6 +694,7 @@ def derive(
         selected.software_spec,
         {
             "contract": selected.contract,
+            "facts": selected.refreshed_facts,
             "quantization_candidates": selected.quantization_snapshot.get("quantization_candidates", []),
             "readout_facets": selected.readout_facets,
             "readout_numerics": selected.readout_numerics,

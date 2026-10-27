@@ -400,7 +400,7 @@ def test_unknown_block_size_does_not_block_a_derived_per_tensor_format():
     assert match["parameters"]["block_size"]["status"] == "not_applicable"
 
 
-def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_output_path(tmp_path):
+def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_output_path(tmp_path, monkeypatch):
     """With ``quantization.methodology`` declared, the Phase 0 capture recipe is the methodology's
     recipe over the selected contract's derived output path; without that path it is underivable
     (never the hardware-only recipe), and a spec without a methodology is unchanged."""
@@ -463,6 +463,53 @@ def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_ou
     unresolved = build_quantization_contract(spec, _hardware())
     assert unresolved["methodology"]["status"] == "unresolved"
     assert capture_recipe_candidates(spec, unresolved)[0]["recipe"]["status"] == quant_recipe.UNDERIVABLE
+
+    from merlin.targetgen import capability_manifests as CM
+    from merlin.targetgen.rtl import facts as RF
+
+    prepared = _hardware()
+    original = deepcopy(prepared)
+    selected_facts = {"selected": "facts"}
+    calls = []
+
+    def derive(target, *, facts, contract):
+        assert target == spec["target"]
+        assert facts == selected_facts and contract == prepared["contract"]
+        calls.append(target)
+        return deepcopy(path)
+
+    def no_load(*args, **kwargs):
+        pytest.fail("explicit snapshot facts and declared paths must not load ambient facts")
+
+    monkeypatch.setattr(CM, "derived_output_path", derive)
+    monkeypatch.setattr(RF, "load_facts", no_load)
+    # Declared paths win even if the snapshot has unrelated facts.
+    assert build_quantization_contract(spec, {**hardware, "facts": {}}) == quantization
+    assert calls == []
+    fallback = build_quantization_contract(spec, {**prepared, "facts": selected_facts})
+    assert fallback == quantization
+    assert capture_recipe_candidates(spec, fallback) == rows  # includes model variants and digests
+    assert prepared == original  # the prepared execution contract keeps its input identity
+
+    def load(target, *, regenerate):
+        assert target == spec["target"] and regenerate is False
+        return deepcopy(selected_facts)
+
+    monkeypatch.setattr(RF, "load_facts", load)
+    assert build_quantization_contract(spec, prepared) == quantization
+    for failure in (None, FileNotFoundError("absent"), ValueError("unreadable"), KeyError("missing")):
+        def underivable(*args, **kwargs):
+            if failure is not None:
+                raise failure
+            return None
+
+        monkeypatch.setattr(CM, "derived_output_path", underivable)
+        refused = build_quantization_contract(spec, {**prepared, "facts": {}})
+        assert refused["methodology"]["status"] == "unresolved"
+        refused_row = capture_recipe_candidates(spec, refused)[0]
+        assert refused_row["recipe"]["status"] == quant_recipe.UNDERIVABLE
+        assert refused_row["model_variants"][0]["recipe"]["status"] == quant_recipe.UNDERIVABLE
+
     from merlin_experiments.phase0.capture_recipe import _selected_capture_recipe, recipe_outputs
 
     outputs = recipe_outputs(
@@ -886,3 +933,50 @@ def test_runtime_scale_is_an_explicit_axis_on_the_existing_tensor_scheme():
     v1 = next(row for row in resolved["schemes"] if row["id"] == "q_pow2_tensor")
     with pytest.raises(ValueError, match="arbitrary_f32 tensor"):
         select_scheme_axes(v1, block["axes"], {"scale_source": "runtime_input"})
+
+
+def test_review_basis_does_not_suppress_a_frozen_capture_recipe(tmp_path):
+    from merlin_experiments.phase0.capture_recipe import _selected_capture_recipe, recipe_outputs
+
+    spec = _spec()
+    numeric = spec["numerical_semantics"]
+    numeric["calibration_domain"] = {"minimum": -1.0, "maximum": 1.0}
+    numeric["policy_reviews"] = {
+        "calibration_domain": {
+            "status": "reviewed",
+            "scope": "op_validation_only",
+            "composition_observers": "independent_scheme_policy",
+        }
+    }
+    expected = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+    numeric["policy_reviews"]["calibration_domain"]["basis"] = (
+        "Operator R6; fixed op-validation convention only; composition tensor/block observers "
+        "and per-operand sum policies retain their selected domains and reductions"
+    )
+    candidates = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+    assert len(candidates) == 1
+    assert candidates == expected
+    outputs = recipe_outputs(
+        candidates, target=spec["target"], software_review=spec["status"],
+        encode=lambda value: json.dumps(value, sort_keys=True).encode(),
+    )
+    for member, raw in outputs.items():
+        path = tmp_path / member
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    assert _selected_capture_recipe(
+        tmp_path, target=spec["target"], operand_dtype="int8", accumulator_dtype="int32"
+    ) == candidates[0]["recipe"]
+
+    # Descriptive metadata must not hide unresolved numerical values or review status.
+    for document, field, unknown in (
+        (numeric, "rounding", "unknown"),
+        (numeric["calibration_domain"], "minimum", None),
+        (numeric["policy_reviews"]["calibration_domain"], "status", "unknown"),
+    ):
+        original = document[field]
+        document[field] = unknown
+        assert capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware())) == []
+        document[field] = original
+
+

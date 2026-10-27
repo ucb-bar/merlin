@@ -702,14 +702,36 @@ def _operation_eligibility(
     return decisions
 
 
+def _selected_output_path(target: str, hardware_snapshot: Mapping):
+    """Read the prepared path or derive the same view as conformance, without extraction."""
+    from merlin.targetgen.capability_manifests import derived_output_path
+    from merlin.targetgen.quant_methodology import output_path_of
+    from merlin.targetgen.rtl.facts import load_facts
+
+    contract = hardware_snapshot.get("contract")
+    path = output_path_of(contract)
+    if path is not None:
+        return path
+    if not target or contract is None:
+        return None
+    try:
+        facts = hardware_snapshot.get("facts")
+        if facts is None:
+            facts = load_facts(target, regenerate=False)
+        return derived_output_path(target, facts=facts, contract=contract)
+    except (KeyError, ValueError, FileNotFoundError):
+        return None  # unreadable selected inputs leave methodology derivation strict
+
+
 def build_quantization_contract(
     software_spec: Mapping | None, hardware_snapshot: Mapping, operation_accounting: Mapping | None = None
 ) -> dict:
     """Build JSON-only input for inspection and future TorchAO adapter selection.
 
     ``hardware_snapshot`` contains selected ``quantization_candidates`` produced
-    by quant_recipe.derive_candidates and their ``readout_facets``. This function
-    never resolves a target provider, reruns RTL extraction, or imports TorchAO.
+    by quant_recipe.derive_candidates, their ``readout_facets``, and selected
+    ``facts`` when available. A missing output path uses the shared fact/probe
+    derivation; this function never reruns RTL extraction or imports TorchAO.
     """
     software_spec = software_spec or {}
     declarations = validate_quantization_declarations(software_spec)
@@ -784,10 +806,13 @@ def build_quantization_contract(
         "model-layer admission, or TorchAO realization proof",
     }
     methodology = (software_spec.get("quantization") or {}).get("methodology")
+    path = (
+        _selected_output_path(body["target"], hardware_snapshot)
+        if methodology is not None or "schemes" in (software_spec.get("quantization") or {})
+        else None
+    )
     if "schemes" in (software_spec.get("quantization") or {}):
-        from merlin.targetgen import quant_methodology as QM
-
-        context = {"output_path": QM.output_path_of(hardware_snapshot.get("contract"))}
+        context = {"output_path": path}
         schemes, unknown = resolve_quantization_schemes(software_spec, context)
         body["schemes"] = {**schemes, "unresolved": unknown}
     if "numerics" in (software_spec.get("quantization") or {}):
@@ -798,7 +823,6 @@ def build_quantization_contract(
     if methodology is not None:
         from merlin.targetgen import quant_methodology as QM
 
-        path = QM.output_path_of(hardware_snapshot.get("contract"))
         body["methodology"] = {
             "declaration": QM.validate(methodology),
             "output_path": path,

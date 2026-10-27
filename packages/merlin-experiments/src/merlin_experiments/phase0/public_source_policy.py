@@ -26,6 +26,7 @@ def select(evidence, policy):
     software = common_software(evidence.software_spec)
     hardware = {
         "contract": evidence.contract,
+        "facts": evidence.refreshed_facts,
         "quantization_candidates": evidence.quantization_snapshot.get("quantization_candidates", []),
         "readout_facets": evidence.readout_facets,
         "readout_numerics": evidence.readout_numerics,
