@@ -98,3 +98,80 @@ for value in [float('nan'), float('inf'), 3e38]:
     else:
         raise AssertionError('nonfinite observer input/state was accepted')
 ''')
+
+
+def test_runtime_backward_preserves_narrow_host_calls_and_all_special_outputs():
+    _framework(r'''
+import torch
+from merlin.targetgen._recipe_quantizer import apply_recipe, NoEligibleRecipeOperations
+from merlin.targetgen._m2m_capture_worker import _integerized_agreement
+from merlin.targetgen.pt2e_reference_selection import reference_selection, run_selected_reference
+from merlin.capture.integerization import integerize_capture_model, contraction_partition
+from pathlib import Path
+from tempfile import TemporaryDirectory
+torch.set_num_threads(1)
+recipe = dict(schema='quant_recipe_v1', status='derived', families=['contraction'],
+    weight=dict(dtype='int8', granularity='tensor', symmetric=True, quant_min=-127, quant_max=127),
+    activation=dict(dtype='int8', granularity='tensor', symmetric=True,
+                    quant_min=-128, quant_max=127, mode='static'))
+class Mixed(torch.nn.Module):
+    def forward(self, *inputs):
+        results = []
+        for start in (0, 3, 6):
+            g, x, w = inputs[start:start+3]
+            results.extend(t.reshape(-1) for t in torch.ops.aten.convolution_backward.default(
+                g, x, w, [2], [1, 1], [0, 0], [1, 1], False, [0, 0], 1, [True, True, True]))
+        results.extend(torch.cumsum(x, 1, dtype=x.dtype).reshape(-1) for x in inputs[9:])
+        return tuple(results)
+inputs = []
+for dtype in (torch.bfloat16, torch.float16, torch.float32):
+    inputs.extend((torch.ones(1, 2, 3, 3, dtype=dtype),
+                   torch.linspace(-.75, 1.25, 25).reshape(1, 1, 5, 5).to(dtype),
+                   torch.linspace(-.75, 1.25, 18).reshape(2, 1, 3, 3).to(dtype)))
+for dtype in (torch.bfloat16, torch.float16, torch.float32, torch.int32, torch.int64, torch.int8):
+    values = [[-float('inf'), -1, 0], [float('inf'), -float('inf'), -1]] if dtype == torch.bfloat16 else [[0, 1, 2], [3, 4, 5]]
+    inputs.append(torch.tensor(values, dtype=dtype))
+inputs = tuple(inputs)
+model = Mixed().eval()
+# External weights require an explicit numerical choice; no automatic opt-in.
+try:
+    apply_recipe(model, recipe, example_inputs=inputs)
+except NoEligibleRecipeOperations:
+    pass
+else:
+    raise AssertionError('runtime weights were implicitly quantized')
+recipe['runtime_weight_contractions'] = True
+class Narrow(torch.nn.Module):
+    def forward(self, g, x, w):
+        return torch.ops.aten.convolution_backward.default(
+            g, x, w, [2], [1, 1], [0, 0], [1, 1], False, [0, 0], 1, [True, True, True])
+try:
+    apply_recipe(Narrow(), recipe, example_inputs=inputs[:3])
+except NoEligibleRecipeOperations:
+    pass
+else:
+    raise AssertionError('a narrow-only graph claimed eligible integer work')
+converted = apply_recipe(model, recipe, example_inputs=inputs)
+stats = converted._recipe_quantization_stats
+assert stats['annotated_contractions'] == 1
+assert [row['operator'] for row in stats['operators_refused_by_placement']] == [
+    'aten.convolution_backward.default', 'aten.convolution_backward.default']
+original, portable = model(*inputs), converted(*inputs)
+for left, right in zip(original[:6], portable[:6], strict=True):
+    assert left.dtype == right.dtype
+    assert torch.equal(left.view(torch.uint8), right.view(torch.uint8))
+independent, _ = run_selected_reference(reference_selection(converted), converted, inputs,
+                                       declared_readout=True, numerics='integer_readout')
+with TemporaryDirectory() as directory:
+    integer, receipt = integerize_capture_model(converted, inputs, numerics='integer_readout', directory=Path(directory))
+assert contraction_partition(receipt) == dict(seen=1, integerized=1, preserved=0)
+assert independent.contraction_count == stats['annotated_contractions'] == 1
+report = _integerized_agreement(independent.output, integer(*inputs), atol=0, rtol=0)
+assert report['status'] == 'passed' and report['finite'] is False
+assert len(report['outputs']) == 15 and all(row['byte_equal'] for row in report['outputs'])
+# Even beside a nonfinite leaf, a changed finite lane or NaN payload must fail.
+for leaf, index in ((0, 0), (9, 8)):
+    changed = [x.clone() for x in independent.output]
+    changed[leaf].view(torch.uint8)[index] ^= 1
+    assert _integerized_agreement(independent.output, tuple(changed), atol=0, rtol=0)['status'] == 'failed'
+''')
