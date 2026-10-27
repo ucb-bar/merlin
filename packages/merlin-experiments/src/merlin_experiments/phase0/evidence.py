@@ -397,6 +397,26 @@ def _record_scaling_contradictions(
         )
 
 
+def _unresolved_reason(row: Mapping[str, Any]) -> str:
+    """Why the software-spec derivation left a declaration unresolved, from the row's own keys.
+
+    ``spec_fact_drift`` emits rows of several shapes: operation and format rows carry a ``reason``, while readout,
+    scheme and composition rows state ``{field, value: "UNKNOWN"}`` with an optional ``scheme`` or ``composition``
+    owner. A row of any other shape means the resolver changed in a way this diagnostic does not understand, so it
+    refuses instead of being summarized.
+    """
+    reason = row.get("reason")
+    if reason is not None:
+        if not isinstance(reason, str) or not reason:
+            raise ValueError("software-spec derivation row has an empty or non-text reason")
+        return reason
+    field = row.get("field")
+    if not isinstance(field, str) or not field or row.get("value") != "UNKNOWN":
+        raise ValueError(f"software-spec derivation row has no reason and is not an UNKNOWN field: {sorted(row)}")
+    owner = next((f"{key} {row[key]}: " for key in ("composition", "scheme") if row.get(key)), "")
+    return f"{owner}{field} is UNKNOWN: the selected facts do not establish it"
+
+
 def select_evidence(
     target: str,
     *,
@@ -929,8 +949,8 @@ def select_evidence(
                 {
                     "component": "software-spec-derivation",
                     "status": "unknown",
-                    "reason": row["reason"],
-                    "declaration": row.get("id") or row.get("format"),
+                    "reason": _unresolved_reason(row),
+                    "declaration": row.get("id") or row.get("format") or row.get("scheme") or row.get("composition"),
                 }
             )
     target_profile = derive_profile(target, facts=refreshed_facts, residual=residual, contract=contract).to_dict()
