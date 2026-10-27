@@ -172,8 +172,9 @@ def _check_stamps(saved, current, attestation, git):
                 f"{name} stamp dirty_files is not zero")
         require(nested["commit"] == nested["source_label"] == stamp.get("merlin_source_label")
                 == stamp["merlin_commit"], f"{name} commit labels are inconsistent")
-    require({k: v for k, v in saved.items() if k not in COMMIT_LABELS}
-            == {k: v for k, v in current.items() if k not in COMMIT_LABELS},
+    # Canonical JSON, not Python equality: 0 == False and 1 == True would let a changed value pass.
+    require(canonical({k: v for k, v in saved.items() if k not in COMMIT_LABELS})
+            == canonical({k: v for k, v in current.items() if k not in COMMIT_LABELS}),
             "stamps differ outside commit labels")
     return previous, head
 
@@ -358,7 +359,7 @@ def _decide(saved, current, *, repo, attestation, git_runner):
     policy, attestation_sha = load_attestation(attestation)
     git = _Git(repo, git_runner)
     previous, head = _check_stamps(saved, current, policy, git)
-    changed = git.paths("diff", "--no-renames", "--name-only", "-z", previous, head)
+    changed = git.paths("diff", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", previous, head)
     require(bool(changed), "commit diff is empty")
     outside = sorted(set(changed) - set(policy["allow"]))
     require(not outside, f"changed paths outside attestation allow: {outside}")
@@ -392,3 +393,11 @@ def decide(saved, current, *, repo, attestation, git_runner=None):
         raise
     except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as exc:
         raise AttestationRefused(str(exc)) from exc
+
+
+def recheck_unchanged(repo, head):
+    """Refuse when HEAD or the worktree moved after the decision; called again just before publication."""
+    git = _Git(repo, None)
+    require(git.read("rev-parse", "HEAD").decode().strip() == head, "HEAD changed after the attestation decision")
+    require(not git.read("status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none"),
+            "git worktree changed after the attestation decision")

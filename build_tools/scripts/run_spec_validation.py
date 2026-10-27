@@ -100,24 +100,48 @@ def _attestation_reuse(command, attestation, base):
         current = _probe_stamp(Path(command[1]), command[2:])
     finally:
         if not provenance.is_file() or provenance.read_bytes() != raw:
-            provenance.write_bytes(raw)
+            _replace_atomically(provenance, raw)
             raise EA.AttestationRefused("stamp probe modified provenance.json; saved bytes restored")
     receipt = EA.decide(json.loads(raw), current, repo=forwarded.repo, attestation=attestation)
     path = base / "evidence-attestation.json"
-    SV.write(receipt, path)
+    # The trusted digest is of the bytes this process serialized, never of whatever is on disk afterwards.
+    serialized = SV.canonical_json(receipt) + b"\n"
+    _replace_atomically(path, serialized)
     print(f"ATTESTED, not proven: reuse shards at {receipt['shard_commit']} for record at {receipt['current_commit']}")
-    return path, EA.sha256(path.read_bytes())
+    return path, EA.sha256(serialized), receipt
+
+
+def _forwarded_repo(runner_args):
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--repo", type=Path, required=True)
+    return parser.parse_known_args(runner_args)[0].repo
+
+
+def _replace_atomically(path, payload):
+    """Write ``payload`` to a fresh exclusive temporary file beside ``path`` and rename it into place."""
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def _bind_attestation(record, receipt_file):
     """Seal the reviewer-visible receipt binding without changing producer imports."""
     from merlin_experiments.phase0 import evidence_attestation as EA
 
-    path, written_sha256 = receipt_file
+    path, written_sha256, decided = receipt_file
     EA.require(path.is_file(), f"{path}: attestation receipt is missing")
     raw = path.read_bytes()
     EA.require(EA.sha256(raw) == written_sha256, "attestation receipt changed after it was written")
     receipt = json.loads(raw)
+    EA.require(EA.canonical(receipt) == EA.canonical(decided), "attestation receipt differs from the decision")
     EA.require(receipt.get("schema") == EA.RECEIPT_SCHEMA and receipt.get("decision") == "attested_reuse_of_shards"
                and receipt.get("status") == "ATTESTED_NOT_PROVEN",
                "invalid evidence attestation receipt")
@@ -148,7 +172,7 @@ def _retained_input(path, payload, active):
 
         require(path.is_file() and path.read_bytes() == payload,
                 f"{path}: attestation requires the identical retained runner input")
-    elif not path.is_file() or path.read_bytes() != payload:
+    else:
         path.write_bytes(payload)
 
 
@@ -268,6 +292,9 @@ def _main(argv=None) -> int:
         quantization_scheme=args.quantization_scheme,
     )
     if receipt is not None:
+        from merlin_experiments.phase0.evidence_attestation import recheck_unchanged
+
+        recheck_unchanged(_forwarded_repo(runner_args), receipt[2]["current_commit"])
         _bind_attestation(record, receipt)
     if active:
         from merlin_experiments.phase0.evidence_attestation import require

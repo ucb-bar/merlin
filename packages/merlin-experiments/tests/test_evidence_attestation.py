@@ -673,14 +673,75 @@ def test_receipt_changed_after_it_was_written_is_not_bound(history, tmp_path):
     path = tmp_path / "evidence-attestation.json"
     receipt = {"schema": EA.RECEIPT_SCHEMA, "decision": "attested_reuse_of_shards", "status": "ATTESTED_NOT_PROVEN",
                "saved_stamp_sha256": "x", "shard_commit": "p", "current_commit": "c"}
-    path.write_text(json.dumps(receipt))
-    written = EA.sha256(path.read_bytes())
+    serialized = SV.canonical_json(receipt) + b"\n"
+    path.write_bytes(serialized)
+    token = (path, EA.sha256(serialized), receipt)
     path.write_text(json.dumps({**receipt, "attested_by": "someone else"}))
     with pytest.raises(EA.AttestationRefused, match="changed after it was written"):
-        driver._bind_attestation({"runner_provenance_sha256": "x"}, (path, written))
+        driver._bind_attestation({"runner_provenance_sha256": "x"}, token)
+    path.write_bytes(serialized)
+    forged = {**receipt, "current_commit": "f" * 40}
+    forged_bytes = SV.canonical_json(forged) + b"\n"
+    path.write_bytes(forged_bytes)
+    with pytest.raises(EA.AttestationRefused, match="differs from the decision"):
+        driver._bind_attestation({"runner_provenance_sha256": "x"}, (path, EA.sha256(forged_bytes), receipt))
     path.unlink()
     with pytest.raises(EA.AttestationRefused, match="receipt is missing"):
-        driver._bind_attestation({"runner_provenance_sha256": "x"}, (path, written))
+        driver._bind_attestation({"runner_provenance_sha256": "x"}, token)
+
+
+@pytest.mark.parametrize("field,saved_value,fresh_value", [("dram_bytes", 1, True), ("dram_bytes", 0, False), ("dram_bytes", 1, 1.0)])
+def test_json_type_substitution_outside_labels_refuses(history, field, saved_value, fresh_value):
+    history.saved[field], history.fresh[field] = saved_value, fresh_value
+    with pytest.raises(EA.AttestationRefused, match="differ outside commit labels"):
+        decide(history)
+
+
+def test_gitlink_change_is_seen_even_when_git_ignores_submodules(history):
+    git(history.repo, "config", "diff.ignoreSubmodules", "all")
+    nested = history.repo / "vendor" / "sub"
+    nested.mkdir(parents=True)
+    git(nested, "init", "-q")
+    (nested / "f.txt").write_text("x\n")
+    git(nested, "add", "-A")
+    git(nested, "commit", "-qm", "nested")
+    git(history.repo, "add", "vendor/sub")
+    git(history.repo, "commit", "-qm", "gitlink")
+    history.current = git(history.repo, "rev-parse", "HEAD").decode().strip()
+    history.fresh = stamp(history.repo, history.current)
+    with pytest.raises(EA.AttestationRefused, match="outside attestation allow"):
+        decide(history)
+
+
+def test_recheck_refuses_head_or_tree_moving_after_the_decision(history):
+    EA.recheck_unchanged(history.repo, history.current)
+    (history.repo / "stray.txt").write_text("x\n")
+    with pytest.raises(EA.AttestationRefused, match="worktree changed"):
+        EA.recheck_unchanged(history.repo, history.current)
+    (history.repo / "stray.txt").unlink()
+    with pytest.raises(EA.AttestationRefused, match="HEAD changed"):
+        EA.recheck_unchanged(history.repo, history.previous)
+
+
+def test_unset_mode_still_rewrites_selected_case_ids_unconditionally(history, tmp_path):
+    driver = load_driver(history.repo / DRIVER)
+    path = tmp_path / "selected-case-ids.json"
+    path.write_bytes(b"same")
+    before = path.stat().st_mtime_ns
+    import os, time
+    os.utime(path, ns=(before - 10**9, before - 10**9))
+    older = path.stat().st_mtime_ns
+    driver._retained_input(path, b"same", False)
+    assert path.stat().st_mtime_ns > older
+
+
+def test_provenance_restore_is_atomic_and_leaves_no_temporary_file(history, tmp_path):
+    driver = load_driver(history.repo / DRIVER)
+    target = tmp_path / "provenance.json"
+    target.write_bytes(b"old")
+    driver._replace_atomically(target, b"saved")
+    assert target.read_bytes() == b"saved"
+    assert not [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
 
 
 def test_untracked_file_refuses_even_when_git_hides_untracked_files(history):
