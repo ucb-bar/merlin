@@ -2,13 +2,16 @@
 
 Start at **[FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md)** for the
 current deliverables, exact commands, readiness and parallel remote job plan.
-The next run is **ResNet50 and TinyLlama only; SmolVLA is paused by the user**.
+The shared tuning chunks for **all three models** are published in
+[the checksum-verified chunk delivery](../../../../out/artifacts/handoff/gemmini-shared-model-chunks/v1/latest/README.md).
 
 - ResNet: committed baseline ELF and restorable parent/chunks/fixtures; tune
   existing contraction schedules and compare baseline versus tuned E2E.
-- TinyLlama: portable calibration/input/range seed and preparation code;
-  exports/references/chunks remain remote jobs. Tuning uses **16/1 tokens**;
-  complete baseline/tuned E2E uses **32/32**, with cache capacity 64.
+- TinyLlama: 10 frozen projection/MLP chunks at 16 and 1 rows, with independent
+  references. Complete attention/session preparation remains separate; final
+  baseline/tuned E2E uses **32/32**, with cache capacity 64.
+- SmolVLA: 8 ready flow/expert chunks and one blocked connected diagnostic.
+  Chunk publication/tuning is authorized; full selected E2E quality is unfinished.
 - Use stock TVM EvolutionarySearch/XGB through the existing Gemmini backend.
   Graph fusion stays at 2. Proposed host/packing knobs are not authorized.
 

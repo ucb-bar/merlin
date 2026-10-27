@@ -1,0 +1,2252 @@
+{
+  "schema": "merlin.shared_firesim_chunks.v1",
+  "models": {
+    "resnet": 18,
+    "tinyllama": 10,
+    "smolvla": 9
+  },
+  "ready": {
+    "resnet": 18,
+    "tinyllama": 10,
+    "smolvla": 8
+  },
+  "tvm": {
+    "repository": "https://github.com/grammy117/tvm",
+    "branch": "gemmini/device-ops",
+    "commit": "42b3c1ef27abe878f930e48b335b24956beb0e56"
+  },
+  "methodology": {
+    "search": "stock TVM MetaSchedule EvolutionarySearch and XGB, not a static sweep",
+    "graph_fusion_level": 2,
+    "scope": "existing contraction schedule knobs; no proposed CPU/packing knobs",
+    "shared_deadline": "Existing study deadline; maximum four hours, do not reset during handoff",
+    "limits": "Abort when measured active non-startup cycles >= current best for the same task; refresh in flight; retain censored trials",
+    "parallelism": "One driver per actual physical slot, common locks and proposal ledger; bounded CPU builds",
+    "validation": "FireSim guest checks all outputs; no mandatory sequential Spike preflight on remote",
+    "promotion": "Structural TIR/target equality and fresh hardware evidence; connected confirmation then baseline/tuned E2E"
+  },
+  "chunks": [
+    {
+      "id": "resnet-classifier",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-classifier/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-classifier/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-classifier.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-classifier",
+        "start_node": "mean",
+        "stop_after": "mul_53",
+        "phase": "head",
+        "live_inputs": [
+          "relu_48"
+        ],
+        "live_outputs": [
+          "mul_53"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-classifier/program.json",
+          "sha256": "8d38d2816fdb4b8c2f22273276dda3f8cb55f5a2d538fca8cefc13cb46c64e15",
+          "bytes": 2844410
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-classifier/fixture.npz",
+          "sha256": "300f3965ffaad56bb2818357aa8b7ca3a57136ed1d3af5062235d686c6aeac2c",
+          "bytes": 405924
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-classifier",
+        "program": "resnet/resnet-classifier/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "c1de114b49824a5d"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage1-block1",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage1-block1.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage1-block1",
+        "start_node": "slice_99",
+        "stop_after": "relu_3",
+        "phase": "stage1",
+        "residual_complete": true,
+        "live_inputs": [
+          "quantize_per_tensor_1"
+        ],
+        "live_outputs": [
+          "relu_3"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage1-block1/program.json",
+          "sha256": "7dea81d8672383ca584e755c5a1e0ce7308c65481e9f98d55ccb2e8beb350424",
+          "bytes": 582677
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage1-block1/fixture.npz",
+          "sha256": "cd2be9960a3d88f6bad223839ee70c45aa9c0126960deb29681b9aea521bb40e",
+          "bytes": 3412484
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage1-block1",
+        "program": "resnet/resnet-stage1-block1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "47cf36513e812255",
+          "62a6546b34a3890a",
+          "898bd57e4cba96e3"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage1-block2",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage1-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage1-block2/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage1-block2.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage1-block2",
+        "start_node": "quantize_per_tensor_4",
+        "stop_after": "relu_6",
+        "phase": "stage1",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_3"
+        ],
+        "live_outputs": [
+          "relu_6"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage1-block2/program.json",
+          "sha256": "f543fc8ede88a18a27bb52e181f36d646383986810f37cb4e120ce5918f2e944",
+          "bytes": 543716
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage1-block2/fixture.npz",
+          "sha256": "6131a4db8451820266a2afcf807ceb48b30781d85a7649daf3d05492727e7ad2",
+          "bytes": 6423044
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage1-block2",
+        "program": "resnet/resnet-stage1-block2/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "fff51846b2df6781"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage1-block3",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage1-block3/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage1-block3/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage1-block3.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage1-block3",
+        "start_node": "quantize_per_tensor_7",
+        "stop_after": "relu_9",
+        "phase": "stage1",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_6"
+        ],
+        "live_outputs": [
+          "relu_9"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage1-block3/program.json",
+          "sha256": "debf1dea49a8396e4c1dee6883b55e95cbbf175e8529f8de8146bb02aa4765f0",
+          "bytes": 543774
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage1-block3/fixture.npz",
+          "sha256": "3f75bc5f117709392949cf205e2c572ee577a9ff83b7248f1f5616a6561306b7",
+          "bytes": 6423044
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage1-block3",
+        "program": "resnet/resnet-stage1-block3/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage2-block1",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage2-block1.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage2-block1",
+        "start_node": "quantize_per_tensor_10",
+        "stop_after": "relu_12",
+        "phase": "stage2",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_9"
+        ],
+        "live_outputs": [
+          "relu_12"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage2-block1/program.json",
+          "sha256": "709344d63632f1d413dbedda4863df6785348d284131d44623e7a085091a2354",
+          "bytes": 1064116
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage2-block1/fixture.npz",
+          "sha256": "d9476ce24894d969db3d4c9a069fe03e4dc72b4e22462e8a5969df07aaa4b3e4",
+          "bytes": 4817412
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage2-block1",
+        "program": "resnet/resnet-stage2-block1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "91dacb4f30bf3e05",
+          "0c3344cde71e998e",
+          "62ab010fc8a1f993",
+          "b3ded701376a0caf"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage2-block2",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage2-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage2-block2/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage2-block2.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage2-block2",
+        "start_node": "quantize_per_tensor_13",
+        "stop_after": "relu_15",
+        "phase": "stage2",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_12"
+        ],
+        "live_outputs": [
+          "relu_15"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage2-block2/program.json",
+          "sha256": "f8f7c765923e1ed55bec4f9ad0e26a465b1e65b1d1418f77567ee172bf4aa19f",
+          "bytes": 826446
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage2-block2/fixture.npz",
+          "sha256": "b0cc390880fba0634ce9fbb5b253d423f44872f8f9c7aac14d73bc6b540caead",
+          "bytes": 3211780
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage2-block2",
+        "program": "resnet/resnet-stage2-block2/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "77f7c2f4edb9525e"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage2-block3",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage2-block3/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage2-block3/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage2-block3.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage2-block3",
+        "start_node": "quantize_per_tensor_16",
+        "stop_after": "relu_18",
+        "phase": "stage2",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_15"
+        ],
+        "live_outputs": [
+          "relu_18"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage2-block3/program.json",
+          "sha256": "31079664a820bf3547425c83074a8bb64b63fd00e99e005070e30187b22528d6",
+          "bytes": 826421
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage2-block3/fixture.npz",
+          "sha256": "427ffad868bb23d9f5f6c91777a09035caf0a8af164449dbe6dd2e2e103d2ac5",
+          "bytes": 3211780
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage2-block3",
+        "program": "resnet/resnet-stage2-block3/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage2-block4",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage2-block4/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage2-block4/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage2-block4.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage2-block4",
+        "start_node": "quantize_per_tensor_19",
+        "stop_after": "relu_21",
+        "phase": "stage2",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_18"
+        ],
+        "live_outputs": [
+          "relu_21"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage2-block4/program.json",
+          "sha256": "a1ff7eab917e9963ab7537d31c62ed84acbdf5462d0cf288bdd9ac62e2a32106",
+          "bytes": 826421
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage2-block4/fixture.npz",
+          "sha256": "f519224af0ee496ef30183fba8c9dc466ac2d651853c8fd10bbd947e4e0db517",
+          "bytes": 3211780
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage2-block4",
+        "program": "resnet/resnet-stage2-block4/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage3-block1",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage3-block1.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage3-block1",
+        "start_node": "quantize_per_tensor_22",
+        "stop_after": "relu_24",
+        "phase": "stage3",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_21"
+        ],
+        "live_outputs": [
+          "relu_24"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block1/program.json",
+          "sha256": "ce5b405ed3aa7bf0c59ee0afe7325c359512eaa8c00e38396921cf50e05d3462",
+          "bytes": 2585151
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block1/fixture.npz",
+          "sha256": "77562bc70fdb9d4ee165b997178fbd8ce49d3852a0ec78a65a9be440f38fafc4",
+          "bytes": 2408964
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage3-block1",
+        "program": "resnet/resnet-stage3-block1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "da0442e6f48346cc",
+          "6537403fd9f7196b",
+          "109c588415f16975",
+          "3d95c42a7e6d6e09"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage3-block2",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block2/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage3-block2.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage3-block2",
+        "start_node": "quantize_per_tensor_25",
+        "stop_after": "relu_27",
+        "phase": "stage3",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_24"
+        ],
+        "live_outputs": [
+          "relu_27"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block2/program.json",
+          "sha256": "b5cc152521b3c0a58381600a6a09639f6135e4ea701e96a8ee22370cc48e2506",
+          "bytes": 1948769
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block2/fixture.npz",
+          "sha256": "f7f1a1ed6ad2e0202d73a48738f95bdb3b7e71131aa9586f34cb74f43118d590",
+          "bytes": 1606148
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage3-block2",
+        "program": "resnet/resnet-stage3-block2/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "a2a0a80c010eae43"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage3-block3",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block3/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block3/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage3-block3.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage3-block3",
+        "start_node": "quantize_per_tensor_28",
+        "stop_after": "relu_30",
+        "phase": "stage3",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_27"
+        ],
+        "live_outputs": [
+          "relu_30"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block3/program.json",
+          "sha256": "80fd8c068388f935000d8094415f52aa005028cac1121822fc03e2f0ec5f141f",
+          "bytes": 1948753
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block3/fixture.npz",
+          "sha256": "84b2d4b6b936a5b3fa6f21468197f4031ab0e7ced367faf6afd48ef5a2200667",
+          "bytes": 1606148
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage3-block3",
+        "program": "resnet/resnet-stage3-block3/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage3-block4",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block4/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block4/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage3-block4.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage3-block4",
+        "start_node": "quantize_per_tensor_31",
+        "stop_after": "relu_33",
+        "phase": "stage3",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_30"
+        ],
+        "live_outputs": [
+          "relu_33"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block4/program.json",
+          "sha256": "da91f7dbdd3b3d2bbb3c0d0fc264eefd237a4419d52a1add6b372fae9a0ee5ba",
+          "bytes": 1948706
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block4/fixture.npz",
+          "sha256": "90c7215e37563ab721c3513bd050d6cc3b8dbde07a491a717419945ac7406e05",
+          "bytes": 1606148
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage3-block4",
+        "program": "resnet/resnet-stage3-block4/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage3-block5",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block5/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block5/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage3-block5.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage3-block5",
+        "start_node": "quantize_per_tensor_34",
+        "stop_after": "relu_36",
+        "phase": "stage3",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_33"
+        ],
+        "live_outputs": [
+          "relu_36"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block5/program.json",
+          "sha256": "2d5061a186f1dace563ff73273440cb4e34ba0a9d8ed92cf57c19a7e59c272af",
+          "bytes": 1948744
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block5/fixture.npz",
+          "sha256": "141c8ac6552e4f925e1bb6678628746f962397d7f0942c387b5e87b65b3a640a",
+          "bytes": 1606148
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage3-block5",
+        "program": "resnet/resnet-stage3-block5/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage3-block6",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block6/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block6/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage3-block6.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage3-block6",
+        "start_node": "quantize_per_tensor_37",
+        "stop_after": "relu_39",
+        "phase": "stage3",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_36"
+        ],
+        "live_outputs": [
+          "relu_39"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block6/program.json",
+          "sha256": "3711c5d69836b040e1b6c9094753cf9fee8be2d3b1e9b3f9c6a3a71931997a35",
+          "bytes": 1948687
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage3-block6/fixture.npz",
+          "sha256": "49616d416445a4f31532f7a4d1ad54d2cc9d1a621bedfbb5c615e3214e701961",
+          "bytes": 1606148
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage3-block6",
+        "program": "resnet/resnet-stage3-block6/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage4-block1",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage4-block1.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage4-block1",
+        "start_node": "quantize_per_tensor_40",
+        "stop_after": "relu_42",
+        "phase": "stage4",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_39"
+        ],
+        "live_outputs": [
+          "relu_42"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage4-block1/program.json",
+          "sha256": "278021334ce2a19d7ccaa893023b9f7cfe3885274ac41a53adc01b2bddd70ca5",
+          "bytes": 8641705
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage4-block1/fixture.npz",
+          "sha256": "0ba166825677ed8106870bc2857ecdc5eb22faf972af4663d1d9909830b8e4ca",
+          "bytes": 1204740
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage4-block1",
+        "program": "resnet/resnet-stage4-block1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "eb5758a54c9ae243",
+          "a074823bc5463923",
+          "8767ac914547a912",
+          "8d9a31defbfd421f"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage4-block2",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage4-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage4-block2/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage4-block2.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage4-block2",
+        "start_node": "quantize_per_tensor_43",
+        "stop_after": "relu_45",
+        "phase": "stage4",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_42"
+        ],
+        "live_outputs": [
+          "relu_45"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage4-block2/program.json",
+          "sha256": "abd05762b51d670c10d08efe9b1e0cefd46e2a7e5eb58b51e9f2548270db4bfc",
+          "bytes": 6421423
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage4-block2/fixture.npz",
+          "sha256": "c9f69f0b71583975b005a143a82ce5651bed0503b00f64eaa6595bf04ba8dc33",
+          "bytes": 803332
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage4-block2",
+        "program": "resnet/resnet-stage4-block2/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "eb7dc343280e8916"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stage4-block3",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stage4-block3/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage4-block3/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stage4-block3.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stage4-block3",
+        "start_node": "quantize_per_tensor_46",
+        "stop_after": "relu_48",
+        "phase": "stage4",
+        "residual_complete": true,
+        "live_inputs": [
+          "relu_45"
+        ],
+        "live_outputs": [
+          "relu_48"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage4-block3/program.json",
+          "sha256": "d9814db291d3a41cf638480400e1a3a69077b67b1d449215072f7db2373581de",
+          "bytes": 6421502
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stage4-block3/fixture.npz",
+          "sha256": "1caaa97a1f40c31b8d8c64f4d38a1c9a93d64207b9de51a70a0328c9722ab7a8",
+          "bytes": 803332
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stage4-block3",
+        "program": "resnet/resnet-stage4-block3/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "resnet-stem",
+      "model": "resnet",
+      "status": "ready_for_tuning",
+      "program": "resnet-release/resnet-chunks/resnet-stem/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stem/fixture.npz",
+      "fixture_provenance": "relocated-resnet-proofs/resnet-stem.json",
+      "source_scope": {},
+      "boundary": {
+        "name": "resnet-stem",
+        "start_node": "quantize_per_tensor",
+        "stop_after": "quantize_per_tensor_1",
+        "phase": "stem",
+        "live_inputs": [
+          "image"
+        ],
+        "live_outputs": [
+          "quantize_per_tensor_1"
+        ],
+        "shape_policy": "Exact source dimensions, constants, operations and all live edges; no cropping",
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stem/program.json",
+          "sha256": "8a6b24a35837ce9f626a0afdc759351b432316346f2ffccb2a22e902563c32a9",
+          "bytes": 1125973
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-firesim-dse-round2/v1/handoff_gemmini-firesim-dse-round2_v1_20261026T103920Z_ee4031d/resnet-chunks/resnet-stem/fixture.npz",
+          "sha256": "6c75b94dab40c31942d58d0458981314902d58b5226a3723e1a7b2722e1ff446",
+          "bytes": 803332
+        },
+        "numerical_policy_admission": "REVIEW_REQUIRED",
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT"
+      },
+      "host_check": {
+        "chunk": "resnet-stem",
+        "program": "resnet/resnet-stem/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "65970083614b0a62"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-k-projection-m1",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-k-projection-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-k-projection-m1/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-k-projection-m1.json",
+      "source_scope": "Full K=2048 and N=256 K projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+      "boundary": {
+        "name": "tinyllama-k-projection-m1",
+        "model": "tinyllama",
+        "start_node": "view_6",
+        "stop_after": "mul_9",
+        "parent_stage": "prefill",
+        "parent_layer": 0,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 1
+        },
+        "scope": "Full K=2048 and N=256 K projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+        "profile": "Row-local projection probe; M1 is not a complete decode attention/session fixture",
+        "promotion": "Reuse only through structural equality; full attention/cache/RoPE and E2E require separate checks",
+        "live_inputs": [
+          "quantize_per_tensor"
+        ],
+        "live_outputs": [
+          "mul_9"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-k-projection-m1/program.json",
+          "sha256": "b47ccf7ae44daafbfc60be1a816e2ba475cee9419b295941fc723b09a36029f0",
+          "bytes": 733748
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-k-projection-m1/fixture.npz",
+          "sha256": "264e2d30d247093da3c95a752a37d88ea8de9616d9ad6086be6e8a26245c84fe",
+          "bytes": 3588
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              1,
+              256
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-k-projection-m1",
+        "program": "tinyllama/tinyllama-k-projection-m1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "1e9d111a67b0e4ad"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-k-projection-m16",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-k-projection-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-k-projection-m16/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-k-projection-m16.json",
+      "source_scope": "Full K=2048 and N=256 K projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+      "boundary": {
+        "name": "tinyllama-k-projection-m16",
+        "model": "tinyllama",
+        "start_node": "view_6",
+        "stop_after": "mul_9",
+        "parent_stage": "prefill",
+        "parent_layer": 0,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 16
+        },
+        "scope": "Full K=2048 and N=256 K projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+        "profile": "Row-local projection probe; M1 is not a complete decode attention/session fixture",
+        "promotion": "Reuse only through structural equality; full attention/cache/RoPE and E2E require separate checks",
+        "live_inputs": [
+          "quantize_per_tensor"
+        ],
+        "live_outputs": [
+          "mul_9"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-k-projection-m16/program.json",
+          "sha256": "ac0b3ec7bd1f2c869bcaf141829b6744e3cb3ec3f7e1f650d50dc5d804321861",
+          "bytes": 733753
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-k-projection-m16/fixture.npz",
+          "sha256": "07535606e6f548c108ff85e187761d81aab6eef4415da6d34f6e5d415e4b3ae1",
+          "bytes": 49668
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              16,
+              256
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-k-projection-m16",
+        "program": "tinyllama/tinyllama-k-projection-m16/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "a25555a4d96ed589"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-mlp-5728-m1",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-mlp-5728-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-mlp-5728-m1.json",
+      "source_scope": "Complete RMSNorm, frozen quantize, gate/up, SiLU/product, down, scaling and residual; every K/N retained",
+      "boundary": {
+        "name": "tinyllama-mlp-5728-m1",
+        "model": "tinyllama",
+        "start_node": "pow_4",
+        "stop_after": "add_15",
+        "parent_stage": "prefill",
+        "parent_layer": 1,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 1
+        },
+        "scope": "Complete RMSNorm, frozen quantize, gate/up, SiLU/product, down, scaling and residual; every K/N retained",
+        "profile": "one row-local iteration probe; not a complete decode attention/session fixture",
+        "promotion": "Exact structural equality required; M16/M1 records do not automatically match M32 prefill",
+        "live_inputs": [
+          "add_13"
+        ],
+        "live_outputs": [
+          "add_15"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama/tinyllama-mlp-5728-m1/program.json",
+          "sha256": "96ba7b6baf03d0a6deec46eaa998d5e290a5103314ce659ca21a4c6d3d9a12c4",
+          "bytes": 47160944
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+          "sha256": "12c42470cdd6bf5a9e28cd441da6bf69eb61627f18ab7057c6313cace6479a7e",
+          "bytes": 16900
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              1,
+              2048
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-mlp-5728-m1",
+        "program": "tinyllama/tinyllama-mlp-5728-m1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "e2b2e38c8475729b",
+          "6ad75fad23e381d9"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-mlp-5728-m16",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-mlp-5728-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-mlp-5728-m16.json",
+      "source_scope": "Complete RMSNorm, frozen quantize, gate/up, SiLU/product, down, scaling and residual; every K/N retained",
+      "boundary": {
+        "name": "tinyllama-mlp-5728-m16",
+        "model": "tinyllama",
+        "start_node": "pow_4",
+        "stop_after": "add_15",
+        "parent_stage": "prefill",
+        "parent_layer": 1,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 16
+        },
+        "scope": "Complete RMSNorm, frozen quantize, gate/up, SiLU/product, down, scaling and residual; every K/N retained",
+        "profile": "16-token iteration rows",
+        "promotion": "Exact structural equality required; M16/M1 records do not automatically match M32 prefill",
+        "live_inputs": [
+          "add_13"
+        ],
+        "live_outputs": [
+          "add_15"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama/tinyllama-mlp-5728-m16/program.json",
+          "sha256": "8ebcdabb36f3291c7ecb0bc6bf24c59515a7f377ca3235ec202e72509dd1e1a9",
+          "bytes": 47160956
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+          "sha256": "1cc98daab8204a550b628aaf9517b1705eab3192071469dd0aac8d63b04e6be7",
+          "bytes": 262660
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              16,
+              2048
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-mlp-5728-m16",
+        "program": "tinyllama/tinyllama-mlp-5728-m16/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "163badd66b85295b",
+          "f1a8934526971209"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-mlp-6096-m1",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-mlp-6096-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-mlp-6096-m1.json",
+      "source_scope": "Complete RMSNorm, frozen quantize, gate/up, SiLU/product, down, scaling and residual; every K/N retained",
+      "boundary": {
+        "name": "tinyllama-mlp-6096-m1",
+        "model": "tinyllama",
+        "start_node": "pow_2",
+        "stop_after": "add_8",
+        "parent_stage": "prefill",
+        "parent_layer": 0,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 1
+        },
+        "scope": "Complete RMSNorm, frozen quantize, gate/up, SiLU/product, down, scaling and residual; every K/N retained",
+        "profile": "one row-local iteration probe; not a complete decode attention/session fixture",
+        "promotion": "Exact structural equality required; M16/M1 records do not automatically match M32 prefill",
+        "live_inputs": [
+          "add_6"
+        ],
+        "live_outputs": [
+          "add_8"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama/tinyllama-mlp-6096-m1/program.json",
+          "sha256": "35aa19bd437066ace3a111880f22b5b806dc32c4080346ca96847f8f7d8ac48b",
+          "bytes": 50179516
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+          "sha256": "d2f9f62dc13a58e54fb37d9046f1d861cc8795c7ff4554a34a8a6618fbe2ab09",
+          "bytes": 16900
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              1,
+              2048
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-mlp-6096-m1",
+        "program": "tinyllama/tinyllama-mlp-6096-m1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "2fe37290e85a72df",
+          "e3a7373f296cb249"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-mlp-6096-m16",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-mlp-6096-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-mlp-6096-m16.json",
+      "source_scope": "Complete RMSNorm, frozen quantize, gate/up, SiLU/product, down, scaling and residual; every K/N retained",
+      "boundary": {
+        "name": "tinyllama-mlp-6096-m16",
+        "model": "tinyllama",
+        "start_node": "pow_2",
+        "stop_after": "add_8",
+        "parent_stage": "prefill",
+        "parent_layer": 0,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 16
+        },
+        "scope": "Complete RMSNorm, frozen quantize, gate/up, SiLU/product, down, scaling and residual; every K/N retained",
+        "profile": "16-token iteration rows",
+        "promotion": "Exact structural equality required; M16/M1 records do not automatically match M32 prefill",
+        "live_inputs": [
+          "add_6"
+        ],
+        "live_outputs": [
+          "add_8"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama/tinyllama-mlp-6096-m16/program.json",
+          "sha256": "dabeb243345931dd90e8669858ac568765c3291bf6580af2b655c922b998cc70",
+          "bytes": 50179528
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+          "sha256": "6656133e2212485eab96afe49f111f17dd7c266986e113e3942709d85c0b6347",
+          "bytes": 262660
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              16,
+              2048
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-mlp-6096-m16",
+        "program": "tinyllama/tinyllama-mlp-6096-m16/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "c3b2f5bcd802b368",
+          "6ede59e5214333e1"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-q-projection-m1",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-q-projection-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-q-projection-m1/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-q-projection-m1.json",
+      "source_scope": "Full K=2048 and N=2048 Q projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+      "boundary": {
+        "name": "tinyllama-q-projection-m1",
+        "model": "tinyllama",
+        "start_node": "view_3",
+        "stop_after": "mul_6",
+        "parent_stage": "prefill",
+        "parent_layer": 0,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 1
+        },
+        "scope": "Full K=2048 and N=2048 Q projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+        "profile": "Row-local projection probe; M1 is not a complete decode attention/session fixture",
+        "promotion": "Reuse only through structural equality; full attention/cache/RoPE and E2E require separate checks",
+        "live_inputs": [
+          "quantize_per_tensor"
+        ],
+        "live_outputs": [
+          "mul_6"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-q-projection-m1/program.json",
+          "sha256": "e30180e38bc10d204b24c5b5f54ca167d90cf544537337ebf315de6d21bb0da1",
+          "bytes": 5636664
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-q-projection-m1/fixture.npz",
+          "sha256": "30c22ec1e8e11ce8bb2400be8ff4fb4e3654c8e891c27bfd69fc9792c9cdef30",
+          "bytes": 10756
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              1,
+              2048
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-q-projection-m1",
+        "program": "tinyllama/tinyllama-q-projection-m1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "5d995ebc6ae3d52a"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-q-projection-m16",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-q-projection-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-q-projection-m16/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-q-projection-m16.json",
+      "source_scope": "Full K=2048 and N=2048 Q projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+      "boundary": {
+        "name": "tinyllama-q-projection-m16",
+        "model": "tinyllama",
+        "start_node": "view_3",
+        "stop_after": "mul_6",
+        "parent_stage": "prefill",
+        "parent_layer": 0,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 16
+        },
+        "scope": "Full K=2048 and N=2048 Q projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+        "profile": "Row-local projection probe; M1 is not a complete decode attention/session fixture",
+        "promotion": "Reuse only through structural equality; full attention/cache/RoPE and E2E require separate checks",
+        "live_inputs": [
+          "quantize_per_tensor"
+        ],
+        "live_outputs": [
+          "mul_6"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-q-projection-m16/program.json",
+          "sha256": "c02ad0133168394a0c2c4691832f76706d7f46c71353279ab747f2890383ce7f",
+          "bytes": 5636669
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-q-projection-m16/fixture.npz",
+          "sha256": "7e3ef060d77cd4723df4d925a837b60f274d5089a22bc0a9e46a171207decbc0",
+          "bytes": 164356
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              16,
+              2048
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-q-projection-m16",
+        "program": "tinyllama/tinyllama-q-projection-m16/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "a09704cf46a14f9b"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-v-projection-m1",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-v-projection-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-v-projection-m1/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-v-projection-m1.json",
+      "source_scope": "Full K=2048 and N=256 V projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+      "boundary": {
+        "name": "tinyllama-v-projection-m1",
+        "model": "tinyllama",
+        "start_node": "view_9",
+        "stop_after": "mul_12",
+        "parent_stage": "prefill",
+        "parent_layer": 0,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 1
+        },
+        "scope": "Full K=2048 and N=256 V projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+        "profile": "Row-local projection probe; M1 is not a complete decode attention/session fixture",
+        "promotion": "Reuse only through structural equality; full attention/cache/RoPE and E2E require separate checks",
+        "live_inputs": [
+          "quantize_per_tensor"
+        ],
+        "live_outputs": [
+          "mul_12"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-v-projection-m1/program.json",
+          "sha256": "a1707228e3d4f07d71e57be0e02aa28d5eb10c2cf4df002137c4ca2d04c9e915",
+          "bytes": 733748
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-v-projection-m1/fixture.npz",
+          "sha256": "921508cc3fa85d0f4864b7fbfc1f06acec7f55ea8c2d9c457848e33b67b642ce",
+          "bytes": 3588
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              1,
+              256
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-v-projection-m1",
+        "program": "tinyllama/tinyllama-v-projection-m1/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "tinyllama-v-projection-m16",
+      "model": "tinyllama",
+      "status": "ready_for_tuning",
+      "program": "chunks/tinyllama/tinyllama-v-projection-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-v-projection-m16/fixture.npz",
+      "fixture_provenance": "relocated-proofs/tinyllama-v-projection-m16.json",
+      "source_scope": "Full K=2048 and N=256 V projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+      "boundary": {
+        "name": "tinyllama-v-projection-m16",
+        "model": "tinyllama",
+        "start_node": "view_9",
+        "stop_after": "mul_12",
+        "parent_stage": "prefill",
+        "parent_layer": 0,
+        "row_profile": {
+          "source_rows": 32,
+          "rows": 16
+        },
+        "scope": "Full K=2048 and N=256 V projection with frozen INT8 weights and grouped scale reconstruction; quantized source live-in",
+        "profile": "Row-local projection probe; M1 is not a complete decode attention/session fixture",
+        "promotion": "Reuse only through structural equality; full attention/cache/RoPE and E2E require separate checks",
+        "live_inputs": [
+          "quantize_per_tensor"
+        ],
+        "live_outputs": [
+          "mul_12"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-v-projection-m16/program.json",
+          "sha256": "d91f06faca0b85d03632f9e7b3e5e484baa17f057b809c5613e738f700d5a175",
+          "bytes": 733753
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/tinyllama-projections/tinyllama-v-projection-m16/fixture.npz",
+          "sha256": "2daff5977fc9a94d281294af809c78276cf621e36d97e15dc21b009ff53c715a",
+          "bytes": 49668
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              16,
+              256
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "tinyllama-v-projection-m16",
+        "program": "tinyllama/tinyllama-v-projection-m16/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": []
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-action-input-projection",
+      "model": "smolvla",
+      "status": "ready_for_tuning",
+      "program": "chunks/smolvla/smolvla-action-input-projection/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-input-projection/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-action-input-projection.json",
+      "source_scope": "Full 50x32 signed INT8 action projection to 720 features, INT32 bias and frozen scaling; quantized live-in captured from source",
+      "boundary": {
+        "name": "smolvla-action-input-projection",
+        "model": "smolvla",
+        "start_node": "view",
+        "stop_after": "mul",
+        "parent_stage": "flow_denoise",
+        "scope": "Full 50x32 signed INT8 action projection to 720 features, INT32 bias and frozen scaling; quantized live-in captured from source",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "quantize_per_tensor"
+        ],
+        "live_outputs": [
+          "mul"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-action-input-projection/program.json",
+          "sha256": "83ddbbe465491af8633b5c13c7746c37d45f0477bb96a8537646bf3a6b036dba",
+          "bytes": 91817
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-action-input-projection/fixture.npz",
+          "sha256": "89edccd126cf448899967a12bbcebf5b6bec792153f1474aec434301ca6d07f1",
+          "bytes": 146116
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50,
+              720
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-action-input-projection",
+        "program": "smolvla/smolvla-action-input-projection/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "bbc8105935364813"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-action-projection-update",
+      "model": "smolvla",
+      "status": "ready_for_tuning",
+      "program": "chunks/smolvla/smolvla-action-projection-update/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-projection-update/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-action-projection-update.json",
+      "source_scope": "Full 50x720->50x32 frozen quantized action projection, INT32 bias and Euler/timestep update; normalized source input is an explicit captured boundary",
+      "boundary": {
+        "name": "smolvla-action-projection-update",
+        "model": "smolvla",
+        "start_node": "quantize_per_tensor_83",
+        "stop_after": "add_192",
+        "parent_stage": "flow_denoise",
+        "scope": "Full 50x720->50x32 frozen quantized action projection, INT32 bias and Euler/timestep update; normalized source input is an explicit captured boundary",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "slice_65",
+          "flow_state",
+          "timestep"
+        ],
+        "live_outputs": [
+          "add_191",
+          "add_192"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/action-projection/smolvla-action-projection-update/program.json",
+          "sha256": "515d887a9fa9787937e427128505adee54af974c2eb18c1c245deccb4b96b4fc",
+          "bytes": 121357
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/action-projection/smolvla-action-projection-update/fixture.npz",
+          "sha256": "7d0c23d3e20e56812ec04bb3033a186f4ea8d5c7fe3338d6393aabf1d026a293",
+          "bytes": 158072
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50,
+              32
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-action-projection-update",
+        "program": "smolvla/smolvla-action-projection-update/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0,
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "c9dc9ef0157d056c"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-action-time-embedding",
+      "model": "smolvla",
+      "status": "ready_for_tuning",
+      "program": "chunks/smolvla/smolvla-action-time-embedding/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-time-embedding/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-action-time-embedding.json",
+      "source_scope": "Full 50-row time/action embedding, concatenation, two linear projections, INT32 bias and SiLU; time sin/cos live-in captured after CPU work",
+      "boundary": {
+        "name": "smolvla-action-time-embedding",
+        "model": "smolvla",
+        "start_node": "_to_copy_3",
+        "stop_after": "cat_2",
+        "parent_stage": "flow_denoise",
+        "scope": "Full 50-row time/action embedding, concatenation, two linear projections, INT32 bias and SiLU; time sin/cos live-in captured after CPU work",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "cat",
+          "mul"
+        ],
+        "live_outputs": [
+          "full",
+          "cat_2"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-action-time-embedding/program.json",
+          "sha256": "5f046ec225c5c868aa2b7d657ac1d3d6e075a4a7e09b235d97b9398726b9c880",
+          "bytes": 2235835
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-action-time-embedding/fixture.npz",
+          "sha256": "458eaa9fe62766293836fd0670c8c001cb0650fbac36d5f7023646a71bc43994",
+          "bytes": 294828
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50
+            ],
+            "dtype": "bool",
+            "max_abs_error": 0.0
+          },
+          {
+            "shape": [
+              1,
+              50,
+              720
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-action-time-embedding",
+        "program": "smolvla/smolvla-action-time-embedding/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0,
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "6d7f0c18c4ffd17f",
+          "f968026e6bb15d51"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-action-update",
+      "model": "smolvla",
+      "status": "blocked_connected_host_check",
+      "program": "chunks/smolvla/smolvla-action-update/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-update/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-action-update.json",
+      "source_scope": "Full final norm, all 50x32 projected actions, INT32 bias and Euler/timestep update",
+      "boundary": {
+        "name": "smolvla-action-update",
+        "model": "smolvla",
+        "start_node": "pow_58",
+        "stop_after": "add_192",
+        "parent_stage": "flow_denoise",
+        "scope": "Full final norm, all 50x32 projected actions, INT32 bias and Euler/timestep update",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "add_188",
+          "flow_state",
+          "timestep"
+        ],
+        "live_outputs": [
+          "add_191",
+          "add_192"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-action-update/program.json",
+          "sha256": "92b15fcbafb78c5077dec15ce5ab36b17e21250b08287adb6321664586fe427f",
+          "bytes": 149748
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-action-update/fixture.npz",
+          "sha256": "55f02aecaa52eacb8c5fc930c2fc35125ed198a8e3ea6b4f65930adb48915751",
+          "bytes": 158072
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50,
+              32
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-action-update",
+        "program": "smolvla/smolvla-action-update/program.json",
+        "host_check": "fail",
+        "max_abs_errors": [
+          0.00022357702255249023,
+          0.0
+        ],
+        "comparison_failures": [
+          "\nNot equal to tolerance rtol=1e-05, atol=2e-06\n\nMismatched elements: 28 / 1600 (1.75%)\nMax absolute difference: 0.00022358\nMax relative difference: 0.00141255\n x: array([[[-1.082849, -1.185433, -0.157541, ...,  1.407489,  0.839147,\n         -0.756993],\n        [-0.637372, -0.109139, -0.374914, ..., -1.108156,  1.617967,...\n y: array([[[-1.082849, -1.185433, -0.157541, ...,  1.407489,  0.839147,\n         -0.756993],\n        [-0.637372, -0.109139, -0.374914, ..., -1.108156,  1.617967,..."
+        ],
+        "owned_workload_keys": [
+          "c9dc9ef0157d056c"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-expert-cross-attention-core",
+      "model": "smolvla",
+      "status": "ready_for_tuning",
+      "program": "chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-expert-cross-attention-core.json",
+      "source_scope": "All 15 query heads, 50 queries and full 113-key context; selected QK/PV integer planes, source softmax, output projection and residual; live-ins after source RoPE",
+      "boundary": {
+        "name": "smolvla-expert-cross-attention-core",
+        "model": "smolvla",
+        "start_node": "unsqueeze_25",
+        "stop_after": "add_25",
+        "parent_stage": "flow_denoise",
+        "scope": "All 15 query heads, 50 queries and full 113-key context; selected QK/PV integer planes, source softmax, output projection and residual; live-ins after source RoPE",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "view_64",
+          "view_68",
+          "slice_scatter_5",
+          "slice_6",
+          "add_16"
+        ],
+        "live_outputs": [
+          "add_25"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-cross-attention-core/program.json",
+          "sha256": "d041c3806d5fdcfb2929f7f9434ebf8a07ea0318339ba974d751eb58a6048b76",
+          "bytes": 4021735
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-cross-attention-core/fixture.npz",
+          "sha256": "30cd5d354d37b0b2d45a512dbde48000214cb9178eaaa2f4e5db443bbe461b69",
+          "bytes": 776430
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50,
+              720
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-expert-cross-attention-core",
+        "program": "smolvla/smolvla-expert-cross-attention-core/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "4683000771165ce0",
+          "ee17402302aa1f75",
+          "60c7547e5f4d2de5"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-expert-cross-qkv",
+      "model": "smolvla",
+      "status": "ready_for_tuning",
+      "program": "chunks/smolvla/smolvla-expert-cross-qkv/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-cross-qkv/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-expert-cross-qkv.json",
+      "source_scope": "Full query and prefix K/V projections and source norms; position/RoPE host work follows outside this chunk",
+      "boundary": {
+        "name": "smolvla-expert-cross-qkv",
+        "model": "smolvla",
+        "start_node": "pow_6",
+        "stop_after": "mul_76",
+        "parent_stage": "flow_denoise",
+        "scope": "Full query and prefix K/V projections and source norms; position/RoPE host work follows outside this chunk",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "add_16",
+          "select_5",
+          "select_7"
+        ],
+        "live_outputs": [
+          "view_60",
+          "view_64",
+          "mul_76"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-cross-qkv/program.json",
+          "sha256": "ccb24cd3e5bc48661aa94d60ecb1bf4d9a5cfea358bbad5b0713b3b23811b275",
+          "bytes": 1396095
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-cross-qkv/fixture.npz",
+          "sha256": "81cf91984fa0cd7207eeef4cca3ab59c4daa904b3d784240cdb35fc9646f6c5c",
+          "bytes": 916076
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50,
+              15,
+              64
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          },
+          {
+            "shape": [
+              1,
+              113,
+              5,
+              64
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          },
+          {
+            "shape": [
+              1,
+              113,
+              320
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-expert-cross-qkv",
+        "program": "smolvla/smolvla-expert-cross-qkv/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "09a1bff47caef3e3",
+          "0a34ed4bf324bcc1"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-expert-mlp",
+      "model": "smolvla",
+      "status": "ready_for_tuning",
+      "program": "chunks/smolvla/smolvla-expert-mlp/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-mlp/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-expert-mlp.json",
+      "source_scope": "One full 50-row expert MLP, norm, gate/up, SiLU/product, down and residual",
+      "boundary": {
+        "name": "smolvla-expert-mlp",
+        "model": "smolvla",
+        "start_node": "clone_4",
+        "stop_after": "add_16",
+        "parent_stage": "flow_denoise",
+        "scope": "One full 50-row expert MLP, norm, gate/up, SiLU/product, down and residual",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "add_14"
+        ],
+        "live_outputs": [
+          "add_16"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-mlp/program.json",
+          "sha256": "5e1f0cf41a1ef76add92e90cbeff15dfd71ba9ae5e38c0e6c0ccb4f1297de7cb",
+          "bytes": 6081966
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-mlp/fixture.npz",
+          "sha256": "ca8c93f5174ca03270f9492ba0007213405e2cef4c42cbcdf25d6f4eb9fe15b1",
+          "bytes": 288516
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50,
+              720
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-expert-mlp",
+        "program": "smolvla/smolvla-expert-mlp/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "b4f6ddb737a9630b",
+          "0f114ae425e19f72"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-expert-self-attention-core",
+      "model": "smolvla",
+      "status": "ready_for_tuning",
+      "program": "chunks/smolvla/smolvla-expert-self-attention-core/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-self-attention-core/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-expert-self-attention-core.json",
+      "source_scope": "All 15 query heads, 50 queries and full 163-key context; selected QK/PV integer planes, source softmax, output projection and residual; live-ins after source RoPE",
+      "boundary": {
+        "name": "smolvla-expert-self-attention-core",
+        "model": "smolvla",
+        "start_node": "cat_8",
+        "stop_after": "add_14",
+        "parent_stage": "flow_denoise",
+        "scope": "All 15 query heads, 50 queries and full 163-key context; selected QK/PV integer planes, source softmax, output projection and residual; live-ins after source RoPE",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "select_1",
+          "slice_scatter_3",
+          "select_3",
+          "cat_7",
+          "slice_scatter_1",
+          "cat_4",
+          "cat_2"
+        ],
+        "live_outputs": [
+          "add_14"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-self-attention-core/program.json",
+          "sha256": "07701ea573676739e4ba755ddafafa9cf41eb281ff5c77f5d8976508953d4244",
+          "bytes": 4033979
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-self-attention-core/fixture.npz",
+          "sha256": "5b0a73b780f7c941ef9b8ebebb529ac227ee64fa2df92232799d623cb3d1d91d",
+          "bytes": 907422
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50,
+              720
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-expert-self-attention-core",
+        "program": "smolvla/smolvla-expert-self-attention-core/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "c0ffeda1709a138b",
+          "b9683049feca12cc"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    },
+    {
+      "id": "smolvla-expert-self-qkv",
+      "model": "smolvla",
+      "status": "ready_for_tuning",
+      "program": "chunks/smolvla/smolvla-expert-self-qkv/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-self-qkv/fixture.npz",
+      "fixture_provenance": "relocated-proofs/smolvla-expert-self-qkv.json",
+      "source_scope": "Full RMSNorm and Q/K/V projections, all heads/features; position/RoPE host work follows outside this chunk",
+      "boundary": {
+        "name": "smolvla-expert-self-qkv",
+        "model": "smolvla",
+        "start_node": "pow_2",
+        "stop_after": "mul_22",
+        "parent_stage": "flow_denoise",
+        "scope": "Full RMSNorm and Q/K/V projections, all heads/features; position/RoPE host work follows outside this chunk",
+        "profile": "One captured flow call; all action rows and full contraction reductions",
+        "promotion": "Reuse only structural TIR matches; this fixture does not qualify the full selected 33-array session",
+        "live_inputs": [
+          "cat_2"
+        ],
+        "live_outputs": [
+          "view_8",
+          "view_11",
+          "mul_22"
+        ],
+        "program": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-self-qkv/program.json",
+          "sha256": "ee8faaf44af685f98f567336e8706439da3267b36cfcc48ddab23f1a3b9973a0",
+          "bytes": 1682335
+        },
+        "fixture": {
+          "path": "/home/grammy/blast/merlin-tvm-tuning/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/payload/smolvla-final/smolvla-expert-self-qkv/fixture.npz",
+          "sha256": "716dfa6c7fb1ca7dba3b49dbcdec1c9d8e17962b5642e99e8ebadc9e574a17e9",
+          "bytes": 465024
+        },
+        "firesim": "NOT_RUN",
+        "elf": "NOT_BUILT",
+        "reference_check": [
+          {
+            "shape": [
+              1,
+              50,
+              15,
+              64
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          },
+          {
+            "shape": [
+              1,
+              50,
+              5,
+              64
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          },
+          {
+            "shape": [
+              1,
+              50,
+              320
+            ],
+            "dtype": "float32",
+            "max_abs_error": 0.0
+          }
+        ]
+      },
+      "host_check": {
+        "chunk": "smolvla-expert-self-qkv",
+        "program": "smolvla/smolvla-expert-self-qkv/program.json",
+        "host_check": "pass",
+        "max_abs_errors": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "comparison_failures": [],
+        "owned_workload_keys": [
+          "cc30e8b274fbf7a4"
+        ]
+      },
+      "hardware_correctness": "NOT_RUN",
+      "performance": "NOT_RUN"
+    }
+  ]
+}

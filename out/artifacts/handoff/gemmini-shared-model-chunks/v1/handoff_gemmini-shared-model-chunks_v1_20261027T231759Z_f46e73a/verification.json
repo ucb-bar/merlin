@@ -1,0 +1,19 @@
+{
+  "chunks": 37,
+  "host_pass": 36,
+  "host_fail": [
+    "smolvla-action-update"
+  ],
+  "new_references_replayed": 19,
+  "all_new_reference_max_abs_error": 0.0,
+  "tests": "7 passed; Ruff passed",
+  "structure": "9 inherited module-size violations",
+  "ready_by_model": {
+    "resnet": 18,
+    "tinyllama": 10,
+    "smolvla": 8
+  },
+  "unique_contractions": 47,
+  "tuning_owners": 26,
+  "qualification": "Offline source/reference and host checks only; FireSim measurements and E2E model-quality checks NOT_RUN"
+}

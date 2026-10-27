@@ -1,10 +1,31 @@
-# FireSim runner handoff: ResNet50 and TinyLlama
+# FireSim runner handoff: shared three-model tuning chunks
 
-This is the current execution plan. **SmolVLA is paused by the user: do not
-prepare, compile, tune or run it in the next FireSim campaign.** Its existing
-captures and interrupted reference attempt are preserved for later work.
+**Latest publication supersedes the older pending-chunk status below:**
+[shared chunk delivery](../../../../out/artifacts/handoff/gemmini-shared-model-chunks/v1/latest/README.md).
+It restores the same frozen inputs/programs/expected outputs for all runners:
+18 ResNet chunks, 10 TinyLlama projection/MLP chunks at M=16/M=1, and 9 SmolVLA
+flow/expert chunks (8 ready; one connected host-check failure excluded).
+All 19 new chunk references independently replay with zero difference;
+36 of 37 complete chunks pass TVM host output comparison at unchanged tolerances.
+Use its exact `catalog.json`, `task-owners.json` and `campaign-catalog.json`.
 
-Start ready ResNet work while TinyLlama numerical preparation runs on the
+The latest user request resumes **SmolVLA chunk publication/tuning**. Complete
+selected-session and quality qualification remain unfinished. The earlier
+SmolVLA pause and TinyLlama “chunks pending” descriptions are historical.
+TinyLlama's M=1 chunks are row-local probes, not a complete decode session;
+full attention/cache preparation and 32/32 E2E remain separate jobs.
+
+The compiler for this catalog is published at `https://github.com/grammy117/tvm`,
+`gemmini/device-ops`, **`42b3c1ef27abe878f930e48b335b24956beb0e56`**. No TVM source
+change is needed for this chunk publication. Keep existing stock MetaSchedule
+EvolutionarySearch/XGB, fusion 2, structural task sharing, parallel FireSim slots,
+the existing shared four-hour deadline/proposal budget and moving active-cycle
+limits. Do not implement proposed CPU/packing knobs. Use guest correctness on
+FireSim; do not add sequential Spike runs to the remote campaign. The older
+local tuning helper still contains Spike preflight, so use the already qualified
+remote FireSim path rather than invoking that helper unchanged.
+
+Start ready chunk work while remaining full-session numerical preparation runs on the
 remote CPU host. Do not wait for TinyLlama to finish before restoring ResNet
 or qualifying the installed launcher. No remote jobs have been launched here.
 

@@ -1,0 +1,68 @@
+{
+  "schema": "merlin.shared_chunks_publication.v1",
+  "branch": "comparisons/tvm-workload-tuning",
+  "archive": {
+    "filename": "shared-chunks.tar.gz",
+    "bytes": 293791379,
+    "sha256": "c61a75f3aadb03e51936f84e0f072550d54b776629a339fef91062c4926aa999",
+    "parts": [
+      {
+        "path": "shared-chunks.tar.gz.part-000",
+        "sha256": "ace15ae9bb8a216d03256465fd7f7ecdcfd3c4f686fa4a9af8a8b530a6ea0f99",
+        "bytes": 41943040
+      },
+      {
+        "path": "shared-chunks.tar.gz.part-001",
+        "sha256": "67b30fba1c58ba213b2681bc63323cf7f9cc8d8ab0b3b43e12ce190312074940",
+        "bytes": 41943040
+      },
+      {
+        "path": "shared-chunks.tar.gz.part-002",
+        "sha256": "85b9766dfb70f0869880ecbb30bdcaa2ffedf1b79e0d4d926f26358b6497b973",
+        "bytes": 41943040
+      },
+      {
+        "path": "shared-chunks.tar.gz.part-003",
+        "sha256": "e4912a295b560df1ae9a950a75175d29b2cb6c0ac8935a95ea8899261bf7907f",
+        "bytes": 41943040
+      },
+      {
+        "path": "shared-chunks.tar.gz.part-004",
+        "sha256": "46939d7088d7ac11f279d1cd684f6e11c60b5f2e6657056461e3847bff6f14f3",
+        "bytes": 41943040
+      },
+      {
+        "path": "shared-chunks.tar.gz.part-005",
+        "sha256": "810f8a1de118f53983947af13c9206ce84c7f8086a76e88f0f924aa3a3a6b9ad",
+        "bytes": 41943040
+      },
+      {
+        "path": "shared-chunks.tar.gz.part-006",
+        "sha256": "cd25f2e2b0dac859ef66baad7f78ab70c622b163a4433618411ccfd8a4556ff0",
+        "bytes": 41943040
+      },
+      {
+        "path": "shared-chunks.tar.gz.part-007",
+        "sha256": "7e7a176721514d985ef68459d9c20194f60507bd6b12855300831233a5316d24",
+        "bytes": 190099
+      }
+    ]
+  },
+  "resnet_dependency": {
+    "manifest": {
+      "path": "out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/transfer-manifest.json",
+      "sha256": "76e4d77f77e641bb8fe33dfdcc19660d3893b16aae53670b10d200199da5e1d0",
+      "bytes": 2045
+    },
+    "restore": {
+      "path": "out/artifacts/handoff/gemmini-firesim-dse-publication/v1/handoff_gemmini-firesim-dse-publication_v1_20261026T173908Z_238ada8/restore.py",
+      "sha256": "187a893e495b4f02a87fc70469d53590a8512616faafc598dcbd0324f608a51d",
+      "bytes": 2704
+    }
+  },
+  "catalog": {
+    "path": "catalog.json",
+    "sha256": "839fad75688a9c2a87b975842f072f217a1f0fbc0ff3ba26e9b1707600e37c2a"
+  },
+  "payload_files": 171
+}

@@ -422,3 +422,15 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/authority/protocol/README.md
 !/out/artifacts/audits/gemmini-el4-input-conformance/v1/audits_gemmini-el4-input-conformance_v1_20261026T191206Z_2ac14a1/authority/numerics/models.yaml
 !/out/artifacts/audits/gemmini-el4-input-conformance/v1/latest
+
+# User-requested shared tuning chunks; full checkpoints/parent exports excluded.
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/latest
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/README.md
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/manifest.yaml
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/SHA256SUMS
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/transfer-manifest.json
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/verification.json
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/catalog.json
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/campaign-catalog.json
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/restore.py
+!/out/artifacts/handoff/gemmini-shared-model-chunks/v1/handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a/shared-chunks.tar.gz.part-*

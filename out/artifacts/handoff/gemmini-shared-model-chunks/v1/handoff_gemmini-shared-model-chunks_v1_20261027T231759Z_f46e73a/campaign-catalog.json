@@ -1,0 +1,261 @@
+{
+  "schema": "firesim_owner_catalog_v1",
+  "budget": "Use existing shared proposal cap/deadline; assign remaining trials before enqueueing; do not create a fresh budget",
+  "campaigns": [
+    {
+      "id": "resnet-classifier",
+      "program": "resnet-release/resnet-chunks/resnet-classifier/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-classifier/fixture.npz",
+      "workload_keys": [
+        "c1de114b49824a5d"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stage1-block1",
+      "program": "resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+      "workload_keys": [
+        "47cf36513e812255",
+        "62a6546b34a3890a",
+        "898bd57e4cba96e3"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stage1-block2",
+      "program": "resnet-release/resnet-chunks/resnet-stage1-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage1-block2/fixture.npz",
+      "workload_keys": [
+        "fff51846b2df6781"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stage2-block1",
+      "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+      "workload_keys": [
+        "91dacb4f30bf3e05",
+        "0c3344cde71e998e",
+        "62ab010fc8a1f993",
+        "b3ded701376a0caf"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stage2-block2",
+      "program": "resnet-release/resnet-chunks/resnet-stage2-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage2-block2/fixture.npz",
+      "workload_keys": [
+        "77f7c2f4edb9525e"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stage3-block1",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+      "workload_keys": [
+        "da0442e6f48346cc",
+        "6537403fd9f7196b",
+        "109c588415f16975",
+        "3d95c42a7e6d6e09"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stage3-block2",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block2/fixture.npz",
+      "workload_keys": [
+        "a2a0a80c010eae43"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stage4-block1",
+      "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+      "workload_keys": [
+        "eb5758a54c9ae243",
+        "a074823bc5463923",
+        "8767ac914547a912",
+        "8d9a31defbfd421f"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stage4-block2",
+      "program": "resnet-release/resnet-chunks/resnet-stage4-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage4-block2/fixture.npz",
+      "workload_keys": [
+        "eb7dc343280e8916"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "resnet-stem",
+      "program": "resnet-release/resnet-chunks/resnet-stem/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stem/fixture.npz",
+      "workload_keys": [
+        "65970083614b0a62"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "smolvla-action-input-projection",
+      "program": "chunks/smolvla/smolvla-action-input-projection/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-input-projection/fixture.npz",
+      "workload_keys": [
+        "bbc8105935364813"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "smolvla-action-projection-update",
+      "program": "chunks/smolvla/smolvla-action-projection-update/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-projection-update/fixture.npz",
+      "workload_keys": [
+        "c9dc9ef0157d056c"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "smolvla-action-time-embedding",
+      "program": "chunks/smolvla/smolvla-action-time-embedding/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-time-embedding/fixture.npz",
+      "workload_keys": [
+        "6d7f0c18c4ffd17f",
+        "f968026e6bb15d51"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "smolvla-expert-cross-attention-core",
+      "program": "chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+      "workload_keys": [
+        "4683000771165ce0",
+        "ee17402302aa1f75",
+        "60c7547e5f4d2de5"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "smolvla-expert-cross-qkv",
+      "program": "chunks/smolvla/smolvla-expert-cross-qkv/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-cross-qkv/fixture.npz",
+      "workload_keys": [
+        "09a1bff47caef3e3",
+        "0a34ed4bf324bcc1"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "smolvla-expert-mlp",
+      "program": "chunks/smolvla/smolvla-expert-mlp/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-mlp/fixture.npz",
+      "workload_keys": [
+        "b4f6ddb737a9630b",
+        "0f114ae425e19f72"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "smolvla-expert-self-attention-core",
+      "program": "chunks/smolvla/smolvla-expert-self-attention-core/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-self-attention-core/fixture.npz",
+      "workload_keys": [
+        "c0ffeda1709a138b",
+        "b9683049feca12cc"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "smolvla-expert-self-qkv",
+      "program": "chunks/smolvla/smolvla-expert-self-qkv/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-self-qkv/fixture.npz",
+      "workload_keys": [
+        "cc30e8b274fbf7a4"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "tinyllama-k-projection-m1",
+      "program": "chunks/tinyllama/tinyllama-k-projection-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-k-projection-m1/fixture.npz",
+      "workload_keys": [
+        "1e9d111a67b0e4ad"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "tinyllama-k-projection-m16",
+      "program": "chunks/tinyllama/tinyllama-k-projection-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-k-projection-m16/fixture.npz",
+      "workload_keys": [
+        "a25555a4d96ed589"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "tinyllama-mlp-5728-m1",
+      "program": "chunks/tinyllama/tinyllama-mlp-5728-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+      "workload_keys": [
+        "e2b2e38c8475729b",
+        "6ad75fad23e381d9"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "tinyllama-mlp-5728-m16",
+      "program": "chunks/tinyllama/tinyllama-mlp-5728-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+      "workload_keys": [
+        "163badd66b85295b",
+        "f1a8934526971209"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "tinyllama-mlp-6096-m1",
+      "program": "chunks/tinyllama/tinyllama-mlp-6096-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+      "workload_keys": [
+        "2fe37290e85a72df",
+        "e3a7373f296cb249"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "tinyllama-mlp-6096-m16",
+      "program": "chunks/tinyllama/tinyllama-mlp-6096-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+      "workload_keys": [
+        "c3b2f5bcd802b368",
+        "6ede59e5214333e1"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "tinyllama-q-projection-m1",
+      "program": "chunks/tinyllama/tinyllama-q-projection-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-q-projection-m1/fixture.npz",
+      "workload_keys": [
+        "5d995ebc6ae3d52a"
+      ],
+      "graph_fusion_level": 2
+    },
+    {
+      "id": "tinyllama-q-projection-m16",
+      "program": "chunks/tinyllama/tinyllama-q-projection-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-q-projection-m16/fixture.npz",
+      "workload_keys": [
+        "a09704cf46a14f9b"
+      ],
+      "graph_fusion_level": 2
+    }
+  ]
+}

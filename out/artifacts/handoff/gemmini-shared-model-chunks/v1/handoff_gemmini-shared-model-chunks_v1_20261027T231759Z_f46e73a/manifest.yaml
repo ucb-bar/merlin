@@ -1,0 +1,9 @@
+artifacts: []
+git_sha: f46e73a
+notes: Portable checked source chunks for all three models
+run_id: handoff_gemmini-shared-model-chunks_v1_20261027T231759Z_f46e73a
+sources: []
+target: gemmini-shared-model-chunks
+timestamp: 20261027T231759Z
+topic: handoff
+version: 1
