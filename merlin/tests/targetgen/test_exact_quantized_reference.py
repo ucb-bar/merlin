@@ -50,6 +50,58 @@ def run_torch(script):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_bfloat16_materialization_rounds_rationals_once_and_preserves_shape():
+    run_torch(r'''
+import numpy as np, torch
+from fractions import Fraction as F
+from merlin.targetgen.exact_arithmetic import ExactTensor, materialize
+tie = F(1) + F(1, 256)
+# Adjacent sides of a BF16 tie that binary64 and FP32 would erase.
+values = [tie-F(1, 2**100), tie, tie+F(1, 2**100),
+          -tie-F(1, 2**100), F(1, 2**134), -F(1, 2**134), F(3, 2**134)]
+actual = materialize(ExactTensor(np.array(values, dtype=object), torch.bfloat16))
+assert actual.view(torch.int16).tolist() == [0x3f80, 0x3f80, 0x3f81, -16511, 0, -32768, 2]
+assert materialize(ExactTensor(np.array(F(5,4), dtype=object), torch.bfloat16)).shape == ()
+assert materialize(ExactTensor(np.empty((2,0), dtype=object), torch.bfloat16)).shape == (2,0)
+try:
+    materialize(ExactTensor(np.array([F(2)**128], dtype=object), torch.bfloat16))
+except ValueError as exc:
+    assert 'overflows' in str(exc)
+else:
+    raise AssertionError('BF16 overflow was silently accepted')
+''')
+
+
+def test_implicit_nonfloating_constants_keep_native_storage_in_exact_reference():
+    run_torch(r'''
+import torch
+from merlin.targetgen.core_aten_w8a8_reference import selected_pt2e_reference
+class Constants(torch.nn.Module):
+    def forward(self, x):
+        return (torch.ops.aten.fill.Scalar(x, 0.), torch.full_like(x, 1.25),
+                torch.zeros_like(x), torch.ones_like(x))
+for dtype in (torch.bool, torch.int8, torch.int64, torch.complex64):
+    x = torch.ones(2,3,dtype=dtype)
+    model = torch.export.export(Constants(), (x,)).module()
+    independent, _ = selected_pt2e_reference(model, (x,), declared_readout=True)
+    for original, actual in zip(model(x), independent.output, strict=True):
+        assert original.dtype == actual.dtype
+        assert torch.equal(original.reshape(-1).view(torch.uint8), actual.reshape(-1).view(torch.uint8))
+# Quantized rational values still cannot acquire implicit integer storage.
+import numpy as np
+from fractions import Fraction
+from merlin.targetgen.exact_arithmetic import ExactTensor
+from merlin.targetgen.exact_quantized_reference import evaluate_operation
+try:
+    evaluate_operation('aten.full_like.default', (ExactTensor(np.array([Fraction(1)]), torch.float32), 1.),
+                       {'dtype':torch.int32})
+except ValueError as exc:
+    assert 'implicit integer cast' in str(exc)
+else:
+    raise AssertionError('rational-to-integer constant escaped the cast guard')
+''')
+
+
 def test_deterministic_masks_singleton_products_and_zero_exponential_branch_are_rational():
     run_torch(r'''
 import numpy as np, torch

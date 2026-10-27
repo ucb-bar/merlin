@@ -133,10 +133,10 @@ def materialize(value):
         dtype = value.dtype or torch.float32
         if dtype not in (torch.float16, torch.float32, torch.float64, torch.bfloat16):
             return torch.tensor(value.values.tolist(), dtype=dtype)
-        if dtype == torch.bfloat16:
-            raise ValueError("exact reference does not yet implement a bfloat16 result boundary")
-        bits = {torch.float16: 16, torch.float32: 32, torch.float64: 64}[dtype]
-        values = np.vectorize(lambda x: round_binary(x, bits), otypes=[float])(value.values)
+        bits = {torch.float16: 16, torch.bfloat16: 16, torch.float32: 32, torch.float64: 64}[dtype]
+        values = np.vectorize(
+            lambda x: round_binary(x, bits, bfloat16=dtype == torch.bfloat16), otypes=[float]
+        )(value.values)
         return torch.tensor(values.tolist(), dtype=dtype).reshape(value.values.shape)
     if isinstance(value, tuple):
         return tuple(materialize(x) for x in value)

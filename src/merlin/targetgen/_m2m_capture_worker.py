@@ -1487,6 +1487,13 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             capture_trace=True,
             conversion_result=res,
         )
+        from _capture_result_contract import restore_bundle_abi
+
+        restore_bundle_abi(out, input_abi, output_abi)
+        # The canonical ABI is part of meta.json: bind the finalized artifact.
+        from m2m.capture.provenance import write_capture_receipt
+
+        write_capture_receipt(out, source_path=Path(a.loader))
     if completed is not None:
         completed(
             dict(module=mdl, inputs=tuple(inputs), session=session, quant=q, conversion_result=res, metadata=meta)

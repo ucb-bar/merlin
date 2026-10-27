@@ -175,3 +175,86 @@ for leaf, index in ((0, 0), (9, 8)):
     changed[leaf].view(torch.uint8)[index] ^= 1
     assert _integerized_agreement(independent.output, tuple(changed), atol=0, rtol=0)['status'] == 'failed'
 ''')
+
+
+def test_reductions_preserve_non_fp32_operands_and_result_dtypes():
+    _framework(r'''
+import torch
+from merlin.targetgen._recipe_quantizer import apply_recipe, NoEligibleRecipeOperations
+torch.set_num_threads(1)
+recipe = dict(schema='quant_recipe_v1', status='derived',
+    families=['contraction', 'window_mean', 'affine_map', 'movement'],
+    weight=dict(dtype='int8', granularity='tensor', symmetric=True, quant_min=-127, quant_max=127),
+    activation=dict(dtype='int8', granularity='tensor', symmetric=True,
+                    quant_min=-128, quant_max=127, mode='static'))
+class Reduction(torch.nn.Module):
+    def __init__(self, dtype):
+        super().__init__()
+        self.dtype = dtype
+    def forward(self, x):
+        return torch.sum(x, [0], dtype=self.dtype)
+for source, target in [(dtype, dtype) for dtype in
+        (torch.bool, torch.int8, torch.int32, torch.int64, torch.bfloat16, torch.float16, torch.float64)]:
+    # Include the original empty Bool failure and nonempty values for all widths.
+    for size in (0, 4):
+        x = torch.ones(size, dtype=source)
+        reduction = Reduction(target)
+        class Mixed(torch.nn.Module):
+            def forward(self, x, finite):
+                return reduction(x), finite.clone()
+        inputs = (x, torch.tensor([-.75, 1.25]))
+        converted = apply_recipe(Mixed(), recipe, example_inputs=inputs)
+        assert converted._recipe_quantization_stats['annotated_means'] == 0
+        original, actual = Mixed()(*inputs)[0], converted(*inputs)[0]
+        assert original.dtype == actual.dtype
+        assert torch.equal(original.reshape(-1).view(torch.uint8), actual.reshape(-1).view(torch.uint8))
+try:
+    apply_recipe(Reduction(torch.float16), recipe, example_inputs=(torch.ones(4, dtype=torch.float16),))
+except NoEligibleRecipeOperations:
+    pass
+else:
+    raise AssertionError('a narrow-only reduction claimed integer work')
+# Supported FP32 reductions still annotate.
+converted = apply_recipe(Reduction(torch.float32), recipe, example_inputs=(torch.ones(4),))
+assert converted._recipe_quantization_stats['annotated_means'] == 1
+''')
+
+
+def test_narrow_full_readouts_keep_fake_metadata_and_exact_integer_agreement():
+    _framework(r'''
+import torch
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from merlin.targetgen._recipe_quantizer import apply_recipe
+from merlin.targetgen._m2m_capture_worker import _integerized_agreement
+from merlin.targetgen.pt2e_reference_selection import reference_selection, run_selected_reference
+from merlin.capture.integerization import integerize_capture_model
+torch.set_num_threads(1)
+recipe = dict(schema='quant_recipe_v1', status='derived', families=['contraction', 'movement'],
+    weight=dict(dtype='int8', granularity='tensor', symmetric=True, quant_min=-127, quant_max=127),
+    activation=dict(dtype='int8', granularity='tensor', symmetric=True,
+                    quant_min=-128, quant_max=127, mode='static'))
+class Fills(torch.nn.Module):
+    def forward(self, host):
+        outputs = [torch.full(shape, value, dtype=dtype).reshape(-1)
+                   for dtype in (torch.bfloat16, torch.float16, torch.float64)
+                   for shape in ([], [2, 3]) for value in (0., 1.25)]
+        return (*outputs, host.clone())
+inputs = (torch.tensor([complex(float('nan'), 1), complex(float('inf'), 0),
+                        complex(-float('inf'), 0), complex(-0., 2)], dtype=torch.complex64),)
+converted = apply_recipe(Fills(), recipe, example_inputs=inputs)
+stats = converted._recipe_quantization_stats
+assert stats['annotated_movements'] == 12
+assert len(stats['floating_readout_widths']) == 12
+independent, _ = run_selected_reference(reference_selection(converted), converted, inputs,
+                                       declared_readout=True, numerics='integer_readout')
+with TemporaryDirectory() as directory:
+    integer, _ = integerize_capture_model(converted, inputs, numerics='integer_readout', directory=Path(directory))
+actual = integer(*inputs)
+report = _integerized_agreement(independent.output, actual, atol=0, rtol=0)
+assert report['status'] == 'passed' and all(row['byte_equal'] for row in report['outputs'])
+for index in (0, 24):
+    changed = [x.clone() for x in actual]
+    changed[-1].view(torch.uint8)[index] ^= 1
+    assert _integerized_agreement(independent.output, tuple(changed), atol=0, rtol=0)['status'] == 'failed'
+''')
