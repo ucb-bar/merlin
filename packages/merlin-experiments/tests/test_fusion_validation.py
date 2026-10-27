@@ -11,6 +11,23 @@ from merlin_experiments.phase0.fusion_execution import prove_placement, source_m
 from merlin_experiments.phase0.fusion_reference import boundary
 
 
+def test_release_pool_constraints_remain_unique():
+    from merlin_experiments.phase0.composition_generation import _release_chain
+
+    from merlin.targetgen.software_spec import validate_compositions
+
+    node = dict(
+        form="contraction", seed=False, residual=None, realization="matmul", scheme="q",
+        readout=dict(exit="requant", stages=[dict(kind="pool")]),
+    )
+    chain = _release_chain(node, "WS", dict(producer="contraction", readout_stages=["pool"]))
+    assert len(chain["constraints"]) == 4
+    validate_compositions(dict(
+        schema="merlin.software_spec.compositions.v1", status="reviewed",
+        grading="placement_and_instruction_audit", chains=[chain],
+    ))
+
+
 @pytest.mark.parametrize("strategy", ["f32_product_rne", "exact_rational_host"])
 @pytest.mark.parametrize("activation", [False, True])
 def test_residual_references_follow_each_source_f32_operation(strategy, activation):

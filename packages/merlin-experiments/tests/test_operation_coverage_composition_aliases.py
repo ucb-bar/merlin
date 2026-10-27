@@ -10,6 +10,21 @@ from merlin_experiments.phase0.component_generation import digest
 from merlin_experiments.phase0.composition_generation import coverage
 
 
+@pytest.mark.parametrize("realization,stages,expected", [
+    ("matmul", [], []),
+    ("matmul", [dict(kind="pool")], ["window"]),
+    ("mean", [], ["window"]),
+])
+def test_window_alias_requires_an_actual_window(realization, stages, expected):
+    from merlin_experiments.phase0.composition_generation import _display_aliases
+
+    chain = dict(id="window", producer=["movement", "contraction"], exits=["requant"])
+    node = dict(form="window_movement" if realization == "mean" else "contraction",
+                realization=realization, residual=None, readout=dict(exit="requant", stages=stages))
+    candidate = dict(semantic=dict(structure="single", nodes=[node]))
+    assert _display_aliases(dict(compositions=dict(chains=[chain])), candidate) == expected
+
+
 @pytest.fixture
 def inputs(tmp_path):
     chain = {

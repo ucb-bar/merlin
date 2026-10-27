@@ -307,9 +307,10 @@ def test_source_activation_and_bias_cannot_be_omitted_from_audit(spec, facts, ca
         )
 
 
-def test_zero_padding_is_not_neutral_for_negative_pool_producer(spec, facts, case):
+@pytest.mark.parametrize("padding", ["zero", "zero_tap"])
+def test_zero_padding_is_not_neutral_for_negative_pool_producer(spec, facts, case, padding):
     # A window containing -2 and padding has source max -2, but device max 0.
-    facts["output_path"]["readout"][-1]["padding"] = "zero"
+    facts["output_path"]["readout"][-1]["padding"] = padding
     case.update(
         readout_stages=["convert", "scale", "requant", "pool"],
         accumulator_stages=[],
@@ -365,8 +366,9 @@ def test_scratchpad_pool_fence_is_an_independent_instruction_obligation(spec, fa
 
 
 @pytest.mark.parametrize("activation,lower_bound", [(True, None), (False, 0), (False, 1), (False, None)])
-def test_padded_pool_requires_source_bound_or_relu_proof(spec, facts, case, activation, lower_bound):
-    facts["output_path"]["readout"][-1]["padding"] = "zero"
+@pytest.mark.parametrize("padding", ["zero", "zero_tap"])
+def test_padded_pool_requires_source_bound_or_relu_proof(spec, facts, case, activation, lower_bound, padding):
+    facts["output_path"]["readout"][-1]["padding"] = padding
     case.update(
         accumulator_stages=[],
         padding=[1, 1],

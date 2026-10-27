@@ -462,13 +462,13 @@ def _release_chain(node, dataflow, instance):
     chain = chain_for_node(node, dataflow)
     chain["producer"] = instance["producer"]
     if "pool" in instance["readout_stages"]:
-        chain["constraints"].extend(
-            [
-                {"max_requires_store_path_pooling": "from_facts"},
-                "scratchpad_source_pooling_fenced",
-                {"padded_max_requires": "producer_lower_bound_or_derived_pad_value"},
-            ]
-        )
+        for constraint in [
+            {"max_requires_store_path_pooling": "from_facts"},
+            "scratchpad_source_pooling_fenced",
+            {"padded_max_requires": "producer_lower_bound_or_derived_pad_value"},
+        ]:
+            if constraint not in chain["constraints"]:
+                chain["constraints"].append(constraint)
     return chain
 
 
@@ -570,6 +570,11 @@ def _display_aliases(software_spec, candidate):
             ("movement" if node["form"] == "window_movement" else node["form"]) in producers
             and node["readout"]["exit"] in chain.get("exits", [])
             and bool(node.get("residual")) == bool(chain.get("extension"))
+            and (
+                "movement" not in producers
+                or node["form"] == "window_movement"
+                or any(stage["kind"] == "pool" for stage in node["readout"]["stages"])
+            )
             for node in semantic["nodes"]
         ):
             aliases.append(chain["id"])
