@@ -624,10 +624,12 @@ def read_out_floating_widths(graph_module: Any, moves: set[Any]) -> list[dict[st
             kwargs = {**node.kwargs, "dtype": torch.float32}
             with graph.inserting_before(node):
                 computed = graph.call_function(node.target, args=node.args, kwargs=kwargs)
-            args = torch.fx.map_arg(node.args, lambda n: n.meta["val"])
-            computed.meta = {**node.meta, "val": node.target(*args, **kwargs)}
+            computed.meta = {**node.meta, "val": value.to(torch.float32)}
         else:
             continue
+        # Keep the exported FakeTensor value and discard stale narrow metadata.
+        # PT2E requires FakeTensor outputs to insert the Q/DQ readout boundary.
+        computed.meta.pop("tensor_meta", None)
         computed.meta["_m2m_source_aten"] = str(node.target)
         with graph.inserting_after(computed):
             readout = graph.call_function(aten._to_copy.default, args=(computed,), kwargs={"dtype": value.dtype})
@@ -937,6 +939,15 @@ def build_quantizer(
     def eligible(node: Any, family: str) -> bool:
         if family == "operand_sum" and node.meta.get("merlin_contraction_epilogue"):
             return False
+        if family in {"operand_sum", "window_mean"}:
+            from merlin.targetgen._recipe_integer import data_arguments
+
+            # Reduction observers and rewrites require FP32 data and results.
+            # Keep integer/Bool and dtype-changing reductions on their source path.
+            values = [node.meta.get("val")]
+            values.extend(a.meta.get("val") for a in data_arguments(node) if isinstance(a, torch.fx.Node))
+            if any(not isinstance(value, torch.Tensor) or value.dtype != torch.float32 for value in values):
+                return False
         # An activation contraction is a contraction to the SW admission screen; the family only
         # decides which spec its second operand takes.
         if not software_allows(node, "contraction" if family == ACTIVATION_CONTRACTION else family):
