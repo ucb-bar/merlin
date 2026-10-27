@@ -230,7 +230,7 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
         inputs, outputs = qualification._native_host_signature(model) if complete_outputs else forward_signature(model)
         input_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in inputs]
         output_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in outputs]
-        arguments = resolve_forward_args(bundle)
+        arguments = qualification._native_host_arguments(bundle) if complete_outputs else resolve_forward_args(bundle)
         storage = (
             qualification._NATIVE_HOST_STORAGE
             if complete_outputs

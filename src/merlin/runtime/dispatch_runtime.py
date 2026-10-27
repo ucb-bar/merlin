@@ -29,7 +29,8 @@ from typing import Any
 
 import numpy as np
 
-from .dispatch_arguments import _ModelInput as _ModelInput, plan_forward_args
+from .dispatch_arguments import _ModelInput as _ModelInput
+from .dispatch_arguments import bind_forward_array, plan_forward_args
 from .dispatch_numeric import boundary_scale as boundary_scale
 from .dispatch_numeric import float_boundary_operands as float_boundary_operands
 from .dispatch_placement import DispatchPlacements, DispatchRuntimeError
@@ -102,11 +103,10 @@ def resolve_forward_args(model_dir: str | Path, *, cache: ForwardArgsCache | Non
     args: list[np.ndarray] = []
     for entry in plan:
         if isinstance(entry, _ModelInput):
-            arr = np.ascontiguousarray(inputs[entry.key])
-            if entry.element == "bf16":
-                args.append(f32_to_bf16(arr).reshape(entry.shape))
-            else:
-                args.append(arr.astype(_np_dtype(entry.element)).reshape(entry.shape))
+            arr = inputs[entry.key]
+            args.append(
+                bind_forward_array(arr, entry.shape, entry.element, _np_dtype=_np_dtype, f32_to_bf16=f32_to_bf16)
+            )
         else:
             args.append(entry)
     return args

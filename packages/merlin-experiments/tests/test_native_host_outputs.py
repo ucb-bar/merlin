@@ -65,6 +65,7 @@ def _case(tmp_path, monkeypatch, *, changed_output=None):
             }
         )
     )
+    monkeypatch.setattr(Q, "_native_host_arguments", lambda *_: storage)
     monkeypatch.setattr(runtime, "resolve_forward_args", lambda *_: storage)
 
     def fake_lower(model, destination, **kwargs):
@@ -237,3 +238,135 @@ def test_derive_reader_retains_legacy_finite_single_fp32_comparison(tmp_path):
         )
         == 0
     )
+
+
+def _argument_bundle(root, rows, arrays, kind="input"):
+    """A minimal manifest bundle; argument storage and ABI come from the caller."""
+    import struct
+
+    root.mkdir()
+    types = ["tensor<" + "".join(f"{n}x" for n in row["abi_shape"]) + row["abi_element"] + ">" for row in rows]
+    signature = ", ".join(f"%arg{i}: {typ}" for i, typ in enumerate(types))
+    (root / "model.mlir").write_text(f"module {{ func.func @forward({signature}) {{ func.return }} }}")
+    manifest, extra, order = {}, {}, {}
+    for i in range(len(rows)):
+        name = f"x{i}" if kind == "input" else f"b_pair_{i:03}" if kind == "buffer" else f"c_lifted_tensor_{i:03}"
+        manifest[str(i)] = {"kind": kind, "name": name}
+        order[name] = i
+        if kind != "input":
+            extra[f"buf::pair.{i:03}" if kind == "buffer" else f"pair.{i:03}"] = arrays[i]
+    (root / "weights.safetensors").write_bytes(struct.pack("<Q", 2) + b"{}")
+    (root / "weights.safetensors.manifest.json").write_text(json.dumps(manifest))
+    (root / "input_order.json").write_text(json.dumps(order))
+    np.savez(root / "inputs.npz", **{f"in{i}": array for i, array in enumerate(arrays)} if kind == "input" else {})
+    np.savez(root / "extra.npz", **extra)
+    return root
+
+
+@pytest.mark.parametrize("kind", ["input", "buffer", "lifted"])
+def test_saved_movement_complex_arguments_keep_every_component_word(tmp_path, kind):
+    from merlin.common.paths import merlin_dir
+    from merlin.runtime.dispatch_runtime import ForwardArgsCache, resolve_forward_args
+
+    fixture = json.loads((merlin_dir() / "tests/data/movement_component_arguments.json").read_bytes())
+    rows = fixture["arguments"]
+    assert len(rows) == 23 and rows[0]["input_index"] == 2
+    arrays = [np.frombuffer(bytes.fromhex(row["words_hex"]), row["dtype"]).reshape(row["shape"]) for row in rows]
+    bundle = _argument_bundle(tmp_path / "capture", rows, arrays, kind)
+    cache = ForwardArgsCache()
+    for bound in (
+        resolve_forward_args(bundle),
+        resolve_forward_args(bundle, cache=cache),
+        Q._native_host_arguments(bundle),
+    ):
+        for value, original, row in zip(bound, arrays, rows, strict=True):
+            assert value.shape == tuple(row["abi_shape"]) and value.dtype == np.dtype("float32")
+            assert value.flags.c_contiguous and value.tobytes() == original.tobytes()
+            assert value[..., 0].tobytes() == original.real.tobytes()
+            assert value[..., 1].tobytes() == original.imag.tobytes()
+
+
+@pytest.mark.parametrize("precision", [32, 64])
+@pytest.mark.parametrize("shape", [(), (0,), (2, 3)])
+def test_component_binding_preserves_special_words_and_strided_values(tmp_path, precision, shape):
+    from merlin.runtime.dispatch_runtime import resolve_forward_args
+
+    words = (
+        [0, 0x80000000, 0x7F800000, 0xFF800000, 0x7FC00001, 0x7F800001]
+        if precision == 32
+        else [0, 0x8000000000000000, 0x7FF0000000000000, 0xFFF0000000000000, 0x7FF8000000000001, 0x7FF0000000000001]
+    )
+    count = int(np.prod(shape))
+    original = (
+        np.resize(np.array(words, dtype=f"uint{precision}"), 2 * count).view(f"complex{2 * precision}").reshape(shape)
+    )
+    if len(shape) == 2:
+        original = original.T[:, ::-1]  # logical order differs from the underlying storage
+    row = {"abi_shape": [*original.shape, 2], "abi_element": f"f{precision}"}
+    bundle = _argument_bundle(tmp_path / "capture", [row], [original])
+    for bound in (resolve_forward_args(bundle), Q._native_host_arguments(bundle)):
+        (value,) = bound
+        assert value.shape == tuple(row["abi_shape"]) and value.dtype == np.dtype(f"float{precision}")
+        assert value.flags.c_contiguous and value.tobytes() == original.tobytes()
+    # NPZ materializes strides. Also exercise the shared binder directly with the strided view.
+    from merlin.runtime.dispatch_arguments import bind_forward_array
+    from merlin.runtime.dispatch_runtime import _np_dtype, f32_to_bf16
+
+    value = bind_forward_array(
+        original, row["abi_shape"], row["abi_element"], _np_dtype=_np_dtype, f32_to_bf16=f32_to_bf16
+    )
+    assert value.flags.c_contiguous and value.tobytes() == original.tobytes()
+
+
+@pytest.mark.parametrize(
+    "shape,element",
+    [
+        ([2, 3], "f32"),
+        ([3, 2, 2], "f32"),
+        ([12], "f32"),
+        ([2, 3, 1], "f32"),
+        ([2, 3, 2], "f64"),
+        ([2, 3, 2], "f16"),
+        ([2, 3, 2], "bf16"),
+        ([2, 3, 2], "i32"),
+    ],
+)
+@pytest.mark.parametrize("kind", ["input", "buffer", "lifted"])
+def test_complex_binding_refuses_shape_and_precision_guesses(tmp_path, shape, element, kind):
+    import warnings
+
+    from merlin.runtime.dispatch_placement import DispatchRuntimeError
+    from merlin.runtime.dispatch_runtime import resolve_forward_args
+
+    bundle = _argument_bundle(
+        tmp_path / "capture", [{"abi_shape": shape, "abi_element": element}], [np.ones((2, 3), np.complex64)], kind
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # refusal must precede any lossy complex cast
+        for resolve in (resolve_forward_args, Q._native_host_arguments):
+            with pytest.raises(DispatchRuntimeError, match="component ABI shape and precision"):
+                resolve(bundle)
+
+
+def test_real_saved_movement_capture_arguments_match_the_complete_w3_abi():
+    import os
+
+    capture = os.environ.get("MERLIN_TEST_MOVEMENT_CAPTURE")
+    if not capture:
+        pytest.skip("set MERLIN_TEST_MOVEMENT_CAPTURE to the saved public movement capture")
+    bundle = Q.Path(capture)
+    inputs, _ = Q._native_host_signature(bundle / "model.mlir")
+    bound = Q._native_host_arguments(bundle)
+    assert len(bound) == len(inputs) == 183
+    with np.load(bundle / "inputs.npz", allow_pickle=False) as archive:
+        complex_count = 0
+        for index, (value, (shape, dtype)) in enumerate(zip(bound, inputs, strict=True)):
+            assert list(value.shape) == shape and str(value.dtype) == Q._NATIVE_HOST_STORAGE[dtype]
+            assert value.flags.c_contiguous
+            original = archive[f"in{index}"]
+            if np.iscomplexobj(original):
+                complex_count += 1
+                assert value.tobytes() == original.tobytes()
+                assert value[..., 0].tobytes() == original.real.tobytes()
+                assert value[..., 1].tobytes() == original.imag.tobytes()
+        assert complex_count == 23
