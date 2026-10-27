@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import io
 import json
 import math
 import os
@@ -115,8 +114,6 @@ def _reference_inventory_members(
 
 def _native_baseline_observations(selections, applications, observe) -> dict:
     """Select exact generated host checks, never generalize them into host admission."""
-    import numpy as np
-
     from merlin.common.mlir_query import forward_signature
     from merlin.runtime.dispatch_runtime import resolve_forward_args
     from merlin.targetgen.application_inventory import verify_capture_receipt
@@ -147,7 +144,7 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
             or observed.get("native_host_numerical_verified") is not True
             or observed.get("full_native_lowering_verified") is not True
         ):
-            raise ValueError("selected native qualification is not a completed finite native-only check")
+            raise ValueError("selected native qualification is not a completed native-only check")
         app = applications[label]
         model = qualification._plain(Path(app["capture_source_path"]))
         bundle = model.parent
@@ -229,14 +226,19 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
             or row.get("numeric_policy") != policy
         ):
             raise ValueError("native qualification requires its exact finite numerical policy")
-        inputs, outputs = forward_signature(model)
+        complete_outputs = row.get("output_comparison_policy") == "captured_per_output_v1"
+        inputs, outputs = qualification._native_host_signature(model) if complete_outputs else forward_signature(model)
         input_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in inputs]
         output_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in outputs]
         arguments = resolve_forward_args(bundle)
-        storage = {"f32": "float32", "i64": "int64", "i32": "int32", "i8": "int8", "i1": "bool"}
+        storage = (
+            qualification._NATIVE_HOST_STORAGE
+            if complete_outputs
+            else {"f32": "float32", "i64": "int64", "i32": "int32", "i8": "int8", "i1": "bool"}
+        )
         if (
-            len(outputs) != 1
-            or outputs[0][1] != "f32"
+            not outputs
+            or (not complete_outputs and (len(outputs) != 1 or outputs[0][1] != "f32"))
             or len(arguments) != len(inputs)
             or any(
                 list(value.shape) != shape or str(value.dtype) != storage.get(dtype)
@@ -250,26 +252,16 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
             or row.get("input_buffer_sha256") != [hashlib.sha256(value.tobytes()).hexdigest() for value in arguments]
         ):
             raise ValueError("native qualification typed ABI/argument bytes differ from selected capture")
-        actual = np.load(io.BytesIO(saved["program-000/output.npy"]), allow_pickle=False)
-        golden = np.load(
-            io.BytesIO(observe(bundle / "golden.npy", f"native-input:{label}", required=True)), allow_pickle=False
+        error = qualification._verify_native_host_outputs(
+            bundle,
+            outputs,
+            row,
+            saved,
+            policy,
+            legacy_golden=(
+                observe(bundle / "golden.npy", f"native-input:{label}", required=True) if not complete_outputs else None
+            ),
         )
-        if (
-            actual.shape != golden.shape
-            or list(actual.shape) != outputs[0][0]
-            or str(actual.dtype) != "float32"
-            or actual.dtype != golden.dtype
-            or not np.isfinite(actual).all()
-            or not np.isfinite(golden).all()
-        ):
-            raise ValueError("native qualification output/reference ABI or finiteness differs")
-        error = float(np.max(np.abs(actual.astype(np.float64) - golden)))
-        if (
-            not np.allclose(actual, golden, **policy, equal_nan=False)
-            or row.get("max_absolute_error") != error
-            or row.get("nonfinite_output_elements") != 0
-        ):
-            raise ValueError("native qualification saved output fails its recorded numerical comparison")
         results[label] = {
             "status": "whole_program_numerically_matched",
             "executor": "native_cpu",

@@ -701,11 +701,164 @@ def _native_compiler_identity() -> dict:
     }
 
 
-def _native_host_worker(request: dict, root: Path) -> dict:
-    """Run one saved FP32 program with existing manifest, lowering and ciface owners."""
+_NATIVE_HOST_STORAGE = {
+    "f16": "float16",
+    "bf16": "uint16",
+    "f32": "float32",
+    "f64": "float64",
+    "i1": "bool",
+    "i8": "int8",
+    "i16": "int16",
+    "i32": "int32",
+    "i64": "int64",
+    "complex64": "complex64",
+    "complex128": "complex128",
+}
+
+
+def _native_host_signature(model: Path):
+    from merlin.common.mlir_query import forward_signature
+
+    aliases = {"complex<f32>": "complex64", "complex<f64>": "complex128"}
+    return tuple([(shape, aliases.get(dtype, dtype)) for shape, dtype in rows] for rows in forward_signature(model))
+
+
+def _native_host_references(bundle: Path, outputs) -> list:
+    """Read every receipt-bound result without narrowing its captured storage."""
+    import io
+
     import numpy as np
 
-    from merlin.common.mlir_query import forward_signature
+    receipt = json.loads((bundle / "capture_receipt.json").read_bytes())
+
+    def bound(name):
+        raw = _plain(bundle / name).read_bytes()
+        identity = receipt["artifacts"][name]
+        if len(raw) != identity["bytes"] or hashlib.sha256(raw).hexdigest() != identity["sha256"]:
+            raise ValueError("native host reference bytes differ from the capture receipt")
+        return io.BytesIO(raw)
+
+    if "goldens.npz" in receipt["artifacts"]:
+        with np.load(bound("goldens.npz"), allow_pickle=False) as archive:
+            names = [f"out{i}" for i in range(len(outputs))]
+            if len(archive.files) != len(names) or set(archive.files) != set(names):
+                raise ValueError("native host reference leaves differ from the complete output ABI")
+            references = [archive[name] for name in names]
+    elif len(outputs) == 1 and outputs[0][1] == "f32" and "golden.npy" in receipt["artifacts"]:
+        references = [np.load(bound("golden.npy"), allow_pickle=False)]
+    else:
+        raise ValueError("native host qualification requires a receipt-bound reference for every output")
+    storage = {**_NATIVE_HOST_STORAGE, "bf16": "float32"}
+    for value, (shape, dtype) in zip(references, outputs, strict=True):
+        if list(value.shape) != shape or str(value.dtype) != storage.get(dtype):
+            raise ValueError("saved native host reference differs from the captured output ABI")
+        if dtype == "bf16" and np.any(value.view(np.uint32) & 0xFFFF):
+            raise ValueError("saved native host reference is not an exact BF16 value lifted to f32")
+    return references
+
+
+def _native_host_comparison(observed, golden, policy) -> dict:
+    """Keep integer precision and special/complex words out of floating metrics."""
+    import numpy as np
+
+    if observed.shape != golden.shape or observed.dtype != golden.dtype:
+        raise ValueError("native host comparison requires matching output shape and storage")
+    finite = bool(np.isfinite(observed).all() and np.isfinite(golden).all())
+    exact = np.iscomplexobj(golden) or not finite
+    if exact:
+        matched = observed.dtype == golden.dtype and observed.tobytes() == golden.tobytes()
+    elif golden.dtype.kind in "biu":
+        matched = np.array_equal(observed, golden)
+    else:
+        matched = np.allclose(observed, golden, atol=policy["atol"], rtol=policy["rtol"], equal_nan=False)
+    # Floating diagnostics cannot represent every integer difference, complex
+    # component or IEEE payload. Their exact comparisons above remain decisive.
+    error = (
+        float(np.max(np.abs(observed.astype(np.float64) - golden.astype(np.float64)), initial=0.0))
+        if finite and golden.dtype.kind == "f"
+        else None
+    )
+    return {
+        "matched": bool(matched),
+        "comparison": "exact_bytes" if exact else "exact_integer" if golden.dtype.kind in "biu" else "allclose",
+        "max_absolute_error": error,
+        "nonfinite_output_elements": int(np.count_nonzero(~np.isfinite(observed))),
+    }
+
+
+def _verify_native_host_outputs(bundle, outputs, row, saved, policy, *, legacy_golden=None):
+    import io
+
+    import numpy as np
+
+    complete_outputs = row.get("output_comparison_policy") == "captured_per_output_v1"
+    if complete_outputs:
+        from merlin.runtime.dispatch_runtime import bf16_to_f32
+
+        archive_raw = saved.get("program-000/outputs.npz")
+        if archive_raw is None:
+            raise ValueError("native qualification lacks complete output artifacts")
+        goldens = _native_host_references(bundle, outputs)
+        with np.load(io.BytesIO(archive_raw), allow_pickle=False) as archive:
+            names = [f"out{i}" for i in range(len(outputs))]
+            if len(archive.files) != len(names) or set(archive.files) != set(names):
+                raise ValueError("native qualification output leaves differ from the complete ABI")
+            actuals = [archive[name] for name in names]
+        comparisons = []
+        for i, (actual, golden, (shape, dtype)) in enumerate(zip(actuals, goldens, outputs, strict=True)):
+            if list(actual.shape) != shape or str(actual.dtype) != _NATIVE_HOST_STORAGE.get(dtype):
+                raise ValueError("native qualification output differs from the captured ABI")
+            comparisons.append(
+                dict(
+                    output_index=i,
+                    **_native_host_comparison(bf16_to_f32(actual) if dtype == "bf16" else actual, golden, policy),
+                )
+            )
+        first = np.load(io.BytesIO(saved["program-000/output.npy"]), allow_pickle=False)
+        if (
+            first.dtype != actuals[0].dtype
+            or first.shape != actuals[0].shape
+            or first.tobytes() != actuals[0].tobytes()
+        ):
+            raise ValueError("native qualification output-zero projection differs from the complete outputs")
+        error = (
+            max(item["max_absolute_error"] for item in comparisons)
+            if all(item["max_absolute_error"] is not None for item in comparisons)
+            else None
+        )
+        if (
+            not all(item["matched"] for item in comparisons)
+            or row.get("outputs") != comparisons
+            or row.get("max_absolute_error") != error
+            or row.get("nonfinite_output_elements") != sum(item["nonfinite_output_elements"] for item in comparisons)
+        ):
+            raise ValueError("native qualification saved outputs fail their recorded numerical comparison")
+    else:
+        actual = np.load(io.BytesIO(saved["program-000/output.npy"]), allow_pickle=False)
+        golden = np.load(io.BytesIO(legacy_golden), allow_pickle=False)
+        if (
+            actual.shape != golden.shape
+            or list(actual.shape) != outputs[0][0]
+            or str(actual.dtype) != "float32"
+            or actual.dtype != golden.dtype
+            or not np.isfinite(actual).all()
+            or not np.isfinite(golden).all()
+        ):
+            raise ValueError("native qualification output/reference ABI or finiteness differs")
+        error = float(np.max(np.abs(actual.astype(np.float64) - golden)))
+        if (
+            not np.allclose(actual, golden, **policy, equal_nan=False)
+            or row.get("max_absolute_error") != error
+            or row.get("nonfinite_output_elements") != 0
+        ):
+            raise ValueError("native qualification saved output fails its recorded numerical comparison")
+    return error
+
+
+def _native_host_worker(request: dict, root: Path) -> dict:
+    """Run every result of one saved program through the existing host ciface."""
+    import numpy as np
+
     from merlin.llvmlower.abi import HostModel
     from merlin.llvmlower.lower import lower_model_file
     from merlin.runtime.dispatch_runtime import resolve_forward_args
@@ -720,22 +873,20 @@ def _native_host_worker(request: dict, root: Path) -> dict:
     if receipt["status"] != "verified_materialized":
         raise ValueError("native host execution requires a verified materialized capture receipt")
     metadata = json.loads((bundle / "meta.json").read_bytes())
-    inputs, outputs = forward_signature(bundle / "model.mlir")
+    inputs, outputs = _native_host_signature(bundle / "model.mlir")
     expected_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in outputs]
-    if len(outputs) != 1 or outputs[0][1] != "f32" or metadata.get("output_abi") != expected_abi:
-        raise ValueError("native host golden.npy qualification requires one exact FP32 result ABI")
-    if len(inputs) >= 1024 or any(any(dim <= 0 for dim in shape) for shape, _ in inputs + outputs):
+    if not outputs or metadata.get("output_abi") != expected_abi:
+        raise ValueError("native host qualification requires the exact complete output ABI")
+    if len(inputs) >= 1024 or any(any(dim < 0 for dim in shape) for shape, _ in inputs + outputs):
         raise ValueError("native host qualification requires bounded static tensor arguments")
     arguments = resolve_forward_args(bundle)
     if len(arguments) != len(inputs):
         raise ValueError("resolved argument count differs from the captured function ABI")
-    storage = {"f32": "float32", "i64": "int64", "i32": "int32", "i8": "int8", "i1": "bool"}
+    storage = _NATIVE_HOST_STORAGE
     for value, (shape, dtype) in zip(arguments, inputs, strict=True):
         if list(value.shape) != shape or str(value.dtype) != storage.get(dtype):
             raise ValueError("resolved argument shape/precision differs from the captured ABI")
-    golden = np.load(bundle / "golden.npy", allow_pickle=False)
-    if list(golden.shape) != outputs[0][0] or str(golden.dtype) != "float32" or not np.isfinite(golden).all():
-        raise ValueError("saved eager reference differs from the qualified FP32 output ABI")
+    goldens = _native_host_references(bundle, outputs)
     output = root / "program-000"
     output.mkdir()
     lowered = lower_model_file(
@@ -745,18 +896,24 @@ def _native_host_worker(request: dict, root: Path) -> dict:
         ir_audit="both",
         audit_sidecars=tuple(bundle / name for name in workflow["members"]),
     )
-    observed = np.zeros(outputs[0][0], dtype=np.float32)
+    observed = [np.zeros(shape, dtype=storage[dtype]) for shape, dtype in outputs]
     before = [hashlib.sha256(value.tobytes()).hexdigest() for value in arguments]
     host = HostModel.load(str(lowered.host_so))
-    host(
-        [(value.ctypes.data, list(value.shape)) for value in arguments] + [(observed.ctypes.data, list(observed.shape))]
-    )
+    host([(value.ctypes.data, list(value.shape)) for value in [*arguments, *observed]])
     if before != [hashlib.sha256(value.tobytes()).hexdigest() for value in arguments]:
         raise ValueError("native program modified its captured input/weight buffers")
     policy = request["numeric_policy"]
-    finite = bool(np.isfinite(observed).all())
-    matched = bool(finite and np.allclose(observed, golden, atol=policy["atol"], rtol=policy["rtol"], equal_nan=False))
-    np.save(output / "output.npy", observed, allow_pickle=False)
+    from merlin.runtime.dispatch_runtime import bf16_to_f32
+
+    comparisons = [
+        dict(
+            output_index=i, **_native_host_comparison(bf16_to_f32(value) if dtype == "bf16" else value, golden, policy)
+        )
+        for i, (value, golden, (_, dtype)) in enumerate(zip(observed, goldens, outputs, strict=True))
+    ]
+    matched = all(row["matched"] for row in comparisons)
+    np.save(output / "output.npy", observed[0], allow_pickle=False)
+    np.savez(output / "outputs.npz", **{f"out{i}": value for i, value in enumerate(observed)})
     row = {
         "program": program["name"],
         "status": "numerically_matched" if matched else "not_matched",
@@ -767,8 +924,14 @@ def _native_host_worker(request: dict, root: Path) -> dict:
         "host_shared_sha256": sha256_file(lowered.host_so),
         "audit_index": str(lowered.audit_index.relative_to(root)),
         "numeric_policy": policy,
-        "max_absolute_error": float(np.max(np.abs(observed.astype(np.float64) - golden))) if finite else None,
-        "nonfinite_output_elements": int(np.count_nonzero(~np.isfinite(observed))),
+        "output_comparison_policy": "captured_per_output_v1",
+        "max_absolute_error": (
+            max(row["max_absolute_error"] for row in comparisons)
+            if all(row["max_absolute_error"] is not None for row in comparisons)
+            else None
+        ),
+        "nonfinite_output_elements": sum(row["nonfinite_output_elements"] for row in comparisons),
+        "outputs": comparisons,
         "input_abi": [{"shape": shape, "dtype": dtype} for shape, dtype in inputs],
         "output_abi": expected_abi,
         "input_buffer_sha256": before,
@@ -785,7 +948,9 @@ def _native_host_worker(request: dict, root: Path) -> dict:
         "full_native_lowering_verified": True,
         "native_host_numerical_verified": matched,
         "whole_workload_validation_verified": False,
-        "qualification": "finite standalone native-host check; no accelerator, RVV or application accuracy claim",
+        "qualification": (
+            "standalone native-host check of every captured result; no accelerator, RVV or application accuracy claim"
+        ),
     }
 
 
@@ -979,10 +1144,12 @@ def qualify(
     if native_host_only:
         guide += [
             "",
-            "## Finite native-host numerical check",
+            "## Native-host numerical check",
             "",
             "This mode compiles and executes one standalone captured program on this CPU using the",
-            "existing manifest/weight ABI and HostModel runner. Inspect `output.npy`, explicit atol/rtol,",
+            "existing manifest/weight ABI and HostModel runner. Inspect every result in `outputs.npz`,",
+            "explicit atol/rtol,",
+            "per-output comparisons, exact integer/complex/special words and the legacy output-zero `output.npy`,",
             "the saved eager reference, compiler/tool byte identities and read-only input checks.",
             "A match applies only to these exact inputs and weights. It does not establish individual-op",
             "support, other shapes/precisions, RVV deployment, accelerator offload or application accuracy.",
@@ -1060,7 +1227,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--native-host-only",
         action="store_true",
-        help="execute one receipt-bound FP32 program on this CPU; no OOT package or accelerator",
+        help="execute every captured result of one receipt-bound program on this CPU; no OOT package or accelerator",
     )
     parser.add_argument("--atol", type=float, help="explicit absolute tolerance for native-host-only")
     parser.add_argument("--rtol", type=float, help="explicit relative tolerance for native-host-only")

@@ -310,16 +310,20 @@ def join_frontend_trace(trace: dict | None, application_graph: dict | None, *, c
                         correspondence_valid = False
                         break
                     seen.add(identity)
-                    if mapped[identity]:
-                        if receipt.get("status") != "lowered":
-                            correspondence_valid = False
-                            break
-                    elif receipt.get("status") == "alias":
+                    # An identity decomposition can emit a cast while retaining
+                    # its explicit alias disposition. Its exact operation roster
+                    # is still checked above; alias targets and result indices
+                    # need the same validation with or without emitted operations.
+                    if receipt.get("status") == "alias":
                         if (
                             receipt.get("alias_of_node_id") not in prepared_nodes
                             or type(receipt.get("result_index")) is not int
                             or receipt["result_index"] < 0
                         ):
+                            correspondence_valid = False
+                            break
+                    elif mapped[identity]:
+                        if receipt.get("status") != "lowered":
                             correspondence_valid = False
                             break
                     elif receipt.get("status") == "eliminated":
