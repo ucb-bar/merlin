@@ -181,6 +181,70 @@ def test_short_captured_chains_remain_accounted_but_not_priceable() -> None:
     assert all(row["status"] == "emitter_unimplemented" for row in performance["unresolved"])
 
 
+@pytest.mark.parametrize("classified", [True, False])
+def test_unclassified_captured_regions_keep_source_signature_without_admission(tmp_path, classified) -> None:
+    """The census's op-name fallback is source evidence, not a resolved family."""
+    # A contraction followed by a cast, like convolution_backward's final
+    # truncation. Without the tag, both generic regions remain unclassified.
+    tag = 'prov.family = "contraction"' if classified else 'prov.op = "unclassified_fixture"'
+    source = tmp_path / "model.mlir"
+    source.write_text('''"builtin.module"() ({
+  "func.func"() <{sym_name = "forward",
+    function_type = (tensor<2x2xf32>, tensor<2xf32>, tensor<2xbf16>) -> tensor<2xbf16>}> ({
+  ^bb0(%input: tensor<2x2xf32>, %init: tensor<2xf32>, %cast_init: tensor<2xbf16>):
+    %reduced = "linalg.generic"(%input, %init) <{
+      indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0)>],
+      iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<reduction>],
+      operandSegmentSizes = array<i32: 1, 1>}> ({
+    ^bb1(%x: f32, %acc: f32):
+      %sum = "arith.addf"(%x, %acc) : (f32, f32) -> f32
+      "linalg.yield"(%sum) : (f32) -> ()
+    }) {TAG} : (tensor<2x2xf32>, tensor<2xf32>) -> tensor<2xf32>
+    %cast = "linalg.generic"(%reduced, %cast_init) <{
+      indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
+      iterator_types = [#linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 1, 1>}> ({
+    ^bb2(%x: f32, %unused: bf16):
+      %narrow = "arith.truncf"(%x) : (f32) -> bf16
+      "linalg.yield"(%narrow) : (bf16) -> ()
+    }) {TAG} : (tensor<2xf32>, tensor<2xbf16>) -> tensor<2xbf16>
+    "func.return"(%cast) : (tensor<2xbf16>) -> ()
+  }) : () -> ()
+}) : () -> ()
+'''.replace("TAG", tag))
+    scope = conformance.scope_axis({"fixture": source}, "fixture", min_occurrences=1)
+    signature = "contraction -> generic" if classified else "generic -> generic"
+    assert not scope["captures_unreadable"]
+    assert [(row["signature"], row["occurrences"]) for row in scope["required"]] == [(signature, 1)]
+    scope["typed_required_instances"] = typed_required_instances(scope, {"applications": {"fixture": {
+        "capture_source_path": str(source), "capture_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "operation_graph": application_graph_inventory(source),
+    }}})
+    original = copy.deepcopy(scope)
+    instance = scope["typed_required_instances"]["instances"][0]
+    assert [row["semantic_family"] for row in instance["regions"]] == [
+        "contraction" if classified else None, None,
+    ]
+    assert instance["edges"][0]["shape"] == [2]
+    assert instance["edges"][0]["dtype"] == "f32"
+    performance = derive_performance_scope(scope, {"operations": []})
+    assert scope == original
+    assert performance["status"] == "unresolved"
+    assert performance["required"] == performance["excluded"] == []
+    assert performance["unresolved"] == [{
+        "instance_id": instance["instance_id"], "signature": signature,
+        "reason": "no current standalone scope-chain emitter accepts this family sequence",
+        "status": "emitter_unimplemented",
+    }]
+    # An actual signature mismatch, missing fallback name or invalid family
+    # still fails closed, rather than laundering malformed source records.
+    for changes in ({"mlir_operation": "linalg.copy"}, {"mlir_operation": None}, {"semantic_family": ""},
+                    {"semantic_family": 1}, {"semantic_family": "movement"}):
+        malformed = copy.deepcopy(scope)
+        malformed["typed_required_instances"]["instances"][0]["regions"][-1].update(changes)
+        with pytest.raises(ValueError, match="inconsistent region signature"):
+            derive_performance_scope(malformed, {"operations": []})
+
+
 def test_required_scope_instances_bind_exact_source_ops_types_and_edges(tmp_path) -> None:
     entry = {
         "name": "scope", "kind": "model_slice", "source_role": "derived_sweep",

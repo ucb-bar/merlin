@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import Counter
 
 from merlin.targetgen.corpus_spec import scope_chain_region_ops
+from merlin.targetgen.model_coverage import _short_op
 from merlin.targetgen.software_spec import admit_operation
 
 
@@ -44,10 +45,20 @@ def derive_performance_scope(scope: dict, software_spec: dict) -> dict:
         regions = instance.get("regions") or []
         signature = instance.get("signature")
         families = [row.get("semantic_family") for row in regions]
+        # Chain.signature uses the short operation name for an unresolved
+        # family. Validate that source spelling without promoting it to a
+        # semantic family: the emitter must still see the original None.
+        parts = []
+        for row, family in zip(regions, families, strict=True):
+            if family is None:
+                name = row.get("mlir_operation")
+                parts.append(_short_op(name) if isinstance(name, str) else None)
+            else:
+                parts.append(family)
         if (
             len(regions) < 2
-            or any(not isinstance(family, str) or not family for family in families)
-            or signature != " -> ".join(families)
+            or any(not isinstance(part, str) or not part for part in parts)
+            or signature != " -> ".join(parts)
         ):
             raise ValueError("typed scope instance has inconsistent region signature")
         try:
