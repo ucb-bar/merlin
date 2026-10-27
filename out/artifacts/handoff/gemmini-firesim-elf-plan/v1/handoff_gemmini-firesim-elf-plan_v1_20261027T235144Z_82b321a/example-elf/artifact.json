@@ -1,0 +1,163 @@
+{
+  "schema": "gemmini_connected_chunk_measurement_v1",
+  "folder": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest",
+  "elfs": {
+    "valid": {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/valid.elf",
+      "sha256": "e16f10a9ce19c93188bf54f2404e2fa97c9a95b5599532cd63ff11928cdf94b0",
+      "bytes": 202576,
+      "memory_audit": {
+        "entry": 2147483648,
+        "load_segments": [
+          {
+            "base": 2147483648,
+            "memory_bytes": 494272,
+            "file_bytes": 189256,
+            "flags": 7
+          }
+        ],
+        "stack_reserved_bytes": 16384
+      },
+      "instruction_audit": {
+        "executable_sections": [
+          ".text"
+        ],
+        "instructions": 4219,
+        "prohibited_hits": []
+      }
+    },
+    "bad-oracle": {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/bad-oracle.elf",
+      "sha256": "2113e708d1c2867e7d6e2dcd535468fa511426271d6f84e7237b76d40f297aad",
+      "bytes": 202576,
+      "memory_audit": {
+        "entry": 2147483648,
+        "load_segments": [
+          {
+            "base": 2147483648,
+            "memory_bytes": 494272,
+            "file_bytes": 189256,
+            "flags": 7
+          }
+        ],
+        "stack_reserved_bytes": 16384
+      },
+      "instruction_audit": {
+        "executable_sections": [
+          ".text"
+        ],
+        "instructions": 4222,
+        "prohibited_hits": []
+      }
+    }
+  },
+  "workload": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/package",
+  "package": {
+    "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/package/package.json",
+    "sha256": "b24734e7e22867b1fa65ccfc425033d2c0072daf0e80475ad093496a4525cc5a",
+    "bytes": 9629
+  },
+  "program_sha256": "83ddbbe465491af8633b5c13c7746c37d45f0477bb96a8537646bf3a6b036dba",
+  "fixture": {
+    "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-action-input-projection/fixture.npz",
+    "sha256": "89edccd126cf448899967a12bbcebf5b6bec792153f1474aec434301ca6d07f1",
+    "bytes": 146116
+  },
+  "reference_provenance": {
+    "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/relocated-proofs/smolvla-action-input-projection.json",
+    "sha256": "b921f4e0984303dc1ecd255a5e2d2184b02a983415a98de2c05bf4bb2ccaf4c0",
+    "bytes": 6228
+  },
+  "memory_model": {
+    "kind": "firesim_build_only",
+    "deployment_qualified": false,
+    "scope": "No simulator or deployment bound; remote worker verifies the selected image"
+  },
+  "timing_policy": "fixed-warm",
+  "timing_scope": "whole model_run; includes CPU glue, routing within package, admission and completion",
+  "guards": "Spike input hashes/canaries; both backends every output; same ELF",
+  "runner_sha256": "f3c2cc15cff16f0e5fc0e492667e37fff06efa33c37ce5be47a822c9b1fa7bba",
+  "commands": [
+    [
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc",
+      "-std=gnu11",
+      "-march=rv64gc",
+      "-mabi=lp64d",
+      "-mcmodel=medany",
+      "-msmall-data-limit=0",
+      "-O2",
+      "-ffreestanding",
+      "-fno-builtin",
+      "-fno-stack-protector",
+      "-fno-tree-loop-distribute-patterns",
+      "-nostdlib",
+      "-nostartfiles",
+      "-static",
+      "-Wl,--no-relax",
+      "-Wl,-T,/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/link.ld",
+      "-DBAD_ORACLE=0",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/start.S",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/runner.c",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/data.S",
+      "-Wl,--start-group",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/package/libmodel.a",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/package/libm.a",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/package/libgcc.a",
+      "-Wl,--end-group",
+      "-o",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/valid.elf"
+    ],
+    [
+      "/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc",
+      "-std=gnu11",
+      "-march=rv64gc",
+      "-mabi=lp64d",
+      "-mcmodel=medany",
+      "-msmall-data-limit=0",
+      "-O2",
+      "-ffreestanding",
+      "-fno-builtin",
+      "-fno-stack-protector",
+      "-fno-tree-loop-distribute-patterns",
+      "-nostdlib",
+      "-nostartfiles",
+      "-static",
+      "-Wl,--no-relax",
+      "-Wl,-T,/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/link.ld",
+      "-DBAD_ORACLE=1",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/start.S",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/runner.c",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/data.S",
+      "-Wl,--start-group",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/package/libmodel.a",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/package/libm.a",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/package/libgcc.a",
+      "-Wl,--end-group",
+      "-o",
+      "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/bad-oracle.elf"
+    ]
+  ],
+  "comparison": {
+    "rtol": 1e-05,
+    "atol": 2e-06,
+    "integer": "exact",
+    "finite": true
+  },
+  "sources": [
+    {
+      "path": "/scratch/grammy/tvm-device-op-audit/apps/gemmini/chunk_measure.py",
+      "sha256": "e040ff3cf6f1a51cbdad0e79f8c8a1973f08e1af0447bd1ca5f5464818e47d71",
+      "bytes": 11135
+    },
+    {
+      "path": "/scratch/grammy/tvm-device-op-audit/apps/gemmini/measure.py",
+      "sha256": "649bd282b21f42786fc4094647c26b0a109548ed28802b0c0c866fe82cd6246f",
+      "bytes": 33813
+    }
+  ],
+  "build_entrypoint_sha256": "b12b1a00fa4af2e35baa18a97b59c75a0122ec718d8c9b6215a2422a4d351ed8",
+  "catalog_sha256": "839fad75688a9c2a87b975842f072f217a1f0fbc0ff3ba26e9b1707600e37c2a",
+  "chunk": "smolvla-action-input-projection",
+  "execution": "NOT_RUN",
+  "full_model_protocol_admission": "NOT_ESTABLISHED"
+}

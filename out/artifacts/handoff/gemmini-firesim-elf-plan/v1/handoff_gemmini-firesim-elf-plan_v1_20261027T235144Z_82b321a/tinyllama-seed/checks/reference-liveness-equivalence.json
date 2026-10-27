@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "kind": "linear",
+      "outputs_bit_exact": true,
+      "partial_sum_evidence_identical": true
+    },
+    {
+      "kind": "conv",
+      "outputs_bit_exact": true,
+      "partial_sum_evidence_identical": true
+    },
+    {
+      "kind": "batch",
+      "outputs_bit_exact": true,
+      "partial_sum_evidence_identical": true
+    }
+  ],
+  "legacy_source_sha256": "87f2d1bfba4ecf9d9a2668f5bdf8daac5c2bbea8a9cc9e68bde37f01a2610c24",
+  "new_source_sha256": "907e8215bedb859197ee3c733c57111e05a23c27ad7ed7027e20c48c4fc990e4",
+  "focused_tests": "16 passed"
+}

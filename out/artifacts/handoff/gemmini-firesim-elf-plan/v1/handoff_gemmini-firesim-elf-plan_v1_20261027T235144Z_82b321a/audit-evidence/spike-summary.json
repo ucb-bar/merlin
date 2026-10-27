@@ -1,0 +1,139 @@
+{
+  "spec_commit": "8ec99308cb1182b9b896a6075300312266fadf6f",
+  "spec_sha256": "769b77782ea3d7b9bc35c0f21d2797ce09697a0f2aed52c7b8a1dde10a7de9f4",
+  "merlin_commit": "f46e73af10c5f36e8c22117d01239120e41d38a4",
+  "tvm_commit": "42b3c1ef27abe878f930e48b335b24956beb0e56",
+  "tvm_patch_sha256": "cc21fa2308d8bf964735e9120380cb30b286bf08d8ac8d127cf40eba10644a82",
+  "native_library": {
+    "path": "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-f2-followup/compiler-migration/libtvm.so",
+    "reported_git_commit": "c50c4e26992eb79ea4fc1c693d3aa16f62aaea43",
+    "src_include_commit_diff_empty": true,
+    "rebuilt": false,
+    "sha256": "3da1b289c1abb64d9a73f856a43aa46b93d137f1108833e6e1acd52c4993a361"
+  },
+  "tests": {
+    "baseline51": {
+      "rebuilt-rne-negative-result.json": {
+        "status": "passed",
+        "returncode": 22,
+        "timed_out": false,
+        "receipt_sha256": "72ca95b70b50a1eab754a3bc1a3a112eeefa0d03cf9e4eeb130d67ecae939779",
+        "functional_only": true
+      },
+      "rebuilt-rne-positive-result.json": {
+        "status": "passed",
+        "returncode": 0,
+        "timed_out": false,
+        "receipt_sha256": "d704da4e5d7be0de0006d835979c49b3d1b041bdda12752a74b891076dd167b9",
+        "functional_only": true
+      },
+      "restored-negative-result.json": {
+        "status": "passed",
+        "returncode": 22,
+        "timed_out": false,
+        "receipt_sha256": "26bb6aa334c5307f5e6521a79b29aec3c560e53347415c643e9bf397d5095536",
+        "functional_only": true
+      },
+      "restored-positive-result.json": {
+        "status": "passed",
+        "returncode": 0,
+        "timed_out": false,
+        "receipt_sha256": "df2fe73f2852d2e8fa8c2c0d22195803fcf125f967e1ef28eca10a98692f741e",
+        "functional_only": true
+      }
+    },
+    "device-ops-final": {
+      "rebuilt-rne-negative-result.json": {
+        "status": "passed",
+        "returncode": 22,
+        "timed_out": false,
+        "receipt_sha256": "aeac05e7c29d4b6a6fa1c7d4dd53231f1511d18424b5dcfba490caa3e7a94805",
+        "functional_only": true
+      },
+      "rebuilt-rne-positive-result.json": {
+        "status": "passed",
+        "returncode": 0,
+        "timed_out": false,
+        "receipt_sha256": "0083898a60940a179ea8eeeb56bf027a6fd5c9f2baa5c029adcf8ec8463e6754",
+        "functional_only": true
+      },
+      "restored-negative-result.json": {
+        "status": "passed",
+        "returncode": 22,
+        "timed_out": false,
+        "receipt_sha256": "939409f64fd61932d3e2bff052da3203ea1963030dc35fe52f14b6ccbd13f2dd",
+        "functional_only": true
+      },
+      "restored-positive-result.json": {
+        "status": "passed",
+        "returncode": 0,
+        "timed_out": false,
+        "receipt_sha256": "d577dab82332e50e75983b7991dab9aab4339698865889bf2e0a7149f490f57c",
+        "functional_only": true
+      }
+    },
+    "rne-counterexample": {
+      "rebuilt-rne-negative-result.json": {
+        "status": "passed",
+        "returncode": 22,
+        "timed_out": false,
+        "receipt_sha256": "342f871dfec8e2c3f2aa02c0f26507302056f8416e9e368d32728342196baf8c",
+        "functional_only": true
+      },
+      "rebuilt-rne-positive-result.json": {
+        "status": "passed",
+        "returncode": 0,
+        "timed_out": false,
+        "receipt_sha256": "24c497f76327624b8c4f68fc7061d7b645e18f794844866ca80a9a0257b72b21",
+        "functional_only": true
+      },
+      "restored-positive-result.json": {
+        "status": "failed_or_incomplete",
+        "returncode": 22,
+        "timed_out": false,
+        "receipt_sha256": "b638514d431984f10276008cd450cf73cb05df819c14562849fc1edec34334e5",
+        "functional_only": true
+      }
+    }
+  },
+  "device_tests": {
+    "passed": 5,
+    "subtests_passed": 29
+  },
+  "memory_sketch_tests": {
+    "passed": 6,
+    "deselected": 11
+  },
+  "restored_resnet_files_verified": 182,
+  "strict_spec_qualified": false,
+  "pinned_rne_oracle_available": false,
+  "local_rne_rebuild_sha256": "9e80eb15d04c4a8135fde037ff80500035344c758761345bd5cd76608dfe285e",
+  "firesim_launched": false,
+  "firesim_cycles": null,
+  "remaining": [
+    "Budget accounting and E2E allowance decision",
+    "TinyLlama recipe/chain and SmolVLA input identity decision",
+    "Graph option search scope decision",
+    "Exact pinned oracle or explicitly accepted replacement identity",
+    "Complete source/provider/command obligation binding",
+    "TinyLlama and SmolVLA selected exports/references/chunks",
+    "Full-model quality evaluations including matched TinyLlama FP32 PPL",
+    "Actual FireSim deployment/observer qualification",
+    "Slot-hour accounting and legal-space coverage stopping if selected"
+  ],
+  "structure_check": {
+    "inherited_module_size_failures": 9,
+    "changed_file_failures": 0,
+    "inherited_files_verified_identical_to_head": [
+      "src/merlin/runtime/dispatch_runtime.py",
+      "src/merlin/runtime/backends/spike_model.py",
+      "src/merlin/targetgen/_m2m_capture_worker.py",
+      "src/merlin/targetgen/conformance.py",
+      "src/merlin/targetgen/corpus_synth.py",
+      "src/merlin/xdsl_dialects/lowering/compute_groups.py",
+      "packages/merlin-experiments/src/merlin_experiments/runner.py",
+      "packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_m2m.py",
+      "packages/merlin-experiments/src/merlin_experiments/phase0/generation.py"
+    ]
+  }
+}

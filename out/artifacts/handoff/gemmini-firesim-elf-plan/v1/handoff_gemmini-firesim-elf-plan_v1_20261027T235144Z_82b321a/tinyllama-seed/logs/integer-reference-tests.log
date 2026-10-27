@@ -1,0 +1,139 @@
+................                                                         [100%]
+=============================== warnings summary ===============================
+out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:26
+out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:26
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:26: DeprecationWarning: Importing 'MatmulOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import MatmulOp' instead.
+    from xdsl.dialects.linalg import MatmulOp, TransposeOp
+
+out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:26
+out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:26
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:26: DeprecationWarning: Importing 'TransposeOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import TransposeOp' instead.
+    from xdsl.dialects.linalg import MatmulOp, TransposeOp
+
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+  /home/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/handoff-el4-deps/torchao/quantization/quant_api.py:925: UserWarning: Config Deprecation: version 1 of Int8WeightOnlyConfig is deprecated and will no longer be supported in a future release, please use version 2, see https://github.com/pytorch/ao/issues/2752 for more details
+    warnings.warn(
+
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+  /home/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/smolvla-venv/lib/python3.12/site-packages/torch/cuda/__init__.py:1007: UserWarning: Can't initialize NVML
+    raw_cnt = _raw_device_count_nvml()
+
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+tests/test_quant.py::test_pt2e_linear_integerization_preserves_frozen_qparams_and_bias
+tests/test_quant.py::test_pt2e_conv_integerization_preserves_window_scales_and_bias
+tests/test_pt2e_channel.py::test_frozen_output_channel_linear_conv_and_batched_matmul_capture
+tests/test_pt2e_channel.py::test_frozen_output_channel_linear_conv_and_batched_matmul_capture
+tests/test_pt2e_channel.py::test_frozen_output_channel_linear_conv_and_batched_matmul_capture
+tests/test_pt2e_channel.py::test_actual_torchao_pt2e_channel_pipeline_preserves_original_trace
+tests/test_pt2e_channel.py::test_actual_torchao_pt2e_channel_pipeline_preserves_original_trace
+  /usr/lib/python3.12/copyreg.py:99: FutureWarning: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+    return cls.__new__(cls, *args)
+
+tests/test_quant.py: 52 warnings
+tests/test_pt2e_channel.py: 42 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:304: DeprecationWarning: Importing 'GenericOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import GenericOp' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+
+tests/test_quant.py: 52 warnings
+tests/test_pt2e_channel.py: 42 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:304: DeprecationWarning: Importing 'IteratorType' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.attrs import IteratorType' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+
+tests/test_quant.py: 52 warnings
+tests/test_pt2e_channel.py: 42 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:304: DeprecationWarning: Importing 'IteratorTypeAttr' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.attrs import IteratorTypeAttr' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+
+tests/test_quant.py: 52 warnings
+tests/test_pt2e_channel.py: 42 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:304: DeprecationWarning: Importing 'YieldOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import YieldOp' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+
+tests/test_quant.py: 10 warnings
+tests/test_pt2e_channel.py: 10 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/import_fx.py:1253: DeprecationWarning: Importing 'MatmulOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import MatmulOp' instead.
+    from xdsl.dialects.linalg import MatmulOp, TransposeOp
+
+tests/test_quant.py: 10 warnings
+tests/test_pt2e_channel.py: 10 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/import_fx.py:1253: DeprecationWarning: Importing 'TransposeOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import TransposeOp' instead.
+    from xdsl.dialects.linalg import MatmulOp, TransposeOp
+
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/transforms/fuse_qdq.py:20: DeprecationWarning: Importing 'GenericOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import GenericOp' instead.
+    from xdsl.dialects.linalg import GenericOp, MatmulOp
+
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+tests/test_quant.py::test_int8_weight_only_preserves_qdq
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/transforms/fuse_qdq.py:20: DeprecationWarning: Importing 'MatmulOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import MatmulOp' instead.
+    from xdsl.dialects.linalg import GenericOp, MatmulOp
+
+tests/test_quant.py: 5 warnings
+tests/test_pt2e_channel.py: 5 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/capture/torch_mlir_bridge.py:320: DeprecationWarning: Please use type-specific print methods
+    Printer(stream=buf, print_generic_format=generic).print(module)
+
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:2330: DeprecationWarning: Importing 'GenericOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import GenericOp' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, TransposeOp, YieldOp
+
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:2330: DeprecationWarning: Importing 'IteratorType' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.attrs import IteratorType' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, TransposeOp, YieldOp
+
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:2330: DeprecationWarning: Importing 'IteratorTypeAttr' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.attrs import IteratorTypeAttr' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, TransposeOp, YieldOp
+
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:2330: DeprecationWarning: Importing 'TransposeOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import TransposeOp' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, TransposeOp, YieldOp
+
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:2330: DeprecationWarning: Importing 'YieldOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import YieldOp' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, TransposeOp, YieldOp
+
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:1768: DeprecationWarning: Importing 'ReduceOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import ReduceOp' instead.
+    from xdsl.dialects.linalg import ReduceOp, YieldOp
+
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+tests/test_quant.py::test_static_w8a8_pt2e_quantizes_conv_and_uses_calibration
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:1768: DeprecationWarning: Importing 'YieldOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import YieldOp' instead.
+    from xdsl.dialects.linalg import ReduceOp, YieldOp
+
+tests/test_quant.py: 4 warnings
+tests/test_pt2e_channel.py: 12 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:1518: DeprecationWarning: Importing 'GenericOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import GenericOp' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+
+tests/test_quant.py: 4 warnings
+tests/test_pt2e_channel.py: 12 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:1518: DeprecationWarning: Importing 'IteratorType' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.attrs import IteratorType' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+
+tests/test_quant.py: 4 warnings
+tests/test_pt2e_channel.py: 12 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:1518: DeprecationWarning: Importing 'IteratorTypeAttr' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.attrs import IteratorTypeAttr' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+
+tests/test_quant.py: 4 warnings
+tests/test_pt2e_channel.py: 12 warnings
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:1518: DeprecationWarning: Importing 'YieldOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import YieldOp' instead.
+    from xdsl.dialects.linalg import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+
+tests/test_pt2e_padding.py::test_padding_normalization_preserves_float_values_and_keyword_arguments
+  /home/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/smolvla-venv/lib/python3.12/site-packages/torch/_export/non_strict_utils.py:1139: UserWarning: Using padding='same' with even kernel lengths and odd dilation may require a zero-padded copy of the input be created (Triggered internally at /pytorch/aten/src/ATen/native/Convolution.cpp:1025.)
+    return func(*args, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+16 passed, 27 deselected, 525 warnings in 19.39s

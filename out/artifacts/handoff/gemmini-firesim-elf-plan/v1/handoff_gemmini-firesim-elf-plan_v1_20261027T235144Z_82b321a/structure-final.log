@@ -1,0 +1,30 @@
+[  ok] required directories
+[  ok] AGENT.md coverage
+[  ok] experiment status
+[  ok] schema usage
+[  ok] library boundary
+[  ok] core dependency direction
+[  ok] root docs
+[  ok] schemas
+[  ok] docs
+[  ok] benchmarks
+[  ok] cli docs
+[  ok] package docs
+[  ok] schema docs
+[  ok] docs index
+[  ok] docs freshness
+[  ok] doc paths
+[  ok] test layout
+[  ok] test target marker
+[FAIL] module size
+
+9 problem(s):
+  - module over 1500 lines (1573); split it: src/merlin/runtime/dispatch_runtime.py
+  - module over 1500 lines (1508); split it: src/merlin/runtime/backends/spike_model.py
+  - module over 1500 lines (1656); split it: src/merlin/targetgen/_m2m_capture_worker.py
+  - module grew past its recorded ceiling (2954 > 2899 lines); shrink or split it: src/merlin/targetgen/conformance.py
+  - module grew past its recorded ceiling (2831 > 2666 lines); shrink or split it: src/merlin/targetgen/corpus_synth.py
+  - module over 1500 lines (1611); split it: src/merlin/xdsl_dialects/lowering/compute_groups.py
+  - module over 1500 lines (1504); split it: packages/merlin-experiments/src/merlin_experiments/runner.py
+  - module grew past its recorded ceiling (2199 > 1738 lines); shrink or split it: packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_m2m.py
+  - module over 1500 lines (1534); split it: packages/merlin-experiments/src/merlin_experiments/phase0/generation.py

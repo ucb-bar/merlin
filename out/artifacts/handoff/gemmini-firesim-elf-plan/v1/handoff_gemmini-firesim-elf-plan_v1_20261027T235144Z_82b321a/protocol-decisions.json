@@ -1,0 +1,17 @@
+{
+  "protocol_commit": "8ec99308cb1182b9b896a6075300312266fadf6f",
+  "tinyllama_chain": {
+    "prefill_tokens": 32,
+    "decode_steps": 32,
+    "approval": "Use protocol 32+32; record correction"
+  },
+  "quality_policy": {
+    "approval": "Use only the pinned protocol\u2019s quality policy",
+    "additional_previous_quality_gates": false
+  },
+  "source_models_sha256": "bb27c30e4cf6adfa61c409c1173931706b9af258e3da65e522d51ce2318facad",
+  "run_models_sha256": "e81125592bef2a24bd45846fab3bd0f5dc3edc19403ce2a43c6a3c3fb43c619b",
+  "run_protocol_unchanged": true,
+  "final_plan_review_required": false,
+  "final_plan_review": "User approved provisional concurrency/accounting, graph search after baseline and TinyLlama 16/1 tuning with 32/32 E2E; later added finish-active-runs"
+}

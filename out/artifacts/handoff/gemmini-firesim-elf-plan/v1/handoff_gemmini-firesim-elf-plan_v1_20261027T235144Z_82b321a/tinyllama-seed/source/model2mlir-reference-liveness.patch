@@ -1,0 +1,85 @@
+diff --git a/m2m/capture/pt2e_integer_reference.py b/m2m/capture/pt2e_integer_reference.py
+index e85ab11..e9eaff0 100644
+--- a/m2m/capture/pt2e_integer_reference.py
++++ b/m2m/capture/pt2e_integer_reference.py
+@@ -115,8 +115,22 @@ def run_pt2e_integer_reference(
+ 
+     class _IntegerInterpreter(Interpreter):
+         def __init__(self, graph_module: Any) -> None:
+-            # Raw qvalues/scales are read through their dequant nodes at contraction time.
+-            super().__init__(graph_module, garbage_collect_values=False)
++            super().__init__(graph_module, garbage_collect_values=True)
++            # A contraction also reads the quantized value/scale/zero point of
++            # its dequant operands. Extend their last uses rather than keeping
++            # every intermediate of the entire model alive.
++            last_uses = {}
++            for user in graph_module.graph.nodes:
++                reads = set(user.all_input_nodes)
++                if user.op == "call_function" and user.target in (conv2d, linear, *matmuls):
++                    for operand in user.args[:2]:
++                        if isinstance(operand, Node) and operand.target in (dequant_tensor, dequant_channel):
++                            reads.update(operand.all_input_nodes)
++                for dependency in reads:
++                    last_uses[dependency] = user
++            self.user_to_last_uses = {}
++            for dependency, user in last_uses.items():
++                self.user_to_last_uses.setdefault(user, []).append(dependency)
+             self.conv2d_count = 0
+             self.linear_count = 0
+             self.matmul_count = 0
+diff --git a/tests/test_integer_reference_liveness.py b/tests/test_integer_reference_liveness.py
+new file mode 100644
+index 0000000..aebfa4e
+--- /dev/null
++++ b/tests/test_integer_reference_liveness.py
+@@ -0,0 +1,50 @@
++"""Integer-reference qparam reads must remain live without retaining the full graph."""
++
++import weakref
++
++import torch
++import torch.ao.quantization.fx._decomposed  # noqa: F401
++from torch import nn
++from torch.fx import Interpreter
++
++from m2m.capture.pt2e_integer_reference import run_pt2e_integer_reference
++
++
++def test_long_chain_releases_dequantized_weights_and_preserves_branch(monkeypatch):
++    class Chain(nn.Module):
++        def __init__(self):
++            super().__init__()
++            self.register_buffer("codes", torch.randint(-3, 4, (16, 16), dtype=torch.int8))
++
++        def forward(self, value):
++            saved = value
++            for _ in range(20):
++                q = torch.ops.quantized_decomposed.quantize_per_tensor.default(value, 0.125, 0, -128, 127, torch.int8)
++                x = torch.ops.quantized_decomposed.dequantize_per_tensor.default(q, 0.125, 0, -128, 127, torch.int8)
++                w = torch.ops.quantized_decomposed.dequantize_per_tensor.default(
++                    self.codes, 0.25, 0, -128, 127, torch.int8)
++                value = torch.ops.aten.linear.default(x, w)
++            return value, saved + 1
++
++    torch.manual_seed(53)
++    inputs = (torch.randn(3, 16),)
++    model = torch.export.export(Chain().eval(), inputs).module()
++    expected = model(*inputs)
++    live = weakref.WeakValueDictionary()
++    peak = 0
++    original = Interpreter.run_node
++
++    def observe(self, node):
++        nonlocal peak
++        value = original(self, node)
++        if node.target == torch.ops.quantized_decomposed.dequantize_per_tensor.default:
++            live[node.name] = value
++            peak = max(peak, len(live))
++        return value
++
++    monkeypatch.setattr(Interpreter, "run_node", observe)
++    result = run_pt2e_integer_reference(model, inputs, expected_contractions=20)
++    for actual, reference in zip(result.output, expected, strict=True):
++        torch.testing.assert_close(actual, reference, rtol=0, atol=0)
++    assert len(result.partial_sum_evidence) == 20
++    assert peak <= 3

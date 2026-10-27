@@ -1,0 +1,1 @@
+/scratch/grammy/blast/chipyard/.conda-env/riscv-tools/bin/../lib/gcc/riscv64-unknown-elf/13.2.0/../../../../riscv64-unknown-elf/bin/ld: warning: /scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/elf-smolvla-action-input/guest/valid.elf has a LOAD segment with RWX permissions

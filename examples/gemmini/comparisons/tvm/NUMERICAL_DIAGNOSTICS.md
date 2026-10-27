@@ -1,7 +1,8 @@
 # TinyLlama numerical diagnosis
 
-New runs use [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md).
-The new test-set PPL gate is separate from the prepared-IR correctness checks.
+Current runs use the pinned 8ec99308 protocol described in
+[FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md). FP quality is report-only under its
+functional profile; compiled-versus-quantized checks remain mandatory.
 The October 26 F2 chunks execute projections with precomputed FP32 boundaries;
 they do not execute full-model RoPE on the target. Their successful checks
 neither reproduce nor resolve a layer-19 mismatch. A claim that newlib trig/FMA

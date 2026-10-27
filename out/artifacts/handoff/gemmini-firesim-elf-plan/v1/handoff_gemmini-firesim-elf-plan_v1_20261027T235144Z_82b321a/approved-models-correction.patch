@@ -1,0 +1,11 @@
+--- 8ec99308/examples/gemmini/numerics/models.yaml
++++ run-contract/examples/gemmini/numerics/models.yaml
+@@ -108,7 +108,7 @@
+ 
+   tiny_llama:
+     workload: tiny_llama
+-    chain: {kind: causal, prefill_tokens: 128, decode_steps: 32}
++    chain: {kind: causal, prefill_tokens: 32, decode_steps: 32}
+     full: {arena_mb: 512, differential: cached}
+     programs:
+       - name: prefill

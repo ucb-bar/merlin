@@ -1,0 +1,489 @@
+{
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 4504,
+      "sha256": "3d93a51027043bebb297179eeb0e962efb975604a9144272a46b87788ac40471"
+    },
+    {
+      "path": "WORKLOAD_ROSTER.md",
+      "bytes": 5379,
+      "sha256": "955a09d6bc129d47b493d25522acbec97dfaf8a27915c14600946d377e9a141e"
+    },
+    {
+      "path": "approved-models-correction.patch",
+      "bytes": 387,
+      "sha256": "5a90372b460f63cf3ada747effed26c9150f2a6c767128aff9e31ee2367351b9"
+    },
+    {
+      "path": "audit-evidence/baseline-51-comparison.csv",
+      "bytes": 39462,
+      "sha256": "27f417946f25be7290759305c8c232f79c257b7b882b0994a1d25f59480e0c84"
+    },
+    {
+      "path": "audit-evidence/baseline51-strict.csv",
+      "bytes": 9832,
+      "sha256": "0465a46663a39c707cf1907c8def90065f614774a759bf12832e6be2aa25efdc"
+    },
+    {
+      "path": "audit-evidence/existing-test-inventory.csv",
+      "bytes": 47288,
+      "sha256": "a2925d1f51b9fc07fce5c970121c4794e2fc686d2ba967b3c418db3d732e2c22"
+    },
+    {
+      "path": "audit-evidence/frontend-registration.csv",
+      "bytes": 18211,
+      "sha256": "734878fe0c3d22108fef07afdf465ffaa466c6fd66176dd4a82975f9fba39421"
+    },
+    {
+      "path": "audit-evidence/intrinsic-call-sites.csv",
+      "bytes": 1975,
+      "sha256": "ab02f6e75629794895a3f6f6fb27bb1d41cb3c1e5feb54eafc632a21447fbf1e"
+    },
+    {
+      "path": "audit-evidence/spec-derived-ops.json",
+      "bytes": 59313,
+      "sha256": "f67915945d6f67c79e2fe0e51d98c17ee000ed3f966d3edd128504ae56d8d176"
+    },
+    {
+      "path": "audit-evidence/spike-summary.json",
+      "bytes": 5392,
+      "sha256": "696d825f7b0fdbd7311c6cc30e582e52d8051eec07bf1f874c56337e2f4ee1c5"
+    },
+    {
+      "path": "audit-evidence/summary.json",
+      "bytes": 7483,
+      "sha256": "c4f9b6758b280df22c3e54f1ec6229b589e8d34085067021b61bae5db5db2594"
+    },
+    {
+      "path": "baseline-build-commands.json",
+      "bytes": 25380,
+      "sha256": "5a02f97a18e7a8dfb4fc61bfc4bd9e3dc2e8acaf07312af7f6e6925d7b26176b"
+    },
+    {
+      "path": "build-input-check.json",
+      "bytes": 1218,
+      "sha256": "a192907441afb628002ebf982c7bffc27461f4f95bd8ead9a24f56cf9fd9c126"
+    },
+    {
+      "path": "contract-preflight.json",
+      "bytes": 126,
+      "sha256": "37649281e1749ce72e03649220bfd9be3ec495504ea509275214d5536fa92cf6"
+    },
+    {
+      "path": "drain-final.log",
+      "bytes": 983,
+      "sha256": "63d78b8e0ad81d80152321c2c6af365a4b9e07e3723c57c3f02af8f4f945de9a"
+    },
+    {
+      "path": "example-elf/artifact.json",
+      "bytes": 6976,
+      "sha256": "35d903f85e2846f21fc475809a8702a92c3f2170f6ea5791c5a98e83d76b01cc"
+    },
+    {
+      "path": "example-elf/bad-oracle-build.log",
+      "bytes": 302,
+      "sha256": "3dca8533ca5faded34ec8009974a419ec78aea7b73e8e4d8719573a167a313d8"
+    },
+    {
+      "path": "example-elf/bad-oracle.elf",
+      "bytes": 202576,
+      "sha256": "2113e708d1c2867e7d6e2dcd535468fa511426271d6f84e7237b76d40f297aad"
+    },
+    {
+      "path": "example-elf/data.S",
+      "bytes": 407,
+      "sha256": "f0df6efc42d765e1bb4f84927eeaf4ecfa3eec13363e59d8712e3a2bd2747c3c"
+    },
+    {
+      "path": "example-elf/expected.bin",
+      "bytes": 144000,
+      "sha256": "68ea4e450480dac4ddb22804c9154704c449cb48f66602f366dc9e8c4e2a8e3e"
+    },
+    {
+      "path": "example-elf/inputs.bin",
+      "bytes": 1600,
+      "sha256": "d2f8e0b9416e8ceb4f2c0f25c107d9498595cb9ae396ba4b8a52a46a4ea48715"
+    },
+    {
+      "path": "example-elf/link.ld",
+      "bytes": 906,
+      "sha256": "65f3a464f8a9901fecb15879f869708949abad80a6a24e8289ee1e68eff426fc"
+    },
+    {
+      "path": "example-elf/runner.c",
+      "bytes": 5251,
+      "sha256": "f3c2cc15cff16f0e5fc0e492667e37fff06efa33c37ce5be47a822c9b1fa7bba"
+    },
+    {
+      "path": "example-elf/start.S",
+      "bytes": 756,
+      "sha256": "5541c2684bf34652a357fc44f7fd731100702304678479bdfeae4df4b878c9d6"
+    },
+    {
+      "path": "example-elf/valid-build.log",
+      "bytes": 297,
+      "sha256": "f44d95b1fd63acc392cb4a820a51970e008d85ac984f770bff1429a6c332b31d"
+    },
+    {
+      "path": "example-elf/valid.elf",
+      "bytes": 202576,
+      "sha256": "e16f10a9ce19c93188bf54f2404e2fa97c9a95b5599532cd63ff11928cdf94b0"
+    },
+    {
+      "path": "firesim-plan.json",
+      "bytes": 14994,
+      "sha256": "79b3ab69b425aed2a304201f7adf613b80ae12c214303e3d2eac06b37e400fb5"
+    },
+    {
+      "path": "protocol-decisions.json",
+      "bytes": 781,
+      "sha256": "b584f192c7348e017918d096ccff6dcbabe03d8663caef3adec5ce73cc38af4e"
+    },
+    {
+      "path": "publication-protocol-check.log",
+      "bytes": 159,
+      "sha256": "e08c591250e14e003627df353b7ea0540a71ab6c0bc25c691f00e1ee83c2cd3c"
+    },
+    {
+      "path": "publication-tests-final.log",
+      "bytes": 1064,
+      "sha256": "c132a43bd6b6aa334a40d76406bc27557be84c3bb49eeee7248f520b0fa53332"
+    },
+    {
+      "path": "restore.log",
+      "bytes": 576,
+      "sha256": "7ef261b062e1826be74b1be3789d4700d456a183f9113a03acfe87cfef6a3b82"
+    },
+    {
+      "path": "run-contract/examples/gemmini/experiment.yaml",
+      "bytes": 3437,
+      "sha256": "71845e05f1f03a1c255fd89a8494a1a33b8dd9ecd975c4fa17fc08860f40b5f0"
+    },
+    {
+      "path": "run-contract/examples/gemmini/numerics/MANIFEST.json",
+      "bytes": 14160,
+      "sha256": "a69b9780212fe5cdcf74d3ea3c18558f1f9e63d2a0c03f87b8aaae6742a73416"
+    },
+    {
+      "path": "run-contract/examples/gemmini/numerics/README.md",
+      "bytes": 9421,
+      "sha256": "eaa419b12b79a2ea56001cb8e92f0f0ba55c673ad6502add7720983179e3682a"
+    },
+    {
+      "path": "run-contract/examples/gemmini/numerics/binding.yaml",
+      "bytes": 12584,
+      "sha256": "6f31f33827f82ae0ef2988c1b5732def29860dfde697ef5b77b9c507914bf718"
+    },
+    {
+      "path": "run-contract/examples/gemmini/numerics/inputs/resnet50/visible.json",
+      "bytes": 1705,
+      "sha256": "cd6152c9b2ee673fd09b5f7a5202768e9c5b962af8a9b00025c47abac2b0b082"
+    },
+    {
+      "path": "run-contract/examples/gemmini/numerics/inputs/smolvla/visible.json",
+      "bytes": 3259,
+      "sha256": "c664e183a8fa740aa0aa25ddbdd62d2b6db9c9bcada21ba76f3f190b76e3e197"
+    },
+    {
+      "path": "run-contract/examples/gemmini/numerics/inputs/tiny_llama/visible.json",
+      "bytes": 7955,
+      "sha256": "ed7f044d5175716f4c4d1fc8568d34ce2a2501abea6cec941da80f4f4ebdbc67"
+    },
+    {
+      "path": "run-contract/examples/gemmini/numerics/models.yaml",
+      "bytes": 6496,
+      "sha256": "e81125592bef2a24bd45846fab3bd0f5dc3edc19403ce2a43c6a3c3fb43c619b"
+    },
+    {
+      "path": "run-contract/examples/gemmini/numerics/sources.yaml",
+      "bytes": 3971,
+      "sha256": "db65e7b47b690d44f3958c210ffb1f270b853cbdeef04161a38e0313d9354e2f"
+    },
+    {
+      "path": "run-contract/examples/gemmini/phase0/recipe.yaml",
+      "bytes": 808,
+      "sha256": "0ec83273f3740c4ee0093a42efa086e91dfeb1445a989b169b6ade1cc1b6ee87"
+    },
+    {
+      "path": "run-contract/examples/gemmini/phase1/launch/phase1_el4_config.yaml",
+      "bytes": 11818,
+      "sha256": "5aba1665fb0ed664492197b7a536ef330c901062fae237f168a42856f1707a61"
+    },
+    {
+      "path": "run-contract/examples/gemmini/phase2/whole-model-machines.yaml",
+      "bytes": 5600,
+      "sha256": "5e2b99a7266f47eb98829ee97ec5cdaf4f2f75965315b931e56f2283d096ca74"
+    },
+    {
+      "path": "run-contract/examples/gemmini/platform/board-catalog.yaml",
+      "bytes": 4442,
+      "sha256": "561f078660103b4159fdfbf10a359c6403367f8ed0d057ee50473d289f00cc8d"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/README.md",
+      "bytes": 22596,
+      "sha256": "fedec700f761891dc5ce36a4ba2327b2528b7e03aec48c80be1616e3c2447096"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/baseline-outputs.template.yaml",
+      "bytes": 1197,
+      "sha256": "e5f1db23783502a53f967df9276b0900001b6a096896adfdaed861114904d7d3"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/baselines.md",
+      "bytes": 7072,
+      "sha256": "119d6369dfcc2953d9837505b0f34361d73807358b076e2716c9dc6924993128"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/capsule-calibration.yaml",
+      "bytes": 4223,
+      "sha256": "0e094dc10f70287d09a2367b55dd31d872b1e373a7d22b4f83e780e3a3c3f624"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/check.py",
+      "bytes": 10343,
+      "sha256": "b72b3b99a5273408c1f210f1668d56bd7801c44e6ab03461f9f94944b9c4cdbd"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/experiment.yaml",
+      "bytes": 12861,
+      "sha256": "7e1a56a5656f74dfe67fc3c070fecf67df1dc3c0b1d5f1461359042d9de39540"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/native-scalar-speed.yaml",
+      "bytes": 2021,
+      "sha256": "1a8594722c86563a368d5214e16a40ef00365aa941c048c58784b2327f5ff847"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/native-speed.yaml",
+      "bytes": 3270,
+      "sha256": "999ca6d8be65be87f7dc9004ba9325f6ebb65929fe3939ee636b2af3731218b1"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/native_scalar_recipes.py",
+      "bytes": 4480,
+      "sha256": "2155b1e1a268c0b1d2bd3864b3f739c23518cedbed8a03548afc5a82d1f72e9b"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/native_speed_recipes.py",
+      "bytes": 2599,
+      "sha256": "627b6a6c14b697581d77b0f7616e3ae21b75a96c2e21df96a4df6a837fb0ed99"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/resnet50-native-speed.json",
+      "bytes": 7421,
+      "sha256": "e9a4a97db87a665a2a2fb23d55e1e05cd37bdb9ef3df8936d71d765c058880f7"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/resnet50-shared-grid-sums.json",
+      "bytes": 6395,
+      "sha256": "59d220417544e018901ca39399ba1a3d368df63e9eaffc26c8761b7a5bc1bc29"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/resnet50-speed-first.json",
+      "bytes": 8758,
+      "sha256": "7040d3607627e4e22adeb67085db0b66c42a7440740cecf10058d4ab41d923c2"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/resnet50.json",
+      "bytes": 6383,
+      "sha256": "b828e83887c53fd440668c664685989949a66edaf78ff79c7fe2c5127032f3f2"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/smolvla-native-scalar-speed.json",
+      "bytes": 7074,
+      "sha256": "99773f018d919cb7bf06c221cdb082dc1f737ff80c734ff07902e57d89452841"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/smolvla-native-speed.json",
+      "bytes": 7197,
+      "sha256": "8dd1066d24562c2d021b999a57864867962332271a44d90c22e2ad7d5bf7c525"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/smolvla-speed-first.json",
+      "bytes": 8255,
+      "sha256": "ac4a4bb75a5164b05f8206740f21700f5aa15d46a6a2332eb00792e9b23900cd"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/smolvla.json",
+      "bytes": 6546,
+      "sha256": "ce0027045998257aa6d2bb91afd401ce6be4b8d06c5937bd469bce5ceb48628c"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/tiny_llama-native-scalar-speed.json",
+      "bytes": 8317,
+      "sha256": "11d6f647ecbbc63d514d8bb2e31973b2d2f1b74ae1f162e5065ceeb7fac07c5b"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/tiny_llama-native-speed.json",
+      "bytes": 8440,
+      "sha256": "57381a4a578b251092530213cdfb2296b55ffe96afcbf62c96a8414c0423ed72"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/tiny_llama-speed-first.json",
+      "bytes": 8606,
+      "sha256": "b1f647f282b63a045a49b63ab5388d6606e902d4758d5d2ad0d18620130b2f77"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/recipes/tiny_llama.json",
+      "bytes": 7789,
+      "sha256": "839657c5c84906a03e1a5fdf7b7f8c68ccc73757d26a448d3380137d71b9ce2e"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/resnet-speed.yaml",
+      "bytes": 3054,
+      "sha256": "cbd7ae842059a24d0bd85a444a1f4de7f38f995f204e27a927a1c1167eab0d7c"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/run-manifest.template.yaml",
+      "bytes": 3954,
+      "sha256": "cf25d4f68dcc924d2a0dff3d5280c89d46469c34f3c93198f4caf3945591473f"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/speed-first.yaml",
+      "bytes": 3267,
+      "sha256": "b4b82a8531e2f3d8606c72caf10cf27fcad33ae3252bc8f0ba732301eda09375"
+    },
+    {
+      "path": "run-contract/examples/gemmini/protocol/speed_first_recipes.py",
+      "bytes": 2952,
+      "sha256": "393789de5dfe023fa84c0996598c989056741faaddb2481ace78853faddeb715"
+    },
+    {
+      "path": "run-contract/examples/gemmini/target/phase0-workloads.yaml",
+      "bytes": 3859,
+      "sha256": "a6d4863c73ad791500e76f5dcf7c94ed4ffd5a660643c025b91dbd35853c3e20"
+    },
+    {
+      "path": "run-contract/examples/gemmini/target/software-spec.yaml",
+      "bytes": 67368,
+      "sha256": "769b77782ea3d7b9bc35c0f21d2797ce09697a0f2aed52c7b8a1dde10a7de9f4"
+    },
+    {
+      "path": "run-contract/merlin/contract/hardware_pins.yaml",
+      "bytes": 279561,
+      "sha256": "641c1bd5b663d722a82c7ad618b18c71ca6fad4df6c5782a5eab047aa9cf8ec1"
+    },
+    {
+      "path": "structure-final.log",
+      "bytes": 1394,
+      "sha256": "a2c5bea4fd7d4a9856bd7badb2f4af1918d35d95e394adb99bc7cfb2f3ca9b82"
+    },
+    {
+      "path": "tinyllama-seed/README.md",
+      "bytes": 784,
+      "sha256": "96345f0b917562c6755efb503bf7933cc62253188d799ee0a39aa4df5c6744fa"
+    },
+    {
+      "path": "tinyllama-seed/checks/reference-liveness-equivalence.json",
+      "bytes": 579,
+      "sha256": "429cf8498f757a64fce14bc1fdc58451ba56d3c06c7280314030d463daeb581b"
+    },
+    {
+      "path": "tinyllama-seed/logs/integer-reference-tests.log",
+      "bytes": 12922,
+      "sha256": "0d4081bdcc328b910de4cbdf45d4f3b5536e2b952d16d4316b8a7fb8b07d3d20"
+    },
+    {
+      "path": "tinyllama-seed/logs/preparation-tests-6.log",
+      "bytes": 3306,
+      "sha256": "6c30cabef3ecf0e8dcfcd3553c0a1bcbec729917592f27e8f18a1800dbc4a756"
+    },
+    {
+      "path": "tinyllama-seed/prepared-inputs/tiny-calibration.npz",
+      "bytes": 37263,
+      "sha256": "4a6ebc0c913138f830fc9f6efced0bb71e4286e19f70699e81a48e591cad2a0c"
+    },
+    {
+      "path": "tinyllama-seed/prepared-inputs/tiny-v00.npz",
+      "bytes": 554,
+      "sha256": "065d978c1f302bc4c2ee8f74dc6823d72b81224baf30a51b877919cbfa450629"
+    },
+    {
+      "path": "tinyllama-seed/requirements.txt",
+      "bytes": 219,
+      "sha256": "d68540512e1081134044c5d26c43daab86e16cf6531dbe1d1267bdf97764c77a"
+    },
+    {
+      "path": "tinyllama-seed/seed.json",
+      "bytes": 5738,
+      "sha256": "40e20650fc546032d99f771bc6ecc3b165c07510859e3fca1782d1c17ab17a57"
+    },
+    {
+      "path": "tinyllama-seed/source/model2mlir-reference-liveness.patch",
+      "bytes": 3936,
+      "sha256": "f3be00e3011887a65a106d0c90b870e05e962e61dca19688c2f8725ef94a5713"
+    },
+    {
+      "path": "tinyllama-seed/source/model2mlir.bundle",
+      "bytes": 986746,
+      "sha256": "48cbe57c3a6fb6f041cf08e00bd302deebddd2ff6406371d65b7b4059595c261"
+    },
+    {
+      "path": "tinyllama-seed/source/source-pins.json",
+      "bytes": 424,
+      "sha256": "12ed484905abb31f8d77000cacfbac6febacafda91f611d5503755691944a338"
+    },
+    {
+      "path": "tinyllama-seed/source/tiny/model/config.json",
+      "bytes": 608,
+      "sha256": "486bedda3a6988332e60d9638a09ca4b260d34ebcf1b19e22cf3b140b63d8fe9"
+    },
+    {
+      "path": "tinyllama-seed/source/tiny/model/generation_config.json",
+      "bytes": 124,
+      "sha256": "18046d04f5bd8b4998095ecabdd17a1bf0053d9acdccead4a05be4a3575f3c5c"
+    },
+    {
+      "path": "tinyllama-seed/source/tiny/model/special_tokens_map.json",
+      "bytes": 551,
+      "sha256": "82d96d7a9e6ced037f12394b7ea6a5b02e6ca87e0d11edaa8d60d9be857ce7db"
+    },
+    {
+      "path": "tinyllama-seed/source/tiny/model/tokenizer.json",
+      "bytes": 1842767,
+      "sha256": "bcd04f0eadf90287bd26e1a183ac487d8a141b09b06aecb7725bbdd343640f2e"
+    },
+    {
+      "path": "tinyllama-seed/source/tiny/model/tokenizer.model",
+      "bytes": 499723,
+      "sha256": "9e556afd44213b6bd1be2b850ebbbd98f5481437a8021afaf58ee7fb1818d347"
+    },
+    {
+      "path": "tinyllama-seed/source/tiny/model/tokenizer_config.json",
+      "bytes": 1289,
+      "sha256": "7b41ba7d0eb91e77914ca3dafde559ea3e19878769b7e68409e89bed5222e77a"
+    },
+    {
+      "path": "tinyllama-seed/tiny-range-identity-v2.json",
+      "bytes": 613,
+      "sha256": "8206517118b87207014ff933ad727571df5636426959f833ecbdb63e60c0a395"
+    },
+    {
+      "path": "tinyllama-seed/tiny-range-realization-v2.json",
+      "bytes": 1366172,
+      "sha256": "0a3c0d2671f022638fbd0faacd11c061a622029247128775ec4358514c362c24"
+    },
+    {
+      "path": "tinyllama-seed/tiny-range-statistics.npz",
+      "bytes": 917920,
+      "sha256": "896689b5e22ff56c729e797285ed9b0221b9560985dc739e353ca5df6ea520c6"
+    },
+    {
+      "path": "tvm-device-ops.patch",
+      "bytes": 6486,
+      "sha256": "cc21fa2308d8bf964735e9120380cb30b286bf08d8ac8d127cf40eba10644a82"
+    },
+    {
+      "path": "user-decisions.json",
+      "bytes": 1226,
+      "sha256": "30494b13777a4214d22fffbfa0a81c30f512701900d37025da72ed008db40256"
+    },
+    {
+      "path": "validation-summary.json",
+      "bytes": 3637,
+      "sha256": "602ba5c1a60f453949a3d1096a26d7e1be575fc49c52978de30a31582585d28c"
+    }
+  ]
+}

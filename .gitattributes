@@ -23,3 +23,10 @@ experiments/reference-data/** -text -eol
 # Preserve the frozen handoff parts, ELF and source-bound receipts byte for byte.
 out/artifacts/handoff/gemmini-firesim-dse-publication/** -text -eol
 out/artifacts/handoff/gemmini-tinyllama-synthetic/** -text -eol
+
+# Frozen protocol/ELF handoff: hashes cover original bytes, including CSV CRLF.
+out/artifacts/handoff/gemmini-firesim-elf-plan/** -text -eol
+# Diff context and captured warning logs intentionally retain their source spaces.
+out/artifacts/handoff/gemmini-firesim-elf-plan/**/*.patch -whitespace
+out/artifacts/handoff/gemmini-firesim-elf-plan/**/*.log -whitespace
+out/artifacts/handoff/gemmini-firesim-elf-plan/**/*.csv whitespace=cr-at-eol

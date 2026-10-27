@@ -1,0 +1,150 @@
+converter_key,handler,line,status
+acos.default,self._unary_op(relax.op.acos),1357,registered; typed import/lowering and device placement remain separate
+acosh.default,self._unary_op(relax.op.acosh),1358,registered; typed import/lowering and device placement remain separate
+asin.default,self._unary_op(relax.op.asin),1359,registered; typed import/lowering and device placement remain separate
+asinh.default,self._unary_op(relax.op.asinh),1360,registered; typed import/lowering and device placement remain separate
+atan.default,self._unary_op(relax.op.atan),1361,registered; typed import/lowering and device placement remain separate
+atanh.default,self._unary_op(relax.op.atanh),1362,registered; typed import/lowering and device placement remain separate
+clamp.default,self._clamp,1363,registered; typed import/lowering and device placement remain separate
+cos.default,self._unary_op(relax.op.cos),1364,registered; typed import/lowering and device placement remain separate
+cosh.default,self._unary_op(relax.op.cosh),1365,registered; typed import/lowering and device placement remain separate
+dropout.default,lambda node: self.env[node.args[0]],1366,registered; typed import/lowering and device placement remain separate
+exp.default,self._unary_op(relax.op.exp),1367,registered; typed import/lowering and device placement remain separate
+gelu.default,self._gelu,1368,registered; typed import/lowering and device placement remain separate
+hardsigmoid.default,self._hardsigmoid,1369,registered; typed import/lowering and device placement remain separate
+hardswish.default,self._hardswish,1370,registered; typed import/lowering and device placement remain separate
+hardtanh.default,self._hardtanh,1371,registered; typed import/lowering and device placement remain separate
+leaky_relu.default,self._leakyrelu,1372,registered; typed import/lowering and device placement remain separate
+log_softmax.int,self._log_softmax,1373,registered; typed import/lowering and device placement remain separate
+neg.default,self._numeric_negative,1374,registered; typed import/lowering and device placement remain separate
+relu.default,self._unary_op(relax.op.nn.relu),1375,registered; typed import/lowering and device placement remain separate
+round.default,self._round,1376,registered; typed import/lowering and device placement remain separate
+rsqrt.default,self._unary_op(relax.op.rsqrt),1377,registered; typed import/lowering and device placement remain separate
+sigmoid.default,self._unary_op(relax.op.sigmoid),1378,registered; typed import/lowering and device placement remain separate
+silu.default,self._unary_op(relax.op.nn.silu),1379,registered; typed import/lowering and device placement remain separate
+sin.default,self._unary_op(relax.op.sin),1380,registered; typed import/lowering and device placement remain separate
+sinh.default,self._unary_op(relax.op.sinh),1381,registered; typed import/lowering and device placement remain separate
+softmax.int,self._softmax,1382,registered; typed import/lowering and device placement remain separate
+sqrt.default,self._unary_op(relax.op.sqrt),1383,registered; typed import/lowering and device placement remain separate
+tan.default,self._unary_op(relax.op.tan),1384,registered; typed import/lowering and device placement remain separate
+tanh.default,self._unary_op(relax.op.tanh),1385,registered; typed import/lowering and device placement remain separate
+tril.default,self._tril_triu(relax.op.tril),1386,registered; typed import/lowering and device placement remain separate
+triu.default,self._tril_triu(relax.op.triu),1387,registered; typed import/lowering and device placement remain separate
+add.Tensor,"partial(self._numeric_binary, operation='add')",1389,registered; typed import/lowering and device placement remain separate
+add.Scalar,"partial(self._numeric_binary, operation='add')",1390,registered; typed import/lowering and device placement remain separate
+div.Tensor,"partial(self._numeric_binary, operation='divide')",1391,registered; typed import/lowering and device placement remain separate
+div.Scalar,"partial(self._numeric_binary, operation='divide')",1392,registered; typed import/lowering and device placement remain separate
+eq.Scalar,"self._binary_op(relax.op.equal, operator.eq)",1393,registered; typed import/lowering and device placement remain separate
+eq.Tensor,"self._binary_op(relax.op.equal, operator.eq)",1394,registered; typed import/lowering and device placement remain separate
+floor_divide.default,"self._binary_op(relax.op.floor_divide, operator.floordiv)",1395,registered; typed import/lowering and device placement remain separate
+lt.Scalar,"self._binary_op(relax.op.less, operator.lt)",1396,registered; typed import/lowering and device placement remain separate
+lt.Tensor,"self._binary_op(relax.op.less, operator.lt)",1397,registered; typed import/lowering and device placement remain separate
+matmul.default,self._matmul,1398,registered; typed import/lowering and device placement remain separate
+mm.default,self._matmul,1399,registered; typed import/lowering and device placement remain separate
+_int_mm.default,self._int_mm,1400,registered; typed import/lowering and device placement remain separate
+amax.default,self._amax,1401,registered; typed import/lowering and device placement remain separate
+max.other,"self._binary_op(relax.op.maximum, max)",1402,registered; typed import/lowering and device placement remain separate
+mul.Tensor,"partial(self._numeric_binary, operation='multiply')",1403,registered; typed import/lowering and device placement remain separate
+mul.Scalar,"partial(self._numeric_binary, operation='multiply')",1404,registered; typed import/lowering and device placement remain separate
+pow.Tensor_Scalar,"self._binary_op(relax.op.power, operator.pow)",1405,registered; typed import/lowering and device placement remain separate
+pow.Tensor_Tensor,"self._binary_op(relax.op.power, operator.pow)",1406,registered; typed import/lowering and device placement remain separate
+sub.Tensor,"partial(self._numeric_binary, operation='subtract')",1407,registered; typed import/lowering and device placement remain separate
+sub.Scalar,"partial(self._numeric_binary, operation='subtract')",1408,registered; typed import/lowering and device placement remain separate
+_native_batch_norm_legit_no_training.default,self._batch_norm_legit_no_training,1410,registered; typed import/lowering and device placement remain separate
+batch_norm.default,self._batch_norm_inference,1411,registered; typed import/lowering and device placement remain separate
+adaptive_avg_pool1d.default,"partial(self._adaptive_average_pool, dim=1)",1412,registered; typed import/lowering and device placement remain separate
+adaptive_avg_pool2d.default,"partial(self._adaptive_average_pool, dim=2)",1413,registered; typed import/lowering and device placement remain separate
+adaptive_avg_pool3d.default,"partial(self._adaptive_average_pool, dim=3)",1414,registered; typed import/lowering and device placement remain separate
+_adaptive_avg_pool2d.default,"partial(self._adaptive_average_pool, dim=2)",1415,registered; typed import/lowering and device placement remain separate
+_adaptive_avg_pool3d.default,"partial(self._adaptive_average_pool, dim=3)",1416,registered; typed import/lowering and device placement remain separate
+addmm.default,self._addmm,1417,registered; typed import/lowering and device placement remain separate
+avg_pool1d.default,"partial(self._average_pool, dim=1)",1418,registered; typed import/lowering and device placement remain separate
+avg_pool2d.default,"partial(self._average_pool, dim=2)",1419,registered; typed import/lowering and device placement remain separate
+avg_pool3d.default,"partial(self._average_pool, dim=3)",1420,registered; typed import/lowering and device placement remain separate
+avg_pool2d_backward.default,self._pool_backward,1421,registered; typed import/lowering and device placement remain separate
+_adaptive_avg_pool2d_backward.default,"partial(self._pool_backward, adaptive=True)",1422,registered; typed import/lowering and device placement remain separate
+col2im.default,self._col2im,1423,registered; typed import/lowering and device placement remain separate
+baddbmm.default,self._baddbmm,1424,registered; typed import/lowering and device placement remain separate
+bmm.default,self._matmul,1425,registered; typed import/lowering and device placement remain separate
+convolution.default,"partial(self._convolution, direct=True)",1426,registered; typed import/lowering and device placement remain separate
+convolution_backward.default,self._convolution_backward,1427,registered; typed import/lowering and device placement remain separate
+conv_transpose1d.default,"partial(self._convolution, dim=1, transpose=True)",1428,registered; typed import/lowering and device placement remain separate
+conv_transpose2d.input,"partial(self._convolution, dim=2, transpose=True)",1429,registered; typed import/lowering and device placement remain separate
+conv_transpose3d.input,"partial(self._convolution, dim=3, transpose=True)",1430,registered; typed import/lowering and device placement remain separate
+conv1d.default,"partial(self._convolution, dim=1)",1431,registered; typed import/lowering and device placement remain separate
+conv2d.default,"partial(self._convolution, dim=2)",1432,registered; typed import/lowering and device placement remain separate
+conv3d.default,"partial(self._convolution, dim=3)",1433,registered; typed import/lowering and device placement remain separate
+einsum.default,self._einsum,1434,registered; typed import/lowering and device placement remain separate
+embedding.default,"lambda node: self._embedding_impl(self.env[node.args[1]], self.env[node.args[0]])",1435,registered; typed import/lowering and device placement remain separate
+group_norm.default,self._group_norm,1438,registered; typed import/lowering and device placement remain separate
+layer_norm.default,self._layer_norm,1439,registered; typed import/lowering and device placement remain separate
+linear.default,self._linear,1440,registered; typed import/lowering and device placement remain separate
+rms_norm.default,self._rms_norm,1441,registered; typed import/lowering and device placement remain separate
+max_pool2d.default,self._max_pool2d,1442,registered; typed import/lowering and device placement remain separate
+max_pool2d_with_indices.default,self._max_pool2d_with_unused_indices,1443,registered; typed import/lowering and device placement remain separate
+_softmax.default,self._softmax_no_half_to_float,1444,registered; typed import/lowering and device placement remain separate
+arange.start_step,self._arange,1445,registered; typed import/lowering and device placement remain separate
+le.Tensor,"self._binary_op(relax.op.less_equal, operator.le)",1446,registered; typed import/lowering and device placement remain separate
+alias.default,lambda node: self.env[node.args[0]],1447,registered; typed import/lowering and device placement remain separate
+scaled_dot_product_attention.default,self._scaled_dot_product_attention,1448,registered; typed import/lowering and device placement remain separate
+unbind.int,self._unbind,1449,registered; typed import/lowering and device placement remain separate
+upsample_bilinear2d.vec,self._upsample_bilinear2d,1450,registered; typed import/lowering and device placement remain separate
+upsample_nearest2d.vec,self._upsample_nearest2d,1451,registered; typed import/lowering and device placement remain separate
+mean.default,self._mean,1453,registered; typed import/lowering and device placement remain separate
+mean.dim,self._mean,1454,registered; typed import/lowering and device placement remain separate
+sum.default,self._sum,1455,registered; typed import/lowering and device placement remain separate
+sum.dim_IntList,self._sum,1456,registered; typed import/lowering and device placement remain separate
+argmax.default,self._argmax_argmin(relax.op.argmax),1458,registered; typed import/lowering and device placement remain separate
+argmin.default,self._argmax_argmin(relax.op.argmin),1459,registered; typed import/lowering and device placement remain separate
+as_strided.default,self._as_strided,1461,registered; typed import/lowering and device placement remain separate
+cat.default,self._cat,1462,registered; typed import/lowering and device placement remain separate
+concat.default,self._cat,1463,registered; typed import/lowering and device placement remain separate
+chunk.default,self._chunk,1464,registered; typed import/lowering and device placement remain separate
+stack.default,self._stack,1465,registered; typed import/lowering and device placement remain separate
+cumsum.default,self._cumsum,1466,registered; typed import/lowering and device placement remain separate
+diagonal.default,self._diagonal,1467,registered; typed import/lowering and device placement remain separate
+constant_pad_nd.default,"partial(self._pad, mode='constant')",1468,registered; typed import/lowering and device placement remain separate
+expand.default,self._expand,1469,registered; typed import/lowering and device placement remain separate
+flatten.using_ints,self._flatten,1470,registered; typed import/lowering and device placement remain separate
+pad.default,self._pad,1471,registered; typed import/lowering and device placement remain separate
+permute.default,self._permute,1472,registered; typed import/lowering and device placement remain separate
+reflection_pad1d.default,"partial(self._pad, mode='reflect')",1473,registered; typed import/lowering and device placement remain separate
+reflection_pad2d.default,"partial(self._pad, mode='reflect')",1474,registered; typed import/lowering and device placement remain separate
+reflection_pad3d.default,"partial(self._pad, mode='reflect')",1475,registered; typed import/lowering and device placement remain separate
+repeat.default,self._repeat,1476,registered; typed import/lowering and device placement remain separate
+reshape.default,self._reshape,1477,registered; typed import/lowering and device placement remain separate
+replication_pad1d.default,"partial(self._pad, mode='edge')",1478,registered; typed import/lowering and device placement remain separate
+replication_pad2d.default,"partial(self._pad, mode='edge')",1479,registered; typed import/lowering and device placement remain separate
+replication_pad3d.default,"partial(self._pad, mode='edge')",1480,registered; typed import/lowering and device placement remain separate
+select.int,self._select,1481,registered; typed import/lowering and device placement remain separate
+select_scatter.default,"partial(self._scatter_slice, select=True)",1482,registered; typed import/lowering and device placement remain separate
+slice.Tensor,self._slice,1483,registered; typed import/lowering and device placement remain separate
+slice_scatter.default,self._scatter_slice,1484,registered; typed import/lowering and device placement remain separate
+split.Tensor,self._split,1485,registered; typed import/lowering and device placement remain separate
+split_with_sizes.default,self._split,1486,registered; typed import/lowering and device placement remain separate
+squeeze.default,self._squeeze,1487,registered; typed import/lowering and device placement remain separate
+squeeze.dim,self._squeeze,1488,registered; typed import/lowering and device placement remain separate
+squeeze.dims,self._squeeze,1489,registered; typed import/lowering and device placement remain separate
+tile.default,self._tile,1490,registered; typed import/lowering and device placement remain separate
+transpose.int,self._transpose,1491,registered; typed import/lowering and device placement remain separate
+unsqueeze.default,"lambda node: self.block_builder.emit(relax.op.expand_dims(self.env[node.args[0]], node.args[1]))",1492,registered; typed import/lowering and device placement remain separate
+view.default,self._reshape,1495,registered; typed import/lowering and device placement remain separate
+_to_copy.default,self._to_copy,1497,registered; typed import/lowering and device placement remain separate
+to.dtype,self._to_copy,1498,registered; typed import/lowering and device placement remain separate
+to.dtype_layout,self._to_copy,1499,registered; typed import/lowering and device placement remain separate
+arange.start,self._arange,1500,registered; typed import/lowering and device placement remain separate
+clone.default,lambda node: self.env[node.args[0]],1501,registered; typed import/lowering and device placement remain separate
+empty.memory_format,self._empty,1502,registered; typed import/lowering and device placement remain separate
+fill.Scalar,self._fill,1503,registered; typed import/lowering and device placement remain separate
+full.default,self._full,1504,registered; typed import/lowering and device placement remain separate
+full_like.default,"partial(self._full, like=True)",1505,registered; typed import/lowering and device placement remain separate
+scalar_tensor.default,self._scalar_tensor,1506,registered; typed import/lowering and device placement remain separate
+new_ones.default,self._new_ones,1507,registered; typed import/lowering and device placement remain separate
+getitem,self._getitem,1509,registered; typed import/lowering and device placement remain separate
+where.self,self._where,1510,registered; typed import/lowering and device placement remain separate
+where.ScalarSelf,self._where,1511,registered; typed import/lowering and device placement remain separate
+where.ScalarOther,self._where,1512,registered; typed import/lowering and device placement remain separate
+_assert_tensor_metadata.default,self._assert_tensor_metadata,1513,registered; typed import/lowering and device placement remain separate
+quantize_per_tensor.default,self._qdq,1514,registered; typed import/lowering and device placement remain separate
+dequantize_per_tensor.default,"partial(self._qdq, dequantize=True)",1515,registered; typed import/lowering and device placement remain separate
+dequantize_per_channel.default,"partial(self._qdq, dequantize=True, channel=True)",1516,registered; typed import/lowering and device placement remain separate

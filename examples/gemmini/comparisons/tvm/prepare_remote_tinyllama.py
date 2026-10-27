@@ -14,16 +14,25 @@ import urllib.request
 from pathlib import Path
 
 from prepare_selected_inputs import digest
+from selected_protocol import check_selected_input, identity, load_selected_protocol
 
 from merlin.common.artifacts import new_product
 from merlin.common.paths import repo_root
 
 
-def bootstrap(seed):
+def bootstrap(seed, protocol_path):
+    protocol, models, recipes = load_selected_protocol(protocol_path)
     manifest = json.loads((seed / "seed.json").read_text())
     root = repo_root()
     for row in manifest["sources"]:
-        if digest(root / row["path"]) != row["sha256"]:
+        kind = row.get("root", "merlin")
+        if kind not in ("merlin", "selected_contract"):
+            raise ValueError("Unknown seed source root")
+        base = protocol_path.parent.parent if kind == "selected_contract" else root
+        source = (base / row["path"]).resolve()
+        if not source.is_relative_to(base.resolve()):
+            raise ValueError("Seed source escapes its declared root")
+        if digest(source) != row["sha256"]:
             raise ValueError("Preparation source differs from the frozen seed: " + row["path"])
     for row in manifest["files"]:
         path = seed / row["path"]
@@ -34,10 +43,11 @@ def bootstrap(seed):
         version=1,
         target="gemmini-tinyllama-remote-preparation",
         sources=[str(seed / "seed.json")],
-        notes="TinyLlama preparation only; SmolVLA paused. Tuning 16/1; final E2E 32/32.",
+        notes="TinyLlama preparation from the selected 8ec protocol; final E2E 32/32.",
     )
     for row in manifest["files"]:
         shutil.copy2(seed / row["path"], product.add_artifact(row["path"]))
+    check_selected_input(product.path / "prepared-inputs/tiny-v00.npz", protocol["models"]["tiny_llama"])
     checkpoint = manifest["checkpoint"]
     destination = product.add_artifact("source/tiny/model/model.safetensors")
     # Reuse a verified local file when supplied; otherwise fetch the exact public
@@ -60,7 +70,9 @@ def bootstrap(seed):
                 status="inputs_ready_exports_pending",
                 seed_sha256=digest(seed / "seed.json"),
                 profiles=manifest["profiles"],
-                smolvla="PAUSED_BY_USER_DO_NOT_RUN",
+                selected_protocol=identity(protocol_path),
+                selected_models=identity(models),
+                selected_recipe=identity(recipes["tiny_llama"]),
             ),
             indent=2,
         )
@@ -70,7 +82,9 @@ def bootstrap(seed):
     print(product.path, flush=True)
 
 
-def run_stage(phase, release):
+def run_stage(phase, release, protocol_path):
+    protocol, models, recipes = load_selected_protocol(protocol_path)
+    check_selected_input(release / "prepared-inputs/tiny-v00.npz", protocol["models"]["tiny_llama"])
     root = repo_root()
     edge = root / "examples/gemmini/comparisons/tvm"
     m2m = Path(os.environ["MERLIN_M2M_DIR"]).resolve()
@@ -94,9 +108,9 @@ def run_stage(phase, release):
             "--capture",
             str(capture),
             "--models",
-            str(root / "examples/gemmini/numerics/models.yaml"),
+            str(models),
             "--protocol",
-            str(root / "examples/gemmini/protocol/experiment.yaml"),
+            str(protocol_path),
             "--inputs",
             str(release / "prepared-inputs/tiny-v00.npz"),
             "--output",
@@ -116,7 +130,7 @@ def run_stage(phase, release):
             "--m2m-dir",
             str(m2m),
             "--recipe",
-            str(root / "examples/gemmini/protocol/recipes/tiny_llama.json"),
+            str(recipes["tiny_llama"]),
             "--materialize-bundle",
             "--save-exported-program",
             "--cpu-threads",
@@ -138,17 +152,18 @@ def run_stage(phase, release):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", choices=("bootstrap", "prefill", "decode", "references"), required=True)
+    parser.add_argument("--protocol", type=Path, required=True, help="Frozen 8ec protocol with approved run-local numerics")
     parser.add_argument("--seed-dir", type=Path)
     parser.add_argument("--release", type=Path)
     args = parser.parse_args()
     if args.phase == "bootstrap":
         if args.seed_dir is None:
             parser.error("bootstrap requires --seed-dir")
-        bootstrap(args.seed_dir.resolve())
+        bootstrap(args.seed_dir.resolve(), args.protocol.resolve())
     else:
         if args.release is None:
             parser.error("capture/reference phases require --release")
-        run_stage(args.phase, args.release.resolve())
+        run_stage(args.phase, args.release.resolve(), args.protocol.resolve())
 
 
 if __name__ == "__main__":

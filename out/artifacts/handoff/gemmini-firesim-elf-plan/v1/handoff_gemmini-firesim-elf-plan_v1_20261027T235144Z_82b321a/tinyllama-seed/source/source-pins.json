@@ -1,0 +1,8 @@
+{
+  "model2mlir_base": "7915e23475c6db446a3c404847b11e8bc72c8a27",
+  "model2mlir_preparation_commit": "5fec4a2dc106668e4e74605eeaa54729df36e1b4",
+  "model2mlir_patch_sha256": "f3be00e3011887a65a106d0c90b870e05e962e61dca19688c2f8725ef94a5713",
+  "TVM": "3423bd6818ab752ddd9cdb5d5773743e48c65f1d",
+  "TVM_source_changed": false,
+  "scope": "Reference memory lifetime fix only; arithmetic and partial-sum evidence unchanged"
+}

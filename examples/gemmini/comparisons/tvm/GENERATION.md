@@ -1,23 +1,14 @@
-# TVM Gemmini Generation
+# TVM Gemmini generation
 
-For the current handoff, the proposed optimization knobs are research notes
-only: do not implement them or expand the agreed search space. Use existing
-contraction DSE with graph fusion fixed at level 2; follow
-[FIRESIM_ROUND2_HANDOFF.md](FIRESIM_ROUND2_HANDOFF.md).
+For current execution and numerical policy use [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md).
+The approved search starts with published graph settings, then explores existing
+graph options and TensorIR schedules within the same per-model budgets. New host
+scheduling or packing implementations remain research proposals; see
+[OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md). Calibration, scales, rounding and
+bias semantics are fixed by the pinned 8ec99308 protocol, not performance knobs.
 
-For additional optimization/DSE proposals use
-[OPTIMIZATION_KNOBS.md](OPTIMIZATION_KNOBS.md): it separates existing traced
-decisions from proposed integration and requires general IR-derived rules.
-The FireSim driver now exposes the existing FuseOps level and saves its Relax
-Trace; host-only DSE and bounded im2col packing remain additional work.
-
-New numerical releases follow [CURRENT_RUN_POLICY.md](../../numerics/CURRENT_RUN_POLICY.md).
-Calibration scales and rounding/bias semantics are fixed numerical inputs,
-not performance knobs. [TUNING_PLAN.md](TUNING_PLAN.md) records the next
-profile-directed DSE scope; [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md) defines
-the required live cutoff. The ownership/implementation inventory below remains
-the compiler reference; it does not imply that every listed choice was searched
-in the October 26 F2 campaigns.
+The implementation chronology below preserves earlier observations and tested
+configurations. It is not a second current run plan.
 
 Updated 2026-10-24 after the bounded FASED-memory tuning study.
 

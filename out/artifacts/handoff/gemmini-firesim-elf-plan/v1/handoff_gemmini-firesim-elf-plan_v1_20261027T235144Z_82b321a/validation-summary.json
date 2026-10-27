@@ -1,0 +1,91 @@
+{
+  "merlin_base": "82b321a89a8a646877484f4bd09637040ce0fa26",
+  "tvm_base": "42b3c1ef27abe878f930e48b335b24956beb0e56",
+  "local_changes": "Merlin source is included in the publishing commit; TVM changes are tvm-device-ops.patch",
+  "restore": "PASS; 171 shared payloads plus verified ResNet dependency",
+  "build_inputs_verified": 36,
+  "baseline_build_commands": 36,
+  "initial_workloads": 47,
+  "initial_owners": 26,
+  "tests": {
+    "passed": 94,
+    "log": "publication-tests-final.log",
+    "affected_deadline_recheck": {
+      "passed": 36,
+      "log": "drain-final.log"
+    }
+  },
+  "elfs": {
+    "valid": {
+      "sha256": "e16f10a9ce19c93188bf54f2404e2fa97c9a95b5599532cd63ff11928cdf94b0",
+      "bytes": 202576,
+      "instruction_audit": {
+        "executable_sections": [
+          ".text"
+        ],
+        "instructions": 4219,
+        "prohibited_hits": []
+      },
+      "memory_audit": {
+        "entry": 2147483648,
+        "load_segments": [
+          {
+            "base": 2147483648,
+            "memory_bytes": 494272,
+            "file_bytes": 189256,
+            "flags": 7
+          }
+        ],
+        "stack_reserved_bytes": 16384
+      },
+      "execution": "NOT_RUN"
+    },
+    "bad-oracle": {
+      "sha256": "2113e708d1c2867e7d6e2dcd535468fa511426271d6f84e7237b76d40f297aad",
+      "bytes": 202576,
+      "instruction_audit": {
+        "executable_sections": [
+          ".text"
+        ],
+        "instructions": 4222,
+        "prohibited_hits": []
+      },
+      "memory_audit": {
+        "entry": 2147483648,
+        "load_segments": [
+          {
+            "base": 2147483648,
+            "memory_bytes": 494272,
+            "file_bytes": 189256,
+            "flags": 7
+          }
+        ],
+        "stack_reserved_bytes": 16384
+      },
+      "execution": "NOT_RUN"
+    }
+  },
+  "compiled_chunk": "smolvla-action-input-projection",
+  "other_chunk_elfs": "35 NOT_BUILT; verified inputs and build instructions supplied",
+  "full_model_e2e_elfs": "NOT_BUILT_CURRENT_CAMPAIGN; selected assets and session instructions in handoff",
+  "structure": {
+    "inherited_module_size_failures": 9,
+    "problems": [
+      "module over 1500 lines (1573); split it: src/merlin/runtime/dispatch_runtime.py",
+      "module over 1500 lines (1508); split it: src/merlin/runtime/backends/spike_model.py",
+      "module over 1500 lines (1656); split it: src/merlin/targetgen/_m2m_capture_worker.py",
+      "module grew past its recorded ceiling (2954 > 2899 lines); shrink or split it: src/merlin/targetgen/conformance.py",
+      "module grew past its recorded ceiling (2831 > 2666 lines); shrink or split it: src/merlin/targetgen/corpus_synth.py",
+      "module over 1500 lines (1611); split it: src/merlin/xdsl_dialects/lowering/compute_groups.py",
+      "module over 1500 lines (1504); split it: packages/merlin-experiments/src/merlin_experiments/runner.py",
+      "module grew past its recorded ceiling (2199 > 1738 lines); shrink or split it: packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_m2m.py",
+      "module over 1500 lines (1534); split it: packages/merlin-experiments/src/merlin_experiments/phase0/generation.py"
+    ],
+    "unchanged_from_head": true,
+    "log": "structure-final.log"
+  },
+  "scope": "ELF preparation complete for handoff; deployment and actual measurement belong to remote agent",
+  "spec_pinned_oracle": "Unavailable provenance remains recorded; no sequential Spike preflight required for remote builds/candidates",
+  "firesim_cycles": null,
+  "budget_exhaustion": "stop new admissions, finish active measurements, account for extra completion time"
+}

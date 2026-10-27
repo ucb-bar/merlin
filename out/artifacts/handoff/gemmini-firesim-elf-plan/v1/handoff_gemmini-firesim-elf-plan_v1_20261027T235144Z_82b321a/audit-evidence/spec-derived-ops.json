@@ -1,0 +1,1710 @@
+{
+  "schema": "merlin.tvm.spec_derivation_audit.v1",
+  "spec_commit": "8ec99308cb1182b9b896a6075300312266fadf6f",
+  "spec_sha256": "769b77782ea3d7b9bc35c0f21d2797ce09697a0f2aed52c7b8a1dde10a7de9f4",
+  "execution_provider_revision": "7a61b51895ce09fd0c001b6b421cc61e0c3f1c01",
+  "execution_admission": false,
+  "reason": "Traceability audit only; source/provider, resolved facts, per-program compiler proofs and instruction/execution gates must be bound separately.",
+  "declarations": [
+    {
+      "declaration_path": "operations.contraction",
+      "declaration": {
+        "status": "reviewed",
+        "families": [
+          "contraction",
+          "window_mean"
+        ],
+        "placement": "accelerator",
+        "arithmetic": "integer_multiply_accumulate",
+        "operand_dtypes": [
+          "int8"
+        ],
+        "accumulator_dtype": "i32",
+        "ranks": [
+          2,
+          3,
+          4
+        ],
+        "layouts": [
+          "row_major_contiguous"
+        ],
+        "tails": [
+          "zero_pad_valid_window"
+        ],
+        "broadcasting": [
+          "none",
+          "independent_batches"
+        ],
+        "aliasing": [
+          "disjoint_inputs_outputs"
+        ],
+        "evidence": {
+          "review_status": "reviewed",
+          "reviewed_by": "Loren Hung, conditional packet 2 approval",
+          "packet": "packet2.md R12; seal3-base 118-145",
+          "basis": "Configs.scala:23-38; PE.scala:23,108-129; AccumulatorMem.scala:63-70; LoadController.scala:108; Configs.scala:114; BeatMerger.scala:71-75"
+        },
+        "emission_obligations": {
+          "execution_program": {
+            "status": "compiler_obligation",
+            "condition": {
+              "all": [
+                {
+                  "all": [
+                    {
+                      "path": "execution.pe_partial_abs_bound",
+                      "integer": true,
+                      "min": 0,
+                      "max": 524287
+                    },
+                    {
+                      "path": "execution.accumulator_partial_abs_bound",
+                      "integer": true,
+                      "min": 0,
+                      "max": 2147483647
+                    },
+                    {
+                      "path": "execution.pe_bound_scope",
+                      "eq": "every_retained_partial_sum_including_total_os_k"
+                    }
+                  ]
+                },
+                {
+                  "path": "execution.seed_load",
+                  "eq": "unscaled_full_i32_shrink0_once"
+                },
+                {
+                  "path": "execution.tail_initialization",
+                  "eq": "explicit_zero"
+                },
+                {
+                  "path": "execution.constants",
+                  "eq": "signed_int8_or_exact_decomposition"
+                }
+              ]
+            }
+          },
+          "raw_i32_exit": {
+            "status": "instruction_audit",
+            "check": "raw_i32_exit",
+            "constraints": {
+              "eq": true
+            }
+          },
+          "c_stride": {
+            "status": "compiler_obligation",
+            "constraints": {
+              "eq": 1
+            }
+          }
+        }
+      },
+      "implementation_status": "candidate",
+      "mapping": "i8*i8 -> i32; split/cache/blockize/tensorize; OS/WS primitive compute",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_sketch.py",
+      "source_sha256": "fff95d447d8a8d584128c06032a2e2ad87afbe4a27b6456fe38e7f2d7bccb754",
+      "outstanding_obligations": "Every retained PE partial <=524287 and accumulator partial <=2147483647, including seed; all logical ranks/layout/tails and raw-exit audit required.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.elementwise_map",
+      "declaration": {
+        "status": "reviewed",
+        "hardware": "fused",
+        "arithmetic": "readout_stages",
+        "ranks": [
+          2,
+          3,
+          4
+        ],
+        "layouts": [
+          "row_major_contiguous"
+        ],
+        "aliasing": [
+          "disjoint_inputs_outputs"
+        ],
+        "unconstrained": {
+          "tails": "each readout stage maps one accumulator element to one result element; padded lanes never reach a valid result"
+        },
+        "evidence": {
+          "review_status": "reviewed",
+          "reviewed_by": "Loren Hung, conditional packet 2 approval",
+          "packet": "packet2.md R13; seal3-base 146-154",
+          "basis": "AccumulatorScale.scala:118-138,147,154; Configs.scala:117-149; GemminiISA.scala:155-159; raw i32 bypasses activation and scaling"
+        },
+        "emission_obligations": {
+          "execution_program": {
+            "status": "compiler_obligation",
+            "condition": {
+              "any": [
+                {
+                  "all": [
+                    {
+                      "path": "execution.readout_exit",
+                      "eq": "narrow_i8"
+                    },
+                    {
+                      "path": "execution.readout_program",
+                      "eq": "selected_scheme_order"
+                    },
+                    {
+                      "path": "execution.readout_strategy",
+                      "eq": "f32_product_rne"
+                    },
+                    {
+                      "path": "execution.scale_delivery",
+                      "eq": "scalar_per_command_partition"
+                    },
+                    {
+                      "path": "execution.relu_commutation",
+                      "eq": "nonnegative_multiplier_or_source_order_proof"
+                    }
+                  ]
+                },
+                {
+                  "all": [
+                    {
+                      "path": "execution.readout_exit",
+                      "eq": "accumulator_full"
+                    },
+                    {
+                      "path": "execution.readout_stages",
+                      "eq": []
+                    },
+                    {
+                      "path": "execution.columns",
+                      "integer": true,
+                      "min": 1,
+                      "max": 16
+                    },
+                    {
+                      "path": "execution.pooling",
+                      "eq": false
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "raw_i32_exit": {
+            "status": "instruction_audit",
+            "check": "raw_i32_exit",
+            "constraints": {
+              "eq": true
+            }
+          },
+          "c_stride": {
+            "status": "compiler_obligation",
+            "constraints": {
+              "eq": 1
+            }
+          }
+        }
+      },
+      "implementation_status": "candidate",
+      "mapping": "Producer readout: explicit f32 product, RNE, saturation, optional ReLU",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_epilogue.py",
+      "source_sha256": "85e2e912b23df06aa340ba051952c8f915cb223f78209e17e7b980ba43a09f79",
+      "outstanding_obligations": "Selected scheme and multiplier bits, scalar command partition, nonnegative scale/order proof, pinned RNE oracle; threshold proof alone does not discharge all emission audits.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.elementwise_map_standalone",
+      "declaration": {
+        "status": "reviewed",
+        "families": [
+          "elementwise_map",
+          "operand_sum",
+          "affine_map"
+        ],
+        "hardware": "standalone",
+        "arithmetic": "integer_affine",
+        "max_tensor_operands": 2,
+        "expressions": [
+          "affine"
+        ],
+        "broadcasting": [
+          "none",
+          "outer"
+        ],
+        "ranks": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "layouts": [
+          "row_major_contiguous"
+        ],
+        "aliasing": [
+          "disjoint_inputs_outputs"
+        ],
+        "unconstrained": {
+          "tails": "each result element reads only its own operand elements; padded lanes never reach a valid result"
+        },
+        "evidence": {
+          "review_status": "reviewed",
+          "reviewed_by": "Loren Hung, conditional packet 2 approval",
+          "packet": "packet2.md R14; seal3-base 155-174",
+          "basis": "Configs.scala:75-114; Scratchpad.scala:407-421,828-848; VectorScalarMultiplier.scala:130-138; PE.scala:23; exact numerator precedes selected readout"
+        },
+        "emission_obligations": {
+          "execution_program": {
+            "status": "compiler_obligation",
+            "condition": {
+              "all": [
+                {
+                  "path": "execution.accumulator_partial_abs_bound",
+                  "integer": true,
+                  "min": 0,
+                  "max": 2147483647
+                },
+                {
+                  "path": "execution.load_scale",
+                  "eq": 1.0
+                },
+                {
+                  "any": [
+                    {
+                      "all": [
+                        {
+                          "path": "execution.affine_path",
+                          "eq": "unit_scale_accumulating_loads"
+                        },
+                        {
+                          "path": "execution.load_scale",
+                          "eq": 1.0
+                        },
+                        {
+                          "path": "execution.weights",
+                          "eq": "unit"
+                        }
+                      ]
+                    },
+                    {
+                      "all": [
+                        {
+                          "path": "execution.affine_path",
+                          "eq": "weighted_integer_mesh"
+                        },
+                        {
+                          "path": "execution.weights",
+                          "eq": "signed_int8_or_exact_decomposition"
+                        },
+                        {
+                          "all": [
+                            {
+                              "path": "execution.pe_partial_abs_bound",
+                              "integer": true,
+                              "min": 0,
+                              "max": 524287
+                            },
+                            {
+                              "path": "execution.accumulator_partial_abs_bound",
+                              "integer": true,
+                              "min": 0,
+                              "max": 2147483647
+                            },
+                            {
+                              "path": "execution.pe_bound_scope",
+                              "eq": "every_retained_partial_sum_including_total_os_k"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "path": "execution.seed_load",
+                  "eq": "unscaled_full_i32_shrink0_once"
+                },
+                {
+                  "any": [
+                    {
+                      "all": [
+                        {
+                          "path": "execution.readout_exit",
+                          "eq": "narrow_i8"
+                        },
+                        {
+                          "path": "execution.readout_program",
+                          "eq": "selected_scheme_order"
+                        },
+                        {
+                          "path": "execution.scale_delivery",
+                          "eq": "scalar_per_command_partition"
+                        },
+                        {
+                          "path": "execution.relu_commutation",
+                          "eq": "nonnegative_multiplier_or_source_order_proof"
+                        }
+                      ]
+                    },
+                    {
+                      "all": [
+                        {
+                          "path": "execution.readout_exit",
+                          "eq": "accumulator_full"
+                        },
+                        {
+                          "path": "execution.readout_stages",
+                          "eq": []
+                        },
+                        {
+                          "path": "execution.columns",
+                          "integer": true,
+                          "min": 1,
+                          "max": 16
+                        },
+                        {
+                          "path": "execution.pooling",
+                          "eq": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "raw_i32_exit": {
+            "status": "instruction_audit",
+            "check": "raw_i32_exit",
+            "constraints": {
+              "eq": true
+            }
+          },
+          "c_stride": {
+            "status": "compiler_obligation",
+            "constraints": {
+              "eq": 1
+            }
+          },
+          "load_scale": {
+            "status": "instruction_audit",
+            "check": "unit_mvin_scale",
+            "constraints": {
+              "eq": 1.0
+            }
+          }
+        }
+      },
+      "implementation_status": "candidate_subset",
+      "mapping": "Same-shape one/two widened byte terms with signed-byte coefficients and constant i32 bias",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_affine.py",
+      "source_sha256": "e80a79e43906ce9a49b673aadde59cbabb0a338c77bb9c86fb77e878aa401907",
+      "outstanding_obligations": "Bound all prefixes. Full-domain wrapping i32 add/sub/scalar-add is outside bounded-exact admission; standalone full-i32 readout needs its own bound/identity proof.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.elementwise_map_after_operand_sum",
+      "declaration": {
+        "status": "reviewed",
+        "numerical_contract": "operand_sum_exhaustive_i8_v1",
+        "families": [
+          "elementwise_map"
+        ],
+        "hardware": "fused_operand_sum",
+        "arithmetic": "integer_affine",
+        "max_tensor_operands": 2,
+        "expressions": [
+          "affine"
+        ],
+        "broadcasting": [
+          "none",
+          "outer"
+        ],
+        "ranks": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "layouts": [
+          "row_major_contiguous"
+        ],
+        "aliasing": [
+          "disjoint_inputs_outputs"
+        ],
+        "unconstrained": {
+          "tails": "each result element reads only its own operand elements; padded lanes never reach a valid result"
+        },
+        "emission_obligations": {
+          "load_scale": {
+            "status": "instruction_audit",
+            "check": "unit_mvin_scale",
+            "constraints": {
+              "gt": 0.0,
+              "max": 1.0
+            }
+          },
+          "minimum_stride": {
+            "status": "instruction_audit",
+            "check": "nonnegative_stride",
+            "constraints": {
+              "min": 0
+            }
+          },
+          "raw_i32_exit": {
+            "status": "instruction_audit",
+            "check": "raw_i32_exit",
+            "constraints": {
+              "eq": true
+            }
+          },
+          "maximum_mvout_columns": {
+            "status": "instruction_audit",
+            "check": "max_columns",
+            "constraints": {
+              "min": 1,
+              "max": 16
+            }
+          }
+        }
+      },
+      "implementation_status": "candidate_subset",
+      "mapping": "Exact byte sum followed by a single proved narrow readout",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_affine.py",
+      "source_sha256": "e80a79e43906ce9a49b673aadde59cbabb0a338c77bb9c86fb77e878aa401907",
+      "outstanding_obligations": "Use this exact rounding contract; no bias epilogue; per-scale exhaustive contract and emission evidence remain required.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.elementwise_map_after_per_operand_sum",
+      "declaration": {
+        "status": "reviewed",
+        "numerical_contract": "operand_sum_per_operand_exhaustive_i8_v1",
+        "description": "For each selected scalar f32 operand-scale pair in (0, 1] and each positive finite f32 readout scale with finite products on the full domain, screen all 65,536 ordered signed-i8 pairs. Independently RNE and saturate each f32 operand product to i8, add the resulting bytes exactly in i32, optionally ReLU, then multiply in f32, RNE and saturate to i8. Require zero output-code error against the selected two-load device model. This software-model screen is not RTL qualification or a source/provider proof; those remain mandatory. Pooling, bias, residual extensions and accumulator-full exits are outside this contract. Every distinct readout scale needs its own full screen.",
+        "evidence": {
+          "review_status": "reviewed",
+          "basis": "Operator review of the per-operand rounded operand-sum row; operand_sum_numeric.audit_i8_per_operand_sum"
+        },
+        "families": [
+          "elementwise_map"
+        ],
+        "hardware": "fused_operand_sum",
+        "arithmetic": "integer_affine",
+        "max_tensor_operands": 2,
+        "expressions": [
+          "affine"
+        ],
+        "broadcasting": [
+          "none"
+        ],
+        "ranks": [
+          2
+        ],
+        "layouts": [
+          "row_major_contiguous"
+        ],
+        "aliasing": [
+          "disjoint_inputs_outputs"
+        ],
+        "unconstrained": {
+          "tails": "each result element reads only its own operand elements; padded lanes never reach a valid result"
+        },
+        "emission_obligations": {
+          "load_scale": {
+            "status": "instruction_audit",
+            "check": "unit_mvin_scale",
+            "constraints": {
+              "gt": 0.0,
+              "max": 1.0
+            }
+          },
+          "minimum_stride": {
+            "status": "instruction_audit",
+            "check": "nonnegative_stride",
+            "constraints": {
+              "min": 0
+            }
+          },
+          "raw_i32_exit": {
+            "status": "instruction_audit",
+            "check": "raw_i32_exit",
+            "constraints": {
+              "eq": true
+            }
+          },
+          "maximum_mvout_columns": {
+            "status": "instruction_audit",
+            "check": "max_columns",
+            "constraints": {
+              "min": 1,
+              "max": 16
+            }
+          },
+          "pooling": {
+            "status": "instruction_audit",
+            "check": "pool_off",
+            "constraints": {
+              "eq": true
+            }
+          }
+        }
+      },
+      "implementation_status": "candidate_subset",
+      "mapping": "Two independently rounded/saturated byte operands, exact i32 sum, proved narrow readout",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_affine.py",
+      "source_sha256": "e80a79e43906ce9a49b673aadde59cbabb0a338c77bb9c86fb77e878aa401907",
+      "outstanding_obligations": "Rank 2 only, no broadcast/bias/pool/raw exit. Screen all 65536 pairs for EVERY scale triple; current two fixtures do not admit arbitrary triples or ranks.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.pooling_on_readout",
+      "declaration": {
+        "status": "reviewed",
+        "families": [
+          "reduction"
+        ],
+        "hardware": "fused",
+        "arithmetic": "integer_max",
+        "kinds": [
+          "max"
+        ],
+        "ranks": [
+          2,
+          3,
+          4
+        ],
+        "layouts": [
+          "row_major_contiguous"
+        ],
+        "aliasing": [
+          "disjoint_inputs_outputs"
+        ],
+        "unconstrained": {
+          "tails": "a padded window is governed by the window_reduction_readout constraint padded_max_requires"
+        },
+        "evidence": {
+          "review_status": "reviewed",
+          "reviewed_by": "Loren Hung, conditional packet 2 approval",
+          "packet": "packet2.md R15; seal3-base 190-201",
+          "basis": "DMA.scala:597-608,616; StoreController.scala:131-133,226; Scratchpad.scala:314,323-325; GemminiISA.scala:125-149; packet Dragon r101/chain.py:54-60 post-ReLU maxpool"
+        },
+        "emission_obligations": {
+          "execution_program": {
+            "status": "compiler_obligation",
+            "condition": {
+              "all": [
+                {
+                  "path": "execution.pool_dtype",
+                  "eq": "signed_int8"
+                },
+                {
+                  "path": "execution.pool_result",
+                  "eq": "values_only"
+                },
+                {
+                  "path": "execution.columns",
+                  "integer": true,
+                  "min": 1,
+                  "max": 16
+                },
+                {
+                  "path": "execution.pool_size",
+                  "integer": true,
+                  "min": 1,
+                  "max": 3
+                },
+                {
+                  "path": "execution.pool_stride",
+                  "integer": true,
+                  "min": 1,
+                  "max": 3
+                },
+                {
+                  "path": "execution.pool_grid_max",
+                  "integer": true,
+                  "min": 1,
+                  "max": 255
+                },
+                {
+                  "path": "execution.readout_monotone",
+                  "eq": true
+                },
+                {
+                  "path": "execution.valid_windows",
+                  "eq": true
+                },
+                {
+                  "any": [
+                    {
+                      "path": "execution.padded",
+                      "eq": false
+                    },
+                    {
+                      "all": [
+                        {
+                          "path": "execution.padded",
+                          "eq": true
+                        },
+                        {
+                          "path": "execution.padding_value",
+                          "eq": 0
+                        },
+                        {
+                          "path": "execution.producer_lower_bound",
+                          "min": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "pool_window": {
+            "status": "instruction_audit",
+            "check": "pool_window",
+            "constraints": {
+              "eq": true
+            }
+          }
+        }
+      },
+      "implementation_status": "composition_only",
+      "mapping": "Existing standalone matcher gathers a window, widens to accumulator, and emits pooled mvout",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_pool.py",
+      "source_sha256": "9fcb7da603972410bf7ec82e7c979fc48601d14b508d8496bef6aa94c1f87002",
+      "outstanding_obligations": "Declaration is fused readout, not blanket standalone maxpool. Require selected composition/producer proof and complete region audit. Gathered padding is host work, not an implicit padded-pool capability.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.reduction_standalone",
+      "declaration": {
+        "families": [
+          "reduction",
+          "window_mean"
+        ],
+        "status": "reviewed",
+        "hardware": "standalone",
+        "arithmetic": "integer_sum",
+        "kinds": [
+          "sum"
+        ],
+        "ranks": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "layouts": [
+          "row_major_contiguous"
+        ],
+        "tails": [
+          "zero_pad_valid_window"
+        ],
+        "aliasing": [
+          "disjoint_inputs_outputs"
+        ]
+      },
+      "implementation_status": "candidate_subset",
+      "mapping": "Bounded widened-i8 sum; already-present selected reciprocal/readout for window mean",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_reduction.py",
+      "source_sha256": "a4ae3ad27d03d429b54f1133851a8e722fcb155854763551d8fc357b0b6079d1",
+      "outstanding_obligations": "Resolve standalone hardware facts. Mesh-against-ones must separately satisfy contraction rank/bounds; arbitrary f32/i64 reduction is not admitted by similarity.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.movement",
+      "declaration": {
+        "status": "reviewed",
+        "hardware": "standalone",
+        "arithmetic": "none",
+        "broadcasting": [
+          "none",
+          "outer"
+        ],
+        "ranks": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "layouts": [
+          "row_major_contiguous"
+        ],
+        "aliasing": [
+          "disjoint_inputs_outputs",
+          "result_views_input"
+        ],
+        "unconstrained": {
+          "tails": "movement copies selected bytes; padded lanes are never written back"
+        }
+      },
+      "implementation_status": "candidate_subset",
+      "mapping": "Materialized static copies, broadcasts, uniform fills and selectors; legal views can be elided",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_elementwise.py",
+      "source_sha256": "2d8f8ebe0b101a15bece5448ddac1b4a5b1ecfe5acb41dd2486ed16c42fa664f",
+      "outstanding_obligations": "Resolve actual standalone movement forms/facts and each selector/alias proof. i32/f32 accumulator-carrier copies are not the F1 int8-transfer implementation.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.movement_bitwise",
+      "declaration": {
+        "status": "reviewed",
+        "evidence": {
+          "review_status": "reviewed",
+          "scope": "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory",
+          "basis": "Operator R2; review packet R2: VectorScalarMultiplier.scala:130,137; LoadController.scala:40,72; Configs.scala:66-69; StoreController.scala:43,73-74; DMA.scala:493,500,597-608; BeatMerger.scala:128; MeshWithDelays.scala:155. Disjointness is a compiler obligation, not hardware-enforced."
+        },
+        "families": [
+          "movement"
+        ],
+        "placement": "accelerator",
+        "arithmetic": "none",
+        "unconstrained": {
+          "tails": "movement copies selected bytes; padded lanes are never written back"
+        },
+        "signature": {
+          "numerical_family": [
+            "F1"
+          ],
+          "operand_dtypes": [
+            "i1",
+            "int8",
+            "i16",
+            "f16",
+            "bf16",
+            "i32",
+            "f32",
+            "i64",
+            "f64",
+            "complex<f32>"
+          ],
+          "ranks": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "layouts": [
+            "row_major_contiguous"
+          ],
+          "aliasing": [
+            "disjoint_inputs_outputs",
+            "result_views_input"
+          ]
+        },
+        "emission_obligations": {
+          "mvin_scale": {
+            "status": "instruction_audit",
+            "check": "unit_mvin_scale",
+            "constraints": {
+              "eq": 1.0
+            }
+          },
+          "minimum_dram_address": {
+            "status": "instruction_audit",
+            "check": "nonzero_dram",
+            "constraints": {
+              "min": 1
+            }
+          },
+          "mvout_pool_stride": {
+            "status": "instruction_audit",
+            "check": "mvout_pool_stride",
+            "constraints": {
+              "eq": 0
+            }
+          },
+          "mvout_pool_size": {
+            "status": "instruction_audit",
+            "check": "mvout_pool_size",
+            "constraints": {
+              "eq": 0
+            }
+          },
+          "maximum_rows_per_command": {
+            "status": "instruction_audit",
+            "check": "transfer_rows",
+            "constraints": {
+              "min": 1,
+              "max": 16
+            }
+          },
+          "maximum_bytes_per_command": {
+            "status": "instruction_audit",
+            "check": "movement_bytes",
+            "constraints": {
+              "min": 1,
+              "max": 64
+            }
+          },
+          "transpose": {
+            "status": "compiler_obligation",
+            "constraints": {
+              "eq": false
+            }
+          },
+          "byte_order": {
+            "status": "compiler_obligation",
+            "constraints": {
+              "eq": "little"
+            }
+          },
+          "minimum_stride": {
+            "status": "instruction_audit",
+            "check": "nonnegative_stride",
+            "constraints": {
+              "min": 0
+            }
+          },
+          "disjoint_inputs_outputs": {
+            "status": "compiler_obligation",
+            "constraints": {
+              "eq": true
+            }
+          }
+        },
+        "numerical_contract": {
+          "family": "F1",
+          "arithmetic": "none",
+          "representation": "opaque_little_endian_bytes",
+          "proof": "closed_static_element_selectors",
+          "quantization": "none",
+          "device_transfer_dtype": "int8",
+          "comparison": "native_eager_bits"
+        }
+      },
+      "implementation_status": "candidate_subset",
+      "mapping": "Opaque byte-copy TensorIntrin for bool/i16/f16/bf16/i64/f64; existing i8 DMA",
+      "source": "/scratch/grammy/tvm-device-op-audit/python/tvm/relax/backend/contrib/gemmini_bytes.py",
+      "source_sha256": "57f810fdd54265912a586c45dd14c5464a104d5aaad0aab79072e9cfec0f80ff",
+      "outstanding_obligations": "Explicit declared dtype/rank, closed selectors, LE byte storage, disjointness, unit scale, no pooling, nonzero address, bounded rows/bytes. complex<f32> is declared but not implemented.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.component_linear",
+      "declaration": {
+        "status": "reviewed",
+        "evidence": {
+          "review_status": "reviewed",
+          "scope": "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory",
+          "basis": "Operator R5; review packet R5: Configs.scala:96-107,114; Scratchpad.scala:420-421. Non-unit mvin scaling saturates to int8; non-unit integer weights must use the mesh."
+        },
+        "families": [
+          "elementwise_map",
+          "reduction"
+        ],
+        "placement": "accelerator",
+        "arithmetic": "integer_components",
+        "unconstrained": {
+          "tails": "the closed static producer proof bounds every partial sum over the declared static extents"
+        },
+        "signature": {
+          "numerical_family": [
+            "F2",
+            "F4",
+            "F5"
+          ],
+          "operand_dtypes": [
+            "int8"
+          ],
+          "accumulator_dtype": "i32",
+          "readout_dtype": "i32",
+          "ranks": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "layouts": [
+            "row_major_contiguous"
+          ],
+          "aliasing": [
+            "disjoint_inputs_outputs"
+          ]
+        },
+        "emission_obligations": {
+          "dataflow": {
+            "status": "instruction_audit",
+            "check": "weight_stationary",
+            "constraints": {
+              "eq": "WS"
+            }
+          },
+          "mvin_scale": {
+            "status": "instruction_audit",
+            "check": "unit_mvin_scale",
+            "constraints": {
+              "eq": 1.0
+            }
+          },
+          "primitive_k_bound": {
+            "status": "instruction_audit",
+            "check": "primitive_k_bound",
+            "constraints": {
+              "min": 1,
+              "max": 524287
+            }
+          },
+          "partial_sum_bound": {
+            "status": "compiler_obligation",
+            "condition": {
+              "all": [
+                {
+                  "path": "execution.pe_partial_abs_bound",
+                  "integer": true,
+                  "min": 0,
+                  "max": 524287
+                },
+                {
+                  "path": "execution.accumulator_partial_abs_bound",
+                  "integer": true,
+                  "min": 0,
+                  "max": 2147483647
+                },
+                {
+                  "path": "execution.pe_bound_scope",
+                  "eq": "every_retained_partial_sum_including_total_os_k"
+                }
+              ]
+            }
+          }
+        },
+        "numerical_contract": {
+          "representation": "signed_radix_256_components",
+          "producer": "closed_static_linear_integer",
+          "accumulation": "exact_i32_with_all_partial_sums_bounded",
+          "readout": "full_i32",
+          "recombination": "retained_source_host_exact_integer"
+        }
+      },
+      "implementation_status": "not_implemented",
+      "mapping": "No general signed-radix-256 component lowering in this TVM branch",
+      "source": null,
+      "source_sha256": null,
+      "outstanding_obligations": "Do not relabel byte affine as full integer component support. Requires WS-only component proof and exact host recombination.",
+      "qualified": false
+    },
+    {
+      "declaration_path": "operations.component_bilinear",
+      "declaration": {
+        "status": "reviewed",
+        "evidence": {
+          "review_status": "reviewed",
+          "scope": "Authored family admission screen; source/provider proofs and exact execution gates remain mandatory",
+          "basis": "Operator R3; review packet R3: LocalAddr.scala:23; Scratchpad.scala:312-325,673; AccumulatorScale.scala:147; StoreController.scala:225; DMA.scala:598-615. Raw full-i32 output bypasses scale and ReLU; R1 WS-only limb restriction applies."
+        },
+        "families": [
+          "contraction"
+        ],
+        "placement": "accelerator",
+        "arithmetic": "integer_components",
+        "unconstrained": {
+          "tails": "the closed static producer proof bounds every partial sum over the declared static extents"
+        },
+        "signature": {
+          "numerical_family": [
+            "F2",
+            "F4",
+            "F5"
+          ],
+          "operand_dtypes": [
+            "int8"
+          ],
+          "accumulator_dtype": "i32",
+          "readout_dtype": "i32",
+          "ranks": [
+            2,
+            3
+          ],
+          "layouts": [
+            "row_major_contiguous"
+          ],
+          "aliasing": [
+            "disjoint_inputs_outputs"
+          ]
+        },
+        "emission_obligations": {
+          "dataflow": {
+            "status": "instruction_audit",
+            "check": "weight_stationary",
+            "constraints": {
+              "eq": "WS"
+            }
+          },
+          "mvin_scale": {
+            "status": "instruction_audit",
+            "check": "unit_mvin_scale",
+            "constraints": {
+              "eq": 1.0
+            }
+          },
+          "readout": {
+            "status": "instruction_audit",
+            "check": "full_i32",
+            "constraints": {
+              "eq": "full_i32"
+            }
+          },
+          "mvout_scale": {
+            "status": "instruction_audit",
+            "check": "mvout_scale",
+            "constraints": {
+              "eq": false
+            }
+          },
+          "mvout_relu": {
+            "status": "instruction_audit",
+            "check": "mvout_relu",
+            "constraints": {
+              "eq": false
+            }
+          },
+          "raw_i32_exit": {
+            "status": "instruction_audit",
+            "check": "raw_i32_exit",
+            "constraints": {
+              "eq": true
+            }
+          },
+          "maximum_mvout_columns": {
+            "status": "instruction_audit",
+            "check": "max_columns",
+            "constraints": {
+              "min": 1,
+              "max": 16
+            }
+          },
+          "mvout_pool_stride": {
+            "status": "instruction_audit",
+            "check": "mvout_pool_stride",
+            "constraints": {
+              "eq": 0
+            }
+          },
+          "mvout_pool_size": {
+            "status": "instruction_audit",
+            "check": "mvout_pool_size",
+            "constraints": {
+              "eq": 0
+            }
+          },
+          "primitive_k_bound": {
+            "status": "instruction_audit",
+            "check": "primitive_k_bound",
+            "constraints": {
+              "min": 1,
+              "max": 524287
+            }
+          },
+          "partial_sum_bound": {
+            "status": "compiler_obligation",
+            "condition": {
+              "all": [
+                {
+                  "path": "execution.pe_partial_abs_bound",
+                  "integer": true,
+                  "min": 0,
+                  "max": 524287
+                },
+                {
+                  "path": "execution.accumulator_partial_abs_bound",
+                  "integer": true,
+                  "min": 0,
+                  "max": 2147483647
+                },
+                {
+                  "path": "execution.pe_bound_scope",
+                  "eq": "every_retained_partial_sum_including_total_os_k"
+                }
+              ]
+            }
+          }
+        },
+        "numerical_contract": {
+          "representation": "signed_radix_256_components",
+          "producer": "closed_static_bilinear_integer",
+          "accumulation": "exact_i32_with_all_partial_sums_bounded",
+          "readout": "full_i32",
+          "recombination": "retained_source_host_exact_integer"
+        }
+      },
+      "implementation_status": "not_implemented",
+      "mapping": "No general multi-limb bilinear lowering in this TVM branch",
+      "source": null,
+      "source_sha256": null,
+      "outstanding_obligations": "Requires WS-only component proof, raw full-i32 exits, bounded partials and exact host recombination; no float/int64 arithmetic inference.",
+      "qualified": false
+    }
+  ],
+  "baseline_ops": [
+    {
+      "operator": "mm",
+      "declaration_paths": [
+        "operations.contraction"
+      ],
+      "status": "device_subregion_candidate",
+      "reason": "Only admitted integer contraction and seed; preserve any source output conversion separately.",
+      "qualified": false
+    },
+    {
+      "operator": "bmm",
+      "declaration_paths": [
+        "operations.contraction"
+      ],
+      "status": "device_subregion_candidate",
+      "reason": "Only admitted integer contraction and seed; preserve any source output conversion separately.",
+      "qualified": false
+    },
+    {
+      "operator": "addmm",
+      "declaration_paths": [
+        "operations.contraction"
+      ],
+      "status": "device_subregion_candidate",
+      "reason": "Only admitted integer contraction and seed; preserve any source output conversion separately.",
+      "qualified": false
+    },
+    {
+      "operator": "convolution",
+      "declaration_paths": [
+        "operations.contraction"
+      ],
+      "status": "device_subregion_candidate",
+      "reason": "Only admitted integer contraction and seed; preserve any source output conversion separately.",
+      "qualified": false
+    },
+    {
+      "operator": "convolution_backward",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "host_arithmetic_with_movement_candidate",
+      "reason": "Only separately proved movement stages can be device work; whole floating operator is not admitted.",
+      "qualified": false
+    },
+    {
+      "operator": "add.Tensor",
+      "declaration_paths": [
+        "operations.elementwise_map_standalone"
+      ],
+      "status": "outside_declared_exact_domain",
+      "reason": "Historical full-i32 boundary fixtures wrap. Current accumulator code exists, but bounded-exact affine does not authorize this domain.",
+      "qualified": false
+    },
+    {
+      "operator": "sub.Tensor",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads.",
+      "qualified": false
+    },
+    {
+      "operator": "add.Scalar",
+      "declaration_paths": [
+        "operations.elementwise_map_standalone"
+      ],
+      "status": "outside_declared_exact_domain",
+      "reason": "Historical full-i32 boundary fixtures wrap. Current accumulator code exists, but bounded-exact affine does not authorize this domain.",
+      "qualified": false
+    },
+    {
+      "operator": "sub.Scalar",
+      "declaration_paths": [
+        "operations.elementwise_map_standalone"
+      ],
+      "status": "outside_declared_exact_domain",
+      "reason": "Historical full-i32 boundary fixtures wrap. Current accumulator code exists, but bounded-exact affine does not authorize this domain.",
+      "qualified": false
+    },
+    {
+      "operator": "mul.Scalar",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads.",
+      "qualified": false
+    },
+    {
+      "operator": "div.Scalar",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads.",
+      "qualified": false
+    },
+    {
+      "operator": "neg",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads.",
+      "qualified": false
+    },
+    {
+      "operator": "relu",
+      "declaration_paths": [
+        "operations.elementwise_map_standalone"
+      ],
+      "status": "device_subregion_candidate",
+      "reason": "Historical i8 max(x,0): unit load and identity-scale narrow ReLU; no f32 ReLU claim.",
+      "qualified": false
+    },
+    {
+      "operator": "mean.dim",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical floating arithmetic is not the declared integer sum/window-mean program.",
+      "qualified": false
+    },
+    {
+      "operator": "avg_pool1d",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "host_arithmetic_with_movement_candidate",
+      "reason": "Only separately proved movement stages can be device work; whole floating operator is not admitted.",
+      "qualified": false
+    },
+    {
+      "operator": "avg_pool2d",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "host_arithmetic_with_movement_candidate",
+      "reason": "Only separately proved movement stages can be device work; whole floating operator is not admitted.",
+      "qualified": false
+    },
+    {
+      "operator": "avg_pool3d",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "host_arithmetic_with_movement_candidate",
+      "reason": "Only separately proved movement stages can be device work; whole floating operator is not admitted.",
+      "qualified": false
+    },
+    {
+      "operator": "adaptive_avg_pool1d",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical floating arithmetic is not the declared integer sum/window-mean program.",
+      "qualified": false
+    },
+    {
+      "operator": "_adaptive_avg_pool2d",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical floating arithmetic is not the declared integer sum/window-mean program.",
+      "qualified": false
+    },
+    {
+      "operator": "_adaptive_avg_pool3d",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical floating arithmetic is not the declared integer sum/window-mean program.",
+      "qualified": false
+    },
+    {
+      "operator": "avg_pool2d_backward",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical floating arithmetic is not the declared integer sum/window-mean program.",
+      "qualified": false
+    },
+    {
+      "operator": "_adaptive_avg_pool2d_backward",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical floating arithmetic is not the declared integer sum/window-mean program.",
+      "qualified": false
+    },
+    {
+      "operator": "col2im",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical floating arithmetic is not the declared integer sum/window-mean program.",
+      "qualified": false
+    },
+    {
+      "operator": "clone",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "elided_or_host_abi_copy",
+      "reason": "Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.",
+      "qualified": false
+    },
+    {
+      "operator": "repeat",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "cat",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "slice_scatter",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "movement_facts_required",
+      "reason": "Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.",
+      "qualified": false
+    },
+    {
+      "operator": "select_scatter",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "movement_facts_required",
+      "reason": "Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.",
+      "qualified": false
+    },
+    {
+      "operator": "fill.Scalar",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "elided_or_host_abi_copy",
+      "reason": "Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.",
+      "qualified": false
+    },
+    {
+      "operator": "full",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "elided_or_host_abi_copy",
+      "reason": "Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.",
+      "qualified": false
+    },
+    {
+      "operator": "full_like",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "elided_or_host_abi_copy",
+      "reason": "Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.",
+      "qualified": false
+    },
+    {
+      "operator": "constant_pad_nd",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "reflection_pad1d",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "reflection_pad2d",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "reflection_pad3d",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "replication_pad2d",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "replication_pad3d",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "_to_copy",
+      "declaration_paths": [
+        "operations.elementwise_map_standalone"
+      ],
+      "status": "widening_candidate",
+      "reason": "Historical signed-i8 to i32 unit-scale accumulator load; numeric conversion is not bitwise movement.",
+      "qualified": false
+    },
+    {
+      "operator": "as_strided",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "movement_facts_required",
+      "reason": "Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.",
+      "qualified": false
+    },
+    {
+      "operator": "diagonal",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "permute",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "scalar_tensor",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "elided_or_host_abi_copy",
+      "reason": "Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.",
+      "qualified": false
+    },
+    {
+      "operator": "select.int",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "movement_facts_required",
+      "reason": "Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.",
+      "qualified": false
+    },
+    {
+      "operator": "slice.Tensor",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "split_with_sizes",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "movement_facts_required",
+      "reason": "Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.",
+      "qualified": false
+    },
+    {
+      "operator": "squeeze.dim",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "movement_facts_required",
+      "reason": "Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.",
+      "qualified": false
+    },
+    {
+      "operator": "squeeze.dims",
+      "declaration_paths": [
+        "operations.movement"
+      ],
+      "status": "movement_facts_required",
+      "reason": "Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.",
+      "qualified": false
+    },
+    {
+      "operator": "unsqueeze",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "view",
+      "declaration_paths": [
+        "operations.movement",
+        "operations.movement_bitwise"
+      ],
+      "status": "movement_or_view_candidate",
+      "reason": "Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.",
+      "qualified": false
+    },
+    {
+      "operator": "mean.default",
+      "declaration_paths": [],
+      "status": "host_only_for_baseline",
+      "reason": "Historical floating arithmetic is not the declared integer sum/window-mean program.",
+      "qualified": false
+    },
+    {
+      "operator": "sum.dim_IntList",
+      "declaration_paths": [
+        "operations.reduction_standalone",
+        "operations.contraction"
+      ],
+      "status": "device_subregion_candidate",
+      "reason": "Bounded byte-source sum; i64 ABI result conversion is retained host work.",
+      "qualified": false
+    }
+  ],
+  "transfer_contracts": {
+    "status": "reviewed",
+    "operand_load": {
+      "from": "host",
+      "to": "accelerator",
+      "copy": {
+        "dtype": "int8",
+        "layout": "row_major_contiguous"
+      },
+      "evidence": {
+        "status": "reviewed",
+        "basis": "RTL facts: storage_datapaths input i8 (scratchpad smem UInt<8>) and compute input elem_bits 8 (SInt<8> in_a); every observed host->accelerator crossing is an i8 row_major_contiguous SSA value"
+      }
+    },
+    "accumulator_readout": {
+      "from": "accelerator",
+      "to": "host",
+      "copy": {
+        "dtype": "i32",
+        "layout": "row_major_contiguous"
+      },
+      "valid_window": "required",
+      "evidence": {
+        "status": "reviewed",
+        "basis": "RTL facts: storage_datapaths accumulator i32 (AccumulatorMem SInt<32>); every observed accelerator->host crossing is an i32 row_major_contiguous SSA value"
+      }
+    },
+    "accumulator_seed_load": {
+      "from": "host",
+      "to": "accelerator",
+      "copy": {
+        "dtype": "i32",
+        "layout": "row_major_contiguous"
+      },
+      "evidence": {
+        "status": "reviewed",
+        "basis": "An int32 bias or constant loaded into the accumulator at full width (MVIN3 through a shrink = 0 load state; no scale unit on that path, Configs.scala:114; LoadController.scala:108). Gate 3 needs it: op_addmm_default__quant, op_convolution_default__quant, op_add_Scalar__quant, op_sub_Scalar__quant."
+      }
+    },
+    "int8_readout": {
+      "from": "accelerator",
+      "to": "host",
+      "signature": {
+        "operand_dtype": "int8",
+        "result_dtype": "int8",
+        "operand_layout": "row_major_contiguous",
+        "result_layout": "row_major_contiguous"
+      },
+      "semantics": {
+        "conversion": "bit_preserving",
+        "valid_window": "required",
+        "exactness_gate": {
+          "exact_rational_host": {
+            "proof": "prove_fp32_products",
+            "requires": "rational_equality_proof"
+          },
+          "f32_product_rne": {
+            "definitional": "f32_product_rne",
+            "requires": "decoded_multiplier_bits_equal_formed_multiplier"
+          }
+        },
+        "readout_definitions": {
+          "f32_product_rne": {
+            "strategy": "f32_product_rne",
+            "accumulator_conversion": {
+              "to": "f32",
+              "rounding": "half_even"
+            },
+            "multiplier": {
+              "dtype": "f32",
+              "formation": "rne_of_exact_rational"
+            },
+            "product": {
+              "dtype": "f32",
+              "rounding": "half_even"
+            },
+            "narrowing": {
+              "rounding": "half_even",
+              "saturate": "declared_dtype"
+            },
+            "activation_order": "from_facts",
+            "exactness_bridge": "prove_fp32_products"
+          }
+        }
+      },
+      "evidence": {
+        "status": "reviewed",
+        "basis": "An int8 result after the readout's ReLU, acc_scale and saturation (AccumulatorScale.scala:118-138), or an int8 tensor moved by DMA. The crossing itself is a bit-preserving copy; arithmetic admission requires the selected scheme exactness_gate. Non-unit f32 scales require the pinned rounding-fixed oracle."
+      }
+    }
+  },
+  "restrictions": [
+    {
+      "declaration": "elementwise_map_after_operand_sum",
+      "family": "elementwise_map",
+      "field": "epilogues",
+      "values": [
+        "bias_add"
+      ],
+      "reason": "The direct operand-sum witness covers readout scaling and ReLU, not a bias epilogue after the sum."
+    },
+    {
+      "declaration": "elementwise_map_after_per_operand_sum",
+      "family": "elementwise_map",
+      "field": "epilogues",
+      "values": [
+        "bias_add"
+      ],
+      "reason": "The per-operand screen covers scaling and ReLU only."
+    }
+  ],
+  "baseline_source_sha256": "f65f25d632df21b7a71f192888be8cefd36c4b23a1ef4f16ca5aab4ef58d3d7a"
+}

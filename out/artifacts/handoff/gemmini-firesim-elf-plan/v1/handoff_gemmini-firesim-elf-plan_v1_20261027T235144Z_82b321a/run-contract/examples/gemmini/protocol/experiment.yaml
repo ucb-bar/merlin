@@ -1,0 +1,213 @@
+schema: merlin.gemmini.experiment_protocol.v1
+id: gemmini-full-models-b1-32x32-one-camera-v1
+defined_on: '2026-10-19'
+status: selected_functional_definition_with_separate_quality_protocol
+authority:
+  scope: Workload and measurement definition; not a compiler or execution certificate.
+  catalog: ../experiment.yaml
+  phase1_launch: ../phase1/launch/phase1_el4_config.yaml
+  source_workloads: ../target/phase0-workloads.yaml
+  numerical_contract: ../numerics/models.yaml
+  capsule_calibration_requirements: capsule-calibration.yaml
+  historical_input_sources: ../numerics/sources.yaml
+  evaluation_input_manifest: ../numerics/MANIFEST.json
+  capture_and_external_evaluation_inputs_have_separate_provenance: true
+  numerical_policy_enforcement: Comparators read the selected models file; conflicting explicit tolerance overrides are refused.
+  launcher_enforcement: Launch selections remain independently bound; editing these definitions does not rewrite sealed runs.
+baseline_comparison:
+  checker: python -m merlin.model_check.baseline_numerics
+  manifest_template: baseline-outputs.template.yaml
+  instructions: baselines.md
+  resolved_export: python examples/gemmini/protocol/check.py --export PATH
+  scope: Offline supplied-array comparison; execution, reference provenance and placement require separate evidence.
+profiles:
+  functional_v1:
+    selected: true
+    batch: 1
+    input_cohort: One selected sealed visible/v00 input per model; bind actual arrays in run manifest.
+    full_model_validation: external_to_capsule_clock
+    fresh_phase1: empty_compiler_submission
+    capsule_completion: independently_published_frozen_compiler_and_capsule_certificate
+    full_model_completion: separate_complete_chain_receipts_and_all_declared_output_comparisons
+    fp_quality: report_only
+  quality_v1:
+    selected_as_phase1_exit_gate: false
+    status: reporting_policy_on_existing_bound_cohorts
+    splits: [visible, sealed]
+    observations_per_model_per_split: 8
+    smolvla_noise_draws_per_observation: 4
+    calibration_disjoint_from_evaluation: true
+    task_accuracy_requires_labels_or_task_outcomes: true
+    missing_measurement: unavailable_never_pass
+hardware:
+  board: firesim_gemmini_rocket_u250_30mhz
+  spike_and_gsim: same_FireSim_Gemmini_Rocket_source_configuration
+  facts_schema: facts-v6
+  correspondence: verified_proof_required
+  spike_timing_in_phase1: untuned
+  target_clock_hz: 30000000
+  bindings: ../numerics/binding.yaml
+  board_catalog: ../platform/board-catalog.yaml
+  run_specific_required_pins: [rtl_facts, correspondence_proof, spike, libgemmini, gsim, timing_profile]
+functional_comparison:
+  reference: sealed_selected_quantized_reference
+  sealed_reference_evaluator: merlin.runtime.linalg_numpy_on_prepared_ungrouped_quantized_IR_with_selected_host_math
+  capture_fake_quant_is_not_the_sealed_oracle: true
+  outputs: all_declared_at_every_step_including_carried_state_and_padding
+  shape_dtype_arity: exact
+  integer_boolean: exact
+  floating_policy: ../numerics/models.yaml#numerics.functional
+  accelerator_kernels: independent_exact_checks
+  placement: all_eligible_selected_operations_must_execute_on_Gemmini
+  host: Merlin_supplied_for_noneligible_work_with_declared_reason_and_dispatch_evidence
+quantization:
+  recipe_authority: exact_JSON_files_below_plus_captured_scales_and_integerized_IR
+  weight: {dtype: int8, range: [-127, 127], zero_point: 0, mode: static, observer: minmax, channels_per_scale: 16}
+  activation: {dtype: int8, range: [-128, 127], zero_point: 0, mode: static, observer: histogram, granularity: tensor}
+  accumulator: int32
+  observer_epsilon: 0.000244140625
+  epilogue: integer_epilogue_v1
+  bias: round_half_even_at_scale_s_x_times_s_w_then_preload_int32
+  output_scale: narrowing_INT8_readout_one_fp32_multiplier_per_16_columns_raw_INT32_readout_has_no_scale
+  scale_constant_formation: float64_product_or_quotient_then_one_cast_to_float32
+  float_island_policy: fp32_with_explicit_captured_exceptions
+  recipe_software_numerical_engine: integer_reference_capture_helper_not_sealed_model_oracle
+  scales: reuse_captured_bytes_no_implicit_recalibration
+models:
+  resnet50:
+    checkpoint: {id: torchvision/resnet50/IMAGENET1K_V2, sha256: 8bea63dc89b0700f2acbc5b170ed0b4637daed4ab748949eefe50ebe95149ac0}
+    architecture: {layers: 50, classes: 1000, pretrained: true, batch: 1, input_layout: NCHW}
+    capture_input: {source: synthetic_seed_20260830, synthetic: true, preprocessing: synthetic, paper_quality_cohort: false}
+    external_evaluation_input: {selection: visible/v00, source: Imagenette_validation, member: n01440764/ILSVRC2012_val_00009111.JPEG, label: 0, derived_member: visible/v00/inputs.npz, sha256: aef47b171c1132f1aaec18a957499f85bc5c80bfbfde197121c8255709311263}
+    quality_input: {source: imagenette2-320, definition: ../numerics/sources.yaml, preprocessing: torchvision_V2_resize232_bilinear_antialias_crop224_normalize}
+    calibration: {source: Imagenette_train, images: 260, per_class: 26, sample_limit: 1024}
+    host_math_policy: native
+    quantization:
+      recipe: recipes/resnet50.json
+      file_sha256: b828e83887c53fd440668c664685989949a66edaf78ff79c7fe2c5127032f3f2
+      recipe_sha256: b840ae04104798799670015e39d2a5be692a70bc2a6ada42eb75d6878dd2ffbd
+      variant: native-epilogue-contractions-calibration-1024
+      source_contractions: {conv2d: 53, linear: 1}
+      selected_host_float: [residual_add, adaptive_average_pool]
+      selected_epilogue_exits: {requant_with_relu: 32, raw_accumulator: 22}
+    chain: {kind: single}
+    selected_chain_steps: 1
+    declared_arrays_per_chain: 1
+    capture_session_stream_steps: 256
+    quality_policy: ../numerics/models.yaml#models.resnet50.judged
+    stages:
+      model:
+        steps: 1
+        inputs: [{name: image, dtype: f32, shape: [1, 3, 224, 224]}]
+        outputs: [{name: logits, dtype: f32, shape: [1, 1000]}]
+  tiny_llama:
+    checkpoint: {id: TinyLlama/TinyLlama-1.1B-Chat-v1.0, revision: fe8a4ea1ffedaf415f4da2f062534de366a451e6}
+    architecture: {layers: 22, hidden: 2048, intermediate: 5632, attention_heads: 32, kv_heads: 4, head_dim: 64, vocabulary: 32000, max_positions: 2048, rms_norm_epsilon: 0.00001, rope_theta: 10000, batch: 1}
+    source_precision: checkpoint_BF16_loaded_FP32_before_INT8_capture
+    capture_input: {source: synthetic_seed_0, synthetic: true, paper_quality_cohort: false}
+    external_evaluation_input: {selection: visible/v00, source: WikiText2_test_article0, stored_tokens: 160, consumed_tokens: 64, derived_member: visible/v00/inputs.npz, sha256: 065d978c1f302bc4c2ee8f74dc6823d72b81224baf30a51b877919cbfa450629}
+    calibration: {source: WikiText2_train, prefill_samples: 128, decode_samples: 1024, decode_stride: 1}
+    host_math_policy: portable_exp_trig
+    quantization:
+      recipe: recipes/tiny_llama.json
+      file_sha256: 839657c5c84906a03e1a5fdf7b7f8c68ccc73757d26a448d3380137d71b9ce2e
+      recipe_sha256: 4f14c71f4195ee4481de9814fee6ed578953a14d21adc0aab20e7b4f261b886d
+      variant: static-heads-softmax2-bounded-partner2-operands2
+      source_linear_decisions_per_program: 155
+      attention: {scales: static_heads, softmax_output_planes: 2, partner_planes: 2, ordinary_qk_planes: 2}
+      range_transforms: {smoothquant_alpha: 0.5, smooth_groups: [qkv, gate_up, o], statistics_segments: 32, outlier_split_ratio: 8, width_alignment: 16, selected_width_buckets: [5728, 6096]}
+    chain: {kind: causal, prefill_tokens: 32, decode_steps: 32}
+    selected_chain_steps: 33
+    declared_arrays_per_chain: 99
+    recurrence:
+      token: fixed_input_tokens[prefill_tokens+step]
+      teacher_forced: true
+      free_generation: false
+      kv_cache_axes: [K_or_V, layer, batch, kv_head, capacity, head_dim]
+      kv_reset: each_input_case
+      kv_and_positions: prefill_outputs_then_previous_decode_outputs
+    quality_policy: ../numerics/models.yaml#models.tiny_llama.judged
+    stages:
+      prefill:
+        steps: 1
+        inputs: [{name: tokens, dtype: i64, shape: [1, 32]}]
+        outputs:
+          - {name: last_logits, dtype: f32, shape: [1, 32000]}
+          - {name: kv_cache, dtype: f32, shape: [2, 22, 1, 4, 64, 64]}
+          - {name: positions, dtype: i64, shape: [22]}
+      decode:
+        steps: 32
+        inputs:
+          - {name: next_token, dtype: i64, shape: [1, 1]}
+          - {name: kv_cache, dtype: f32, shape: [2, 22, 1, 4, 64, 64]}
+          - {name: positions, dtype: i64, shape: [22]}
+        outputs:
+          - {name: last_logits, dtype: f32, shape: [1, 32000]}
+          - {name: kv_cache, dtype: f32, shape: [2, 22, 1, 4, 64, 64]}
+          - {name: positions, dtype: i64, shape: [22]}
+  smolvla:
+    checkpoint: {id: lerobot/smolvla_base, revision: c83c3163b8ca9b7e67c509fffd9121e66cb96205}
+    vlm_checkpoint: {id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct, revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467}
+    architecture: {selected_vlm_layers: 16, expert_layers: 16, base_text_config_layers: 32, expert_width_multiplier: 0.75, self_attention_every_n_layers: 2, attention_mode: cross_attn, batch: 1, actual_cameras: 1, checkpoint_declared_cameras: 3, language_slots: 48, prefix_slots: 113, action_horizon: 50, semantic_action_channels: 6, padded_action_channels: 32}
+    source_precision: FP32_policy_with_two_captured_wider_rotary_exceptions_in_flow
+    capture_input: {dataset: lerobot/aloha_sim_insertion_human, revision: cc571a3c661df81b566dbfde3d5c1e85fcdf7884, episode: 0, frame: 0, noise_seed: 0, synthetic: false}
+    external_evaluation_input: {selection: visible/v00, dataset: lerobot/aloha_sim_insertion_human, episode: 0, frame: 100, noise_seed: 1000, derived_member: visible/v00/observation.npz, sha256: e4863c12cb7f9ae9bdf9f20ec48d6788083a81f29bb680738f420daed5405414}
+    preprocessing: LeRobot_0.6_processors_resize_pad512_STATE_and_ACTION_MEAN_STD_VISUAL_IDENTITY
+    calibration: {samples_per_program: 1}
+    host_math_policy: portable_neural_f32
+    quantization:
+      recipe: recipes/smolvla.json
+      file_sha256: ce0027045998257aa6d2bb91afd401ce6be4b8d06c5937bd469bce5ceb48628c
+      recipe_sha256: cf31d473d2907e6c7c0a31b0c3101c6b5f1c8005ea6f476eb6ab77b48ac8bfad
+      variant: static-heads-softmax2-bounded-operands2
+      source_contraction_decisions: {prefix_encode: 187, flow_denoise: 116}
+      attention: {scales: static_heads, softmax_output_planes: 2, residual_operand_planes: 2}
+    chain: {kind: flow, steps: 10}
+    selected_chain_steps: 12
+    declared_arrays_per_chain: 33
+    recurrence:
+      time_initial: 1.0
+      delta_time: -0.1
+      carried_arrays: [actions, prefix_cache, time]
+      prefix_mask: prefix_output_0_reused
+      initial_actions: seeded_noise
+      action_decode: identity_slice_retains_32_channels_without_physical_unit_postprocessor
+    quality_policy: ../numerics/models.yaml#models.smolvla.judged
+    stages:
+      prefix_encode:
+        steps: 1
+        inputs:
+          - {name: image, dtype: f32, shape: [1, 3, 512, 512]}
+          - {name: image_mask, dtype: i1, shape: [1]}
+          - {name: language_tokens, dtype: i64, shape: [1, 48]}
+          - {name: language_mask, dtype: i1, shape: [1, 48]}
+          - {name: state, dtype: f32, shape: [1, 32]}
+        outputs:
+          - {name: prefix_mask, dtype: i1, shape: [1, 113]}
+          - {name: prefix_cache, dtype: f32, shape: [2, 16, 1, 113, 5, 64]}
+      flow_denoise:
+        steps: 10
+        inputs:
+          - {name: prefix_mask, dtype: i1, shape: [1, 113]}
+          - {name: prefix_cache, dtype: f32, shape: [2, 16, 1, 113, 5, 64]}
+          - {name: actions, dtype: f32, shape: [1, 50, 32]}
+          - {name: time, dtype: f32, shape: [1]}
+        outputs:
+          - {name: actions, dtype: f32, shape: [1, 50, 32]}
+          - {name: prefix_cache, dtype: f32, shape: [2, 16, 1, 113, 5, 64]}
+          - {name: time, dtype: f32, shape: [1]}
+      action_decode:
+        steps: 1
+        inputs: [{name: actions, dtype: f32, shape: [1, 50, 32]}]
+        outputs: [{name: actions, dtype: f32, shape: [1, 50, 32]}]
+numerical_reporting: ../numerics/models.yaml#numerics
+performance_reporting:
+  primary_scope: complete_chain_including_host_transfer_and_all_recurrent_steps
+  report_separately: [cold_initialization, warm_chain, host_work, transfer, accelerator_cycles, simulator_wall_time]
+  resnet50: [single_image_latency]
+  tiny_llama: [prefill_latency, decode_per_token_distribution, decode_total, complete_chain]
+  smolvla: [prefix_latency, denoise_per_step_distribution, denoise_total, action_decode, complete_chain]
+  timing_source: explicitly_label_gSIM_measured_vs_Spike_surrogate_vs_FireSim_board
+  phase2_calibration: retain_per_call_cycle_labels_fit_on_training_validate_on_held_out_gSIM
+  roofline: bind_MAC_count_bytes_memory_level_clock_and_peak_conventions
+  stop_policy: select_finite_wall_token_and_plateau_budgets_in_phase2_manifest_before_launch

@@ -1,0 +1,25 @@
+{
+  "protocol_commit": "8ec99308cb1182b9b896a6075300312266fadf6f",
+  "tinyllama_e2e": "32-token prefill + 32 decode calls; approved correction recorded",
+  "quality": "only pinned protocol; FP quality report-only for functional_v1",
+  "budgets_seconds": {
+    "resnet": 14400,
+    "tinyllama": 3600,
+    "smolvla": 3600
+  },
+  "e2e_outside_tuning_budget": true,
+  "concurrency": "one slot per model concurrently, approved for now; remote worker owns actual allocation",
+  "accounting": "actual tuning slot occupancy, CPU preparation and final E2E excluded; approved for now",
+  "graph_search": "Start with published settings; then search existing graph options within the same budgets",
+  "tinyllama_tuning": "tune using 16/1, e2e with 32/32",
+  "our_scope": "ELFs or instructions to create them after handoff; no deployment details",
+  "remote_correctness": "FireSim guest checks; no sequential Spike preflight",
+  "budget_exhaustion": {
+    "stop_new_submissions": true,
+    "finish_active_runs": true,
+    "queued_jobs_after_limit": false,
+    "record_post_budget_completion_seconds": true,
+    "per_run_watchdog": "separate remote supplied hang limit; retain cycle pruning",
+    "additional_tuning_allowance": false
+  }
+}

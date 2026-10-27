@@ -1,0 +1,61 @@
+schema_version: 1
+id: gemmini-functional
+target: gemmini
+description: Capsule derivation and a continuous functional compiler experiment using the existing engines.
+inputs:
+  target: target/descriptor.yaml
+# No candidate program may hand the accelerator a whole loop nest (its hardware-loop FSM): the role is
+# closed-vocabulary (merlin.kernels.roles), Phase 0 resolves it to this target's own instructions from
+# the RTL facts, and the whole linked ELF is scanned in Phase 1 and in the Phase 2 candidate arm. The
+# Phase 2 vendor-reference arm is the bar and is exempt.
+policy:
+  prohibited_instruction_roles: [loop_descriptor]
+phases:
+  0:
+    adapter: capsule_derivation
+    config:
+      recipe: phase0/recipe.yaml
+      software_spec: target/software-spec.yaml
+      capability_contract: target/contracts/target_contract.yaml
+      hardware_spec: platform/hardware.yaml
+      # Diagnostic only: review and production-source consistency are not established.
+      # Kept diagnostic on purpose so an ordinary run of this example never claims verified
+      # evidence. A release run selects verified evidence explicitly on the command line
+      # (`merlin experiment run ... --phase0-evidence-mode verified`), which overrides this value
+      # and then requires an audited `validation.json` beside the selected RTL facts, sealed
+      # capture attestations, and the reviewed software/host inputs; any gap makes Phase 0 fail
+      # closed rather than silently downgrade.
+      evidence_mode: diagnostic
+      # Select freshly derived conformance/synthesis artifacts with CLI overrides.
+      performance_template: ../../experiments/templates/phase0/performance.yaml
+      # Private, operator-owned held-out sweeps (gitignored; never example content). Phase 0
+      # regenerates the hidden cohort from it on every run, and the run refuses a hidden capsule
+      # that repeats a public program.
+      hidden_profile: ../../merlin/contract/capsules/profiles/gemmini.hidden.yaml
+      descriptor: target/descriptor.yaml
+  1:
+    # The operator-supervised fire-aligned EL4 launch is pinned separately, argv and environment
+    # included, by phase1/launch/el4-fire-aligned.yaml and its release config
+    # phase0/release/fire-aligned-v10.yaml (merlin_experiments.phase1.launch_config render/verify).
+    # Those are operator inputs, not catalog definitions.
+    adapter: capsule_bench
+    config:
+      require_reviewed_corpus: true
+      descriptor: target/descriptor.yaml
+      # EL4 selects the RTL-informed treatment; the runner derives its stable legacy keys.
+      level: EL4
+      # Regenerate/review this bundle for the selected corpus before execution.
+      bundle: merlin_assisted_rtlchecks_public_v0
+      bundle_manifest: ../../merlin/experiments/capsule_bench/targets/gemmini/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
+      # Required operator-owned timing evidence; not supplied by this example.
+      oracle_timing: ../../merlin/experiments/capsule_bench/targets/gemmini/.oracle_timing.gemmini.json
+      # Team-wide agent selection for result consistency: Codex on the ChatGPT seat ($CODEX_HOME/auth.json).
+      model: gpt-6.1-sol
+      effort: high
+      driver: codex
+      provider: subscription
+      max_wall_s: 43200
+      round_timeout: 43200
+      grade_interval: 900
+      # The shared gSIM slot policy also caps concurrent grades at five globally.
+      sim_max_jobs: 5

@@ -1,0 +1,14 @@
+{
+  "status": "pass",
+  "input_dir": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release",
+  "payload_files_verified": 182,
+  "archive_sha256": "0f4abd85fae9fa3528c151ad4f73cd54a940e62b6bdbad4e92ec21b78ef6b95a",
+  "source_policy": "Use committed branch sources; do not apply archived historical patches"
+}
+{"relocated": 19, "frozen_proofs_unchanged": true}
+{
+  "status": "pass",
+  "payload_files_verified": 171,
+  "chunks": 37,
+  "root": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks"
+}

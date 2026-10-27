@@ -1,0 +1,26 @@
+........                                                                 [100%]
+=============================== warnings summary ===============================
+merlin/tests/gemmini/test_selected_model_preparation.py::test_canonical_prefill_decode_retains_floating_cache_and_layer_positions
+merlin/tests/gemmini/test_selected_model_preparation.py::test_canonical_prefill_decode_retains_floating_cache_and_layer_positions
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:26: DeprecationWarning: Importing 'MatmulOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import MatmulOp' instead.
+    from xdsl.dialects.linalg import MatmulOp, TransposeOp
+
+merlin/tests/gemmini/test_selected_model_preparation.py::test_canonical_prefill_decode_retains_floating_cache_and_layer_positions
+merlin/tests/gemmini/test_selected_model_preparation.py::test_canonical_prefill_decode_retains_floating_cache_and_layer_positions
+  /home/grammy/blast/merlin-tvm-tuning/out/build/upstreams/model2mlir-selected-preparation/m2m/ir/decompositions.py:26: DeprecationWarning: Importing 'TransposeOp' directly from 'xdsl.dialects.linalg' is deprecated. Please use 'from xdsl.dialects.linalg.ops import TransposeOp' instead.
+    from xdsl.dialects.linalg import MatmulOp, TransposeOp
+
+merlin/tests/gemmini/test_selected_model_preparation.py::test_canonical_prefill_decode_retains_floating_cache_and_layer_positions
+  /home/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/handoff-el4-deps/torchao/dtypes/uintx/__init__.py:1: DeprecationWarning: Importing from torchao.dtypes.uintx.dyn_int8_act_int4_wei_cpu_layout is deprecated. Please use 'from torchao.prototype.dtypes import Int8DynamicActInt4WeightCPULayout' instead. This import path will be removed in a future release of torchao. See https://github.com/pytorch/ao/issues/2752 for more details.
+    from .dyn_int8_act_int4_wei_cpu_layout import (
+
+merlin/tests/gemmini/test_selected_model_preparation.py::test_canonical_prefill_decode_retains_floating_cache_and_layer_positions
+  /home/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/handoff-el4-deps/torchao/dtypes/uintx/__init__.py:22: DeprecationWarning: Importing from torchao.dtypes.uintx.uintx_layout is deprecated. Please use 'from torchao.prototype.dtypes import UintxLayout, UintxTensor' instead. This import path will be removed in a future release of torchao. See https://github.com/pytorch/ao/issues/2752 for more details.
+    from .uintx_layout import (
+
+merlin/tests/gemmini/test_selected_model_preparation.py::test_canonical_prefill_decode_retains_floating_cache_and_layer_positions
+  /home/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/handoff-el4-deps/torchao/dtypes/__init__.py:23: DeprecationWarning: Importing BlockSparseLayout from torchao.dtypes is deprecated. Please use 'from torchao.prototype.dtypes import BlockSparseLayout' instead. This import path will be removed in a future torchao release. Please check issue: https://github.com/pytorch/ao/issues/2752 for more details. 
+    from .uintx.block_sparse_layout import BlockSparseLayout
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+8 passed, 7 warnings in 6.64s

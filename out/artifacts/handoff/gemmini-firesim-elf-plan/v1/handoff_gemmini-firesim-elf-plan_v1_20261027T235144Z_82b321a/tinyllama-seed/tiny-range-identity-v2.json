@@ -1,0 +1,12 @@
+{
+  "checkpoint": "6e6001da2106d4757498752a021df6c2bdc332c650aae4bae6b0c004dcf14933",
+  "calibration": "4a6ebc0c913138f830fc9f6efced0bb71e4286e19f70699e81a48e591cad2a0c",
+  "statistics_segments": 32,
+  "alpha": 0.5,
+  "split_ratio": 8,
+  "alignment": 16,
+  "splitting_threshold": "8 times the median positive observed gated-channel absmax",
+  "source": "4a0af90b5ac446f39ad0a78822cb1f8d9d3ee7a363d3a3af77afc566d34d8a99",
+  "statistics_sha256": "896689b5e22ff56c729e797285ed9b0221b9560985dc739e353ca5df6ea520c6",
+  "statistics_producer_sha256": "46b64a0e5fb014f3eef173eaf79385465bc33bab0d6c3b61e28f23d1a1a4d962"
+}

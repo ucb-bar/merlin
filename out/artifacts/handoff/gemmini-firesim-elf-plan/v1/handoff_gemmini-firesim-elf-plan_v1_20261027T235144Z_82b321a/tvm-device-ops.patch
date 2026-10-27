@@ -1,0 +1,122 @@
+diff --git a/apps/gemmini/tune_models.py b/apps/gemmini/tune_models.py
+index a2948841f..e21cc7c77 100644
+--- a/apps/gemmini/tune_models.py
++++ b/apps/gemmini/tune_models.py
+@@ -55,7 +55,7 @@ from tvm.relax.backend.contrib.gemmini_search import (  # pylint: disable=wrong-
+     open_gemmini_database,
+     tune_gemmini_tasks,
+ )
+-from tvm.relax.backend.contrib.gemmini_sketch import default_schedule  # pylint: disable=wrong-import-position
++from tvm.relax.backend.contrib.gemmini_meta_schedule import default_device_schedule  # pylint: disable=wrong-import-position
+ from tvm.relax.backend.contrib.gemmini_target import GemminiCapabilities  # pylint: disable=wrong-import-position
+ from tvm.relax.backend.contrib.gemmini_tensorir import (  # pylint: disable=wrong-import-position
+     prepare_gemmini_tensorir_workloads,
+@@ -560,7 +560,7 @@ def main(argv=None):
+             record = {"status": "deferred", "reason": "matching current trace freshly validated"}
+         else:
+             try:
+-                default_mod = default_schedule(func).mod
++                default_mod = default_device_schedule(func).mod
+                 record = baseline(campaign, key, "default", default_mod)
+             except (ValueError, tvm.TVMError) as error:
+                 record = {"status": "failed", "error": str(error)}
+@@ -575,7 +575,7 @@ def main(argv=None):
+         with campaign.lock:
+             if record.get("status") == "passed":
+                 retain_measured_baseline(fallback_database, task.dispatched[0],
+-                                         default_schedule(func).trace, record, capabilities.target())
++                                         default_device_schedule(func).trace, record, capabilities.target())
+             if item.get("current", {}).get("status") == "passed":
+                 retain_measured_baseline(fallback_database, task.dispatched[0], current_traces[key],
+                                          item["current"], capabilities.target())
+@@ -621,7 +621,7 @@ def main(argv=None):
+     for task, item in zip(tasks, inventory):
+         record = item["default"]
+         if record.get("status") == "passed":
+-            sch = default_schedule(task.dispatched[0]["main"])
++            sch = default_device_schedule(task.dispatched[0]["main"])
+             retain_measured_baseline(database, task.dispatched[0], sch.trace, record, capabilities.target())
+         if item["workload"] in current_traces:
+             retain_measured_baseline(database, task.dispatched[0], current_traces[item["workload"]],
+diff --git a/apps/gemmini/verify_tensorir.py b/apps/gemmini/verify_tensorir.py
+index f8822203e..fe92c719d 100644
+--- a/apps/gemmini/verify_tensorir.py
++++ b/apps/gemmini/verify_tensorir.py
+@@ -1263,6 +1263,7 @@ def prepare(args, *, cases=None, prepared_reports=None, additional_bindings=()):
+         "apps/gemmini/baremetal.py",
+         "apps/gemmini/matmul.c",
+         "apps/gemmini/matmul.h",
++        "apps/gemmini/verify_device_ops.py",
+         "src/tir/schedule/primitive/reduction.cc",
+         "src/tir/schedule/state.cc",
+         "src/tir/schedule/primitive/decompose_padding.cc",
+@@ -1308,6 +1309,10 @@ def prepare(args, *, cases=None, prepared_reports=None, additional_bindings=()):
+                 "gemmini_search",
+                 "gemmini_layout",
+                 "gemmini_epilogue",
++                "gemmini_affine",
++                "gemmini_bytes",
++                "gemmini_pool",
++                "gemmini_sketch",
+             )
+         ],
+     ):
+diff --git a/python/tvm/relax/backend/contrib/gemmini_meta_schedule.py b/python/tvm/relax/backend/contrib/gemmini_meta_schedule.py
+index 2627438bf..65bdb817c 100644
+--- a/python/tvm/relax/backend/contrib/gemmini_meta_schedule.py
++++ b/python/tvm/relax/backend/contrib/gemmini_meta_schedule.py
+@@ -60,6 +60,28 @@ def _supported(func):
+     return None, []
+ 
+ 
++def default_device_schedule(func, *, capabilities=None):
++    """Untuned baseline using the same mathematical family dispatch as search.
++
++    Return an ordinary replayable TensorIR schedule. Physical allocation and
++    DMA hazard handling still happen in the existing memory lowering.
++    """
++    kind, _ = _supported(func)
++    if kind == "contraction":
++        from .gemmini_sketch import default_schedule
++
++        return default_schedule(func, capabilities=capabilities)
++    schedule = {
++        "reduction": schedule_reduction,
++        "pool": schedule_pool,
++        "elementwise": schedule_elementwise,
++    }.get(kind)
++    if schedule is None:
++        raise ValueError("No supported Gemmini mathematical family for default schedule")
++    result, _, _ = schedule(func, tensorize=True)
++    return result
++
++
+ def _blocks(func):
+     found = []
+     tir.stmt_functor.post_order_visit(
+diff --git a/tests/python/relax/test_backend_contrib_gemmini_device_ops.py b/tests/python/relax/test_backend_contrib_gemmini_device_ops.py
+index c2d862c0e..83882c1e1 100644
+--- a/tests/python/relax/test_backend_contrib_gemmini_device_ops.py
++++ b/tests/python/relax/test_backend_contrib_gemmini_device_ops.py
+@@ -79,6 +79,21 @@ class DeviceOpsTests(unittest.TestCase):
+             )
+             tvm.ir.assert_structural_equal(actual.scheduled_mod, result.scheduled_mod)
+ 
++    def test_default_baselines_cover_secondary_families_and_replay(self):
++        from tvm.relax.backend.contrib.gemmini_meta_schedule import default_device_schedule
++
++        for name in ("subtract", "max_pool_2", "max_pool_3", "dma_int64_rectangular",
++                     "standalone_readout", "window_average_4", "window_average_9"):
++            with self.subTest(case=name):
++                case = next(case for case in fixtures() if case[0] == name)
++                func = next(f for f in case[1].functions.values() if isinstance(f, tir.PrimFunc))
++                schedule = default_device_schedule(func)
++                replay = tir.Schedule(func, debug_mask="all")
++                schedule.trace.apply_to_schedule(replay, remove_postproc=False)
++                tvm.ir.assert_structural_equal(schedule.mod, replay.mod)
++                lowered = lower_tensorir_schedule(func, replay, workload_metadata={"operation": name})
++                self.assertIn("tvm_gemmini_", lowered.scheduled_mod.script())
++
+     def test_new_families_are_visible_to_stock_metaschedule(self):
+         from tvm import meta_schedule as ms
+         from tvm.relax.backend.contrib.gemmini_meta_schedule import gemmini_space_generator

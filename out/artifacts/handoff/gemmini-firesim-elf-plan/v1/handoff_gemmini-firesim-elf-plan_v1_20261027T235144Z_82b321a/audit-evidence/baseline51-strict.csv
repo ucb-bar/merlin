@@ -1,0 +1,52 @@
+operator,declaration_paths,status,reason,qualified
+mm,['operations.contraction'],device_subregion_candidate,Only admitted integer contraction and seed; preserve any source output conversion separately.,False
+bmm,['operations.contraction'],device_subregion_candidate,Only admitted integer contraction and seed; preserve any source output conversion separately.,False
+addmm,['operations.contraction'],device_subregion_candidate,Only admitted integer contraction and seed; preserve any source output conversion separately.,False
+convolution,['operations.contraction'],device_subregion_candidate,Only admitted integer contraction and seed; preserve any source output conversion separately.,False
+convolution_backward,['operations.movement'],host_arithmetic_with_movement_candidate,Only separately proved movement stages can be device work; whole floating operator is not admitted.,False
+add.Tensor,['operations.elementwise_map_standalone'],outside_declared_exact_domain,"Historical full-i32 boundary fixtures wrap. Current accumulator code exists, but bounded-exact affine does not authorize this domain.",False
+sub.Tensor,[],host_only_for_baseline,"Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads.",False
+add.Scalar,['operations.elementwise_map_standalone'],outside_declared_exact_domain,"Historical full-i32 boundary fixtures wrap. Current accumulator code exists, but bounded-exact affine does not authorize this domain.",False
+sub.Scalar,['operations.elementwise_map_standalone'],outside_declared_exact_domain,"Historical full-i32 boundary fixtures wrap. Current accumulator code exists, but bounded-exact affine does not authorize this domain.",False
+mul.Scalar,[],host_only_for_baseline,"Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads.",False
+div.Scalar,[],host_only_for_baseline,"Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads.",False
+neg,[],host_only_for_baseline,"Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads.",False
+relu,['operations.elementwise_map_standalone'],device_subregion_candidate,"Historical i8 max(x,0): unit load and identity-scale narrow ReLU; no f32 ReLU claim.",False
+mean.dim,[],host_only_for_baseline,Historical floating arithmetic is not the declared integer sum/window-mean program.,False
+avg_pool1d,['operations.movement'],host_arithmetic_with_movement_candidate,Only separately proved movement stages can be device work; whole floating operator is not admitted.,False
+avg_pool2d,['operations.movement'],host_arithmetic_with_movement_candidate,Only separately proved movement stages can be device work; whole floating operator is not admitted.,False
+avg_pool3d,['operations.movement'],host_arithmetic_with_movement_candidate,Only separately proved movement stages can be device work; whole floating operator is not admitted.,False
+adaptive_avg_pool1d,[],host_only_for_baseline,Historical floating arithmetic is not the declared integer sum/window-mean program.,False
+_adaptive_avg_pool2d,[],host_only_for_baseline,Historical floating arithmetic is not the declared integer sum/window-mean program.,False
+_adaptive_avg_pool3d,[],host_only_for_baseline,Historical floating arithmetic is not the declared integer sum/window-mean program.,False
+avg_pool2d_backward,[],host_only_for_baseline,Historical floating arithmetic is not the declared integer sum/window-mean program.,False
+_adaptive_avg_pool2d_backward,[],host_only_for_baseline,Historical floating arithmetic is not the declared integer sum/window-mean program.,False
+col2im,[],host_only_for_baseline,Historical floating arithmetic is not the declared integer sum/window-mean program.,False
+clone,['operations.movement'],elided_or_host_abi_copy,Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.,False
+repeat,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+cat,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+slice_scatter,['operations.movement'],movement_facts_required,Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.,False
+select_scatter,['operations.movement'],movement_facts_required,Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.,False
+fill.Scalar,['operations.movement'],elided_or_host_abi_copy,Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.,False
+full,['operations.movement'],elided_or_host_abi_copy,Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.,False
+full_like,['operations.movement'],elided_or_host_abi_copy,Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.,False
+constant_pad_nd,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+reflection_pad1d,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+reflection_pad2d,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+reflection_pad3d,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+replication_pad2d,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+replication_pad3d,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+_to_copy,['operations.elementwise_map_standalone'],widening_candidate,Historical signed-i8 to i32 unit-scale accumulator load; numeric conversion is not bitwise movement.,False
+as_strided,['operations.movement'],movement_facts_required,Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.,False
+diagonal,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+permute,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+scalar_tensor,['operations.movement'],elided_or_host_abi_copy,Current fixture elides or retains host ABI copy; no executed accelerator arithmetic claim.,False
+select.int,['operations.movement'],movement_facts_required,Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.,False
+slice.Tensor,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+split_with_sizes,['operations.movement'],movement_facts_required,Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.,False
+squeeze.dim,['operations.movement'],movement_facts_required,Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.,False
+squeeze.dims,['operations.movement'],movement_facts_required,Historical i32/f32 carrier transfer uses accumulator path; do not claim F1 byte-transfer conformance without changing/proving the actual path.,False
+unsqueeze,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+view,"['operations.movement', 'operations.movement_bitwise']",movement_or_view_candidate,Historical i8 static selector/copy; prove physical commands and aliases. Uniform fill and host-created regions are separately accounted.,False
+mean.default,[],host_only_for_baseline,Historical floating arithmetic is not the declared integer sum/window-mean program.,False
+sum.dim_IntList,"['operations.reduction_standalone', 'operations.contraction']",device_subregion_candidate,Bounded byte-source sum; i64 ABI result conversion is retained host work.,False

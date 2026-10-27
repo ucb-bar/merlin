@@ -1,0 +1,200 @@
+{
+  "merlin_revision": "f46e73af10c5f36e8c22117d01239120e41d38a4",
+  "tvm_revision": "42b3c1ef27abe878f930e48b335b24956beb0e56",
+  "device_ops_source": "Fetched and verified public commit 42b3c1ef27abe878f930e48b335b24956beb0e56; one commit above handoff",
+  "tvm_handoff_revision": "3423bd6818ab752ddd9cdb5d5773743e48c65f1d",
+  "frontend_registered_keys": 149,
+  "baseline_operators": 51,
+  "fixture_categories": {
+    "array": 5,
+    "movement + CPU": 4,
+    "accumulator": 3,
+    "CPU": 12,
+    "readout ReLU": 1,
+    "elided / ABI copy": 5,
+    "movement": 21
+  },
+  "backend_modules": 20,
+  "intrinsic_api_sites": 24,
+  "existing_test_functions": 295,
+  "backend_runtime_symbol_references": [
+    "tvm_gemmini_",
+    "tvm_gemmini_begin",
+    "tvm_gemmini_compute",
+    "tvm_gemmini_compute_ws",
+    "tvm_gemmini_dma_a",
+    "tvm_gemmini_dma_a_blocks",
+    "tvm_gemmini_dma_acc_add",
+    "tvm_gemmini_dma_acc_write",
+    "tvm_gemmini_dma_b",
+    "tvm_gemmini_dma_b_blocks",
+    "tvm_gemmini_dma_out",
+    "tvm_gemmini_dma_pool_out",
+    "tvm_gemmini_dma_relu_out",
+    "tvm_gemmini_dma_scaled_in",
+    "tvm_gemmini_dma_scaled_out",
+    "tvm_gemmini_dma_spad_out",
+    "tvm_gemmini_dma_widen",
+    "tvm_gemmini_end",
+    "tvm_gemmini_matmul_i8_i32",
+    "tvm_gemmini_validate_matmul_i8_i32",
+    "tvm_gemmini_validate_tensor_buffers",
+    "tvm_gemmini_validate_tensor_output",
+    "tvm_gemmini_zero_acc"
+  ],
+  "validation": "static AST/registration/coverage only; no TVM import, build, simulation or benchmark",
+  "sources": [
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini.py",
+      "sha256": "188e6fd091d5c57394b61916732849c02fd5e214e379ce3374da792408bd83bf",
+      "lines": 361
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_affine.py",
+      "sha256": "e80a79e43906ce9a49b673aadde59cbabb0a338c77bb9c86fb77e878aa401907",
+      "lines": 394
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_bias.py",
+      "sha256": "42e20220ba1aaef1f6bf5bd10f083c16f063c1ce03823cc2ac9c6d8ac8ad877e",
+      "lines": 514
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_bytes.py",
+      "sha256": "57f810fdd54265912a586c45dd14c5464a104d5aaad0aab79072e9cfec0f80ff",
+      "lines": 141
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_conv.py",
+      "sha256": "94799fe0ded364295e8a9384c66a8d179bb078612737825279b8c5ec0bbdd2a2",
+      "lines": 163
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_elementwise.py",
+      "sha256": "2d8f8ebe0b101a15bece5448ddac1b4a5b1ecfe5acb41dd2486ed16c42fa664f",
+      "lines": 883
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_epilogue.py",
+      "sha256": "85e2e912b23df06aa340ba051952c8f915cb223f78209e17e7b980ba43a09f79",
+      "lines": 492
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_intrin.py",
+      "sha256": "a91df2f20582d4fb601d954d046eb510a5fd626937b9ed2321b6ebd584aa3e15",
+      "lines": 250
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_layout.py",
+      "sha256": "bd0917cd0c239c47fa5eb76da2598a286edef97942d3348f628ef7bd4ffcd399",
+      "lines": 98
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_memory.py",
+      "sha256": "272d4e879070fede320516d2f9d93f83ad28995646de8f4987bd9813c3a25f43",
+      "lines": 610
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_meta_schedule.py",
+      "sha256": "165d6b648c9cf33a3d0688137e231725d4187ea81f104bbe01fe6e844c6e7bda",
+      "lines": 266
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_pool.py",
+      "sha256": "9fcb7da603972410bf7ec82e7c979fc48601d14b508d8496bef6aa94c1f87002",
+      "lines": 236
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_reduction.py",
+      "sha256": "a4ae3ad27d03d429b54f1133851a8e722fcb155854763551d8fc357b0b6079d1",
+      "lines": 392
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_regions.py",
+      "sha256": "7f869679fee0291b46f126f6c71266cecf425d02e921e6d9926edc8f6951dc08",
+      "lines": 231
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_schedule.py",
+      "sha256": "1f4912c080bb3a137c333a6e80cd000a4c7aa4ceb566646aebe8ddac0749eb7c",
+      "lines": 249
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_search.py",
+      "sha256": "0d5b9bb1fef7bc0f34be2f6d9fb540dead5252bddd9aa403fdb368926293bec3",
+      "lines": 304
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_sketch.py",
+      "sha256": "fff95d447d8a8d584128c06032a2e2ad87afbe4a27b6456fe38e7f2d7bccb754",
+      "lines": 575
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_target.py",
+      "sha256": "aaefd92eeedb6d2d943ad9d05467e51d78f83c4936836181cca18496206dfaec",
+      "lines": 91
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_tensorir.py",
+      "sha256": "854b64dbccbf052265d1e9ff2cd05bbd8903bba784ef030302e670881bec0d29",
+      "lines": 714
+    },
+    {
+      "path": "python/tvm/relax/backend/contrib/gemmini_tuning.py",
+      "sha256": "674638055a7578084a698385f8ec0319b147ddfc919f92641a39515a9b713d23",
+      "lines": 427
+    },
+    {
+      "path": "/scratch/grammy/tvm-device-op-audit/apps/gemmini/matmul.c",
+      "sha256": "dc98604b792e22594a3164464051761697c8aaede915f281558d1cb059871c98",
+      "lines": 441
+    },
+    {
+      "path": "/scratch/grammy/tvm-device-op-audit/apps/gemmini/matmul.h",
+      "sha256": "3aa2ffc1c8400e8cc421b56bc92d934b6d331bcb11c48e1f6ac28b5227c60318",
+      "lines": 109
+    },
+    {
+      "path": "/scratch/grammy/tvm-device-op-audit/apps/gemmini/OWNERSHIP.md",
+      "sha256": "3527ad1c2fc57aa01d852d00e30e2d9df75cc834bae5d1a512d45cfa7c87a872",
+      "lines": 291
+    },
+    {
+      "path": "/scratch/grammy/tvm-firesim-op-audit/apps/gemmini/operator_contracts.py",
+      "sha256": "f65f25d632df21b7a71f192888be8cefd36c4b23a1ef4f16ca5aab4ef58d3d7a",
+      "lines": 367
+    },
+    {
+      "path": "/scratch/grammy/tvm-firesim-op-audit/python/tvm/relax/frontend/torch/exported_program_translator.py",
+      "sha256": "90fc31bc0eef1174d6e7d2dfa059da84b8d30afc92af1e23d18a3b051e6a4714",
+      "lines": 1729
+    },
+    {
+      "path": "/scratch/grammy/merlin-tvm-op-audit/examples/gemmini/numerics/CURRENT_RUN_POLICY.md",
+      "sha256": "93481edb889f928d22d837da296565467c9a9ee957778b519ba5a5d444f766e6",
+      "lines": 106
+    },
+    {
+      "path": "/scratch/grammy/merlin-tvm-op-audit/examples/gemmini/comparisons/tvm/FIRESIM_ROUND2_HANDOFF.md",
+      "sha256": "430fc142a1a29f73c95561efa5aa28cf45a566e4cca0274f60eef1fc77b3f03c",
+      "lines": 258
+    }
+  ],
+  "checks": {
+    "audit_consistency": "passed",
+    "git_diff_check": "passed",
+    "structure_check": "failed: nine unchanged module-size findings",
+    "unchanged_finding_paths": [
+      "src/merlin/runtime/dispatch_runtime.py",
+      "src/merlin/runtime/backends/spike_model.py",
+      "src/merlin/targetgen/_m2m_capture_worker.py",
+      "src/merlin/targetgen/conformance.py",
+      "src/merlin/targetgen/corpus_synth.py",
+      "src/merlin/xdsl_dialects/lowering/compute_groups.py",
+      "packages/merlin-experiments/src/merlin_experiments/runner.py",
+      "packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_m2m.py",
+      "packages/merlin-experiments/src/merlin_experiments/phase0/generation.py"
+    ],
+    "runtime_tests": "not run; audit/documentation only"
+  }
+}

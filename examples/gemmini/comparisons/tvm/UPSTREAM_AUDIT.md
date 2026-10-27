@@ -1,5 +1,10 @@
 # Upstream audit and cleanup scope
 
+Historical source audit. For current integration, the sole 8ec99308 model protocol
+and run instructions use [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md). The dated refs
+below describe their original observations, not the selected campaign.
+
+
 ## Reference points
 
 | Repository/range | Meaning |

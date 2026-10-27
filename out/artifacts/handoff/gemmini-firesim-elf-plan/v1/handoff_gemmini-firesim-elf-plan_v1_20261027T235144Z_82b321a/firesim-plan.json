@@ -1,0 +1,416 @@
+{
+  "schema": "merlin.tvm.remote_elf_plan.v1",
+  "state": "BUILD_HANDOFF_READY_E2E_ASSETS_INCOMPLETE",
+  "decisions": {
+    "protocol_commit": "8ec99308cb1182b9b896a6075300312266fadf6f",
+    "tinyllama_e2e": "32-token prefill + 32 decode calls; approved correction recorded",
+    "quality": "only pinned protocol; FP quality report-only for functional_v1",
+    "budgets_seconds": {
+      "resnet": 14400,
+      "tinyllama": 3600,
+      "smolvla": 3600
+    },
+    "e2e_outside_tuning_budget": true,
+    "concurrency": "one slot per model concurrently, approved for now; remote worker owns actual allocation",
+    "accounting": "actual tuning slot occupancy, CPU preparation and final E2E excluded; approved for now",
+    "graph_search": "Start with published settings; then search existing graph options within the same budgets",
+    "tinyllama_tuning": "tune using 16/1, e2e with 32/32",
+    "our_scope": "ELFs or instructions to create them after handoff; no deployment details",
+    "remote_correctness": "FireSim guest checks; no sequential Spike preflight",
+    "budget_exhaustion": {
+      "stop_new_submissions": true,
+      "finish_active_runs": true,
+      "queued_jobs_after_limit": false,
+      "record_post_budget_completion_seconds": true,
+      "per_run_watchdog": "separate remote supplied hang limit; retain cycle pruning",
+      "additional_tuning_allowance": false
+    }
+  },
+  "models": {
+    "resnet": {
+      "budget_seconds": 14400,
+      "ready_chunks": [
+        "resnet-classifier",
+        "resnet-stage1-block1",
+        "resnet-stage1-block2",
+        "resnet-stage1-block3",
+        "resnet-stage2-block1",
+        "resnet-stage2-block2",
+        "resnet-stage2-block3",
+        "resnet-stage2-block4",
+        "resnet-stage3-block1",
+        "resnet-stage3-block2",
+        "resnet-stage3-block3",
+        "resnet-stage3-block4",
+        "resnet-stage3-block5",
+        "resnet-stage3-block6",
+        "resnet-stage4-block1",
+        "resnet-stage4-block2",
+        "resnet-stage4-block3",
+        "resnet-stem"
+      ],
+      "owners": [
+        {
+          "id": "resnet-classifier",
+          "program": "resnet-release/resnet-chunks/resnet-classifier/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-classifier/fixture.npz",
+          "workload_keys": [
+            "c1de114b49824a5d"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stage1-block1",
+          "program": "resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+          "workload_keys": [
+            "47cf36513e812255",
+            "62a6546b34a3890a",
+            "898bd57e4cba96e3"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stage1-block2",
+          "program": "resnet-release/resnet-chunks/resnet-stage1-block2/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stage1-block2/fixture.npz",
+          "workload_keys": [
+            "fff51846b2df6781"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stage2-block1",
+          "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+          "workload_keys": [
+            "91dacb4f30bf3e05",
+            "0c3344cde71e998e",
+            "62ab010fc8a1f993",
+            "b3ded701376a0caf"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stage2-block2",
+          "program": "resnet-release/resnet-chunks/resnet-stage2-block2/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stage2-block2/fixture.npz",
+          "workload_keys": [
+            "77f7c2f4edb9525e"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stage3-block1",
+          "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+          "workload_keys": [
+            "da0442e6f48346cc",
+            "6537403fd9f7196b",
+            "109c588415f16975",
+            "3d95c42a7e6d6e09"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stage3-block2",
+          "program": "resnet-release/resnet-chunks/resnet-stage3-block2/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stage3-block2/fixture.npz",
+          "workload_keys": [
+            "a2a0a80c010eae43"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stage4-block1",
+          "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+          "workload_keys": [
+            "eb5758a54c9ae243",
+            "a074823bc5463923",
+            "8767ac914547a912",
+            "8d9a31defbfd421f"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stage4-block2",
+          "program": "resnet-release/resnet-chunks/resnet-stage4-block2/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stage4-block2/fixture.npz",
+          "workload_keys": [
+            "eb7dc343280e8916"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "resnet-stem",
+          "program": "resnet-release/resnet-chunks/resnet-stem/program.json",
+          "fixture": "resnet-release/resnet-chunks/resnet-stem/fixture.npz",
+          "workload_keys": [
+            "65970083614b0a62"
+          ],
+          "graph_fusion_level": 2
+        }
+      ],
+      "owner_count": 10,
+      "initial_unique_workloads": 21,
+      "e2e_arrays": 1
+    },
+    "tinyllama": {
+      "budget_seconds": 3600,
+      "ready_chunks": [
+        "tinyllama-k-projection-m1",
+        "tinyllama-k-projection-m16",
+        "tinyllama-mlp-5728-m1",
+        "tinyllama-mlp-5728-m16",
+        "tinyllama-mlp-6096-m1",
+        "tinyllama-mlp-6096-m16",
+        "tinyllama-q-projection-m1",
+        "tinyllama-q-projection-m16",
+        "tinyllama-v-projection-m1",
+        "tinyllama-v-projection-m16"
+      ],
+      "owners": [
+        {
+          "id": "tinyllama-k-projection-m1",
+          "program": "chunks/tinyllama/tinyllama-k-projection-m1/program.json",
+          "fixture": "chunks/tinyllama/tinyllama-k-projection-m1/fixture.npz",
+          "workload_keys": [
+            "1e9d111a67b0e4ad"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "tinyllama-k-projection-m16",
+          "program": "chunks/tinyllama/tinyllama-k-projection-m16/program.json",
+          "fixture": "chunks/tinyllama/tinyllama-k-projection-m16/fixture.npz",
+          "workload_keys": [
+            "a25555a4d96ed589"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "tinyllama-mlp-5728-m1",
+          "program": "chunks/tinyllama/tinyllama-mlp-5728-m1/program.json",
+          "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+          "workload_keys": [
+            "e2b2e38c8475729b",
+            "6ad75fad23e381d9"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "tinyllama-mlp-5728-m16",
+          "program": "chunks/tinyllama/tinyllama-mlp-5728-m16/program.json",
+          "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+          "workload_keys": [
+            "163badd66b85295b",
+            "f1a8934526971209"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "tinyllama-mlp-6096-m1",
+          "program": "chunks/tinyllama/tinyllama-mlp-6096-m1/program.json",
+          "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+          "workload_keys": [
+            "2fe37290e85a72df",
+            "e3a7373f296cb249"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "tinyllama-mlp-6096-m16",
+          "program": "chunks/tinyllama/tinyllama-mlp-6096-m16/program.json",
+          "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+          "workload_keys": [
+            "c3b2f5bcd802b368",
+            "6ede59e5214333e1"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "tinyllama-q-projection-m1",
+          "program": "chunks/tinyllama/tinyllama-q-projection-m1/program.json",
+          "fixture": "chunks/tinyllama/tinyllama-q-projection-m1/fixture.npz",
+          "workload_keys": [
+            "5d995ebc6ae3d52a"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "tinyllama-q-projection-m16",
+          "program": "chunks/tinyllama/tinyllama-q-projection-m16/program.json",
+          "fixture": "chunks/tinyllama/tinyllama-q-projection-m16/fixture.npz",
+          "workload_keys": [
+            "a09704cf46a14f9b"
+          ],
+          "graph_fusion_level": 2
+        }
+      ],
+      "owner_count": 8,
+      "initial_unique_workloads": 12,
+      "e2e_arrays": 99
+    },
+    "smolvla": {
+      "budget_seconds": 3600,
+      "ready_chunks": [
+        "smolvla-action-input-projection",
+        "smolvla-action-projection-update",
+        "smolvla-action-time-embedding",
+        "smolvla-expert-cross-attention-core",
+        "smolvla-expert-cross-qkv",
+        "smolvla-expert-mlp",
+        "smolvla-expert-self-attention-core",
+        "smolvla-expert-self-qkv"
+      ],
+      "owners": [
+        {
+          "id": "smolvla-action-input-projection",
+          "program": "chunks/smolvla/smolvla-action-input-projection/program.json",
+          "fixture": "chunks/smolvla/smolvla-action-input-projection/fixture.npz",
+          "workload_keys": [
+            "bbc8105935364813"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "smolvla-action-projection-update",
+          "program": "chunks/smolvla/smolvla-action-projection-update/program.json",
+          "fixture": "chunks/smolvla/smolvla-action-projection-update/fixture.npz",
+          "workload_keys": [
+            "c9dc9ef0157d056c"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "smolvla-action-time-embedding",
+          "program": "chunks/smolvla/smolvla-action-time-embedding/program.json",
+          "fixture": "chunks/smolvla/smolvla-action-time-embedding/fixture.npz",
+          "workload_keys": [
+            "6d7f0c18c4ffd17f",
+            "f968026e6bb15d51"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "smolvla-expert-cross-attention-core",
+          "program": "chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+          "fixture": "chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+          "workload_keys": [
+            "4683000771165ce0",
+            "ee17402302aa1f75",
+            "60c7547e5f4d2de5"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "smolvla-expert-cross-qkv",
+          "program": "chunks/smolvla/smolvla-expert-cross-qkv/program.json",
+          "fixture": "chunks/smolvla/smolvla-expert-cross-qkv/fixture.npz",
+          "workload_keys": [
+            "09a1bff47caef3e3",
+            "0a34ed4bf324bcc1"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "smolvla-expert-mlp",
+          "program": "chunks/smolvla/smolvla-expert-mlp/program.json",
+          "fixture": "chunks/smolvla/smolvla-expert-mlp/fixture.npz",
+          "workload_keys": [
+            "b4f6ddb737a9630b",
+            "0f114ae425e19f72"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "smolvla-expert-self-attention-core",
+          "program": "chunks/smolvla/smolvla-expert-self-attention-core/program.json",
+          "fixture": "chunks/smolvla/smolvla-expert-self-attention-core/fixture.npz",
+          "workload_keys": [
+            "c0ffeda1709a138b",
+            "b9683049feca12cc"
+          ],
+          "graph_fusion_level": 2
+        },
+        {
+          "id": "smolvla-expert-self-qkv",
+          "program": "chunks/smolvla/smolvla-expert-self-qkv/program.json",
+          "fixture": "chunks/smolvla/smolvla-expert-self-qkv/fixture.npz",
+          "workload_keys": [
+            "cc30e8b274fbf7a4"
+          ],
+          "graph_fusion_level": 2
+        }
+      ],
+      "owner_count": 8,
+      "initial_unique_workloads": 14,
+      "e2e_arrays": 33
+    }
+  },
+  "published_catalog_sha256": "839fad75688a9c2a87b975842f072f217a1f0fbc0ff3ba26e9b1707600e37c2a",
+  "baseline_graph": {
+    "fusion_level": 2,
+    "prepack_weights": true,
+    "bias_preload": true,
+    "cse": false
+  },
+  "graph_domain": {
+    "fusion_level": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "prepack_weights": [
+      true,
+      false
+    ],
+    "bias_preload": [
+      true,
+      false
+    ],
+    "cse": [
+      false,
+      true
+    ]
+  },
+  "initial_total_workloads": 47,
+  "initial_total_owners": 26,
+  "later_inventory": "Re-extract after graph choices; initial owner keys are not valid for arbitrary changed graph plans",
+  "search": "stock MetaSchedule EvolutionarySearch + XGB; schedule transforms/TensorIntrins; no new compiler passes",
+  "allocation": "Baseline each distinct task, rotate owners; prioritize measured connected cost. No unapproved fixed minute split among chunks. Per-model ledger spans all graphs and chunks.",
+  "early_stop": "budget or recorded exhaustion; no claimed plateau convergence without a reviewed quantitative rule",
+  "remote_worker_responsibilities": [
+    "deployment and physical slots",
+    "tuning occupancy ledger and continuation",
+    "live active-cycle incumbent cutoff and cancellation",
+    "guest positive/wrong-oracle checks",
+    "timing and complete E2E execution",
+    "stop admission at budget exhaustion, drain active measurements and report excess completion time"
+  ],
+  "remaining_e2e_work": [
+    "selected TinyLlama operands2 full prefill/decode exports and 99 arrays",
+    "selected SmolVLA one-camera input identity, prefix/flow/action exports and 33 arrays",
+    "final source-bound session fixtures/routes and memory plans",
+    "replay exact structural matches; explicitly report untuned/no-match coverage"
+  ],
+  "excluded_chunks": [
+    "smolvla-action-update"
+  ],
+  "hardware_execution": "NOT_RUN",
+  "budget_exhaustion": {
+    "stop_new_submissions": true,
+    "finish_active_runs": true,
+    "queued_jobs_after_limit": false,
+    "record_post_budget_completion_seconds": true,
+    "per_run_watchdog": "separate remote supplied hang limit; retain cycle pruning",
+    "additional_tuning_allowance": false
+  },
+  "runner_options": {
+    "finish_active_runs": true,
+    "active_run_timeout_seconds": null,
+    "watchdog_owner": "remote worker selects a separate per-job hang limit"
+  }
+}

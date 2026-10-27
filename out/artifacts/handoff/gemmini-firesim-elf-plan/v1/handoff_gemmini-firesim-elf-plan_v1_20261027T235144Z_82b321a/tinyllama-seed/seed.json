@@ -1,0 +1,158 @@
+{
+  "schema": "merlin.tvm.tinyllama_preparation_seed.v1",
+  "status": "INPUTS_VERIFIED_NEW_OPERANDS2_EXPORTS_AND_REFERENCES_REQUIRED",
+  "files": [
+    {
+      "path": "prepared-inputs/tiny-calibration.npz",
+      "sha256": "4a6ebc0c913138f830fc9f6efced0bb71e4286e19f70699e81a48e591cad2a0c",
+      "bytes": 37263
+    },
+    {
+      "path": "prepared-inputs/tiny-v00.npz",
+      "sha256": "065d978c1f302bc4c2ee8f74dc6823d72b81224baf30a51b877919cbfa450629",
+      "bytes": 554
+    },
+    {
+      "path": "tiny-range-statistics.npz",
+      "sha256": "896689b5e22ff56c729e797285ed9b0221b9560985dc739e353ca5df6ea520c6",
+      "bytes": 917920
+    },
+    {
+      "path": "tiny-range-identity-v2.json",
+      "sha256": "8206517118b87207014ff933ad727571df5636426959f833ecbdb63e60c0a395",
+      "bytes": 613
+    },
+    {
+      "path": "tiny-range-realization-v2.json",
+      "sha256": "0a3c0d2671f022638fbd0faacd11c061a622029247128775ec4358514c362c24",
+      "bytes": 1366172
+    },
+    {
+      "path": "source/model2mlir-reference-liveness.patch",
+      "sha256": "f3be00e3011887a65a106d0c90b870e05e962e61dca19688c2f8725ef94a5713",
+      "bytes": 3936
+    },
+    {
+      "path": "source/source-pins.json",
+      "sha256": "12ed484905abb31f8d77000cacfbac6febacafda91f611d5503755691944a338",
+      "bytes": 424
+    },
+    {
+      "path": "source/tiny/model/config.json",
+      "sha256": "486bedda3a6988332e60d9638a09ca4b260d34ebcf1b19e22cf3b140b63d8fe9",
+      "bytes": 608
+    },
+    {
+      "path": "source/tiny/model/generation_config.json",
+      "sha256": "18046d04f5bd8b4998095ecabdd17a1bf0053d9acdccead4a05be4a3575f3c5c",
+      "bytes": 124
+    },
+    {
+      "path": "source/tiny/model/tokenizer.json",
+      "sha256": "bcd04f0eadf90287bd26e1a183ac487d8a141b09b06aecb7725bbdd343640f2e",
+      "bytes": 1842767
+    },
+    {
+      "path": "source/tiny/model/tokenizer_config.json",
+      "sha256": "7b41ba7d0eb91e77914ca3dafde559ea3e19878769b7e68409e89bed5222e77a",
+      "bytes": 1289
+    },
+    {
+      "path": "source/tiny/model/special_tokens_map.json",
+      "sha256": "82d96d7a9e6ced037f12394b7ea6a5b02e6ca87e0d11edaa8d60d9be857ce7db",
+      "bytes": 551
+    },
+    {
+      "path": "source/tiny/model/tokenizer.model",
+      "sha256": "9e556afd44213b6bd1be2b850ebbbd98f5481437a8021afaf58ee7fb1818d347",
+      "bytes": 499723
+    }
+  ],
+  "sources": [
+    {
+      "path": "examples/gemmini/comparisons/tvm/selected_tinyllama_loader.py",
+      "sha256": "4a0af90b5ac446f39ad0a78822cb1f8d9d3ee7a363d3a3af77afc566d34d8a99"
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/selected_tinyllama_functional_loader.py",
+      "sha256": "d598845ac05455bb8e17cd3bb2a30c05edaebb52dc15235353a063c97f696c24"
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/selected_export_loader.py",
+      "sha256": "ab0e3d2e63fdef2ba8b8438b409d2eb6d01602d3d4026e7e095b08845e20e2b8"
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/prepare_selected_inputs.py",
+      "sha256": "b7f0d8df2a7dd9729f5c60f822280bbf815be2b5c1249123b2ddfe3ba8508814"
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/calculate_selected_references.py",
+      "sha256": "71820d17cb3f2f3f96608038c2b94c89c2e0a3c177252873cb1fdb13aa5cf67d"
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/run_local_preparation.py",
+      "sha256": "6bd2939cd92dda2edd1cd81bb56bc4ae75eb9a14bd38dd9f0aae7423bb0bdcd3"
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/prepare_remote_tinyllama.py",
+      "sha256": "58b42d1bca75abacc1fafd98fbe0f76b96090da09aff4f7786a6f57cc1e3ef64"
+    },
+    {
+      "path": "examples/gemmini/comparisons/tvm/selected_protocol.py",
+      "sha256": "996ba91c1011f3f49e6ab97f530035e319597a2ed2afc3225d04fa900aa6838b"
+    },
+    {
+      "root": "selected_contract",
+      "path": "protocol/experiment.yaml",
+      "sha256": "7e1a56a5656f74dfe67fc3c070fecf67df1dc3c0b1d5f1461359042d9de39540"
+    },
+    {
+      "root": "selected_contract",
+      "path": "protocol/recipes/tiny_llama.json",
+      "sha256": "839657c5c84906a03e1a5fdf7b7f8c68ccc73757d26a448d3380137d71b9ce2e"
+    },
+    {
+      "root": "selected_contract",
+      "path": "numerics/models.yaml",
+      "sha256": "e81125592bef2a24bd45846fab3bd0f5dc3edc19403ce2a43c6a3c3fb43c619b"
+    }
+  ],
+  "checkpoint": {
+    "url": "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/fe8a4ea1ffedaf415f4da2f062534de366a451e6/model.safetensors",
+    "sha256": "6e6001da2106d4757498752a021df6c2bdc332c650aae4bae6b0c004dcf14933"
+  },
+  "profiles": {
+    "e2e": {
+      "prefill_tokens": 32,
+      "decode_steps": 32,
+      "cache_capacity": 64,
+      "output_arrays": 99
+    },
+    "chunk_source": {
+      "prefill_tokens": 32,
+      "decode_tokens_per_call": 1,
+      "cache_capacity": 64,
+      "source": "E2E capture remains selected 32+32; tuning uses separately published 16/1 probes"
+    },
+    "tuning": {
+      "prefill_rows": 16,
+      "row_local_rows": 1,
+      "scope": "published row-local probes, not full sessions"
+    }
+  },
+  "range_transform_note": "Fresh explicit realization: split threshold=8*median positive channel absmax; no historical byte identity claimed",
+  "validation": {
+    "frozen_seed_payload_hashes_verified": true,
+    "quantized_tiny_exports": "PENDING",
+    "all_99_reference_outputs": "PENDING",
+    "hardware": "NOT_RUN",
+    "quality": "PROTOCOL_REPORT_ONLY_NOT_RUN"
+  },
+  "model2mlir_bundle": {
+    "path": "source/model2mlir.bundle",
+    "commit": "5fec4a2dc106668e4e74605eeaa54729df36e1b4",
+    "base": "7915e23475c6db446a3c404847b11e8bc72c8a27"
+  },
+  "protocol_commit": "8ec99308cb1182b9b896a6075300312266fadf6f",
+  "parent_seed_sha256": "f27f185543114daea51b0b03a44e47e9565bb79f2f30f208fb7a1f586f7ea2db"
+}
