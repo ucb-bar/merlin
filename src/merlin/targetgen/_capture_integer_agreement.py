@@ -10,10 +10,12 @@ def integerized_agreement(before, after, *, atol: float, rtol: float, output_abi
     rows = []
     compatible = left_abi == right_abi and bool(left)
     for original, rewritten in zip(left, right):
-        lhs = original.detach().to(torch.float64)
-        rhs = rewritten.detach().to(torch.float64)
+        complex_values = original.is_complex() or rewritten.is_complex()
+        diagnostic_dtype = torch.complex128 if complex_values else torch.float64
+        lhs = original.detach().to(diagnostic_dtype)
+        rhs = rewritten.detach().to(diagnostic_dtype)
         same_shape = lhs.shape == rhs.shape
-        finite = bool(torch.isfinite(lhs).all() and torch.isfinite(rhs).all()) if same_shape else False
+        finite = bool(torch.isfinite(original).all() and torch.isfinite(rewritten).all()) if same_shape else False
         if same_shape and finite and lhs.numel():
             delta = (lhs - rhs).abs()
             max_abs = float(delta.max())
@@ -41,8 +43,13 @@ def integerized_agreement(before, after, *, atol: float, rtol: float, output_abi
         )
         if atol == 0 and rtol == 0:
             within = byte_equal  # Complete words include any proved IEEE special payload.
+        # Count signs on both real components, without dropping imaginary zeros.
+        sign_lhs = torch.view_as_real(lhs) if complex_values else lhs
+        sign_rhs = torch.view_as_real(rhs) if complex_values else rhs
         zero_signs = (
-            int(((lhs == 0) & (rhs == 0) & (torch.signbit(lhs) != torch.signbit(rhs))).sum()) if same_shape else 0
+            int(((sign_lhs == 0) & (sign_rhs == 0) & (torch.signbit(sign_lhs) != torch.signbit(sign_rhs))).sum())
+            if same_shape
+            else 0
         )
         rows.append(
             {
