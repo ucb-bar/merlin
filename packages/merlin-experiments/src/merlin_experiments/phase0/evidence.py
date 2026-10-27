@@ -661,6 +661,15 @@ def select_evidence(
     )
     # The shared runtime family selects data, not a compiler-bearing provider.
     data_only = (contract.get("runner") or {}).get("backend") == "chipyard_rocc"
+    if data_only and not (contract.get("output_epilogue") or {}).get("output_path"):
+        from merlin.targetgen.rtl import semantic_facts
+
+        # Shared software resolution rederives the output path from these probes.
+        # Bind the metadata even though this selection has no executable provider.
+        probes = semantic_facts.probes_path(target)
+        if probes.is_file():
+            observe(probes, "semantic-probes", required=True)
+            observe(probes.parent / "target_contract.yaml", "semantic-probe-target", required=True)
     residual, provider = {}, None
     try:
         provider = target_registry.resolve(target) if hardware_intake is None and not data_only else None

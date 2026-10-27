@@ -357,6 +357,18 @@ def stage(plan: dict) -> dict:
         # Resource selectors use root/merlin in both layouts. This alias points
         # only inside the sealed tree; it is never a link back to an installation.
         aliases["merlin"] = core
+    if data_only:
+        probes = [source for source in evidence.source_snapshots if source.role == "semantic-probes"]
+        if probes:
+            # Give the unchanged shared resolver a private reference metadata shelf.
+            # The selected execution contract remains the authoritative contract;
+            # this directory contains no support implementation or provider code.
+            metadata = f"{source_snapshot.INPUT_ROOT}/target_metadata/{target}"
+            for source in evidence.source_snapshots:
+                if source.role in {"semantic-probes", "semantic-probe-target"}:
+                    layout[source_names[str(source.path)]] = f"{metadata}/contracts/{source.path.name}"
+            resource_root = aliases.get("merlin", "merlin")
+            aliases[f"{resource_root}/targets/{target}"] = metadata
     if exclusions:
         # Legacy suite payload/publication checks use the canonical resource path.
         # Point it at the same declared private files, never the live capsule shelf.
