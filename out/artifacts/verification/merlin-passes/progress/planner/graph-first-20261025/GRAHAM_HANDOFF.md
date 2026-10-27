@@ -1,5 +1,29 @@
 # Graham: independent graph-correctness review and paper evidence
 
+## Latest independent execution — 2026-10-26 Pacific
+
+The user authorized three workers to reconcile sources, select a fresh Lean SDK
+and reproduce the fixed graph candidates. All workers finished. Read
+[the current review index](../../../../graham-graph-review/README.md) and
+[the a26 reproduction report](../../../../graham-graph-review/execution-a26-20261026-v1/README.md).
+The tested source baseline is **c62f81a8a11347ff53b60101fa75280e69d002a6** on
+`feat/pass-verification`; the review branch retains its separate history.
+
+Ten changed admission sources were reviewed and 32/32 independent parser/helper
+controls passed. Fresh official Lean 4.35.0 passed eight setup diagnostics.
+Three schedule queries (two changed, one identity) and the empty-inline query
+compiled and passed 76 requested root-audit occurrences using only the standard
+three axioms. Four nonempty inline queries and all five inline witnesses failed.
+Tail stops at its arity proof, and both W profiles stop at the shared renaming
+proof; 30 dependent case queries remain unexecuted.
+
+A separate unchanged-statement tail lemma repair compiles, but no frozen
+candidate was modified or requalified. Deliverables 1–3 have linked supplements
+in the review index. Next work is proof successors, dependent query completion,
+fresh semantic qualification, human review and actual compiler integration.
+Old runtime holds and historical source/evidence identities remain in force.
+The assignment and older dated status below are historical context.
+
 This is a substantial parallel workstream, not a request to rerun one example.
 Work through all six packages below; expect several sustained sessions, with
 progress recorded between them. The goal is to resolve the paper's two open

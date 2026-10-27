@@ -1,0 +1,49 @@
+{
+  "executed": true,
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "-o",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/proof-successors/tail-loop-append-v1/TailLoopAppendProofSuccessor.olean",
+    "TailLoopAppendProofSuccessor.lean"
+  ],
+  "exit_code": 0,
+  "seconds": 0.36670939694158733,
+  "classification": "ACCEPTED",
+  "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-proof-successor/tail-loop-append-v1",
+  "stdout": {
+    "sha256": "563c5bf6dc346844a835655c1997cee1f52162b4f09b493f2fea70fbd2862cae",
+    "bytes": 579
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "original_module": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineTail.lean",
+  "original_source_pin": {
+    "sha256": "602ad3f1802105037fb4a0cd042ced628e71709d66b2bfd3a8e42d6fb7b99996",
+    "bytes": 4857
+  },
+  "successor_source": "out/build/verification-a26-20261026-v1/profiles/proof-successors/tail-loop-append-v1/TailLoopAppendProofSuccessor.lean",
+  "successor_source_pin": {
+    "sha256": "ece6b75a4fdfd3c6561ba256e712773d126e8bf02257f400626bb7eeab04a041",
+    "bytes": 1279
+  },
+  "statement_bytes_unchanged": true,
+  "statement_sha256": "4fd7176f33b33c2dee36618eb83f94070afdca793a473e01e3a14e71d4b319d4",
+  "change": "Explicitly split the remaining iteration list in the nil-prefix negative-arity branch; preserve every binder and goal.",
+  "original_candidate_requalified": false,
+  "public_gate_activation": false,
+  "axiom_audit": {
+    "roots_requested": 1,
+    "roots_observed": 1,
+    "missing": [],
+    "forbidden": {},
+    "axioms": {
+      "Merlin.GraphState.Pipeline.Tail.loop_append": [
+        "propext"
+      ]
+    },
+    "passed": true
+  }
+}

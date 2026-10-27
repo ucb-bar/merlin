@@ -1,0 +1,308 @@
+{
+  "schema": "merlin.a26.inline-independent-witness-results.v1",
+  "profile": "Q-inline-complete-carry-v1",
+  "cases": [
+    {
+      "id": "inline1",
+      "source": {
+        "module": "Witness",
+        "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline1/Witness.lean",
+        "sha256": "2427b602ae04fc642a8dd88aea8b3e39cbeab012af0b0e63ac51fd88f14e9618",
+        "bytes": 16507,
+        "roots": [
+          "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+          "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+          "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+          "Merlin.GraphState.Pipeline.indexIterations_count",
+          "Merlin.GraphState.Pipeline.entries_cons",
+          "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+          "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+          "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+          "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+          "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+          "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+          "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+          "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+          "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+          "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+          "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+          "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+          "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+          "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+          "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+          "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+          "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+          "Merlin.GraphStatePipelineInlineInstance.complete",
+          "merlin_unroll_inline_transform",
+          "Merlin.GraphInlineWitness.source_success",
+          "Merlin.GraphInlineWitness.target_success",
+          "Merlin.GraphInlineWitness.source_success_initialized",
+          "Merlin.GraphInlineWitness.target_success_initialized",
+          "Merlin.GraphInlineWitness.source_observer_failure",
+          "Merlin.GraphInlineWitness.target_observer_failure",
+          "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+          "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+          "Merlin.GraphInlineWitness.source_first_body_failure",
+          "Merlin.GraphInlineWitness.target_first_body_failure",
+          "Merlin.GraphInlineWitness.source_first_body_failure_initialized",
+          "Merlin.GraphInlineWitness.target_first_body_failure_initialized",
+          "Merlin.GraphInlineWitness.source_last_body_failure",
+          "Merlin.GraphInlineWitness.target_last_body_failure",
+          "Merlin.GraphInlineWitness.source_last_body_failure_initialized",
+          "Merlin.GraphInlineWitness.target_last_body_failure_initialized"
+        ]
+      },
+      "compile": {
+        "executed": true,
+        "command": [
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+          "-j1",
+          "-o",
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/inline1/Witness.olean",
+          "Witness.lean"
+        ],
+        "exit_code": 1,
+        "seconds": 1.2185666151344776,
+        "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/inline1-compile",
+        "stdout": {
+          "sha256": "8db0c79e44657b15fc357cd1c93562d2f03a3b73c876cd90157edee60c99a5ad",
+          "bytes": 1976
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21915 \u21916 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:128:152: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([5], 9)\nWitness.lean:140:172: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 9)\nWitness.lean:152:179: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 5) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\nWitness.lean:164:178: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 5) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\n\n"
+      },
+      "status": "LEAN_SOURCE_OR_AUDIT_FAILURE"
+    },
+    {
+      "id": "inline2",
+      "source": {
+        "module": "Witness",
+        "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline2/Witness.lean",
+        "sha256": "d3a12043920435693499c88c9c2136c8090302236b7d6984cd84fc0d6e3620db",
+        "bytes": 18045,
+        "roots": [
+          "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+          "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+          "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+          "Merlin.GraphState.Pipeline.indexIterations_count",
+          "Merlin.GraphState.Pipeline.entries_cons",
+          "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+          "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+          "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+          "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+          "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+          "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+          "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+          "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+          "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+          "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+          "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+          "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+          "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+          "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+          "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+          "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+          "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+          "Merlin.GraphStatePipelineInlineInstance.complete",
+          "merlin_unroll_inline_transform",
+          "Merlin.GraphInlineWitness.source_success",
+          "Merlin.GraphInlineWitness.target_success",
+          "Merlin.GraphInlineWitness.source_success_initialized",
+          "Merlin.GraphInlineWitness.target_success_initialized",
+          "Merlin.GraphInlineWitness.source_observer_failure",
+          "Merlin.GraphInlineWitness.target_observer_failure",
+          "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+          "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+          "Merlin.GraphInlineWitness.source_first_body_failure",
+          "Merlin.GraphInlineWitness.target_first_body_failure",
+          "Merlin.GraphInlineWitness.source_first_body_failure_initialized",
+          "Merlin.GraphInlineWitness.target_first_body_failure_initialized",
+          "Merlin.GraphInlineWitness.source_last_body_failure",
+          "Merlin.GraphInlineWitness.target_last_body_failure",
+          "Merlin.GraphInlineWitness.source_last_body_failure_initialized",
+          "Merlin.GraphInlineWitness.target_last_body_failure_initialized"
+        ]
+      },
+      "compile": {
+        "executed": true,
+        "command": [
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+          "-j1",
+          "-o",
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/inline2/Witness.olean",
+          "Witness.lean"
+        ],
+        "exit_code": 1,
+        "seconds": 1.0687414000276476,
+        "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/inline2-compile",
+        "stdout": {
+          "sha256": "3ffbbf04ffdc70cd1f8aca3266a6efb21abb80a2f59aadf6b30990aed73af380",
+          "bytes": 1986
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912 \u21918 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:140:153: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([7], 10)\nWitness.lean:152:173: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 10)\nWitness.lean:164:179: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 2) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\nWitness.lean:176:178: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 5) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 9)\n\n"
+      },
+      "status": "LEAN_SOURCE_OR_AUDIT_FAILURE"
+    },
+    {
+      "id": "inline3",
+      "source": {
+        "module": "Witness",
+        "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline3/Witness.lean",
+        "sha256": "6aaa677ead4d9cf217b05592c5031123660198c7fbd65f813c29eebc0a7a6080",
+        "bytes": 19628,
+        "roots": [
+          "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+          "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+          "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+          "Merlin.GraphState.Pipeline.indexIterations_count",
+          "Merlin.GraphState.Pipeline.entries_cons",
+          "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+          "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+          "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+          "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+          "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+          "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+          "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+          "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+          "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+          "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+          "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+          "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+          "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+          "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+          "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+          "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+          "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+          "Merlin.GraphStatePipelineInlineInstance.complete",
+          "merlin_unroll_inline_transform",
+          "Merlin.GraphInlineWitness.source_success",
+          "Merlin.GraphInlineWitness.target_success",
+          "Merlin.GraphInlineWitness.source_success_initialized",
+          "Merlin.GraphInlineWitness.target_success_initialized",
+          "Merlin.GraphInlineWitness.source_observer_failure",
+          "Merlin.GraphInlineWitness.target_observer_failure",
+          "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+          "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+          "Merlin.GraphInlineWitness.source_first_body_failure",
+          "Merlin.GraphInlineWitness.target_first_body_failure",
+          "Merlin.GraphInlineWitness.source_first_body_failure_initialized",
+          "Merlin.GraphInlineWitness.target_first_body_failure_initialized",
+          "Merlin.GraphInlineWitness.source_last_body_failure",
+          "Merlin.GraphInlineWitness.target_last_body_failure",
+          "Merlin.GraphInlineWitness.source_last_body_failure_initialized",
+          "Merlin.GraphInlineWitness.target_last_body_failure_initialized"
+        ]
+      },
+      "compile": {
+        "executed": true,
+        "command": [
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+          "-j1",
+          "-o",
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/inline3/Witness.olean",
+          "Witness.lean"
+        ],
+        "exit_code": 1,
+        "seconds": 1.3689034909475595,
+        "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/inline3-compile",
+        "stdout": {
+          "sha256": "746710a8222a2fe0355a888d401ca500661e5d8d5ea0a7aa943da989c4ffd8cc",
+          "bytes": 1991
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21917 \u219116 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:152:153: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([9], 11)\nWitness.lean:164:173: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 11)\nWitness.lean:176:179: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 7) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\nWitness.lean:188:180: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 13) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 10)\n\n"
+      },
+      "status": "LEAN_SOURCE_OR_AUDIT_FAILURE"
+    },
+    {
+      "id": "wide_inline1",
+      "source": {
+        "module": "Witness",
+        "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/wide_inline1/Witness.lean",
+        "sha256": "7a6a681b3ef19e8c78ac32ee3cd1545f503b0192e5aeae919b8455a81b3bd6d1",
+        "bytes": 16741,
+        "roots": [
+          "Merlin.GraphState.Pipeline.Inline.empty_no_body",
+          "Merlin.GraphState.Pipeline.Inline.counted_continuation",
+          "Merlin.GraphState.Pipeline.Inline.failed_continuation",
+          "Merlin.GraphState.Pipeline.indexIterations_count",
+          "Merlin.GraphState.Pipeline.entries_cons",
+          "Merlin.GraphStatePipelineInlineInstance.controlAccepted",
+          "Merlin.GraphStatePipelineInlineInstance.literalsAccepted",
+          "Merlin.GraphStatePipelineInlineInstance.literalsFit",
+          "Merlin.GraphStatePipelineInlineInstance.naturalRange",
+          "Merlin.GraphStatePipelineInlineInstance.F3.typed0",
+          "Merlin.GraphStatePipelineInlineInstance.F3.typed1",
+          "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked",
+          "Merlin.GraphStatePipelineInlineInstance.F3.isInline",
+          "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit",
+          "Merlin.GraphStatePipelineInlineInstance.F3.source_form",
+          "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs",
+          "Merlin.GraphStatePipelineInlineInstance.F3.actual",
+          "Merlin.GraphStatePipelineInlineInstance.F4.typed0",
+          "Merlin.GraphStatePipelineInlineInstance.F4.typed1",
+          "Merlin.GraphStatePipelineInlineInstance.F4.actual",
+          "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked",
+          "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked",
+          "Merlin.GraphStatePipelineInlineInstance.complete",
+          "merlin_unroll_inline_transform",
+          "Merlin.GraphInlineWitness.source_success",
+          "Merlin.GraphInlineWitness.target_success",
+          "Merlin.GraphInlineWitness.source_success_initialized",
+          "Merlin.GraphInlineWitness.target_success_initialized",
+          "Merlin.GraphInlineWitness.source_observer_failure",
+          "Merlin.GraphInlineWitness.target_observer_failure",
+          "Merlin.GraphInlineWitness.source_observer_failure_initialized",
+          "Merlin.GraphInlineWitness.target_observer_failure_initialized",
+          "Merlin.GraphInlineWitness.source_first_body_failure",
+          "Merlin.GraphInlineWitness.target_first_body_failure",
+          "Merlin.GraphInlineWitness.source_first_body_failure_initialized",
+          "Merlin.GraphInlineWitness.target_first_body_failure_initialized",
+          "Merlin.GraphInlineWitness.source_last_body_failure",
+          "Merlin.GraphInlineWitness.target_last_body_failure",
+          "Merlin.GraphInlineWitness.source_last_body_failure_initialized",
+          "Merlin.GraphInlineWitness.target_last_body_failure_initialized"
+        ]
+      },
+      "compile": {
+        "executed": true,
+        "command": [
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+          "-j1",
+          "-o",
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/wide_inline1/Witness.olean",
+          "Witness.lean"
+        ],
+        "exit_code": 1,
+        "seconds": 1.3187945648096502,
+        "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/wide_inline1-compile",
+        "stdout": {
+          "sha256": "b2053e6677b4091e6b26691d50a199f58db18787bcb257923ae2bfd426d887f1",
+          "bytes": 2056
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912147483650 \u21912147483651 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:128:152: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([5], 9)\nWitness.lean:140:172: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 9)\nWitness.lean:152:188: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 2147483650) false false)) F3.S0 [3, 2] 7 =\n    Except.error (Fault.external 17, 8)\nWitness.lean:164:187: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 2147483650) false false)) F3.S0 [3, 2] 7 =\n    Except.error (Fault.external 17, 8)\n\n"
+      },
+      "status": "LEAN_SOURCE_OR_AUDIT_FAILURE"
+    }
+  ],
+  "candidate_bytes_changed": false,
+  "qualification": false
+}

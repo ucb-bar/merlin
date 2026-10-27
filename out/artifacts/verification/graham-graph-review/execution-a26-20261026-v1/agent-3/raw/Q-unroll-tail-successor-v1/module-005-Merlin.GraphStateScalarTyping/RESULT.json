@@ -1,0 +1,22 @@
+{
+  "executed": true,
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "-o",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarTyping.olean",
+    "Merlin/GraphStateScalarTyping.lean"
+  ],
+  "exit_code": 0,
+  "seconds": 0.5174807121511549,
+  "classification": "ACCEPTED",
+  "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-005-Merlin.GraphStateScalarTyping",
+  "stdout": {
+    "sha256": "8dfda2f349a8254f991d11d0c7fb81ba2600fc260272f438273ae427760d09a6",
+    "bytes": 103
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  }
+}

@@ -1,0 +1,17 @@
+Merlin/GraphStatePipelineTail.lean:33:4: error: unsolved goals
+case neg
+Value World Error : Type
+arity : Nat
+body : Int → List Value → World → Outcome Value World Error
+rest : List Int
+values : List Value
+world : World
+size : ¬values.length = arity
+⊢ loopEval arity body rest values world = Except.error (Fault.arity, world)
+Merlin/GraphStatePipelineTail.lean:61:15: warning: This simp argument is unused:
+  Nat.mul_assoc
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Nat.mul_comm, Nat.mul_left_comm]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`

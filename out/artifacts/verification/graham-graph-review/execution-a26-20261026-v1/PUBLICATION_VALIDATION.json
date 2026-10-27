@@ -1,0 +1,80 @@
+{
+  "schema": "merlin.graham.a26.publication-validation.v1",
+  "target_branch": "feat/pass-verification-verf",
+  "remote_base": "5a7f872db33d378d6b0c4a294e4099e80efd4956",
+  "publication_integrity": {
+    "schema": "merlin.graham.a26.publication-check.v1",
+    "status": "PASS",
+    "copied_files_verified": 836,
+    "canonical_historical_inputs_verified": 13,
+    "worker_manifest_files_verified": {
+      "agent-1": 19,
+      "agent-2": 132,
+      "agent-3": 662
+    },
+    "markdown_documents_checked": 10,
+    "markdown_links_checked": 63,
+    "case_roster_rows": 43,
+    "copied_file_extensions": {
+      ".json": 396,
+      ".py": 13,
+      ".csv": 2,
+      ".patch": 1,
+      ".stderr": 50,
+      ".stdout": 50,
+      ".headers": 2,
+      ".txt": 315,
+      ".lean": 7
+    },
+    "SDK_or_compiled_objects_read": false,
+    "issues": []
+  },
+  "checks": {
+    "git_diff_check": "PASS (archived raw evidence retains its declared whitespace attributes)",
+    "artifact_layout_staged": "PASS",
+    "check_docs": "PASS",
+    "no_target_name_staged": "PASS",
+    "no_regex_staged": "PASS",
+    "no_answer_keys_staged": "PASS",
+    "artifact_python_AST": "PASS",
+    "check_structure": {
+      "status": "FAIL_PREEXISTING_UNCHANGED_SOURCE",
+      "command": "python3 -B build_tools/scripts/check_structure.py",
+      "exit_code": 1,
+      "failure": "module grew past its recorded ceiling (3557 > 3537 lines): src/merlin/runtime/backends/zephyr_model.py",
+      "other_subchecks": "PASS: required directories, AGENT coverage, experiment status, schema usage, library boundary, core dependency direction, root docs, schemas, docs, benchmarks, CLI/package/schema docs, docs index/freshness/paths, test layout and target marker",
+      "identical_baseline_files": {
+        "src/merlin/runtime/backends/zephyr_model.py": {
+          "sha256": "4969323dd810c515a566f27da899688feae1a87ea48b865770294eb978407279",
+          "bytes": 195831,
+          "unchanged_from": "5a7f872db33d378d6b0c4a294e4099e80efd4956"
+        },
+        "build_tools/scripts/module_size_ratchet.txt": {
+          "sha256": "c737e26ef6377a25c2842bf2b542900df861c3d1211751274d1e08a95187ad5a",
+          "bytes": 3421,
+          "unchanged_from": "5a7f872db33d378d6b0c4a294e4099e80efd4956"
+        }
+      }
+    }
+  },
+  "python_sources_parsed": [
+    "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/audit_baseline.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/run_admission_subset.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/run_admission_subset_v1_process_handle_refusal.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnose_fresh.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/intake_fresh.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/audit_successor.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/consolidate_results.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/freeze_profiles.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/inline_remaining_queries.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/materialize_plan.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/plan_core.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/reproduce_profiles-first-run.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/reproduce_profiles.py",
+    "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/verify_publication.py"
+  ],
+  "compiler_implementation_modified": false,
+  "frozen_evidence_modified": false,
+  "SDK_and_compiled_payloads_published": false,
+  "validation_scope": "No native/Lean/SMT jobs rerun for documentation-only publication. Prior exact execution evidence is copied and hash checked; new Markdown, source/data boundaries and manifests are checked."
+}

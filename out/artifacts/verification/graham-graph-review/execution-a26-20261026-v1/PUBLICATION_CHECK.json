@@ -1,0 +1,27 @@
+{
+  "schema": "merlin.graham.a26.publication-check.v1",
+  "status": "PASS",
+  "copied_files_verified": 836,
+  "canonical_historical_inputs_verified": 13,
+  "worker_manifest_files_verified": {
+    "agent-1": 19,
+    "agent-2": 132,
+    "agent-3": 662
+  },
+  "markdown_documents_checked": 10,
+  "markdown_links_checked": 63,
+  "case_roster_rows": 43,
+  "copied_file_extensions": {
+    ".json": 396,
+    ".py": 13,
+    ".csv": 2,
+    ".patch": 1,
+    ".stderr": 50,
+    ".stdout": 50,
+    ".headers": 2,
+    ".txt": 315,
+    ".lean": 7
+  },
+  "SDK_or_compiled_objects_read": false,
+  "issues": []
+}

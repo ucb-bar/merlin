@@ -1,0 +1,14 @@
+{
+  "stage": "own source-freezing utility bootstrap",
+  "command": [
+    "python3",
+    "-I",
+    "-S",
+    "-B",
+    "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/freeze_profiles.py"
+  ],
+  "exit_code": 1,
+  "error": "ModuleNotFoundError: No module named plan_core",
+  "classification": "OWN_SCRIPT_IMPORT_SETUP_FAILURE_NOT_LEAN",
+  "repair": "Explicitly add the reviewed utility directory to sys.path under isolated Python; original sources and queries untouched."
+}

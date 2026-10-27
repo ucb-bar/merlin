@@ -1,0 +1,35 @@
+{
+  "profiles": [
+    {
+      "id": "Q-schedule-successor-v1",
+      "modules": 7,
+      "queries": 3,
+      "witnesses": 0
+    },
+    {
+      "id": "Q-inline-complete-carry-v1",
+      "modules": 23,
+      "queries": 5,
+      "witnesses": 5
+    },
+    {
+      "id": "Q-unroll-tail-successor-v1",
+      "modules": 25,
+      "queries": 4,
+      "witnesses": 0
+    },
+    {
+      "id": "W-caller-context-successor-v1",
+      "modules": 118,
+      "queries": 14,
+      "witnesses": 0
+    },
+    {
+      "id": "W-entries-successor-v1",
+      "modules": 111,
+      "queries": 12,
+      "witnesses": 0
+    }
+  ],
+  "source_only": true
+}

@@ -1,0 +1,20 @@
+{
+  "executed": true,
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "AuditSuccessor.lean"
+  ],
+  "exit_code": 0,
+  "seconds": 0.21608951105736196,
+  "classification": "ACCEPTED",
+  "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/pure_reorder-Query-audit",
+  "stdout": {
+    "sha256": "452dad663d3ca68c127b0c99649a64df2cf565de90dd01ad346f4fcfe83546e6",
+    "bytes": 9888
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  }
+}

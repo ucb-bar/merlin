@@ -1,0 +1,267 @@
+{
+  "id": "Q-inline-complete-carry-v1",
+  "status": "UNEXPECTED_FAILURE",
+  "cases": [
+    {
+      "id": "empty",
+      "expected_protocol": null,
+      "final_root": "merlin_unroll_inline_transform",
+      "status": "QUERY_FAILED",
+      "units": [
+        {
+          "unit": "Query",
+          "compile": {
+            "classification": "REUSED_EXACT_SAME_BATCH_COMPILED_QUERY",
+            "original_command_result": {
+              "executed": true,
+              "command": [
+                "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+                "-j1",
+                "-o",
+                "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/queries/empty/Query/Query.olean",
+                "Query.lean"
+              ],
+              "exit_code": 0,
+              "seconds": 0.8678549651522189,
+              "classification": "ACCEPTED",
+              "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-inline-complete-carry-v1/query-empty-Query",
+              "stdout": {
+                "sha256": "4ce0692326ee27020b2ac01b1a2cad8c62208a8e3eafc322ca4651ef095abfb4",
+                "bytes": 28144
+              },
+              "stderr": {
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "bytes": 0
+              },
+              "role": "Query",
+              "output": {
+                "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/queries/empty/Query/Query.olean",
+                "sha256": "7e642afcba421fe464a6aee36ad363250a3789979301d2d86c81785a1b62ceb3",
+                "bytes": 329552
+              },
+              "audit": {
+                "executed": true,
+                "command": [
+                  "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+                  "-j1",
+                  "Audit.lean"
+                ],
+                "exit_code": 1,
+                "seconds": 0.5172333419322968,
+                "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+                "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-inline-complete-carry-v1/query-empty-Query-audit",
+                "stdout": {
+                  "sha256": "fcbde018d608168616c3ce966a959f496448dda623ae2d298d7170729f90482c",
+                  "bytes": 15210
+                },
+                "stderr": {
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "bytes": 0
+                },
+                "first_error_excerpt": "Audit.lean:2:0: error: Unknown option `pp.width`\n@Merlin.GraphState.Pipeline.Inline.empty_no_body : \u2200 {Value World Error : Type} (arity : Nat)\n  (body : Int \u2192 List.{0} Value \u2192 World \u2192 Merlin.GraphState.Scalar.Outcome Value World Error) (lower upper step : Nat),\n  LT.lt.{0} 0 step \u2192\n    Merlin.GraphLoopsUnroll.CountCorrect lower upper step 0 \u2192\n      \u2200 (values : List.{0} Value) (world : World),\n        Eq.{1} (List.length.{0} values) arity \u2192\n          Eq.{1}\n            (Merlin.GraphState.Scalar.loopEval arity body\n              (Merlin.GraphState.Pipeline.indexIterations \u2191lower \u2191upper \u2191step) values world)\n            (Except.ok.{0, 0} (Prod.mk.{0, 0} values world))\n'Merlin.GraphState.Pipeline.Inline.empty_no_body' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphState.Pipeline.Inline.counted_continuation : \u2200 {Value World Error : Type} (arity : Nat)\n  (body : Int \u2192 List.{0} Value \u2192 World \u2192 Merlin.GraphState.Scalar.Outcome Value World Error)\n  (next : List.{0} Value \u2192 World \u2192 Merlin.GraphState.Scalar.Outcome Value World Error) (lower upper step count : Nat),\n  LT.lt.{0} 0 step \u2192\n    Merlin.GraphLoopsUnroll.CountCorrect lower upper step count \u2192\n      \u2200 (values : List.{0} Value) (world : World),\n        Eq.{1}\n          (Except.bind.{0, 0, 0}\n            (Merlin.GraphState.Scalar.loopEval arity body\n              (Merlin.GraphState.Pipeline.indexIterations \u2191lower \u2191upper \u2191step) values world)\n            fun result => next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))\n          (Except.bind.{0, 0, 0}\n            (Merlin.GraphState.Scalar.loopEval arity body\n              (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.progression lower step count)) values world)\n            fun result => next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))\n'Merlin.GraphState.Pipeline.Inline.counted_continuation' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphState.Pipeline.Inline.failed_continuation : \u2200 {Value World Error : Type}\n  (failure : Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Error) World)\n  (next : List.{0} Value \u2192 World \u2192 Merlin.GraphState.Scalar.Outcome Value World Error),\n  Eq.{1}\n    (Except.bind.{0, 0, 0} (Except.error.{0, 0} failure) fun result =>\n      next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))\n    (Except.error.{0, 0} failure)\n'Merlin.GraphState.Pipeline.Inline.failed_continuation' does not depend on any axioms\n@Merlin.GraphState.Pipeline.indexIterations_count : \u2200 {lower upper step count : Nat},\n  LT.lt.{0} 0 step \u2192\n    Merlin.GraphLoopsUnroll.CountCorrect lower upper step count \u2192\n      Eq.{1} (Merlin.GraphState.Pipeline.indexIterations \u2191lower \u2191upper \u2191step)\n        (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.progression lower step count))\n'Merlin.GraphState.Pipeline.indexIterations_count' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphState.Pipeline.entries_cons : \u2200 {Value World Error : Type}\n  {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  (model : Merlin.GraphState.Scalar.Model Value World Error registry) {first second : Merlin.GraphState.Pipeline.Entry}\n  {before after : List.{0} Merlin.GraphState.Pipeline.Entry},\n  Eq.{1} first.inputs second.inputs \u2192\n    Eq.{1} first.outputs second.outputs \u2192\n      (\u2200 (arguments : List.{0} Value) (world : World),\n          Eq.{1} (List.length.{0} arguments) (List.length.{0} first.inputs) \u2192\n            Eq.{1} (Merlin.GraphState.Scalar.evalProgram model first.body arguments world)\n              (Merlin.GraphState.Scalar.evalProgram model second.body arguments world)) \u2192\n        Merlin.GraphState.Pipeline.PreservesEntries model before after \u2192\n          Merlin.GraphState.Pipeline.PreservesEntries model (List.cons.{0} first before) (List.cons.{0} second after)\n'Merlin.GraphState.Pipeline.entries_cons' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.controlAccepted : Eq.{1}\n  (Merlin.GraphState.Pipeline.checkControl Merlin.GraphStatePipelineInlineInstance.registry\n    Merlin.GraphStatePipelineInlineInstance.controls)\n  true\n'Merlin.GraphStatePipelineInlineInstance.controlAccepted' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.literalsAccepted : Eq.{1}\n  (Merlin.GraphState.Pipeline.checkLiterals Merlin.GraphStatePipelineInlineInstance.profileBits\n    Merlin.GraphStatePipelineInlineInstance.controls)\n  true\n'Merlin.GraphStatePipelineInlineInstance.literalsAccepted' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.literalsFit : \u2200 (identity : Nat) (value : Int),\n  Eq.{1} (Merlin.GraphState.Pipeline.controlAt Merlin.GraphStatePipelineInlineInstance.controls identity)\n      (some.{0} (Merlin.GraphState.Pipeline.IndexOp.constant value)) \u2192\n    Merlin.GraphState.Pipeline.signedRepresentative Merlin.GraphStatePipelineInlineInstance.profileBits value\n'Merlin.GraphStatePipelineInlineInstance.literalsFit' depends on axioms: [propext, Quot.sound.{u}]\nMerlin.GraphStatePipelineInlineInstance.naturalRange : \u2200 (lower upper step : Nat),\n  LT.lt.{0} 0 step \u2192\n    Eq.{1} (Merlin.GraphState.Pipeline.indexIterations (Int.ofNat lower) (Int.ofNat upper) (Int.ofNat step))\n      (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.scfRange lower upper step))\n'Merlin.GraphStatePipelineInlineInstance.naturalRange' depends on axioms: [propext, Quot.sound.{u}]\nMerlin.GraphStatePipelineInlineInstance.F3.typed0 : Eq.{1}\n  (Merlin.GraphState.Scalar.checkTypes Merlin.GraphStatePipelineInlineInstance.registry\n    Merlin.GraphStatePipelineInlineInstance.F3.inputs Merlin.GraphStatePipelineInlineInstance.F3.outputs\n    Merlin.GraphStatePipelineInlineInstance.F3.S0)\n  true\n'Merlin.GraphStatePipelineInlineInstance.F3.typed0' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.F3.typed1 : Eq.{1}\n  (Merlin.GraphState.Scalar.checkTypes Merlin.GraphStatePipelineInlineInstance.registry\n    Merlin.GraphStatePipelineInlineInstance.F3.inputs Merlin.GraphStatePipelineInlineInstance.F3.outputs\n    Merlin.GraphStatePipelineInlineInstance.F3.S1)\n  true\n'Merlin.GraphStatePipelineInlineInstance.F3.typed1' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.F3.boundsChecked : Merlin.GraphStatePipelineInlineInstance.F3.bounds.Valid\n'Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked' does not depend on any axioms\nMerlin.GraphStatePipelineInlineInstance.F3.isInline : LE.le.{0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.count\n  Merlin.GraphStatePipelineInlineInstance.F3.bounds.factor\n'Merlin.GraphStatePipelineInlineInstance.F3.isInline' does not depend on any axioms\nMerlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit : \u2200 (ordinal : Nat),\n  LT.lt.{0} ordinal Merlin.GraphStatePipelineInlineInstance.F3.bounds.count \u2192\n    Merlin.GraphLoopsSegment.FitsSigned Merlin.GraphStatePipelineInlineInstance.F3.bounds.bits\n        (HAdd.hAdd.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.lower\n          (HMul.hMul.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.step ordinal)) \u2227\n      Merlin.GraphLoopsSegment.FitsSigned Merlin.GraphStatePipelineInlineInstance.F3.bounds.bits\n        (HAdd.hAdd.{0, 0, 0}\n          (HAdd.hAdd.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.lower\n            (HMul.hMul.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.step ordinal))\n          Merlin.GraphStatePipelineInlineInstance.F3.bounds.step)\n'Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit' depends on axioms: [propext,\n Classical.choice.{u},\n Quot.sound.{u}]\n@Merlin.GraphStatePipelineInlineInstance.F3.source_form : \u2200 {World Error : Type}\n  (primitive : Merlin.GraphState.Scalar.Prim \u2192 List.{0} Int \u2192 Int)\n  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)\n  (x0 x1 : Int) (world : World),\n  Eq.{1}\n    (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n      Merlin.GraphStatePipelineInlineInstance.F3.S0 (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)\n    (Except.bind.{0, 0, 0}\n      (Merlin.GraphState.Scalar.loopEval 2\n        (fun i c w =>\n          Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n            Merlin.GraphStatePipelineInlineInstance.F3.B\n            (HAppend.hAppend.{0, 0, 0} (List.cons.{0} i c)\n              (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))\n            w)\n        (Merlin.GraphState.Pipeline.indexIterations 3 3 2) (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)\n      fun r =>\n      Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n        Merlin.GraphStatePipelineInlineInstance.F3.N\n        (HAppend.hAppend.{0, 0, 0} (Prod.fst.{0, 0} r) (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))\n        (Prod.snd.{0, 0} r))\n'Merlin.GraphStatePipelineInlineInstance.F3.source_form' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs : \u2200 {World Error : Type}\n  (primitive : Merlin.GraphState.Scalar.Prim \u2192 List.{0} Int \u2192 Int)\n  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)\n  (x0 x1 : Int) (world : World),\n  Eq.{1}\n    (Merlin.GraphState.Scalar.loopEval 2\n      (fun i c w =>\n        Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n          Merlin.GraphStatePipelineInlineInstance.F3.B\n          (HAppend.hAppend.{0, 0, 0} (List.cons.{0} i c) (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))\n          w)\n      (Merlin.GraphState.Pipeline.indexIterations 3 3 2) (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)\n    (Except.ok.{0, 0} (Prod.mk.{0, 0} (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world))\n'Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphStatePipelineInlineInstance.F3.a"
+              }
+            },
+            "source": {
+              "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/empty/Query.lean",
+              "sha256": "4344cbeae90444ee6bf46a7719a383e8e37f6d29775842588f9ea79b05884862",
+              "bytes": 8347
+            }
+          },
+          "audit": {
+            "executed": true,
+            "command": [
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+              "-j1",
+              "AuditSuccessor.lean"
+            ],
+            "exit_code": 0,
+            "seconds": 0.5179434618912637,
+            "classification": "ACCEPTED",
+            "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-inline-complete-carry-v1/empty-Query-audit",
+            "stdout": {
+              "sha256": "f6adc62a1fdf9a4eb12eb13a230e34c9fa97b1a547a32508b1293bd4fb164c9a",
+              "bytes": 15161
+            },
+            "stderr": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "axiom_audit": {
+            "roots_requested": 25,
+            "roots_observed": 25,
+            "missing": [],
+            "forbidden": {},
+            "axioms": {
+              "Merlin.GraphState.Pipeline.Inline.empty_no_body": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Pipeline.Inline.counted_continuation": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Pipeline.Inline.failed_continuation": [],
+              "Merlin.GraphState.Pipeline.indexIterations_count": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Pipeline.entries_cons": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.controlAccepted": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.literalsAccepted": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.literalsFit": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.naturalRange": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F3.typed0": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F3.typed1": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked": [],
+              "Merlin.GraphStatePipelineInlineInstance.F3.isInline": [],
+              "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F3.source_form": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F3.actual": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F4.typed0": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F4.typed1": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.F4.actual": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked": [
+                "propext"
+              ],
+              "Merlin.GraphStatePipelineInlineInstance.complete": [
+                "Quot.sound",
+                "propext"
+              ],
+              "merlin_unroll_inline_transform": [
+                "Quot.sound",
+                "propext"
+              ]
+            },
+            "passed": true
+          }
+        },
+        {
+          "unit": "Witness",
+          "compile": {
+            "executed": true,
+            "command": [
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+              "-j1",
+              "-o",
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/audit-successor-v1/empty/Witness/Witness.olean",
+              "Witness.lean"
+            ],
+            "exit_code": 1,
+            "seconds": 0.9684473229572177,
+            "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+            "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-inline-complete-carry-v1/empty-Witness-compile",
+            "stdout": {
+              "sha256": "9351fe0730ec3193286ce30e8acea0b36498ee6cfb457447ae87975d8fe46901",
+              "bytes": 28848
+            },
+            "stderr": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "first_error_excerpt": "Witness.lean:56:13: warning: This simp argument is unused:\n  B\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:22: warning: This simp argument is unused:\n  progression\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:299: warning: This simp argument is unused:\n  Option.getD_none\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Except.bind,\n    List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:328: warning: This simp argument is unused:\n  List.length_cons\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:345: warning: This simp argument is unused:\n  List.length_nil\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:361: warning: This simp argument is unused:\n  \u2193reduceIte\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:372: warning: This simp argument is unused:\n  loopEval\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:17: warning: This simp argument is unused:\n  step0\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,\n    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,\n    List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:23: warning: This simp argument is unused:\n  M\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,\n    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,\n    List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:25: warning: This simp argument is unused:\n  indexModel\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:36: warning: This simp argument is unused:\n  indexEffect\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:48: warning: This simp argument is unused:\n  controls\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:57: warning: This simp argument is unused:\n  Merlin.GraphState.Pipeline.controlAt\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, IndexOp.eval, opaqueStep, evalProgram, reads,\n    List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ,\n    Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:94: warning: This simp argument is unused:\n  IndexOp.eval\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:107: warning: This simp argument is unused:\n  opaqueStep\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:118: warning: This simp argument is unused:\n  evalProgram\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:130: warning: This simp argument is unused:\n  reads\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:136: "
+          }
+        }
+      ]
+    },
+    {
+      "id": "inline1",
+      "expected_protocol": null,
+      "final_root": "merlin_unroll_inline_transform",
+      "status": "UNEXECUTED",
+      "units": [],
+      "reason": "Previous unexpected query/audit failure in this profile"
+    },
+    {
+      "id": "inline2",
+      "expected_protocol": null,
+      "final_root": "merlin_unroll_inline_transform",
+      "status": "UNEXECUTED",
+      "units": [],
+      "reason": "Previous unexpected query/audit failure in this profile"
+    },
+    {
+      "id": "inline3",
+      "expected_protocol": null,
+      "final_root": "merlin_unroll_inline_transform",
+      "status": "UNEXECUTED",
+      "units": [],
+      "reason": "Previous unexpected query/audit failure in this profile"
+    },
+    {
+      "id": "wide_inline1",
+      "expected_protocol": null,
+      "final_root": "merlin_unroll_inline_transform",
+      "status": "UNEXECUTED",
+      "units": [],
+      "reason": "Previous unexpected query/audit failure in this profile"
+    }
+  ],
+  "first_failure": {
+    "executed": true,
+    "command": [
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+      "-j1",
+      "-o",
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/audit-successor-v1/empty/Witness/Witness.olean",
+      "Witness.lean"
+    ],
+    "exit_code": 1,
+    "seconds": 0.9684473229572177,
+    "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+    "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-inline-complete-carry-v1/empty-Witness-compile",
+    "stdout": {
+      "sha256": "9351fe0730ec3193286ce30e8acea0b36498ee6cfb457447ae87975d8fe46901",
+      "bytes": 28848
+    },
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "first_error_excerpt": "Witness.lean:56:13: warning: This simp argument is unused:\n  B\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:22: warning: This simp argument is unused:\n  progression\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:299: warning: This simp argument is unused:\n  Option.getD_none\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Except.bind,\n    List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:328: warning: This simp argument is unused:\n  List.length_cons\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:345: warning: This simp argument is unused:\n  List.length_nil\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:361: warning: This simp argument is unused:\n  \u2193reduceIte\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:372: warning: This simp argument is unused:\n  loopEval\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:17: warning: This simp argument is unused:\n  step0\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,\n    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,\n    List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:23: warning: This simp argument is unused:\n  M\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,\n    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,\n    List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:25: warning: This simp argument is unused:\n  indexModel\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:36: warning: This simp argument is unused:\n  indexEffect\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:48: warning: This simp argument is unused:\n  controls\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:57: warning: This simp argument is unused:\n  Merlin.GraphState.Pipeline.controlAt\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, IndexOp.eval, opaqueStep, evalProgram, reads,\n    List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ,\n    Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:94: warning: This simp argument is unused:\n  IndexOp.eval\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:107: warning: This simp argument is unused:\n  opaqueStep\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:118: warning: This simp argument is unused:\n  evalProgram\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:130: warning: This simp argument is unused:\n  reads\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:136: "
+  }
+}

@@ -1,0 +1,1610 @@
+{
+  "id": "W-caller-context-successor-v1",
+  "modules": [
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/ResourceGeometry.olean",
+        "Merlin/ResourceGeometry.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5683870220091194,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-000-Merlin.ResourceGeometry",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.ResourceGeometry",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/ResourceGeometry.lean",
+        "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+        "bytes": 3246
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/ResourceGeometry.olean",
+        "sha256": "7030a7aa34afb948336f8945679ed324f464e8b979de40ac481b7220a09194c6",
+        "bytes": 110160
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/StateEffects.olean",
+        "Merlin/StateEffects.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4682115700561553,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-001-Merlin.StateEffects",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.StateEffects",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/StateEffects.lean",
+        "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+        "bytes": 4537
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/StateEffects.olean",
+        "sha256": "c02d08ef7e456d37c26c32c6cf4735826a1060134951cc246d07c336c604c829",
+        "bytes": 202320
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuse.olean",
+        "Merlin/GraphLoopsReuse.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.568021650891751,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-002-Merlin.GraphLoopsReuse",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsReuse",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsReuse.lean",
+        "sha256": "51b46ae3c0e1bb64ca47ec1ec1a2bb36fe96f706d229d8ca4f6302f6e38a5c2c",
+        "bytes": 7525
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuse.olean",
+        "sha256": "3b502d58b0cb5e12d3b9670b7e0f8d364892aef06f22657823ad7493d2447763",
+        "bytes": 183064
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseProtocol.olean",
+        "Merlin/GraphLoopsReuseProtocol.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.9182543021161109,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-003-Merlin.GraphLoopsReuseProtocol",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsReuseProtocol",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsReuseProtocol.lean",
+        "sha256": "538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0",
+        "bytes": 6086
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseProtocol.olean",
+        "sha256": "e6af857ad28ed60dadc88b175e4ca79e6e3e3f74eaf26820842e84628abbd4ba",
+        "bytes": 803616
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseSemantics.olean",
+        "Merlin/GraphLoopsReuseSemantics.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6678195409476757,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-004-Merlin.GraphLoopsReuseSemantics",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsReuseSemantics",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsReuseSemantics.lean",
+        "sha256": "8b5f9d5a71a7aab8559286e5bdb36dfc02e2abeb24a76ad5710434a20bf3da6f",
+        "bytes": 13700
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseSemantics.olean",
+        "sha256": "bc9ae6f19fee90a6ee477bf04635dfd637aeff86eca7000e0d157f3c66bcaff1",
+        "bytes": 561480
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseGeometry.olean",
+        "Merlin/GraphLoopsReuseGeometry.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6681958520784974,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-005-Merlin.GraphLoopsReuseGeometry",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsReuseGeometry",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsReuseGeometry.lean",
+        "sha256": "9c2553f3fa45cbdeb03c9f084aa6f84f247a574f98c7a543010c8ffa65018e1a",
+        "bytes": 6933
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseGeometry.olean",
+        "sha256": "94e76dd1a5985dee534a7bd951388397f08ece8bfbbe29c9c3963a5111ab9234",
+        "bytes": 329704
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseLifetime.olean",
+        "Merlin/GraphLoopsReuseLifetime.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5181564851664007,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-006-Merlin.GraphLoopsReuseLifetime",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsReuseLifetime",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsReuseLifetime.lean",
+        "sha256": "cb3d7cd2553443fb204209cb369bdad79a31d340619e57efd12106b3f51c6c4a",
+        "bytes": 3194
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseLifetime.olean",
+        "sha256": "69fb1bff8069918b199e8272ea75168ba5e6ce3d4a07e1aa61e5c687630875df",
+        "bytes": 271808
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseModel.olean",
+        "Merlin/GraphLoopsReuseModel.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.9690485200844705,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-007-Merlin.GraphLoopsReuseModel",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsReuseModel",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsReuseModel.lean",
+        "sha256": "0011d490dffb9d36ab3d7f1c4b3e944c91ce6a30ae84155367c39b3090b54626",
+        "bytes": 7878
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseModel.olean",
+        "sha256": "3a17d2d63210970704928c55292cdc5de495b0a457d7fa6f6baa356c442df2d4",
+        "bytes": 730696
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseCountermodels.olean",
+        "Merlin/GraphLoopsReuseCountermodels.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.9184606221970171,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-008-Merlin.GraphLoopsReuseCountermodels",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsReuseCountermodels",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsReuseCountermodels.lean",
+        "sha256": "ff170131b35e0c972c02573437da450ebfb3595efcd47f07f55d54b657483f98",
+        "bytes": 4299
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsReuseCountermodels.olean",
+        "sha256": "b53f678f956e15207bbcba4c5a9d63a166054937fce8c0ba34828f621fec99bf",
+        "bytes": 1279304
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsSegment.olean",
+        "Merlin/GraphLoopsSegment.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7185809300281107,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-009-Merlin.GraphLoopsSegment",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsSegment",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsSegment.lean",
+        "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+        "bytes": 9653
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsSegment.olean",
+        "sha256": "5ded89b8558ee996ce3de4ca4188330439e4ad8222021f76c834d144394514dd",
+        "bytes": 388048
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsSegmentBounds.olean",
+        "Merlin/GraphLoopsSegmentBounds.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7687204158864915,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-010-Merlin.GraphLoopsSegmentBounds",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsSegmentBounds",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsSegmentBounds.lean",
+        "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+        "bytes": 3962
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsSegmentBounds.olean",
+        "sha256": "d456bb1c1dae929d204d695aabe9d7ec0f2d7a9f1096fe8dadffa1406740380c",
+        "bytes": 329176
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsSegmentModel.olean",
+        "Merlin/GraphLoopsSegmentModel.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 1.019612547941506,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-011-Merlin.GraphLoopsSegmentModel",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsSegmentModel",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsSegmentModel.lean",
+        "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+        "bytes": 7091
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsSegmentModel.olean",
+        "sha256": "b83c91856a65e8e43370cd3861547d0e0e25984e962966f180e43a243b9a8752",
+        "bytes": 1165184
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsSegmentState.olean",
+        "Merlin/GraphLoopsSegmentState.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5230726290028542,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-012-Merlin.GraphLoopsSegmentState",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsSegmentState",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsSegmentState.lean",
+        "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+        "bytes": 2118
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsSegmentState.olean",
+        "sha256": "8b94a51eabf36b9484a1ee61e1cec94b068d311f5ad835bcb0d96fbb5ecce900",
+        "bytes": 60552
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsUnroll.olean",
+        "Merlin/GraphLoopsUnroll.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6682394619565457,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-013-Merlin.GraphLoopsUnroll",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsUnroll",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsUnroll.lean",
+        "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+        "bytes": 5730
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsUnroll.olean",
+        "sha256": "1acc45054af6e1b1313c8f6032497874a5b2163936575713a811e3a5cb78185f",
+        "bytes": 292912
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsUnrollGrouping.olean",
+        "Merlin/GraphLoopsUnrollGrouping.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7181895978283137,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-014-Merlin.GraphLoopsUnrollGrouping",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsUnrollGrouping",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsUnrollGrouping.lean",
+        "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+        "bytes": 9854
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsUnrollGrouping.olean",
+        "sha256": "005708f12de191f6241c2fc558bff1d3a29f3a6bdef14aa4e4d8504e39deef94",
+        "bytes": 294216
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCF.olean",
+        "Merlin/GraphLoopsMemorySCF.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.668010301887989,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-015-Merlin.GraphLoopsMemorySCF",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCF",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCF.lean",
+        "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
+        "bytes": 4861
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCF.olean",
+        "sha256": "2f4456444b5fbe1e6202f8f90628e634925fb87650e8fba44856f78d568be89c",
+        "bytes": 495192
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFScope.olean",
+        "Merlin/GraphLoopsMemorySCFScope.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5176777529995888,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-016-Merlin.GraphLoopsMemorySCFScope",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFScope",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFScope.lean",
+        "sha256": "86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3",
+        "bytes": 3210
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFScope.olean",
+        "sha256": "37806b6ea3f42d7c35a50474914a5708e292a9d95ada3624414610e92ac5c48c",
+        "bytes": 124744
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFLoops.olean",
+        "Merlin/GraphLoopsMemorySCFLoops.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5178270631004125,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-017-Merlin.GraphLoopsMemorySCFLoops",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFLoops",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFLoops.lean",
+        "sha256": "3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4",
+        "bytes": 4269
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFLoops.olean",
+        "sha256": "f6967dc2ad223abb8b1a19417be5dd2fc6ba8de8fec9db2bb6cbb345e78f7378",
+        "bytes": 77808
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFCoverage.olean",
+        "Merlin/GraphLoopsMemorySCFCoverage.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.718795410124585,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-018-Merlin.GraphLoopsMemorySCFCoverage",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFCoverage",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFCoverage.lean",
+        "sha256": "e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf",
+        "bytes": 5846
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFCoverage.olean",
+        "sha256": "fe6b7bc127279b2f910dbe2ad5d7d37b9c976a31935a681b5aa66057e12dfdec",
+        "bytes": 167648
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFRect.olean",
+        "Merlin/GraphLoopsMemorySCFRect.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6681080318521708,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-019-Merlin.GraphLoopsMemorySCFRect",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFRect",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFRect.lean",
+        "sha256": "5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562",
+        "bytes": 6094
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFRect.olean",
+        "sha256": "2daff905fccd834ba09e2f1449ce66729376e0f3ec7495e03953a5fb42bdc13a",
+        "bytes": 177168
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFEffects.olean",
+        "Merlin/GraphLoopsMemorySCFEffects.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5675428081303835,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-020-Merlin.GraphLoopsMemorySCFEffects",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFEffects",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFEffects.lean",
+        "sha256": "17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1",
+        "bytes": 6157
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFEffects.olean",
+        "sha256": "8be972363a4e75640688a592265cc472366e173f53bb89b7bee52a0f85ac449b",
+        "bytes": 135104
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFOperational.olean",
+        "Merlin/GraphLoopsMemorySCFOperational.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7180319670587778,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-021-Merlin.GraphLoopsMemorySCFOperational",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFOperational",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFOperational.lean",
+        "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
+        "bytes": 10841
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFOperational.olean",
+        "sha256": "ace73e4a4be3f8d2f2630074ab7b8cb8201ca5108d6b4ebfa52af8f0484fb595",
+        "bytes": 249552
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFSimulation.olean",
+        "Merlin/GraphLoopsMemorySCFSimulation.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6182929270435125,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-022-Merlin.GraphLoopsMemorySCFSimulation",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFSimulation",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFSimulation.lean",
+        "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
+        "bytes": 4589
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFSimulation.olean",
+        "sha256": "1e0f0e644daf65407f4e6a32ecf76d720c748113e13571b5f099378d8b3c8bd5",
+        "bytes": 64288
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFComposition.olean",
+        "Merlin/GraphLoopsMemorySCFComposition.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6684305730741471,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-023-Merlin.GraphLoopsMemorySCFComposition",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFComposition",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFComposition.lean",
+        "sha256": "26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2",
+        "bytes": 13452
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFComposition.olean",
+        "sha256": "6a53edbfbea92f544ac93bc9c0054e14788affa8c2de6e6e4413acf2c995a7bf",
+        "bytes": 489824
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFModes.olean",
+        "Merlin/GraphLoopsMemorySCFModes.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.517749363090843,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-024-Merlin.GraphLoopsMemorySCFModes",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFModes",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFModes.lean",
+        "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+        "bytes": 5453
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFModes.olean",
+        "sha256": "5453aab72d4da66dc843c998531eea2d1d94bf392fbcf7c9674b698d7ec8b603",
+        "bytes": 77432
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFModel.olean",
+        "Merlin/GraphLoopsMemorySCFModel.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6680604009889066,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-025-Merlin.GraphLoopsMemorySCFModel",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFModel",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFModel.lean",
+        "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+        "bytes": 6316
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFModel.olean",
+        "sha256": "9a8748b0cb0f8066ebc9f67ea084ea0e1b88d993347f19ac396e2ffe033cf769",
+        "bytes": 414656
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFWitness.olean",
+        "Merlin/GraphLoopsMemorySCFWitness.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6177467838861048,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-026-Merlin.GraphLoopsMemorySCFWitness",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFWitness",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFWitness.lean",
+        "sha256": "414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3",
+        "bytes": 9874
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFWitness.olean",
+        "sha256": "f0700264a20ea60b78d3c5a44404189526f37856bbc7efbe8d315214fcbbece2",
+        "bytes": 296872
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFBounds.olean",
+        "Merlin/GraphLoopsMemorySCFBounds.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6177280540578067,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-027-Merlin.GraphLoopsMemorySCFBounds",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsMemorySCFBounds",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsMemorySCFBounds.lean",
+        "sha256": "39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2",
+        "bytes": 2768
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsMemorySCFBounds.olean",
+        "sha256": "9be9721d3bfaecf00512f5972ed555f5a1d88a8448d655902871479b6abafbd2",
+        "bytes": 58144
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShape.olean",
+        "Merlin/GraphLoopsShape.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7177918259985745,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-028-Merlin.GraphLoopsShape",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShape",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShape.lean",
+        "sha256": "7d4314ce5f13378e3f807be57a39da4c064b16e2fe569b685cddd4a22a9beb4e",
+        "bytes": 4332
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShape.olean",
+        "sha256": "5228cae83513fe8d267f5eea5132079babf991440129c1af6737955c31bfb77c",
+        "bytes": 376504
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeSSA.olean",
+        "Merlin/GraphLoopsShapeSSA.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.666676975088194,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-029-Merlin.GraphLoopsShapeSSA",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeSSA",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeSSA.lean",
+        "sha256": "daa129e43fc43806eaa54560abfe3541f1ebbd1d93b36a97e28ce0df5c552594",
+        "bytes": 7075
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeSSA.olean",
+        "sha256": "bd8e0d043cdcbeb15555a72f516f0b61f1331691667981358b8f3a95a2c1b182",
+        "bytes": 452288
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeBindings.olean",
+        "Merlin/GraphLoopsShapeBindings.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5671400849241763,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-030-Merlin.GraphLoopsShapeBindings",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeBindings",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeBindings.lean",
+        "sha256": "0022f37c8c015cd51d4b571592fb01e4723f55152b80240e47d566508f35ebab",
+        "bytes": 4966
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeBindings.olean",
+        "sha256": "326fdab1b977ba1ddb4b72e5ee2ba3893f22f88d288fa9b4424e8da259ccf15b",
+        "bytes": 314872
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeCode.olean",
+        "Merlin/GraphLoopsShapeCode.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.8175842559430748,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-031-Merlin.GraphLoopsShapeCode",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeCode",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeCode.lean",
+        "sha256": "57784b3dae571bcc1a9d228605ae1a3fd4b40a2b784afd2d3eb4a0bbc22b1432",
+        "bytes": 8871
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeCode.olean",
+        "sha256": "2ee1d463b0d4d0edc5963c4f7f888abf70540069d3c14617eb37be081d72402c",
+        "bytes": 1137032
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeSound.olean",
+        "Merlin/GraphLoopsShapeSound.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5669339539017528,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-032-Merlin.GraphLoopsShapeSound",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeSound",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeSound.lean",
+        "sha256": "93c7be67db0a1eb04ea62bc27adf3ea7b038aa87d01e95ce533a143a30780626",
+        "bytes": 7170
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeSound.olean",
+        "sha256": "f772aa7bcb23ec806b47b576fe3dd51b7acf4509c0286edc75feb78fcf91dcbe",
+        "bytes": 535952
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeModule.olean",
+        "Merlin/GraphLoopsShapeModule.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7701263728085905,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-033-Merlin.GraphLoopsShapeModule",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeModule",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeModule.lean",
+        "sha256": "17ccc635a1718ad775304b5f9daa0715f6a84c249668f8defaa33cb17a98a823",
+        "bytes": 5961
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeModule.olean",
+        "sha256": "fa736e8d73a95d43fdada855f4a7bd42bc267b4a1184382f0edc113adb8a8218",
+        "bytes": 436440
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeMemory.olean",
+        "Merlin/GraphLoopsShapeMemory.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.618248795857653,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-034-Merlin.GraphLoopsShapeMemory",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeMemory",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeMemory.lean",
+        "sha256": "5c53cfb1b3ae15a2aeec82f9acbd3939e32dbd56a0097da8d0aa04c9a8ad3f65",
+        "bytes": 4855
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeMemory.olean",
+        "sha256": "e7f9acc20739d5610202614343972449628a15816367e08aef4b955999b45ccd",
+        "bytes": 160320
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeModel.olean",
+        "Merlin/GraphLoopsShapeModel.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5187413380481303,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-035-Merlin.GraphLoopsShapeModel",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeModel",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeModel.lean",
+        "sha256": "38952ca358eebd28a5a8103a18f002c86ecbcc76b3e82b2642e8f5a4245f6371",
+        "bytes": 3342
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeModel.olean",
+        "sha256": "2461abac5333f1ca05d1b32827dbadce2406bc6fad498e15c2c807ee92b62afd",
+        "bytes": 202544
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeWitness.olean",
+        "Merlin/GraphLoopsShapeWitness.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.517544420901686,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-036-Merlin.GraphLoopsShapeWitness",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeWitness",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeWitness.lean",
+        "sha256": "766b552e3edec6b89b0111c0cb18e37743f2351827944fd47b487a75aa84eaf8",
+        "bytes": 5646
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeWitness.olean",
+        "sha256": "5a3ee77a0adf607a4c44d10fbe30be7b0291b7a81fa62dc6a01907d816a3de65",
+        "bytes": 99384
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeCountermodels.olean",
+        "Merlin/GraphLoopsShapeCountermodels.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5172123711090535,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-037-Merlin.GraphLoopsShapeCountermodels",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeCountermodels",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeCountermodels.lean",
+        "sha256": "d855ed8506c22cd01a4843afa64a259880ba8c43c8eb8c8b7e5e7c4e868095ea",
+        "bytes": 2131
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeCountermodels.olean",
+        "sha256": "6f522835be49204782a6a3cc303b71172c633df8ec6b65609d5ee8fe1119f4e1",
+        "bytes": 54976
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeEpochViews.olean",
+        "Merlin/GraphLoopsShapeEpochViews.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.81873635109514,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-038-Merlin.GraphLoopsShapeEpochViews",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeEpochViews",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeEpochViews.lean",
+        "sha256": "4b1618a73d1cdce364a03dc79a8407a60f8d071355ba82ff2510ab7902bb608d",
+        "bytes": 9696
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeEpochViews.olean",
+        "sha256": "88c565931fcbb0ec1d75caa274d98753eb68c4bd9978b8682af791020374318b",
+        "bytes": 444048
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeEpochNormalize.olean",
+        "Merlin/GraphLoopsShapeEpochNormalize.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6186795581597835,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-039-Merlin.GraphLoopsShapeEpochNormalize",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsShapeEpochNormalize",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeEpochNormalize.lean",
+        "sha256": "0e23fdf6bb90cf53057aa133dee22ff2a8c14db045b13ffc2768a94c91e199d5",
+        "bytes": 7580
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeEpochNormalize.olean",
+        "sha256": "333d60e938371119a507018294a7e2e1ba6b62aa804958e6e8d939245d5a009b",
+        "bytes": 438512
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeAfterRename.olean",
+        "Merlin/GraphLoopsShapeAfterRename.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 0.6172678109724075,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-040-Merlin.GraphLoopsShapeAfterRename",
+      "stdout": {
+        "sha256": "9f3d14b2a255dd3efe3fd37b673374888f56e8ad51ffa254e26802b88c98bc27",
+        "bytes": 7587
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Merlin/GraphLoopsShapeAfterRename.lean:21:22: warning: This simp argument is unused:\n  same\n\nHint: Omit it from the simp argument list.\n  [apply] simp [swapName, Ne.symm same]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:24:24: warning: This simp argument is unused:\n  same\n\nHint: Omit it from the simp argument list.\n  [apply] simp [swapName, Ne.symm same]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:115:20: error: unsolved goals\ncase returned\nValue World : Type\nleft right : Nat\nmeaning : Interpretation Value World\nvalues : List Binding\naliases other : Aliases\nenv : Env Value\nbefore : World\noutputs : List (Runtime Value)\nafter : World\n\u22a2 outputs = readArguments false aliases env values \u2227 after = before \u2194\n    outputs = readArguments false other (swapEnv left right env) (List.map (swapBinding left right) values) \u2227\n      after = before\nMerlin/GraphLoopsShapeAfterRename.lean:139:4: error: Type mismatch: After simplification, term\n  induction ((result.name, result.name) :: aliases)\n    (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n    (put env result.name (Runtime.index value)) before outputs after\n has type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before\n      outputs after)\n    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n      (swapCode left right rest) (put (swapEnv left right env) (swapName left right result.name) (Runtime.index value))\n      before outputs after)\nbut is expected to have type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before\n      outputs after)\n    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n      (swapCode left right rest)\n      (put (swapEnv left right env) (swapBinding left right result).name (Runtime.index value)) before outputs after)\nMerlin/GraphLoopsShapeAfterRename.lean:147:30: error: Application type mismatch: The argument\n  step\nhas type\n  meaning.action key (readArguments false aliases env operands) before values middle\nbut is expected to have type\n  meaning.action key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))\n    before values middle\nin the application\n  And.intro step\nMerlin/GraphLoopsShapeAfterRename.lean:150:30: error: Application type mismatch: The argument\n  step\nhas type\n  meaning.action key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))\n    before values middle\nbut is expected to have type\n  meaning.action key (readArguments false aliases env operands) before values middle\nin the application\n  And.intro step\nMerlin/GraphLoopsShapeAfterRename.lean:170:30: error: Application type mismatch: The argument\n  step\nhas type\n  meaning.region key (readArguments false aliases env operands)\n    (fun inputs initial returned final =>\n      ValuesHold (List.map (swapBinding left right) parameters) inputs \u2227\n        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))\n          (swapCode left right body)\n          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial returned\n          final)\n    before values middle\nbut is expected to have type\n  meaning.region key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))\n    (fun inputs initial outputs final =>\n      ValuesHold parameters inputs \u2227\n        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))\n          (swapCode left right body)\n          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial outputs final)\n    before values middle\nin the application\n  And.intro step\nMerlin/GraphLoopsShapeAfterRename.lean:173:30: error: Application type mismatch: The argument\n  step\nhas type\n  meaning.region key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))\n    (fun inputs initial outputs final =>\n      ValuesHold parameters inputs \u2227\n        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))\n          (swapCode left right body)\n          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial outputs final)\n    before values middle\nbut is expected to have type\n  meaning.region key (readArguments false aliases env operands)\n    (fun inputs initial returned final =>\n      ValuesHold (List.map (swapBinding left right) parameters) inputs \u2227\n        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))\n          (swapCode left right body)\n          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial returned\n          final)\n    before values middle\nin the application\n  And.intro step\nMerlin/GraphLoopsShapeAfterRename.lean:115:50: warning: This simp argument is unused:\n  arguments_swapped\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Eval, swapCode]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:144:31: warning: This simp argument is unused:\n  arguments_swapped\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Eval, swapCode, values_swapped_iff]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:166:31: warning: This simp argument is unused:\n  arguments_swapped\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Eval, swapCode, values_swapped_iff]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:191:66: error: don't know how to synthesize placeholder for argument `other`\ncontext:\nValue World : Type\nleft right : Nat\nfunction : Function\nmeaning : Interpretation Value World\ninputs : List (Runtime Value)\nbefore : World\noutputs : List (Runtime Value)\nafter : World\na\u271d : ValuesHold function.parameters inputs\n\u22a2 Aliases\nMerlin/GraphLoopsShapeAfterRename.lean:191:64: error: don't know how to synthesize placeholder for argument `aliases`\ncontext:\nValue World : Type\nleft right : Nat\nfunction : Function\nmeaning : Interpretation Value World\ninputs : List (Runtime Value)\nbefore : World\noutputs : List (Runtime Value)\nafter : World\na\u271d : ValuesHold function.parameters inputs\n\u22a2 Aliases\nMerlin/GraphLoopsShapeAfterRename.lean:191:7: error: failed to infer `have` declaration type\nMerlin/GraphLoopsShapeAfterRename.lean:185:95: error: unsolved goals\nValue World : Type\nleft right : Nat\nfunction : Function\nmeaning : Interpretation Value World\ninputs : List (Runtime Value)\nbefore : World\noutputs : List (Runtime Value)\nafter : World\na\u271d : ValuesHold function.parameters inputs\n\u22a2 Eval meaning false (extendAliases [] function.parameters) function.code (assign emptyEnv function.parameters inputs)\n      before outputs after \u2194\n    Eval meaning false (extendAliases [] (List.map (swapBinding left right) function.parameters))\n      (swapCode left right function.code)\n      (assign emptyEnv (List.map (swapBinding left right) function.parameters) inputs) before outputs after\n\n",
+      "module": "Merlin.GraphLoopsShapeAfterRename",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeAfterRename.lean",
+        "sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+        "bytes": 12242
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "argument",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/argument/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "argument_alias",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/argument_alias/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "caller_buffer",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/caller_buffer/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "changed_callee",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/changed_callee/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "descriptor_alias",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/descriptor_alias/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "observer",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/observer/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "order",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/order/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "positive",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/positive/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "prefix_allocation",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/prefix_allocation/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "private_escape",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/private_escape/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "repeated",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/repeated/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "return",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/return/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "transitive",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/transitive/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "unknown_caller",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/unknown_caller/Context.lean",
+      "domain": {
+        "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+        "status": "SOURCE_BINDERS_UNCHECKED"
+      },
+      "relation": {
+        "source_form": "caller-context EntryDomain graphOutcomes iff",
+        "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+      },
+      "exact_final_declaration": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    }
+  ],
+  "status": "SUPPORT_BUILD_FAILED",
+  "first_failure": {
+    "executed": true,
+    "command": [
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+      "-j1",
+      "-o",
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeAfterRename.olean",
+      "Merlin/GraphLoopsShapeAfterRename.lean"
+    ],
+    "exit_code": 1,
+    "seconds": 0.6172678109724075,
+    "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+    "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-040-Merlin.GraphLoopsShapeAfterRename",
+    "stdout": {
+      "sha256": "9f3d14b2a255dd3efe3fd37b673374888f56e8ad51ffa254e26802b88c98bc27",
+      "bytes": 7587
+    },
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "first_error_excerpt": "Merlin/GraphLoopsShapeAfterRename.lean:21:22: warning: This simp argument is unused:\n  same\n\nHint: Omit it from the simp argument list.\n  [apply] simp [swapName, Ne.symm same]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:24:24: warning: This simp argument is unused:\n  same\n\nHint: Omit it from the simp argument list.\n  [apply] simp [swapName, Ne.symm same]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:115:20: error: unsolved goals\ncase returned\nValue World : Type\nleft right : Nat\nmeaning : Interpretation Value World\nvalues : List Binding\naliases other : Aliases\nenv : Env Value\nbefore : World\noutputs : List (Runtime Value)\nafter : World\n\u22a2 outputs = readArguments false aliases env values \u2227 after = before \u2194\n    outputs = readArguments false other (swapEnv left right env) (List.map (swapBinding left right) values) \u2227\n      after = before\nMerlin/GraphLoopsShapeAfterRename.lean:139:4: error: Type mismatch: After simplification, term\n  induction ((result.name, result.name) :: aliases)\n    (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n    (put env result.name (Runtime.index value)) before outputs after\n has type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before\n      outputs after)\n    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n      (swapCode left right rest) (put (swapEnv left right env) (swapName left right result.name) (Runtime.index value))\n      before outputs after)\nbut is expected to have type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before\n      outputs after)\n    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n      (swapCode left right rest)\n      (put (swapEnv left right env) (swapBinding left right result).name (Runtime.index value)) before outputs after)\nMerlin/GraphLoopsShapeAfterRename.lean:147:30: error: Application type mismatch: The argument\n  step\nhas type\n  meaning.action key (readArguments false aliases env operands) before values middle\nbut is expected to have type\n  meaning.action key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))\n    before values middle\nin the application\n  And.intro step\nMerlin/GraphLoopsShapeAfterRename.lean:150:30: error: Application type mismatch: The argument\n  step\nhas type\n  meaning.action key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))\n    before values middle\nbut is expected to have type\n  meaning.action key (readArguments false aliases env operands) before values middle\nin the application\n  And.intro step\nMerlin/GraphLoopsShapeAfterRename.lean:170:30: error: Application type mismatch: The argument\n  step\nhas type\n  meaning.region key (readArguments false aliases env operands)\n    (fun inputs initial returned final =>\n      ValuesHold (List.map (swapBinding left right) parameters) inputs \u2227\n        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))\n          (swapCode left right body)\n          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial returned\n          final)\n    before values middle\nbut is expected to have type\n  meaning.region key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))\n    (fun inputs initial outputs final =>\n      ValuesHold parameters inputs \u2227\n        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))\n          (swapCode left right body)\n          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial outputs final)\n    before values middle\nin the application\n  And.intro step\nMerlin/GraphLoopsShapeAfterRename.lean:173:30: error: Application type mismatch: The argument\n  step\nhas type\n  meaning.region key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))\n    (fun inputs initial outputs final =>\n      ValuesHold parameters inputs \u2227\n        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))\n          (swapCode left right body)\n          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial outputs final)\n    before values middle\nbut is expected to have type\n  meaning.region key (readArguments false aliases env operands)\n    (fun inputs initial returned final =>\n      ValuesHold (List.map (swapBinding left right) parameters) inputs \u2227\n        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))\n          (swapCode left right body)\n          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial returned\n          final)\n    before values middle\nin the application\n  And.intro step\nMerlin/GraphLoopsShapeAfterRename.lean:115:50: warning: This simp argument is unused:\n  arguments_swapped\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Eval, swapCode]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:144:31: warning: This simp argument is unused:\n  arguments_swapped\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Eval, swapCode, values_swapped_iff]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:166:31: warning: This simp argument is unused:\n  arguments_swapped\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Eval, swapCode, values_swapped_iff]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nMerlin/GraphLoopsShapeAfterRename.lean:191:66: error: don't know how to synthesize placeholder for argument `other`\ncontext:\nValue World : Type\nleft right : Nat\nfunction : Function\nmeaning : Interpretation Value World\ninputs : List (Runtime Value)\nbefore : World\noutputs : List (Runtime Value)\nafter : World\na\u271d : ValuesHold function.parameters inputs\n\u22a2 Aliases\nMerlin/GraphLoopsShapeAfterRename.lean:191:64: error: don't know how to synthesize placeholder for argument `aliases`\ncontext:\nValue World : Type\nleft right : Nat\nfunction : Function\nmeaning : Interpretation Value World\ninputs : List (Runtime Value)\nbefore : World\noutputs : List (Runtime Value)\nafter : World\na\u271d : ValuesHold function.parameters inputs\n\u22a2 Aliases\nMerlin/GraphLoopsShapeAfterRename.lean:191:7: error: failed to infer `have` declaration type\nMerlin/GraphLoopsShapeAfterRename.lean:185:95: error: unsolved goals\nValue World : Type\nleft right : Nat\nfunction : Function\nmeaning : Interpretation Value World\ninputs : List (Runtime Value)\nbefore : World\noutputs : List (Runtime Value)\nafter : World\na\u271d : ValuesHold function.parameters inputs\n\u22a2 Eval meaning false (extendAliases [] function.parameters) function.code (assign emptyEnv function.parameters inputs)\n      before outputs after \u2194\n    Eval meaning false (extendAliases [] (List.map (swapBinding left right) function.parameters))\n      (swapCode left right function.code)\n      (assign emptyEnv (List.map (swapBinding left right) function.parameters) inputs) before outputs after\n\n",
+    "module": "Merlin.GraphLoopsShapeAfterRename",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeAfterRename.lean",
+      "sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+      "bytes": 12242
+    }
+  }
+}

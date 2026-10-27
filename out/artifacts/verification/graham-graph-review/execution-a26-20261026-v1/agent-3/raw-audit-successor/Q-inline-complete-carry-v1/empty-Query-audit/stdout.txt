@@ -1,0 +1,206 @@
+@Merlin.GraphState.Pipeline.Inline.empty_no_body : ∀ {Value World Error : Type} (arity : Nat)
+  (body : Int → List.{0} Value → World → Merlin.GraphState.Scalar.Outcome Value World Error) (lower upper step : Nat),
+  LT.lt.{0} 0 step →
+    Merlin.GraphLoopsUnroll.CountCorrect lower upper step 0 →
+      ∀ (values : List.{0} Value) (world : World),
+        Eq.{1} (List.length.{0} values) arity →
+          Eq.{1}
+            (Merlin.GraphState.Scalar.loopEval arity body
+              (Merlin.GraphState.Pipeline.indexIterations ↑lower ↑upper ↑step) values world)
+            (Except.ok.{0, 0} (Prod.mk.{0, 0} values world))
+'Merlin.GraphState.Pipeline.Inline.empty_no_body' depends on axioms: [propext, Quot.sound.{u}]
+@Merlin.GraphState.Pipeline.Inline.counted_continuation : ∀ {Value World Error : Type} (arity : Nat)
+  (body : Int → List.{0} Value → World → Merlin.GraphState.Scalar.Outcome Value World Error)
+  (next : List.{0} Value → World → Merlin.GraphState.Scalar.Outcome Value World Error) (lower upper step count : Nat),
+  LT.lt.{0} 0 step →
+    Merlin.GraphLoopsUnroll.CountCorrect lower upper step count →
+      ∀ (values : List.{0} Value) (world : World),
+        Eq.{1}
+          (Except.bind.{0, 0, 0}
+            (Merlin.GraphState.Scalar.loopEval arity body
+              (Merlin.GraphState.Pipeline.indexIterations ↑lower ↑upper ↑step) values world)
+            fun result => next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))
+          (Except.bind.{0, 0, 0}
+            (Merlin.GraphState.Scalar.loopEval arity body
+              (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.progression lower step count)) values world)
+            fun result => next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))
+'Merlin.GraphState.Pipeline.Inline.counted_continuation' depends on axioms: [propext, Quot.sound.{u}]
+@Merlin.GraphState.Pipeline.Inline.failed_continuation : ∀ {Value World Error : Type}
+  (failure : Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Error) World)
+  (next : List.{0} Value → World → Merlin.GraphState.Scalar.Outcome Value World Error),
+  Eq.{1}
+    (Except.bind.{0, 0, 0} (Except.error.{0, 0} failure) fun result =>
+      next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))
+    (Except.error.{0, 0} failure)
+'Merlin.GraphState.Pipeline.Inline.failed_continuation' does not depend on any axioms
+@Merlin.GraphState.Pipeline.indexIterations_count : ∀ {lower upper step count : Nat},
+  LT.lt.{0} 0 step →
+    Merlin.GraphLoopsUnroll.CountCorrect lower upper step count →
+      Eq.{1} (Merlin.GraphState.Pipeline.indexIterations ↑lower ↑upper ↑step)
+        (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.progression lower step count))
+'Merlin.GraphState.Pipeline.indexIterations_count' depends on axioms: [propext, Quot.sound.{u}]
+@Merlin.GraphState.Pipeline.entries_cons : ∀ {Value World Error : Type}
+  {registry : List.{0} Merlin.GraphState.Scalar.Signature}
+  (model : Merlin.GraphState.Scalar.Model Value World Error registry) {first second : Merlin.GraphState.Pipeline.Entry}
+  {before after : List.{0} Merlin.GraphState.Pipeline.Entry},
+  Eq.{1} first.inputs second.inputs →
+    Eq.{1} first.outputs second.outputs →
+      (∀ (arguments : List.{0} Value) (world : World),
+          Eq.{1} (List.length.{0} arguments) (List.length.{0} first.inputs) →
+            Eq.{1} (Merlin.GraphState.Scalar.evalProgram model first.body arguments world)
+              (Merlin.GraphState.Scalar.evalProgram model second.body arguments world)) →
+        Merlin.GraphState.Pipeline.PreservesEntries model before after →
+          Merlin.GraphState.Pipeline.PreservesEntries model (List.cons.{0} first before) (List.cons.{0} second after)
+'Merlin.GraphState.Pipeline.entries_cons' depends on axioms: [propext]
+Merlin.GraphStatePipelineInlineInstance.controlAccepted : Eq.{1}
+  (Merlin.GraphState.Pipeline.checkControl Merlin.GraphStatePipelineInlineInstance.registry
+    Merlin.GraphStatePipelineInlineInstance.controls)
+  true
+'Merlin.GraphStatePipelineInlineInstance.controlAccepted' depends on axioms: [propext]
+Merlin.GraphStatePipelineInlineInstance.literalsAccepted : Eq.{1}
+  (Merlin.GraphState.Pipeline.checkLiterals Merlin.GraphStatePipelineInlineInstance.profileBits
+    Merlin.GraphStatePipelineInlineInstance.controls)
+  true
+'Merlin.GraphStatePipelineInlineInstance.literalsAccepted' depends on axioms: [propext]
+Merlin.GraphStatePipelineInlineInstance.literalsFit : ∀ (identity : Nat) (value : Int),
+  Eq.{1} (Merlin.GraphState.Pipeline.controlAt Merlin.GraphStatePipelineInlineInstance.controls identity)
+      (some.{0} (Merlin.GraphState.Pipeline.IndexOp.constant value)) →
+    Merlin.GraphState.Pipeline.signedRepresentative Merlin.GraphStatePipelineInlineInstance.profileBits value
+'Merlin.GraphStatePipelineInlineInstance.literalsFit' depends on axioms: [propext, Quot.sound.{u}]
+Merlin.GraphStatePipelineInlineInstance.naturalRange : ∀ (lower upper step : Nat),
+  LT.lt.{0} 0 step →
+    Eq.{1} (Merlin.GraphState.Pipeline.indexIterations (Int.ofNat lower) (Int.ofNat upper) (Int.ofNat step))
+      (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.scfRange lower upper step))
+'Merlin.GraphStatePipelineInlineInstance.naturalRange' depends on axioms: [propext, Quot.sound.{u}]
+Merlin.GraphStatePipelineInlineInstance.F3.typed0 : Eq.{1}
+  (Merlin.GraphState.Scalar.checkTypes Merlin.GraphStatePipelineInlineInstance.registry
+    Merlin.GraphStatePipelineInlineInstance.F3.inputs Merlin.GraphStatePipelineInlineInstance.F3.outputs
+    Merlin.GraphStatePipelineInlineInstance.F3.S0)
+  true
+'Merlin.GraphStatePipelineInlineInstance.F3.typed0' depends on axioms: [propext]
+Merlin.GraphStatePipelineInlineInstance.F3.typed1 : Eq.{1}
+  (Merlin.GraphState.Scalar.checkTypes Merlin.GraphStatePipelineInlineInstance.registry
+    Merlin.GraphStatePipelineInlineInstance.F3.inputs Merlin.GraphStatePipelineInlineInstance.F3.outputs
+    Merlin.GraphStatePipelineInlineInstance.F3.S1)
+  true
+'Merlin.GraphStatePipelineInlineInstance.F3.typed1' depends on axioms: [propext]
+Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked : Merlin.GraphStatePipelineInlineInstance.F3.bounds.Valid
+'Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked' does not depend on any axioms
+Merlin.GraphStatePipelineInlineInstance.F3.isInline : LE.le.{0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.count
+  Merlin.GraphStatePipelineInlineInstance.F3.bounds.factor
+'Merlin.GraphStatePipelineInlineInstance.F3.isInline' does not depend on any axioms
+Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit : ∀ (ordinal : Nat),
+  LT.lt.{0} ordinal Merlin.GraphStatePipelineInlineInstance.F3.bounds.count →
+    Merlin.GraphLoopsSegment.FitsSigned Merlin.GraphStatePipelineInlineInstance.F3.bounds.bits
+        (HAdd.hAdd.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.lower
+          (HMul.hMul.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.step ordinal)) ∧
+      Merlin.GraphLoopsSegment.FitsSigned Merlin.GraphStatePipelineInlineInstance.F3.bounds.bits
+        (HAdd.hAdd.{0, 0, 0}
+          (HAdd.hAdd.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.lower
+            (HMul.hMul.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.step ordinal))
+          Merlin.GraphStatePipelineInlineInstance.F3.bounds.step)
+'Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit' depends on axioms: [propext,
+ Classical.choice.{u},
+ Quot.sound.{u}]
+@Merlin.GraphStatePipelineInlineInstance.F3.source_form : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List.{0} Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)
+  (x0 x1 : Int) (world : World),
+  Eq.{1}
+    (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+      Merlin.GraphStatePipelineInlineInstance.F3.S0 (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)
+    (Except.bind.{0, 0, 0}
+      (Merlin.GraphState.Scalar.loopEval 2
+        (fun i c w =>
+          Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+            Merlin.GraphStatePipelineInlineInstance.F3.B
+            (HAppend.hAppend.{0, 0, 0} (List.cons.{0} i c)
+              (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))
+            w)
+        (Merlin.GraphState.Pipeline.indexIterations 3 3 2) (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)
+      fun r =>
+      Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+        Merlin.GraphStatePipelineInlineInstance.F3.N
+        (HAppend.hAppend.{0, 0, 0} (Prod.fst.{0, 0} r) (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))
+        (Prod.snd.{0, 0} r))
+'Merlin.GraphStatePipelineInlineInstance.F3.source_form' depends on axioms: [propext, Quot.sound.{u}]
+@Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List.{0} Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)
+  (x0 x1 : Int) (world : World),
+  Eq.{1}
+    (Merlin.GraphState.Scalar.loopEval 2
+      (fun i c w =>
+        Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+          Merlin.GraphStatePipelineInlineInstance.F3.B
+          (HAppend.hAppend.{0, 0, 0} (List.cons.{0} i c) (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))
+          w)
+      (Merlin.GraphState.Pipeline.indexIterations 3 3 2) (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)
+    (Except.ok.{0, 0} (Prod.mk.{0, 0} (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world))
+'Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs' depends on axioms: [propext, Quot.sound.{u}]
+@Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List.{0} Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)
+  (x0 x1 : Int) (world : World),
+  Eq.{1}
+    (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+      Merlin.GraphStatePipelineInlineInstance.F3.S0 (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)
+    (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+      Merlin.GraphStatePipelineInlineInstance.F3.S1 (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)
+'Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs' depends on axioms: [propext, Quot.sound.{u}]
+@Merlin.GraphStatePipelineInlineInstance.F3.actual : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List.{0} Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)
+  (arguments : List.{0} Int) (world : World),
+  Eq.{1} (List.length.{0} arguments) (List.length.{0} Merlin.GraphStatePipelineInlineInstance.F3.inputs) →
+    Eq.{1}
+      (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+        Merlin.GraphStatePipelineInlineInstance.F3.S0 arguments world)
+      (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+        Merlin.GraphStatePipelineInlineInstance.F3.S1 arguments world)
+'Merlin.GraphStatePipelineInlineInstance.F3.actual' depends on axioms: [propext, Quot.sound.{u}]
+Merlin.GraphStatePipelineInlineInstance.F4.typed0 : Eq.{1}
+  (Merlin.GraphState.Scalar.checkTypes Merlin.GraphStatePipelineInlineInstance.registry
+    Merlin.GraphStatePipelineInlineInstance.F4.inputs Merlin.GraphStatePipelineInlineInstance.F4.outputs
+    Merlin.GraphStatePipelineInlineInstance.F4.S0)
+  true
+'Merlin.GraphStatePipelineInlineInstance.F4.typed0' depends on axioms: [propext]
+Merlin.GraphStatePipelineInlineInstance.F4.typed1 : Eq.{1}
+  (Merlin.GraphState.Scalar.checkTypes Merlin.GraphStatePipelineInlineInstance.registry
+    Merlin.GraphStatePipelineInlineInstance.F4.inputs Merlin.GraphStatePipelineInlineInstance.F4.outputs
+    Merlin.GraphStatePipelineInlineInstance.F4.S1)
+  true
+'Merlin.GraphStatePipelineInlineInstance.F4.typed1' depends on axioms: [propext]
+@Merlin.GraphStatePipelineInlineInstance.F4.actual : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List.{0} Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)
+  (arguments : List.{0} Int) (world : World),
+  Eq.{1} (List.length.{0} arguments) (List.length.{0} Merlin.GraphStatePipelineInlineInstance.F4.inputs) →
+    Eq.{1}
+      (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+        Merlin.GraphStatePipelineInlineInstance.F4.S0 arguments world)
+      (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+        Merlin.GraphStatePipelineInlineInstance.F4.S1 arguments world)
+'Merlin.GraphStatePipelineInlineInstance.F4.actual' depends on axioms: [propext, Quot.sound.{u}]
+Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked : Eq.{1}
+  (Merlin.GraphState.Pipeline.checkEntries Merlin.GraphStatePipelineInlineInstance.registry
+    Merlin.GraphStatePipelineInlineInstance.originalEntries)
+  true
+'Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked' depends on axioms: [propext]
+Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked : Eq.{1}
+  (Merlin.GraphState.Pipeline.checkEntries Merlin.GraphStatePipelineInlineInstance.registry
+    Merlin.GraphStatePipelineInlineInstance.finalEntries)
+  true
+'Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked' depends on axioms: [propext]
+@Merlin.GraphStatePipelineInlineInstance.complete : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List.{0} Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry),
+  Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+    Merlin.GraphStatePipelineInlineInstance.originalEntries Merlin.GraphStatePipelineInlineInstance.finalEntries
+'Merlin.GraphStatePipelineInlineInstance.complete' depends on axioms: [propext, Quot.sound.{u}]
+@merlin_unroll_inline_transform : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List.{0} Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry),
+  Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInlineInstance.M primitive external)
+    Merlin.GraphStatePipelineInlineInstance.originalEntries Merlin.GraphStatePipelineInlineInstance.finalEntries
+'merlin_unroll_inline_transform' depends on axioms: [propext, Quot.sound.{u}]

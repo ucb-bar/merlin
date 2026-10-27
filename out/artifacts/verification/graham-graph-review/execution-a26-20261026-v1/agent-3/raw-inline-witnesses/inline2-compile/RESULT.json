@@ -1,0 +1,23 @@
+{
+  "executed": true,
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "-o",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/inline2/Witness.olean",
+    "Witness.lean"
+  ],
+  "exit_code": 1,
+  "seconds": 1.0687414000276476,
+  "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+  "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/inline2-compile",
+  "stdout": {
+    "sha256": "3ffbbf04ffdc70cd1f8aca3266a6efb21abb80a2f59aadf6b30990aed73af380",
+    "bytes": 1986
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912 \u21918 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:140:153: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([7], 10)\nWitness.lean:152:173: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 10)\nWitness.lean:164:179: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 2) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\nWitness.lean:176:178: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 5) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 9)\n\n"
+}

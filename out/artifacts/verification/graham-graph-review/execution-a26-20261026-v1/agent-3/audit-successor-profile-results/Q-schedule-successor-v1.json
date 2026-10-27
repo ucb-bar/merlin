@@ -1,0 +1,467 @@
+{
+  "id": "Q-schedule-successor-v1",
+  "status": "COMPILED_AND_EXACT_ROOTS_AUDITED",
+  "cases": [
+    {
+      "id": "cross_observer_keep_effect_order",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "final_root": "merlin_schedule_transform",
+      "status": "COMPILED_AND_EXACT_ROOTS_AUDITED",
+      "units": [
+        {
+          "unit": "Query",
+          "compile": {
+            "classification": "REUSED_EXACT_SAME_BATCH_COMPILED_QUERY",
+            "original_command_result": {
+              "executed": true,
+              "command": [
+                "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+                "-j1",
+                "-o",
+                "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-schedule-successor-v1/queries/cross_observer_keep_effect_order/Query/Query.olean",
+                "Query.lean"
+              ],
+              "exit_code": 0,
+              "seconds": 0.2667714620474726,
+              "classification": "ACCEPTED",
+              "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-schedule-successor-v1/query-cross_observer_keep_effect_order-Query",
+              "stdout": {
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "bytes": 0
+              },
+              "stderr": {
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "bytes": 0
+              },
+              "role": "Query",
+              "output": {
+                "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-schedule-successor-v1/queries/cross_observer_keep_effect_order/Query/Query.olean",
+                "sha256": "8c9c5fde2fe5d2d378c0d0220e025ecbc45a046779c2c32bb02b6cf35c6e6185",
+                "bytes": 106872
+              },
+              "audit": {
+                "executed": true,
+                "command": [
+                  "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+                  "-j1",
+                  "Audit.lean"
+                ],
+                "exit_code": 1,
+                "seconds": 0.2162055231165141,
+                "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+                "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-schedule-successor-v1/query-cross_observer_keep_effect_order-Query-audit",
+                "stdout": {
+                  "sha256": "c3810e855e521270e7759b46d9e5918aa004f2e3a72d22701d3342c4b589206c",
+                  "bytes": 9937
+                },
+                "stderr": {
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "bytes": 0
+                },
+                "first_error_excerpt": "Audit.lean:2:0: error: Unknown option `pp.width`\n@Merlin.GraphState.Scalar.check_sound : \u2200 {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  {inputs outputs : List.{0} Merlin.GraphState.Scalar.Ty} {before after : Merlin.GraphState.Scalar.Program},\n  Eq.{1} (Merlin.GraphState.Scalar.check registry inputs outputs before after) true \u2192\n    Merlin.GraphState.Scalar.Preserves registry (List.length.{0} inputs) before after\n'Merlin.GraphState.Scalar.check_sound' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphState.Scalar.check_typed : \u2200 {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  {inputs outputs : List.{0} Merlin.GraphState.Scalar.Ty} {before after : Merlin.GraphState.Scalar.Program},\n  Eq.{1} (Merlin.GraphState.Scalar.check registry inputs outputs before after) true \u2192\n    Merlin.GraphState.Scalar.Typed registry inputs outputs before \u2227\n      Merlin.GraphState.Scalar.Typed registry inputs outputs after\n'Merlin.GraphState.Scalar.check_typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphState.Scalar.normalize_sound : \u2200 {Value World Error : Type}\n  {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  (model : Merlin.GraphState.Scalar.Model Value World Error registry) (program : Merlin.GraphState.Scalar.Program)\n  (symbols : List.{0} Merlin.GraphState.Scalar.Expr) (code : Merlin.GraphState.Scalar.Code),\n  Eq.{1} (Merlin.GraphState.Scalar.normalize registry symbols program) (some.{0} code) \u2192\n    \u2200 (environment : List.{0} Value) (world : World),\n      Eq.{1}\n        (Merlin.GraphState.Scalar.evalProgram model program\n          (List.map.{0, 0} (Merlin.GraphState.Scalar.evalExpr model.default model.primitive environment) symbols) world)\n        (Merlin.GraphState.Scalar.evalCode model code environment world)\n'Merlin.GraphState.Scalar.normalize_sound' depends on axioms: [propext, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F2.accepted : Eq.{1}\n  (Merlin.GraphState.Scalar.check Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F2.inputs\n    Merlin.GraphStateScalarInstance.F2.outputs Merlin.GraphStateScalarInstance.F2.before\n    Merlin.GraphStateScalarInstance.F2.after)\n  true\n'Merlin.GraphStateScalarInstance.F2.accepted' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F2.actual : Merlin.GraphState.Scalar.Preserves Merlin.GraphStateScalarInstance.registry\n  (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) Merlin.GraphStateScalarInstance.F2.before\n  Merlin.GraphStateScalarInstance.F2.after\n'Merlin.GraphStateScalarInstance.F2.actual' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F2.typed : Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry\n    Merlin.GraphStateScalarInstance.F2.inputs Merlin.GraphStateScalarInstance.F2.outputs\n    Merlin.GraphStateScalarInstance.F2.before \u2227\n  Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F2.inputs\n    Merlin.GraphStateScalarInstance.F2.outputs Merlin.GraphStateScalarInstance.F2.after\n'Merlin.GraphStateScalarInstance.F2.typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphStateScalarInstance.F2.initialized : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)\n  (values : List.{0} Value) (world : World),\n  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) \u2192\n    Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F2.outputs)\n        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F2.before values world) \u2227\n      Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F2.outputs)\n        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F2.after values world)\n'Merlin.GraphStateScalarInstance.F2.initialized' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphStateScalarInstance.F2.operands_initialized : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)\n  (values : List.{0} Value) (world : World),\n  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) \u2192\n    Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F2.before values world \u2227\n      Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F2.after values world\n'Merlin.GraphStateScalarInstance.F2.operands_initialized' depends on axioms: [propext,\n Classical.choice.{u},\n Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F3.accepted : Eq.{1}\n  (Merlin.GraphState.Scalar.check Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F3.inputs\n    Merlin.GraphStateScalarInstance.F3.outputs Merlin.GraphStateScalarInstance.F3.before\n    Merlin.GraphStateScalarInstance.F3.after)\n  true\n'Merlin.GraphStateScalarInstance.F3.accepted' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F3.actual : Merlin.GraphState.Scalar.Preserves Merlin.GraphStateScalarInstance.registry\n  (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) Merlin.GraphStateScalarInstance.F3.before\n  Merlin.GraphStateScalarInstance.F3.after\n'Merlin.GraphStateScalarInstance.F3.actual' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F3.typed : Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry\n    Merlin.GraphStateScalarInstance.F3.inputs Merlin.GraphStateScalarInstance.F3.outputs\n    Merlin.GraphStateScalarInstance.F3.before \u2227\n  Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F3.inputs\n    Merlin.GraphStateScalarInstance.F3.outputs Merlin.GraphStateScalarInstance.F3.after\n'Merlin.GraphStateScalarInstance.F3.typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphStateScalarInstance.F3.initialized : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)\n  (values : List.{0} Value) (world : World),\n  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) \u2192\n    Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F3.outputs)\n        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F3.before values world) \u2227\n      Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F3.outputs)\n        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F3.after values world)\n'Merlin.GraphStateScalarInstance.F3.initialized' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphStateScalarInstance.F3.operands_initialized : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)\n  (values : List.{0} Value) (world : World),\n  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) \u2192\n    Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F3.before values world \u2227\n      Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F3.after values world\n'Merlin.GraphStateScalarInstance.F3.operands_initialized' depends on axioms: [propext,\n Classical.choice.{u},\n Quot.sound.{u}]\n@Merlin.GraphState.GateEntries.entries_cons : \u2200 {Value World Error : Type}\n  {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  (model : Merlin.GraphState.Scalar.Model Value World Error registry)\n  {first second : Merlin.GraphState.GateEntries.Entry} {before after : List.{0} Merlin.GraphState.GateEntries.Entry},\n  Eq.{1} first.inputs second.inputs \u2192\n    Eq.{1} first.outputs second.outputs \u2192\n      (\u2200 (arguments : List.{0} Value) (world : World),\n          Eq.{1} (List.length.{0} arguments) (List.length.{0} first.inputs) \u2192\n            Eq.{1} (Merlin.GraphState.Scalar.evalProgram model first.body arguments world)\n              (Merlin.GraphState.Scalar.evalProgram model second.body arguments world)) \u2192\n        Merlin.GraphState.GateEntries.PreservesEntries model before after \u2192\n          Merlin.GraphState.GateEntries.PreservesEntries model (List.cons.{0} first before) (List.cons.{0} second after)\n'Merlin.GraphState.GateEntries.entries_cons' depends on axioms: [propext]\n@Merlin.GraphState.GateEntries.entries_nil : \u2200 {Value World Error : Type}\n  {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  (model : Merlin.GraphState.Scalar.Model Value World Error registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model List.nil.{0} List.nil.{0}\n'Merlin.GraphState.GateEntries.entries_nil' depends on axioms: [propext]\n@Merlin.GraphPipelineGateInstance.complete : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries\n'Merlin.GraphPipelineGateInstance.complete' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@merlin_schedule_transform : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries\n'merlin_schedule_transform' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n\n"
+              }
+            },
+            "source": {
+              "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-schedule-successor-v1/queries/cross_observer_keep_effect_order/Query.lean",
+              "sha256": "31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e",
+              "bytes": 4659
+            }
+          },
+          "audit": {
+            "executed": true,
+            "command": [
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+              "-j1",
+              "AuditSuccessor.lean"
+            ],
+            "exit_code": 0,
+            "seconds": 0.3676781749818474,
+            "classification": "ACCEPTED",
+            "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/cross_observer_keep_effect_order-Query-audit",
+            "stdout": {
+              "sha256": "452dad663d3ca68c127b0c99649a64df2cf565de90dd01ad346f4fcfe83546e6",
+              "bytes": 9888
+            },
+            "stderr": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "axiom_audit": {
+            "roots_requested": 17,
+            "roots_observed": 17,
+            "missing": [],
+            "forbidden": {},
+            "axioms": {
+              "Merlin.GraphState.Scalar.check_sound": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Scalar.check_typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Scalar.normalize_sound": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.accepted": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.actual": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.operands_initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.accepted": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.actual": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.operands_initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.GateEntries.entries_cons": [
+                "propext"
+              ],
+              "Merlin.GraphState.GateEntries.entries_nil": [
+                "propext"
+              ],
+              "Merlin.GraphPipelineGateInstance.complete": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "merlin_schedule_transform": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ]
+            },
+            "passed": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "pure_reorder",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "final_root": "merlin_schedule_transform",
+      "status": "COMPILED_AND_EXACT_ROOTS_AUDITED",
+      "units": [
+        {
+          "unit": "Query",
+          "compile": {
+            "executed": true,
+            "command": [
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+              "-j1",
+              "-o",
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-schedule-successor-v1/audit-successor-v1/pure_reorder/Query/Query.olean",
+              "Query.lean"
+            ],
+            "exit_code": 0,
+            "seconds": 0.4170845670159906,
+            "classification": "ACCEPTED",
+            "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/pure_reorder-Query-compile",
+            "stdout": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "audit": {
+            "executed": true,
+            "command": [
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+              "-j1",
+              "AuditSuccessor.lean"
+            ],
+            "exit_code": 0,
+            "seconds": 0.21608951105736196,
+            "classification": "ACCEPTED",
+            "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/pure_reorder-Query-audit",
+            "stdout": {
+              "sha256": "452dad663d3ca68c127b0c99649a64df2cf565de90dd01ad346f4fcfe83546e6",
+              "bytes": 9888
+            },
+            "stderr": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "axiom_audit": {
+            "roots_requested": 17,
+            "roots_observed": 17,
+            "missing": [],
+            "forbidden": {},
+            "axioms": {
+              "Merlin.GraphState.Scalar.check_sound": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Scalar.check_typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Scalar.normalize_sound": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.accepted": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.actual": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.operands_initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.accepted": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.actual": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.operands_initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.GateEntries.entries_cons": [
+                "propext"
+              ],
+              "Merlin.GraphState.GateEntries.entries_nil": [
+                "propext"
+              ],
+              "Merlin.GraphPipelineGateInstance.complete": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "merlin_schedule_transform": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ]
+            },
+            "passed": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "unchanged_order",
+      "expected_protocol": "IDENTITY_SOURCE_CANDIDATE_NOT_CHANGED_OPTIMIZATION",
+      "final_root": "merlin_schedule_transform",
+      "status": "COMPILED_AND_EXACT_ROOTS_AUDITED",
+      "units": [
+        {
+          "unit": "Query",
+          "compile": {
+            "executed": true,
+            "command": [
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+              "-j1",
+              "-o",
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-schedule-successor-v1/audit-successor-v1/unchanged_order/Query/Query.olean",
+              "Query.lean"
+            ],
+            "exit_code": 0,
+            "seconds": 0.31685415492393076,
+            "classification": "ACCEPTED",
+            "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/unchanged_order-Query-compile",
+            "stdout": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "audit": {
+            "executed": true,
+            "command": [
+              "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+              "-j1",
+              "AuditSuccessor.lean"
+            ],
+            "exit_code": 0,
+            "seconds": 0.2668168400414288,
+            "classification": "ACCEPTED",
+            "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/unchanged_order-Query-audit",
+            "stdout": {
+              "sha256": "452dad663d3ca68c127b0c99649a64df2cf565de90dd01ad346f4fcfe83546e6",
+              "bytes": 9888
+            },
+            "stderr": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          },
+          "axiom_audit": {
+            "roots_requested": 17,
+            "roots_observed": 17,
+            "missing": [],
+            "forbidden": {},
+            "axioms": {
+              "Merlin.GraphState.Scalar.check_sound": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Scalar.check_typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.Scalar.normalize_sound": [
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.accepted": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.actual": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F2.operands_initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.accepted": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.actual": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.typed": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphStateScalarInstance.F3.operands_initialized": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "Merlin.GraphState.GateEntries.entries_cons": [
+                "propext"
+              ],
+              "Merlin.GraphState.GateEntries.entries_nil": [
+                "propext"
+              ],
+              "Merlin.GraphPipelineGateInstance.complete": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ],
+              "merlin_schedule_transform": [
+                "Classical.choice",
+                "Quot.sound",
+                "propext"
+              ]
+            },
+            "passed": true
+          }
+        }
+      ]
+    }
+  ]
+}

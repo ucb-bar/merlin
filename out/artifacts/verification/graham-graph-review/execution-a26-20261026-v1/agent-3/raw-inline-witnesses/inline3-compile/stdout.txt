@@ -1,0 +1,46 @@
+Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern
+  Except.bind
+    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)
+      (indexIterations ↑7 ↑16 ↑3) ?values ?world)
+    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd
+in the target expression
+  (Except.bind
+      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)
+        (indexIterations 7 16 3) [x0, x1] world)
+      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =
+    evalProgram (M primitive external) S1 [x0, x1] world
+
+World Error : Type
+primitive : Prim → List Int → Int
+external : External World Error registry
+x0 x1 : Int
+world : World
+⊢ (Except.bind
+      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)
+        (indexIterations 7 16 3) [x0, x1] world)
+      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =
+    evalProgram (M primitive external) S1 [x0, x1] world
+Witness.lean:152:153: error: Type mismatch
+  rfl
+has type
+  ?m.31 = ?m.31
+but is expected to have type
+  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([9], 11)
+Witness.lean:164:173: error: Type mismatch
+  rfl
+has type
+  ?m.30 = ?m.30
+but is expected to have type
+  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 11)
+Witness.lean:176:179: error: Type mismatch
+  rfl
+has type
+  ?m.32 = ?m.32
+but is expected to have type
+  evalProgram (M wordPrimitive (chosen (some 7) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)
+Witness.lean:188:180: error: Type mismatch
+  rfl
+has type
+  ?m.32 = ?m.32
+but is expected to have type
+  evalProgram (M wordPrimitive (chosen (some 13) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 10)

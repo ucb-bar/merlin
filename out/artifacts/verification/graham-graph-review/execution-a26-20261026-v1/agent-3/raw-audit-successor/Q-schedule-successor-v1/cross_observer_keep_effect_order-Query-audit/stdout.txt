@@ -1,0 +1,118 @@
+@Merlin.GraphState.Scalar.check_sound : ∀ {registry : List.{0} Merlin.GraphState.Scalar.Signature}
+  {inputs outputs : List.{0} Merlin.GraphState.Scalar.Ty} {before after : Merlin.GraphState.Scalar.Program},
+  Eq.{1} (Merlin.GraphState.Scalar.check registry inputs outputs before after) true →
+    Merlin.GraphState.Scalar.Preserves registry (List.length.{0} inputs) before after
+'Merlin.GraphState.Scalar.check_sound' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+@Merlin.GraphState.Scalar.check_typed : ∀ {registry : List.{0} Merlin.GraphState.Scalar.Signature}
+  {inputs outputs : List.{0} Merlin.GraphState.Scalar.Ty} {before after : Merlin.GraphState.Scalar.Program},
+  Eq.{1} (Merlin.GraphState.Scalar.check registry inputs outputs before after) true →
+    Merlin.GraphState.Scalar.Typed registry inputs outputs before ∧
+      Merlin.GraphState.Scalar.Typed registry inputs outputs after
+'Merlin.GraphState.Scalar.check_typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+@Merlin.GraphState.Scalar.normalize_sound : ∀ {Value World Error : Type}
+  {registry : List.{0} Merlin.GraphState.Scalar.Signature}
+  (model : Merlin.GraphState.Scalar.Model Value World Error registry) (program : Merlin.GraphState.Scalar.Program)
+  (symbols : List.{0} Merlin.GraphState.Scalar.Expr) (code : Merlin.GraphState.Scalar.Code),
+  Eq.{1} (Merlin.GraphState.Scalar.normalize registry symbols program) (some.{0} code) →
+    ∀ (environment : List.{0} Value) (world : World),
+      Eq.{1}
+        (Merlin.GraphState.Scalar.evalProgram model program
+          (List.map.{0, 0} (Merlin.GraphState.Scalar.evalExpr model.default model.primitive environment) symbols) world)
+        (Merlin.GraphState.Scalar.evalCode model code environment world)
+'Merlin.GraphState.Scalar.normalize_sound' depends on axioms: [propext, Quot.sound.{u}]
+Merlin.GraphStateScalarInstance.F2.accepted : Eq.{1}
+  (Merlin.GraphState.Scalar.check Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F2.inputs
+    Merlin.GraphStateScalarInstance.F2.outputs Merlin.GraphStateScalarInstance.F2.before
+    Merlin.GraphStateScalarInstance.F2.after)
+  true
+'Merlin.GraphStateScalarInstance.F2.accepted' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+Merlin.GraphStateScalarInstance.F2.actual : Merlin.GraphState.Scalar.Preserves Merlin.GraphStateScalarInstance.registry
+  (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) Merlin.GraphStateScalarInstance.F2.before
+  Merlin.GraphStateScalarInstance.F2.after
+'Merlin.GraphStateScalarInstance.F2.actual' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+Merlin.GraphStateScalarInstance.F2.typed : Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry
+    Merlin.GraphStateScalarInstance.F2.inputs Merlin.GraphStateScalarInstance.F2.outputs
+    Merlin.GraphStateScalarInstance.F2.before ∧
+  Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F2.inputs
+    Merlin.GraphStateScalarInstance.F2.outputs Merlin.GraphStateScalarInstance.F2.after
+'Merlin.GraphStateScalarInstance.F2.typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+@Merlin.GraphStateScalarInstance.F2.initialized : ∀ {Value World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)
+  (values : List.{0} Value) (world : World),
+  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) →
+    Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F2.outputs)
+        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F2.before values world) ∧
+      Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F2.outputs)
+        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F2.after values world)
+'Merlin.GraphStateScalarInstance.F2.initialized' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+@Merlin.GraphStateScalarInstance.F2.operands_initialized : ∀ {Value World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)
+  (values : List.{0} Value) (world : World),
+  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) →
+    Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F2.before values world ∧
+      Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F2.after values world
+'Merlin.GraphStateScalarInstance.F2.operands_initialized' depends on axioms: [propext,
+ Classical.choice.{u},
+ Quot.sound.{u}]
+Merlin.GraphStateScalarInstance.F3.accepted : Eq.{1}
+  (Merlin.GraphState.Scalar.check Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F3.inputs
+    Merlin.GraphStateScalarInstance.F3.outputs Merlin.GraphStateScalarInstance.F3.before
+    Merlin.GraphStateScalarInstance.F3.after)
+  true
+'Merlin.GraphStateScalarInstance.F3.accepted' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+Merlin.GraphStateScalarInstance.F3.actual : Merlin.GraphState.Scalar.Preserves Merlin.GraphStateScalarInstance.registry
+  (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) Merlin.GraphStateScalarInstance.F3.before
+  Merlin.GraphStateScalarInstance.F3.after
+'Merlin.GraphStateScalarInstance.F3.actual' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+Merlin.GraphStateScalarInstance.F3.typed : Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry
+    Merlin.GraphStateScalarInstance.F3.inputs Merlin.GraphStateScalarInstance.F3.outputs
+    Merlin.GraphStateScalarInstance.F3.before ∧
+  Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F3.inputs
+    Merlin.GraphStateScalarInstance.F3.outputs Merlin.GraphStateScalarInstance.F3.after
+'Merlin.GraphStateScalarInstance.F3.typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+@Merlin.GraphStateScalarInstance.F3.initialized : ∀ {Value World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)
+  (values : List.{0} Value) (world : World),
+  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) →
+    Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F3.outputs)
+        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F3.before values world) ∧
+      Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F3.outputs)
+        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F3.after values world)
+'Merlin.GraphStateScalarInstance.F3.initialized' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+@Merlin.GraphStateScalarInstance.F3.operands_initialized : ∀ {Value World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)
+  (values : List.{0} Value) (world : World),
+  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) →
+    Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F3.before values world ∧
+      Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F3.after values world
+'Merlin.GraphStateScalarInstance.F3.operands_initialized' depends on axioms: [propext,
+ Classical.choice.{u},
+ Quot.sound.{u}]
+@Merlin.GraphState.GateEntries.entries_cons : ∀ {Value World Error : Type}
+  {registry : List.{0} Merlin.GraphState.Scalar.Signature}
+  (model : Merlin.GraphState.Scalar.Model Value World Error registry)
+  {first second : Merlin.GraphState.GateEntries.Entry} {before after : List.{0} Merlin.GraphState.GateEntries.Entry},
+  Eq.{1} first.inputs second.inputs →
+    Eq.{1} first.outputs second.outputs →
+      (∀ (arguments : List.{0} Value) (world : World),
+          Eq.{1} (List.length.{0} arguments) (List.length.{0} first.inputs) →
+            Eq.{1} (Merlin.GraphState.Scalar.evalProgram model first.body arguments world)
+              (Merlin.GraphState.Scalar.evalProgram model second.body arguments world)) →
+        Merlin.GraphState.GateEntries.PreservesEntries model before after →
+          Merlin.GraphState.GateEntries.PreservesEntries model (List.cons.{0} first before) (List.cons.{0} second after)
+'Merlin.GraphState.GateEntries.entries_cons' depends on axioms: [propext]
+@Merlin.GraphState.GateEntries.entries_nil : ∀ {Value World Error : Type}
+  {registry : List.{0} Merlin.GraphState.Scalar.Signature}
+  (model : Merlin.GraphState.Scalar.Model Value World Error registry),
+  Merlin.GraphState.GateEntries.PreservesEntries model List.nil.{0} List.nil.{0}
+'Merlin.GraphState.GateEntries.entries_nil' depends on axioms: [propext]
+@Merlin.GraphPipelineGateInstance.complete : ∀ {Value World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),
+  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries
+    Merlin.GraphPipelineGateInstance.afterEntries
+'Merlin.GraphPipelineGateInstance.complete' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]
+@merlin_schedule_transform : ∀ {Value World Error : Type}
+  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),
+  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries
+    Merlin.GraphPipelineGateInstance.afterEntries
+'merlin_schedule_transform' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]

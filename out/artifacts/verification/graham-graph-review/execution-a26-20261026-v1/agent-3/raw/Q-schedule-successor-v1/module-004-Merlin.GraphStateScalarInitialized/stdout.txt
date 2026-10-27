@@ -1,0 +1,3 @@
+'Merlin.GraphState.Scalar.typed_execution_shaped' depends on axioms: [propext]
+'Merlin.GraphState.Scalar.HasReads.initialized' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.Scalar.typed_operands_initialized' depends on axioms: [propext, Quot.sound]

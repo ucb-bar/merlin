@@ -1,0 +1,22 @@
+Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern
+  Except.bind
+    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)
+      (indexIterations ↑7 ↑16 ↑3) ?values ?world)
+    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd
+in the target expression
+  (Except.bind
+      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)
+        (indexIterations 7 16 3) [x0, x1] world)
+      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =
+    evalProgram (M primitive external) S1 [x0, x1] world
+
+World Error : Type
+primitive : Prim → List Int → Int
+external : External World Error registry
+x0 x1 : Int
+world : World
+⊢ (Except.bind
+      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)
+        (indexIterations 7 16 3) [x0, x1] world)
+      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =
+    evalProgram (M primitive external) S1 [x0, x1] world

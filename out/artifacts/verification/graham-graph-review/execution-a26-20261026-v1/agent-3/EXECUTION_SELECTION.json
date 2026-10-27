@@ -1,0 +1,20 @@
+{
+  "lean": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+  "lean_identity": {
+    "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+    "bytes": 9024
+  },
+  "sdk_root": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux",
+  "admission": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/READY.json",
+  "admission_pin": {
+    "sha256": "8da6ccfe5a06558ab4459228e82e82b04eeb7ec42d94b5ee15f4aa40e014ed5d",
+    "bytes": 6715
+  },
+  "profiles_pin": {
+    "sha256": "3993752e88b3056ae5b3c376b5fd3bc2dff317ad39d39eba432a49980457e576",
+    "bytes": 1007849
+  },
+  "single_worker": true,
+  "module_timeout_seconds": 180,
+  "batch_budget_seconds": 1200
+}

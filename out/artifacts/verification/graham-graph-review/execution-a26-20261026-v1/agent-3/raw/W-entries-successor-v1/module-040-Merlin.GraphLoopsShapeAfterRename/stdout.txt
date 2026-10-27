@@ -1,0 +1,167 @@
+Merlin/GraphLoopsShapeAfterRename.lean:21:22: warning: This simp argument is unused:
+  same
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [swapName, Ne.symm same]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Merlin/GraphLoopsShapeAfterRename.lean:24:24: warning: This simp argument is unused:
+  same
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [swapName, Ne.symm same]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Merlin/GraphLoopsShapeAfterRename.lean:115:20: error: unsolved goals
+case returned
+Value World : Type
+left right : Nat
+meaning : Interpretation Value World
+values : List Binding
+aliases other : Aliases
+env : Env Value
+before : World
+outputs : List (Runtime Value)
+after : World
+⊢ outputs = readArguments false aliases env values ∧ after = before ↔
+    outputs = readArguments false other (swapEnv left right env) (List.map (swapBinding left right) values) ∧
+      after = before
+Merlin/GraphLoopsShapeAfterRename.lean:139:4: error: Type mismatch: After simplification, term
+  induction ((result.name, result.name) :: aliases)
+    (((swapBinding left right result).name, (swapBinding left right result).name) :: other)
+    (put env result.name (Runtime.index value)) before outputs after
+ has type
+  Iff
+    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before
+      outputs after)
+    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)
+      (swapCode left right rest) (put (swapEnv left right env) (swapName left right result.name) (Runtime.index value))
+      before outputs after)
+but is expected to have type
+  Iff
+    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before
+      outputs after)
+    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)
+      (swapCode left right rest)
+      (put (swapEnv left right env) (swapBinding left right result).name (Runtime.index value)) before outputs after)
+Merlin/GraphLoopsShapeAfterRename.lean:147:30: error: Application type mismatch: The argument
+  step
+has type
+  meaning.action key (readArguments false aliases env operands) before values middle
+but is expected to have type
+  meaning.action key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))
+    before values middle
+in the application
+  And.intro step
+Merlin/GraphLoopsShapeAfterRename.lean:150:30: error: Application type mismatch: The argument
+  step
+has type
+  meaning.action key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))
+    before values middle
+but is expected to have type
+  meaning.action key (readArguments false aliases env operands) before values middle
+in the application
+  And.intro step
+Merlin/GraphLoopsShapeAfterRename.lean:170:30: error: Application type mismatch: The argument
+  step
+has type
+  meaning.region key (readArguments false aliases env operands)
+    (fun inputs initial returned final =>
+      ValuesHold (List.map (swapBinding left right) parameters) inputs ∧
+        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))
+          (swapCode left right body)
+          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial returned
+          final)
+    before values middle
+but is expected to have type
+  meaning.region key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))
+    (fun inputs initial outputs final =>
+      ValuesHold parameters inputs ∧
+        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))
+          (swapCode left right body)
+          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial outputs final)
+    before values middle
+in the application
+  And.intro step
+Merlin/GraphLoopsShapeAfterRename.lean:173:30: error: Application type mismatch: The argument
+  step
+has type
+  meaning.region key (readArguments false other (swapEnv left right env) (List.map (swapBinding left right) operands))
+    (fun inputs initial outputs final =>
+      ValuesHold parameters inputs ∧
+        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))
+          (swapCode left right body)
+          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial outputs final)
+    before values middle
+but is expected to have type
+  meaning.region key (readArguments false aliases env operands)
+    (fun inputs initial returned final =>
+      ValuesHold (List.map (swapBinding left right) parameters) inputs ∧
+        Eval meaning false (extendAliases other (List.map (swapBinding left right) parameters))
+          (swapCode left right body)
+          (assign (swapEnv left right env) (List.map (swapBinding left right) parameters) inputs) initial returned
+          final)
+    before values middle
+in the application
+  And.intro step
+Merlin/GraphLoopsShapeAfterRename.lean:115:50: warning: This simp argument is unused:
+  arguments_swapped
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Eval, swapCode]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Merlin/GraphLoopsShapeAfterRename.lean:144:31: warning: This simp argument is unused:
+  arguments_swapped
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Eval, swapCode, values_swapped_iff]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Merlin/GraphLoopsShapeAfterRename.lean:166:31: warning: This simp argument is unused:
+  arguments_swapped
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Eval, swapCode, values_swapped_iff]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Merlin/GraphLoopsShapeAfterRename.lean:191:66: error: don't know how to synthesize placeholder for argument `other`
+context:
+Value World : Type
+left right : Nat
+function : Function
+meaning : Interpretation Value World
+inputs : List (Runtime Value)
+before : World
+outputs : List (Runtime Value)
+after : World
+a✝ : ValuesHold function.parameters inputs
+⊢ Aliases
+Merlin/GraphLoopsShapeAfterRename.lean:191:64: error: don't know how to synthesize placeholder for argument `aliases`
+context:
+Value World : Type
+left right : Nat
+function : Function
+meaning : Interpretation Value World
+inputs : List (Runtime Value)
+before : World
+outputs : List (Runtime Value)
+after : World
+a✝ : ValuesHold function.parameters inputs
+⊢ Aliases
+Merlin/GraphLoopsShapeAfterRename.lean:191:7: error: failed to infer `have` declaration type
+Merlin/GraphLoopsShapeAfterRename.lean:185:95: error: unsolved goals
+Value World : Type
+left right : Nat
+function : Function
+meaning : Interpretation Value World
+inputs : List (Runtime Value)
+before : World
+outputs : List (Runtime Value)
+after : World
+a✝ : ValuesHold function.parameters inputs
+⊢ Eval meaning false (extendAliases [] function.parameters) function.code (assign emptyEnv function.parameters inputs)
+      before outputs after ↔
+    Eval meaning false (extendAliases [] (List.map (swapBinding left right) function.parameters))
+      (swapCode left right function.code)
+      (assign emptyEnv (List.map (swapBinding left right) function.parameters) inputs) before outputs after

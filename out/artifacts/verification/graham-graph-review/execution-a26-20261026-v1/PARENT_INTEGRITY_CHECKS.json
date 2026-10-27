@@ -1,0 +1,20 @@
+{
+  "schema": "merlin.graham.a26.parent-integrity-check.v1",
+  "agent_manifests": [
+    {
+      "agent": "agent-1",
+      "manifest": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/MANIFEST.json",
+      "files_checked": 19,
+      "issues": []
+    },
+    {
+      "agent": "agent-2",
+      "manifest": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/OUTPUT_MANIFEST.json",
+      "files_checked": 132,
+      "issues": []
+    }
+  ],
+  "baseline_source_data_pins_checked": 469,
+  "changed_baseline_inputs": [],
+  "check_scope": "Source/data and evidence report bytes only; no old or fresh SDK/object files were read by this verification."
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "merlin.graham.a26.final-report-check.v1",
+  "agent_3_files_checked": 662,
+  "issues": [],
+  "case_roster_rows": 43,
+  "case_roster_columns": [
+    "profile",
+    "case",
+    "role",
+    "status",
+    "final_root",
+    "source_path",
+    "source_sha256"
+  ],
+  "agent_3_owned_live_jobs": 0,
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "compiler_implementation_changed": false
+}
