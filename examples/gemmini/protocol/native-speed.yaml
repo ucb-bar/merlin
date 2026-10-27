@@ -33,7 +33,10 @@ arithmetic:
     split the resulting I8 codes back into their original output grids. Preserve guards and effects.
     Refuse nonuniform packed gains beyond 64 physical readout blocks, the frozen compiler's
     native-segment limit. This does not remove the cost of large uncombined nonuniform exits.
-  attention_planes: Existing two-by-two selection retained in this profile; one-by-one is a separate numerical variant.
+  attention_planes: >-
+    TinyLlama retains two softmax and partner planes and selects two bounded residual planes
+    for ordinary score operands under static-heads-softmax2-bounded-partner2-operands2.
+    Other models retain their existing selections; per-site bars and prior refusals are unchanged.
 measurement:
   order: [representative_capsules, full_models]
   targets: [Spike_functional, gSIM_cycles, FireSim_full_chain_cycles]
