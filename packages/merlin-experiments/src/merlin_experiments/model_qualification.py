@@ -723,6 +723,37 @@ def _native_host_signature(model: Path):
     return tuple([(shape, aliases.get(dtype, dtype)) for shape, dtype in rows] for rows in forward_signature(model))
 
 
+def _native_host_arguments(bundle: Path) -> list:
+    """Use the shared manifest planner with exact supported storage types."""
+    import numpy as np
+
+    from merlin.runtime.dispatch_arguments import _ModelInput, bind_forward_array, plan_forward_args
+    from merlin.runtime.dispatch_runtime import f8e4m3fn_to_f32, f32_to_bf16
+
+    def storage(dtype):
+        dtype = {"complex<f32>": "complex64", "complex<f64>": "complex128"}.get(dtype, dtype)
+        if dtype not in _NATIVE_HOST_STORAGE:
+            raise ValueError(f"native host qualification does not support argument storage {dtype!r}")
+        return _NATIVE_HOST_STORAGE[dtype]
+
+    with np.load(bundle / "inputs.npz", allow_pickle=False) as archive:
+        plan = plan_forward_args(
+            bundle,
+            tuple(archive.files),
+            _np_dtype=storage,
+            f32_to_bf16=f32_to_bf16,
+            f8e4m3fn_to_f32=f8e4m3fn_to_f32,
+        )
+        return [
+            bind_forward_array(
+                archive[item.key], item.shape, item.element, _np_dtype=storage, f32_to_bf16=f32_to_bf16
+            )
+            if isinstance(item, _ModelInput)
+            else item
+            for item in plan
+        ]
+
+
 def _native_host_references(bundle: Path, outputs) -> list:
     """Read every receipt-bound result without narrowing its captured storage."""
     import io
@@ -861,7 +892,6 @@ def _native_host_worker(request: dict, root: Path) -> dict:
 
     from merlin.llvmlower.abi import HostModel
     from merlin.llvmlower.lower import lower_model_file
-    from merlin.runtime.dispatch_runtime import resolve_forward_args
     from merlin.targetgen.application_inventory import verify_capture_receipt
 
     workflow = request["workflow"]
@@ -879,7 +909,7 @@ def _native_host_worker(request: dict, root: Path) -> dict:
         raise ValueError("native host qualification requires the exact complete output ABI")
     if len(inputs) >= 1024 or any(any(dim < 0 for dim in shape) for shape, _ in inputs + outputs):
         raise ValueError("native host qualification requires bounded static tensor arguments")
-    arguments = resolve_forward_args(bundle)
+    arguments = _native_host_arguments(bundle)
     if len(arguments) != len(inputs):
         raise ValueError("resolved argument count differs from the captured function ABI")
     storage = _NATIVE_HOST_STORAGE
