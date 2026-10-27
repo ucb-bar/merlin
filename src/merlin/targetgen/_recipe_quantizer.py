@@ -1114,6 +1114,21 @@ def build_quantizer(
             return eligible(reader, family) and not (planes_block and _planes_site(planes_block, reader, owner(reader)))
         return family == ACTIVATION_CONTRACTION and family not in dynamic_families and source in reader.args[:2]
 
+    def feeds_host_contraction(node: Any) -> bool:
+        """Do not expose a standalone output grid to an unselected contraction.
+
+        PT2E output specs affect every reader. A single Q/DQ operand would make
+        an otherwise floating contraction look partially selected to the integer
+        partition, although this recipe never annotated that contraction.
+        """
+        for reader in node.users:
+            if reader.op != "call_function" or reader.target not in operators["contraction"]:
+                continue
+            family = family_of(reader)
+            if family not in listed or not eligible(reader, family):
+                return True
+        return False
+
     class CapabilityQuantizer(Quantizer):
         def __init__(self) -> None:
             self.activation = _spec(activation, is_weight=False, eps=eps)
@@ -1414,6 +1429,8 @@ def build_quantizer(
 
         def _annotate_standalone(self, node: Any, family: str) -> None:
             """A sum or mean that reads itself out: its tensor inputs and its own output scale."""
+            if feeds_host_contraction(node):
+                return
             if family == "operand_sum":
                 operands = [a for a in node.args[:2] if isinstance(a, torch.fx.Node) and a.op != "get_attr"]
                 if len(operands) != 2:
@@ -1438,7 +1455,7 @@ def build_quantizer(
             """Input and output edges of a standalone affine map or movement."""
             from torchao.quantization.pt2e.quantizer import SharedQuantizationSpec
 
-            if fused_behind_contraction(node):
+            if fused_behind_contraction(node) or feeds_host_contraction(node):
                 return
             inputs = tensor_inputs(node)
             constant = family == "movement" and str(node.target).endswith(_CONSTANT_MOVEMENT)
