@@ -1,0 +1,36 @@
+
+Dynamic section at offset 0x104828 contains 33 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libatomic.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc++abi.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libunwind.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libdl.so.2]
+ 0x0000000000000001 (NEEDED)             Shared library: [libpthread.so.0]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x000000000000000e (SONAME)             Library soname: [libc++.so.1]
+ 0x000000000000001d (RUNPATH)            Library runpath: [$ORIGIN/../lib]
+ 0x000000000000000c (INIT)               0x3c000
+ 0x000000000000000d (FINI)               0xb9ccc
+ 0x0000000000000019 (INIT_ARRAY)         0x100938
+ 0x000000000000001b (INIT_ARRAYSZ)       16 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x100948
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0x260
+ 0x0000000000000005 (STRTAB)             0x10758
+ 0x0000000000000006 (SYMTAB)             0x3960
+ 0x000000000000000a (STRSZ)              108857 (bytes)
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000003 (PLTGOT)             0x106000
+ 0x0000000000000002 (PLTRELSZ)           10104 (bytes)
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000017 (JMPREL)             0x39198
+ 0x0000000000000007 (RELA)               0x2c280
+ 0x0000000000000008 (RELASZ)             53016 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000006ffffffb (FLAGS_1)            Flags: NODELETE
+ 0x000000006ffffffe (VERNEED)            0x2c1c0
+ 0x000000006fffffff (VERNEEDNUM)         2
+ 0x000000006ffffff0 (VERSYM)             0x2b092
+ 0x000000006ffffff9 (RELACOUNT)          452
+ 0x0000000000000000 (NULL)               0x0

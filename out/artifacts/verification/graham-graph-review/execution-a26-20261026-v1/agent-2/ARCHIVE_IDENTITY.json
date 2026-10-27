@@ -1,0 +1,9 @@
+{
+  "phase": "download",
+  "attempts": 1,
+  "bytes": 925899528,
+  "native_execution": false,
+  "archive": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/lean-4.35.0-linux.zip",
+  "sha256": "c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+  "identity": "MATCH"
+}

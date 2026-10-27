@@ -1,0 +1,12 @@
+{
+  "phase": "DATA_INTAKE_COMPLETE",
+  "attempts": 1,
+  "bytes": 925899528,
+  "native_execution": false,
+  "archive": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/lean-4.35.0-linux.zip.part",
+  "sha256": "c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+  "expanded_bytes": 3365301905,
+  "member": "lean-4.35.0-linux/src/lean/Lean/Meta/Injective.lean",
+  "sdk": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux",
+  "old_runtime_hold": "UNCHANGED"
+}

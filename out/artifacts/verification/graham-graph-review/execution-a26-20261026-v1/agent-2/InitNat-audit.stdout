@@ -1,0 +1,4 @@
+DiagnosticReprInitNat.witness_value : DiagnosticReprInitNat.witness.value = 7
+'DiagnosticReprInitNat.witness_value' does not depend on any axioms
+'DiagnosticReprInitNat.instReprPayload' does not depend on any axioms
+{ value := 7 }

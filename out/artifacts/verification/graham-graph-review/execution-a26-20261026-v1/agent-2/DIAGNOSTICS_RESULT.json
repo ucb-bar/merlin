@@ -1,0 +1,89 @@
+{
+  "status": "PASS",
+  "version": "Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)",
+  "prefix": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux",
+  "cases": [
+    {
+      "case": "InitNat",
+      "source": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/InitNat.lean",
+        "bytes": 211,
+        "sha256": "a8e251852c73cf90d43deb653f0be806e75bd365fedda1ccdbea41b681cdcb57"
+      },
+      "audit": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/AuditInitNat.lean",
+        "bytes": 201,
+        "sha256": "507358b30f71b26c8e4348eee6b6b38ea8b5448ec426c9712f7c686f55d3e21b"
+      },
+      "output": "DiagnosticReprInitNat.witness_value : DiagnosticReprInitNat.witness.value = 7\n'DiagnosticReprInitNat.witness_value' does not depend on any axioms\n'DiagnosticReprInitNat.instReprPayload' does not depend on any axioms\n{ value := 7 }\n",
+      "objects": [
+        {
+          "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/InitNat.ilean",
+          "bytes": 1275,
+          "sha256": "2c409eeeae4f982d82e6948be3baca40b7e18f0ab294eb7b678bae006beb2528"
+        },
+        {
+          "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/InitNat.olean",
+          "bytes": 56680,
+          "sha256": "eb586e3b9043fa99c3364b68cf53e3bbd1f6b4d314e54279c58a230b3984e946"
+        }
+      ]
+    },
+    {
+      "case": "InitListNat",
+      "source": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/InitListNat.lean",
+        "bytes": 236,
+        "sha256": "3af6ce7abe9d170b263b1248cb6338c10486a952882f310729e85790c2c7a960"
+      },
+      "audit": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/AuditInitListNat.lean",
+        "bytes": 221,
+        "sha256": "0fc2e7123a1481b30a4999692e592a173542086865b65ac838643a527bfddc0a"
+      },
+      "output": "DiagnosticReprInitListNat.witness_value : DiagnosticReprInitListNat.witness.value = [7, 11]\n'DiagnosticReprInitListNat.witness_value' does not depend on any axioms\n'DiagnosticReprInitListNat.instReprPayload' depends on axioms: [propext]\n{ value := [7, 11] }\n",
+      "objects": [
+        {
+          "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/InitListNat.ilean",
+          "bytes": 1480,
+          "sha256": "d870bcc0b8e8dd258082b3d5f22b860c59c082583f62f9c37e5dcd4c273b9d81"
+        },
+        {
+          "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/InitListNat.olean",
+          "bytes": 89736,
+          "sha256": "c9b76dcdd82671d65319bd73041053d0dd9349c421672ddcd03758559ca399a1"
+        }
+      ]
+    },
+    {
+      "case": "OmegaListNat",
+      "source": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/OmegaListNat.lean",
+        "bytes": 256,
+        "sha256": "416dfcbe6de483e63d4e94501d72269ab612e6a16c354bd1fb0c82ef9ac2d918"
+      },
+      "audit": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/AuditOmegaListNat.lean",
+        "bytes": 226,
+        "sha256": "39615ba3b632e91b2e8020418ac053444f7bd5e80a2728c13fbe3fd60bdf5054"
+      },
+      "output": "DiagnosticReprOmegaListNat.witness_value : DiagnosticReprOmegaListNat.witness.value = [7, 11]\n'DiagnosticReprOmegaListNat.witness_value' does not depend on any axioms\n'DiagnosticReprOmegaListNat.instReprPayload' depends on axioms: [propext]\n{ value := [7, 11] }\n",
+      "objects": [
+        {
+          "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/OmegaListNat.ilean",
+          "bytes": 1518,
+          "sha256": "7488433380cf76be5863f0c9d14dc38e5e3ced3746ebb732f78560854ac0baa6"
+        },
+        {
+          "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/OmegaListNat.olean",
+          "bytes": 76264,
+          "sha256": "b249565959695a122cc93df3a4d37167628cb7819e8fac86d6af06af6c8bdb4b"
+        }
+      ]
+    }
+  ],
+  "commands": 8,
+  "old_holds_cleared": false,
+  "graph_qualification": false,
+  "context_type": "fresh independent CLI source reproduction environment"
+}

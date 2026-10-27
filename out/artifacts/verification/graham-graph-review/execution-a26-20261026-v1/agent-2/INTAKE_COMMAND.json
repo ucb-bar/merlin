@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "-I",
+    "-S",
+    "-B",
+    "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/intake_fresh.py"
+  ],
+  "source_sha256": "2efdfa4dd3d3c3c74f2f043111255219349a36cb49a4801be7c7685d40d752d2",
+  "timeout_seconds": 840,
+  "terminate_seconds": 2,
+  "kill_reap_seconds": 3,
+  "started_utc": "2026-10-27T00:35:50.229193+00:00",
+  "one_child_only": true
+}

@@ -1,0 +1,41 @@
+
+Dynamic section at offset 0x4acb420 contains 38 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [librt.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libdl.so.2]
+ 0x0000000000000001 (NEEDED)             Shared library: [libpthread.so.0]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libz.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc++.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc++abi.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]
+ 0x000000000000000e (SONAME)             Library soname: [libLLVM.so.23.1]
+ 0x000000000000001d (RUNPATH)            Library runpath: [$ORIGIN/../lib]
+ 0x000000000000000c (INIT)               0x60d000
+ 0x000000000000000d (FINI)               0x3545744
+ 0x0000000000000019 (INIT_ARRAY)         0x4a1b668
+ 0x000000000000001b (INIT_ARRAYSZ)       3872 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x4a1c588
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0x298
+ 0x0000000000000005 (STRTAB)             0x1410f8
+ 0x0000000000000006 (SYMTAB)             0x4ffd0
+ 0x000000000000000a (STRSZ)              3183400 (bytes)
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000003 (PLTGOT)             0x4ad4000
+ 0x0000000000000002 (PLTRELSZ)           7584 (bytes)
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000017 (JMPREL)             0x60a780
+ 0x0000000000000007 (RELA)               0x45e788
+ 0x0000000000000008 (RELASZ)             1753080 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000006ffffffc (VERDEF)             0x45e590
+ 0x000000006ffffffd (VERDEFNUM)          2
+ 0x000000006ffffffb (FLAGS_1)            Flags: NODELETE
+ 0x000000006ffffffe (VERNEED)            0x45e5c8
+ 0x000000006fffffff (VERNEEDNUM)         8
+ 0x000000006ffffff0 (VERSYM)             0x44a420
+ 0x000000006ffffff9 (RELACOUNT)          67660
+ 0x0000000000000000 (NULL)               0x0

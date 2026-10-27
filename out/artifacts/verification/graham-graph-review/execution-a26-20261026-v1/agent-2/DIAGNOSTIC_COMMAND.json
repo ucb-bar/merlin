@@ -1,0 +1,13 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "-I",
+    "-S",
+    "-B",
+    "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnose_fresh.py"
+  ],
+  "source_sha256": "8db67e809fa9bdf5ca8e8d995fc4af5772f7c836c39892db421e06fef7cb3166",
+  "max_Lean_commands": 8,
+  "timeout_seconds": 750,
+  "first_failure_stops_batch": true
+}

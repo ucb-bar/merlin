@@ -1,0 +1,4 @@
+DiagnosticReprInitListNat.witness_value : DiagnosticReprInitListNat.witness.value = [7, 11]
+'DiagnosticReprInitListNat.witness_value' does not depend on any axioms
+'DiagnosticReprInitListNat.instReprPayload' depends on axioms: [propext]
+{ value := [7, 11] }

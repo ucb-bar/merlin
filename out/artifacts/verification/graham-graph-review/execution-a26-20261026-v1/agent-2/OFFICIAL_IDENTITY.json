@@ -1,0 +1,56 @@
+{
+  "release": {
+    "id": 410881210,
+    "tag_name": "v4.35.0",
+    "html_url": "https://github.com/leanprover/lean4/releases/tag/v4.35.0",
+    "published_at": "2026-10-12T18:13:12Z",
+    "immutable": false
+  },
+  "tag": {
+    "ref": "refs/tags/v4.35.0",
+    "node_id": "MDM6UmVmMTI5NTcxNDM2OnJlZnMvdGFncy92NC4zNS4w",
+    "url": "https://api.github.com/repos/leanprover/lean4/git/refs/tags/v4.35.0",
+    "object": {
+      "sha": "eb6cafb7290e8bd5f2937522d8d804f58f02bafc",
+      "type": "commit",
+      "url": "https://api.github.com/repos/leanprover/lean4/git/commits/eb6cafb7290e8bd5f2937522d8d804f58f02bafc"
+    }
+  },
+  "asset": {
+    "url": "https://api.github.com/repos/leanprover/lean4/releases/assets/634574461",
+    "id": 634574461,
+    "node_id": "RA_kwDOB7kabM4l0tZ9",
+    "name": "lean-4.35.0-linux.zip",
+    "label": "",
+    "uploader": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "content_type": "application/zip",
+    "state": "uploaded",
+    "size": 925899528,
+    "digest": "sha256:c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+    "download_count": 1152,
+    "created_at": "2026-10-12T18:11:58Z",
+    "updated_at": "2026-10-12T18:13:10Z",
+    "browser_download_url": "https://github.com/leanprover/lean4/releases/download/v4.35.0/lean-4.35.0-linux.zip"
+  },
+  "checksum_provenance": "Fresh official GitHub release API over HTTPS; publisher/platform digest, not independent signature verification."
+}

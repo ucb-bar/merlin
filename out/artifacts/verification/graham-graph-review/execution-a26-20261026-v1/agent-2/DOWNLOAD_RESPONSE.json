@@ -1,0 +1,30 @@
+{
+  "url": "https://release-assets.githubusercontent.com/github-production-release-asset/129571436/871511af-cc5a-4d72-9c64-10e269ee9792?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-10-27T01%3A20%3A21Z&rscd=attachment%3B+filename%3Dlean-4.35.0-linux.zip&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-10-27T00%3A19%3A50Z&ske=2026-10-27T01%3A20%3A21Z&sks=b&skv=2018-11-09&sig=MKSq8IYIBxsVGos%2B11EskPEKzdlF0rVGzG4nMFq4SRc%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc5MzA2NDk1MCwibmJmIjoxNzkzMDYxMzUwLCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.111xowet6ap3B_uQefKgs6seFjA4QYHB0THeVzDcUEc&response-content-disposition=attachment%3B%20filename%3Dlean-4.35.0-linux.zip&response-content-type=application%2Foctet-stream",
+  "status": 200,
+  "headers": {
+    "Connection": "close",
+    "Content-Length": "925899528",
+    "Last-Modified": "Mon, 12 Oct 2026 18:13:09 GMT",
+    "ETag": "\"0x8DF288C78F0F8DF\"",
+    "Server": "Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0",
+    "x-ms-request-id": "92aeef34-101e-0026-341d-5fa94d000000",
+    "x-ms-version": "2018-11-09",
+    "x-ms-creation-time": "Mon, 12 Oct 2026 18:13:09 GMT",
+    "x-ms-lease-status": "unlocked",
+    "x-ms-lease-state": "available",
+    "x-ms-blob-type": "BlockBlob",
+    "x-ms-server-encrypted": "true",
+    "x-ms-access-tier": "Hot",
+    "x-ms-access-tier-inferred": "true",
+    "Via": "1.1 varnish, 1.1 varnish",
+    "Accept-Ranges": "bytes",
+    "Age": "0",
+    "Date": "Tue, 27 Oct 2026 00:35:50 GMT",
+    "X-Served-By": "cache-iad-kcgs7200159-IAD, cache-sjc1000105-SJC",
+    "X-Cache": "HIT, HIT",
+    "X-Cache-Hits": "224, 0",
+    "X-Timer": "S1793061351.601696,VS0,VE70",
+    "Content-Disposition": "attachment; filename=lean-4.35.0-linux.zip",
+    "Content-Type": "application/octet-stream"
+  }
+}

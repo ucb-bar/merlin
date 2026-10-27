@@ -1,0 +1,155 @@
+   3906922:	find library=libInit_shared.so [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/glibc-hwcaps/x86-64-v4:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/glibc-hwcaps/x86-64-v3:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/glibc-hwcaps/x86-64-v2:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/glibc-hwcaps/x86-64-v4:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/glibc-hwcaps/x86-64-v3:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/glibc-hwcaps/x86-64-v2:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/glibc-hwcaps/x86-64-v4/libInit_shared.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/glibc-hwcaps/x86-64-v3/libInit_shared.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/glibc-hwcaps/x86-64-v2/libInit_shared.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libInit_shared.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/glibc-hwcaps/x86-64-v4/libInit_shared.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/glibc-hwcaps/x86-64-v3/libInit_shared.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/glibc-hwcaps/x86-64-v2/libInit_shared.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libInit_shared.so
+   3906922:	
+   3906922:	find library=libleanshared_2.so [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libleanshared_2.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_2.so
+   3906922:	
+   3906922:	find library=libleanshared_1.so [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libleanshared_1.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_1.so
+   3906922:	
+   3906922:	find library=libleanshared.so [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libleanshared.so
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so
+   3906922:	
+   3906922:	find library=libc.so.6 [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libc.so.6
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/glibc-hwcaps/x86-64-v4:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/glibc-hwcaps/x86-64-v3:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/glibc-hwcaps/x86-64-v2:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/glibc-hwcaps/x86-64-v4:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/glibc-hwcaps/x86-64-v3:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/glibc-hwcaps/x86-64-v2:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean		(RUNPATH from file /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/glibc-hwcaps/x86-64-v4/libc.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/glibc-hwcaps/x86-64-v3/libc.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/glibc-hwcaps/x86-64-v2/libc.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/libc.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/glibc-hwcaps/x86-64-v4/libc.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/glibc-hwcaps/x86-64-v3/libc.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/glibc-hwcaps/x86-64-v2/libc.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/libc.so.6
+   3906922:	 search cache=/etc/ld.so.cache
+   3906922:	  trying file=/lib/x86_64-linux-gnu/libc.so.6
+   3906922:	
+   3906922:	find library=libpthread.so.0 [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libpthread.so.0
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libpthread.so.0
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean		(RUNPATH from file /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/libpthread.so.0
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/libpthread.so.0
+   3906922:	 search cache=/etc/ld.so.cache
+   3906922:	  trying file=/lib/x86_64-linux-gnu/libpthread.so.0
+   3906922:	
+   3906922:	find library=libdl.so.2 [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libdl.so.2
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libdl.so.2
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean		(RUNPATH from file /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/libdl.so.2
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/libdl.so.2
+   3906922:	 search cache=/etc/ld.so.cache
+   3906922:	  trying file=/lib/x86_64-linux-gnu/libdl.so.2
+   3906922:	
+   3906922:	find library=libm.so.6 [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libm.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libm.so.6
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean		(RUNPATH from file /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/libm.so.6
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/../lib/lean/libm.so.6
+   3906922:	 search cache=/etc/ld.so.cache
+   3906922:	  trying file=/lib/x86_64-linux-gnu/libm.so.6
+   3906922:	
+   3906922:	find library=librt.so.1 [0]; searching
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/librt.so.1
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/librt.so.1
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/../glibc-hwcaps/x86-64-v4:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/../glibc-hwcaps/x86-64-v3:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/../glibc-hwcaps/x86-64-v2:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/..		(RUNPATH from file /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/../glibc-hwcaps/x86-64-v4/librt.so.1
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/../glibc-hwcaps/x86-64-v3/librt.so.1
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/../glibc-hwcaps/x86-64-v2/librt.so.1
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/../librt.so.1
+   3906922:	 search path=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean		(LD_LIBRARY_PATH)
+   3906922:	  trying file=/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/librt.so.1
+   3906922:	 search cache=/etc/ld.so.cache
+   3906922:	  trying file=/lib/x86_64-linux-gnu/librt.so.1
+   3906922:	
+   3906922:	
+   3906922:	calling init: /lib64/ld-linux-x86-64.so.2
+   3906922:	
+   3906922:	
+   3906922:	calling init: /lib/x86_64-linux-gnu/libc.so.6
+   3906922:	
+   3906922:	
+   3906922:	calling init: /lib/x86_64-linux-gnu/librt.so.1
+   3906922:	
+   3906922:	
+   3906922:	calling init: /lib/x86_64-linux-gnu/libm.so.6
+   3906922:	
+   3906922:	
+   3906922:	calling init: /lib/x86_64-linux-gnu/libdl.so.2
+   3906922:	
+   3906922:	
+   3906922:	calling init: /lib/x86_64-linux-gnu/libpthread.so.0
+   3906922:	
+   3906922:	
+   3906922:	calling init: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so
+   3906922:	
+   3906922:	
+   3906922:	calling init: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_1.so
+   3906922:	
+   3906922:	
+   3906922:	calling init: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_2.so
+   3906922:	
+   3906922:	
+   3906922:	calling init: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libInit_shared.so
+   3906922:	
+   3906922:	
+   3906922:	initialize program: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean
+   3906922:	
+   3906922:	
+   3906922:	transferring control: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean
+   3906922:	
+   3906922:	
+   3906922:	calling fini:  [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libInit_shared.so [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_2.so [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_1.so [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /lib/x86_64-linux-gnu/libpthread.so.0 [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /lib/x86_64-linux-gnu/libdl.so.2 [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /lib/x86_64-linux-gnu/libm.so.6 [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /lib/x86_64-linux-gnu/librt.so.1 [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /lib/x86_64-linux-gnu/libc.so.6 [0]
+   3906922:	
+   3906922:	
+   3906922:	calling fini: /lib64/ld-linux-x86-64.so.2 [0]
+   3906922:	

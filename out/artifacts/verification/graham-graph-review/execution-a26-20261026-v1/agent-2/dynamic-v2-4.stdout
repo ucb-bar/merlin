@@ -1,0 +1,32 @@
+
+Dynamic section at offset 0xddc8 contains 29 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libdl.so.2]
+ 0x0000000000000001 (NEEDED)             Shared library: [libpthread.so.0]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x000000000000000e (SONAME)             Library soname: [libunwind.so.1]
+ 0x000000000000001d (RUNPATH)            Library runpath: [$ORIGIN/../lib]
+ 0x000000000000000c (INIT)               0x2000
+ 0x000000000000000d (FINI)               0x8418
+ 0x0000000000000019 (INIT_ARRAY)         0xed30
+ 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0xed38
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0x260
+ 0x0000000000000005 (STRTAB)             0x9b0
+ 0x0000000000000006 (SYMTAB)             0x3c8
+ 0x000000000000000a (STRSZ)              1145 (bytes)
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000003 (PLTGOT)             0xf000
+ 0x0000000000000002 (PLTRELSZ)           504 (bytes)
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000017 (JMPREL)             0x11a0
+ 0x0000000000000007 (RELA)               0xf18
+ 0x0000000000000008 (RELASZ)             648 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000006ffffffb (FLAGS_1)            Flags: NODELETE
+ 0x000000006ffffffe (VERNEED)            0xea8
+ 0x000000006fffffff (VERNEEDNUM)         3
+ 0x000000006ffffff0 (VERSYM)             0xe2a
+ 0x000000006ffffff9 (RELACOUNT)          22
+ 0x0000000000000000 (NULL)               0x0

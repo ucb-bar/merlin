@@ -1,0 +1,24 @@
+{
+  "command": [
+    "curl",
+    "--proto",
+    "=https",
+    "--tlsv1.2",
+    "--connect-timeout",
+    "15",
+    "--max-time",
+    "45",
+    "--fail",
+    "--silent",
+    "--show-error",
+    "--location",
+    "--max-redirs",
+    "3",
+    "--dump-header",
+    "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/tag.headers",
+    "--output",
+    "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/tag.json",
+    "https://api.github.com/repos/leanprover/lean4/git/ref/tags/v4.35.0"
+  ],
+  "returncode": 0
+}

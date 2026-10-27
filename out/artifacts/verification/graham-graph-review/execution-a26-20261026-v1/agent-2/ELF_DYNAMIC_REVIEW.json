@@ -1,0 +1,552 @@
+{
+  "objects": [
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+      "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+      "needed": [
+        "libInit_shared.so",
+        "libleanshared_2.so",
+        "libleanshared_1.so",
+        "libleanshared.so",
+        "libc.so.6",
+        "libpthread.so.0",
+        "libdl.so.2",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib:$ORIGIN/../lib/lean"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so",
+      "sha256": "da12c79a1651232a6c36a2844e01c612d5e002d759401356c5a8ac597f7e2890",
+      "needed": [
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libc.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so.1",
+      "sha256": "b2d3f7d9ebf9a0d5dc9caedcb33a43f6ac1b33221ada1f029147d8a66db43c09",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ],
+      "runpath": [
+        "/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so.1"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libgcc_s.so",
+      "sha256": "3f499bb3b14f33c5c321f52015d385c145c7bd4551a66c5fcff4262c833f2d2a",
+      "needed": [
+        "libc.so.6"
+      ],
+      "runpath": [
+        "/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libgcc_s.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so.1.0",
+      "sha256": "da12c79a1651232a6c36a2844e01c612d5e002d759401356c5a8ac597f7e2890",
+      "needed": [
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libc.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so.1.0"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so.1.0",
+      "sha256": "43ae4baf280de152662d88ed938cef229022900e13457683b6a19ae82fafac66",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2",
+        "libunwind.so.1",
+        "libdl.so.2",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so.1.0"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so",
+      "sha256": "43ae4baf280de152662d88ed938cef229022900e13457683b6a19ae82fafac66",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2",
+        "libunwind.so.1",
+        "libdl.so.2",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so.1.0",
+      "sha256": "f074b78d387f3b0db490e3e61289300ee4cf3c4cdb89a7485983e5605cee6c68",
+      "needed": [
+        "libatomic.so.1",
+        "libc++abi.so.1",
+        "libunwind.so.1",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libc.so.6",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so.1.0"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so.1",
+      "sha256": "da12c79a1651232a6c36a2844e01c612d5e002d759401356c5a8ac597f7e2890",
+      "needed": [
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libc.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so.1"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM.so.23.1",
+      "sha256": "d156f2240517cf3e363dbe74492491494f74300a2a0513f8606f802dca2f2fbe",
+      "needed": [
+        "librt.so.1",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libm.so.6",
+        "libz.so.1",
+        "libc++.so.1",
+        "libc++abi.so.1",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM.so.23.1"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libInit_shared.so",
+      "sha256": "7831b707e868cee76c353d26649fbd8981b2f4d7e0329af55bbf4fa9e0c69350",
+      "needed": [
+        "libc.so.6",
+        "libpthread.so.0",
+        "libdl.so.2",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/..:$ORIGIN"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libInit_shared.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_2.so",
+      "sha256": "141cbfdb3bc2016cd68e0bebc2e5494818213b462ed985afa6d975d4872fb8ec",
+      "needed": [
+        "libc.so.6",
+        "libpthread.so.0",
+        "libdl.so.2",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/..:$ORIGIN"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_2.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_1.so",
+      "sha256": "691bf49d9e542a15808fad9d1f8c5df45860166f77efa57961b5335e65a3a0ed",
+      "needed": [
+        "libc.so.6",
+        "libpthread.so.0",
+        "libdl.so.2",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/..:$ORIGIN"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_1.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libLake_shared.so",
+      "sha256": "d68867df340056b40726fde3939a9d2021901cc6944f971dd6a6a778bd9ea25b",
+      "needed": [
+        "libleanshared.so",
+        "libleanshared_2.so",
+        "libleanshared_1.so",
+        "libInit_shared.so",
+        "libc.so.6",
+        "libpthread.so.0",
+        "libdl.so.2",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/..:$ORIGIN"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libLake_shared.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so",
+      "sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4",
+      "needed": [
+        "libc.so.6",
+        "ld-linux-x86-64.so.2",
+        "libpthread.so.0",
+        "libdl.so.2",
+        "librt.so.1",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/..:$ORIGIN"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so.1.2.11",
+      "sha256": "d0aeafffcfe309a107a857dfa1f9afd0db90796d32c2b735a3959eccb317f5b4",
+      "needed": [
+        "libc.so.6"
+      ],
+      "runpath": [
+        "/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so.1.2.11"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM-23.so",
+      "sha256": "d156f2240517cf3e363dbe74492491494f74300a2a0513f8606f802dca2f2fbe",
+      "needed": [
+        "librt.so.1",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libm.so.6",
+        "libz.so.1",
+        "libc++.so.1",
+        "libc++abi.so.1",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM-23.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libgcc_s.so.1",
+      "sha256": "3f499bb3b14f33c5c321f52015d385c145c7bd4551a66c5fcff4262c833f2d2a",
+      "needed": [
+        "libc.so.6"
+      ],
+      "runpath": [
+        "/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libgcc_s.so.1"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so.1",
+      "sha256": "f074b78d387f3b0db490e3e61289300ee4cf3c4cdb89a7485983e5605cee6c68",
+      "needed": [
+        "libatomic.so.1",
+        "libc++abi.so.1",
+        "libunwind.so.1",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libc.so.6",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so.1"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so.1",
+      "sha256": "d0aeafffcfe309a107a857dfa1f9afd0db90796d32c2b735a3959eccb317f5b4",
+      "needed": [
+        "libc.so.6"
+      ],
+      "runpath": [
+        "/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so.1"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM.so",
+      "sha256": "d156f2240517cf3e363dbe74492491494f74300a2a0513f8606f802dca2f2fbe",
+      "needed": [
+        "librt.so.1",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libm.so.6",
+        "libz.so.1",
+        "libc++.so.1",
+        "libc++abi.so.1",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so",
+      "sha256": "b2d3f7d9ebf9a0d5dc9caedcb33a43f6ac1b33221ada1f029147d8a66db43c09",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ],
+      "runpath": [
+        "/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so",
+      "sha256": "d0aeafffcfe309a107a857dfa1f9afd0db90796d32c2b735a3959eccb317f5b4",
+      "needed": [
+        "libc.so.6"
+      ],
+      "runpath": [
+        "/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libclang-cpp.so.23.1",
+      "sha256": "d7adb9dfd7170742a0dce7773e4ffe5903830b11c2af316908058516017fcc92",
+      "needed": [
+        "libpthread.so.0",
+        "libLLVM.so.23.1",
+        "libc++.so.1",
+        "libc++abi.so.1",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libclang-cpp.so.23.1"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so.1",
+      "sha256": "43ae4baf280de152662d88ed938cef229022900e13457683b6a19ae82fafac66",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2",
+        "libunwind.so.1",
+        "libdl.so.2",
+        "libm.so.6"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so.1"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so.1.2.0",
+      "sha256": "b2d3f7d9ebf9a0d5dc9caedcb33a43f6ac1b33221ada1f029147d8a66db43c09",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ],
+      "runpath": [
+        "/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so.1.2.0"
+      ],
+      "returncode": 0
+    },
+    {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libclang-cpp.so",
+      "sha256": "d7adb9dfd7170742a0dce7773e4ffe5903830b11c2af316908058516017fcc92",
+      "needed": [
+        "libpthread.so.0",
+        "libLLVM.so.23.1",
+        "libc++.so.1",
+        "libc++abi.so.1",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "runpath": [
+        "$ORIGIN/../lib"
+      ],
+      "command": [
+        "readelf",
+        "-d",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libclang-cpp.so"
+      ],
+      "returncode": 0
+    }
+  ],
+  "non_ELF_members": [
+    {
+      "index": 5,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so",
+      "ELF": false,
+      "prefix_if_not_ELF": "INPUT(libc++.so.1 -lc++abi -lunwind)\n"
+    }
+  ],
+  "previous_static_failure_preserved": "STATIC_REVIEW_FIRST_FAILURE.json",
+  "host_dependencies": "Host ELF loader and platform libc/pthread/dl/m/rt/gcc libraries are explicit TCB, not fresh SDK members.",
+  "old_runtime_accessed": false
+}

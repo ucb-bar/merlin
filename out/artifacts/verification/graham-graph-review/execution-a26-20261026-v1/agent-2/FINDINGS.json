@@ -1,0 +1,51 @@
+{
+  "schema": "merlin.graham.fresh-lean-setup-findings.v1",
+  "completed_utc": "2026-10-27T00:39:22.049808+00:00",
+  "status": "FRESH_OFFICIAL_CLI_READY",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "release_tag": "v4.35.0",
+  "commit": "eb6cafb7290e8bd5f2937522d8d804f58f02bafc",
+  "official_release_API": "https://api.github.com/repos/leanprover/lean4/releases/tags/v4.35.0",
+  "official_tag_API": "https://api.github.com/repos/leanprover/lean4/git/ref/tags/v4.35.0",
+  "archive_bytes": 925899528,
+  "archive_sha256": "c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+  "ZIP_entries": 18571,
+  "regular_members": 17938,
+  "expanded_bytes": 3365301905,
+  "unsafe_roster_entries": 0,
+  "intake_seconds": 42.48587906197645,
+  "all_intake_children_reaped": true,
+  "runtime_sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4",
+  "lean_sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+  "sdk": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux",
+  "diagnostic_command_count": 8,
+  "diagnostic_cases": [
+    {
+      "case": "InitNat",
+      "output": "DiagnosticReprInitNat.witness_value : DiagnosticReprInitNat.witness.value = 7\n'DiagnosticReprInitNat.witness_value' does not depend on any axioms\n'DiagnosticReprInitNat.instReprPayload' does not depend on any axioms\n{ value := 7 }\n"
+    },
+    {
+      "case": "InitListNat",
+      "output": "DiagnosticReprInitListNat.witness_value : DiagnosticReprInitListNat.witness.value = [7, 11]\n'DiagnosticReprInitListNat.witness_value' does not depend on any axioms\n'DiagnosticReprInitListNat.instReprPayload' depends on axioms: [propext]\n{ value := [7, 11] }\n"
+    },
+    {
+      "case": "OmegaListNat",
+      "output": "DiagnosticReprOmegaListNat.witness_value : DiagnosticReprOmegaListNat.witness.value = [7, 11]\n'DiagnosticReprOmegaListNat.witness_value' does not depend on any axioms\n'DiagnosticReprOmegaListNat.instReprPayload' depends on axioms: [propext]\n{ value := [7, 11] }\n"
+    }
+  ],
+  "first_static_tool_failure": "The first readelf enumerator selected libc++.so by suffix. That member is the official 34-byte text linker script INPUT(libc++.so.1 -lc++abi -lunwind), so readelf rejected its file format before any SDK execution. The original failure and stdout/stderr are preserved. The second static pass explicitly classified by ELF magic and retained the script as data; no archive layout/member/hash policy was relaxed, and no native diagnostic failed.",
+  "native_diagnostic_failures": 0,
+  "scope": [
+    "Fresh official archive identity, complete member SHA/size roster and finite loader/runtime diagnostics.",
+    "Independent CLI source reproduction environment handed to proof_reproduction."
+  ],
+  "limits": [
+    "Publisher/platform GitHub HTTPS digest, not independent archive signature verification.",
+    "Host system ELF loader and libc/pthread/dl/m/rt platform libraries remain trusted; old runtime directories were never accessed.",
+    "SDK diagnostic success establishes no graph theorem, semantic qualification, human approval, common Context approval or public gate authority.",
+    "No frozen sources, locks, historical identities or holds were changed."
+  ],
+  "ready_reference": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/READY.json",
+  "old_runtime_hold": "UNCHANGED",
+  "live_owned_jobs": 0
+}
