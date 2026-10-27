@@ -17,6 +17,16 @@ from typing import Any
 
 import yaml
 
+from merlin.targetgen.software_spec_resolution import (
+    _add_composition_facts as _add_composition_facts,
+)
+from merlin.targetgen.software_spec_resolution import (
+    _derived_output_epilogue as _derived_output_epilogue,
+)
+from merlin.targetgen.software_spec_resolution import (
+    resolve_selected_spec,
+)
+
 from .evidence_output import _materialize_evidence
 from .provenance import _canonical_digest, _digest, _json
 
@@ -415,62 +425,6 @@ def _unresolved_reason(row: Mapping[str, Any]) -> str:
         raise ValueError(f"software-spec derivation row has no reason and is not an UNKNOWN field: {sorted(row)}")
     owner = next((f"{key} {row[key]}: " for key in ("composition", "scheme") if row.get(key)), "")
     return f"{owner}{field} is UNKNOWN: the selected facts do not establish it"
-
-
-def _derived_output_epilogue(target, contract, raw_facts) -> dict:
-    """The contract's output-epilogue record, read from the selected facts and the elaboration probes.
-
-    The probes file is the one beside the target's own declarations, not beside the selected contract:
-    a prepared contract is a derived artifact in a run tree and carries no probes, which left
-    ``accumulate_on_load`` UNKNOWN and with it every accumulator stage of the output path. A probes file
-    that is absent leaves the fact UNKNOWN, as before.
-    """
-    from merlin.targetgen import target_registry
-    from merlin.targetgen.rtl import output_epilogue, semantic_facts
-
-    probes = Path(target_registry.resolve(target).base) / "contracts" / semantic_facts.PROBES_FILE
-    semantic = semantic_facts.derive(
-        target, probes_file=probes if probes.is_file() else None, only=("accumulate_on_load",)
-    )
-    try:
-        return output_epilogue.derive(raw_facts, contract=dict(contract), semantic_facts=semantic)
-    except Exception as exc:  # noqa: BLE001 -- the record is all-UNKNOWN with the reason, as contract derivation does
-        return output_epilogue.underived(f"{type(exc).__name__}: {exc}")
-
-
-def _add_composition_facts(fact_view, target, contract, raw_facts, software_doc) -> None:
-    """Give scheme resolution the operand, accumulator and panel facts the fusion enumeration reads.
-
-    ``fact_capabilities`` reports only the output path and producer placement for a composition, so a
-    scheme field that needs the operand width, the K-extension bound or the weight-panel width stayed
-    UNKNOWN here although the selected facts and contract establish it. The same derivation the fusion
-    enumeration consumes supplies them; a fact it cannot establish stays absent and so stays UNKNOWN.
-    """
-    import json
-
-    from merlin.compile.fusion_enumeration import _spec_input
-    from merlin.targetgen import composition_facts
-    from merlin.targetgen.spec_fact_drift import FactField
-
-    composition = fact_view["composition"]
-    derived = composition_facts.derive(
-        facts=raw_facts,
-        contract=contract,
-        software_spec=_spec_input(software_doc),
-        output_path=composition.get("output_path"),
-    )
-    values, proof = derived["facts"], derived["evidence"]
-    wanted = {}
-    if "weight_panel_width" in values:
-        wanted["weight_panel_width"] = ("weight_panel_width", values["weight_panel_width"])
-    bound = values.get("k_extension_within")
-    if isinstance(bound, dict) and "max_k" in bound:
-        wanted["max_k_extension"] = ("k_extension_within", bound["max_k"])
-    if type(values.get("operand_signed_bits")) is int:
-        wanted["dtype"] = ("operand_signed_bits", f"i{values['operand_signed_bits']}")
-    for key, (source, value) in wanted.items():
-        if key not in composition:
-            composition[key] = FactField((value,), True, (json.dumps(proof[source], sort_keys=True, default=str),))
 
 
 def select_evidence(
@@ -969,45 +923,32 @@ def select_evidence(
             )
     from merlin.targetgen.quant_recipe import derive_candidates
 
-    quantization_candidates = [candidate.to_dict() for candidate in derive_candidates(contract, facets)]
+    quantization_candidates = [
+        candidate.to_dict() for candidate in derive_candidates(contract, facets, integer_sum_policy="exact")
+    ]
     # Fill the authored spec's fact-derived declarations from the same fact view the drift check
     # compares against, under the experiment's prohibited roles. Everything downstream of this
     # selection (screens, quantization contract, recipes, the frozen corpus) sees the resolved spec;
     # the authored bytes stay the selected source identity.
     software_derivation = None
     if software_spec is not None:
-        from merlin.targetgen import spec_fact_drift
-
-        # Some capability helpers still resolve by target name. Their reads
-        # must use this selection too, never extract from an ambient provider.
+        # Legacy capability readers must observe the selected contract and facts.
         with (
             target_registry.observed_contract(target, contract),
             rtl_facts.observed_facts(target, refreshed_facts, selected_path),
         ):
-            fact_contract = contract
-            if data_only and not (contract.get("output_epilogue") or {}).get("output_path"):
-                # A data-only selection carries no derived output path, and fact_capabilities does not
-                # derive one for it, so every scheme and composition field that reads the path stays
-                # UNKNOWN. Derive it from the selected facts exactly as the fusion enumeration does.
-                fact_contract = {**contract, "output_epilogue": _derived_output_epilogue(target, contract, loaded_facts)}
-            fact_view = spec_fact_drift.fact_capabilities(
+            software_doc, software_derivation = resolve_selected_spec(
+                software_doc,
                 target=target,
-                contract=fact_contract,
-                raw_facts=loaded_facts,
+                facts=loaded_facts,
+                contract=contract,
                 readout_facets=[facet.to_dict() for facet in facets],
                 quantization_candidates=quantization_candidates,
                 taxonomy=taxonomy,
                 prohibited_roles=prohibited_roles,
-                **({"data_only": True} if data_only else {}),
+                data_only=data_only,
+                composition_validation=(descriptor_doc.get("workload_spec") or {}).get("fusion_validation"),
             )
-            if data_only:
-                _add_composition_facts(fact_view, target, fact_contract, loaded_facts, software_doc)
-        software_doc, software_derivation = spec_fact_drift.resolve_spec(
-            software_doc,
-            fact_view,
-            composition_validation=(descriptor_doc.get("workload_spec") or {}).get("fusion_validation"),
-        )
-        software_derivation["prohibited_instruction_roles"] = sorted(set(prohibited_roles))
         for row in software_derivation["unresolved"]:
             diagnostics.append(
                 {
