@@ -64,11 +64,24 @@ def _unknown(value) -> bool:
     )
 
 
+def _review_status_leaves(value: object, prefix: str):
+    """Under a ``policy_reviews`` annotation only the review ``status`` is a value, never its prose."""
+    if isinstance(value, Mapping):
+        for key, member in value.items():
+            if key == "status" and not isinstance(member, (Mapping, list)):
+                yield f"{prefix}.{key}".lstrip("."), member
+            elif isinstance(member, Mapping):
+                yield from _review_status_leaves(member, f"{prefix}.{key}".lstrip("."))
+
+
 def _parameter_leaves(value: object, prefix: str):
     """Walk parameter values without interpreting annotation text as constraints."""
     if isinstance(value, Mapping):
         for key, member in value.items():
-            if key not in _ANNOTATION_FIELDS:
+            if key == "policy_reviews":
+                # An explicit unknown review status still blocks; basis, notes and the like stay annotations.
+                yield from _review_status_leaves(member, f"{prefix}.{key}".lstrip("."))
+            elif key not in _ANNOTATION_FIELDS:
                 yield from _parameter_leaves(member, f"{prefix}.{key}".lstrip("."))
     elif isinstance(value, list):
         for index, member in enumerate(value):
