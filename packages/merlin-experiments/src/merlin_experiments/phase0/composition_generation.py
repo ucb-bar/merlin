@@ -420,11 +420,15 @@ def read_bound_validation(binding, *, base, evidence, workers=None):
     suite = validation.read_suite(args.cases, args.candidates, args.facts, spec=spec, workers=workers)
     if suite.get("profile", {}).get("execution_scope") == "smoke":
         raise ValueError("fusion validation requires a complete deterministic campaign; smoke scope is insufficient")
+    from merlin.common.paths import merlin_dir
     from merlin.targetgen.composition_corpus import held_out_shapes
 
     from .fusion_cases import digest
 
-    if suite["identity"].get("private_exclusion_sha256") != digest(sorted(held_out_shapes())):
+    # In a frozen run this resolves to the declared private input tree. The
+    # canonical alias also serves the suite's payload/publication re-checks.
+    exclusion_manifest = (merlin_dir() / "contract/capsules/MANIFEST.yaml").resolve(strict=True)
+    if suite["identity"].get("private_exclusion_sha256") != digest(sorted(held_out_shapes(exclusion_manifest))):
         raise ValueError("fusion validation held-out selection changed")
     identity = validation.execution_identity(args, suite)
     if ledger["identity"] != {**suite["identity"], **identity}:

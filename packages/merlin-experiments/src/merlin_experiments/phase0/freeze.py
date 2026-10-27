@@ -125,6 +125,12 @@ def selected_inputs(command: dict, target: str) -> tuple[dict[str, str], dict]:
     observed = selection(command, target)
     paths = {f"phase0:evidence:{i:04d}": str(path) for i, path in enumerate(observed.source_paths)}
     paths.update({f"phase0:materialized:{i:04d}": str(path) for i, path in enumerate(_materialized_inputs(command))})
+    paths.update(
+        {
+            f"phase0:private_exclusion:{i:04d}": str(path)
+            for i, path in enumerate(_private_exclusion_inputs(command, observed))
+        }
+    )
     basis = ComponentSemanticBasis.from_recipe(command.get("inputs", {}).get("recipe"))
     if basis is not None:
         paths.update({f"phase0:semantic_basis:{i:04d}": source["path"] for i, source in enumerate(basis.sources())})
@@ -134,6 +140,31 @@ def selected_inputs(command: dict, target: str) -> tuple[dict[str, str], dict]:
         "views_sha256": hashlib.sha256(observed.views_json).hexdigest(),
         "diagnostics": observed.diagnostics,
     }
+
+
+def _private_exclusion_inputs(command: dict, evidence) -> dict[Path, tuple[Path, str]]:
+    """Select only the private declarations consumed by a bound fusion suite."""
+    from merlin.common.paths import merlin_dir
+    from merlin.targetgen.composition_corpus import held_out_shapes, validation_binding
+
+    descriptor = yaml.safe_load(Path(command["inputs"]["descriptor"]).read_bytes())
+    if validation_binding(evidence.software_spec, descriptor.get("workload_spec")) is None:
+        return {}
+    manifest = merlin_dir() / "contract/capsules/MANIFEST.yaml"
+    document = yaml.safe_load(manifest.read_bytes())
+    paths = [manifest]
+    for member in document.get("generated", []):
+        if not member.startswith("_model_layers/"):
+            continue
+        relative = Path(member)
+        if ".." in relative.parts:
+            raise ValueError("private exclusion member escapes its manifest")
+        paths.append(manifest.parent / relative / "capsule.yaml")
+    for path in paths:
+        if not path.is_file() or path.is_symlink() or path.resolve() != path.absolute():
+            raise ValueError(f"private exclusion input is not an ordinary contained file: {path}")
+    held_out_shapes(manifest)  # Fail before freezing if the selected inventory is incomplete.
+    return {path: (manifest.parent, path.relative_to(manifest.parent).as_posix()) for path in paths}
 
 
 def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
@@ -274,6 +305,12 @@ def stage(plan: dict) -> dict:
         provider["kind"] = "external"
     declared, names, layout = {}, {}, {}
     materialized = _materialized_inputs(command)
+    exclusions = _private_exclusion_inputs(command, evidence)
+    exclusion_pins = [pin for name, pin in frozen["inputs"].items() if name.startswith("phase0:private_exclusion:")]
+    if [pin["path"] for pin in exclusion_pins] != [str(path) for path in exclusions]:
+        raise ValueError("selected private exclusion membership changed before freezing")
+    if any(fingerprint(pin["path"]) != pin["sha256"] for pin in exclusion_pins):
+        raise ValueError("selected private exclusion bytes changed before freezing")
     materialized_pins = [pin for name, pin in frozen["inputs"].items() if name.startswith("phase0:materialized:")]
     if [pin["path"] for pin in materialized_pins] != [str(path) for path in materialized]:
         raise ValueError("selected materialized iteration membership changed before freezing")
@@ -289,7 +326,7 @@ def stage(plan: dict) -> dict:
             raise ValueError(f"Phase 0 snapshot requires ordinary selected files: {path}")
         key = f"input_{i:04d}"
         declared[key], names[name] = path, key
-        parent, relative = materialized.get(path, (path.parent, path.name))
+        parent, relative = {**materialized, **exclusions}.get(path, (path.parent, path.name))
         owner = _input_owner(parent)
         layout[key] = f"{source_snapshot.INPUT_ROOT}/{owner}/{relative}"
     # Evidence bytes remain in their archival bundle, but executable references
@@ -320,6 +357,14 @@ def stage(plan: dict) -> dict:
         # Resource selectors use root/merlin in both layouts. This alias points
         # only inside the sealed tree; it is never a link back to an installation.
         aliases["merlin"] = core
+    if exclusions:
+        # Legacy suite payload/publication checks use the canonical resource path.
+        # Point it at the same declared private files, never the live capsule shelf.
+        exclusion_manifest = next(iter(exclusions))
+        resource_root = aliases.get("merlin", "merlin")
+        aliases[f"{resource_root}/contract/capsules"] = (
+            f"{source_snapshot.INPUT_ROOT}/{_input_owner(exclusion_manifest.parent)}"
+        )
     target_data_inputs = None
     if data_only:
         target_data_inputs = {
