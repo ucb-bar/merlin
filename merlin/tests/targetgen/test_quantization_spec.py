@@ -358,6 +358,97 @@ def test_capture_recipe_is_scoped_without_manually_authored_framework_bookkeepin
         capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
 
 
+def _operand_load_spec():
+    spec = _spec()
+    spec["transfer_contracts"] = {
+        "status": "reviewed",
+        "operand_load": {
+            "from": "host", "to": "accelerator",
+            "copy": {"dtype": "i8", "layout": "row_major_contiguous"},
+            "evidence": {"status": "reviewed", "basis": "test input datapath"},
+        },
+    }
+    return spec
+
+
+def test_runtime_weights_derive_from_selected_contraction_and_reviewed_operand_load(tmp_path):
+    from merlin_experiments.phase0.capture_recipe import recipe_outputs, _selected_capture_recipe
+
+    spec = _operand_load_spec()
+    contract = build_quantization_contract(spec, _hardware())
+    candidates = capture_recipe_candidates(spec, contract)
+    assert len(candidates) == 1
+    recipe = candidates[0]["recipe"]
+    assert recipe["runtime_weight_contractions"] is True
+    assert recipe["families"] == ["contraction"]  # attention retains its independent opt-in
+    assert recipe["recipe_sha256"] == quant_recipe.digest(recipe)
+    assert "operand_load" in recipe["why"]["runtime_weight_contractions"]
+    original = deepcopy(spec)
+    del original["transfer_contracts"]
+    baseline = capture_recipe_candidates(original, build_quantization_contract(original, _hardware()))[0]["recipe"]
+    assert baseline["weight"] == recipe["weight"]
+    assert baseline["activation"] == recipe["activation"]
+    assert baseline["recipe_sha256"] != recipe["recipe_sha256"]
+    encode = lambda value: (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+    outputs = recipe_outputs(candidates, target=spec["target"], software_review=spec["status"], encode=encode)
+    for rel, raw in outputs.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    assert _selected_capture_recipe(
+        tmp_path, target=spec["target"], operand_dtype="int8", accumulator_dtype="int32"
+    ) == recipe
+    assert capture_recipe_candidates(spec, contract) == candidates
+
+
+@pytest.mark.parametrize("change", ["missing", "unreviewed", "evidence", "dtype", "layout", "direction", "conversion"])
+def test_runtime_weights_require_reviewed_typed_bit_preserving_load(change):
+    spec = _operand_load_spec()
+    transfer = spec["transfer_contracts"]["operand_load"]
+    if change == "missing":
+        del spec["transfer_contracts"]
+    elif change == "unreviewed":
+        spec["transfer_contracts"]["status"] = "unreviewed"
+    elif change == "evidence":
+        transfer["evidence"]["status"] = "unreviewed"
+    elif change in {"dtype", "layout"}:
+        transfer["copy"][change] = "fp32" if change == "dtype" else "column_major_contiguous"
+    elif change == "direction":
+        transfer.update({"from": "accelerator", "to": "host"})
+    else:
+        del transfer["copy"]
+        transfer["signature"] = {"operand_dtype": "i8", "result_dtype": "i8"}
+        transfer["semantics"] = {"conversion": "requantize"}
+    recipes = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+    assert "runtime_weight_contractions" not in recipes[0]["recipe"]
+
+
+def test_runtime_weights_require_matching_hardware_recipe_and_sw_contraction_scope():
+    spec = _operand_load_spec()
+    assert capture_recipe_candidates(spec, build_quantization_contract(spec, {})) == []
+    hardware = _hardware()
+    spec["operations"][0]["families"] = ["affine_map"]
+    spec["operations"][0]["ops"] = []
+    hardware["quantization_candidates"][0]["recipe"]["families"].append("affine_map")
+    recipe = capture_recipe_candidates(spec, build_quantization_contract(spec, hardware))[0]["recipe"]
+    assert recipe["families"] == ["affine_map"]
+    assert "runtime_weight_contractions" not in recipe
+
+
+@pytest.mark.parametrize("role,field,value", [
+    ("weight", "mode", "dynamic"),
+    ("activation", "mode", "dynamic"),
+    ("weight", "granularity", "block"),
+    ("activation", "granularity", "token"),
+    ("weight", "symmetric", False),
+])
+def test_runtime_weights_do_not_extend_unsupported_grids(role, field, value):
+    spec, hardware = _operand_load_spec(), _hardware()
+    hardware["quantization_candidates"][0]["recipe"][role][field] = value
+    candidates = capture_recipe_candidates(spec, build_quantization_contract(spec, hardware))
+    assert all("runtime_weight_contractions" not in row["recipe"] for row in candidates)
+
+
 def test_an_authored_calibration_count_reaches_the_recipe_and_its_digest():
     """The number of calibration samples changes the scales, so it is a recipe field (see
     test_recipe_calibration_count.py); absent, the recipe and its digest are what they were."""
