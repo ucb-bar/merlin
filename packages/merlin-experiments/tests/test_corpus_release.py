@@ -2369,3 +2369,52 @@ def test_selected_capability_preserves_typed_yaml_maps(monkeypatch, tmp_path):
         corpus_release._selected_capability_contract(
             {"phase0_evidence_bundle": str(bundle), "target": "fixture-device"}, tmp_path / "generated"
         )
+
+
+@pytest.mark.parametrize('enabled', [False, True])
+def test_derive_only_metadata_uses_selected_descriptor_without_advisory_inputs(tmp_path, monkeypatch, enabled):
+    descriptor = tmp_path / 'descriptor.yaml'
+    descriptor.write_text(yaml.safe_dump({'phase0': {'derive_only': enabled}}))
+    # Environment cannot turn Merlin's release mode on or off.
+    monkeypatch.setenv('LITE', '0' if enabled else '1')
+    plan = {'phases': {'0': {'inputs': {'descriptor': str(descriptor)}}}}
+    expected = {'LITE': {'record': 'absent (derive_only)', 'fusion_campaign': 'absent (derive_only)'}}
+    assert corpus_release._derive_only_metadata(plan) == (expected if enabled else {})
+
+
+@pytest.mark.parametrize('enabled', ['true', 1, None])
+def test_derive_only_release_refuses_non_boolean_switch(tmp_path, enabled):
+    descriptor = tmp_path / 'descriptor.yaml'
+    descriptor.write_text(yaml.safe_dump({'phase0': {'derive_only': enabled}}))
+    with pytest.raises(SpecError, match='must be a boolean'):
+        corpus_release._derive_only_metadata({'phases': {'0': {'inputs': {'descriptor': str(descriptor)}}}})
+
+
+def test_lite_prepare_seal_and_phase1_verify_keep_visible_absence(release_fixture, capsys):
+    fixture = release_fixture
+    descriptor = fixture['root'] / 'source-experiment/target_experiment.yaml'
+    doc = yaml.safe_load(descriptor.read_text())
+    doc['phase0'] = {'derive_only': True}
+    descriptor.write_text(yaml.safe_dump(doc))
+    report = _prepare(fixture, capsys)
+    expected = {'record': 'absent (derive_only)', 'fusion_campaign': 'absent (derive_only)'}
+    assert report['LITE'] == expected
+    prepared = json.loads((fixture['release'] / 'private/preparation.json').read_text())
+    assert prepared['LITE'] == expected
+    sealed = _seal(fixture, report, capsys)
+    seal = Path(sealed['seal'])
+    assert json.loads(seal.read_text())['LITE'] == expected
+    assert corpus_release.verify(seal, Path(report['descriptor']))['LITE'] == expected
+    definition = _phase1_definition(fixture, sealed)
+    phase1_run = fixture['root'] / 'out/runs/functional'
+    assert main(['run', str(definition), '--phase', '1', '--run-dir', str(phase1_run)]) == 0
+    assert (fixture['root'] / 'out/native-receipt').read_text() == 'verified before agent'
+    # An unbound display marker cannot be edited to suggest validation later.
+    document = json.loads(seal.read_text())
+    document['LITE']['record'] = 'validated'
+    seal.write_text(json.dumps(document))
+    with pytest.raises(SpecError, match='derive-only commitments'):
+        corpus_release.verify(seal, Path(report['descriptor']))
+    document['LITE']['record'] = 'absent (derive_only)'
+    seal.write_text(json.dumps(document))
+    assert corpus_release.verify(seal, Path(report['descriptor']))['LITE'] == expected
