@@ -3457,6 +3457,10 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
             "f64": "float64",
             "complex64": "complex64",
             "complex128": "complex128",
+            # The worker restores canonical MLIR dtype names after bundle save.
+            # Storage stays complex, with the original logical shape and bytes.
+            "complex<f32>": "complex64",
+            "complex<f64>": "complex128",
         }
         with np.load(io.BytesIO(read_bound(reference)), allow_pickle=False) as archive:
             names = [f"out{i}" for i in range(len(output_abi))]

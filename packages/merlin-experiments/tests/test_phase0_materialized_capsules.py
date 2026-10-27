@@ -94,7 +94,8 @@ def _complete_bundle(root, rows, arrays):
     return application
 
 
-def test_complete_materialized_outputs_survive_derivation_and_freeze(tmp_path):
+@pytest.mark.parametrize("complex_dtype", ["complex64", "complex<f32>"])
+def test_complete_materialized_outputs_survive_derivation_and_freeze(tmp_path, complex_dtype):
     from merlin_experiments.phase0.freeze import _materialized_inputs
 
     arrays = [
@@ -108,7 +109,7 @@ def test_complete_materialized_outputs_survive_derivation_and_freeze(tmp_path):
     ]
     rows = [
         {"shape": list(value.shape), "dtype": dtype}
-        for value, dtype in zip(arrays, ("f32", "i64", "i1", "complex64", "bf16", "f16", "f64"), strict=True)
+        for value, dtype in zip(arrays, ("f32", "i64", "i1", complex_dtype, "bf16", "f16", "f64"), strict=True)
     ]
     application = _complete_bundle(tmp_path / "original", rows, {f"out{i}": a for i, a in enumerate(arrays)})
     entries, outputs = _materialized_iteration_capsules({"applications": {"iteration": application}}, "0" * 64)
@@ -128,11 +129,44 @@ def test_complete_materialized_outputs_survive_derivation_and_freeze(tmp_path):
 
 
 @pytest.mark.parametrize(
+    "shape,payload",
+    [
+        # Exact shadowON movement out2 (infinities) and out42 (signed components).
+        # Source goldens.npz SHA256: 518810c68cec0624e5f3ac262cd0ebf226f9a59d4e0aede6d5ede388c08bf4f2.
+        ([6], "000080ff00000000000080bf0000000000000000000000000000807f00000000000080ff00000000000080bf00000000"),
+        ([3], "000000c000004040000000800000003f0000003f00000080"),
+    ],
+)
+def test_materialized_canonical_complex_real_movement_leaves_are_byte_exact(tmp_path, shape, payload):
+    array = np.frombuffer(bytes.fromhex(payload), dtype="<c8").reshape(shape)
+    application = _complete_bundle(tmp_path / "original", [{"shape": shape, "dtype": "complex<f32>"}], {"out0": array})
+    entries, outputs = _materialized_iteration_capsules({"applications": {"movement": application}}, "0" * 64)
+    assert outputs["materialized/movement/goldens.npz"] == (tmp_path / "original/goldens.npz").read_bytes()
+    artifact = source.materialized_model_artifacts(
+        {**entries[0]["materialized_capture"], "path": application["capture_source_path"]}
+    )
+    assert np.asarray(artifact.golden, dtype="<c8").tobytes() == array.tobytes()
+
+
+def test_materialized_canonical_complex128_scalar_keeps_precision(tmp_path):
+    array = np.array(complex(1 + 2**-40, -0.0), dtype=np.complex128)
+    application = _complete_bundle(tmp_path / "original", [{"shape": [], "dtype": "complex<f64>"}], {"out0": array})
+    entries, _ = _materialized_iteration_capsules({"applications": {"iteration": application}}, "0" * 64)
+    artifact = source.materialized_model_artifacts(
+        {**entries[0]["materialized_capture"], "path": application["capture_source_path"]}
+    )
+    assert np.asarray(artifact.golden, dtype=np.complex128).tobytes() == array.tobytes()
+
+
+@pytest.mark.parametrize(
     "rows,arrays,message",
     [
         ([{"shape": [2], "dtype": "f32"}] * 2, {"out0": np.ones(2, dtype=np.float32)}, "output leaves"),
         ([{"shape": [2], "dtype": "f32"}], {"out0": np.ones(3, dtype=np.float32)}, "shape/dtype"),
         ([{"shape": [2], "dtype": "i64"}], {"out0": np.ones(2, dtype=np.float64)}, "shape/dtype"),
+        ([{"shape": [2], "dtype": "complex<f32>"}], {"out0": np.ones(2, dtype=np.float32)}, "shape/dtype"),
+        ([{"shape": [2], "dtype": "complex<f64>"}], {"out0": np.ones(2, dtype=np.complex64)}, "shape/dtype"),
+        ([{"shape": [2], "dtype": "complex<f32>"}], {"out0": np.ones((2, 2), dtype=np.float32)}, "shape/dtype"),
         ([{"shape": [1], "dtype": "bf16"}], {"out0": np.array([1.0001], dtype=np.float32)}, "exact BF16"),
         ([], {}, "nonempty output ABI"),
     ],
