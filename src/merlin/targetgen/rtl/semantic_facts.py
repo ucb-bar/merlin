@@ -79,7 +79,8 @@ def contracts_dir(target: str) -> Path:
     """The contracts directory of the provider ``target`` resolves to (the selected support provider)."""
     from merlin.targetgen.target_registry import resolve
 
-    return Path(resolve(target).contract_path).parent
+    # An execution-contract override does not relocate the provider's source probes.
+    return resolve(target).base / "contracts"
 
 
 def probes_path(target: str) -> Path:
