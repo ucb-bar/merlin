@@ -343,3 +343,13 @@ def test_disabled_composition_synthesis_is_out_of_scope(inputs, tmp_path, input_
 )
 def test_composition_synthesis_defaults_to_enabled(inputs, scope):
     assert L.prepare(**inputs, **scope).record() == L.prepare(**inputs).record()
+
+
+def test_capture_ledger_does_not_require_validation_record(inputs):
+    inputs.pop("spec_validation").unlink()
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    assert document["spec_validation"] is None
+    assert document["captures"]["mlp"]["sha256"]
+    assert set(_rows(document)) == {"mm.default", "relu.default", "convolution.default", "view.default"}
+    assert all(row["reference"]["spec_validation"] is None for row in document["operations"])
+    assert document["release_authority"] == "not_issued"

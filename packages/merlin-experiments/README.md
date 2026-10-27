@@ -18,7 +18,7 @@ Numerical falsifiability audits and answer-bearing RTL replay construction also 
 here (`numeric_falsifiability` and `rtl.gen_rocc_replay` under the stable targetgen
 namespace). Their output can contain private expected values and remains host-only.
 
-The operator-side fixed fusion campaign runs through
+The standalone advisory fusion campaign runs through
 `python -m merlin_experiments.phase0.fusion_validation`. Generate with
 `--target NAME --candidates FILE --facts FILE --generate --workers N`; this freezes
 `fusion-cases.json` and content-addressed source/input/exact-reference members in
@@ -26,6 +26,7 @@ the verification artifact directory. It reuses composition shapes and sources,
 screens every producer and physical extended-K view against the held-out inventory,
 and cross-checks the composition golden with independent exact integer/f32 boundaries.
 This validation suite does not consume the Phase 0/1 release's shared capsule budget.
+LITE Phase 0 does not read or bind its output.
 
 Execute with the same inputs plus `--cases FILE --spec FILE --package DIR
 --provider FILE --extension FILE --smoke --workers N`. An enumerator's original

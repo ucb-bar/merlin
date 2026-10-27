@@ -68,7 +68,6 @@ def stamp(args):
         "src/merlin/targetgen/_recipe_integer.py",
         "src/merlin/targetgen/_capture_integer_agreement.py",
         "src/merlin/targetgen/core_aten_spec_int8.py",
-        "src/merlin/targetgen/software_spec_resolution.py",
         "src/merlin/targetgen/core_aten_admission.py",
         "src/merlin/targetgen/native_unit_policy.py",
         "src/merlin/targetgen/software_spec.py",
@@ -94,10 +93,6 @@ def stamp(args):
         "src/merlin/runtime/backends/spike_model.py",
     ):
         sources.append(args.repo / relative)
-    if getattr(args, "numeric_policy", None) == "spec_int8":
-        from merlin.targetgen.software_spec_resolution import selected_context_paths
-
-        sources.extend(path for path in selected_context_paths() if path is not None)
     if args.facts:
         sources.append(args.facts)
     if args.execution_provider:

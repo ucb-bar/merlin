@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .component_generation import digest
-from .composition_generation import coverage
+from merlin.targetgen.composition_corpus import coverage
 
 SCHEMA = "merlin.phase0.operation_coverage_ledger.v1"
 SPEC_VALIDATION_SCHEMA = "merlin.phase0.spec_validation.v1"
@@ -286,7 +286,7 @@ class OperationCoverageLedger:
 
 def prepare(
     *,
-    spec_validation,
+    spec_validation=None,
     software_spec,
     capsules,
     captures=None,
@@ -298,7 +298,7 @@ def prepare(
 ):
     """Join validation evidence, the selected spec, derived capsules and captures into one ledger.
 
-    ``spec_validation`` and ``software_spec`` are paths; ``capsules`` are the selected manifest
+    ``spec_validation`` is optional advisory evidence; ``software_spec`` is a path; ``capsules`` are the selected manifest
     entries; ``captures`` maps an application label to its captured ``model.mlir``.
     ``descriptor`` is a mapping or YAML path; an explicit ``workload_spec`` takes precedence.
     Composition synthesis defaults to enabled when the workload spec omits the switch.
@@ -314,7 +314,11 @@ def prepare(
             descriptor = yaml.safe_load(Path(descriptor).read_bytes()) or {}
         workload_spec = descriptor.get("workload_spec")
 
-    record = read_spec_validation(spec_validation, sha256=spec_validation_sha256)
+    record = (
+        read_spec_validation(spec_validation, sha256=spec_validation_sha256)
+        if spec_validation is not None
+        else {"cases": [], "sha256": None}
+    )
     spec_sha = _sha256(software_spec)
     if record.get("software_spec_sha256") not in (None, spec_sha):
         raise ValueError("spec-validation record was produced for a different software spec")
@@ -499,7 +503,7 @@ def prepare(
             "schema": SPEC_VALIDATION_SCHEMA,
             "sha256": record["sha256"],
             "verdict": record.get("verdict"),
-        },
+        } if spec_validation is not None else None,
         "software_spec": {"path": str(software_spec), "sha256": spec_sha, "target": spec["target"]},
         "captures": capture_pins,
         "capsule_manifest_sha256": digest(entries),

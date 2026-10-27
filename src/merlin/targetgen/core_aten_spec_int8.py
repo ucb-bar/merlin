@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-import os
 from pathlib import Path
 
 from merlin.targetgen.admission_conditions import enforce_provider_emission_obligations
@@ -57,90 +56,32 @@ def host_signature(op: str, rank: int, parameters: dict) -> dict:
     }
 
 
-def select_spec(
-    target: str,
-    facts: dict,
-    spec_path: Path,
-    host_path: Path,
-    *,
-    descriptor=None,
-    experiment=None,
-    prohibited_roles=None,
-) -> dict:
+def select_spec(target: str, facts: dict, spec_path: Path, host_path: Path) -> dict:
     """Resolve authored forms through the existing Phase-0 mechanism, retaining evidence."""
     from merlin.common.yaml import load_yaml
-    from merlin.targetgen import target_registry
     from merlin.targetgen.host_capabilities import validate_host_capabilities
     from merlin.targetgen.quant_recipe import derive_candidates
     from merlin.targetgen.readout_facet import for_target
-    from merlin.targetgen.rtl import facts as rtl_facts
-    from merlin.targetgen.software_spec_resolution import resolve_selected_spec, selected_context
+    from merlin.targetgen.spec_fact_drift import fact_capabilities, resolve_spec
     from merlin.targetgen.target_registry import load_contract
 
     spec = load_software_spec(spec_path, target=target)
     host = validate_host_capabilities(load_yaml(host_path))
     contract = load_contract(target)
-    descriptor_doc, roles = selected_context(
-        target,
-        descriptor=descriptor,
-        experiment=experiment,
-        prohibited_roles=prohibited_roles,
-    )
-    data_only = (contract.get("runner") or {}).get("backend") == "chipyard_rocc"
-    taxonomy = (facts.get("facts") or {}).get("isa_taxonomy") or {}
-    from merlin.targetgen.readout_facet import with_current_register_layouts
-
-    refreshed_facts = with_current_register_layouts(facts)
-    readout_inputs = None
-    if descriptor_doc:
-        if data_only:
-            from merlin.runtime.backends.chipyard_rocc import readout_metadata
-
-            readout_inputs = readout_metadata(contract)
-        else:
-            from types import SimpleNamespace
-
-            from merlin.common.paths import repo_root, resolve_grant
-            from merlin.targetgen import isa_taxonomy, readout_facet
-            from merlin.targetgen.target_experiment import load_target_experiment
-
-            selected_descriptor = descriptor or os.environ["MERLIN_TARGET_EXPERIMENT"]
-            te = load_target_experiment(selected_descriptor)
-            source_root = te.source_root if te.source_root is not None else repo_root()
-            headers = [str(resolve_grant(header, root=source_root)) for header in te.isa_headers]
-            for header in headers:
-                isa_taxonomy._CACHE.pop(header, None)
-            taxonomy = dict(
-                isa_taxonomy.derive_isa_taxonomy(
-                    SimpleNamespace(target=target, isa_headers=headers),
-                    model_ext=(contract.get("runner") or {}).get("model_ext"),
-                )
-            )
-            with rtl_facts.observed_facts(target, refreshed_facts):
-                readout_inputs = readout_facet.capture_inputs(target, facts=refreshed_facts, include_taxonomy=False)
-        readout_inputs["taxonomy"] = taxonomy
-    facets = for_target(target, facts=refreshed_facts, contract=contract, readout_inputs=readout_inputs)
+    facets = for_target(target, facts=facts, contract=contract)
     # The Core ATen spec_int8 recipe admits only exact integer sums: an operand sum or mean whose
     # terms would round before they meet is requantized exactly on the host instead.
     policy = "exact"
     candidates = [candidate.to_dict() for candidate in derive_candidates(contract, facets, integer_sum_policy=policy)]
     recipes = [candidate["recipe"] for candidate in candidates if candidate["recipe"] is not None]
-    with (
-        target_registry.observed_contract(target, contract),
-        rtl_facts.observed_facts(target, refreshed_facts, None),
-    ):
-        resolved, resolution = resolve_selected_spec(
-            spec,
-            target=target,
-            facts=facts,
-            contract=contract,
-            readout_facets=[facet.to_dict() for facet in facets],
-            quantization_candidates=candidates,
-            taxonomy=taxonomy,
-            prohibited_roles=roles,
-            data_only=data_only,
-            composition_validation=(descriptor_doc.get("workload_spec") or {}).get("fusion_validation"),
-        )
+    capabilities = fact_capabilities(
+        target=target,
+        contract=contract,
+        raw_facts=facts,
+        readout_facets=[facet.to_dict() for facet in facets],
+        quantization_candidates=candidates,
+    )
+    resolved, resolution = resolve_spec(spec, capabilities)
     return {
         "spec": resolved,
         "host": host,

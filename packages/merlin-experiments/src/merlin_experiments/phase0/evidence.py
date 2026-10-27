@@ -16,16 +16,6 @@ from typing import Any
 
 import yaml
 
-from merlin.targetgen.software_spec_resolution import (
-    _add_composition_facts as _add_composition_facts,
-)
-from merlin.targetgen.software_spec_resolution import (
-    _derived_output_epilogue as _derived_output_epilogue,
-)
-from merlin.targetgen.software_spec_resolution import (
-    resolve_selected_spec,
-)
-
 from .evidence_output import _materialize_evidence
 from .provenance import _canonical_digest, _digest, _json
 
@@ -656,7 +646,7 @@ def select_evidence(
     if data_only and not (contract.get("output_epilogue") or {}).get("output_path"):
         from merlin.targetgen.rtl import semantic_facts
 
-        # Shared software resolution rederives the output path from these probes.
+        # Output-path derivation consumes these selected semantic probes.
         # Bind the metadata even though this selection has no executable provider.
         probes = semantic_facts.probes_path(target)
         if probes.is_file():
@@ -924,32 +914,33 @@ def select_evidence(
             )
     from merlin.targetgen.quant_recipe import derive_candidates
 
-    quantization_candidates = [
-        candidate.to_dict() for candidate in derive_candidates(contract, facets, integer_sum_policy="exact")
-    ]
+    quantization_candidates = [candidate.to_dict() for candidate in derive_candidates(contract, facets)]
     # Fill the authored spec's fact-derived declarations from the same fact view the drift check
     # compares against, under the experiment's prohibited roles. Everything downstream of this
     # selection (screens, quantization contract, recipes, the frozen corpus) sees the resolved spec;
     # the authored bytes stay the selected source identity.
     software_derivation = None
     if software_spec is not None:
-        # Legacy capability readers must observe the selected contract and facts.
+        from merlin.targetgen import spec_fact_drift
+
+        # Some capability helpers still resolve by target name. Their reads
+        # must use this selection too, never extract from an ambient provider.
         with (
             target_registry.observed_contract(target, contract),
             rtl_facts.observed_facts(target, refreshed_facts, selected_path),
         ):
-            software_doc, software_derivation = resolve_selected_spec(
-                software_doc,
+            fact_view = spec_fact_drift.fact_capabilities(
                 target=target,
-                facts=loaded_facts,
                 contract=contract,
+                raw_facts=loaded_facts,
                 readout_facets=[facet.to_dict() for facet in facets],
                 quantization_candidates=quantization_candidates,
                 taxonomy=taxonomy,
                 prohibited_roles=prohibited_roles,
-                data_only=data_only,
-                composition_validation=(descriptor_doc.get("workload_spec") or {}).get("fusion_validation"),
+                **({"data_only": True} if data_only else {}),
             )
+        software_doc, software_derivation = spec_fact_drift.resolve_spec(software_doc, fact_view)
+        software_derivation["prohibited_instruction_roles"] = sorted(set(prohibited_roles))
         for row in software_derivation["unresolved"]:
             diagnostics.append(
                 {
