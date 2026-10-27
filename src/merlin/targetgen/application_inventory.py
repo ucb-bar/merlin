@@ -712,6 +712,8 @@ def _application_operation_inventory(
     `linalg.generic` therefore comes from its body, and a nested body op is a component of that region,
     not a second independent accelerator demand. Unknowns remain rows, never disappear from a count.
     """
+    from xdsl.dialects.builtin import TensorType
+
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen import model_coverage as mc
@@ -809,8 +811,18 @@ def _application_operation_inventory(
         structure = operation_structure(op)
         from merlin.targetgen import access_observations
 
-        result_shapes = [shape for shape, _dtype in result_types if shape]
-        operand_shapes = [shape for shape, _dtype in operand_types if shape]
+        # [] is a known rank-zero tensor shape, not a missing shape. The query also
+        # returns [] for non-tensor scalars, so retain the type distinction here.
+        result_shapes = [
+            shape
+            for value, (shape, _dtype) in zip(op.results, result_types, strict=True)
+            if shape or isinstance(value.type, TensorType)
+        ]
+        operand_shapes = [
+            shape
+            for value, (shape, _dtype) in zip(op.operands, operand_types, strict=True)
+            if shape or isinstance(value.type, TensorType)
+        ]
         m, k, n, rank = extents.get(id(op), (None, None, None, None))
         if rank is None and result_shapes:
             rank = len(result_shapes[0])
