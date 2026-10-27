@@ -502,6 +502,99 @@ def test_evidence_prose_is_not_an_unknown_numerical_parameter():
     assert _unresolved(semantics, "numerical_semantics") == ["numerical_semantics.rounding"]
 
 
+def test_every_real_software_spec_string_is_not_an_implicit_unknown():
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.quantization_spec import _unknown, _unresolved
+
+    spec = software_spec.load_software_spec(repo_root() / "examples/gemmini/target/software-spec.yaml")
+
+    def strings(value, path=""):
+        if isinstance(value, dict):
+            for key, member in value.items():
+                yield from strings(member, f"{path}.{key}")
+        elif isinstance(value, list):
+            for index, member in enumerate(value):
+                yield from strings(member, f"{path}[{index}]")
+        elif isinstance(value, str):
+            yield path, value
+
+    assert [(path, value) for path, value in strings(spec) if _unknown(value)] == []
+    # This subtree is actually traversed by hardware candidate selection. The
+    # calibration review basis must not suppress every static int8 recipe.
+    assert _unresolved(spec["numerical_semantics"], "numerical_semantics") == []
+    selected = _spec()
+    selected["numerical_semantics"] = spec["numerical_semantics"]
+    contract = build_quantization_contract(selected, _hardware())
+    assert contract["formats"][0]["hardware_matches"][0]["status"] == "candidate"
+    assert capture_recipe_candidates(selected, contract)
+
+
+@pytest.mark.parametrize("text", ["Operator R6; reviewed convention", "(0, 1]", "source\nreviewed", "scale\tpolicy"])
+def test_whitespace_is_not_an_unknown_value_marker(text):
+    from merlin.targetgen.quantization_spec import _record, _unknown, _unresolved, unresolved_values
+
+    assert not _unknown(text)
+    assert _record(text, "authored")["status"] == "known"
+    assert _unresolved({"future_field": text}, "parameters") == []
+    assert unresolved_values({"future_field": text}) == []
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "evidence",
+        "provenance",
+        "policy_reviews",
+        "basis",
+        "note",
+        "notes",
+        "rationale",
+        "description",
+        "reason",
+        "justification",
+    ],
+)
+def test_annotation_subtrees_are_not_numeric_parameters_even_when_they_mention_unknown(field):
+    from merlin.targetgen.quantization_spec import _unresolved, unresolved_values
+
+    annotations = {field: {"text": ["UNKNOWN source width", "from_facts", None]}}
+    value = {**annotations, "rounding": "unknown until reviewed", "nested": [None, "from_output_path"]}
+    original = deepcopy(value)
+    assert _unresolved(value, "parameters") == ["parameters.rounding", "parameters.nested[0]"]
+    assert unresolved_values(value) == ["rounding", "nested[0]", "nested[1]"]
+    assert value == original
+
+
+@pytest.mark.parametrize("value", [None, "unknown", "UNKNOWN", "unknown until reviewed", "UNKNOWN source width"])
+def test_explicit_unknown_parameters_still_block_candidates(value):
+    spec = _spec()
+    spec["quantization"]["formats"][0]["scale_encoding"] = value
+    match = build_quantization_contract(spec, _hardware())["formats"][0]["hardware_matches"][0]
+    assert match["status"] == "unknown"
+    assert "scale_encoding" in match["unknowns"]
+
+
+@pytest.mark.parametrize("field", ["basis", "notes", "rationale", "description", "policy_reviews"])
+def test_format_annotations_are_retained_without_becoming_capture_parameters(field):
+    spec = _spec()
+    baseline = build_quantization_contract(spec, _hardware())
+    text = "unknown historical detail; the numerical parameters are reviewed"
+    spec["quantization"]["formats"][0][field] = text
+    report = build_quantization_contract(spec, _hardware())
+    row = report["formats"][0]
+    assert row["declaration"][field] == text
+    assert row["hardware_matches"] == baseline["formats"][0]["hardware_matches"]
+    assert capture_recipe_candidates(spec, report) == capture_recipe_candidates(_spec(), baseline)
+
+
+@pytest.mark.parametrize("field", ["block_size", "activation_zero_point", "subnormal_operand_flush", "activation_mode"])
+def test_prose_cannot_satisfy_a_typed_quantization_parameter(field):
+    spec = _spec()
+    spec["quantization"]["formats"][0][field] = "a reviewed numerical parameter"
+    with pytest.raises(ValueError, match=field):
+        validate_quantization_declarations(spec)
+
+
 def _schemes_spec():
     spec = _spec()
     spec["numerical_semantics"]["readout"] = {"strategy": "exact_rational_host", "requant_rounding": "half_even"}

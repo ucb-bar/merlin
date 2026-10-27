@@ -16,27 +16,65 @@ from collections.abc import Mapping
 from merlin.common import quant_formats
 
 SCHEMA = "merlin.phase0.quantization_contract.v1"
-_IDENTITY_FIELDS = frozenset(
+# Authored annotations are retained in declarations, but do not supply numeric
+# parameters. Their review authority is checked by software_spec/operator_review.
+_ANNOTATION_FIELDS = frozenset(
     {
-        "id",
-        "operand_dtype",
-        "accumulator_dtype",
-        "eligible_operations",
-        "unit",
-        "numerical_semantics",
-        "framework",
         "evidence",
+        "provenance",
+        "policy_reviews",
+        "basis",
+        "note",
+        "notes",
+        "rationale",
         "description",
+        "reason",
+        "justification",
     }
+)
+_IDENTITY_FIELDS = (
+    frozenset(
+        {
+            "id",
+            "operand_dtype",
+            "accumulator_dtype",
+            "eligible_operations",
+            "unit",
+            "numerical_semantics",
+            "framework",
+            "evidence",
+            "description",
+        }
+    )
+    | _ANNOTATION_FIELDS
 )
 _INTEGER_PARAMETERS = frozenset({"activation_zero_point", "weight_zero_point", "block_size"})
 _BOOL_PARAMETERS = frozenset({"subnormal_operand_flush"})
 
 
 def _unknown(value) -> bool:
+    """Recognize explicit unknown markers, never infer one from prose whitespace.
+
+    The authored ``unknown until reviewed`` convention may carry an explanation.
+    It is meaningful only in parameter fields; annotation subtrees are excluded
+    by the walkers below.
+    """
     return value is None or (
-        isinstance(value, str) and (value == "unknown" or value.startswith("unknown ") or " " in value)
+        isinstance(value, str) and (value.lower() == "unknown" or value.lower().startswith("unknown "))
     )
+
+
+def _parameter_leaves(value: object, prefix: str):
+    """Walk parameter values without interpreting annotation text as constraints."""
+    if isinstance(value, Mapping):
+        for key, member in value.items():
+            if key not in _ANNOTATION_FIELDS:
+                yield from _parameter_leaves(member, f"{prefix}.{key}".lstrip("."))
+    elif isinstance(value, list):
+        for index, member in enumerate(value):
+            yield from _parameter_leaves(member, f"{prefix}[{index}]")
+    else:
+        yield prefix, value
 
 
 def _dtype(value: str) -> str:
@@ -50,7 +88,8 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
 
     Id-less legacy declarations have a stable identity from their canonical
     operand/accumulator pairing. Same-pair variants must have distinct explicit
-    ids. Prose parameters remain visible unknowns, not executable constraints.
+    ids. Explicit unknown parameters remain diagnostic; typed parameters must
+    contain values of their declared type.
     """
     declaration = spec.get("quantization")
     if declaration is None:
@@ -296,17 +335,11 @@ def _resolve_scheme_constraints(row: dict, constraints: list, context: Mapping) 
 
 def unresolved_values(value: object, prefix: str = "") -> list[str]:
     """List every unresolved derived field, including nested lists and constraints."""
-    if isinstance(value, Mapping):
-        return [
-            name for key, member in value.items() for name in unresolved_values(member, f"{prefix}.{key}".lstrip("."))
-        ]
-    if isinstance(value, list):
-        return [name for i, member in enumerate(value) for name in unresolved_values(member, f"{prefix}[{i}]")]
-    missing = value is None or (
-        isinstance(value, str)
-        and (value in {"from_facts", "from_output_path"} or value.upper().split(" ")[0] == "UNKNOWN")
-    )
-    return [prefix] if missing else []
+    return [
+        name
+        for name, member in _parameter_leaves(value, prefix)
+        if _unknown(member) or (isinstance(member, str) and member in {"from_facts", "from_output_path"})
+    ]
 
 
 def _record(value, basis: str, *, not_applicable=False) -> dict:
@@ -318,18 +351,7 @@ def _record(value, basis: str, *, not_applicable=False) -> dict:
 
 
 def _unresolved(value, prefix: str) -> list[str]:
-    if isinstance(value, Mapping):
-        # Evidence prose describes the declaration; it is not a numerical
-        # parameter. Review acceptance remains the software admission gate.
-        return [
-            name
-            for key, member in value.items()
-            if key not in {"evidence", "provenance"}
-            for name in _unresolved(member, f"{prefix}.{key}")
-        ]
-    if isinstance(value, list):
-        return [name for index, member in enumerate(value) for name in _unresolved(member, f"{prefix}[{index}]")]
-    return [prefix] if _unknown(value) else []
+    return [name for name, member in _parameter_leaves(value, prefix) if _unknown(member)]
 
 
 def _parameters(

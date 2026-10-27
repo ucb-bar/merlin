@@ -658,6 +658,34 @@ def test_family_compositions_resolve_all_readouts_exits_and_user_rulings():
     assert SS.readout_exactness_gate("exact_rational_host")["proof"] == "prove_fp32_products"
 
 
+@pytest.mark.parametrize(
+    "prose", ["UNKNOWN historical result; this is a coverage rationale", "from_facts", "reviewed cross check"]
+)
+def test_composition_justification_does_not_become_an_unknown_constraint(prose):
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    spec = _composition_spec()
+    selection = {"primary": ["primary"], "cross_checks": [{"scheme": "cross", "justification": prose}]}
+    spec["compositions"]["chains"][0]["quantization_schemes"] = selection
+    spec = SS.validate_software_spec(spec)
+    original = deepcopy(spec)
+    facts = _composition_facts()
+    resolved, record = resolve_spec(spec, facts)
+    chain = resolved["composition_resolution"]["chains"][0]
+    assert record["status"] == "resolved"
+    assert chain["quantization_schemes"] == selection
+    assert chain["unknown"] == []
+    assert spec == original
+    # Annotation handling cannot hide a genuinely missing hardware bound.
+    del facts["composition"]["pool_window_within_register_fields"]
+    resolved, record = resolve_spec(spec, facts)
+    assert record["status"] == "unresolved"
+    assert (
+        "constraints[3].pool_window_within_register_fields"
+        in resolved["composition_resolution"]["chains"][0]["unknown"]
+    )
+
+
 @pytest.mark.parametrize("missing", ["output_path", "dataflows", "k_extension_within", "shared_input_resident"])
 def test_composition_missing_facts_are_unknown_and_listed(missing):
     from merlin.targetgen.spec_fact_drift import resolve_spec
