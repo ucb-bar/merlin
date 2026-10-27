@@ -103,3 +103,46 @@ def test_shared_ledger_rejects_mutated_program(study, tmp_path):
     (tmp_path / "program.json").write_text("different")
     with pytest.raises(ValueError, match="identity"):
         study.reserve_campaigns(ledger, [row], tmp_path, **args)
+
+
+@pytest.mark.parametrize("option,value", [
+    ("graph_fusion_level", 0), ("prepack_weights", False),
+    ("bias_preload", False), ("graph_cse", True),
+])
+def test_changed_graph_plan_cannot_reuse_campaign(study, tmp_path, option, value):
+    (tmp_path / "program.json").write_text("program")
+    (tmp_path / "fixture.npz").write_bytes(b"fixture")
+    pool = tmp_path / "pool.json"
+    pool.write_text("{}")
+    row = dict(id="example", program="program.json", fixture="fixture.npz", trials=4)
+    args = dict(deadline=1000, clock_hz=30000000, pool=pool, cap=8)
+    ledger = tmp_path / "ledger.json"
+    study.reserve_campaigns(ledger, [row], tmp_path, **args)
+    with pytest.raises(ValueError, match="identity"):
+        study.reserve_campaigns(ledger, [dict(row, **{option: value})], tmp_path, **args)
+
+
+def test_graph_options_reach_inner_campaign(study, tmp_path):
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(pool=tmp_path / "pool", toolchain=tmp_path / "tools", target_clock_hz=30000000)
+    row = dict(program="p", fixture="f", trials=4, graph_fusion_level=0,
+               graph_cse=True, prepack_weights=False, bias_preload=False)
+    command = study.command(row, tmp_path, args, tmp_path / "output", 1000)
+    assert command[command.index("--graph-fusion-level") + 1] == "0"
+    assert {"--graph-cse", "--no-prepack-weights", "--no-bias-preload"}.issubset(command)
+
+
+def test_continuation_preserves_finish_active_policy(study, tmp_path):
+    (tmp_path / "p").write_text("program")
+    (tmp_path / "f").write_text("fixture")
+    pool = tmp_path / "pool"
+    pool.write_text("{}")
+    row = dict(id="example", program="p", fixture="f", trials=1)
+    args = dict(deadline=1000, clock_hz=30000000, pool=pool, cap=1,
+                finish_active_runs=True, active_run_timeout_seconds=60)
+    ledger = tmp_path / "ledger.json"
+    study.reserve_campaigns(ledger, [row], tmp_path, **args)
+    assert study.reserve_campaigns(ledger, [row], tmp_path, **args) == []
+    with pytest.raises(ValueError, match="completion policy"):
+        study.reserve_campaigns(ledger, [row], tmp_path, **dict(args, active_run_timeout_seconds=120))

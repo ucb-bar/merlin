@@ -48,7 +48,7 @@ def setup(tmp_path):
     elf = tmp_path / "tiny.elf"
     elf.write_bytes(b"unit test ELF")
 
-    def make(mode="ok", slots=1, with_receipt=True):
+    def make(mode="ok", slots=1, with_receipt=True, **kwargs):
         config = tmp_path / (mode + str(slots) + ".json")
         value = dict(
             persistent_manager=True,
@@ -66,7 +66,7 @@ def setup(tmp_path):
         if with_receipt:
             value["hardware_receipt"] = str(hardware)
         config.write_text(json.dumps(value))
-        return module.FireSimPool(config, deadline_epoch=time.time() + 20)
+        return module.FireSimPool(config, deadline_epoch=time.time() + 20, **kwargs)
 
     return module, make, elf
 
@@ -182,3 +182,43 @@ def test_live_incumbent_can_tighten_after_submission(setup, tmp_path):
     pool.config["adapter_sources"] = [module.identity(adapter)]
     with pytest.raises(TimeoutError):
         pool.run(elf, tmp_path / "job", measured_limit=101, live_limit=dict(path=str(live), key="test"))
+
+
+def test_finish_active_uses_separate_watchdog_and_records_drain(setup, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    module, make, elf = setup
+    pool = make(finish_active_runs=True, active_run_timeout_seconds=10)
+    clock = {"now": 100.0}
+    pool.deadline = 101.0
+    original_popen = module.subprocess.Popen
+
+    def popen(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        wait = process.wait
+        def completed(*args, **kwargs):
+            result = wait(*args, **kwargs)
+            clock["now"] = 103.0
+            return result
+        process.wait = completed
+        return process
+
+    monkeypatch.setattr(module, "time", SimpleNamespace(time=lambda: clock["now"], sleep=time.sleep))
+    monkeypatch.setattr(module.subprocess, "Popen", popen)
+    folder = tmp_path / "draining"
+    assert pool.run(elf, folder, measured_limit=101) == 100
+    request = json.loads((folder / "request.json").read_text())
+    assert request["admission_deadline_epoch"] == 101
+    assert request["deadline_epoch"] == 110
+    assert request["finish_active_runs"] is True
+    assert json.loads((folder / "occupancy.json").read_text())["post_budget_seconds"] == 2
+    with pytest.raises(TimeoutError, match="deadline"):
+        pool.run(elf, tmp_path / "late")
+    assert not (tmp_path / "late/request.json").exists()
+
+
+@pytest.mark.parametrize("timeout", [None, 0, -1, float("nan"), float("inf")])
+def test_drain_requires_bounded_job_watchdog(setup, timeout):
+    _, make, _ = setup
+    with pytest.raises(ValueError, match="watchdog"):
+        make(finish_active_runs=True, active_run_timeout_seconds=timeout)

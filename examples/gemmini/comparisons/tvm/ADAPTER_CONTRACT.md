@@ -47,3 +47,23 @@ the incumbent as a total-cycle cap. All 813 task jobs completed; none hit it.
 Its old enforcement booleans overstated the implementation. This does not
 invalidate the completed guest intervals, but it did not save the compute
 promised by the active-cycle cutoff. Keep those historical receipts unchanged.
+
+## Tuning admission and finishing active runs
+
+The current campaign stops new submissions after four tuning hours for ResNet
+and one hour each for TinyLlama and SmolVLA. Already active measurements finish;
+queued jobs do not start during completion. Record extra completion time separately.
+This policy does not remove incumbent cycle pruning, correctness checks, explicit
+cancellation or per-job hang safeguards.
+
+With `--finish-active-runs`, the pool rejects new slot admissions at
+`admission_deadline_epoch`. An admitted request's `deadline_epoch` and
+`wall_seconds` describe its separate per-job watchdog, supplied explicitly through
+`--active-run-timeout-seconds` by the remote worker. Do not shorten that watchdog
+back to the admission deadline or treat it as new tuning time. The supervisor
+waits for active campaigns at the admission cutoff; it can still stop its own
+processes on explicit cancellation or critical memory pressure. `occupancy.json`
+records each admitted slot lease and its post-budget duration, including failures.
+The remote worker retains the aggregate per-model occupancy ledger across chunks,
+graph options and restarts; the local elapsed-deadline launcher does not implement
+that aggregate meter by itself.

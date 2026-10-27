@@ -91,7 +91,9 @@ def tune(args):
     root = args.output_dir.resolve()
     root.mkdir(parents=True, exist_ok=False)
     toolchain = load_toolchain(args.toolchain)
-    pool = FireSimPool(args.pool, deadline_epoch=args.deadline_epoch)
+    pool = FireSimPool(args.pool, deadline_epoch=args.deadline_epoch,
+                       finish_active_runs=args.finish_active_runs,
+                       active_run_timeout_seconds=args.active_run_timeout_seconds)
     cycles_to_seconds(1, args.target_clock_hz)
     write_json(
         root / "measurement-units.json",
@@ -110,7 +112,7 @@ def tune(args):
         raise ValueError("Build and runner hardware identities differ")
     caps = GemminiCapabilities()
     program = import_program(args.program)
-    graph_plan = GraphPlan(fusion_level=args.graph_fusion_level, eliminate_common_subexpr=args.graph_cse)
+    graph_plan = GraphPlan.from_args(args)
     prepared, eligible, inventory = extract_inventory(program, caps, **graph_plan.preparation_options)
     write_json(root / "graph-plan.json", graph_plan.identity(program, prepared))
     selected_names = {row["task"] for row in inventory if row["kind"] == "contraction"}
@@ -364,7 +366,11 @@ def tune(args):
             validated_records=len(validated.get_all_tuning_records()),
             historical_costs_imported=False,
             deadline_epoch=args.deadline_epoch,
+            finish_active_runs=args.finish_active_runs,
+            active_run_timeout_seconds=args.active_run_timeout_seconds,
             graph_cse=args.graph_cse,
+            prepack_weights=args.prepack_weights,
+            bias_preload=args.bias_preload,
             graph_plan=identity(root / "graph-plan.json"),
             measurement_units=identity(root / "measurement-units.json"),
             validated_database_sources=[
@@ -401,7 +407,13 @@ def main():
     )
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--builders", type=int, default=2)
+    parser.add_argument("--finish-active-runs", action="store_true",
+                        help="Stop new slot admissions at the deadline; drain active measurements")
+    parser.add_argument("--active-run-timeout-seconds", type=float,
+                        help="Separate remote per-run hang watchdog when draining; not a tuning budget")
     parser.add_argument("--graph-cse", action="store_true")
+    parser.add_argument("--no-prepack-weights", dest="prepack_weights", action="store_false", default=True)
+    parser.add_argument("--no-bias-preload", dest="bias_preload", action="store_false", default=True)
     parser.add_argument(
         "--graph-fusion-level",
         type=int,

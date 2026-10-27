@@ -49,7 +49,8 @@ def memory_available():
     raise RuntimeError("Linux MemAvailable is required for build admission")
 
 
-def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap):
+def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
+                      finish_active_runs=False, active_run_timeout_seconds=None):
     """Persist one deadline/proposal budget across launcher invocations."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.with_suffix(path.suffix + ".lock").open("a+") as lock:
@@ -59,10 +60,12 @@ def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap):
             target_clock_hz=clock_hz,
             pool_sha256=identity(pool)["sha256"],
             proposal_cap=cap,
+            finish_active_runs=finish_active_runs,
+            active_run_timeout_seconds=active_run_timeout_seconds,
         )
         state = json.loads(path.read_text()) if path.exists() else dict(binding=binding, campaigns={})
         if state["binding"] != binding:
-            raise ValueError("Shared study deadline, target clock, pool or cap changed; do not reset a continuation")
+            raise ValueError("Shared study deadline, target clock, pool, cap or completion policy changed; do not reset a continuation")
         fresh = []
         for row in rows:
             record = dict(
@@ -70,6 +73,9 @@ def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap):
                 fixture_sha256=identity(root / row["fixture"])["sha256"],
                 trials=row["trials"],
                 workload_keys=row.get("workload_keys", []),
+                graph_options={key: row.get(key, default) for key, default in
+                               (("graph_fusion_level", 2), ("prepack_weights", True),
+                                ("bias_preload", True), ("graph_cse", False))},
             )
             old = state["campaigns"].get(row["id"])
             if old is not None:
@@ -113,6 +119,15 @@ def command(row, root, args, output, deadline):
         "--graph-fusion-level",
         str(row.get("graph_fusion_level", 2)),
     ]
+    if getattr(args, "finish_active_runs", False):
+        argv.extend(["--finish-active-runs", "--active-run-timeout-seconds",
+                     str(args.active_run_timeout_seconds)])
+    if row.get("graph_cse", False):
+        argv.append("--graph-cse")
+    if not row.get("prepack_weights", True):
+        argv.append("--no-prepack-weights")
+    if not row.get("bias_preload", True):
+        argv.append("--no-bias-preload")
     for key in row.get("workload_keys", []):
         argv.extend(["--workload-key", key])
     return argv
@@ -169,11 +184,18 @@ def main():
     parser.add_argument("--jobs", type=int)
     parser.add_argument("--memory-reserve-gib", type=float, default=4)
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--finish-active-runs", action="store_true")
+    parser.add_argument("--active-run-timeout-seconds", type=float,
+                        help="Per-run hang watchdog supplied by the remote worker; separate from tuning budget")
     parser.add_argument("--phase", choices=("initial", "continuation", "all"), default="initial")
     parser.add_argument("--ledger", type=Path, help="Same ledger path for all study phases and restarts")
     args = parser.parse_args()
     if not math.isfinite(args.target_clock_hz) or args.target_clock_hz <= 0:
         parser.error("Provide the documented target cycle-counter frequency, not FPGA/emulation frequency")
+    if args.finish_active_runs and (args.active_run_timeout_seconds is None
+                                   or not math.isfinite(args.active_run_timeout_seconds)
+                                   or args.active_run_timeout_seconds <= 0):
+        parser.error("Finish-active mode requires a separate positive per-run watchdog")
     manifest = json.loads(args.study.read_text())
     root = args.study.resolve().parent
     rows = [
@@ -227,6 +249,8 @@ def main():
         clock_hz=args.target_clock_hz,
         pool=args.pool,
         cap=manifest["global_proposal_cap"],
+        finish_active_runs=args.finish_active_runs,
+        active_run_timeout_seconds=args.active_run_timeout_seconds,
     )
     fresh_ids = {r["id"] for r in fresh}
     plan = [p for p in plan if p["id"] in fresh_ids]
@@ -245,16 +269,21 @@ def main():
         parser.error("Use at least one job")
     pending, active, completed = list(plan), [], []
     progress = {r["id"]: dict(offset=0, proposals=0, valid_timings=0, buffer="") for r in plan}
-    stopped = None
+    stopped, admission_closed = None, False
     try:
         while pending or active:
             if time.time() >= args.deadline_epoch:
-                stopped = "shared deadline"
-                break
+                admission_closed = True
+                if not args.finish_active_runs:
+                    stopped = "shared deadline"
+                    break
+                if not active:
+                    break
             if memory_available() < 1024**3:
                 stopped = "critical memory pressure"
                 break
-            while pending and len(active) < limit and memory_available() > reserve + 1536 * 1024**2:
+            while (pending and not admission_closed and time.time() < args.deadline_epoch
+                   and len(active) < limit and memory_available() > reserve + 1536 * 1024**2):
                 item = pending.pop(0)
                 log = (args.output_dir / (item["id"] + ".log")).open("w")
                 process = subprocess.Popen(item["argv"], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -282,6 +311,8 @@ def main():
                     active.remove((item, process, log))
             state = dict(
                 deadline_epoch=args.deadline_epoch,
+                admission_closed=admission_closed,
+                finish_active_runs=args.finish_active_runs,
                 active=[dict(id=i["id"], pid=p.pid) for i, p, _ in active],
                 completed=completed,
                 pending=[i["id"] for i in pending],
@@ -301,7 +332,8 @@ def main():
     (args.output_dir / "exit.json").write_text(
         json.dumps(
             dict(
-                reason=stopped or "campaigns finished",
+                reason=stopped or ("admission closed; active runs drained" if admission_closed else "campaigns finished"),
+                post_deadline_seconds=max(0, time.time() - args.deadline_epoch),
                 completed=completed,
                 unfinished=[i["id"] for i in pending] + [i["id"] for i, _, _ in active],
             ),

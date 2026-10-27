@@ -8,6 +8,7 @@ This module never allocates instances, flashes images, or chooses schedules.
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -32,7 +33,7 @@ def checked(item):
 
 
 class FireSimPool:
-    def __init__(self, config, *, deadline_epoch):
+    def __init__(self, config, *, deadline_epoch, finish_active_runs=False, active_run_timeout_seconds=None):
         self.config = json.loads(Path(config).read_text())
         self.config_identity = identity(config)
         self.hardware = (
@@ -49,6 +50,12 @@ class FireSimPool:
         for source in self.config["adapter_sources"]:
             checked(source)
         self.deadline = float(deadline_epoch)
+        self.finish_active_runs = finish_active_runs
+        if finish_active_runs and (active_run_timeout_seconds is None
+                                  or not math.isfinite(active_run_timeout_seconds)
+                                  or active_run_timeout_seconds <= 0):
+            raise ValueError("Finish-active mode requires a separate positive per-run watchdog")
+        self.active_run_timeout_seconds = active_run_timeout_seconds
         self.slots = self.config["slots"]
         if not self.slots or len({s["lock"] for s in self.slots}) != len(self.slots):
             raise ValueError("Supply distinct locks for already assigned physical slots")
@@ -66,7 +73,7 @@ class FireSimPool:
             checked(self.hardware)
         for source in self.config["adapter_sources"]:
             checked(source)
-        lease = None
+        lease, admitted_at = None, None
         try:
             while lease is None:
                 if time.time() >= self.deadline:
@@ -84,9 +91,13 @@ class FireSimPool:
                     break
                 if lease is None:
                     time.sleep(0.1)
-            wall = self.deadline - time.time()
-            if wall <= 0:
-                raise TimeoutError("Study deadline reached")
+            admitted_at = time.time()
+            if admitted_at >= self.deadline:
+                admitted_at = None
+                raise TimeoutError("Study admission deadline reached")
+            wall = (self.active_run_timeout_seconds if self.finish_active_runs
+                    else self.deadline - admitted_at)
+            execution_deadline = admitted_at + wall
             if callable(measured_limit):
                 measured_limit = measured_limit()
             request = dict(
@@ -104,7 +115,9 @@ class FireSimPool:
                 required_limit_refresh_scope="in_flight" if live_limit else None,
                 measured_cycle_limit=measured_limit,
                 wall_seconds=wall,
-                deadline_epoch=self.deadline,
+                deadline_epoch=execution_deadline,
+                admission_deadline_epoch=self.deadline,
+                finish_active_runs=self.finish_active_runs,
                 live_limit=live_limit,
                 require_all_outputs=True,
                 keep_manager_alive=True,
@@ -119,7 +132,7 @@ class FireSimPool:
             with (folder / "adapter.log").open("w") as log:
                 process = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                 try:
-                    code = process.wait(timeout=wall)
+                    code = process.wait(timeout=max(0.001, execution_deadline - time.time()))
                 except subprocess.TimeoutExpired:
                     os.killpg(process.pid, signal.SIGTERM)
                     try:
@@ -176,3 +189,13 @@ class FireSimPool:
             if lease is not None:
                 fcntl.flock(lease, fcntl.LOCK_UN)
                 lease.close()
+            if admitted_at is not None:
+                finished_at = time.time()
+                (folder / "occupancy.json").write_text(json.dumps(dict(
+                    admitted_at=admitted_at, finished_at=finished_at,
+                    admission_deadline_epoch=self.deadline,
+                    occupied_seconds=max(0, finished_at - admitted_at),
+                    post_budget_seconds=max(0, finished_at - self.deadline),
+                    finish_active_runs=self.finish_active_runs,
+                    scope="local slot lease/adapter duration, including failed jobs; remote ledger owns campaign totals",
+                ), indent=2) + "\n")
