@@ -513,6 +513,53 @@ def _observations(accounting: Mapping | None, declaration_id: str) -> list[dict]
     return observations
 
 
+def _runtime_weight_contractions(recipe: dict, spec: Mapping) -> None:
+    """A calibrated weight may arrive through a reviewed operand load.
+
+    The caller has already selected a format-specific hardware recipe and SW
+    contraction scope and methodology. Storage origin does not change that
+    arithmetic. This does not license activation contractions or dynamic scales.
+    Missing transfer authority keeps the historical stored-weight policy.
+    """
+    from merlin.targetgen.transfer_contracts import validate_transfer_contracts
+
+    if recipe.get("status") != "derived" or "contraction" not in recipe["families"]:
+        return
+    if recipe["accumulator_dtype"] != "int32" or any(
+        tensor.get("dtype") != "int8"
+        or tensor.get("mode") != "static"
+        or tensor.get("symmetric") is not True
+        for tensor in (recipe["weight"], recipe["activation"])
+    ):
+        return
+    if (
+        recipe["weight"].get("granularity") not in {"tensor", "channel"}
+        or recipe["activation"].get("granularity") != "tensor"
+    ):
+        return
+    transfers = validate_transfer_contracts(spec.get("transfer_contracts"))
+    if transfers is None or transfers["status"] != "reviewed":
+        return
+    loads = [
+        row["id"]
+        for row in transfers["declarations"]
+        if row["from"] == "host"
+        and row["to"] == "accelerator"
+        and row["semantics"] == {"conversion": "bit_preserving"}
+        and row["evidence"].get("status") == "reviewed"
+        and row["signature"].get("operand_layout") == "row_major_contiguous"
+        and row["signature"].get("result_layout") == "row_major_contiguous"
+        and all(_dtype(row["signature"][key]) == "int8" for key in ("operand_dtype", "result_dtype"))
+    ]
+    if loads:
+        recipe["runtime_weight_contractions"] = True
+        recipe.setdefault("why", {})["runtime_weight_contractions"] = (
+            "the selected hardware contraction recipe and reviewed bit-preserving operand loads "
+            f"{loads!r} allow externally supplied weights on the selected static grids; "
+            "per-site software admission, calibration and integer agreement remain required"
+        )
+
+
 def capture_recipe_candidates(spec: Mapping, quantization_contract: Mapping) -> list[dict]:
     """Project saved hardware recipes through explicit SW format/operation scopes.
 
@@ -608,6 +655,9 @@ def capture_recipe_candidates(spec: Mapping, quantization_contract: Mapping) -> 
                     }
                     for variant in declared.get("model_variants") or ()
                 ]
+            for derived in [row["recipe"], *(variant["recipe"] for variant in row.get("model_variants", []))]:
+                _runtime_weight_contractions(derived, spec)
+                derived["recipe_sha256"] = digest(derived)
             result.append(row)
     return result
 
