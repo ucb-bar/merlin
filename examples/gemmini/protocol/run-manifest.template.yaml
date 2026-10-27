@@ -39,8 +39,8 @@ models:
     checkpoint_revision: fe8a4ea1ffedaf415f4da2f062534de366a451e6
     capture_tree_sha256: null
     session_contract_sha256: null
-    recipe_file_sha256: f113dad1ac0f52d0cbff5f9398afae17282c9ab71c3a6107e98bdf8a096af9ad
-    recipe_sha256: 4300d9d2f46160cab679672d384bdda664fd310862137f354b36c2845f45ed5f
+    recipe_file_sha256: 839657c5c84906a03e1a5fdf7b7f8c68ccc73757d26a448d3380137d71b9ce2e
+    recipe_sha256: 4f14c71f4195ee4481de9814fee6ed578953a14d21adc0aab20e7b4f261b886d
     host_math_policy: portable_exp_trig
     reference_manifest_sha256: null
     selected_models_config_sha256: null

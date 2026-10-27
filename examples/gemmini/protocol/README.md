@@ -8,8 +8,9 @@ Use [`experiment.yaml`](experiment.yaml) to agree on workload shapes and inputs,
 and [`numerics/models.yaml`](../numerics/models.yaml) as the single numerical
 policy: common `numerics` semantics and each model's `judged.admission` thresholds.
 The protocol links that policy instead of copying its rules. It records
-the full-model profile selected on 2026-10-19. The exact, data-only
-[`recipes/`](recipes/) are copied byte-for-byte from that selection. They contain
+the full-model profile selected on 2026-10-19, with the explicit TinyLlama
+operands2 review below. The exact, data-only [`recipes/`](recipes/) bind each
+selection to its own content digest. They contain
 no kernels, checkpoints, tensor values or reference outputs.
 
 This definition complements the [experiment catalog](../experiment.yaml), the
@@ -158,8 +159,19 @@ reassociate arithmetic silently or assume the INT32 readout performs an FP exit.
 | Model | Selected numerical variant | Deliberate details |
 | --- | --- | --- |
 | ResNet50 | `native-epilogue-contractions-calibration-1024` | 53 conv + 1 linear source contractions; 32 requant/ReLU and 22 raw-accumulator exits. Residual adds and average pool remain floating host work in this recipe. |
-| TinyLlama | `static-heads-softmax2-bounded-partner2` | INT8 attention with static head scales: two softmax planes and two partner planes; ordinary QK uses one plane. SmoothQuant alpha 0.5 and legal outlier-channel splitting expand widths, not the layer count. |
+| TinyLlama | `static-heads-softmax2-bounded-partner2-operands2` | INT8 attention with static head scales: two softmax planes, two partner planes and two bounded residual planes for both ordinary QK operands. SmoothQuant alpha 0.5 and legal outlier-channel splitting expand widths, not the layer count. |
 | SmolVLA | `static-heads-softmax2-bounded-operands2` | INT8 attention with two softmax and two residual-operand planes. Prefix/flow have 187/116 source contraction decisions; plane/head expansion changes the emitted call count. |
+
+The TinyLlama operands2 review addresses three refused decode score sites with
+`cosine_min` 0.93311 / 0.94296 / 0.94711 against the unchanged 0.947588 bar
+(analysis: `/tmp/claude-2629/tl_admit.py`). The relative-RMSE bar remains
+0.457351. The prior `static-heads-softmax2-bounded-partner2` variant and its
+decode refusal remain in the history;
+[the frozen specification](../phase0/history/software-spec-seals1-3.yaml) keeps
+the old variant text. New captures must pass the same per-site checks before
+admission. The separately selected speed-first profile continues to derive
+one-plane attention without inherited float site bars; its updated source
+identity is not an operands2 admission result.
 
 Attention's non-softmax head scales are **calibration-time constants**, derived
 from each head's calibration absmax as `max(absmax/127.5, 2^-12)` and stored as

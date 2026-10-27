@@ -16,6 +16,7 @@
       "activation_contraction"
     ],
     "planes": {
+      "residual_operand": 1,
       "softmax_output": 1,
       "softmax_partner": 1
     },
@@ -117,9 +118,9 @@
           "dynamic",
           "families"
         ],
-        "name": "static-heads-softmax2-bounded-partner2",
-        "reason": "Use two fixed softmax planes and two bounded signed-int8 residual planes for the value operand. Retain the original score grid and unchanged per-site bars; extra precision repairs the weak context site.",
-        "reviewed_by": "Codex operator, user-directed continuation after measured recipe review, 2026-10-18"
+        "name": "static-heads-softmax2-bounded-partner2-operands2",
+        "reason": "Add two bounded signed-int8 residual planes for each ordinary activation operand, including both attention-score operands. Keep two fixed softmax planes, two bounded partner planes, static head scales, and the unchanged per-site agreement bars. Fresh capture must establish agreement; extra precision is not an admission result.",
+        "reviewed_by": "Codex operator, explicit TinyLlama operands2 implementation request, 2026-10-26"
       }
     ]
   },
@@ -145,13 +146,13 @@
     "schema": "numerical_recipe_selection_v1",
     "source_methodology_sha256": "e169ac1b0cd77360e0516ee3ea3cdf98d5a3013fb48f27f7220b5b7c607e0d67",
     "source_output_path_sha256": "be69417df214f85279aa25d134d816ad4a9236a9d8c144aac04960c0dda54ab8",
-    "source_recipe_sha256": "1259c1a80ad0ea8bdc74e7b31a80477fcc4b84cd7b1bfc8a9b6e8c59e9119dec"
+    "source_recipe_sha256": "0f20ddfe1939ea961d55b5fe825d0f73dd4d130b201e3b07350dd439d4476566"
   },
   "projection_input_reuse": {
     "max_nonuniform_readout_blocks": 64,
     "schema": "shared_input_projection_v1"
   },
-  "recipe_sha256": "f447e97ad23bc571eac80f7fdab345f33492e5b48df7b8a1825880d9b16ffb3f",
+  "recipe_sha256": "32da5632e6d12ff2b0582fe266b4f56a7b9fdb8a49495c8c07a186356af53b28",
   "recovery": {
     "bias_correction": false,
     "cross_layer_equalization": false
@@ -243,7 +244,7 @@
     "operand_sum": "the unit's load multiplies each operand into the accumulator (2 operands, rounded half_even), so a sum of two tensors is integer work within 1 output step(s) of the single-rounding reference",
     "projection_input_reuse": "explicit generic integer graph transform; its rewritten arithmetic defines a new reference; physical placement, reuse and performance require independent execution evidence",
     "symmetric": "the readout carries no zero point, so both scales are symmetric",
-    "variant.static-heads-softmax2-bounded-partner2": "reviewed model variant: Use two fixed softmax planes and two bounded signed-int8 residual planes for the value operand. Retain the original score grid and unchanged per-site bars; extra precision repairs the weak context site.",
+    "variant.static-heads-softmax2-bounded-partner2-operands2": "reviewed model variant: Add two bounded signed-int8 residual planes for each ordinary activation operand, including both attention-score operands. Keep two fixed softmax planes, two bounded partner planes, static head scales, and the unchanged per-site agreement bars. Fresh capture must establish agreement; extra precision is not an admission result.",
     "weight.granularity": "the methodology asks for one weight scale per tensor",
     "weight.range": "symmetric weights use the restricted range so a negated weight is representable",
     "window_mean": "a mean over a window is the unit's own contraction against a constant one, with the reciprocal of the count folded into the readout's one scale"
