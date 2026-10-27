@@ -116,7 +116,7 @@ def _pool_refusals(constraints, case, path, facts):
         yield "pool padding is UNKNOWN"
     elif any(padding):
         pad = pools[0].get("padding")
-        if isinstance(pad, str) and pad.lower() == "zero":
+        if isinstance(pad, str) and pad.lower() in {"zero", "zero_tap"}:
             pad = 0
         if type(pad) not in (int, float):
             yield "pool padding is UNKNOWN"

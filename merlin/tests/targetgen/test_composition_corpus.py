@@ -761,14 +761,17 @@ def test_mean_case_enumeration_refuses_unsafe_geometry(software, facts, binding)
 
 
 @pytest.mark.parametrize("second_exit", ["accumulator", "requant"])
-def test_validated_shared_input_builds_binds_and_computes_both_goldens(software, facts, binding, second_exit):
+@pytest.mark.parametrize("runtime_second", [False, True])
+def test_validated_shared_input_builds_binds_and_computes_both_goldens(
+    software, facts, binding, second_exit, runtime_second
+):
     import hashlib
 
     from merlin_experiments.phase0.composition_generation import _validated_entry
     from merlin_experiments.phase0.fusion_cases import _merge_sources
 
     from merlin.common import mlir_query as mq
-    from merlin.targetgen.capsule_golden import materialize_capsule_leaves
+    from merlin.targetgen.capsule_golden import UnsupportedGoldenFormat, golden, materialize_capsule_leaves
     from merlin.targetgen.composition_golden import evaluate
     from merlin.targetgen.contract.schemas import validate_capsule
 
@@ -786,11 +789,18 @@ def test_validated_shared_input_builds_binds_and_computes_both_goldens(software,
         entry = copy.deepcopy(base)
         case = entry["composition_instance"]
         case.update(exit=exit_kind, accumulator_stages=[])
+        if runtime_second and index == 1:
+            entry["generalization"]["quantization_scheme"]["scale_source"] = "runtime_input"
+            case["runtime_scale_input"] = "ReadoutScale"
         if exit_kind == "accumulator":
             case["readout_stages"] = []
         cap, source = CS.build(entry, binding)
         nodes.append((cap, source))
-        env = {name: np.asarray(tensor.to_list()) for name, tensor in materialize_capsule_leaves(cap).items()}
+        dtypes = {leaf["name"]: leaf["dtype"] for leaf in cap["inputs"]}
+        env = {
+            name: np.asarray(tensor.to_list(), dtype=np.float32 if dtypes[name] == "f32" else np.int64)
+            for name, tensor in materialize_capsule_leaves(cap).items()
+        }
         # Different weights ensure both siblings are independently evaluated.
         env["W0"] = np.full(env["W0"].shape, index + 1, dtype=np.int64)
         for name, value in env.items():
@@ -830,6 +840,12 @@ def test_validated_shared_input_builds_binds_and_computes_both_goldens(software,
     bind_capsule(cap, actual_source)
     validate_capsule(cap)
     assert evaluate(cap) == {row["name"]: row["values"] for row in references}
+    assert golden(cap) == {row["name"]: row["values"] for row in references}
+    if runtime_second and second_exit == "requant":
+        bad = copy.deepcopy(cap)
+        next(leaf for leaf in bad["inputs"] if leaf["dtype"] == "f32")["dtype"] = "f64"
+        with pytest.raises(UnsupportedGoldenFormat):
+            golden(bad)
     assert [leaf["name"] for leaf in cap["inputs"]].count("A") == 1
     assert all(modes["shared_input"] for modes in cap["expected"]["stage_scoped_modes"].values())
     for name, parameters in cap["expected"]["stage_scoped_mode_parameters"].items():
