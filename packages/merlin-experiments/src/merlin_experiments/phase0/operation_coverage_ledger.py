@@ -190,7 +190,14 @@ def _capsule_coverage(entries, *, traces, chains):
         if entry.get("op") == "model" and model in traces:
             keys |= {f"overload:{op}" for op in traces[model]}
         elif entry.get("op") == "composition_program":
-            keys |= {f"composition:{chain}" for chain in chains if name.startswith(f"SY_composition_{chain}_")}
+            semantic = entry.get("generalization") or {}
+            validation = semantic.get("fusion_validation")
+            if validation is not None:
+                # Campaign identities are hashes; declared chains are retained as display aliases.
+                aliases = validation.get("display_aliases") or []
+                keys |= {f"composition:{chain}" for chain in chains if chain in aliases}
+            else:
+                keys |= {f"composition:{chain}" for chain in chains if name.startswith(f"SY_composition_{chain}_")}
         else:
             family = _capsule_family(entry)
             if family:
@@ -434,7 +441,7 @@ def prepare(
         if excluded is not None:
             state = excluded["status"]
             justification = excluded["reason"]
-        elif any(row["count"] for row in chain_coverage):
+        elif names or any(row["count"] for row in chain_coverage):
             state = "generated"
             justification = f"declared chain {chain}; capsule(s) {', '.join(names)} exercise it"
         else:
