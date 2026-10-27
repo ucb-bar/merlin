@@ -2553,7 +2553,8 @@ def synthesize(
     # Placement decides publication: an entry with no accelerator placement is reported, not emitted.
     entries, host_placed = withhold_host_placed(entries)
 
-    cap = int(budget if budget is not None else (ws.get("max_synthesized_capsules") or 160))
+    cap = budget if budget is not None else ws.get("max_synthesized_capsules")
+    cap = int(160 if cap is None else cap)
     require_budget(len(entries), cap)
 
     return {

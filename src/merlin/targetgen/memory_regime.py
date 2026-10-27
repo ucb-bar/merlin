@@ -163,7 +163,9 @@ def capsule_regime(
     rows, unsized = 0, []
     for t in doc.get("inputs") or []:
         shape = [int(x) for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
-        if not shape:
+        if not shape and t.get("shape") != []:
+            # A declared rank-zero tensor occupies one row; an absent or
+            # unreadable shape still supplies no sizing evidence.
             unsized.append(t.get("name") or "?")
             continue
         r = _rows(store, shape, t.get("dtype"))

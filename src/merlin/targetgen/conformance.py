@@ -796,7 +796,7 @@ def _application_axis(
         tile = 0
     if certification_floor is not None and tile <= 0:
         needs_anchor = any(
-            not admitted_pairs or (str(row["family"]), str(row["dtype"])) in admitted_pairs
+            (str(row["family"]), str(row["dtype"])) in admitted_pairs
             for row in grouped.get("classes") or ()
         )
         if needs_anchor:
@@ -806,7 +806,7 @@ def _application_axis(
 
     required, refused = [], []
     for row in grouped.get("classes") or ():
-        if admitted_pairs and (str(row["family"]), str(row["dtype"])) not in admitted_pairs:
+        if (str(row["family"]), str(row["dtype"])) not in admitted_pairs:
             # Refusals are strings here, matching what `size_class` returns, so a caller printing the
             # list does not have to know which refusal it is looking at.
             refused.append(
