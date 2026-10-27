@@ -6,14 +6,17 @@ for selected scheduling and empty-inline queries. General graph-pass compilation
 gating is not ready. The new graph native gate is explicitly held in source;
 the older opt-in tensor/preprocessing gate is a separate, bounded route.
 
-On 2026-10-27, both checkouts were updated with `git pull --ff-only` and reported
-already up to date. Audited upstream `feat/pass-verification` is
-**c62f81a8a11347ff53b60101fa75280e69d002a6**; the audit branch's starting tip is
-**10ccb46e26608f1708a0277cf2d424d28ab4cdae**. No upstream commits have appeared
-since the a26 reproduction. `feat/pass-verification-verf` remains a separate
-auditing branch. Its changes are review documents only. A separately committed
-implementation fix is recorded below; frozen evidence, runtime contexts and
-historical qualifications remain unchanged, and no workers were restarted.
+On 2026-10-27, both checkouts were updated with `git pull --ff-only` and initially
+reported already up to date. The graph reproduction/source baseline remains
+**c62f81a8a11347ff53b60101fa75280e69d002a6**. Upstream `feat/pass-verification`
+now contains the published dtype-admission fix at
+**68f3646082d87ca2a4909117b1d84867d34fb53c**, whose remote ref was verified after
+push. Its only changes are the two SMT binding modules and their focused tests;
+no Lean source or graph proof profile changed. The audit branch's starting tip
+was **10ccb46e26608f1708a0277cf2d424d28ab4cdae**.
+`feat/pass-verification-verf` remains a separate auditing branch with review
+document changes only. Frozen evidence, runtime contexts and historical
+qualifications remain unchanged, and no workers were restarted.
 
 This is a dated synthesis of source and retained evidence, not another Lean or
 native execution. Earlier numerical/frontend records are attributed to their
@@ -88,7 +91,7 @@ without independently rerunning their historical suites in this refresh.
 | Quant-ext lowering | Ordered per-tensor/channel contracts and retained same-host independent receipt replays support bounded materialization/source-adapter claims. | Draft policy/native/capture premises remain. The common-model SmolVLA complete-output-comparison failure is unexplained; successful replay of other subjects does not qualify that release. i64 F12 remains refused; retained TinyLlama has zero channel sites. |
 | Scalar-square, over-rank matmul, bf16 accumulation | Complete correspondence to selected multiplication/repair/f32-accumulation references and modular policy proofs exist. | Native pow-versus-multiply counterexamples refute unconditional exact-bit scalar-square equivalence. Over-rank matmul repairs invalid source IR. bf16 changes the accumulation policy; numerical/intent review and native/initialization assumptions remain. |
 | W8A8 | Extensive conditional helper, contraction, domain and receipt proofs/tests are retained. | Full pass verification, policy review and primitive-model-law verification remain false. Numerical definedness and concrete law admission are unfinished; conditional bounded receipts return `abstracted`. Historical real-model receipt failure is not resolved by graph-query successes. |
-| Separate linalg/interface SMT lowering | A retained example and source review exist. The dtype-binding defect is fixed in separate local implementation commit `68f364608`; 48 focused regressions pass. Upstream publication awaits approval. | Imported `frontends.linalg_patterns` is still absent from the receipt semantic-source digest. Output ABI ordering review is unfinished, and no matching solver receipt was located for the retained lowering pair. These are source/helper findings, not demonstrated complete-solver or Lean false acceptance. |
+| Separate linalg/interface SMT lowering | A retained example and source review exist. The dtype-binding defect is fixed and published upstream in implementation commit `68f364608`; 48 focused regressions pass. | Imported `frontends.linalg_patterns` is still absent from the receipt semantic-source digest. Output ABI ordering review is unfinished, and no matching solver receipt was located for the retained lowering pair. These are source/helper findings, not demonstrated complete-solver or Lean false acceptance. |
 
 The tensor route's exact assumptions and gate scope are in the upstream
 [assumption ledger](https://github.com/ucb-bar/merlin/blob/c62f81a8a11347ff53b60101fa75280e69d002a6/merlin/lean/LEDGER.md).
@@ -113,13 +116,14 @@ The retained helper example uses shape 2×3 and an 8-bit shared tensor: `i8`,
 is the valid control. A solver could therefore receive a model with different
 input semantics from the declared artifact unless a later check refuses; a
 complete solver false acceptance or miscompilation has not been demonstrated.
-The user then requested a fix. Local implementation commit
-**68f3646082d87ca2a4909117b1d84867d34fb53c** on `feat/pass-verification`
+Published implementation commit
+[68f3646082d87ca2a4909117b1d84867d34fb53c](https://github.com/ucb-bar/merlin/commit/68f3646082d87ca2a4909117b1d84867d34fb53c)
+on `feat/pass-verification`
 now parses supported integer dtypes and checks width in `_bind_leaves` before
 sharing symbols. The encoder validates declared rank/dtype first and checks
 shared shape/width before reuse. Floats of the same bit width remain refused.
 The audit branch retains only this result; it does not merge that source commit.
-The remote implementation branch still awaits explicit publication approval.
+The remote implementation branch was independently verified at that exact commit.
 
 The new `merlin/tests/ir/test_refinement_input_binding.py` exercises the actual
 binding/encoder helpers and public compilation admission. On original

@@ -2,7 +2,9 @@
 
 Read [the pass and compiler-gate status dated 2026-10-27](PASS_STATUS_20261027.md)
 for the current audit synthesis, per-pass limits and outstanding work. Both
-branches were pulled with `--ff-only`; upstream remains at **c62f81a8a**.
+branches were pulled with `--ff-only`. Upstream now includes the published
+dtype-binding fix at **68f364608**, with 48 focused regressions passing; the
+graph reproduction baseline remains **c62f81a8a**.
 This branch remains an audit of upstream, with no compiler-source merge.
 
 The latest execution results are in

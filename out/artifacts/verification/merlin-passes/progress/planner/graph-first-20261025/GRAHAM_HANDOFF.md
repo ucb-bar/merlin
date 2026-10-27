@@ -2,9 +2,11 @@
 
 The [2026-10-27 pass-status audit](../../../../graham-graph-review/PASS_STATUS_20261027.md)
 summarizes working subsets, fresh failures, wider pass gaps and compiler-gate
-readiness against upstream **c62f81a8a**. Upstream and audit branches were pulled
-separately and remain separate. This status refresh adds no new Lean execution
-or qualification and resumes no implementation workers.
+readiness against graph baseline **c62f81a8a**. The separate dtype-binding fix
+is published upstream at **68f364608**, with 48 focused regressions passing.
+Upstream and audit branches were pulled separately and remain separate. This
+status refresh adds no new Lean execution or qualification and resumes no
+implementation workers.
 
 ## Latest independent execution — 2026-10-26 Pacific
 
