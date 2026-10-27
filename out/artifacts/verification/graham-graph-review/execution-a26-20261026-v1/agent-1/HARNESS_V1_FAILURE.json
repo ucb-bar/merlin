@@ -1,0 +1,7 @@
+{
+  "classification": "HARNESS_INFRASTRUCTURE_FAILURE",
+  "cause": "ctypes interpreter process-handle bootstrap PyDLL(None) refused by overly broad local guard",
+  "script_sha256": "c2b2c04ac3577ffb47875fd086d6f3a725a02973a27de23990ee7dfe988068cd",
+  "native_or_proof_result": false,
+  "followup": "Permit only ctypes.dlopen(None) for the current interpreter; all named library loads remain refused."
+}

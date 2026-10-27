@@ -384,3 +384,20 @@ merlin/tests/data/lit/.lit_test_times.txt
 
 # Per-agent git worktrees created by Claude Code sessions
 /.claude/worktrees/
+
+# Curated independent graph review: exact source/data evidence and first failures.
+# SDKs, dependency environments, staged sources and compiled objects stay local.
+/out/build/verification-a26-20261026-v1/**
+!/out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/*.json
+!/out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/*.py
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.json
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.py
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.csv
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.patch
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.stdout
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.stderr
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.headers
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.txt
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.lean
+!/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.md
+!/out/artifacts/verification/graham-graph-review/deliverable-[1-3]/UPDATE-20261026.md

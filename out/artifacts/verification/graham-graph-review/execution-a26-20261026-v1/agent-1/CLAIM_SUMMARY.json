@@ -1,0 +1,35 @@
+{
+  "schema": "merlin.a26.agent1.supported-scope.v1",
+  "registered_kinds": [
+    "buffer_reuse",
+    "exact_integer_simplification",
+    "ordered_loop_segmentation",
+    "ordered_loop_unrolling",
+    "scalar_loop_invariant_motion",
+    "scalar_redundancy_elimination",
+    "sequential_dependency_schedule",
+    "shape_view_normalization"
+  ],
+  "registry_variant_rows": 34,
+  "source_matrix": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-1/coverage.csv",
+  "source_matrix_sha256": "e782a16e1ab39e3a321f50c58d09d23ad6fba513cf1c398d84d153639b9c7e73",
+  "scope_table": "SUPPORTED_SCOPE.csv",
+  "supported_statement": "The revised trusted graph-capture host admission rejects file resource metadata, resource-valued attributes and unmodeled function-value/symbol-reference routes before projecting supported complete programs. The scalar route permits only signature-matched declared external calls. Shape additionally permits direct internal calls subject to its separate finite-depth correspondence. Thirty-two independent actual-parser/helper controls support these restrictions in the newly selected Python/xDSL environment.",
+  "retained_assumptions": [
+    "trusted xDSL parser/lexer and Python projection/matcher",
+    "operation, integer/control, effects, alias and completion interpretations",
+    "row-specific typed/canonical input domains",
+    "total/private/unobservable allocation for reuse/memory rows",
+    "native Action frame/packing/ABI premises for declared calls",
+    "compatible relations and exact middle/domain bridges for any composition"
+  ],
+  "qualifications": "No new Lean proof or fresh semantic graph qualification; historical qualification stays tied to exact historical sources and tools.",
+  "new_bugs_demonstrated": 0,
+  "unresolved_review_items": [
+    "A1-02",
+    "A1-03",
+    "A1-04",
+    "A1-05",
+    "A1-06"
+  ]
+}

@@ -21,3 +21,11 @@ CMakeLists.txt text eol=lf
 experiments/reference-data/** -text -eol
 # Independent graph-pass review: manifests and audits hash these files, including CSV CRLF.
 out/artifacts/verification/graham-graph-review/** -text -eol
+# Raw a26 evidence retains CRLF CSV and unified-diff context lines byte-for-byte.
+# Keep normal whitespace checks for Python/Lean sources and Markdown updates.
+out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.csv -whitespace
+out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.patch -whitespace
+out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.stdout -whitespace
+out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.stderr -whitespace
+out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.headers -whitespace
+out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.txt -whitespace

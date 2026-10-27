@@ -1,0 +1,104 @@
+{
+  "schema": "merlin.a26.agent1.report-manifest.v1",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "files": [
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/ADMISSION_SUBSET_XDSL_0.68.0.json",
+      "bytes": 22677,
+      "sha256": "a8aa4491de92d30c7359b17f19798dd02e0d227f5ae88c21167cf1aab7b41692"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/CHANGED_SOURCE_REVIEW.json",
+      "bytes": 16234,
+      "sha256": "c34d8f3b3d6292f5f32aa6ee5e883d566d504bf145a783f3662144d74c08ca5b"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/CLAIM_SUMMARY.json",
+      "bytes": 1910,
+      "sha256": "a8e2b269f56cf1d0015a5fc65adec91f764e3af32aa21b790bf54c8193e08011"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/ENVIRONMENT_PREPARATION.json",
+      "bytes": 705,
+      "sha256": "0ae3bf503a82c2510888fbf58d7766b44b0cc9c6c7e1ee8cdf977095e3e9cd21"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/HARNESS_V1_FAILURE.json",
+      "bytes": 403,
+      "sha256": "17e4b475c87f3fe98dc4376b97a899eaa5b6fcaa865d811fe73ef73a7401b13d"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/SUPPORTED_SCOPE.csv",
+      "bytes": 70456,
+      "sha256": "230d268166b647649da4f962c3b616d92a3af6069b150be43fa1989616fbe11e"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/changed-projections.patch",
+      "bytes": 24204,
+      "sha256": "ce3508063eb38137946c16ad75eefe50cf69486fb907151fea3fbb69d2837e73"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/install-0.68.stderr",
+      "bytes": 321,
+      "sha256": "e9acceaa4ec3a48d1b2c0641e8914f852126ea42a288e50aa53f5c6e3b409704"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/install-0.68.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/run_admission_subset.py",
+      "bytes": 10447,
+      "sha256": "0318942b4d86d025b94665350cace7e398c0ee9608bf1c070b8a6cdf5b0cb76c"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/run_admission_subset_v1_process_handle_refusal.py",
+      "bytes": 10217,
+      "sha256": "c2b2c04ac3577ffb47875fd086d6f3a725a02973a27de23990ee7dfe988068cd"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/subset-0.68-process.json",
+      "bytes": 390,
+      "sha256": "be23528f8861c168eb0f87224e703c41e129eeed9ee07d1bbfdf9901f8582987"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/subset-0.68-v2-process.json",
+      "bytes": 389,
+      "sha256": "2d74849f4fb33538cbc7a7f937ee0cd6316cc6897f1678d58663c8ce8505b0db"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/subset-0.68-v2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/subset-0.68-v2.stdout",
+      "bytes": 203,
+      "sha256": "5b8dfdf979d3f25b574c9b38983c8cbcf32d437cc5ff86d9631f4e28b6e9793b"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/subset-0.68.stderr",
+      "bytes": 2033,
+      "sha256": "7a1b07e1faac093691dc5ca5eb63210e758e9cb0068fd0f0f32036390e384ed0"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/subset-0.68.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/venv-0.68.stderr",
+      "bytes": 250,
+      "sha256": "cc3cbfb1bfa88626cd01f8abd9f81bd67eec1e6c5a9295d92d3e69dd2e2aa19f"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/venv-0.68.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "compiler_implementation_changed": false,
+  "proof_or_native_execution_by_this_agent": false,
+  "background_jobs": 0
+}
