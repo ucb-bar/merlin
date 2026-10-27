@@ -344,6 +344,24 @@ def _revision(path):
     return subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True).strip()
 
 
+def _repository_commit():
+    from merlin_experiments import frozen_python, source_snapshot
+
+    root = repo_root()
+    active = frozen_python.active_source_identity()
+    if active is None and not any(root.glob("snapshot.*.json")):
+        return _revision(root)
+    receipt = source_snapshot.verify(root)
+    if active is not None:
+        seal, _ = source_snapshot.load_seal(root, "snapshot")
+        if active != dict(path=str(seal), sha256=file_digest(seal)):
+            raise ValueError("fusion source snapshot differs from guarded execution")
+    commit = receipt.get("repository_commit")
+    if commit is None:
+        raise ValueError("fusion source snapshot lacks originating repository commit; freeze a new run")
+    return commit
+
+
 def _inventory(root):
     """Pin backend source bytes as well as its revision, including dirty syncs."""
     paths = subprocess.check_output(["git", "-C", str(root), "ls-files", "-z"], text=True).split("\0")
@@ -426,7 +444,7 @@ def execution_identity(args, suite):
         for name in ("MERLIN_RISCV_GCC", "MERLIN_CLANG", "MERLIN_MLIR_TRANSLATE", "MERLIN_OBJDUMP")
     }
     return dict(
-        repository_commit=_revision(repo_root()),
+        repository_commit=_repository_commit(),
         reference_backend_revision=_revision(args.package),
         enumeration_snapshot_sha256=file_digest(args.snapshot) if args.snapshot else "not_supplied",
         resolved_spec_sha256=suite["identity"]["spec_sha256"],

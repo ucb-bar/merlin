@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path, PurePosixPath
 
 OMIT = {"__pycache__", "_qa_ws"}
@@ -260,6 +261,22 @@ def load_seal(root: Path, stem: str) -> tuple[Path, dict]:
     return path, json.loads(path.read_text())
 
 
+def _checkout_commit(source: Path) -> str | None:
+    # Installed sources have no Git identity. Never inherit an enclosing checkout.
+    if not (source / ".git").exists():
+        return None
+    owner, commit = subprocess.check_output(
+        ["git", "-C", str(source), "rev-parse", "--show-toplevel", "HEAD"], text=True
+    ).splitlines()
+    if Path(owner).resolve() != source or not _valid_commit(commit):
+        raise SnapshotError("source repository identity is invalid")
+    return commit
+
+
+def _valid_commit(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 40 and all(c in "0123456789abcdef" for c in value)
+
+
 def create(
     source: Path,
     destination: Path,
@@ -288,6 +305,7 @@ def create(
     names for a data-only target without an executable provider.
     """
     source, destination = source.resolve(), destination.absolute()
+    repository_commit = _checkout_commit(source)
     source_roots = tuple(source_roots)
     _validate_roots(source, source_roots)
     excludes = {PurePosixPath(_relative(relative)) for relative in exclude_paths}
@@ -535,6 +553,7 @@ def create(
     document = {
         "schema": SCHEMA,
         "source_root": str(source),
+        **({"repository_commit": repository_commit} if repository_commit is not None else {}),
         "source_roots": list(source_roots),
         "files": files,
         "external_links": links,
@@ -559,6 +578,8 @@ def create(
     }
     _validate_layout(document)
     verify_memberships()
+    if _checkout_commit(source) != repository_commit:
+        raise SnapshotError("source repository commit changed during snapshot creation")
     receipt = seal(destination, "snapshot", document)
     for path in destination.rglob("*"):
         if not path.is_symlink() and path.is_dir():
@@ -581,6 +602,8 @@ def _require_current(receipt: dict) -> None:
 
 def _validate_layout(receipt: dict) -> None:
     """Validate explicit inventories independently of the original live tree."""
+    if "repository_commit" in receipt and not _valid_commit(receipt["repository_commit"]):
+        raise SnapshotError("invalid snapshot repository commit")
     roots, directories = receipt.get("source_roots"), receipt.get("directories")
     files, links, aliases = receipt.get("files"), receipt.get("external_links"), receipt.get("internal_aliases")
     if (
