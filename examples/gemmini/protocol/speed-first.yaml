@@ -25,6 +25,8 @@ arithmetic:
     scales: original_selected_static_heads
     softmax_output_planes: 1
     partner_or_residual_operand_planes: 1
+    tiny_llama_source_variant: static-heads-softmax2-bounded-partner2-operands2
+    tiny_llama_scope: Explicit one-plane derivative; not an operands2 admission result.
     static_activation_digit_planes: not_selected_and_never_reinterpreted
     inherited_float_site_bars: removed_only_in_these_successor_recipes
   packing:

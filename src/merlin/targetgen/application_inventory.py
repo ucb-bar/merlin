@@ -386,12 +386,15 @@ def verified_static_integerization(projection: dict | None, *, receipt_sha256: s
     receipt = projection.get("integerization_receipt") or {}
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
         return False
-    count = receipt.get("quantized_contractions_seen")
-    emitted_bmm = receipt.get("integer_bmm_emitted", 0)
-    exported_bmm = receipt.get("exported_integer_bmm_count", 0)
-    if type(emitted_bmm) is not int or type(exported_bmm) is not int or emitted_bmm < 0 or emitted_bmm != exported_bmm:
+    from merlin.targetgen.integerization_export import admit_integerization_census
+
+    if not admit_integerization_census(
+        receipt, dynamic_evidence=projection.get("dynamic_integerization"), program_sha256=capture["sha256"],
+    ).accepted:
         return False
     from merlin.capture.integerization import non_contraction_program
+
+    count = receipt.get("quantized_contractions_seen")
 
     contraction_free = non_contraction_program(receipt)
     if (
@@ -405,27 +408,14 @@ def verified_static_integerization(projection: dict | None, *, receipt_sha256: s
         or receipt.get("refusals") != []
         or type(receipt.get("exported_integer_mm_count")) is not int
         or receipt["exported_integer_mm_count"] < 0
-        or (receipt["exported_integer_mm_count"] + exported_bmm <= 0 and not contraction_free)
+        or (
+            receipt["exported_integer_mm_count"] + receipt.get("exported_integer_bmm_count", 0) <= 0
+            and not contraction_free
+        )
         or type(receipt.get("integer_mm_emitted")) is not int
-        or receipt["integer_mm_emitted"] <= 0
+        or (receipt["integer_mm_emitted"] <= 0 and not contraction_free)
     ):
         return False
-    dynamic = projection.get("dynamic_integerization")
-    if dynamic is None:
-        if receipt["integer_mm_emitted"] != receipt["exported_integer_mm_count"]:
-            return False
-    else:
-        from merlin.capture.integerization import dynamic_integerization_count
-
-        try:
-            dynamic_integerization_count(
-                dynamic,
-                emitted=receipt["integer_mm_emitted"],
-                exported=receipt["exported_integer_mm_count"],
-                program_sha256=capture["sha256"],
-            )
-        except (ValueError, TypeError, KeyError):
-            return False
     agreement = receipt.get("golden_agreement") or {}
     if not isinstance(agreement, dict):
         return False

@@ -287,12 +287,35 @@ def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, 
         raise SealedM2MError(str(exc)) from exc
 
 
+def _integerization_census_admission(meta: dict, stage: Path):
+    """Adapt sealed stage byte custody to the shared integer-export admission policy."""
+    import hashlib
+
+    from merlin.targetgen.integerization_export import admit_integerization_census, capture_dynamic_evidence
+
+    def evidence():
+        stats = meta.get("quantization_stats")
+        if not isinstance(stats, dict) or stats.get("dynamic_contractions") is None:
+            return None
+        trace_path = stage / "frontend-trace.json"
+        if trace_path.is_symlink():
+            raise ValueError("dynamic contraction census has an indirect frontend trace")
+        return capture_dynamic_evidence(meta, trace_path.read_bytes(), program_sha256=program_sha256)
+
+    model = stage / "model.mlir"
+    if model.is_symlink() or not model.is_file():
+        raise ValueError("integer contraction census lacks the stage program")
+    program_sha256 = hashlib.sha256(model.read_bytes()).hexdigest()
+    return admit_integerization_census(
+        meta.get("integerization_receipt"), dynamic_evidence=evidence, program_sha256=program_sha256,
+    )
+
+
 def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:
     """Verify the complete saved ABI, including every declared session program."""
     from .sealed_m2m import (
         SealedM2MError,
         _FLOAT_DTYPES,
-        _dynamic_integer_census,
         _file_digest,
         _materialized,
         _materialized_v2,
@@ -337,6 +360,9 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
         max_k = receipt.get("max_reduction_k")
         annotated = stats.get("annotated_contractions")
         engine = recipe.get("software_numerical_engine")
+        verdict = _integerization_census_admission(meta, stage)
+        if not verdict.accepted:
+            raise SealedM2MError(f"capture lacks independently verified integer contractions: {verdict.reason}")
         if (
             engine != "integer_reference"
             or type(annotated) is not int
@@ -369,7 +395,6 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             or count <= 0
             or type(emitted) is not int
             or emitted < partition["integerized"]
-            or emitted + _dynamic_integer_census(meta, stats, stage, emitted, count) != count
             or receipt.get("accumulator_bound_checked") is not True
             or type(max_k) is not int
             or max_k < 1

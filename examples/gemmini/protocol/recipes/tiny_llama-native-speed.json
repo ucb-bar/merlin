@@ -16,6 +16,7 @@
       "activation_contraction"
     ],
     "planes": {
+      "residual_operand": 2,
       "softmax_output": 2,
       "softmax_partner": 2
     },
@@ -122,9 +123,9 @@
           "dynamic",
           "families"
         ],
-        "name": "static-heads-softmax2-bounded-partner2",
-        "reason": "Use two fixed softmax planes and two bounded signed-int8 residual planes for the value operand. Retain the original score grid and unchanged per-site bars; extra precision repairs the weak context site.",
-        "reviewed_by": "Codex operator, user-directed continuation after measured recipe review, 2026-10-18"
+        "name": "static-heads-softmax2-bounded-partner2-operands2",
+        "reason": "Add two bounded signed-int8 residual planes for each ordinary activation operand, including both attention-score operands. Keep two fixed softmax planes, two bounded partner planes, static head scales, and the unchanged per-site agreement bars. Fresh capture must establish agreement; extra precision is not an admission result.",
+        "reviewed_by": "Codex operator, explicit TinyLlama operands2 implementation request, 2026-10-26"
       }
     ]
   },
@@ -132,7 +133,7 @@
     "max_nonuniform_readout_blocks": 64,
     "schema": "shared_input_projection_v1"
   },
-  "recipe_sha256": "1259c1a80ad0ea8bdc74e7b31a80477fcc4b84cd7b1bfc8a9b6e8c59e9119dec",
+  "recipe_sha256": "0f20ddfe1939ea961d55b5fe825d0f73dd4d130b201e3b07350dd439d4476566",
   "recovery": {
     "bias_correction": false,
     "cross_layer_equalization": false
@@ -218,12 +219,14 @@
     "activation.observer": "methodology calibration 'mse' (TorchAO's histogram observer minimizes the L2 quantization error)",
     "activation.range": "the output path clamps its requantized readout to [-128, 127]",
     "bias_domain": "the output path preloads an i32 value into the accumulator: each bias is the code round_half_even(b / (s_x * s_w)), refused outside i32",
+    "dynamic": "opted in: one calibrated scale per head of each operand, so every per-head device call reads one scale; softmax probabilities as fixed-scale planes of exp(s - rowmax), rows divided by their sum on the host",
+    "dynamic.site_agreement": "TinyLlama decode admission analysis /tmp/claude-2629/tl_admit.py: three 1-token activation_contraction score sites ([1,32,1,64] x [1,32,64,64]) have cosine_min 0.93311 / 0.94296 / 0.94711 below the unchanged 0.947588 bar; rel_rmse_max meets the unchanged 0.457351 bar. Prefill passes with worst cosine_min 0.9815. The prior variant static-heads-softmax2-bounded-partner2 and its decode refusal remain in the history; examples/gemmini/phase0/history/software-spec-seals1-3.yaml retains the old variant text. This new variant is unmeasured and requires fresh capture and per-site verification; the prior refusal is not relabeled a pass.",
     "epilogue": "integer-domain epilogue in the output path's order: the contraction and the stages the path performs after it are one pattern, computed as the unit does (integer operands, accumulator plus preloaded bias, rectifier, one f32 multiplier per readout command, round half to even, clamp)",
     "epilogue.output_quantization": "explicit new output grids before selected pure internal readers; native round/clamp is part of the reference",
     "operand_sum": "the unit's load multiplies each operand into the accumulator (2 operands, rounded half_even), so a sum of two tensors is integer work within 1 output step(s) of the single-rounding reference",
     "projection_input_reuse": "explicit generic integer graph transform; its rewritten arithmetic defines a new reference; physical placement, reuse and performance require independent execution evidence",
     "symmetric": "the readout carries no zero point, so both scales are symmetric",
-    "variant.static-heads-softmax2-bounded-partner2": "reviewed model variant: Use two fixed softmax planes and two bounded signed-int8 residual planes for the value operand. Retain the original score grid and unchanged per-site bars; extra precision repairs the weak context site.",
+    "variant.static-heads-softmax2-bounded-partner2-operands2": "reviewed model variant: Add two bounded signed-int8 residual planes for each ordinary activation operand, including both attention-score operands. Keep two fixed softmax planes, two bounded partner planes, static head scales, and the unchanged per-site agreement bars. Fresh capture must establish agreement; extra precision is not an admission result.",
     "weight.granularity": "the output path applies one scale per readout command of 16 output columns; each run of that many output channels shares the largest range in it",
     "weight.range": "symmetric weights use the restricted range so a negated weight is representable",
     "window_mean": "a mean over a window is the unit's own contraction against a constant one, with the reciprocal of the count folded into the readout's one scale"

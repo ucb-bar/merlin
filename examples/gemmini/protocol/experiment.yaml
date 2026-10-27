@@ -110,11 +110,11 @@ models:
     host_math_policy: portable_exp_trig
     quantization:
       recipe: recipes/tiny_llama.json
-      file_sha256: f113dad1ac0f52d0cbff5f9398afae17282c9ab71c3a6107e98bdf8a096af9ad
-      recipe_sha256: 4300d9d2f46160cab679672d384bdda664fd310862137f354b36c2845f45ed5f
-      variant: static-heads-softmax2-bounded-partner2
+      file_sha256: 839657c5c84906a03e1a5fdf7b7f8c68ccc73757d26a448d3380137d71b9ce2e
+      recipe_sha256: 4f14c71f4195ee4481de9814fee6ed578953a14d21adc0aab20e7b4f261b886d
+      variant: static-heads-softmax2-bounded-partner2-operands2
       source_linear_decisions_per_program: 155
-      attention: {scales: static_heads, softmax_output_planes: 2, partner_planes: 2, ordinary_qk_planes: 1}
+      attention: {scales: static_heads, softmax_output_planes: 2, partner_planes: 2, ordinary_qk_planes: 2}
       range_transforms: {smoothquant_alpha: 0.5, smooth_groups: [qkv, gate_up, o], statistics_segments: 32, outlier_split_ratio: 8, width_alignment: 16, selected_width_buckets: [5728, 6096]}
     chain: {kind: causal, prefill_tokens: 32, decode_steps: 32}
     selected_chain_steps: 33
