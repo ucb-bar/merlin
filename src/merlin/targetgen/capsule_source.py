@@ -3383,7 +3383,11 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
         raise M2MUnavailable(
             "materialized source is declared held-out validation even if its selected bundle was renamed"
         )
-    reference = native_capture.REFERENCE if native_integer else "golden.npy"
+    # Ordinary producers retain every typed result in goldens.npz. Prefer that
+    # receipt-bound archive when present; golden.npy is only a legacy output0
+    # projection and cannot describe a complete multi-result ABI.
+    complete_outputs = not native_integer and "goldens.npz" in receipt["artifacts"]
+    reference = native_capture.REFERENCE if native_integer else "goldens.npz" if complete_outputs else "golden.npy"
     required = {"meta.json", "inputs.npz", "input_order.json", reference, "frontend-trace.json"}
     if not required <= set(receipt["artifacts"]):
         raise M2MUnavailable("materialized bundle lacks receipt-bound metadata, inputs, golden or source trace")
@@ -3403,13 +3407,24 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     meta = json.loads(read_bound("meta.json"))
     if not meta.get("ok") or meta.get("opaque", -1) != 0:
         raise M2MUnavailable("materialized model metadata does not declare a clean capture")
+    if not native_integer and meta.get("source_mode") == native_capture.MODE:
+        raise M2MUnavailable(
+            "materialized golden.npy needs one losslessly represented floating result; "
+            "native integer sources need explicit native_integer_v1 selection"
+        )
     if public_performance and meta.get("extra"):
         raise M2MUnavailable("public performance capture needs a complete portable extra-constant binding")
     output_abi = meta.get("output_abi") or []
     # The existing bundle format records only the first eager tensor as golden.npy.
     # fp16/BF16 values lift losslessly into f32; integer/f64 references do not.
     # Never silently certify a multi-result or integer-result ABI with that file.
-    if not native_integer and (len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"}):
+    if not output_abi:
+        raise M2MUnavailable("materialized model needs a complete nonempty output ABI")
+    if (
+        not native_integer
+        and not complete_outputs
+        and (len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"})
+    ):
         raise M2MUnavailable(
             "materialized golden.npy needs one losslessly represented floating result; "
             "other ABIs need complete references"
@@ -3427,7 +3442,38 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     order = json.loads(read_bound("input_order.json"))
     if not isinstance(order, dict) or sorted(order.values()) != list(range(count)):
         raise M2MUnavailable("materialized input-order mapping is not a complete positional ABI")
-    if not native_integer:
+    if complete_outputs:
+        storage = {
+            "i1": "bool",
+            "i8": "int8",
+            "i16": "int16",
+            "i32": "int32",
+            "i64": "int64",
+            "ui8": "uint8",
+            "ui16": "uint16",
+            "ui32": "uint32",
+            "ui64": "uint64",
+            "f16": "float16",
+            "bf16": "float32",
+            "f32": "float32",
+            "f64": "float64",
+            "complex64": "complex64",
+            "complex128": "complex128",
+        }
+        with np.load(io.BytesIO(read_bound(reference)), allow_pickle=False) as archive:
+            names = [f"out{i}" for i in range(len(output_abi))]
+            if len(archive.files) != len(names) or set(archive.files) != set(names):
+                raise M2MUnavailable("materialized output leaves differ from the complete output ABI")
+            values = []
+            for name, row in zip(names, output_abi, strict=True):
+                array = archive[name]
+                if list(array.shape) != row.get("shape") or str(array.dtype) != storage.get(row.get("dtype")):
+                    raise M2MUnavailable("materialized output shape/dtype differs from the complete output ABI")
+                if row["dtype"] == "bf16" and np.any((array.view(np.uint32) & 0xFFFF != 0) & np.isfinite(array)):
+                    raise M2MUnavailable("materialized output is not an exact BF16 value lifted to f32")
+                values.append(array.tolist())
+            golden_values = values if len(values) > 1 else values[0]
+    elif not native_integer:
         golden_array = np.load(io.BytesIO(read_bound("golden.npy")), allow_pickle=False)
         if list(golden_array.shape) != output_abi[0].get("shape") or str(golden_array.dtype) != "float32":
             raise M2MUnavailable("materialized golden shape/dtype differs from the output ABI")

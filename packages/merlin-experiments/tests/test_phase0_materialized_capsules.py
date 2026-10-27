@@ -78,6 +78,97 @@ def _bundle(root):
     }
 
 
+def _complete_bundle(root, rows, arrays):
+    application = _bundle(root)
+    meta = json.loads((root / "meta.json").read_bytes())
+    meta["output_abi"] = rows
+    (root / "meta.json").write_text(json.dumps(meta))
+    np.savez(root / "goldens.npz", **arrays)
+    receipt_path = root / "capture_receipt.json"
+    receipt = json.loads(receipt_path.read_bytes())
+    for name in ("meta.json", "goldens.npz"):
+        raw = (root / name).read_bytes()
+        receipt["artifacts"][name] = {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    receipt_path.write_text(json.dumps(receipt))
+    application["capture_receipt"]["receipt_sha256"] = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+    return application
+
+
+def test_complete_materialized_outputs_survive_derivation_and_freeze(tmp_path):
+    from merlin_experiments.phase0.freeze import _materialized_inputs
+
+    arrays = [
+        np.array([np.nan, np.inf], dtype=np.float32),
+        np.array([2**63 - 1], dtype=np.int64),
+        np.array(True),
+        np.array([1 + 2j], dtype=np.complex64),
+        np.array([1.5], dtype=np.float32),
+        np.array([], dtype=np.float16),
+        np.array(1 + 2**-40, dtype=np.float64),
+    ]
+    rows = [
+        {"shape": list(value.shape), "dtype": dtype}
+        for value, dtype in zip(arrays, ("f32", "i64", "i1", "complex64", "bf16", "f16", "f64"), strict=True)
+    ]
+    application = _complete_bundle(tmp_path / "original", rows, {f"out{i}": a for i, a in enumerate(arrays)})
+    entries, outputs = _materialized_iteration_capsules({"applications": {"iteration": application}}, "0" * 64)
+    saved = tmp_path / "installed"
+    _materialize_evidence(saved, outputs)
+    profile = saved / "synthesis.yaml"
+    profile.write_text(yaml.safe_dump({"capsules": entries}))
+    frozen = _materialized_inputs({"inputs": {"synth_profile": str(profile)}})
+    assert saved / "materialized/iteration/goldens.npz" in frozen
+    artifact = source.materialized_model_artifacts(
+        {**entries[0]["materialized_capture"], "path": str(saved / entries[0]["materialized_capture"]["path"])}
+    )
+    for actual, expected in zip(artifact.golden, arrays, strict=True):
+        np.testing.assert_array_equal(np.asarray(actual, dtype=expected.dtype), expected)
+    assert artifact.golden[1] == [2**63 - 1]
+    assert artifact.golden[3] == [1 + 2j]
+
+
+@pytest.mark.parametrize(
+    "rows,arrays,message",
+    [
+        ([{"shape": [2], "dtype": "f32"}] * 2, {"out0": np.ones(2, dtype=np.float32)}, "output leaves"),
+        ([{"shape": [2], "dtype": "f32"}], {"out0": np.ones(3, dtype=np.float32)}, "shape/dtype"),
+        ([{"shape": [2], "dtype": "i64"}], {"out0": np.ones(2, dtype=np.float64)}, "shape/dtype"),
+        ([{"shape": [1], "dtype": "bf16"}], {"out0": np.array([1.0001], dtype=np.float32)}, "exact BF16"),
+        ([], {}, "nonempty output ABI"),
+    ],
+)
+def test_complete_materialized_outputs_refuse_incomplete_or_converted_storage(tmp_path, rows, arrays, message):
+    application = _complete_bundle(tmp_path / "original", rows, arrays)
+    with pytest.raises(source.M2MUnavailable, match=message):
+        _materialized_iteration_capsules({"applications": {"iteration": application}}, "0" * 64)
+
+
+def test_complete_materialized_outputs_remain_receipt_bound(tmp_path):
+    application = _complete_bundle(
+        tmp_path / "original", [{"shape": [2], "dtype": "i64"}], {"out0": np.array([1, 2], dtype=np.int64)}
+    )
+    np.savez(tmp_path / "original/goldens.npz", out0=np.array([3, 4], dtype=np.int64))
+    with pytest.raises(source.M2MUnavailable, match="receipt"):
+        _materialized_iteration_capsules({"applications": {"iteration": application}}, "0" * 64)
+
+
+def test_legacy_materialized_multi_result_still_needs_complete_references(tmp_path):
+    application = _bundle(tmp_path / "original")
+    root = tmp_path / "original"
+    meta = json.loads((root / "meta.json").read_bytes())
+    meta["output_abi"] *= 2
+    (root / "meta.json").write_text(json.dumps(meta))
+    receipt = json.loads((root / "capture_receipt.json").read_bytes())
+    raw = (root / "meta.json").read_bytes()
+    receipt["artifacts"]["meta.json"] = {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    (root / "capture_receipt.json").write_text(json.dumps(receipt))
+    application["capture_receipt"]["receipt_sha256"] = hashlib.sha256(
+        (root / "capture_receipt.json").read_bytes()
+    ).hexdigest()
+    with pytest.raises(source.M2MUnavailable, match="other ABIs need complete references"):
+        _materialized_iteration_capsules({"applications": {"iteration": application}}, "0" * 64)
+
+
 def test_source_capsule_reuse_is_offline_exact_and_fail_closed(tmp_path, monkeypatch):
     application = _bundle(tmp_path / "original")
     entries, outputs = _materialized_iteration_capsules({"applications": {"iteration": application}}, "0" * 64)
