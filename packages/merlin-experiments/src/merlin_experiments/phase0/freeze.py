@@ -260,10 +260,15 @@ def stage(plan: dict) -> dict:
     artifact_root = run_root / "phase0"
     manifest = export_evidence(evidence, artifact_root)
     root, source_roots, import_roots = _source_layout()
-    provider = source_snapshot.selected_provider(target)
-    # The selected support is an independent, contained private owner, even
-    # when its original location was a checkout reference shelf.
-    provider["kind"] = "external"
+    # Match evidence intake: this runtime family selects data, not executable
+    # support. Capturing a reference provider would change the selected contract.
+    data_only = (evidence.contract.get("runner") or {}).get("backend") == "chipyard_rocc"
+    provider = None
+    if not data_only:
+        provider = source_snapshot.selected_provider(target)
+        # The selected support is an independent, contained private owner, even
+        # when its original location was a checkout reference shelf.
+        provider["kind"] = "external"
     declared, names, layout = {}, {}, {}
     materialized = _materialized_inputs(command)
     materialized_pins = [pin for name, pin in frozen["inputs"].items() if name.startswith("phase0:materialized:")]
@@ -312,6 +317,16 @@ def stage(plan: dict) -> dict:
         # Resource selectors use root/merlin in both layouts. This alias points
         # only inside the sealed tree; it is never a link back to an installation.
         aliases["merlin"] = core
+    target_data_inputs = None
+    if data_only:
+        target_data_inputs = {
+            variable: next(key for key, path in declared.items() if str(path) == command["inputs"][field])
+            for variable, field in (
+                ("MERLIN_TARGET_CONTRACT", "capability_contract"),
+                ("MERLIN_RTL_FACTS", "rtl_facts"),
+            )
+            if command["inputs"].get(field)
+        }
     source_snapshot.create(
         root,
         snapshot,
@@ -321,6 +336,7 @@ def stage(plan: dict) -> dict:
         legacy_roots=(),
         target_name=target,
         provider=provider,
+        target_data_inputs=target_data_inputs,
         declared_inputs=declared,
         declared_input_layout=layout,
         root_files=(),

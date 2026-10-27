@@ -46,6 +46,7 @@ def provider_environment(root: Path, receipt: dict) -> dict[str, str]:
     """Authoritative source selection, decoded without consulting the live registry."""
     _require_current(receipt)
     provider = receipt.get("selected_provider")
+    data = receipt.get("target_data", {})
 
     def resource(name: str) -> Path:
         # Checkout resources and wheel resources have different owners. Both
@@ -55,8 +56,10 @@ def provider_environment(root: Path, receipt: dict) -> dict[str, str]:
 
     return {
         "MERLIN_TARGET_PATH": str(root / provider["root"]) if provider and provider["kind"] == "external" else "",
-        "MERLIN_TARGET_CONTRACT": "",
-        "MERLIN_RTL_FACTS": "",
+        "MERLIN_TARGET_CONTRACT": str(root / data["MERLIN_TARGET_CONTRACT"])
+        if "MERLIN_TARGET_CONTRACT" in data
+        else "",
+        "MERLIN_RTL_FACTS": str(root / data["MERLIN_RTL_FACTS"]) if "MERLIN_RTL_FACTS" in data else "",
         "MERLIN_TARGETS_DIR": str(root / "merlin/targets"),
         "MERLIN_CONTRACT_DIR": str(resource("contract")),
         "MERLIN_SCHEMAS_DIR": str(resource("schemas")),
@@ -270,6 +273,7 @@ def create(
     directory_memberships: dict[str, tuple[str, ...] | None] | None = None,
     target_name: str | None = None,
     provider: dict | None = None,
+    target_data_inputs: dict[str, str] | None = None,
     declared_inputs: dict[str, Path] | None = None,
     declared_input_layout: dict[str, str] | None = None,
     root_files: tuple[str, ...] = ROOT_FILES,
@@ -280,6 +284,8 @@ def create(
     ``directory_memberships`` binds caller-selected directory child names, or explicit
     absence with ``None``, before copying and again before sealing. An empty tuple requires
     an existing empty directory; absence rejects files, directories and dangling links.
+    ``target_data_inputs`` binds contract/facts environment selectors to declared input
+    names for a data-only target without an executable provider.
     """
     source, destination = source.resolve(), destination.absolute()
     source_roots = tuple(source_roots)
@@ -452,6 +458,11 @@ def create(
                 shutil.copy2(path, target)
             copied_inputs[relative.as_posix()] = path
         input_records[name] = {"source": str(path), "snapshot": relative.as_posix()}
+    target_data = {}
+    for variable, name in (target_data_inputs or {}).items():
+        if name not in input_records:
+            raise SnapshotError(f"target data is not a declared input: {name}")
+        target_data[variable] = input_records[name]["snapshot"]
     for relative in root_files:
         if len(PurePosixPath(_relative(relative)).parts) != 1:
             raise SnapshotError("snapshot root files must be basenames")
@@ -531,6 +542,7 @@ def create(
         "directories": directories,
         "selected_provider": provider_record,
         "declared_inputs": input_records,
+        **({"target_data": target_data} if target_data_inputs is not None else {}),
         **(
             {
                 "declared_input_layout": {
@@ -672,6 +684,16 @@ def _validate_layout(receipt: dict) -> None:
             ):
                 raise SnapshotError("invalid copied input mapping")
         provider = receipt.get("selected_provider")
+        if "target_data" in receipt:
+            data = receipt["target_data"]
+            if (
+                provider is not None
+                or not isinstance(data, dict)
+                or "MERLIN_TARGET_CONTRACT" not in data
+                or set(data) - {"MERLIN_TARGET_CONTRACT", "MERLIN_RTL_FACTS"}
+                or any(_relative(path) not in {row["snapshot"] for row in inputs.values()} for path in data.values())
+            ):
+                raise SnapshotError("invalid sealed target data selection")
         if provider is not None:
             required_provider = {"target", "resolved_target", "kind", "source", "root"}
             if (
