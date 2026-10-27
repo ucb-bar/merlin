@@ -11,6 +11,10 @@ selection resolves cases from byte-pinned ``--corpus-193`` and/or ``--bounded``
 suite files. The shards are then judged against the spec's own admission decisions and written as
 ``merlin.phase0.spec_validation.v1``. Nothing here writes capsules.
 
+MERLIN_SPEC_VALIDATION_ATTESTATION selects operator-authorized shard reuse,
+ATTESTED, not proven. It probes only the stamp, never launches suite work (also
+with --record-only), and seals the receipt and its disclosed residual risks.
+
 Subsets (``--source corpus_193``, ``--case-id``, ``--limit``) run and record only the
 named cases; their record is at most ``incomplete`` and cannot satisfy derivation.
 Arguments after ``--`` go to the suite runner unchanged (``--repo``, ``--m2m-dir``,
@@ -20,6 +24,8 @@ Arguments after ``--`` go to the suite runner unchanged (``--repo``, ``--m2m-dir
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import inspect
 import json
 import os
 import subprocess
@@ -44,7 +50,106 @@ def _subset(selection, args):
     return keys if subset else None
 
 
-def main(argv=None) -> int:
+class _StampCaptured(BaseException):
+    def __init__(self, block):
+        self.block = block
+
+
+def _probe_stamp(runner, argv):
+    """Compute the current stamp, then stop before provenance writes or execution."""
+    from merlin_experiments.phase0.evidence_attestation import AttestationRefused
+
+    old_argv = sys.argv
+    try:
+        spec = importlib.util.spec_from_file_location("_spec_attestation_runner", runner)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        original = module.stamp
+
+        def capture(args):
+            raise _StampCaptured(original(args))
+
+        module.stamp = capture
+        sys.argv = [str(runner), *argv]
+        try:
+            if inspect.signature(module.main).parameters:
+                module.main(argv)
+            else:
+                module.main()
+        except _StampCaptured as captured:
+            return captured.block
+        finally:
+            module.stamp = original
+        raise AttestationRefused("runner main returned without calling stamp")
+    except SystemExit as exc:
+        raise AttestationRefused(f"runner exited before stamp sentinel: SystemExit({exc.code!r})") from exc
+    finally:
+        sys.argv = old_argv
+
+
+def _attestation_reuse(command, attestation, base):
+    from merlin_experiments.phase0 import evidence_attestation as EA
+
+    provenance = base / "provenance.json"
+    EA.require(provenance.is_file(), f"{provenance}: attestation runner provenance is missing")
+    raw = provenance.read_bytes()
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--repo", type=Path, required=True)
+    forwarded, _ = parser.parse_known_args(command[2:])
+    try:
+        current = _probe_stamp(Path(command[1]), command[2:])
+    finally:
+        if not provenance.is_file() or provenance.read_bytes() != raw:
+            provenance.write_bytes(raw)
+            raise EA.AttestationRefused("stamp probe modified provenance.json; saved bytes restored")
+    receipt = EA.decide(json.loads(raw), current, repo=forwarded.repo, attestation=attestation)
+    path = base / "evidence-attestation.json"
+    SV.write(receipt, path)
+    print(f"ATTESTED, not proven: reuse shards at {receipt['shard_commit']} for record at {receipt['current_commit']}")
+    return path
+
+
+def _bind_attestation(record, path):
+    """Seal the reviewer-visible receipt binding without changing producer imports."""
+    from merlin_experiments.phase0 import evidence_attestation as EA
+
+    raw = path.read_bytes()
+    receipt = json.loads(raw)
+    EA.require(receipt.get("schema") == EA.RECEIPT_SCHEMA and receipt.get("decision") == "attested_reuse_of_shards"
+               and receipt.get("status") == "ATTESTED_NOT_PROVEN",
+               "invalid evidence attestation receipt")
+    EA.require(receipt.get("saved_stamp_sha256") == record.get("runner_provenance_sha256"),
+               "evidence attestation receipt differs from record runner stamp")
+    record["evidence_attestation"] = {
+        "status": "ATTESTED_NOT_PROVEN",
+        "receipt_sha256": EA.sha256(raw),
+        "shard_commit": receipt["shard_commit"],
+        "current_commit": receipt["current_commit"],
+    }
+    record["sha256"] = SV.digest(record)
+
+
+def _runner_help_requested(arguments):
+    for argument in arguments:
+        option = argument.split("=", 1)[0]
+        if argument.startswith("-h") and not argument.startswith("--"):
+            return True
+        if option.startswith("--") and len(option) > 2 and "--help".startswith(option):
+            return True
+    return False
+
+
+def _retained_input(path, payload, active):
+    if active:
+        from merlin_experiments.phase0.evidence_attestation import require
+
+        require(path.is_file() and path.read_bytes() == payload,
+                f"{path}: attestation requires the identical retained runner input")
+    elif not path.is_file() or path.read_bytes() != payload:
+        path.write_bytes(payload)
+
+
+def _main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--selection", type=Path, required=True, help="v1 case selection JSON")
     parser.add_argument("--corpus-193", type=Path, help="canonical Core ATen corpus suite file")
@@ -73,6 +178,13 @@ def main(argv=None) -> int:
     args, runner_args = parser.parse_known_args(argv)
     if runner_args[:1] == ["--"]:
         runner_args = runner_args[1:]
+    attestation = os.environ.get("MERLIN_SPEC_VALIDATION_ATTESTATION")
+    active = attestation is not None
+    if active:
+        from merlin_experiments.phase0.evidence_attestation import require
+
+        require(not _runner_help_requested(runner_args),
+                "attestation refuses runner help flags")
     if any(arg.split("=", 1)[0] == "--host-capabilities" for arg in runner_args):
         parser.error("use --component-host-capabilities before -- to select the suite host lane")
     admission_parser = argparse.ArgumentParser(add_help=False)
@@ -86,9 +198,18 @@ def main(argv=None) -> int:
     base.mkdir(parents=True, exist_ok=True)
     suite = base / "selection-suite.json"
     payload = json.dumps(SV.runner_suite(selection), sort_keys=True).encode()
-    if not suite.is_file() or suite.read_bytes() != payload:
-        suite.write_bytes(payload)
-    if not args.record_only:
+    receipt = None
+    if active:
+        from merlin_experiments.phase0.evidence_attestation import require
+
+        require((base / "provenance.json").is_file(), f"{base / 'provenance.json'}: attestation runner provenance is missing")
+        controlled = {"--suite", "--output", "--label", "--numeric-policy", "--software-spec",
+                      "--case-ids", "--worker", "--case", "--evaluate-only", "--help", "-h"}
+        require(not any(arg.startswith("--") and any(option.startswith(arg.split("=", 1)[0])
+                        for option in controlled) for arg in runner_args),
+                "attestation refuses runner control overrides")
+    _retained_input(suite, payload, active)
+    if not args.record_only or active:
         command = [
             sys.executable,
             str(Path(__file__).resolve().parent / "run_bounded_core_aten_suite.py"),
@@ -112,11 +233,16 @@ def main(argv=None) -> int:
             *runner_args,
         ]
         if keys is not None:
-            (base / "selected-case-ids.json").write_text(
-                json.dumps([f"{source}:{case_id}" for source, case_id in keys]) + "\n"
+            _retained_input(
+                base / "selected-case-ids.json",
+                (json.dumps([f"{source}:{case_id}" for source, case_id in keys]) + "\n").encode(),
+                active,
             )
             command += ["--case-ids", str(base / "selected-case-ids.json")]
-        subprocess.run(command, check=True, env=dict(os.environ))
+        if active:
+            receipt = _attestation_reuse(command, attestation, base)
+        else:
+            subprocess.run(command, check=True, env=dict(os.environ))
     record = SV.prepare(
         selection,
         args.output,
@@ -132,6 +258,8 @@ def main(argv=None) -> int:
         with_truth_audit=args.truth_audit,
         quantization_scheme=args.quantization_scheme,
     )
+    if receipt is not None:
+        _bind_attestation(record, receipt)
     destination = SV.write(record, args.record or base / "record.json")
     print(
         json.dumps(
@@ -147,6 +275,18 @@ def main(argv=None) -> int:
         )
     )
     return 0 if record["verdict"] == "validated" else 1
+
+
+def main(argv=None) -> int:
+    if "MERLIN_SPEC_VALIDATION_ATTESTATION" not in os.environ:
+        return _main(argv)
+    from merlin_experiments.phase0.evidence_attestation import AttestationRefused
+
+    try:
+        return _main(argv)
+    except (AttestationRefused, OSError, ValueError, TypeError, ImportError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
