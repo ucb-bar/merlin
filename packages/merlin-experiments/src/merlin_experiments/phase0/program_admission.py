@@ -134,15 +134,17 @@ def summarize(entries: list[dict], *, host_only: bool = False, scope: str) -> di
     refused = [row for row in decisions if row["status"] == "unsupported"]
     unknown = [row for row in decisions if row["status"] == "unknown"]
     status = "unsupported" if refused else "unknown" if unknown else "admitted"
+    placements = collections.Counter()
+    for row in decisions:
+        if row["placement"]:
+            placements[row["placement"]] += row["count"]
     return {
         "status": status,
         "constraints_status": "refused" if refused else "unknown" if unknown else "matched",
         "reason": "; ".join(f"{row['operation']}: {row['reason']}" for row in (refused or unknown))
         or "every compute operation of the written program has exactly one reviewed lane",
         "decisions": decisions,
-        "placements": dict(
-            sorted(collections.Counter(row["placement"] for row in decisions if row["placement"]).items())
-        ),
+        "placements": dict(sorted(placements.items())),
         "scope": scope,
     }
 

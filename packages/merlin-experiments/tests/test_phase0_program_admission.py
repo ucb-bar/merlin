@@ -471,6 +471,36 @@ def test_the_derivation_inventory_records_each_capture_placements(tmp_path):
         program_admission.derive_inventory(inventory, target="fixture", evidence=_evidence(), captures={"app": capture})
 
 
+def test_placement_counts_are_operations_and_do_not_depend_on_signature_grouping():
+    def entry(lane, count, classification="accelerator_candidate"):
+        return {
+            "operation": "fixture",
+            "classification": classification,
+            "count": count,
+            "accelerator_admission": {
+                "status": "admitted" if lane == "accelerator" else "unsupported",
+                "reviewed": True,
+            },
+            "host_admission": {"status": "admitted" if lane == "host" else "unsupported", "reviewed": True},
+        }
+
+    grouped = [entry("accelerator", 54), entry("host", 57), entry(None, 3), entry(None, 100, "structural")]
+    split = [entry("accelerator", 1) for _ in range(54)] + [entry("host", 1) for _ in range(57)]
+    one = program_admission.summarize(grouped, scope="grouped")
+    many = program_admission.summarize(split, scope="split")
+    assert one["placements"] == many["placements"] == {"accelerator": 54, "host": 57}
+    assert one["status"] == "unsupported"  # A counted refusal is still a refusal.
+    assert many["status"] == "admitted"
+    admitted = program_admission.summarize(grouped[:2], scope="grouped admitted operations")
+    digest = "b" * 64
+    evidence = SimpleNamespace(whole_program_admission={
+        "applications": {"app": {"capture_sha256": digest, **admitted}}
+    })
+    checked = program_admission._check_saved_inventory(many, {"capture_sha256": digest}, evidence)
+    assert checked["status"] == "admitted"
+    assert checked["saved_inventory"]["status"] == "matched"
+
+
 def test_only_a_definite_refusal_of_a_non_probe_entry_is_final_before_writing():
     refused, unknown = {"status": "unsupported"}, {"status": "unknown"}
     assert program_admission.entry_refusal_is_final({"op": "bias_add"}, refused)
