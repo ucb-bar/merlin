@@ -14,13 +14,11 @@ from pathlib import Path
 import yaml
 
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
-from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
-from merlin_experiments.phase0.generation_paths import (
-    _require_distinct_corpus_destinations as _require_distinct_corpus_destinations,
-)
 
 from .capture_recipe import _selected_capture_recipe as _selected_capture_recipe
+
+from merlin_experiments.phase0.generation_paths import _require_distinct_corpus_destinations as _require_distinct_corpus_destinations
 from .claim_boundary import assert_no_claim_capsules, held_out_models
 from .instruction_roles import enforcement_problems, validate_roles
 from .profiles import load_profile, validate_profile_inputs
@@ -288,15 +286,11 @@ def generate_target(
     packing_intake=None,
     source_preparation: str | None = None,
     operator_exclusion=None,
-    fusion_verify_workers: int | None = None,
 ) -> list[Path]:
     from merlin.common.paths import checkout_root
 
     if output_root is None:
         raise ValueError("Phase 0 requires an explicit output_root; generated capsules must not default to source data")
-    from .core_aten_stage import refuse_retained_stage
-
-    refuse_retained_stage(recipe)
     from .operator_exclusion import PublicationRefusal
     from .operator_exclusion import require_selection as require_operator_exclusion
 
@@ -383,18 +377,38 @@ def generate_target(
     te = load_target_experiment(descriptor)
     _require_distinct_corpus_destinations(te, output_root=output_root, evidence_root=evidence_root)
     hardware_target = te.target if explicit_descriptor else target
+    if recipe is not None:
+        from .core_aten_stage import declaration, generate
+
+        if declaration(Path(recipe)) is not None:
+            if any(value is not None for value in (software_spec, evidence_input, hidden_profile)):
+                raise ValueError("retained Core ATen stage cannot mix other generation or evidence inputs")
+            if conformance_spec is not None or synth_profile is not None:
+                from .profiles import verify_selected_synthesis
+
+                status = verify_selected_synthesis(
+                    synth_profile, conformance_spec=conformance_spec, recipe=recipe, descriptor=descriptor
+                )
+                if status.get("status") != "verified":
+                    raise ValueError("Core ATen generation requires verified selected synthesis")
+            if evidence_mode == "verified" or prohibited_instruction_roles:
+                raise ValueError(
+                    "retained Core ATen packaging is diagnostic; instruction policy needs execution evidence"
+                )
+            return generate(
+                Path(recipe),
+                Path(output_root),
+                target=hardware_target,
+                capability_contract=Path(capability_contract) if capability_contract else None,
+                rtl_facts=Path(rtl_facts) if rtl_facts else None,
+            )
     profile = load_profile(
         target,
         descriptor=descriptor,
         diagnostic=evidence_mode == "diagnostic",
-        rtl_facts=rtl_facts,
-        capability_contract=capability_contract,
-        hardware_spec=hardware_spec,
         **({"include_holdouts": False} if component_only else {}),
         **{key: value for key, value in profile_inputs.items() if value is not None},
     )
-    workload_spec = profile.get("workload_spec") or {}
-    synthesize_compositions = synthesize_compositions_enabled(workload_spec)
     from .component_source_performance import SCHEMA_V2, verify_curriculum_template
 
     if source_preparation == SCHEMA_V2:
@@ -638,19 +652,6 @@ def generate_target(
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:
                 preallocation_denials[entry["name"]] = str(exc)
-    from .composition_generation import append_selected
-
-    entries, fusion_record, fusion_selection = append_selected(
-        entries,
-        evidence,
-        dict(
-            workload_spec=workload_spec,
-            descriptor=descriptor,
-            requirement=selected_requirement,
-            binding=binding,
-            fusion_verify_workers=fusion_verify_workers,
-        ),
-    )
     if evidence is not None and evidence.software_spec:
         screened = []
         for entry in entries:
@@ -917,10 +918,6 @@ def generate_target(
                             host_capabilities=evidence.host_capabilities,
                         )
                     admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
-                    if e.get("op") == "composition_program":
-                        from .composition_generation import require_placement
-
-                        require_placement(actual, observed)
                     # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
                     # grades none of the author's work (host placement is Merlin-supplied), so it is removed
                     # and reported, exactly as an unprovable forbid is, never left on disk for a glob.
@@ -1211,18 +1208,6 @@ def generate_target(
             "ledger": "phase2-deferred.json",
             "sha256": hashlib.sha256(deferred_raw).hexdigest(),
         }
-    from .composition_generation import coverage as composition_coverage
-
-    performance_record["composition_coverage"] = composition_coverage(
-        entries,
-        excluded_spec=evidence.software_spec if evidence is not None and not synthesize_compositions else None,
-        validation=fusion_record,
-    )
-    if fusion_selection is not None:
-        from .composition_generation import verify_written
-
-        verify_written(entries, written, fusion_selection, te)
-        performance_record["fusion_corpus_selection"] = fusion_selection
     update_provenance_manifest(
         written,
         cap_root=out_root,

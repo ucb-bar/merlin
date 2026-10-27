@@ -220,8 +220,6 @@ workload_spec:
   certification_floor: L3
   precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
   max_synthesized_capsules: 160
-  # Derivation requires sealed Core ATen spec-validation evidence bound to the selected spec.
-  phase0_spec_validation: required
 
 host_lane:
   capability_spec: examples/gemmini/platform/host-capabilities-portable-v3.yaml

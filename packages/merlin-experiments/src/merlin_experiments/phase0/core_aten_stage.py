@@ -84,30 +84,6 @@ def declaration(recipe: Path) -> dict | None:
     return block
 
 
-RETAINED_STAGE_REFUSAL = (
-    "Core ATen suites are Phase 0 spec-validation evidence, not capsules; remove the top-level "
-    "core_aten: block and pass the cases to spec validation as a spec-validation case selection "
-    "(build_tools/scripts/make_spec_validation_selection.py)"
-)
-
-
-def refuse_retained_stage(recipe: str | Path | None) -> None:
-    """Fail closed on a recipe that still selects the retained Core ATen stage.
-
-    Phase 0 capsules come only from requirements derivation. A recipe with a
-    top-level ``core_aten:`` block, in any shape, is refused rather than silently
-    derived into a different corpus.
-    """
-    if recipe is None:
-        return
-    path = Path(recipe)
-    if not path.is_file():
-        return
-    document = yaml.safe_load(path.read_bytes())
-    if isinstance(document, dict) and "core_aten" in document:
-        raise ValueError(f"{path}: {RETAINED_STAGE_REFUSAL}")
-
-
 def _path(recipe: Path, value: object) -> Path:
     if not isinstance(value, str) or not value:
         raise ValueError("Core ATen input requires an explicit path")

@@ -48,21 +48,3 @@ def test_field_rows_get_a_reason_from_their_own_keys(row, text):
 def test_an_unrecognised_row_shape_refuses(row):
     with pytest.raises(ValueError, match="software-spec derivation row"):
         _unresolved_reason(row)
-
-
-def test_every_row_the_real_resolver_emits_has_a_reason():
-    spec = yaml.safe_load((repo_root() / "examples/gemmini/target/software-spec.yaml").read_text())
-    resolved, unresolved = copy.deepcopy(spec), []
-    # Facts that establish nothing: every scheme/readout/composition field the spec leaves to the facts is UNKNOWN.
-    axes = spec_fact_drift._resolve_composition_axes
-    # the composition-validation argument exists on the seal 4 line only
-    axes(resolved, {}, unresolved, *([None] if axes.__code__.co_argcount == 4 else []))
-    assert unresolved, "the spec leaves nothing to the facts; this guard needs a spec that does"
-    seen = set()
-    for row in unresolved:
-        reason = _unresolved_reason(row)
-        assert reason and isinstance(reason, str)
-        assert _unresolved_reason(copy.deepcopy(row)) == reason  # deterministic
-        seen.add(tuple(sorted(row)))
-    # the shapes this guard exists for: at least the scheme rows (declared by every spec on this line)
-    assert ("field", "scheme", "value") in seen
