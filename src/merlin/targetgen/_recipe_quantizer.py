@@ -951,10 +951,15 @@ def build_quantizer(
                 not recipe.get("runtime_weight_contractions") and not stored_floating_weight(operands[-1])
             ):
                 return False
+            # The backward rewrite has no preserved non-FP32 Q/DQ path.
+            # Leave those source calls untouched on the host instead of adding
+            # observers whose dequantization rounding cannot be integerized.
+            backward = node.target == torch.ops.aten.convolution_backward.default
             if len(operands) not in (2, 3) or any(
                 not isinstance(operand, torch.fx.Node)
                 or not isinstance((value := operand.meta.get("val")), torch.Tensor)
                 or not value.is_floating_point()
+                or (backward and value.dtype != torch.float32)
                 for operand in operands
             ):
                 return False
