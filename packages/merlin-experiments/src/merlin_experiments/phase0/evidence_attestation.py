@@ -161,7 +161,7 @@ def _check_stamps(saved, current, attestation, git):
     require(current.get("merlin_commit") == head, "current stamp commit differs from HEAD")
     require(previous != head, "shard_commit equals current commit")
     git.read("merge-base", "--is-ancestor", previous, head)
-    require(not git.read("status", "--porcelain"), "current git worktree is dirty")
+    require(not git.read("status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none"), "current git worktree is dirty")
     for name, stamp in (("saved", saved), ("current", current)):
         require(stamp.get("merlin_source_kind") == "git_worktree", f"{name} stamp is not git_worktree")
         require(stamp.get("merlin_diff_sha256") == EMPTY_SHA256, f"{name} stamp diff is not clean")
@@ -372,7 +372,7 @@ def _decide(saved, current, *, repo, attestation, git_runner):
                 "notes": policy["evidence"]["notes"]}
     hashes = _changed_hashes(git, previous, head, changed)
     require(git.read("rev-parse", "HEAD").decode().strip() == head, "HEAD changed during attestation decision")
-    require(not git.read("status", "--porcelain"), "current git worktree changed during attestation decision")
+    require(not git.read("status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none"), "current git worktree changed during attestation decision")
     return {
         "schema": RECEIPT_SCHEMA, "status": "ATTESTED_NOT_PROVEN", "decision": "attested_reuse_of_shards",
         "proof": "none: operator attestation; see residual_risks",

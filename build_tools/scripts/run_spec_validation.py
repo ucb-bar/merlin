@@ -106,14 +106,17 @@ def _attestation_reuse(command, attestation, base):
     path = base / "evidence-attestation.json"
     SV.write(receipt, path)
     print(f"ATTESTED, not proven: reuse shards at {receipt['shard_commit']} for record at {receipt['current_commit']}")
-    return path
+    return path, EA.sha256(path.read_bytes())
 
 
-def _bind_attestation(record, path):
+def _bind_attestation(record, receipt_file):
     """Seal the reviewer-visible receipt binding without changing producer imports."""
     from merlin_experiments.phase0 import evidence_attestation as EA
 
+    path, written_sha256 = receipt_file
+    EA.require(path.is_file(), f"{path}: attestation receipt is missing")
     raw = path.read_bytes()
+    EA.require(EA.sha256(raw) == written_sha256, "attestation receipt changed after it was written")
     receipt = json.loads(raw)
     EA.require(receipt.get("schema") == EA.RECEIPT_SCHEMA and receipt.get("decision") == "attested_reuse_of_shards"
                and receipt.get("status") == "ATTESTED_NOT_PROVEN",
@@ -175,6 +178,12 @@ def _main(argv=None) -> int:
     parser.add_argument("--no-reverify-evidence", action="store_true")
     parser.add_argument("--truth-audit", action="store_true", help="add the non-gating functional-truth column")
     parser.add_argument("--quantization-scheme", default=SV.DEFAULT_QUANTIZATION_SCHEME)
+    if "MERLIN_SPEC_VALIDATION_ATTESTATION" in os.environ:
+        from merlin_experiments.phase0.evidence_attestation import require
+
+        given = list(sys.argv[1:] if argv is None else argv)
+        require(not _runner_help_requested(given[: given.index("--")] if "--" in given else given),
+                "attestation refuses driver help flags, which would exit before the decision")
     args, runner_args = parser.parse_known_args(argv)
     if runner_args[:1] == ["--"]:
         runner_args = runner_args[1:]
@@ -260,10 +269,17 @@ def _main(argv=None) -> int:
     )
     if receipt is not None:
         _bind_attestation(record, receipt)
+    if active:
+        from merlin_experiments.phase0.evidence_attestation import require
+
+        target = (args.record or base / "record.json").resolve()
+        require(target not in {(base / "provenance.json").resolve(), receipt[0].resolve()},
+                "attestation record path must not replace the saved provenance or the receipt")
     destination = SV.write(record, args.record or base / "record.json")
     print(
         json.dumps(
             {
+                **({"evidence_attestation": "ATTESTED_NOT_PROVEN"} if receipt is not None else {}),
                 "record": str(destination),
                 "sha256": record["sha256"],
                 "verdict": record["verdict"],

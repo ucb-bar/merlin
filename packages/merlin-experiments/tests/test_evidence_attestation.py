@@ -658,3 +658,33 @@ def test_driver_hard_gates_preserve_provenance(history, tmp_path, monkeypatch, c
     assert message in capsys.readouterr().err
     assert (base / "provenance.json").read_bytes() == old
     assert not (base / "evidence-attestation.json").exists()
+
+
+@pytest.mark.parametrize("help_flag", ["-h", "--help", "--he"])
+def test_driver_help_before_delimiter_refuses_instead_of_exiting_zero(history, tmp_path, monkeypatch, capsys, help_flag):
+    driver, base, argv = driver_fixture(history, tmp_path, monkeypatch)
+    monkeypatch.setenv("MERLIN_SPEC_VALIDATION_ATTESTATION", str(history.attestation))
+    assert driver.main([help_flag, *argv]) == 1
+    assert "refuses driver help flags" in capsys.readouterr().err
+
+
+def test_receipt_changed_after_it_was_written_is_not_bound(history, tmp_path):
+    driver = load_driver(history.repo / DRIVER)
+    path = tmp_path / "evidence-attestation.json"
+    receipt = {"schema": EA.RECEIPT_SCHEMA, "decision": "attested_reuse_of_shards", "status": "ATTESTED_NOT_PROVEN",
+               "saved_stamp_sha256": "x", "shard_commit": "p", "current_commit": "c"}
+    path.write_text(json.dumps(receipt))
+    written = EA.sha256(path.read_bytes())
+    path.write_text(json.dumps({**receipt, "attested_by": "someone else"}))
+    with pytest.raises(EA.AttestationRefused, match="changed after it was written"):
+        driver._bind_attestation({"runner_provenance_sha256": "x"}, (path, written))
+    path.unlink()
+    with pytest.raises(EA.AttestationRefused, match="receipt is missing"):
+        driver._bind_attestation({"runner_provenance_sha256": "x"}, (path, written))
+
+
+def test_untracked_file_refuses_even_when_git_hides_untracked_files(history):
+    git(history.repo, "config", "status.showUntrackedFiles", "no")
+    (history.repo / "stray.txt").write_text("x\n")
+    with pytest.raises(EA.AttestationRefused, match="dirty"):
+        decide(history)
