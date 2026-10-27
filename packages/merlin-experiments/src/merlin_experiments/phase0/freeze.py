@@ -241,6 +241,9 @@ def stage(plan: dict) -> dict:
     target, run_root = frozen["target"], Path(frozen["run_dir"])
     evidence = selection(command, target)
     _verify_relocations(evidence, relocations)
+    from . import execution_runtime
+
+    execution = execution_runtime.select(target, evidence)
     from .component_semantic_basis import ComponentSemanticBasis
 
     basis = ComponentSemanticBasis.from_recipe(command["inputs"].get("recipe"))
@@ -381,6 +384,8 @@ def stage(plan: dict) -> dict:
     command["cwd"] = str(snapshot)
     command["source_snapshot"] = str(snapshot)
     command["phase0_environment_policy"] = FROZEN_PHASE0_ENV_POLICY
+    command["phase0_execution_selection"] = execution
+    command["env"].update(execution_runtime.environment(execution))
     command["env"].update(source_snapshot.provider_environment(snapshot, receipt))
     command["env"].update(
         MERLIN_REPO_ROOT=str(snapshot),
@@ -474,6 +479,9 @@ def _verify_frozen_sources(plan: dict) -> dict:
         raise ValueError("frozen Phase 0 source selection changed")
     if command.get("phase0_environment_policy") != FROZEN_PHASE0_ENV_POLICY:
         raise ValueError("frozen Phase 0 launch predates selected-only environment; freeze a new run")
+    from . import execution_runtime
+
+    execution_runtime.verify(command.get("phase0_execution_selection"), command["env"], live=False)
     if command["env"].get("MERLIN_REPO_ROOT") != str(snapshot):
         raise ValueError("frozen Phase 0 repository ownership changed")
     for key, value in source_snapshot.provider_environment(snapshot, receipt).items():
@@ -563,6 +571,10 @@ def verify_completed_artifact(plan: dict) -> None:
 def verify(plan: dict) -> None:
     """Verify private copies AND the selected live host runtime before execution."""
     _verify_frozen_sources(plan)
+    from . import execution_runtime
+
+    command = plan["phases"]["0"]
+    execution_runtime.verify(command.get("phase0_execution_selection"), command["env"])
     selected_m2m = plan["phases"]["0"].get("phase0_m2m_selection")
     if selected_m2m is not None:
         from . import m2m_runtime
