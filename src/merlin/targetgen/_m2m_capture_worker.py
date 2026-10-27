@@ -1055,6 +1055,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         mdl = apply_quantization(mdl, q, **quant_trace_options)
         quant_stats = getattr(mdl, "_m2m_quantization_stats", None)
     integerization_receipt = None
+    # Bound on every path: a capture that never reaches PT2E integerization (no integer contractions,
+    # an already-integer graph, FP32 staging) has no partition, and the export admission below reads it.
+    integer_partition = None
     from merlin.capture.integerization import non_contraction_annotations
 
     # A recipe whose dynamic block emitted every integer contraction leaves PT2E nothing to integerize,
