@@ -136,7 +136,22 @@ def _known_rational_reference(source):
 
     def identity(name):
         path = module_source_path(name).resolve()
-        return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        return dict(path=name.replace(".", "/") + ".py", sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+
+    def recorded(entry):
+        # A sealed worker imports Merlin from its own source mount, so the recorded location is
+        # that mount's path. Bind the module identity (its package-relative path) and the exact bytes.
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            return None
+        for name in (
+            "merlin.targetgen.exact_quantized_reference",
+            "merlin.targetgen.exact_arithmetic",
+            "merlin.runtime.exact_readout",
+        ):
+            relative = name.replace(".", "/") + ".py"
+            if entry["path"] == relative or entry["path"].endswith("/" + relative):
+                return dict(path=relative, sha256=entry.get("sha256"))
+        return None
 
     expected = identity("merlin.targetgen.exact_quantized_reference")
     expected.update(
@@ -144,7 +159,12 @@ def _known_rational_reference(source):
         numerics=source["numerics"],
         dependencies=[identity("merlin.targetgen.exact_arithmetic"), identity("merlin.runtime.exact_readout")],
     )
-    return source == expected
+    dependencies = source.get("dependencies")
+    if not isinstance(dependencies, list):
+        return False
+    normalized = dict(source)
+    normalized.update(path=(recorded(source) or {}).get("path"), dependencies=[(recorded(d) or {}) for d in dependencies])
+    return normalized == expected
 
 
 def verify_capture_receipt(path: str | Path) -> dict:
