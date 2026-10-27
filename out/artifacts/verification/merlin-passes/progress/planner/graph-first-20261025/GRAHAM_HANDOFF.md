@@ -1,5 +1,11 @@
 # Graham: independent graph-correctness review and paper evidence
 
+The [2026-10-27 pass-status audit](../../../../graham-graph-review/PASS_STATUS_20261027.md)
+summarizes working subsets, fresh failures, wider pass gaps and compiler-gate
+readiness against upstream **c62f81a8a**. Upstream and audit branches were pulled
+separately and remain separate. This status refresh adds no new Lean execution
+or qualification and resumes no implementation workers.
+
 ## Latest independent execution — 2026-10-26 Pacific
 
 The user authorized three workers to reconcile sources, select a fresh Lean SDK

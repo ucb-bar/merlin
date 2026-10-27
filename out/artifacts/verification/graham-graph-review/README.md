@@ -1,5 +1,10 @@
 # Independent graph verification review
 
+Read [the pass and compiler-gate status dated 2026-10-27](PASS_STATUS_20261027.md)
+for the current audit synthesis, per-pass limits and outstanding work. Both
+branches were pulled with `--ff-only`; upstream remains at **c62f81a8a**.
+This branch remains an audit of upstream, with no compiler-source merge.
+
 The latest execution results are in
 [the a26 reproduction report](execution-a26-20261026-v1/README.md).
 Three workers reviewed the changed admission sources, selected a fresh official

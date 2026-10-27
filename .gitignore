@@ -401,3 +401,5 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.lean
 !/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/**/*.md
 !/out/artifacts/verification/graham-graph-review/deliverable-[1-3]/UPDATE-20261026.md
+# Dated synthesis of upstream pass coverage; historical evidence stays immutable.
+!/out/artifacts/verification/graham-graph-review/PASS_STATUS_20261027.md
