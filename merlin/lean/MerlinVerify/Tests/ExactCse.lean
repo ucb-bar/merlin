@@ -28,10 +28,11 @@ def cast (id input : Nat) : Op :=
 #guard (normalize [empty 1 [2], empty 2 [2], cast 3 1, cast 4 2, ret [1,2,3,4]]).map
   (fun ss => (ss.length, (ss.getLast!).operands)) == some (3, [1,1,3,3])
 
--- The DCE extension admits precisely the two modeled region-free dequantizations.
+-- The DCE extension admits only the three modeled region-free Q/DQ operations.
 def dequant (name : String) : Op := .mk name [⟨0, ty [2]⟩] [] [] [] [] []
 #guard Rules.Dce.erasable (dequant "quant_ext.dequantize_per_tensor")
 #guard Rules.Dce.erasable (dequant "quant_ext.dequantize_per_channel")
-#guard !Rules.Dce.erasable (dequant "quant_ext.quantize_per_tensor")
+#guard Rules.Dce.erasable (dequant "quant_ext.quantize_per_tensor")
+#guard !Rules.Dce.erasable (dequant "quant_ext.unknown")
 
 end MerlinVerify.Tests.ExactCseRegression

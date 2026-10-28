@@ -50,8 +50,10 @@ theorem source_sem (ctx : Ctx) (call : CallSem) (op : Op) (c : Dequant.Config)
     (args : List RVal) (hmodel : unmodelledAttr? op.blind = none)
     (hd : dialectOf op.name = "quant_ext") (hc : Dequant.config? op = some c) :
     opSem ctx call op args [] = Dequant.run c ctx.M args := by
+  have hn : op.name ≠ "quant_ext.quantize_per_tensor" := by
+    rcases DequantPerTensor.config_name hc with hn | hn <;> simp [hn]
   rw [opSem_modelled hmodel]
-  simp [dispatch, hd, Dequant.sem, hc]
+  simp [dispatch, hd, hn, Dequant.sem, hc]
 
 theorem empty_sem (ctx : Ctx) (call : CallSem) (op : Op) (shape : List Nat)
     (hm : unmodelledAttr? op.blind = none) (hd : dialectOf op.name = "tensor")

@@ -21,6 +21,7 @@ import MerlinVerify.Check.TensorEmptyDead
 import MerlinVerify.Check.ParallelFusion
 import MerlinVerify.Check.IdentityReturnComparison
 import MerlinVerify.Check.ExactCse
+import MerlinVerify.Check.QuantizeCollapse
 
 namespace MerlinVerify.Check.SharedNormalize
 
@@ -42,8 +43,9 @@ def base (ib : Nat) (hints : List Op) : SplatNormalizer.Normalizer ib :=
     (BodyNormalize.sequential scalarAliases (BodyNormalize.sequential indexFacts insertions))
   -- Exact CSE runs first, twice: merging an empty can make a fill of it a repeat.
   let cse := BodyNormalize.sequential (ExactCse.base ib hints) (ExactCse.base ib hints)
-  BodyNormalize.sequential cse (BodyNormalize.sequential (ScalarConstantHoist.base ib)
-    (BodyNormalize.sequential aliases (TensorEmptyDead.base ib)))
+  BodyNormalize.sequential (QuantizeCollapse.base ib)
+    (BodyNormalize.sequential cse (BodyNormalize.sequential (ScalarConstantHoist.base ib)
+      (BodyNormalize.sequential aliases (TensorEmptyDead.base ib))))
 
 /-- Adapt the exact body normalizers without assuming any producer facts at function entry.
 The source and target syntax supply only a finite traversal budget. -/

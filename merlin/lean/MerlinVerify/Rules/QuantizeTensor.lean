@@ -41,6 +41,22 @@ theorem region_sound {w lowerId upperId : Nat} {actual : Region}
   simpa [region, captures, evalRegion, evalBlocks, evalBlock, Env.bindAll] using
     body_sound w ctx call x inv zero lower upper old
 
+/-- Integer conversion reads the executed value's width. The block annotation is checked
+separately by MLIR; it does not supply a runtime-width premise to this scalar theorem. -/
+theorem region_sound_at {wireWidth lowerId upperId : Nat} {actual : Region} (w : Nat)
+    (accepted : alphaRegion [(100, lowerId), (101, upperId)] (region wireWidth) actual = true)
+    (ctx : Ctx) (call : CallSem) (env : Env) (lower upper : FBits .f32)
+    (known : Corr [(100, lowerId), (101, upperId)] (captures lower upper) env)
+    (x inv : Option (FBits .f32)) (zero : Option (BitVec w)) (old : Val) :
+    evalRegion Sem.Ops.opSem ctx call env actual
+      [.scalar (floatValue x), .scalar (floatValue inv), .scalar (intValue w zero), .scalar old] =
+      .ok [.scalar (bodyValue w ctx.M x inv zero lower upper)] := by
+  have he := alphaRegion_sound call call _ (region wireWidth) actual ctx (captures lower upper) env
+    accepted known (fun _ _ => rfl)
+  rw [← he]
+  simpa [region, captures, evalRegion, evalBlocks, evalBlock, Env.bindAll] using
+    body_sound w ctx call x inv zero lower upper old
+
 theorem inverse_generic_sound {actual : Region} (accepted : alphaRegion [] inverseRegion actual = true)
     (ctx : Ctx) (call : CallSem) (env : Env) (shape : List Nat)
     (maps : List AffineMap) (iters : List IterKind)

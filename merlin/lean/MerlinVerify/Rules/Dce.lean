@@ -54,8 +54,14 @@ def dequantOp : Op → Bool
     (name == "quant_ext.dequantize_per_tensor" || name == "quant_ext.dequantize_per_channel") &&
       regions.isEmpty && !results.isEmpty && results.all (valueTy ·.ty)
 
+/-- The modeled region-free source quantizer only computes value results (ledger A9). -/
+def quantizeOp : Op → Bool
+  | .mk name results _ _ _ regions _ =>
+    name == "quant_ext.quantize_per_tensor" && regions.isEmpty && !results.isEmpty &&
+      results.all (valueTy ·.ty)
+
 /-- An op this rule may erase: it does nothing but compute its results. -/
-def erasable (op : Op) : Bool := pureOp op || dequantOp op
+def erasable (op : Op) : Bool := pureOp op || dequantOp op || quantizeOp op
 
 /-- Erase one op. The model has no memory, trace or external state, so only an op that does
 nothing but compute its results (`erasable`) may be erased: a call, an assertion or a store has an

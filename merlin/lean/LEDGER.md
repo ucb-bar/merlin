@@ -15,7 +15,7 @@ assumed, why, and what evidence stands behind it. A claim that relies on an entr
 | A6 | Named linalg ops mean their structured generic form. Map bodies receive inputs followed by the destination element. | `Sem/Ops/LinalgNamed.lean` | Reviewed correction from the legacy inputs-only convention to LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e); executable compiler probes and host comparisons qualify explicit cases. Map progress/definedness and map-to-generic rewriting on typed inputs are now proved. Runtime ranks are established through checked SSA execution; typed receipts/chains preserve that domain. Adjacent closed-expression motion has a separate universal proof, including captured-constant hoisting across static tensor.empty. Adjacent region-free independent operand-taking motion now has a separate source-success proof, with symmetric SSA dependency checks. General non-adjacent and nested motion remain outside this rule. These transformation proofs do not prove general fidelity to MLIR; see `docs/guides/lean_differential_tests.md`. |
 | A7 | `tensor.empty` is a tensor of poison. | `Sem/Ops/Tensor.lean` | MLIR leaves its contents unspecified. As a source, poison is the reading every value refines, so a target may read anything there; as a target, a read of it refines only a source that is also poison there. Treating it as poison is therefore never more permissive than "unspecified" towards the target. |
 | A8 | Integer division overflow (`INT_MIN / -1`) is UB at every width, i1 included. | `Sem/Ops/Arith.lean` | The Arith spec makes signed division overflow UB; for i1, `(-1) / (-1) = 1` is not representable. |
-| A9 | `quant_ext.dequantize_per_tensor` and `quant_ext.dequantize_per_channel` (region-free, value results) only compute their results, so the DCE rule may erase them like a pure-dialect op. | `Rules/Dce.lean` (`dequantOp`) | They are model2MLIR's dequantization extension ops with no side effects; Merlin's `prune_dead_pure_tensor_ops` already erases every `quant_ext.*` op. Only these two, whose meaning `Sem/Ops/Dequant.lean` models, are admitted; other `quant_ext` ops stay ineligible. |
+| A9 | `quant_ext.dequantize_per_tensor`, `quant_ext.dequantize_per_channel` and `quant_ext.quantize_per_tensor` (region-free, value results) only compute their results, so the DCE rule may erase them like a pure-dialect op. | `Rules/Dce.lean` (`dequantOp`, `quantizeOp`) | They are model2MLIR's Q/DQ extension ops with no side effects; Merlin's `prune_dead_pure_tensor_ops` already erases every `quant_ext.*` op. Only these three, whose meanings `Sem/Ops/{Dequant,Quantize}.lean` model, are admitted; other `quant_ext` ops stay ineligible. |
 
 ## Trusted components (design §10, D11)
 
@@ -203,8 +203,8 @@ coordinates and poison propagation. `quant_min`/`quant_max` follow PyTorch: per-
 per-channel only checks them against the i8 range, so [-127, 127] is admitted and nothing is
 clamped. f64 scales are excluded: PyTorch then multiplies per-channel in f64 and rounds the product
 to f32, a double rounding the f32 model does not express. Per-channel i64 zero points are excluded
-(no capture uses them, and Merlin's per-channel non-i32 lowering converts before subtracting, which
-is not PyTorch's i64 order). Its theorems add no axioms or float algebra laws.
+(they remain outside the proved per-channel profile; the integration compiler now subtracts at the promoted
+integer width on both lowering routes). Its theorems add no axioms or float algebra laws.
 `Sem/Ops/Dequant.lean` dispatches that proposed source contract only for checked tensor types,
 shapes and metadata. The source support rule proves non-stuck evaluation on typed inputs, and
 the registered C1 site rule connects accepted target loops to it. A separate definedness rule
@@ -552,7 +552,24 @@ it assumes no floating algebra or concrete conversion-success law.
 and their composition. `Rules/QuantizeTensor.lean` transports those results
 through checked SSA renaming, captured clamp constants, mapped reads and full
 tensor overwrites, including rank-zero and empty shapes. Access bounds and
-geometry remain independently checked premises. These are component results: the
-source operation dispatcher, whole-boundary checker and production quantizer gate
-connection are not established by these modules. Specification/capture review
-and native numerical fidelity remain separate obligations.
+geometry remain independently checked premises.
+
+`Sem/Ops/Quantize.lean` installs the source operation for static f32 data, rank-zero
+f32 scales, rank-zero i32/i64 zero points and full-range signed-i8 output.
+`Check/RulesQuantize.lean` proves typed source support. `QuantizeRuntime` and
+`QuantizeLowering` connect the actual input tensors and checked geometry to the
+independent specification. `QuantizeSite.target_sound` proves execution of all six
+actual target operations, including their temporary SSA values and clamp captures.
+`QuantizeRule.check_sound` binds this to complete source/target fragments; the C1
+synthesizer proposes sites and independently rechecks their actual ASTs.
+`Check/QuantizeCollapse.lean` additionally proves exact typed normalization of the
+actual expansion, checking the entire continuation for temporary escapes. Existing
+region traversal lifts this equality into nested generic bodies. Canonicalization
+of the three supported dtype spellings is separately proved by source execution.
+
+In the compiler integration checkout, the strict gate accepts all 35 forms of the 230 retained source
+quantizers after the real lowering. Rank-zero and empty shapes, both zero-point
+widths, Q/DQ composition and altered arithmetic/rounding/reciprocal/clamp refusals
+are regression tested. Source support permits poison; no unrestricted conversion
+success or whole-model numerical definedness is claimed. Specification/capture
+review and native numerical fidelity remain separate obligations.
