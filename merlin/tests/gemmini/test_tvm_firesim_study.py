@@ -25,14 +25,15 @@ def test_unqualified_old_adapter_is_rejected_before_execution(study, tmp_path):
         study.qualification(pool)
 
 
-def test_observer_qualification_is_bound_to_sources_and_control_bytes(study, tmp_path):
+def test_runner_qualification_is_bound_to_sources_and_control_bytes(study, tmp_path):
     source = tmp_path / "adapter.py"
     source.write_text("unit test adapter")
     tests = {}
     for name in (
         "startup_exclusion",
-        "same_elf_uncapped_agreement",
-        "inflight_tightening_abort",
+        "same_elf_repeat_agreement",
+        "wrong_oracle_rejection",
+        "wall_timeout",
         "remote_cancellation",
     ):
         receipt = tmp_path / (name + ".json")
@@ -42,8 +43,8 @@ def test_observer_qualification_is_bound_to_sources_and_control_bytes(study, tmp
     proof.write_text(
         json.dumps(
             dict(
-                cycle_limit_scope="active_measured",
-                limit_refresh_scope="in_flight",
+                schema="gemmini_firesim_runner_qualification_v1",
+                timeout_scope="wall_execution", cycle_scope="fixed_warm_model_run",
                 deployment_id="unit-test",
                 adapter_source_sha256=[study.identity(source)["sha256"]],
                 tests=tests,
@@ -55,7 +56,7 @@ def test_observer_qualification_is_bound_to_sources_and_control_bytes(study, tmp
         json.dumps(
             dict(
                 deployment_id="unit-test",
-                observer_qualification=study.identity(proof),
+                runner_qualification=study.identity(proof),
                 adapter_sources=[study.identity(source)],
             )
         )
@@ -78,7 +79,7 @@ def test_shared_ledger_skips_reserved_campaign_and_rejects_deadline_reset(study,
     pool = tmp_path / "pool.json"
     pool.write_text("{}")
     row = dict(id="example", program="program.json", fixture="fixture.npz", trials=8, workload_keys=["key"])
-    args = dict(deadline=1000, clock_hz=100, pool=pool, cap=12)
+    args = dict(bootstrap_seconds=10, ceiling_seconds=60, deadline=1000, clock_hz=100, pool=pool, cap=12)
     ledger = tmp_path / "ledger.json"
     assert study.reserve_campaigns(ledger, [row], tmp_path, **args) == [row]
     assert study.reserve_campaigns(ledger, [row], tmp_path, **args) == []
@@ -97,7 +98,7 @@ def test_shared_ledger_rejects_mutated_program(study, tmp_path):
     pool = tmp_path / "pool.json"
     pool.write_text("{}")
     row = dict(id="example", program="program.json", fixture="fixture.npz", trials=4)
-    args = dict(deadline=1000, clock_hz=100, pool=pool, cap=8)
+    args = dict(bootstrap_seconds=10, ceiling_seconds=60, deadline=1000, clock_hz=100, pool=pool, cap=8)
     ledger = tmp_path / "ledger.json"
     study.reserve_campaigns(ledger, [row], tmp_path, **args)
     (tmp_path / "program.json").write_text("different")
@@ -106,8 +107,7 @@ def test_shared_ledger_rejects_mutated_program(study, tmp_path):
 
 
 @pytest.mark.parametrize("option,value", [
-    ("graph_fusion_level", 0), ("prepack_weights", False),
-    ("bias_preload", False), ("graph_cse", True),
+    ("graph_fusion_level", 0), ("graph_cse", True),
 ])
 def test_changed_graph_plan_cannot_reuse_campaign(study, tmp_path, option, value):
     (tmp_path / "program.json").write_text("program")
@@ -115,7 +115,7 @@ def test_changed_graph_plan_cannot_reuse_campaign(study, tmp_path, option, value
     pool = tmp_path / "pool.json"
     pool.write_text("{}")
     row = dict(id="example", program="program.json", fixture="fixture.npz", trials=4)
-    args = dict(deadline=1000, clock_hz=30000000, pool=pool, cap=8)
+    args = dict(bootstrap_seconds=10, ceiling_seconds=60, deadline=1000, clock_hz=30000000, pool=pool, cap=8)
     ledger = tmp_path / "ledger.json"
     study.reserve_campaigns(ledger, [row], tmp_path, **args)
     with pytest.raises(ValueError, match="identity"):
@@ -125,7 +125,8 @@ def test_changed_graph_plan_cannot_reuse_campaign(study, tmp_path, option, value
 def test_graph_options_reach_inner_campaign(study, tmp_path):
     from types import SimpleNamespace
 
-    args = SimpleNamespace(pool=tmp_path / "pool", toolchain=tmp_path / "tools", target_clock_hz=30000000)
+    args = SimpleNamespace(pool=tmp_path / "pool", toolchain=tmp_path / "tools", target_clock_hz=30000000, candidate_bootstrap_seconds=10,
+                           candidate_timeout_ceiling_seconds=60)
     row = dict(program="p", fixture="f", trials=4, graph_fusion_level=0,
                graph_cse=True, prepack_weights=False, bias_preload=False)
     command = study.command(row, tmp_path, args, tmp_path / "output", 1000)
@@ -139,10 +140,26 @@ def test_continuation_preserves_finish_active_policy(study, tmp_path):
     pool = tmp_path / "pool"
     pool.write_text("{}")
     row = dict(id="example", program="p", fixture="f", trials=1)
-    args = dict(deadline=1000, clock_hz=30000000, pool=pool, cap=1,
-                finish_active_runs=True, active_run_timeout_seconds=60)
+    args = dict(bootstrap_seconds=10, ceiling_seconds=60, deadline=1000, clock_hz=30000000, pool=pool, cap=1,
+                finish_active_runs=True)
     ledger = tmp_path / "ledger.json"
     study.reserve_campaigns(ledger, [row], tmp_path, **args)
     assert study.reserve_campaigns(ledger, [row], tmp_path, **args) == []
     with pytest.raises(ValueError, match="completion policy"):
-        study.reserve_campaigns(ledger, [row], tmp_path, **dict(args, active_run_timeout_seconds=120))
+        study.reserve_campaigns(ledger, [row], tmp_path, **dict(args, ceiling_seconds=120))
+
+
+@pytest.mark.parametrize("option", ["prepack_weights", "bias_preload"])
+def test_removed_graph_preparation_is_refused_before_launch(study, tmp_path, option):
+    from types import SimpleNamespace
+
+    row = dict(id="old", program="missing-program", fixture="missing-fixture", trials=1,
+               **{option: True})
+    with pytest.raises(ValueError, match="Removed graph preparation"):
+        study.command(row, tmp_path, SimpleNamespace(), tmp_path / "output", 1000)
+    assert not (tmp_path / "output").exists()
+
+
+def test_default_study_uses_only_stock_graph_options(study):
+    assert study.graph_options({}) == dict(graph_fusion_level=2, prepack_weights=False,
+                                          bias_preload=False, graph_cse=False)

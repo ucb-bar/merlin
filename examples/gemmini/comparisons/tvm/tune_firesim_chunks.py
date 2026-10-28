@@ -1,7 +1,8 @@
 """Stock TVM DSE over small semantic programs, with a bounded FireSim job pool.
 
 The installed manager adapter is supplied explicitly; see REMOTE_TUNING_README.
-This driver reuses the existing TensorIR extraction/build/verification path.
+This driver reuses TensorIR extraction/build and remote guest correctness checks.
+It does not run a sequential Spike preflight for each candidate.
 TVM owns the gradient scheduler, EvolutionarySearch, XGB, traces and database.
 """
 
@@ -9,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -17,6 +19,7 @@ import time
 from pathlib import Path
 
 from firesim_job_pool import FireSimPool, identity
+from firesim_timeout import MedianWatchdog, positive_seconds
 
 
 def write_json(path, value):
@@ -47,15 +50,93 @@ def load_toolchain(path):
 
     config = json.loads(Path(path).read_text())
     config.setdefault("hardware_receipt", None)
+    config.setdefault("spike_receipt", None)  # Unused by the FireSim build/run path.
     toolchain = FireSimToolchain.from_json(config)
     if toolchain.timing_policy != "fixed-warm" or toolchain.cycle_watchdog or toolchain.memory_variant_receipt:
         raise ValueError("Use a fixed-warm FireSim build configuration, without the Verilator observer")
     toolchain.adapter  # Verify object bytes before any build.
-    receipt = json.loads(toolchain.spike_receipt.read_text())
-    for field in ("spike", "plugin"):
-        if identity(receipt[field + "_path"])["sha256"] != receipt[field + "_sha256"]:
-            raise ValueError("Changed functional engine")
     return toolchain
+
+
+def measurement_sources(tvm, measure):
+    """Bind Python lowering/build/runner code as well as the native compiler."""
+    backend = Path(tvm.__file__).parent / "relax/backend/contrib"
+    paths = set(backend.glob("gemmini*.py"))
+    paths.update(Path(measure.__file__).parent.glob("*.py"))
+    paths.update(Path(__file__).with_name(name) for name in (
+        "tune_firesim_chunks.py", "firesim_timeout.py", "firesim_job_pool.py",
+        "firesim_runner_seconds.py", "run_firesim_study.py",
+    ))
+    if not paths or not (backend / "gemmini_search.py").is_file():
+        raise ValueError("Cannot bind the active Gemmini Python compiler sources")
+    return [identity(path) for path in sorted(paths)]
+
+
+def load_candidate(path):
+    """Bind both retained control ELFs before remote execution or cache reuse."""
+    artifact = json.loads(Path(path).read_text())
+    if not artifact.get("native"):
+        raise ValueError("Eligible contraction candidates must retain Gemmini placement")
+    for label in ("valid", "bad-oracle"):
+        item = artifact["elfs"][label]
+        if identity(item["path"])["sha256"] != item["sha256"]:
+            raise ValueError("Changed candidate ELF: " + label)
+    return artifact
+
+
+class CandidateMeasurements:
+    """One path for calibrated baselines, completed timings and exact ELF reuse."""
+
+    def __init__(self, pool, watchdog):
+        self.pool, self.watchdog = pool, watchdog
+        self.lock = threading.Lock()
+        self.duplicates = {}
+
+    def __call__(self, path, *, baseline_index=None):
+        artifact = load_candidate(path)
+        folder = Path(artifact["folder"])
+        elf = artifact["elfs"]["valid"]
+        key = Path(artifact["workload"]).name
+        baseline = baseline_index is not None
+        with self.lock:
+            duplicate_lock = self.duplicates.setdefault(elf["sha256"], threading.Lock())
+        with duplicate_lock:
+            with self.lock:
+                cached = self.duplicates.get("cost:" + elf["sha256"])
+            if cached is not None and not baseline:
+                write_json(folder / "measurement.json",
+                           dict(cached, duplicate_of_elf_sha256=elf["sha256"]))
+                return cached["cycles"]
+            execution = folder / (f"firesim-baseline-{baseline_index}" if baseline else "firesim")
+            cycles = self.pool.run(
+                elf["path"], execution,
+                wall_timeout=lambda: self.watchdog.timeout(key, baseline=baseline),
+            )
+            occupancy = json.loads((execution / "occupancy.json").read_text())
+            proof = dict(status="passed", cycles=cycles, elf=elf, hardware=self.pool.hardware,
+                         result=identity(execution / "result.json"),
+                         occupancy=identity(execution / "occupancy.json"))
+            write_json(folder / (f"baseline-{baseline_index}.json" if baseline else "measurement.json"), proof)
+            self.watchdog.observe(key, occupancy["occupied_seconds"], baseline=baseline)
+            if not baseline:
+                with self.lock:
+                    self.duplicates["cost:" + elf["sha256"]] = proof
+            return cycles
+
+    def calibrate(self, path):
+        built = load_candidate(path)
+        key = Path(built["workload"]).name
+        samples = [self(path, baseline_index=index) for index in range(3)]
+        cycles = statistics.median(samples)
+        self.watchdog.timeout(key)  # Refuse an inconsistent pilot ceiling.
+        proof = dict(status="passed", cycles=cycles, cycle_samples=samples,
+                     aggregation="median of three correct baseline jobs",
+                     elf=built["elfs"]["valid"], hardware=self.pool.hardware,
+                     results=[identity(Path(path).parent / f"baseline-{i}.json") for i in range(3)])
+        write_json(Path(path).parent / "measurement.json", proof)
+        with self.lock:
+            self.duplicates["cost:" + built["elfs"]["valid"]["sha256"]] = proof
+        return cycles
 
 
 def build_request(path):
@@ -93,7 +174,7 @@ def tune(args):
     toolchain = load_toolchain(args.toolchain)
     pool = FireSimPool(args.pool, deadline_epoch=args.deadline_epoch,
                        finish_active_runs=args.finish_active_runs,
-                       active_run_timeout_seconds=args.active_run_timeout_seconds)
+                       active_run_timeout_seconds=args.candidate_timeout_ceiling_seconds)
     cycles_to_seconds(1, args.target_clock_hz)
     write_json(
         root / "measurement-units.json",
@@ -115,6 +196,16 @@ def tune(args):
     graph_plan = GraphPlan.from_args(args)
     prepared, eligible, inventory = extract_inventory(program, caps, **graph_plan.preparation_options)
     write_json(root / "graph-plan.json", graph_plan.identity(program, prepared))
+    watchdog = MedianWatchdog(
+        root / "timeout-history.json",
+        bootstrap_seconds=args.candidate_bootstrap_seconds,
+        ceiling_seconds=args.candidate_timeout_ceiling_seconds,
+        binding=dict(program=identity(args.program), fixture=identity(args.fixture),
+                     graph_plan=identity(root / "graph-plan.json"),
+                     toolchain=identity(args.toolchain), pool=pool.config_identity,
+                     compiler=identity(tvm._ffi.base._LIB._name),
+                     python_sources=measurement_sources(tvm, measure)),
+    )
     selected_names = {row["task"] for row in inventory if row["kind"] == "contraction"}
     tasks = [task for task in eligible if task.task_name in selected_names]
     if args.workload_key:
@@ -152,7 +243,7 @@ def tune(args):
             input_provenance=binding["provenance"],
         )
     lock = threading.Lock()
-    counter, incumbents, duplicates = 0, {}, {}
+    counter = 0
 
     def build(mod, key):
         nonlocal counter
@@ -186,79 +277,18 @@ def tune(args):
             raise RuntimeError("Candidate build failed: " + str(folder))
         return folder / "artifact.json"
 
-    def run(path):
-        artifact = json.loads(Path(path).read_text())
-        if not artifact.get("native"):
-            raise ValueError("Eligible contraction candidates must retain Gemmini placement")
-        folder = Path(artifact["folder"])
-        elf = artifact["elfs"]["valid"]
-        key = Path(artifact["workload"]).name
-        with lock:
-            duplicate_lock = duplicates.setdefault(elf["sha256"], threading.Lock())
-        with duplicate_lock:
-            with lock:
-                cached = duplicates.get("cost:" + elf["sha256"])
-                incumbent = incumbents.get(key)
-            if cached is not None:
-                if incumbent is not None and cached >= incumbent:
-                    raise TimeoutError("Cached duplicate is dominated by the current incumbent")
-                write_json(
-                    folder / "measurement.json",
-                    dict(status="passed", cycles=cached, duplicate_of_elf_sha256=elf["sha256"], hardware=pool.hardware),
-                )
-                return cached
-            for label, expected, marker in (("valid", 0, "DSE_PASS"), ("bad-oracle", 22, "TENSORIR_NUMERICAL_FAILURE")):
-                item = artifact["elfs"][label]
-                if identity(item["path"])["sha256"] != item["sha256"]:
-                    raise ValueError("Changed candidate ELF")
-                remaining = args.deadline_epoch - time.time()
-                if remaining <= 0:
-                    raise TimeoutError("Study deadline reached during functional admission")
-                code, text = measure._spike(item["path"], toolchain, timeout=min(120, remaining))
-                (folder / (label + ".spike.log")).write_text(text)
-                if code != expected or marker not in text:
-                    raise ValueError("Functional control failed before paid execution")
-
-            def current_limit():
-                with lock:
-                    return incumbents.get(key)
-
-            cycles = pool.run(
-                elf["path"],
-                folder / "firesim",
-                measured_limit=current_limit,
-                live_limit=dict(path=str(root / "incumbents.json"), key=key),
-            )
-            with lock:
-                # A peer may have improved the limit while this job was running.
-                current = incumbents.get(key)
-                if current is not None and cycles >= current:
-                    raise TimeoutError("Completed after a faster incumbent; censored")
-                incumbents[key] = cycles
-                duplicates["cost:" + elf["sha256"]] = cycles
-                write_json(root / "incumbents.json", incumbents)
-            write_json(
-                folder / "measurement.json",
-                dict(
-                    status="passed",
-                    cycles=cycles,
-                    elf=elf,
-                    hardware=pool.hardware,
-                    result=identity(folder / "firesim/result.json"),
-                ),
-            )
-            return cycles
+    run = CandidateMeasurements(pool, watchdog)
 
     baseline_records = []
     seed_database = (
         open_gemmini_database(args.seed_database, prepared, capabilities=caps) if args.seed_database else None
     )
-    # Establish every baseline before search; subsequent requests carry a limit.
+    # Three actual baseline jobs calibrate each workload; cached results do not count.
     for task in tasks:
         schedule = default_schedule(task.dispatched[0]["main"])
         key = str(task.dispatched[0]["main"].attrs[WORKLOAD_ATTR])
         artifact = build(schedule.mod, key)
-        cycles = run(artifact)
+        cycles = run.calibrate(artifact)
         baseline_records.append((task, schedule.trace, cycles, str(artifact)))
         if seed_database is not None:
             record = seed_database.query_tuning_record(task.dispatched[0], caps.target(), "main")
@@ -367,7 +397,9 @@ def tune(args):
             historical_costs_imported=False,
             deadline_epoch=args.deadline_epoch,
             finish_active_runs=args.finish_active_runs,
-            active_run_timeout_seconds=args.active_run_timeout_seconds,
+            candidate_bootstrap_seconds=args.candidate_bootstrap_seconds,
+            candidate_timeout_ceiling_seconds=args.candidate_timeout_ceiling_seconds,
+            timeout_policy=identity(root / "timeout-history.json"),
             graph_cse=args.graph_cse,
             prepack_weights=args.prepack_weights,
             bias_preload=args.bias_preload,
@@ -407,13 +439,15 @@ def main():
     )
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--builders", type=int, default=2)
-    parser.add_argument("--finish-active-runs", action="store_true",
+    parser.add_argument("--finish-active-runs", action="store_true", default=True,
                         help="Stop new slot admissions at the deadline; drain active measurements")
-    parser.add_argument("--active-run-timeout-seconds", type=float,
-                        help="Separate remote per-run hang watchdog when draining; not a tuning budget")
+    parser.add_argument("--candidate-bootstrap-seconds", type=float, required=True,
+                        help="Explicit pilot watchdog for the three baseline jobs per workload")
+    parser.add_argument("--candidate-timeout-ceiling-seconds", type=float, required=True,
+                        help="Hard ceiling for candidate median watchdogs; not an E2E timeout")
     parser.add_argument("--graph-cse", action="store_true")
-    parser.add_argument("--no-prepack-weights", dest="prepack_weights", action="store_false", default=True)
-    parser.add_argument("--no-bias-preload", dest="bias_preload", action="store_false", default=True)
+    parser.add_argument("--no-prepack-weights", dest="prepack_weights", action="store_false", default=False)
+    parser.add_argument("--no-bias-preload", dest="bias_preload", action="store_false", default=False)
     parser.add_argument(
         "--graph-fusion-level",
         type=int,
@@ -425,6 +459,13 @@ def main():
         "--seed-database", type=Path, help="Replay matching traces, remeasure here; never import their historical costs"
     )
     args = parser.parse_args()
+    try:
+        bootstrap = positive_seconds(args.candidate_bootstrap_seconds)
+        ceiling = positive_seconds(args.candidate_timeout_ceiling_seconds)
+        if bootstrap > ceiling:
+            raise ValueError("Bootstrap watchdog exceeds the hard ceiling")
+    except ValueError as error:
+        parser.error(str(error))
     if not (args.builders >= 1 and args.batch >= 1 and args.trials >= 4):
         parser.error("Use positive builder/batch counts and at least four proposals to bootstrap ML ranking")
     if not time.time() < args.deadline_epoch <= time.time() + 4 * 3600:
