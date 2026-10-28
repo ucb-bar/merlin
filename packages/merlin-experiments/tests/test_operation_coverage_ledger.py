@@ -605,3 +605,36 @@ def test_family_only_credit_has_its_own_state(inputs):
     assert rows["convolution.default"]["evidence_state"] == "family_generated"
     assert "family cell capsule" in rows["convolution.default"]["justification"]
     assert "family_generated" in L.STATES
+
+
+
+# --- host float island without a record -----------------------------------------------------------
+
+
+def test_float_island_is_read_from_the_quantization_methodology():
+    spec = {"quantization": {"methodology": {"float_island": {"host": "merlin", "ops": ["gelu", "softmax"]}}}}
+    assert L._float_island(spec) == {"gelu", "softmax"}
+    assert L._float_island({}) == frozenset()
+
+
+def test_float_island_operator_takes_no_accelerator_credit_without_a_record(inputs, monkeypatch):
+    monkeypatch.setattr(L, "_float_island", lambda spec: frozenset({"gelu"}))
+    _lite(inputs, ["aten.gelu.default", "aten.relu.default"])
+    spec = yaml.safe_load(inputs["software_spec"].read_text())
+    spec["operations"].append({"id": "maps", "families": ["elementwise_map"], "placement": "accelerator",
+                               "status": "reviewed", "signature": {"ranks": [2]}})
+    inputs["software_spec"].write_text(yaml.safe_dump(spec, sort_keys=False))
+    inputs["capsules"].append({"name": "SY_elementwise_map_i8_aligned", "op": "residual_add",
+                               "source_role": "derived_sweep"})
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    rows = _rows(document)
+    assert rows["gelu.default"]["declaration"]["status"] == "float_island_host"
+    assert rows["gelu.default"]["required_engine"] == "host"
+    assert rows["gelu.default"]["test_identity"]["family_capsules"] == []
+    assert rows["gelu.default"]["evidence_state"] == "unmodeled"
+    assert rows["relu.default"]["required_engine"] == "accelerator"
+    assert document["declaration_basis"] == "candidate_only_unscreened"
+
+
+def test_record_ledger_declares_its_basis(inputs):
+    assert L.prepare(**inputs).record()["declaration_basis"] == "spec_validation_record"

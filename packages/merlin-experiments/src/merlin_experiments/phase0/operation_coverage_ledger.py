@@ -156,6 +156,13 @@ def _candidates(spec, overload):
     return family, direct or by_family
 
 
+def _float_island(spec):
+    """Operators the spec's quantization methodology keeps in a host float island (exact names)."""
+    island = ((spec.get("quantization") or {}).get("methodology") or {}).get("float_island") or {}
+    ops = island.get("ops") if isinstance(island, dict) else ()
+    return frozenset(str(name) for name in ops or ())
+
+
 def _validation_rows(record):
     by_overload = {}
     for case in record["cases"]:
@@ -496,6 +503,7 @@ def prepare(
             demand.setdefault(op, []).append(label)
     overloads = sorted(set(validation) | set(demand) | unmodeled)
 
+    island = _float_island(spec)
     operation_rows, exercised = [], set()
     for overload in overloads:
         cases = validation.get(overload, [])
@@ -509,6 +517,11 @@ def prepare(
             family = next((name for row in cited.values() for name in row["families"]), family)
         elif cases:
             declaration_status, admitting, engine = "unsupported", [], "host"
+        elif _base(overload) in island:
+            # Without a record no signature is screened; a name-only family candidate must not put an
+            # operator the spec keeps in its host float island on the accelerator (gelu would otherwise
+            # take residual_add cell credit). The record path decides placement case by case instead.
+            declaration_status, admitting, engine = "float_island_host", [], "host"
         else:
             admitting = candidates
             declaration_status = "candidate_only" if candidates else "unsupported"
@@ -682,6 +695,9 @@ def prepare(
         "capsule_manifest_sha256": digest(entries),
         "source_requirement_ledger": linked,
         "states": list(STATES),
+        # How operation rows were declared: screened against the spec-validation record, or name-only
+        # candidates (no signature screened; an accelerator state then reflects the op name only).
+        "declaration_basis": "spec_validation_record" if spec_validation is not None else "candidate_only_unscreened",
         "operations": operation_rows,
         "compositions": composition_rows,
         "capsules": capsule_rows,
