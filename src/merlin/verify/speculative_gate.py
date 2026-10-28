@@ -1,7 +1,7 @@
 """Run proof checks beside a compile and stop the compile, with evidence, if one fails.
 
 The compile proceeds as if every check will pass. Each submitted check runs in its own owned worker
-process (one at a time, low priority); a check that is not ``accepted`` records a failure, prints
+process (``workers`` at a time, default one, low priority); a check that is not ``accepted`` records a failure, prints
 which check failed, why, and where its exact input and output are, and interrupts the compile.
 Nothing here decides whether a result is correct: it only schedules checks, never treats a missing
 verdict as a pass, and never leaves a worker running after ``close``.
@@ -92,7 +92,8 @@ def _slug(text: str) -> str:
 
 
 class SpeculativeGate:
-    """Sequential owned-process runner for gate checks. Not reusable after a failure or ``close``."""
+    """Owned-process runner for gate checks, ``workers`` at a time (default one: a shared host).
+    Not reusable after a failure or ``close``."""
 
     def __init__(
         self,
@@ -103,7 +104,10 @@ class SpeculativeGate:
         worker_path: Sequence[Path] = (),
         nice: int = 19,
         aliases: dict[str, str] | None = None,
+        workers: int = 1,
     ):
+        if type(workers) is not int or workers < 1:
+            raise ValueError("a speculative gate needs at least one worker")
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.verdicts: list[dict[str, Any]] = []
@@ -112,10 +116,11 @@ class SpeculativeGate:
         self._worker_path = [str(p) for p in worker_path]
         self._nice = nice
         self._aliases = dict(aliases or {})
+        self._workers = workers
         self._queue: queue.Queue[Job | None] = queue.Queue()
         self._condition = threading.Condition()
-        self._thread: threading.Thread | None = None
-        self._process: subprocess.Popen | None = None
+        self._threads: list[threading.Thread] = []
+        self._processes: set[subprocess.Popen] = set()
         self._pending = 0
         self._submitted = 0
         self._counter = itertools.count(1)
@@ -167,9 +172,13 @@ class SpeculativeGate:
 
     def _start(self) -> None:
         with self._condition:
-            if self._thread is None:
-                self._thread = threading.Thread(target=self._run, name="merlin-gate", daemon=True)
-                self._thread.start()
+            if not self._threads:
+                self._threads = [
+                    threading.Thread(target=self._run, name=f"merlin-gate-{i}", daemon=True)
+                    for i in range(self._workers)
+                ]
+                for thread in self._threads:
+                    thread.start()
 
     # -- results ------------------------------------------------------------------------------
     def poll(self) -> None:
@@ -246,12 +255,15 @@ class SpeculativeGate:
         """Cancel queued work and kill the running worker's whole process group. Idempotent."""
         with self._condition:
             self._closed = True
-            process, thread = self._process, self._thread
-        if process is not None and process.poll() is None:
-            stop_owned(process)
-        self._queue.put(None)
-        if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=15)
+            processes, threads = list(self._processes), list(self._threads)
+        for process in processes:
+            if process.poll() is None:
+                stop_owned(process)
+        for _ in range(max(len(threads), 1)):
+            self._queue.put(None)
+        for thread in threads:
+            if thread is not threading.current_thread():
+                thread.join(timeout=15)
 
     # -- worker thread ------------------------------------------------------------------------
     def _run(self) -> None:
@@ -285,7 +297,7 @@ class SpeculativeGate:
         with (job.directory / "worker.log").open("wb") as log:
             process = start_owned(command, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
             with self._condition:
-                self._process = process
+                self._processes.add(process)
             deadline = None if self._job_timeout is None else time.monotonic() + self._job_timeout
             try:
                 while process.poll() is None:
@@ -303,7 +315,7 @@ class SpeculativeGate:
             finally:
                 close_owned_pipes(process)
                 with self._condition:
-                    self._process = None
+                    self._processes.discard(process)
         if self._closed:
             return None  # cancelled: a worker killed by close() is not a failed check
         try:

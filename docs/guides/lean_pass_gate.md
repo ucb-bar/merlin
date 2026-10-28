@@ -46,9 +46,14 @@ Every pipeline opens with `canonicalize,cse`. With `cse` validated, `leading_cse
 before the pipeline (same pass registry and fusion guard as the build's runner), checks the exact `cse`
 pair, and hands the result on; it then runs them once more and checks any change, so the pipeline's own
 head provably changes nothing and the build lowers exactly what was checked. `canonicalize` is not
-validated (folds are outside the checker). This is exact only when nothing rewrites the module before
-the pass manager, so with features or source-carrier, observation or masked-contraction stages selected
-`cse` validation is refused; validate the other passes then.
+validated (folds are outside the checker). This is exact only when the build's pipeline opens with
+`canonicalize,cse` and its runner leaves the module alone before the pass manager. After lowering,
+`leading_cse.confirm` establishes both from what the build ran: the recorded runner command
+(`lowering_recipe.json`) and runner script, whose statements between parsing the module and
+`_run_stages` must each be an `if` on an `argv` flag that is off. A feature that only edits later
+stages therefore validates; a build whose runner rewrites the module first (for example
+`fuse_transpose_b`), or whose runner cannot be read that way, fails as `cse` / `unsupported` and its
+artifacts are rejected.
 
 On the textual (RVV, Spike) route the gated build's `model.ll` is byte-identical to the ungated one.
 On the xDSL route 15 commutative `fadd`s of `small_llama_int8` have their operands swapped: the
@@ -117,7 +122,8 @@ merlin-compile ... --validate-passes all --lean-sdk-bin <lean-4.35.0>/bin
 ```
 
 or set `MERLIN_VALIDATE_PASSES` (`all` or a comma list) and `MERLIN_LEAN_SDK_BIN`, with
-`MERLIN_COMPILER_PYTHON=<venv>/bin/python`, or pass `pass_validation=PassValidation(gate, tools)` to
+`MERLIN_COMPILER_PYTHON=<venv>/bin/python` (and `MERLIN_VALIDATE_WORKERS` to run that many checks at
+once; default 1, each a niced process), or pass `pass_validation=PassValidation(gate, tools)` to
 `lower_model`. It is off by default; a missing or stale tool stops the compile before it starts.
 `prepare_for_lowering` and `lower_model` each run under their own guard; a step called inside an
 active validation joins it, and a different explicit validation is refused.

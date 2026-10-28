@@ -10,6 +10,7 @@ point that lowers (``merlin-compile --validate-passes``, the whole-model backend
 * ``MERLIN_VALIDATE_PASSES`` -- ``all`` or a comma-separated subset of :data:`CHECKS`.
 * ``MERLIN_LEAN_SDK_BIN`` -- the Lean SDK ``bin`` directory (``lean``, ``lake``) the checker was built with.
 * ``MERLIN_COMPILER_PYTHON`` -- the interpreter of the authoritative MLIR exporter (``torch_mlir``).
+* ``MERLIN_VALIDATE_WORKERS`` -- how many checks run at once (default 1; each is one niced process).
 
 The ``merlin-lean`` checker must already be built from ``merlin/lean`` (``lake build``).
 """
@@ -38,6 +39,7 @@ CHECKS = {
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
 ENV_COMPILER_PYTHON = "MERLIN_COMPILER_PYTHON"
+ENV_WORKERS = "MERLIN_VALIDATE_WORKERS"
 
 
 @dataclass(frozen=True)
@@ -125,7 +127,10 @@ def from_environment(workdir: Path, *, index_bits: int | None = None) -> PassVal
     from .speculative_gate import SpeculativeGate
 
     tools = CheckerTools(Path(sdk_bin), compiler_python())
-    gate = SpeculativeGate(Path(workdir) / "pass-validation", interrupt=True)
+    workers = os.environ.get(ENV_WORKERS, "1").strip()
+    if not workers.isdigit() or int(workers) < 1:
+        raise ValueError(f"{ENV_WORKERS} must be a positive integer, not {workers!r}")
+    gate = SpeculativeGate(Path(workdir) / "pass-validation", interrupt=True, workers=int(workers))
     return PassValidation(gate, tools, passes, 64 if index_bits is None else index_bits)
 
 

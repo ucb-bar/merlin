@@ -150,6 +150,35 @@ def test_jobs_run_one_at_a_time(gate_factory):
     assert two["start"] >= one["end"]
 
 
+def test_workers_run_checks_at_once(gate_factory):
+    gate = gate_factory(workers=2)
+    first = gate.submit("fake_checks:slow", before="a", after="a", params={"seconds": 2.0})
+    second = gate.submit("fake_checks:slow", before="b", after="b", params={"seconds": 2.0})
+    gate.join()
+    one = json.loads((first.directory / "stamp.json").read_text())
+    two = json.loads((second.directory / "stamp.json").read_text())
+    assert two["start"] < one["end"] and one["start"] < two["end"]
+    assert len(gate.verdicts) == 2
+
+
+def test_close_kills_every_running_worker(gate_factory):
+    gate = gate_factory(workers=2)
+    jobs = [gate.submit("fake_checks:forever", before=x, after=x) for x in "ab"]
+    deadline = time.monotonic() + 20
+    while not all((j.directory / "pid").exists() for j in jobs) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    pids = [int((j.directory / "pid").read_text()) for j in jobs]
+    gate.close()
+    for pid in pids:
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+
+
+def test_a_gate_needs_a_worker(tmp_path):
+    with pytest.raises(ValueError, match="at least one worker"):
+        SpeculativeGate(tmp_path / "gate", workers=0)
+
+
 def test_close_kills_the_running_worker_promptly(gate_factory):
     gate = gate_factory()
     job = gate.submit("fake_checks:forever", before="a", after="a")
