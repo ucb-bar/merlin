@@ -585,7 +585,10 @@ def _prepare_model_mlir(
     _validation.observe(
         "lower_quant_ext", module, lambda m: _lean_stages.run("prepare-lower-quant-ext", lower_quant_ext, m)
     )
-    _lean_stages.run("prepare-bf16-matmul-f32acc", lower_bf16_matmul_f32acc, module)
+    _validation.observe(
+        "lower_bf16_matmul_f32acc", module,
+        lambda m: _lean_stages.run("prepare-bf16-matmul-f32acc", lower_bf16_matmul_f32acc, m),
+    )
     _lean_stages.run("prepare-fix-bool-sitofp", fix_bool_sitofp, module)
     # The other half of the bool-cast repair, and the one that erases models rather than skewing
     # them: a float->i1 `arith.fptosi` is POISON in LLVM for every value but 0 and -1, and the

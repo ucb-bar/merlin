@@ -24,6 +24,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from merlin.common.paths import artifacts_dir, repo_root
+from merlin.verify.bf16_policy_gate import ADMISSION, REVIEW, require_admission
+from merlin.verify.bf16_policy_gate import ROOTS as GATE_ROOTS
+from merlin.verify.gate_errors import GateError
 from merlin.verify.lean.bf16_f32acc import BOUNDARY, CONTRACT_THEOREMS, SEGMENT, replay
 from merlin.verify.lean.check import _file_ref, _stale
 
@@ -55,14 +58,27 @@ def digest(data: bytes) -> str:
 
 
 def reviewed(lean: Path, lock: dict[str, str], statements: dict[str, str]) -> bool:
-    """Approval is absent unless the installed Spec and all claim pins match the current bytes."""
-    return (
+    """Require complete pins AND installed independently attributable policy admission.
+
+    This publisher creates neither admission nor human review. Their authentic
+    installation is a trusted-host governance premise, not established by hashes.
+    """
+    pins_match = (
         set(statements) == set(THEOREMS)
         and all(
             (lean / name).is_file() and lock.get(name) == digest((lean / name).read_bytes())
             for name in [SPEC, *REVIEW_FILES]
         )
         and all(lock.get(f"statement:{name}") == digest(statement.encode()) for name, statement in statements.items())
+    )
+    if not pins_match:
+        return False
+    try:
+        admitted = require_admission(lean.parent.parent)
+    except GateError:
+        return False
+    return set(admitted["statements"]) == set(GATE_ROOTS) and all(
+        statements.get(name) == statement for name, statement in admitted["statements"].items()
     )
 
 
@@ -176,6 +192,7 @@ def evidence(path: Path, compiler: Path, work: Path) -> dict:
         "receipt": _file_ref(path),
         "report": receipt["cert"],
         "checker": receipt["lean"],
+        "exporter": receipt["exporter"],
         "boundary": receipt["boundary"],
         "candidates": count,
         "pass_boundary": local,
@@ -218,11 +235,20 @@ def main() -> int:
         if stale := _stale(json.loads(path.read_text()), str(path)):
             raise ValueError(f"receipt became stale during publication: {stale}")
     approved = reviewed(root / "merlin/lean", lock, statements)
+    approval_refs = None
+    if approved:
+        admission = require_admission(root)
+        if any(
+            record["checker"] != admission["lean"] or record["exporter"] != admission["exporter"] for record in records
+        ):
+            raise ValueError("publication checker/exporter differs from installed admission")
+        approval_refs = {"admission": _file_ref(root / ADMISSION), "review": _file_ref(root / REVIEW)}
     package = {
         "schema": "merlin.lean.bf16-pass-claim.v1",
         "claim_type": "policy",
         "status": "verified" if approved else "human_review_pending",
         "human_reviewed": approved,
+        "approval_records": approval_refs,
         "scope": "Merlin bf16 preparation pass between model2MLIR output and the OOT compiler handoff",
         "claim": "Complete output equality to the source-derived contract under SSA-invariant operation semantics; "
         "strict local policy refinement for every recognized contraction on all typed nonpoison tensor operands "
@@ -255,6 +281,11 @@ def main() -> int:
     }
     destination = base / "review"
     destination.mkdir(exist_ok=True)
+    if approved:
+        if require_admission(root) != admission or any(
+            _file_ref(Path(ref["path"])) != ref for ref in approval_refs.values()
+        ):
+            raise ValueError("installed policy approval changed during publication")
     (destination / ("claim.json" if approved else "candidate.json")).write_text(json.dumps(package, indent=2) + "\n")
     if not approved:
         (destination / "after-approval.patch").write_text(pinning_patch(root))
