@@ -11,6 +11,8 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/operation_optimizations.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/capability_inventory.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/performance_brief.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/composition_next.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
   - packages/merlin-experiments/tests/test_operation_optimizations.py
 ---
 
@@ -76,6 +78,25 @@ At launch, `capability_inventory.stage_selected` hands the same public roster it
 Staging is advice: a failure is printed and the launch continues. On every self-check, the
 performance brief adds `operation` to each advised case's `optimization_next`: the family, its entry
 id in the staged file, its focus and the panel command, plus any secondary families (`also`).
+
+## Composition routes and source-composition requests
+
+Chains of operations have their own library routes in the composition catalog
+(`merlin.compile.composition_catalog`), and whole-model and program checks accept
+`submission/source_composition.json` requests. Authors did not find either from the catalogue alone,
+so the general entry carries `chains_have_composition_routes`, `connected_chain` carries
+`source_composition_requests`, and the chain families (`connected_chain`, `elementwise_epilogue`,
+`convolution`, `attention`) and the general entry list the recipe
+`heavy-pass-recipes/composition_routes.py`. The TASK.md section ends with one generic paragraph
+(`COMPOSITION_TEXT`): the per-case discovery command, the request options and where results are
+reported, with no speedup claim.
+
+The same script reads a case's declared structure and, for a model or program, its interface IR
+(provenance regions), and `feedback.composition_next` loads it to add
+`optimization_next.composition` (route, `module:symbol`, import state, recipe or contract command)
+and, for model and program cases, `optimization_next.source_composition_request` (matching options
+and a complete request file). Both sit beside `library_pass`; host-compute flags put the epilogue
+routes first. They are pointers only: nothing gates, ranks or applies.
 
 ## Changing the data
 

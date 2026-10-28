@@ -52,6 +52,11 @@
         "text": "Composing an existing library pass or recipe is usually quicker than writing a new schedule; register alternatives as variants or tuning knobs so they stay comparable, and keep your own schedules where they measure better."
       },
       {
+        "id": "chains_have_composition_routes",
+        "kind": "principle",
+        "text": "Producer to consumer chains (a product feeding bias, scale, activation, requantization or a pool; a residual add; sibling products sharing an input; per-head slices) have composition routes in the library's composition catalog. List the routes that apply to a case before writing the chain by hand; a route that does not fit refuses or keeps the original form."
+      },
+      {
         "id": "ordering_and_numerics",
         "kind": "pitfall",
         "text": "More buffering or fewer ordering points is not automatically faster or legal: preserve source-derived completion ordering between overlapping writes and reads, and never keep a faster variant whose numerical result changed."
@@ -68,7 +73,8 @@
       {"kind": "skill", "id": "explore-schedules", "use": "Screen emitted alternatives and run the shape panel."},
       {"kind": "skill", "id": "cycle-model-and-gsim", "use": "Which cycle evidence is comparable and how to obtain it for one case."},
       {"kind": "skill", "id": "scheduling-api", "use": "Library inventory (scripts/library_inventory.py) and pass contracts."},
-      {"kind": "recipe", "id": "heavy-pass-recipes/library_pipeline_policy.py", "use": "Choose among registered library pipelines per shape class from panel cycles."}
+      {"kind": "recipe", "id": "heavy-pass-recipes/library_pipeline_policy.py", "use": "Choose among registered library pipelines per shape class from panel cycles."},
+      {"kind": "recipe", "id": "heavy-pass-recipes/composition_routes.py", "use": "List the composition routes and source composition requests that apply to one case, with their library symbols."}
     ],
     "evidence": [
       "agent_selfcheck.py --panel FAMILY: one representative case per shape class against its earlier best of the same evidence kind.",
@@ -115,6 +121,11 @@
           "text": "Reusing the same local addresses for every reduction step, or placing an ordering point after every block, serializes transfers and compute."
         },
         {
+          "id": "drain_between_reduction_steps",
+          "kind": "principle",
+          "text": "A full drain is needed only where nothing else orders a write before a later conflicting access. Between the reduction steps of one output block the target may already order a compute after the load into its rows, a load after the computes that read its rows, and successive partial-sum updates; drain there only for an ordering its facts leave unknown."
+        },
+        {
           "id": "edges_and_issue",
           "kind": "principle",
           "text": "Handle ragged edges without padding the whole problem, hoist invariant configuration out of loops, and emit counted loops instead of fully unrolled command streams when issue is the bottleneck."
@@ -129,6 +140,7 @@
       "mechanisms": [
         {"kind": "catalog", "id": "capacity_tiles"},
         {"kind": "catalog", "id": "resident_rhs"},
+        {"kind": "catalog", "id": "shared_rhs_epochs"},
         {"kind": "catalog", "id": "array_weight_retention"},
         {"kind": "catalog", "id": "tile_traversal"},
         {"kind": "catalog", "id": "block_order"},
@@ -142,8 +154,10 @@
         {"kind": "catalog", "id": "sibling_input_reuse"},
         {"kind": "catalog", "id": "counted_configuration_cleanup"},
         {"kind": "catalog", "id": "command_loops"},
+        {"kind": "catalog", "id": "dense_panel_epochs"},
         {"kind": "recipe", "id": "heavy-pass-recipes/dense_readout_recipe.py", "use": "Readout overlap and ready readout for a partial-sum-bound product."},
         {"kind": "recipe", "id": "heavy-pass-recipes/long_k_recipe.py", "use": "Segmented reduction with a retained operand."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/dense_epoch_recipe.py", "use": "Fact-backed epochs: one drain per output block instead of one per K step; each dropped drain mapped to an RTL ordering fact or kept as UNKNOWN, with host-integer and completion-order checks."},
         {"kind": "skill", "id": "shape-schedule-selection", "use": "Capacity-derived per-class plans; capacity_pipeline_example.py."}
       ],
       "evidence": [
@@ -178,6 +192,11 @@
           "id": "not_a_small_contraction",
           "kind": "pitfall",
           "text": "Treating a single-row product as a small contraction inherits block shapes and ordering points tuned for reuse it does not have; include a single-row case in every contraction default comparison."
+        },
+        {
+          "id": "one_drain_per_output_block",
+          "kind": "principle",
+          "text": "A single-row product has a long reduction per output tile, so a drain after every reduction step dominates its stream. Where the target's ordering facts order loads, computes and partial-sum updates, drain once per output block and keep the drains a missing fact leaves."
         }
       ],
       "mechanisms": [
@@ -189,6 +208,8 @@
         {"kind": "catalog", "id": "dma_coalescing"},
         {"kind": "catalog", "id": "strided_tile_loads"},
         {"kind": "catalog", "id": "sibling_input_reuse"},
+        {"kind": "catalog", "id": "dense_panel_epochs"},
+        {"kind": "recipe", "id": "heavy-pass-recipes/dense_epoch_recipe.py", "use": "Decode projections: one drain per output block instead of one per K step, each dropped drain backed by an ordering fact."},
         {"kind": "skill", "id": "roofline-and-utilization", "use": "Read the transfer floor against the compute floor."}
       ],
       "evidence": [
@@ -212,12 +233,22 @@
         {
           "id": "resident_weights",
           "kind": "principle",
-          "text": "Keep weights resident across output tiles when they fit, and batch several output tiles per ordering point; an ordering point after every output tile serializes transfers and compute."
+          "text": "Keep weights resident across output tiles when they fit; otherwise consider capacity-derived complete-K output-column phases only with independent outputs, immutable inputs and no intermediate observers. Consume the complete phase owner with the exact resident input footprint and real completion before reprepare. Compare complete-call cycles; an ordering point after every output tile serializes transfers and compute."
         },
         {
           "id": "no_double_write",
           "kind": "pitfall",
           "text": "Never write the same local buffer rows twice without an ordering point between the writes (for example initialize-then-overwrite): writes can complete out of order. Load each row or zero-source it once."
+        },
+        {
+          "id": "drain_where_unordered",
+          "kind": "principle",
+          "text": "A full drain is needed only between a write and a later conflicting access to the same local rows that the hardware does not order. Where RTL ordering facts show the dispatch orders loads, computes and readouts on overlapping rows, group many computes per epoch and drain at epoch boundaries and stores; keep the drain wherever an ordering fact is unknown, and check the emitted stream with the completion-order check."
+        },
+        {
+          "id": "qualified_readout_epoch",
+          "kind": "principle",
+          "text": "A separate selected source law may order the final producer and original column readouts without a full drain after each store. Preserve actual ACC RAW/result visibility, ordered store snapshots, finite pending capacity and the final private-block drain. Verify the returned consumer source/schedule/law and actual emitted sequence; a driver option or dense readout object is not convolution application. Missing premises retain the default."
         },
         {
           "id": "padding_once",
@@ -254,14 +285,19 @@
         {"kind": "catalog", "id": "array_weight_retention"},
         {"kind": "catalog", "id": "quantized_spatial_readout_cache"},
         {"kind": "catalog", "id": "host_address_arithmetic"},
+        {"kind": "catalog", "id": "convolution_compute_epochs"},
+        {"kind": "catalog", "id": "convolution_readout_epochs"},
         {"kind": "catalog", "id": "barrier_cleanup"},
         {"kind": "catalog", "id": "sync_legality"},
         {"kind": "catalog", "id": "placement_legality"},
         {"kind": "recipe", "id": "heavy-pass-recipes/conv_window_recipe.py", "use": "Window row runs with retained input and resident weights; hazard check on rows written twice."},
-        {"kind": "recipe", "id": "heavy-pass-recipes/spatial_chain_recipe.py", "use": "A windowed operation feeding a pool through the composition catalog."}
+        {"kind": "recipe", "id": "heavy-pass-recipes/conv_epoch_recipe.py", "use": "Compute epochs from ordering facts; optional separately source-qualified readout epoch and actual consumer receipt check. Missing premises keep the default; host-integer and completion-order checks per route."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/spatial_chain_recipe.py", "use": "A windowed operation feeding a pool through the composition catalog."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/composition_routes.py", "use": "Which pool, readout and residual routes apply to this case."}
       ],
       "evidence": [
         "fence_overlap: ordering points and output tiles per ordering point.",
+        "Drains per compute and the completion-order verdict per route (conv_epoch_recipe.py output).",
         "Input transfers and rows per transfer against the count a per-element gather would issue (recipe output).",
         "agent_selfcheck.py --panel conv."
       ]
@@ -302,12 +338,14 @@
       ],
       "mechanisms": [
         {"kind": "catalog", "id": "row_normalization"},
+        {"kind": "catalog", "id": "shared_rhs_epochs"},
         {"kind": "catalog", "id": "ordered_reductions"},
         {"kind": "catalog", "id": "epilogue_fusion"},
         {"kind": "catalog", "id": "temporary_reuse"},
         {"kind": "catalog", "id": "sibling_input_reuse"},
         {"kind": "skill", "id": "fusion", "use": "Region fusion with all live outputs preserved."},
-        {"kind": "skill", "id": "quantization", "use": "Exact integer scales and requantization between stages."}
+        {"kind": "skill", "id": "quantization", "use": "Exact integer scales and requantization between stages."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/composition_routes.py", "use": "Independent-head and shared-input routes and the matching source composition requests."}
       ],
       "evidence": [
         "Bytes written and re-read between the two products.",
@@ -350,7 +388,8 @@
         {"kind": "catalog", "id": "connected_multioutput"},
         {"kind": "catalog", "id": "dma_coalescing"},
         {"kind": "skill", "id": "fusion", "use": "Fuse with the producer while preserving every live output."},
-        {"kind": "skill", "id": "quantization", "use": "Prove exact scales and output saturation."}
+        {"kind": "skill", "id": "quantization", "use": "Prove exact scales and output saturation."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/composition_routes.py", "use": "Readout, pool and residual-add routes for an epilogue chain, with the symbol to start from."}
       ],
       "evidence": [
         "Separate passes over the output in the emitted stream.",
@@ -456,6 +495,11 @@
           "id": "check_chains_early",
           "kind": "evidence",
           "text": "Check connected programs as soon as their operation families compile; whole chains exercise interfaces and storage lifetimes no single operation does. Optimize the stages that dominate the chain with their own family's principles."
+        },
+        {
+          "id": "source_composition_requests",
+          "kind": "principle",
+          "text": "Whole-model and program checks accept source composition requests in the submission (prepack weights, share exact tensor preparations, dense input views, shared input siblings, independent heads, operation profile). The original owner applies a request only where the source proves it, keeps the ordinary route elsewhere, and reports what was requested, selected and applied; a request is not a speedup until cycles on the same cases say so."
         }
       ],
       "mechanisms": [
@@ -469,7 +513,8 @@
         {"kind": "catalog", "id": "preparation_cse"},
         {"kind": "skill", "id": "compose-pass-pipeline", "use": "Compose library passes over a connected source."},
         {"kind": "skill", "id": "fusion", "use": "Bounded fusion discovery with a correct unfused route retained."},
-        {"kind": "recipe", "id": "heavy-pass-recipes/spatial_chain_recipe.py", "use": "A connected window chain found through the composition catalog."}
+        {"kind": "recipe", "id": "heavy-pass-recipes/spatial_chain_recipe.py", "use": "A connected window chain found through the composition catalog."},
+        {"kind": "recipe", "id": "heavy-pass-recipes/composition_routes.py", "use": "Composition routes and source composition requests that match this program's chains."}
       ],
       "evidence": [
         "agent_selfcheck.py --suite programs for the connected programs.",

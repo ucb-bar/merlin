@@ -519,6 +519,98 @@
       "implementation_status": "existing_generic_mechanism_target_realization_conditional"
     },
     {
+      "id": "convolution_compute_epochs",
+      "facet": "synchronization",
+      "required_traits": [
+        "convolution",
+        "scratchpad",
+        "accumulator"
+      ],
+      "mechanism": "Group convolution computes into epochs that drain the device only at epoch boundaries and stores instead of after every compute",
+      "compiler": {
+        "module": "merlin.compile.scheduling.convolution_exploration",
+        "symbol": "convolution_pass_space",
+        "path": "src/merlin/compile/scheduling/convolution_exploration.py",
+        "line": 766,
+        "sha256": "0986ff7ea2b2a8e785f1be627380422a37c46b86af3a6f6589ff7815e56e4902",
+        "public_in_v6": false,
+        "source_summary": "Registered original convolution choices: retained input, bounded issue/compute epochs and full-fit or capacity-derived complete-K RHS phases with separate source laws.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "A counted convolution whose dispatch orders a load before the compute that reads its rows, a later write after the compute or readout that read them, and accumulator results before their readout, each taken from RTL command-ordering facts; any flag without such a fact keeps its drain",
+      "remaining_adapter_or_feedback": "Map every ConvolutionComputeEpochLaw and ConvolutionLoadIssueLaw flag to an ordering fact or UNKNOWN (heavy-pass-recipes conv_epoch_recipe.py prints the table), route complete() to a real full drain, and run the completion-order check on the emitted stream",
+      "evidence_to_request": "Fences per compute and commands before and after, completion-order verdict with zero hazard pairs, exact outputs and cycles on the same cases",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "dense_panel_epochs",
+      "facet": "synchronization",
+      "required_traits": [
+        "dense_contraction",
+        "scratchpad",
+        "accumulator"
+      ],
+      "mechanism": "Merge the K steps of each output block of a two-window dense panel pipeline into one epoch, so the device drains once per output block instead of a full fence after every K step",
+      "compiler": {
+        "module": "merlin.compile.scheduling.dense_panel_epochs",
+        "symbol": "DensePanelEpochLaw",
+        "path": "src/merlin/compile/scheduling/dense_panel_epochs.py",
+        "line": 66,
+        "sha256": "9d528464cc91f916bf80bf2ccfdbcb8629f7525efcb271de2924ff1b2411bafe",
+        "public_in_v6": false,
+        "source_summary": "schedule_dense_pipeline(..., epoch_law=DensePanelEpochLaw(...)): drains inside one output block's K stream (and before its readout under result visibility) go where the law's ordering premises hold; emitters see only the remaining drains.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v19"
+      },
+      "applicability": "A dense or decode product on the library's two-window panel pipeline whose dispatch makes a compute wait for the older load into its rows, a load wait for the older computes that read its rows, and accumulator updates land in order, each taken from RTL command-ordering facts; a flag without such a fact keeps its drains",
+      "remaining_adapter_or_feedback": "Map every DensePanelEpochLaw flag to an ordering fact or UNKNOWN (heavy-pass-recipes dense_epoch_recipe.py prints the table), pass epoch_law to schedule_dense_pipeline with a two-window plan, route the remaining drains to a real full fence, and run the completion-order check on the emitted stream",
+      "evidence_to_request": "Fences per output tile and commands before and after, completion-order verdict with zero hazard pairs, exact outputs and cycles on the same cases",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "shared_rhs_epochs",
+      "facet": "synchronization",
+      "required_traits": ["dense_contraction", "scratchpad", "accumulator"],
+      "mechanism": "Retain a shared immutable RHS across sibling products, load each full-K LHS panel once across output columns, and compose checked member completion epochs",
+      "compiler": {
+        "module": "merlin.compile.scheduling.dense_shared_rhs",
+        "symbol": "schedule_dense_shared_rhs",
+        "path": "src/merlin/compile/scheduling/dense_shared_rhs.py",
+        "line": 220,
+        "sha256": "ea72cfe6b6ddb5d999b98299474767cd7aeb363e914c9142fdb809bc18cc6bce",
+        "public_in_v6": false,
+        "source_summary": "Capacity-derived blocks and original per-member readouts, consumed schedule dialect grouping, independent source/storage/pointer checks and selected dependency epochs; unknown ordering retains per-effect completion.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v24"
+      },
+      "applicability": "Original sibling contractions sharing the same immutable complete RHS, with independently admitted owned storage, disjoint external buffers and every original live output; square primitive tiles, full-K LHS capacity and original per-member numerical contracts must fit",
+      "remaining_adapter_or_feedback": "Use heavy-pass-recipes/shared_rhs_epoch_recipe.py:prepare through the ordinary registered-pass A/B workflow. Bind actual source products, target encode/project callbacks, selected reuse/ordering/readout laws and a real completion; unavailable premises decline or retain drains. Reanalyze emitted operands and traffic for both operands, not just the retained RHS.",
+      "evidence_to_request": "Consumed source-bound schedule.plan, exact member/operand/output roster, original i32 or scaled narrow readouts, actual transfer rectangles and bytes by operand, configuration/completion counts, asynchronous ordering verdict, complete numerical outputs and comparable whole-call cycles across neighboring shapes",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
+      "id": "convolution_readout_epochs",
+      "facet": "synchronization",
+      "required_traits": [
+        "convolution",
+        "scratchpad",
+        "accumulator"
+      ],
+      "mechanism": "Order a convolution final producer and original readouts by selected dependencies, retaining a full drain at each private column-block boundary",
+      "compiler": {
+        "module": "merlin.compile.scheduling.convolution_exploration",
+        "symbol": "emit_convolution_schedule",
+        "path": "src/merlin/compile/scheduling/convolution_exploration.py",
+        "line": 551,
+        "sha256": "0986ff7ea2b2a8e785f1be627380422a37c46b86af3a6f6589ff7815e56e4902",
+        "public_in_v6": false,
+        "source_summary": "Explicit optional ConvolutionReadoutEpochLaw in the original convolution callback consumer; default per-store completion unchanged.",
+        "access": "full_compiler_source_and_scheduling_capabilities_v23"
+      },
+      "applicability": "Counted convolution with issued compute epochs and disjoint original output/ACC intervals; separate selected ACC RAW/result visibility, ordered store snapshots and finite queue progress, private ownership and real final completion",
+      "remaining_adapter_or_feedback": "Bind every ConvolutionReadoutEpochLaw premise to selected source or UNKNOWN, distinguish finite pending store slots from issued work, and explicitly pass readout_law. conv_epoch_recipe.emit_checked_readout_epoch verifies actual consumer source/schedule/law/final-drain receipt; a default call or driver-local option is not application. Checked dense result objects are not convolution effect adapters.",
+      "evidence_to_request": "Actual consumer receipt and emitted source/operand/store/final-drain sequence, all original outputs, complete-call same-domain cycles and modeled source activity; source calls and drain counts do not establish overlap or speedup",
+      "implementation_status": "existing_generic_mechanism_target_realization_conditional"
+    },
+    {
       "id": "command_loops",
       "facet": "issue",
       "required_traits": [
@@ -1350,7 +1442,7 @@
   ],
   "validation": {
     "kind": "static repository symbol lookup only",
-    "mechanism_count": 52,
+    "mechanism_count": 54,
     "target_runs": 0,
     "tests_run": 0,
     "source_files_sha256_pinned": true

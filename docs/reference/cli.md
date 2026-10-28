@@ -70,6 +70,7 @@ Core console-scripts are installed with `pip install -e .` from the repo root. O
 | `merlin-kernel-beam` | `merlin.mining.beam_cli:main` |
 | `merlin-kernel-mine` | `merlin.mining.mine:main` |
 | `merlin-kernel-opt` | `merlin.mining.op_sweep:main` |
+| `merlin-kernel-reconstruct` | `merlin.mining.reconstruction_cli:main` |
 | `merlin-kernel-report` | `merlin.mining.report:main` |
 | `merlin-rvv-autotune` | `merlin.mining.autotune:main` |
 | `merlin-rvv-beam` | `merlin.mining.beam_cli:main` |

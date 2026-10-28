@@ -9,6 +9,8 @@ code_refs:
   - src/merlin/compile/scheduling/api_catalog.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/prepare_author_library.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/full_compiler_workspace.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/composition_next.py
 ---
 
 # Compose shared compiler transformations in an authoring loop
@@ -78,6 +80,14 @@ compiler source closure and reports unavailable dependencies. It includes no
 workload inputs, model parameters or reference implementations. Readable host
 source does not authorize replacing an original host/checker owner.
 
+In an author workspace, the heavy-pass-recipes skill's `composition_routes.py --case NAME`
+applies this discovery to one public case: it reads the case's declared structure (and, for a model
+or program, its interface IR) and lists the matching routes with their catalog rows, roster status,
+one `module:symbol`, whether `submission/` imports it and a recipe or contract command, plus the
+`source_composition.json` options described below. Self-check rows carry the same pointer as
+`optimization_next.composition` and `optimization_next.source_composition_request`
+(`merlin_experiments.phase1.feedback.composition_next`). These are pointers, not selections.
+
 ## Build a layered pipeline
 
 | Layer | Reusable entry points | Product that must reach the next layer |
@@ -121,6 +131,19 @@ separately qualified synchronous borrowed effects, emits one closed raw integer
 core and keeps original host readouts. It is mutually exclusive with the spatial
 route and opaque source/ABI rewrites. Independent many-to-one source membership
 and actual-object audits preserve the original required-source denominator.
+The original owner can select `SiblingSourceRoute(..., partial=True)` to outline
+independently checked shared-input components, retaining unmatched accelerator
+groups on their ordinary device path. The automatic preference below requests
+this fallback when a single complete cluster is unavailable. Component membership
+comes from actual shared SSA inputs and shapes; original host quantizers and
+observers remain. Immutable weight prepacking and exact preparation sharing may
+compose with this route. Dense input views apply only at proven compatible
+boundaries, including source-owned borrowed wrappers. The checked bufferization
+consumer retains the source shape, element type, readonly access and original
+C-bridge stride/alias guards while allowing a dense nonzero element offset.
+Noncontiguous inputs retain copies. Selection records distinguish applied layouts
+from retained wrapper inputs.
+
 The owned automatic caller accepts an optional candidate
 `source_composition.json` with these required fields:
 
@@ -149,6 +172,18 @@ the original layout for that position across all calls.
 It is separately available on `OwnedHostModelCompiler.compile`. Both options
 retain the ordinary numerical and target checks; neither predicts a speedup.
 
+The optional Boolean `independent_heads` requests exact source head refolding
+through the existing ordinary batch-slice ABI. The original owner requires
+complete independent operation admission for every composed head; unmatched
+groups keep their ordinary accelerator route and original readouts remain.
+With both this and `shared_input_siblings`, checked head refolding runs first,
+then checked sibling components use disjoint remaining original products.
+If no legal sibling component remains, the head route records that request as
+deferred. The typed API is `HeadBatchSourceRoute(..., shared_input_siblings=True)`;
+spatial composition still needs its separate owner. Verified receipts distinguish batch ABI
+calls from unchanged matrix invocations and actual target commands. See
+[`independent_heads.md`](../../examples/compiler/independent_heads.md).
+
 These are optimization requests. The original owner rederives source membership
 and retains the baseline when the complete sibling form is inapplicable. The
 candidate cannot select source IDs, change numerical boundaries or grant effects.
@@ -165,3 +200,63 @@ In the automatic loop, retain source and selected-library identities, transforme
 IR, emitted products and ordinary qualification results. Keep correctness,
 structural admission and measured performance separate. Discovery, reduced command
 counts or storage estimates alone establish no numerical qualification or speedup.
+
+## Diagnose complete model execution
+
+The original model owner and the automatic owned-model caller expose the same
+explicit preparation choices: `prepack_weights`,
+`share_exact_tensor_preparations` and `dense_input_views`. Check the completed
+build's selected inputs and transformed artifacts: availability alone does not
+mean a choice was applied. Immutable weight preparation requires original
+storage ownership; read-only views require the actual callee ABI. These choices
+preserve the captured numerical recipe and do not grant arbitrary host changes.
+
+`OwnedHostModelCompiler.compile(op_profile=True)` selects the existing typed
+operation profiler. The automatic caller accepts the optional Boolean
+`op_profile` in `source_composition.json`. It retains the actual operation table
+and summarizes completed observations by source category. Missing observations
+are diagnostic unavailability, independently of numerical results; changed table
+identities refuse. Original complete-output checks still run.
+
+Use a separate uninstrumented control. Markers can change fusion, allocation and
+scheduling. The reported raw counter ticks are not automatically elapsed cycles:
+functional Spike counters do not establish target performance. Bind the selected
+measurement engine before interpreting timing, and retain complete-call timing
+alongside the diagnostic breakdown. Host packing, copies and synchronization
+inside an operation interval are not independently resolved by its category.
+
+Build larger regions from shared operation, layout and effect contracts. Keep
+independent batch axes and quantization-plane products explicit until scheduling;
+combining their dispatch must preserve all products and ordered readouts. Choose
+legal schedule alternatives from shape and resource features, then compare whole
+regions. Model names, source IDs and private reference scores are not schedule
+selection features.
+
+### Emit checked dense completion epochs
+
+`schedule_dense_panel_pipeline` consumes the ordinary typed dense schedule plan.
+Its result keeps actual operand effects, private row assignments and explicit
+full-completion epochs. The caller supplies independently established issue,
+configuration snapshot, queue backpressure and completion premises. The separate
+`batch_dense_panel_readouts` pass may group pure readouts when their numerical
+configuration and selected snapshot contract permit it; it crosses no compute
+or movement effect. Neither service grants target execution semantics.
+
+After checking the original source and final actual command projection, use the
+result's distinct effect and completion callbacks:
+
+```python
+receipt = checked_schedule.emit_index_program(
+    index_control,
+    lower_effect=emit_actual_target_instruction,
+    complete_epoch=emit_real_full_device_completion,
+)
+```
+
+The completion callback receives every explicit drain in the checked program.
+It must emit the original full device completion mechanism. An issue event or
+an estimated delay cannot replace it. The effect callback receives the actual
+lowered scalar operands and must preserve the selected decoding and numerical
+configuration. Source, plan, admission and shared-library identities are checked
+again after emission. This interface is available to ordinary schedule proposals;
+it contains no shape choice, target instruction recipe or performance claim.

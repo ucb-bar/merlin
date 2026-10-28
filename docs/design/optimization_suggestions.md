@@ -47,6 +47,31 @@ Current native extraction recognizes these exact facts without chip-name rules:
 - Positive-byte RTL `memory_address_spaces` with explicit scratchpad/accumulator
   roles as local storage. This gives no physical alias, coherence or overlap proof.
 
+- Scheduling and memory capabilities from `capability_facts`, each recorded with
+  the fact that settles it under `capability_provenance` (also in
+  `OPTIMIZATION_CAPABILITIES.json`):
+  - `scheduling.queues` / `finite_queues`: derived dispatch entries in
+    `timing_structure.command_classes` (else the ordering record's queue names);
+  - `scheduling.async_issue`: a queue releasing a younger command at the older
+    one's issue, or a cross-queue pair issuing before completion;
+  - `scheduling.multiple_outstanding`: a queue whose completion order is
+    `out_of_order` (release at issue to a client with several transaction slots);
+  - `scheduling.dependency_tokens`: a hardware-tracked cross-queue pair (waits for
+    completion only when the rows overlap);
+  - `scheduling.persistent_configuration`: a verified extent that reads a field a
+    separate configuration command latches;
+  - `memory.resident_operands`: a later command of another class reading local
+    rows an earlier one wrote, ordered after its completion;
+  - `memory.strided_local_rows`: a verified transfer-in extent covering column
+    blocks at a local block stride.
+
+  The ordering record is the run's completion-order selection
+  (`MERLIN_COMPLETION_ORDER_SELECTION`), used only when its bytes, record digest,
+  base facts and base contract match the staged inputs; otherwise a derived
+  `facts.command_ordering`; otherwise these stay `unknown` with the reason.
+  `unsupported` is recorded only from an excluding fact (every release waits for
+  completion; every memory client holds one transaction).
+
 More explicit reviewed traits can extend that set. The six extra tightly coupled
 mechanisms and the mixed precision, vector and asynchronous starter sets remain
 separate design proposals. Selecting one grants no implementation or runtime ABI.

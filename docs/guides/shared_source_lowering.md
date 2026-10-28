@@ -662,7 +662,8 @@ authoring releases acquire no additional exports or permissions.
 
 ### Expose checked device result identity
 
-For the ordinary generated contraction-shim route, explicitly select:
+For the ordinary generated contraction or single-output logical-group shim route,
+explicitly select:
 
 ```python
 from dataclasses import replace
@@ -699,6 +700,29 @@ object, positional memref types and result argument must match that build.
 Merlin revalidates the original owner and its source/object pins across lowering
 and final admission. A qualification name and three booleans transport an
 independent contract; they do not establish its truth.
+
+Logical groups retain their exact argument count, order, integer tensor shapes,
+access and single output index, including mixed ranks. Unsupported element types,
+multiple outputs and composed spatial/sibling routes retain conservative refusal.
+The existing `dense_input_views` preparation runs before the original effects
+factory. Its exact readonly dense strides and dynamic offset survive the tensor
+wrapper boundary; use `argument_buffer_types(identity)` with those original
+positional layouts when constructing the borrowed-call selection.
+
+`OwnedHostModelCompiler.compile` accepts the same explicit `descriptor_results`
+and `descriptor_effects` arguments. For source-composition execution, the original
+caller supplies `descriptor_effects=original_borrowed_effects_factory` to
+`execute_owned_host_model` and its later `audit_owned_host_model` invocation.
+The existing `reuse_intermediate_storage` request selects the bridge only when
+the original software permits storage reuse and the uncomposed logical route is
+selected. Candidate JSON supplies no factory or effects. The ordinary receipt
+retains the actual descriptor lowering and borrowed-call selection. A missing
+original owner leaves the prior opaque-call allocation rules in force.
+
+Later host LLVM rewrites still refuse this descriptor route until their exact
+ownership correspondence is independently supplied. This includes a selected
+late bounded-RNE host transform; do not drop that arithmetic choice to claim a
+same-recipe whole-model improvement.
 
 The generated checked C forwarder calls the original shim and requires its
 returned allocated pointer, aligned pointer, offset, sizes and strides to match
