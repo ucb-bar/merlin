@@ -296,10 +296,11 @@ def test_mutated_body_or_declaration_is_not_admitted_end_to_end(shipped, fixture
     assert "source_body_proof" not in profile
     # The shipped [2, 8] sibling is a PROPOSED row; its own proof refuses these bodies too, so both
     # declarations report the structural refusal and the unreviewed one cannot mask it as unknown.
-    assert len(profile["decisions"]) == 2
+    assert len(profile["decisions"]) == 3  # reviewed [32, 32] plus the proposed [2, 8] and rank-3 siblings
     for decision in profile["decisions"]:
         assert decision["status"] == "unsupported" and "source_body_proof" not in decision
-        assert "row moments structural proof refused" in decision["reason"]
+        # the rank-3 sibling is excluded by its own signature before any body proof runs
+        assert "row moments structural proof refused" in decision["reason"] or decision["reason"] == "rank 2 not in [3]"
     reviewed_decision = next(d for d in profile["decisions"] if d["declaration"] == ROW_ID)
     assert re.search(reason, reviewed_decision["reason"])
 

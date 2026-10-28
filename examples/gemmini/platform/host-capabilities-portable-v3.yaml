@@ -3302,6 +3302,48 @@ operations:
     evidence:
       reviewed_by: "PROPOSED, NOT REVIEWED (app-fix 2026-10-28): the [2, 8] sibling of the operator-reviewed [32, 32] row, pinned to the coverage_mlp layer-norm moments body. The structural proof (linalg_row_moments_source_body.prove) accepts the captured body for shape [2, 8] with the canonical body digest recorded here; the numerical evidence run of the reviewed row (1472 rows against eager) was NOT repeated for this body. Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here."
       basis: "the digest-pinned parsed body of the coverage_mlp capture (static [2, 8] f32 data operand), accepted by the row-moments structural proof; NO numerical comparison against eager native_layer_norm mean and rstd has been run for this body. RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
+- id: host_f32_layer_norm_two_result_moments_rank3_1x17x16
+  status: unreviewed
+  ops:
+  - aten.native_layer_norm.default
+  families:
+  - reduction
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    - f32
+    ranks:
+    - 3
+  source_body:
+    schema: merlin.static_f32_row_moments_rank3_source_body.v1
+    operation: row_mean_biased_variance
+    data_operand:
+      dtype: f32
+      shape:
+      - 1
+      - 17
+      - 16
+      reduction_axis: 2
+    canonical_body_sha256: b49e906cd89c993f1dabf4e39f128088d91b7c36b1bf7653b007e4f7894abfce
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      rounding: round_to_nearest_even
+      accumulator: f32
+      reduction_order: selected_lowering
+      existing_numerical_tolerance: unchanged
+      data_operand: one captured static [1, 17, 16] f32 tensor read by tensor.extract; source_body proves the single capture, its shape and dtype, the leading row indexes (linalg.index 0 and 1) and that every column of the row is read exactly once (axis 2)
+      tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
+      fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
+    evidence:
+      reviewed_by: "PROPOSED, NOT REVIEWED (item 5 2026-10-28): the rank-3 [1, 17, 16] sibling of the operator-reviewed [32, 32] row, pinned to the multimodal_policy layer-norm moments body. The rank-3 structural proof (linalg_row_moments_source_body.prove, schema merlin.static_f32_row_moments_rank3_source_body.v1) accepts the captured body with the canonical body digest recorded here; the numerical evidence run of the reviewed row (1472 rows against eager) was NOT repeated for this body. Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here."
+      basis: "the digest-pinned parsed body of the multimodal_policy capture (static [1, 17, 16] f32 data operand), accepted by the rank-3 row-moments structural proof; NO numerical comparison against eager native_layer_norm mean and rstd has been run for this body. RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
 - id: host_m2m_exact_quantize_f32_i8_rank3_4
   status: reviewed
   ops:
