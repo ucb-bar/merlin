@@ -683,6 +683,24 @@ def get_model_and_inputs():
 """
 
 
+# An isolated SEEDED integer contraction from a W8A8 capture: ``m2m_q.int_mm_seeded(a, w, seed)`` starts
+# its i32 accumulator from the [N] seed instead of zero. The seed is an explicit forward INPUT (model2MLIR
+# would otherwise externalize a buffer as an unnamed weights argument that no capsule operand carries), so
+# the isolated capsule owns every byte of it. Values are varied, nonzero and well inside the overflow
+# guard's interval, which model2MLIR derives from K. Importing the integer-readout module registers the op.
+_INT_MM_SEEDED = """
+import m2m.capture.integer_readout
+class Model(nn.Module):
+    def forward(self, a, w, seed):
+        return torch.ops.m2m_q.int_mm_seeded(a, w, seed)
+def get_model_and_inputs():
+    a = torch.randint(-8, 8, ({M}, {K}), dtype=torch.int8, generator=_G)
+    w = torch.randint(-8, 8, ({K}, {N}), dtype=torch.int8, generator=_G)
+    seed = torch.randint(-100000, 100000, ({N},), dtype=torch.int32, generator=_G)
+    return Model().eval(), (a, w, seed)
+"""
+
+
 def build_loader_src(spec: dict) -> str:
     """Render the selected builtin template through shared typed input validation."""
     from .capsule_builtin_source import render_builtin_source
@@ -691,6 +709,7 @@ def build_loader_src(spec: dict) -> str:
         spec,
         preamble=_PREAMBLE,
         integer_matmul=_INT_MATMUL,
+        seeded_integer_matmul=_INT_MM_SEEDED,
         parametric_linear=_PARAMETRIC_LINEAR,
         bodies=_OP_BODIES,
         input_names=_OP_INPUT_NAMES | _FUSED_OP_INPUT_NAMES,
@@ -1463,8 +1482,12 @@ def _flatten(nested) -> list:
     return out
 
 
-def _host_eager_golden(art, names, out_name, binding, *, interface: str, arg_order, exact_integer: bool = False):
-    """The host torch-eager golden.yaml payload shared by the mapped and fused paths."""
+def _host_eager_golden(
+    art, names, out_name, binding, *, interface: str, arg_order, exact_integer: bool = False, seed_name: str | None = None
+):
+    """The host torch-eager golden.yaml payload shared by the mapped and fused paths.
+
+    ``seed_name`` (exact integer slices only) names the one i32 operand, an accumulator seed; all others are i8."""
     if len(art.inputs) < len(names):
         raise M2MUnavailable(f"op {art.op!r} produced {len(art.inputs)} inputs, expected {len(names)}")
     prov = {nm: {"shape": _shape_of(art.inputs[i]), "decoded": _flatten(art.inputs[i])} for i, nm in enumerate(names)}
@@ -1476,23 +1499,28 @@ def _host_eager_golden(art, names, out_name, binding, *, interface: str, arg_ord
             raise M2MUnavailable("exact integer source capture has no complete typed input ABI")
         for i, name in enumerate(names):
             declared = abi[i]
+            # Every operand is i8, except a seeded slice's last one: its i32 accumulator seed.
+            dtype, bits = ("i32", 32) if seed_name == name else ("i8", 8)
             if (
                 not isinstance(declared, dict)
-                or declared.get("dtype") != "i8"
+                or declared.get("dtype") != dtype
                 or declared.get("shape") != prov[name]["shape"]
             ):
-                raise M2MUnavailable(f"exact integer source input {name} disagrees with captured i8 ABI")
+                raise M2MUnavailable(f"exact integer source input {name} disagrees with captured {dtype} ABI")
             values = prov[name]["decoded"]
             if any(
                 type(value) not in (int, float)
                 or not math.isfinite(value)
                 or int(value) != value
-                or not -128 <= value <= 127
+                or not -(1 << (bits - 1)) <= value < (1 << (bits - 1))
                 for value in values
             ):
-                raise M2MUnavailable(f"exact integer source input {name} has invalid i8 values")
-            prov[name]["dtype"] = "i8"
-            prov[name]["integer_bytes_hex"] = bytes(int(value) & 0xFF for value in values).hex()
+                raise M2MUnavailable(f"exact integer source input {name} has invalid {dtype} values")
+            prov[name]["dtype"] = dtype
+            # Little-endian two's complement, the byte image the device preloads.
+            prov[name]["integer_bytes_hex"] = b"".join(
+                (int(value) & ((1 << bits) - 1)).to_bytes(bits // 8, "little") for value in values
+            ).hex()
     return {
         "golden_source": "host_torch_eager",
         "oracle_provenance": {
@@ -2280,6 +2308,26 @@ def linalg_to_iface(linalg_mlir: str, entry: dict, binding):
     return cap, mlir
 
 
+def _verify_seed_chain(observed: list, guards: list, expected: dict) -> None:
+    """The seeded contraction's init must be the guarded [N] seed broadcast, and the guard must be the proved one.
+
+    One guard generic exists, its interval half-width is ``K * 128 * 128`` for the contraction's own ``K``
+    (``linalg_seed_guard_source_body.prove`` follows guard -> broadcast -> contraction), and the contraction is
+    the one the selected application row describes. A module with no guard, two guards or an unproved bound is
+    not the lowering of ``m2m_q.int_mm_seeded``."""
+    from merlin.frontends import linalg_seed_guard_source_body as seed_guard
+
+    if len(guards) != 1 or len(observed) != 1:
+        raise M2MUnavailable("emitted seeded contraction needs exactly one seed guard and one contraction")
+    try:
+        proof = seed_guard.prove(guards[0])
+    except seed_guard.SeedGuardRefused as exc:
+        raise M2MUnavailable(f"emitted seed guard is not the proved overflow guard: {exc}") from exc
+    shapes = [item["shape"] for item in expected["ordered_operand_types"]]
+    if proof["reduction_extent"] != shapes[0][1] or proof["seed_length"] != shapes[1][1]:
+        raise M2MUnavailable("emitted seed guard differs from the selected application contraction")
+
+
 def verify_exact_application_int_mm(linalg_mlir: str, match: dict) -> dict:
     """Require the emitted PyTorch slice to compute the selected application's exact integer op.
 
@@ -2289,24 +2337,40 @@ def verify_exact_application_int_mm(linalg_mlir: str, match: dict) -> dict:
     """
     from merlin.common import mlir_query as mq
     from merlin.targetgen.application_inventory import (
+        INT_MM_OPERATION,
+        INT_MM_SEEDED_OPERATION,
         exact_int_mm_geometry,
         int_mm_source_is_qualified,
         operation_structure,
     )
 
+    # A seeded match names its operation; an unseeded one never does, so the two cannot be confused.
+    operation = match.get("operation", INT_MM_OPERATION)
+    seeded = operation == INT_MM_SEEDED_OPERATION
+    if operation not in {INT_MM_OPERATION, INT_MM_SEEDED_OPERATION}:
+        raise M2MUnavailable("exact application slice names an unsupported integer operation")
     if match.get("status") != "candidate_unverified" or not int_mm_source_is_qualified(match):
         raise M2MUnavailable("exact application slice lacks a digest-bound W8A8 source declaration")
     if not isinstance(match.get("full_inventory_sha256"), str) or len(match["full_inventory_sha256"]) != 64:
         raise M2MUnavailable("exact application slice lacks a full inventory digest")
     expected = match.get("expected_signature")
-    if not isinstance(expected, dict) or exact_int_mm_geometry(expected, require_quant_origin=False) is None:
+    if (
+        not isinstance(expected, dict)
+        or exact_int_mm_geometry(expected, require_quant_origin=False, operation=operation) is None
+    ):
         raise M2MUnavailable("selected application integer-matmul signature is incomplete or unsupported")
     try:
         module = mq.parse(linalg_mlir)
         observed = []
+        guards = []
         for op in mq.walk(module, "linalg.generic"):
-            if mq.attr_str(op, "prov.aten") != "aten._int_mm.default":
+            if mq.attr_str(op, "prov.aten") != operation:
                 continue
+            if seeded and mq.attr_str(op, "prov.accumulator_init") != "int32_seed":
+                guards.append(op)  # the rank-1 seed guard, proved against its consumer below
+                continue
+            if seeded and len(op.operands) != 3:
+                raise M2MUnavailable("emitted seeded contraction does not have the three-operand ABI")
             structure = operation_structure(op)
             lhs, rhs, _out = (
                 structure["ordered_operand_types"] if len(structure["ordered_operand_types"]) == 3 else ({}, {}, {})
@@ -2315,7 +2379,7 @@ def verify_exact_application_int_mm(linalg_mlir: str, match: dict) -> dict:
             n = (rhs.get("shape") or [None, None])[-1]
             row = {
                 **structure,
-                "operation": "aten._int_mm.default",
+                "operation": operation,
                 "mlir_operation": mq.op_name(op),
                 "frontend_op": mq.attr_str(op, "prov.aten"),
                 "provenance_op": mq.attr_str(op, "prov.op"),
@@ -2332,9 +2396,11 @@ def verify_exact_application_int_mm(linalg_mlir: str, match: dict) -> dict:
                 "result_shapes": [item["shape"] for item in structure["ordered_result_types"]],
                 "contraction_shape": {"M": m, "K": k, "N": n, "rank": len(structure["iterator_types"] or ())},
             }
-            if exact_int_mm_geometry(row, require_quant_origin=False) is None:
-                raise M2MUnavailable("emitted aten._int_mm has unsupported rank, dtype, maps, body or shape")
+            if exact_int_mm_geometry(row, require_quant_origin=False, operation=operation) is None:
+                raise M2MUnavailable(f"emitted {operation} has unsupported rank, dtype, maps, body or shape")
             observed.append(row)
+        if seeded:
+            _verify_seed_chain(observed, guards, expected)
     except M2MUnavailable:
         raise
     except Exception as exc:
@@ -2345,6 +2411,7 @@ def verify_exact_application_int_mm(linalg_mlir: str, match: dict) -> dict:
             f"(found {len(observed)} candidates)"
         )
     return {
+        **({"operation": operation} if seeded else {}),
         "status": "verified_capture_match",
         "full_inventory_sha256": match["full_inventory_sha256"],
         "source_quantization": match["source_quantization"],
@@ -2613,8 +2680,15 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: PytorchRefS
     art = src.capture(spec)
     exact_match = None
     if entry.get("application_signature_match"):
-        if spec["op"] != "int_matmul" or spec["dtype"] != "fp32" or entry.get("op") != "matmul":
-            raise M2MUnavailable("exact application integer slice must capture torch._int_mm without requantization")
+        seeded = entry["application_signature_match"].get("operation") == "m2m_q.int_mm_seeded.default"
+        if spec["op"] != ("int_mm_seeded" if seeded else "int_matmul") or spec["dtype"] != "fp32" or entry.get("op") != "matmul":
+            raise M2MUnavailable(
+                "exact application integer slice must capture "
+                + ("m2m_q.int_mm_seeded" if seeded else "torch._int_mm")
+                + " without requantization"
+            )
+        if seeded and (entry.get("epilogue") != ["bias_add"] or not entry.get("bias")):
+            raise M2MUnavailable("exact seeded integer slice is a matmul whose only stage is its seed as a bias_add")
         exact_match = verify_exact_application_int_mm(art.linalg_mlir, entry["application_signature_match"])
     out_name = entry.get("out", "Y0")
     d = Path(out_root) / entry["cat"] / entry["name"]
@@ -2623,6 +2697,9 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: PytorchRefS
 
     if op in _OP_INPUT_NAMES:  # merlin_iface interface
         names = _OP_INPUT_NAMES[op]
+        if exact_match is not None and exact_match.get("operation") == "m2m_q.int_mm_seeded.default":
+            # The seed is the third forward input of the isolated slice and the capsule's bias operand.
+            names = [*names, str(entry["bias"])]
         cap, mlir = linalg_to_iface(portable_linalg, entry, binding)  # derive-and-verify from the lowering
         if exact_match is not None:
             cap["application_signature_match"] = exact_match
@@ -2641,6 +2718,7 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: PytorchRefS
             interface="merlin_iface",
             arg_order=names,
             exact_integer=exact_match is not None,
+            seed_name=names[-1] if (exact_match or {}).get("operation") == "m2m_q.int_mm_seeded.default" else None,
         )
         (d / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
     elif op in _FUSED_OP_INPUT_NAMES:  # linalg interface (positional)

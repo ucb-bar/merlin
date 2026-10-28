@@ -514,8 +514,17 @@ def int_mm_source_is_qualified(match: dict) -> bool:
     )
 
 
-def exact_int_mm_geometry(row: dict, *, require_quant_origin: bool = True) -> tuple[int, int, int] | None:
-    """Recognize only a standard rank-2 signed i8×i8→i32 ``aten._int_mm``.
+#: The ATen-level spellings of the two exact signed i8 x i8 -> i32 contractions that share one linalg body.
+#: ``m2m_q.int_mm_seeded`` differs from ``aten._int_mm`` only in where its accumulator starts (an [N] i32
+#: seed broadcast to [M, N] instead of zero), which the operation name, not the body, distinguishes.
+INT_MM_OPERATION = "aten._int_mm.default"
+INT_MM_SEEDED_OPERATION = "m2m_q.int_mm_seeded.default"
+
+
+def exact_int_mm_geometry(
+    row: dict, *, require_quant_origin: bool = True, operation: str = INT_MM_OPERATION
+) -> tuple[int, int, int] | None:
+    """Recognize only a standard rank-2 signed i8×i8→i32 ``aten._int_mm`` (or, by ``operation``, its seeded form).
 
     The linalg iteration space has three loops, but the tensor rank is two. Testing all operand
     types, maps, iterators and body avoids treating a family label or a coincidentally sized generic
@@ -524,9 +533,9 @@ def exact_int_mm_geometry(row: dict, *, require_quant_origin: bool = True) -> tu
     if any(
         row.get(key) != value
         for key, value in {
-            "operation": "aten._int_mm.default",
+            "operation": operation,
             "mlir_operation": "linalg.generic",
-            "frontend_op": "aten._int_mm.default",
+            "frontend_op": operation,
             "provenance_op": "int_matmul",
             "semantic_family": "contraction",
             "operand_format": "int8",

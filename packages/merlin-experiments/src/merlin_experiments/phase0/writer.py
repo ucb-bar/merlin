@@ -257,18 +257,22 @@ def _source_integer_reference_bound(entry: dict, cap: dict, directory: Path) -> 
         return _spec_integer_reference_bound(entry, cap, directory)
     operation = cap.get("operation") or {}
     attrs = operation.get("attributes") or {}
+    # A seeded slice is the same isolated i8 matmul plus ONE declared stage: its [N] i32 seed as a bias_add on
+    # the accumulator (the reviewed accumulator_seed_load), so its third input is that seed and nothing else.
+    seeded = entry.get("capture_op") == "int_mm_seeded"
     if (
         entry.get("kind") == "model"
         or entry.get("op") == "model"
         or not (entry.get("source") == "pytorch" or entry.get("pytorch_ref"))
-        or entry.get("capture_op") != "int_matmul"
+        or entry.get("capture_op") not in {"int_matmul", "int_mm_seeded"}
         or operation.get("op") != "matmul"
         or cap.get("kind") == "model"
         or (cap.get("numeric_policy") or {}) != {"compare": "exact_int", "dtype": "i32"}
         or semantics.get("operand_dtype") not in {"int8", "i8"}
         or semantics.get("accumulator_dtype") != "i32"
-        or attrs.get("epilogue") not in ([], ())
-        or len(cap.get("inputs") or []) != 2
+        or attrs.get("epilogue") not in ((["bias_add"],) if seeded else ([], ()))
+        or len(cap.get("inputs") or []) != (3 if seeded else 2)
+        or (seeded and [row.get("role") for row in cap["inputs"]].count("bias") != 1)
         or not CG.is_exact_pytorch_integer_source(cap)
     ):
         raise ValueError("source-backed integer contraction lacks a verified isolated i8 matmul and exact inputs")
@@ -938,7 +942,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
             native_storage_source_spec(entry) is not None
             or entry.get("quant_scheme")
             or (
-                entry.get("capture_op") == "int_matmul"
+                entry.get("capture_op") in {"int_matmul", "int_mm_seeded"}
                 and int_mm_source_is_qualified(entry.get("application_signature_match") or {})
             )
         ):
