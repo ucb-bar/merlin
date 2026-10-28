@@ -12,6 +12,7 @@ review:
   library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
   m2m_exact_quant_addendum: "REVIEWED by operator sign-off /scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68: four exact typed declarations for model2MLIR exact-quantization captures (m2m_q.quantize f32/f64/i64->i8, m2m_q.exact_readout i32/f32->f32, dequantize_per_tensor i8/f64/i64->f32, two-result f32 layer-norm moments). Each row records that review in its reviewed_by evidence."
   operator_chat_addendum: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly six rows, host_m2m_exact_quantize_f32_i8_rank3_4, host_m2m_exact_readout_i32_f32_rank3_4, host_m2m_dequantize_per_tensor_f64_scale_rank3_4, host_m2m_exact_readout_i32_i8_requantized_rank3_4, host_f32_max_pool2d_with_i64_indices_rank4 and host_i8_to_i32_to_copy_rank3; and, for core_aten_coverage_contraction and core_aten_coverage_reduce, exactly nine further rows: host_review_i32_add_projected_rank4, host_i8_to_i32_to_copy_rank4, host_f32_window_sum_pool_rank3_4_5, host_bf16_window_sum_adaptive_avg_pool3d_rank5, host_f16_window_sum_adaptive_avg_pool3d_rank5, host_i64_window_sum_avg_pool_rank3_4_5, host_f32_sum_reduce_rank0_1, host_i32_wrapping_sum_reduce_rank0_1 and host_i8_wrapping_sum_reduce_rank0; each row's stated open evidence obligations remain mandatory."
+  operator_chat_addendum_2: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list): exactly 69 rows, host_review_static_i32_sum, host_review_static_i32_cumsum, host_review_static_i8_cumsum, host_proposed_convbwd_bf16_extf_loops4, host_proposed_convbwd_bf16_truncf_loops1_4_7, host_proposed_convbwd_bf16_extf_addf_truncf_loops4, host_proposed_convbwd_f16_extf_loops4, host_proposed_convbwd_f16_truncf_loops1_4_7, host_proposed_convbwd_f16_extf_addf_truncf_loops4, host_proposed_convbwd_f32_mulf_addf_contraction_loops4_7, host_proposed_convbwd_f32_bias_grad_reduce_loops1, host_proposed_scalar_extf_bf16_to_f32, host_proposed_scalar_extf_f16_to_f32, host_proposed_scalar_extf_f32_to_f64, host_proposed_scalar_truncf_f32_to_bf16, host_proposed_scalar_truncf_f32_to_f16, host_proposed_scalar_truncf_f64_to_f32, host_proposed_scalar_addf_f32_f32_to_f32, host_proposed_scalar_addf_f64_f64_to_f64, host_proposed_scalar_divui_index, host_proposed_scalar_remui_index, host_proposed_scalar_subi_index, host_proposed_scalar_cmpi_index, host_m2m_exact_readout_i32_f32_rank1, host_support_empty_f32, host_support_empty_bf16, host_support_empty_f16, host_support_empty_i64, host_support_empty_i32, host_support_empty_i8, host_support_empty_i1, host_support_empty_f64, host_support_splat_f32, host_support_splat_bf16, host_support_splat_f16, host_support_splat_i64, host_support_splat_i32, host_support_splat_i8, host_support_splat_i1, host_support_splat_f64, host_support_extract_f32, host_support_extract_bf16, host_support_extract_f16, host_support_extract_i8, host_support_from_elements_f32, host_support_from_elements_bf16, host_support_from_elements_f16, host_support_from_elements_i8, host_support_collapse_shape_f32, host_support_collapse_shape_bf16, host_support_collapse_shape_f16, host_support_collapse_shape_i8, host_support_expand_shape_f32, host_support_expand_shape_bf16, host_support_expand_shape_f16, host_support_expand_shape_i8, host_support_extract_slice_f32, host_support_extract_slice_bf16, host_support_extract_slice_f16, host_support_extract_slice_i64, host_support_insert_slice_f32, host_support_insert_slice_bf16, host_support_insert_slice_f16, host_support_insert_slice_i64, host_m2m_exact_quantize_f32_i8_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_bf16_result, host_m2m_dequantize_per_tensor_f64_scale_f16_result, host_m2m_dequantize_per_tensor_f64_scale_f64_result; every open evidence obligation and semantics question stays verbatim in each row (open_obligation and proposal_text_retained_verbatim) and this approval does not state that any of them was verified beyond what the row basis records."
   successor: attention-host-placement-v2-20261019
   attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
@@ -3512,9 +3513,7 @@ operations:
       signed_no_wrap: false
       operand_2: i32 init tensor (outs), value unused
     evidence:
-      basis: Nine core_aten_coverage_contraction aten.add.Tensor linalg.generic ops, all tensor<1x1x3x3xi32>, identity maps, all-parallel iterators, body exactly arith.addi then linalg.yield (one body text
-        modulo SSA ids). The extracted body was executed over random i32 pairs plus INT32_MIN/INT32_MAX edges and equals torch.add on int32 (modulo 2^32). Emitted scalar-package execution on Spike is not
-        recorded.
+      basis: Nine core_aten_coverage_contraction aten.add.Tensor linalg.generic ops, all tensor<1x1x3x3xi32>, identity maps, all-parallel iterators, body exactly arith.addi then linalg.yield (one body text modulo SSA ids). The extracted body was executed over random i32 pairs plus INT32_MIN/INT32_MAX edges and equals torch.add on int32 (modulo 2^32). Emitted scalar-package execution on Spike is not recorded.
       neutral_case: matrix_i32_add
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: no Spike probe of the emitted i32 add on the selected host package; evidence is body execution vs torch eager only
@@ -3541,12 +3540,11 @@ operations:
       exact_values: all 256 codes map to their signed value
       operand_1: i32 init tensor (outs), value unused
     evidence:
-      basis: core_aten_coverage_contraction aten._to_copy.default linalg.generic over tensor<1x2x3x3xi8> to i32, body exactly arith.extsi (i8)->i32 then linalg.yield over all-parallel iterators. All 256
-        i8 codes were checked equal to torch int8->int32 conversion. Same contract as the reviewed rank-3 row host_i8_to_i32_to_copy_rank3, rank extended to 4.
+      basis: core_aten_coverage_contraction aten._to_copy.default linalg.generic over tensor<1x2x3x3xi8> to i32, body exactly arith.extsi (i8)->i32 then linalg.yield over all-parallel iterators. All 256 i8 codes were checked equal to torch int8->int32 conversion. Same contract as the reviewed rank-3 row host_i8_to_i32_to_copy_rank3, rank extended to 4.
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: no Spike probe of this conversion is recorded; the body is a single arith.extsi, which needs no new lowering
 - id: host_review_static_i32_sum
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.sum.dim_IntList
   placement: host
@@ -3560,19 +3558,17 @@ operations:
   families:
   - reduction
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: twos_complement_modulo_2_32
       signed_no_wrap: false
     evidence:
-      basis: linalg.reduce dims [0,2,3] of tensor<1x2x3x3xi32> to tensor<2xi32>, body arith.addi i32 then yield; executed body equals torch.sum(dtype=int32) and equals torch's default int64-promoted sum
-        wrapped to 32 bits.
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions)
-        types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level
-        proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
+      basis: linalg.reduce dims [0,2,3] of tensor<1x2x3x3xi32> to tensor<2xi32>, body arith.addi i32 then yield; executed body equals torch.sum(dtype=int32) and equals torch's default int64-promoted sum wrapped to 32 bits.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: extend the closed integer-reduction recognizer to this element type; Spike probe of the emitted reduction
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions) types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
 - id: host_review_static_i32_cumsum
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.cumsum.default
   placement: host
@@ -3586,18 +3582,17 @@ operations:
   families:
   - reduction
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: twos_complement_modulo_2_32
       signed_no_wrap: false
     evidence:
       basis: linalg.generic tensor<2x3xi32> prefix sum along dim 1 (maps (d0,d2)->(d0,d1), index select cmpi ule, body arith.addi); executed body equals torch.cumsum(dtype=int32).
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions)
-        types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level
-        proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: extend the closed integer-reduction recognizer to this element type; Spike probe of the emitted reduction
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions) types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
 - id: host_review_static_i8_cumsum
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.cumsum.default
   placement: host
@@ -3611,18 +3606,17 @@ operations:
   families:
   - reduction
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: twos_complement_modulo_2_8
       signed_no_wrap: false
     evidence:
       basis: linalg.generic tensor<2x3xi8> prefix sum along dim 1, same body shape as the i32 form, wraps modulo 2^8; executed body equals torch.cumsum(dtype=int8) with saturated-high inputs.
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions)
-        types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level
-        proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: extend the closed integer-reduction recognizer to this element type; Spike probe of the emitted reduction
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions) types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
 - id: host_proposed_convbwd_bf16_extf_loops4
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.convolution_backward.default
   families:
@@ -3638,16 +3632,16 @@ operations:
     ranks:
     - 4
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_body: arith.extf bf16->f32
     evidence:
       basis: bf16 to f32 widening generic inside convolution_backward (3 instances per dtype)
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not
-        in the mechanical group'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
 - id: host_proposed_convbwd_bf16_truncf_loops1_4_7
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.convolution_backward.default
   families:
@@ -3665,16 +3659,16 @@ operations:
     - 4
     - 7
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_body: arith.truncf f32->bf16
     evidence:
       basis: f32 to bf16 narrowing generic inside convolution_backward (loop counts 1, 4 and 7; tensor ranks 0, 3 and 6)
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not
-        in the mechanical group'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
 - id: host_proposed_convbwd_bf16_extf_addf_truncf_loops4
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.convolution_backward.default
   families:
@@ -3691,16 +3685,16 @@ operations:
     ranks:
     - 4
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_body: extf,extf,addf,truncf bf16
     evidence:
       basis: bf16 add via f32 (extf both, addf, truncf) inside convolution_backward (9 instances per dtype); result rounding is the single final truncf
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not
-        in the mechanical group'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
 - id: host_proposed_convbwd_f16_extf_loops4
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.convolution_backward.default
   families:
@@ -3716,16 +3710,16 @@ operations:
     ranks:
     - 4
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_body: arith.extf f16->f32
     evidence:
       basis: f16 to f32 widening generic inside convolution_backward (3 instances per dtype)
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not
-        in the mechanical group'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
 - id: host_proposed_convbwd_f16_truncf_loops1_4_7
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.convolution_backward.default
   families:
@@ -3743,16 +3737,16 @@ operations:
     - 4
     - 7
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_body: arith.truncf f32->f16
     evidence:
       basis: f32 to f16 narrowing generic inside convolution_backward (loop counts 1, 4 and 7; tensor ranks 0, 3 and 6)
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not
-        in the mechanical group'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
 - id: host_proposed_convbwd_f16_extf_addf_truncf_loops4
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.convolution_backward.default
   families:
@@ -3769,16 +3763,16 @@ operations:
     ranks:
     - 4
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_body: extf,extf,addf,truncf f16
     evidence:
       basis: f16 add via f32 (extf both, addf, truncf) inside convolution_backward (9 instances per dtype); result rounding is the single final truncf
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not
-        in the mechanical group'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
 - id: host_proposed_convbwd_f32_mulf_addf_contraction_loops4_7
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.convolution_backward.default
   families:
@@ -3796,16 +3790,16 @@ operations:
     - 4
     - 7
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_body: mulf then addf accumulate over reduction iterators
     evidence:
       basis: f32 multiply-accumulate generics (7-8 loop dims, 1 or 3 reduction iterators) inside convolution_backward weight/input gradient
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not
-        in the mechanical group'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: accumulation order versus eager; fp32 non-associativity tolerance; Spike probe; whether these belong on host or on the accelerator contraction lane
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
 - id: host_proposed_convbwd_f32_bias_grad_reduce_loops1
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.convolution_backward.default
   families:
@@ -3821,16 +3815,16 @@ operations:
     ranks:
     - 1
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_body: linalg.reduce addf f32 rank3 to rank0
     evidence:
       basis: bias-gradient reduction (2 instances)
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not
-        in the mechanical group'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: reduction order versus eager; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
 - id: host_proposed_scalar_extf_bf16_to_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.extf
   families:
@@ -3845,16 +3839,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.extf
     evidence:
       basis: arith.extf ['bf16']->['f32'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_extf_f16_to_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.extf
   families:
@@ -3869,16 +3863,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.extf
     evidence:
       basis: arith.extf ['f16']->['f32'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_extf_f32_to_f64
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.extf
   families:
@@ -3893,16 +3887,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.extf
     evidence:
       basis: arith.extf ['f32']->['f64'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_truncf_f32_to_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.truncf
   families:
@@ -3917,16 +3911,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.truncf
     evidence:
       basis: arith.truncf ['f32']->['bf16'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_truncf_f32_to_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.truncf
   families:
@@ -3941,16 +3935,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.truncf
     evidence:
       basis: arith.truncf ['f32']->['f16'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_truncf_f64_to_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.truncf
   families:
@@ -3965,16 +3959,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.truncf
     evidence:
       basis: arith.truncf ['f64']->['f32'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_addf_f32_f32_to_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.addf
   families:
@@ -3990,16 +3984,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.addf
     evidence:
       basis: arith.addf ['f32', 'f32']->['f32'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_addf_f64_f64_to_f64
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.addf
   families:
@@ -4015,16 +4009,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.addf
     evidence:
       basis: arith.addf ['f64', 'f64']->['f64'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_divui_index
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.divui
   families:
@@ -4040,16 +4034,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.divui
     evidence:
       basis: 'arith.divui on index values: unflattening of linalg.index coordinates in the convolution_backward decomposition'
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: unsigned index arithmetic semantics and bounds (no overflow for the static extents); Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_remui_index
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.remui
   families:
@@ -4065,16 +4059,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.remui
     evidence:
       basis: 'arith.remui on index values: unflattening of linalg.index coordinates in the convolution_backward decomposition'
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: unsigned index arithmetic semantics and bounds (no overflow for the static extents); Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_subi_index
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.subi
   families:
@@ -4090,16 +4084,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.subi
     evidence:
       basis: 'arith.subi on index values: unflattening of linalg.index coordinates in the convolution_backward decomposition'
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: unsigned index arithmetic semantics and bounds (no overflow for the static extents); Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_proposed_scalar_cmpi_index
-  status: unreviewed
+  status: reviewed
   ops:
   - arith.cmpi
   families:
@@ -4115,16 +4109,16 @@ operations:
     ranks:
     - 0
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       scalar_op: arith.cmpi
     evidence:
       basis: arith.cmpi on index values (bounds/guard) in the convolution_backward decomposition
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager
-        reference'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: predicate set actually used; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
 - id: host_m2m_exact_readout_i32_f32_rank1
-  status: unreviewed
+  status: reviewed
   ops:
   - m2m_q.exact_readout.default
   families:
@@ -4140,14 +4134,14 @@ operations:
     ranks:
     - 1
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       readout: same exact integer-to-f32 readout body as the reviewed rank-2/3/4 rows
     evidence:
       basis: tensor<2xf32> m2m_q.exact_readout generic in the contraction program; scalar body is the same long integer rounding sequence as the reviewed rank 3/4 instances
-      reviewed_by: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): rank-1 extension of a reviewed contract; bit-exactness of the extracted rank-1 body against the reviewed body and an eager reference
-        was not checked'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       open_obligation: diff the rank-1 scalar body against the reviewed rank-3/4 body; bit-exact check against the reference rounding; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): rank-1 extension of a reviewed contract; bit-exactness of the extracted rank-1 body against the reviewed body and an eager reference was not checked'
 - id: host_f32_window_sum_pool_rank3_4_5
   status: reviewed
   ops:
@@ -4183,12 +4177,7 @@ operations:
       subnormals: preserved
     evidence:
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'Body and maps read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b), all six forward pool ops, f32: arith.addf
-        accumulate, window maps (d2*2+d4, d3*2+d5) and rank-1/3 analogues. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json):
-        the captured decomposition (sequential f32 window sum, divide by 2**rank) is bit-identical to torch 2.14 CPU F.avg_pool1d/2d/3d and F.adaptive_avg_pool1d/2d/3d on f32 over 6528 elements (6 input
-        families: normal, 1e3 scale, 1e-30 scale, 1e37 scale, NaN/Inf/-0/subnormal/65504 edge mix, permuted edge mix), 0 mismatches. Open obligations: (1) the signature cannot express window geometry; only
-        kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted;
-        (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
+      basis: 'Body and maps read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b), all six forward pool ops, f32: arith.addf accumulate, window maps (d2*2+d4, d3*2+d5) and rank-1/3 analogues. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json): the captured decomposition (sequential f32 window sum, divide by 2**rank) is bit-identical to torch 2.14 CPU F.avg_pool1d/2d/3d and F.adaptive_avg_pool1d/2d/3d on f32 over 6528 elements (6 input families: normal, 1e3 scale, 1e-30 scale, 1e37 scale, NaN/Inf/-0/subnormal/65504 edge mix, permuted edge mix), 0 mismatches. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
 - id: host_bf16_window_sum_adaptive_avg_pool3d_rank5
   status: reviewed
   ops:
@@ -4216,13 +4205,7 @@ operations:
       differs_from_rank3_4_half_pools: rank 3/4 half pools extf to f32, sum in f32 and truncf; this rank-5 body accumulates in the half type
     evidence:
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'Body read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor<1x1x4x4x4xbf16> window sum with arith.addf
-        in bf16, then divf in bf16. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json, kind=adaptive rank=3 body=native):
-        the captured bf16 accumulate-in-bf16 then divide-in-bf16 decomposition is bit-identical to torch 2.14 CPU F.adaptive_avg_pool3d on bf16 over 768 elements (edge mix incl. NaN/Inf/subnormal/overflow),
-        0 mismatches; the alternative f32-accumulate path differs from eager on that op (241 bf16 / 152 f16 mismatches), so the half-type accumulation is the real semantics. torch has no CPU avg_pool3d
-        for bf16, so avg_pool3d bf16 is NOT claimed. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry)
-        were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not
-        recorded.'
+      basis: 'Body read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor<1x1x4x4x4xbf16> window sum with arith.addf in bf16, then divf in bf16. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json, kind=adaptive rank=3 body=native): the captured bf16 accumulate-in-bf16 then divide-in-bf16 decomposition is bit-identical to torch 2.14 CPU F.adaptive_avg_pool3d on bf16 over 768 elements (edge mix incl. NaN/Inf/subnormal/overflow), 0 mismatches; the alternative f32-accumulate path differs from eager on that op (241 bf16 / 152 f16 mismatches), so the half-type accumulation is the real semantics. torch has no CPU avg_pool3d for bf16, so avg_pool3d bf16 is NOT claimed. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
 - id: host_f16_window_sum_adaptive_avg_pool3d_rank5
   status: reviewed
   ops:
@@ -4250,13 +4233,7 @@ operations:
       differs_from_rank3_4_half_pools: rank 3/4 half pools extf to f32, sum in f32 and truncf; this rank-5 body accumulates in the half type
     evidence:
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'Body read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor<1x1x4x4x4xf16> window sum with arith.addf
-        in f16, then divf in f16. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json, kind=adaptive rank=3 body=native):
-        the captured f16 accumulate-in-f16 then divide-in-f16 decomposition is bit-identical to torch 2.14 CPU F.adaptive_avg_pool3d on f16 over 768 elements (edge mix incl. NaN/Inf/subnormal/overflow),
-        0 mismatches; the alternative f32-accumulate path differs from eager on that op (241 bf16 / 152 f16 mismatches), so the half-type accumulation is the real semantics. torch has no CPU avg_pool3d
-        for f16, so avg_pool3d f16 is NOT claimed. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry)
-        were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not
-        recorded.'
+      basis: 'Body read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor<1x1x4x4x4xf16> window sum with arith.addf in f16, then divf in f16. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json, kind=adaptive rank=3 body=native): the captured f16 accumulate-in-f16 then divide-in-f16 decomposition is bit-identical to torch 2.14 CPU F.adaptive_avg_pool3d on f16 over 768 elements (edge mix incl. NaN/Inf/subnormal/overflow), 0 mismatches; the alternative f32-accumulate path differs from eager on that op (241 bf16 / 152 f16 mismatches), so the half-type accumulation is the real semantics. torch has no CPU avg_pool3d for f16, so avg_pool3d f16 is NOT claimed. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
 - id: host_i64_window_sum_avg_pool_rank3_4_5
   status: reviewed
   ops:
@@ -4286,11 +4263,7 @@ operations:
       division: separate divsi stage (truncation toward zero), not part of this row
     evidence:
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'Body read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): arith.addi window reduction on tensor<..i64>. Eager check (/scratch/loren/nonfinite-work/red/ev
-        (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_i64pool.py -> i64pool.json): sequential wrapping i64 window sum then divsi (trunc toward zero) equals torch 2.14 CPU F.avg_pool1d/2d/3d
-        on int64 over 1088 elements including INT64_MAX/INT64_MIN and 2**62-scale values, 0 mismatches. Adaptive int64 pools do not exist in torch CPU and are not claimed. Open obligations: (1) the signature
-        cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required
-        before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
+      basis: 'Body read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): arith.addi window reduction on tensor<..i64>. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_i64pool.py -> i64pool.json): sequential wrapping i64 window sum then divsi (trunc toward zero) equals torch 2.14 CPU F.avg_pool1d/2d/3d on int64 over 1088 elements including INT64_MAX/INT64_MIN and 2**62-scale values, 0 mismatches. Adaptive int64 pools do not exist in torch CPU and are not claimed. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
 - id: host_f32_sum_reduce_rank0_1
   status: reviewed
   ops:
@@ -4320,11 +4293,7 @@ operations:
       empty_reduction: '0.0'
     evidence:
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'linalg.reduce arith.addf over f32 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): sum.dim 2x3 -> 3, mean 2x3 -> scalar (reduce
-        dims 0,1) followed by a separate divf stage, empty tensor<0xf32> -> f32. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py ->
-        sum.json): sequential f32 order equals torch.sum on the captured sum.dim shape (12/12 bit-identical incl. NaN/Inf/-0/overflow edge inputs) and on length-0, but differs from eager by summation-order
-        ulps for mean 2x3 (2/8 elements, 1 ulp, e.g. 0.49661734 vs 0.49661732) and for longer reductions (1-4 elements of 4-12 at lengths 5, 64, 1000). The row therefore claims f32 sequential-order sums
-        with reduction_order selected_lowering, as the existing reviewed host_f32_reduction row does; any tolerance must absorb reassociation. RV64 execution not recorded.'
+      basis: 'linalg.reduce arith.addf over f32 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): sum.dim 2x3 -> 3, mean 2x3 -> scalar (reduce dims 0,1) followed by a separate divf stage, empty tensor<0xf32> -> f32. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> sum.json): sequential f32 order equals torch.sum on the captured sum.dim shape (12/12 bit-identical incl. NaN/Inf/-0/overflow edge inputs) and on length-0, but differs from eager by summation-order ulps for mean 2x3 (2/8 elements, 1 ulp, e.g. 0.49661734 vs 0.49661732) and for longer reductions (1-4 elements of 4-12 at lengths 5, 64, 1000). The row therefore claims f32 sequential-order sums with reduction_order selected_lowering, as the existing reviewed host_f32_reduction row does; any tolerance must absorb reassociation. RV64 execution not recorded.'
 - id: host_i32_wrapping_sum_reduce_rank0_1
   status: reviewed
   ops:
@@ -4350,10 +4319,7 @@ operations:
       empty_reduction: '0'
     evidence:
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'linalg.reduce arith.addi on i32 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b) (the capture reduces tensor<0xi32> -> i32). Eager
-        check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> intsum.json): wrapping sequential i32 addition equals torch.sum(x, dim=0, dtype=torch.int32)
-        on 300 elements (lengths 0,1,2,7,100; full-range values), 0 mismatches. NOTE torch.sum without dtype= promotes integers to int64, which this i32-typed reduction does not do; the row asserts only
-        the captured i32-typed wrapping semantics. RV64 execution not recorded.'
+      basis: 'linalg.reduce arith.addi on i32 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b) (the capture reduces tensor<0xi32> -> i32). Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> intsum.json): wrapping sequential i32 addition equals torch.sum(x, dim=0, dtype=torch.int32) on 300 elements (lengths 0,1,2,7,100; full-range values), 0 mismatches. NOTE torch.sum without dtype= promotes integers to int64, which this i32-typed reduction does not do; the row asserts only the captured i32-typed wrapping semantics. RV64 execution not recorded.'
 - id: host_i8_wrapping_sum_reduce_rank0
   status: reviewed
   ops:
@@ -4378,12 +4344,9 @@ operations:
       empty_reduction: '0'
     evidence:
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'linalg.reduce arith.addi on i8 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b) (the capture reduces tensor<0xi8> -> i8). Eager
-        check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> intsum.json): wrapping sequential i8 addition equals torch.sum(x, dim=0, dtype=torch.int8)
-        on 300 elements (lengths 0,1,2,7,100; full-range values), 0 mismatches. NOTE torch.sum without dtype= promotes integers to int64, which this i8-typed reduction does not do; the row asserts only
-        the captured i8-typed wrapping semantics. RV64 execution not recorded.'
+      basis: 'linalg.reduce arith.addi on i8 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b) (the capture reduces tensor<0xi8> -> i8). Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> intsum.json): wrapping sequential i8 addition equals torch.sum(x, dim=0, dtype=torch.int8) on 300 elements (lengths 0,1,2,7,100; full-range values), 0 mismatches. NOTE torch.sum without dtype= promotes integers to int64, which this i8-typed reduction does not do; the row asserts only the captured i8-typed wrapping semantics. RV64 execution not recorded.'
 - id: host_support_empty_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.empty
   families:
@@ -4395,19 +4358,17 @@ operations:
     ordered_result_dtypes:
     - f32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: &id001
       value: undefined; never read (verified on the captured program only)
       scope: any use that reads an element before a write is NOT covered
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b):
-        all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open
-        question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling
-        captures, not verified per dtype.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_empty_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.empty
   families:
@@ -4419,17 +4380,15 @@ operations:
     ordered_result_dtypes:
     - bf16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id001
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b):
-        all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open
-        question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling
-        captures, not verified per dtype.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_empty_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.empty
   families:
@@ -4441,17 +4400,15 @@ operations:
     ordered_result_dtypes:
     - f16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id001
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b):
-        all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open
-        question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling
-        captures, not verified per dtype.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_empty_i64
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.empty
   families:
@@ -4463,17 +4420,15 @@ operations:
     ordered_result_dtypes:
     - i64
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id001
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b):
-        all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open
-        question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling
-        captures, not verified per dtype.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_empty_i32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.empty
   families:
@@ -4485,17 +4440,15 @@ operations:
     ordered_result_dtypes:
     - i32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id001
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b):
-        all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open
-        question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling
-        captures, not verified per dtype.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_empty_i8
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.empty
   families:
@@ -4507,17 +4460,15 @@ operations:
     ordered_result_dtypes:
     - i8
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id001
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b):
-        all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open
-        question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling
-        captures, not verified per dtype.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_empty_i1
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.empty
   families:
@@ -4529,17 +4480,15 @@ operations:
     ordered_result_dtypes:
     - i1
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id001
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b):
-        all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open
-        question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling
-        captures, not verified per dtype.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_empty_f64
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.empty
   families:
@@ -4551,17 +4500,15 @@ operations:
     ordered_result_dtypes:
     - f64
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id001
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b):
-        all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open
-        question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling
-        captures, not verified per dtype.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_splat_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.splat
   families:
@@ -4574,17 +4521,17 @@ operations:
     ordered_result_dtypes:
     - f32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: &id002
       value: the scalar bit pattern replicated to every element
       arithmetic: none
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator
-        sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count
-        divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_splat_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.splat
   families:
@@ -4597,15 +4544,15 @@ operations:
     ordered_result_dtypes:
     - bf16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id002
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator
-        sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count
-        divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_splat_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.splat
   families:
@@ -4618,15 +4565,15 @@ operations:
     ordered_result_dtypes:
     - f16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id002
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator
-        sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count
-        divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_splat_i64
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.splat
   families:
@@ -4639,15 +4586,15 @@ operations:
     ordered_result_dtypes:
     - i64
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id002
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator
-        sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count
-        divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_splat_i32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.splat
   families:
@@ -4660,15 +4607,15 @@ operations:
     ordered_result_dtypes:
     - i32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id002
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator
-        sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count
-        divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_splat_i8
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.splat
   families:
@@ -4681,15 +4628,15 @@ operations:
     ordered_result_dtypes:
     - i8
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id002
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator
-        sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count
-        divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_splat_i1
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.splat
   families:
@@ -4702,15 +4649,15 @@ operations:
     ordered_result_dtypes:
     - i1
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id002
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator
-        sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count
-        divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_splat_f64
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.splat
   families:
@@ -4723,15 +4670,15 @@ operations:
     ordered_result_dtypes:
     - f64
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics: *id002
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator
-        sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count
-        divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_extract_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.extract
   families:
@@ -4744,17 +4691,17 @@ operations:
     ordered_result_dtypes:
     - f32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open
-        question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_extract_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.extract
   families:
@@ -4767,17 +4714,17 @@ operations:
     ordered_result_dtypes:
     - bf16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open
-        question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_extract_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.extract
   families:
@@ -4790,17 +4737,17 @@ operations:
     ordered_result_dtypes:
     - f16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open
-        question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_extract_i8
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.extract
   families:
@@ -4813,17 +4760,17 @@ operations:
     ordered_result_dtypes:
     - i8
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open
-        question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_from_elements_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.from_elements
   families:
@@ -4836,17 +4783,17 @@ operations:
     ordered_result_dtypes:
     - f32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_from_elements_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.from_elements
   families:
@@ -4859,17 +4806,17 @@ operations:
     ordered_result_dtypes:
     - bf16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_from_elements_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.from_elements
   families:
@@ -4882,17 +4829,17 @@ operations:
     ordered_result_dtypes:
     - f16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_from_elements_i8
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.from_elements
   families:
@@ -4905,17 +4852,17 @@ operations:
     ordered_result_dtypes:
     - i8
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_collapse_shape_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.collapse_shape
   families:
@@ -4928,17 +4875,17 @@ operations:
     ordered_result_dtypes:
     - f32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_collapse_shape_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.collapse_shape
   families:
@@ -4951,17 +4898,17 @@ operations:
     ordered_result_dtypes:
     - bf16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_collapse_shape_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.collapse_shape
   families:
@@ -4974,17 +4921,17 @@ operations:
     ordered_result_dtypes:
     - f16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_collapse_shape_i8
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.collapse_shape
   families:
@@ -4997,17 +4944,17 @@ operations:
     ordered_result_dtypes:
     - i8
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_expand_shape_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.expand_shape
   families:
@@ -5020,17 +4967,17 @@ operations:
     ordered_result_dtypes:
     - f32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_expand_shape_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.expand_shape
   families:
@@ -5043,17 +4990,17 @@ operations:
     ordered_result_dtypes:
     - bf16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_expand_shape_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.expand_shape
   families:
@@ -5066,17 +5013,17 @@ operations:
     ordered_result_dtypes:
     - f16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_expand_shape_i8
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.expand_shape
   families:
@@ -5089,17 +5036,17 @@ operations:
     ordered_result_dtypes:
     - i8
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: pure shape/element movement
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the
-        host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed.
-        Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_extract_slice_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.extract_slice
   families:
@@ -5112,17 +5059,17 @@ operations:
     ordered_result_dtypes:
     - f32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: strided slice copy; offsets/sizes/strides are static op attributes
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute
-        not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_extract_slice_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.extract_slice
   families:
@@ -5135,17 +5082,17 @@ operations:
     ordered_result_dtypes:
     - bf16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: strided slice copy; offsets/sizes/strides are static op attributes
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute
-        not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_extract_slice_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.extract_slice
   families:
@@ -5158,17 +5105,17 @@ operations:
     ordered_result_dtypes:
     - f16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: strided slice copy; offsets/sizes/strides are static op attributes
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute
-        not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_extract_slice_i64
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.extract_slice
   families:
@@ -5181,17 +5128,17 @@ operations:
     ordered_result_dtypes:
     - i64
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: strided slice copy; offsets/sizes/strides are static op attributes
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute
-        not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_insert_slice_f32
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.insert_slice
   families:
@@ -5205,17 +5152,17 @@ operations:
     ordered_result_dtypes:
     - f32
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: strided slice copy; offsets/sizes/strides are static op attributes
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute
-        not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_insert_slice_bf16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.insert_slice
   families:
@@ -5229,17 +5176,17 @@ operations:
     ordered_result_dtypes:
     - bf16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: strided slice copy; offsets/sizes/strides are static op attributes
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute
-        not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_insert_slice_f16
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.insert_slice
   families:
@@ -5253,17 +5200,17 @@ operations:
     ordered_result_dtypes:
     - f16
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: strided slice copy; offsets/sizes/strides are static op attributes
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute
-        not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_support_insert_slice_i64
-  status: unreviewed
+  status: reviewed
   ops:
   - tensor.insert_slice
   families:
@@ -5277,17 +5224,17 @@ operations:
     ordered_result_dtypes:
     - i64
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: none
       semantics: strided slice copy; offsets/sizes/strides are static op attributes
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat
-        approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute
-        not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_m2m_exact_quantize_f32_i8_rank0_1_5
-  status: unreviewed
+  status: reviewed
   ops:
   - m2m_q.quantize.default
   families:
@@ -5309,17 +5256,17 @@ operations:
     - 1
     - 5
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       formula: 'identical to host_m2m_exact_quantize_f32_i8_rank3_4: q = clamp(round_half_even(x / scale) + zero_point, quant_min, quant_max)'
       nan: runtime_assert_refusal
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical
-        group; the host lane counts it only after an operator records review here.'
-      basis: 'Rank-0/1/5 sibling of the operator-reviewed rank-2 and rank-3/4 rows; the reduce capture quantizes scalar, vector and rank-5 tensors. Only the ranks differ. Open questions: (1) rank-0 scalar
-        lowering of the exact_quantize pass and the rank-5 loop nest have not been exercised on the host package; (2) no Spike probe at these ranks.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Rank-0/1/5 sibling of the operator-reviewed rank-2 and rank-3/4 rows; the reduce capture quantizes scalar, vector and rank-5 tensors. Only the ranks differ. Open questions: (1) rank-0 scalar lowering of the exact_quantize pass and the rank-5 loop nest have not been exercised on the host package; (2) no Spike probe at these ranks.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_m2m_dequantize_per_tensor_f64_scale_rank0_1_5
-  status: unreviewed
+  status: reviewed
   ops:
   - quantized_decomposed.dequantize_per_tensor.default
   families:
@@ -5338,16 +5285,16 @@ operations:
     - 1
     - 5
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       formula: 'identical to host_m2m_dequantize_per_tensor_f64_scale_rank3_4: f32((i8 - zero_point) * scale), binary64 product then one truncation'
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical
-        group; the host lane counts it only after an operator records review here.'
-      basis: 'Rank-0/1/5 sibling of the reviewed rank-3/4 row (and rank-2 row). Only ranks differ. Open question: same binary32-representable scale premise as the sibling, unenforced by the signature; no
-        probe at these ranks.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Rank-0/1/5 sibling of the reviewed rank-3/4 row (and rank-2 row). Only ranks differ. Open question: same binary32-representable scale premise as the sibling, unenforced by the signature; no probe at these ranks.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_m2m_dequantize_per_tensor_f64_scale_bf16_result
-  status: unreviewed
+  status: reviewed
   ops:
   - quantized_decomposed.dequantize_per_tensor.default
   families:
@@ -5365,17 +5312,17 @@ operations:
     - 0
     - 2
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       formula: bf16((i8 - zero_point) * scale)
       host_arithmetic: 'binary64 product, then ONE narrowing to the result type (unverified for bf16/f16: a double narrowing via f32 would round differently)'
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the
-        mechanical group; the host lane counts it only after an operator records review here.'
-      basis: 'Result-type variant of the reviewed f32 row. Open questions: (1) single vs double rounding f64 -> f32 -> bf16 in the emitted lowering; (2) exhaustive 256-code eager comparison not run for
-        bf16.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Result-type variant of the reviewed f32 row. Open questions: (1) single vs double rounding f64 -> f32 -> bf16 in the emitted lowering; (2) exhaustive 256-code eager comparison not run for bf16.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_m2m_dequantize_per_tensor_f64_scale_f16_result
-  status: unreviewed
+  status: reviewed
   ops:
   - quantized_decomposed.dequantize_per_tensor.default
   families:
@@ -5392,16 +5339,17 @@ operations:
     ranks:
     - 2
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       formula: f16((i8 - zero_point) * scale)
       host_arithmetic: 'binary64 product, then ONE narrowing to the result type (unverified for bf16/f16: a double narrowing via f32 would round differently)'
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the
-        mechanical group; the host lane counts it only after an operator records review here.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       basis: 'Result-type variant of the reviewed f32 row. Open questions: (1) single vs double rounding f64 -> f32 -> f16 in the emitted lowering; (2) exhaustive 256-code eager comparison not run for f16.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 - id: host_m2m_dequantize_per_tensor_f64_scale_f64_result
-  status: unreviewed
+  status: reviewed
   ops:
   - quantized_decomposed.dequantize_per_tensor.default
   families:
@@ -5418,14 +5366,15 @@ operations:
     ranks:
     - 2
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       formula: f64((i8 - zero_point) * scale)
       host_arithmetic: 'binary64 product, then ONE narrowing to the result type (unverified for bf16/f16: a double narrowing via f32 would round differently)'
     evidence:
-      reviewed_by: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the
-        mechanical group; the host lane counts it only after an operator records review here.'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       basis: 'Result-type variant of the reviewed f32 row. Open questions: (1) single vs double rounding f64 -> f32 -> f64 in the emitted lowering; (2) exhaustive 256-code eager comparison not run for f64.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:
