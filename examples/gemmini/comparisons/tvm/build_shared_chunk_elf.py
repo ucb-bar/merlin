@@ -29,10 +29,17 @@ def selected_chunk(root, name):
     if digest(catalog) != CATALOG_SHA256:
         raise ValueError("Require the frozen 82b321a89 shared chunk catalog")
     matches = [row for row in json.loads(catalog.read_text())["chunks"] if row["id"] == name]
+    if name == "full-resnet":
+        # The same published dependency includes the connected parent and its
+        # independent reference; this is not a sum or replay of chunk outputs.
+        matches = [dict(id=name, status="parent_build_only",
+                        program="resnet-release/full-resnet/program.json",
+                        fixture="resnet-release/full-resnet/fixture.npz",
+                        fixture_provenance="relocated-resnet-proofs/full-resnet.json")]
     if len(matches) != 1:
         raise ValueError("Unknown published chunk")
     row = matches[0]
-    if row["status"] != "ready_for_tuning" or row["host_check"]["host_check"] != "pass":
+    if name != "full-resnet" and (row["status"] != "ready_for_tuning" or row["host_check"]["host_check"] != "pass"):
         raise ValueError("Blocked chunk is not admitted for ELF preparation")
     paths = {}
     for key in ("program", "fixture", "fixture_provenance"):
@@ -54,7 +61,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("tvm-source", "restored-root", "output-dir", "riscv-gcc", "adapter-receipt"):
         parser.add_argument("--" + name, type=Path, required=True)
-    parser.add_argument("--chunk", required=True)
+    parser.add_argument("--chunk", required=True, help="Published chunk ID, or full-resnet for the connected parent")
     parser.add_argument("--host-math-policy", required=True,
                         choices=("native", "portable_exp_trig", "portable_neural_f32"))
     parser.add_argument("--graph-fusion-level", type=int, choices=range(4), default=2)
